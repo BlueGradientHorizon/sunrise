@@ -18,7 +18,7 @@ AbstractNautilus.hurtServer	port	crates/sunrise-sim/src/mobs/nautilus.rs::after_
 AbstractNautilus.finalizeSpawn	port	crates/sunrise-sim/src/mobs/nautilus.rs::finalize	attack target cooldown of 2400 to 3600 ticks
 AbstractNautilus.getEquipSound	port	crates/sunrise-sim/src/mobs/nautilus.rs::saddle_sound	underwater saddle sound while the eyes are in water
 AbstractNautilus.createInventory	skip:other		getInventoryColumns is 0, so the container has no slots; saddle and armour are equipment slots
-AbstractNautilus.openCustomInventoryScreen	port	crates/sunrise-gameplay/src/mount_rules.rs::has_mount_menu	shift-use on a tame nautilus and the inventory key while riding open the saddle/armour screen
+AbstractNautilus.openCustomInventoryScreen	port	crates/sunrise-gameplay-common/src/mount_rules.rs::has_mount_menu	shift-use on a tame nautilus and the inventory key while riding open the saddle/armour screen
 AbstractNautilus.getSlot	skip:other		slots 500 and up address the container, which has no slots; every other slot is an equipment slot
 AbstractNautilus.isAggravated	port	crates/sunrise-sim/src/mobs/nautilus.rs::aggravated	the anger clock (its target is last_hurt_by) or a live attack target stand in for the brain's ANGRY_AT and ATTACK_TARGET memories; can_be_leashed in leash.rs asks it for nautilus and zombie nautilus
 Nautilus.customServerAiStep	inline	crates/sunrise-sim/src/mobs/nautilus.rs::register	the goal list replaces the brain and its fight or idle switch; the cooldowns tick in ai_step

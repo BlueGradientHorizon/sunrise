@@ -1,18 +1,38 @@
 use super::*;
-use crate::game::native_hooks::general_entity_tick::GeneralTickAccess;
-use crate::game::native_hooks::general_entity_tick::ResidentGeneralRow;
-#[allow(unused_imports)]
 use crate::game::{
-    commands::{Target, entity_pitch},
+    commands_common::{Target, entity_pitch},
     general::GeneralRow,
+    transactions::OpenTransactions,
 };
-#[allow(unused_imports)]
 use mod_api::{
     EntityRef, EntityServerAccess, EntityServerScope, EntitySubjectView, ResidentGeneralEntity,
     ServerHost,
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::lan::playerdata::ints_uuid;
+
+pub(in crate::game) struct ResidentGeneralRow<'a> {
+    pub(in crate::game) row: &'a mut GeneralRow,
+    pub(in crate::game) journal: &'a mut OpenTransactions,
+    pub(in crate::game) kind: &'a str,
+}
+
+pub(in crate::game) struct GeneralTickAccess<'g, 'w, 'k> {
+    pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
+    pub(in crate::game) subject: EntityRef,
+    pub(in crate::game) kind: &'k str,
+}
+
+/// The authoritative tick of one general entity row of type `kind`
+/// (`mymod:robot`) (#792 stage 4): `ServerLevel.tickNonPassenger`'s
+/// `entity.tick()` for a row the type registry owns, its rider subtree
+/// ticked after it. The scope lends the live row sequentially with `ServerHost`.
+/// Vanilla families never reach this call. Server-side.
+pub(in crate::game) fn native_general_entity_tick(
+    call: mod_api::__private::GeneralEntityTickCall<'_>,
+) {
+    crate::game::native_hooks::fire::fire_general_entity_tick(call);
+}
 
 impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
     fn with_view(&mut self, call: &mut dyn FnMut(EntitySubjectView<'_>)) {
@@ -147,12 +167,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             subject,
             kind,
         };
-        crate::game::native_hooks::native_general_entity_tick(
-            mod_api::__private::GeneralEntityTickCall {
-                kind,
-                subject: EntityServerScope::new(&mut access),
-            },
-        );
+        native_general_entity_tick(mod_api::__private::GeneralEntityTickCall {
+            kind,
+            subject: EntityServerScope::new(&mut access),
+        });
     }
 }
 

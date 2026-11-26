@@ -70,7 +70,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // file level.dat names, which is the one it loads from
         // (`playerdata::load_owner`).
         if self.options.execution_role == execution_role::ExecutionRole::DedicatedServer
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             // The vehicle tree goes into a player's file when they leave
             // (`take_parent_vehicle`); here it stays in the chunk saves.
@@ -92,7 +92,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
         }
         if self.options.execution_role == execution_role::ExecutionRole::DedicatedServer
-            && let Some(host) = self.lan.as_ref()
+            && let Some(host) = self.side.lan.as_ref()
         {
             self.save_connected_guest_statistics(host);
             for guest in host.hub.guests.iter() {

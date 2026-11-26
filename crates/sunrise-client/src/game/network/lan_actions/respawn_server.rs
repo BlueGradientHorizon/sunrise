@@ -4,7 +4,7 @@ use crate::game::{commands::Target, server_travel::SpawnAction};
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `handleClientCommand(PERFORM_RESPAWN)` calls PlayerList, not ServerPlayer.teleport.
     pub(in crate::game) fn commit_player_respawn(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some((end_conquered, dead)) = host.hub.update_guest(conn, |guest| {
@@ -33,7 +33,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         at: [f64; 3],
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let now = self.world.game_time;
@@ -165,7 +165,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let cause = if self.side.lan_acting == Some(conn) {
             self.ui.death_cause.as_deref()
         } else {
-            self.lan
+            self.side
+                .lan
                 .as_ref()
                 .and_then(|host| host.play.get(&conn))
                 .and_then(|p| p.death_cause.as_deref())
@@ -199,7 +200,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.die` for a guest whose health has run out: the death
     /// message, the loot and experience, the death screen.
     pub(in crate::game) fn guest_die(&mut self, gi: usize, conn: u32) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let guest = &host.hub.guests[gi];
@@ -226,7 +227,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // A dead player carries no mob a mod seated on it.
         self.eject_player_riders(Some(id as u32));
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let g = &host.hub.guests[gi];
@@ -272,7 +273,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.ui.death_cause.take()
             } else {
                 self.guest_forget_digging(conn);
-                self.lan.as_mut().and_then(|host| {
+                self.side.lan.as_mut().and_then(|host| {
                     host.hub.guests.update(gi, |g| g.last_death = last_death);
                     host.play.get_mut(&conn).and_then(|play| {
                         play.hook.discard();
@@ -280,7 +281,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     })
                 })
             };
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 host.hub.guests.update(gi, |g| g.dead = true);
             }
             // ServerPlayer.die opens with `gameEvent(ENTITY_DIE)` at the player:
@@ -323,7 +324,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let message = sunrise_sim::lan::data::component_nbt(&text.component());
                 let board = &self.score.board;
-                let Some(host) = self.lan.as_ref() else {
+                let Some(host) = self.side.lan.as_ref() else {
                     return;
                 };
                 host.hub.system_message_to(message.clone(), |other| {
@@ -351,7 +352,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 literal("")
             };
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             host.hub.send_to(
@@ -526,7 +527,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let old_spawn = old.spawn;
         let old_saved = old.respawn_elsewhere.clone();
         let old_config = old_saved.as_ref().and_then(RespawnConfig::from_saved);
-        if let Some(host) = self.lan.as_mut()
+        if let Some(host) = self.side.lan.as_mut()
             && let Some(play) = host.play.get_mut(&conn)
         {
             play.equipment_heard = None;
@@ -611,7 +612,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 });
                 if accepted == Some(true)
                     && config.is_none()
-                    && let Some(host) = game.lan.as_mut()
+                    && let Some(host) = game.side.lan.as_mut()
                 {
                     // A config in a missing dimension is preserved in the save.
                     host.hub
@@ -622,6 +623,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         let Some(i) = self
+            .side
             .lan
             .as_ref()
             .and_then(|h| h.hub.guests.connection_index(conn))
@@ -648,7 +650,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             border: &self.border,
             streaming: Some(&self.side.streaming),
         };
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             if missing {
                 host.hub.missing_respawn_block(conn);
             }
@@ -733,7 +735,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.native_player_game_mode_changed(uuid, &name, from, &mut to, &mut cancel);
             if !cancel
                 && to != from
-                && let Some(host) = self.lan.as_mut()
+                && let Some(host) = self.side.lan.as_mut()
             {
                 host.hub
                     .set_game_mode(conn, to.id(), &self.world, Some(self.collision));
@@ -743,6 +745,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Player.remove in the source level. The close hook still writes the old player's map.
     pub(in crate::game) fn remove_old_player_for_clone(&mut self, conn: u32, was_death: bool) {
         let Some(entity) = self
+            .side
             .lan
             .as_ref()
             .and_then(|h| h.hub.guest(conn))
@@ -760,7 +763,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 MenuRemoval::ChangedDimension
             },
         );
-        if let Some(host) = self.lan.as_mut()
+        if let Some(host) = self.side.lan.as_mut()
             && let Some(i) = host.hub.guests.connection_index(conn)
         {
             host.hub.remove_player_for_respawn(i);

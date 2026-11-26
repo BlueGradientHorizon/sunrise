@@ -6,6 +6,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleCommandSuggestions`: forward the reply to the command edit box.
     pub(in crate::game) fn handle_command_suggestions(&mut self, packet: CommandSuggestions) {
         let lang = self
+            .side
             .remote
             .as_ref()
             .map(|r| r.lang.clone())

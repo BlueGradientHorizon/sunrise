@@ -49,7 +49,7 @@ fn client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions() {
     with_client_game(|game| {
         let (client, server) = Pipe::pair();
         game.connect_local(client, "sleep-client").unwrap();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.loaded_sent = true;
         remote.entity_id = 42;

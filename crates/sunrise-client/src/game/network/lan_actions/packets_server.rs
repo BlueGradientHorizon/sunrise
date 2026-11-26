@@ -10,7 +10,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         too_high: bool,
         limit: i32,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let message = sunrise_game_data::text::Text::translate(
@@ -42,7 +42,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> bool {
         let size = self.stack_max_size(s);
         let max = creative_count_bound(size);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return false;
         };
         if creative_count_exceeds(s.count, size) {
@@ -65,6 +65,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stack: Option<&ItemStack>,
     ) -> bool {
         let Some((uuid, name)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -97,6 +98,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stack: impl FnOnce(&mut Self) -> Option<ItemStack>,
     ) {
         let Some((uuid, name)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -116,7 +118,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(())
         });
         if picked.flatten().is_some()
-            && let Some(host) = self.lan.as_ref()
+            && let Some(host) = self.side.lan.as_ref()
             && let Some(g) = host.hub.guests.iter().find(|g| g.conn == conn)
         {
             host.hub.send_to(
@@ -130,7 +132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerGamePacketListenerImpl.handleTeleportToEntityPacket`: search the live levels in
     /// server order, then teleport to the first matching entity's position and rotation.
     pub(in crate::game::server_side) fn guest_spectate_teleport(&mut self, gi: usize, uuid: u128) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let guest = &host.hub.guests[gi];
@@ -192,7 +194,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stack: &Option<sunrise_protocol::item::Stack>,
     ) -> Option<ItemStack> {
         let s = stack.as_ref()?;
-        let mut out = self.lan.as_ref()?.hub.stack_from_network(s);
+        let mut out = self.side.lan.as_ref()?.hub.stack_from_network(s);
         out.count = out.count.max(1);
         Some(out)
     }
@@ -206,7 +208,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(gi) = self.guest_index(conn) else {
             return false;
         };
-        let guest = &self.lan.as_ref().unwrap().hub.guests[gi];
+        let guest = &self.side.lan.as_ref().unwrap().hub.guests[gi];
         if let Some(open) = guest.menu.as_ref().filter(|m| m.window == p.container) {
             if open.mod_type.is_some()
                 && usize::try_from(p.slot).is_ok_and(|s| s >= open.slot_count())
@@ -249,7 +251,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return true;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         let slots = host.hub.guests[gi]
@@ -261,7 +263,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(drops) = self.lan_hub_click(conn, p) else {
             return false;
         };
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         if let Some(Slots::Block(key) | Slots::Double(key, _)) = slots
@@ -275,7 +277,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !drops.is_empty() {
             self.after_commit(super::super::transactions::After::GuestMenu(
                 conn,
-                Box::new(super::super::lan_crafting::GuestMenuEffects::dropped(drops)),
+                Box::new(crate::game::lan_menu_data::GuestMenuEffects::dropped(drops)),
             ));
         }
         true
@@ -286,6 +288,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// vanilla answers what it refuses.
     pub(in crate::game) fn lan_flight_toggled(&mut self, conn: u32, flying: bool) {
         let Some((uuid, name)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -301,7 +304,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !cancel {
             return;
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             let _ = host.hub.update_guest(conn, |g| {
                 g.abilities.flying = !flying;
                 g.send(&g.abilities_packet());
@@ -317,8 +320,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && click.input == sunrise_sim::lan::menu::input::SWAP
             && matches!(click.button, 0..=8 | OFFHAND_BUTTON)
         {
-            use super::super::lan_menus::ClickReply;
-            self.lan
+            use crate::game::lan_menu_data::ClickReply;
+            self.side
+                .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
                 .and_then(|guest| guest.menu.as_ref())
@@ -353,7 +357,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return self.guest_passage_cross(conn, &p.data);
         }
         use super::super::cauldron_prediction::{USE_CHANNEL, UseOnOutcome, use_result};
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -435,7 +439,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if validate_menu && !self.guest_validate_menu(conn) {
             return;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let spectator = host.hub.guests[gi].spectator();
@@ -443,7 +447,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match packet {
             S::PlayerAction(a) => match a.action {
                 0 => {
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     host.hub.ack(conn, a.sequence);
@@ -520,7 +524,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         StartDig::Accepted
                     });
                     if matches!(start, Some(StartDig::Accepted | StartDig::Air)) {
-                        let Some(host) = self.lan.as_mut() else {
+                        let Some(host) = self.side.lan.as_mut() else {
                             return;
                         };
                         let play = host.play.entry(conn).or_default();
@@ -547,7 +551,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             })
                             .unwrap_or(false);
                         if !one_hit
-                            && let Some(host) = self.lan.as_mut()
+                            && let Some(host) = self.side.lan.as_mut()
                             && let Some(play) = host.play.get_mut(&conn)
                         {
                             play.destroy_pos = Some(pos);
@@ -559,7 +563,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 1 => {}
                 3 => {
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     host.hub.ack(conn, a.sequence);
@@ -574,7 +578,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.guest_stop_digging(conn, a.pos);
                 }
                 2 => {
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     host.hub.ack(conn, a.sequence);
@@ -583,7 +587,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     host.play.entry(conn).or_default().dig_ended();
                     host.hub.send_authoritative_block(conn, &self.world, a.pos);
                     self.guest_crack_progress(conn, a.pos, -1);
-                    let Some(host) = self.lan.as_ref() else {
+                    let Some(host) = self.side.lan.as_ref() else {
                         return;
                     };
                     if mod_api::__private::listened(mod_api::HookId::BlockDamageAbort) {
@@ -612,7 +616,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // stacks are copied only for a listener: `heard` holds the
                     // vanilla (to main hand, to off hand), the old off and main.
                     let (uuid, name, heard) = {
-                        let Some(host) = self.lan.as_ref() else {
+                        let Some(host) = self.side.lan.as_ref() else {
                             return;
                         };
                         let g = &host.hub.guests[gi];
@@ -639,7 +643,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .unwrap_or(false),
                         None => false,
                     };
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     if cancel {
@@ -685,7 +689,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         }
                     });
                     if mod_api::__private::listened(mod_api::HookId::PlayerSwapWithEquipmentSlot) {
-                        let Some(host) = self.lan.as_ref() else {
+                        let Some(host) = self.side.lan.as_ref() else {
                             return;
                         };
                         let guest = &host.hub.guests[gi];
@@ -700,7 +704,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // handleSetCarriedItem: a new slot stops a main-hand use.
             S::SetCarriedItem(p) => {
                 if !(0..9).contains(&p.slot) {
-                    let Some(host) = self.lan.as_ref() else {
+                    let Some(host) = self.side.lan.as_ref() else {
                         return;
                     };
                     eprintln!(
@@ -710,7 +714,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return;
                 }
                 let (uuid, entity_id, old_slot) = {
-                    let Some(host) = self.lan.as_ref() else {
+                    let Some(host) = self.side.lan.as_ref() else {
                         return;
                     };
                     let g = &host.hub.guests[gi];
@@ -727,7 +731,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         &mut cancel,
                     );
                     if cancel {
-                        let Some(host) = self.lan.as_mut() else {
+                        let Some(host) = self.side.lan.as_mut() else {
                             return;
                         };
                         host.hub.send_to(
@@ -747,7 +751,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         g.stop_active_item_use();
                     }
                 });
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 {
@@ -769,7 +773,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // strength starts again.
             S::Punch(_) => {
                 let (player, name) = {
-                    let Some(host) = self.lan.as_ref() else {
+                    let Some(host) = self.side.lan.as_ref() else {
                         return;
                     };
                     let g = &host.hub.guests[gi];
@@ -783,7 +787,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.native_player_arm_swing(player, &name, "mainhand");
             }
             S::UseItemOn(p) => {
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.hub.ack(conn, p.sequence);
@@ -792,14 +796,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let result = self.guest_use_item_on(conn, gi, hit, hand, receipt);
                 if result.is_err()
                     && let Some(receipt) = receipt
-                    && let Some(host) = self.lan.as_ref()
+                    && let Some(host) = self.side.lan.as_ref()
                 {
                     host.hub
                         .send_to(conn, &use_result(receipt, UseOnOutcome::default()));
                 }
             }
             S::UseItem(p) => {
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.hub.ack(conn, p.sequence);
@@ -812,7 +816,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let _ = self.guest_attack(conn, gi, p.id);
             }
             S::Interact(p) => {
-                self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                self.side.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
                     g.sneaking = p.secondary;
                 });
                 let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
@@ -823,7 +827,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // handleSetCreativeModeSlot's drop: a slot below 0 is a stack thrown out of the
             // creative screen (`handleCreativeModeItemDrop`), dropped from the player's hand.
             S::SetCreativeModeSlot(p) if p.slot < 0 => {
-                let Some(host) = self.lan.as_ref() else {
+                let Some(host) = self.side.lan.as_ref() else {
                     return;
                 };
                 if !host.hub.guests[gi].creative() {
@@ -838,7 +842,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if !self.guest_may_set_creative_slot(conn, i32::from(p.slot), Some(&stack)) {
                     return;
                 }
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 let play = host.play.entry(conn).or_default();
@@ -854,7 +858,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             S::SetCreativeModeSlot(p) => {
                 // Slot 0 is the crafting result: not a slot to set.
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 let g = &host.hub.guests[gi];
@@ -871,7 +875,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if !self.guest_may_set_creative_slot(conn, i32::from(p.slot), item.as_ref()) {
                     // The creative client already holds the stack it sent: treat that as
                     // what it was told, so the next broadcast sends the real slot back.
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     host.hub
@@ -880,7 +884,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return;
                 }
                 let slot = p.slot as usize;
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 let old = host.hub.guests.update(gi, |g| {
@@ -927,7 +931,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // ServerboundResourcePackPacket in play: the server has nothing to
             // do with it (a declined required pack is handled on the connection).
             S::ResourcePack(r) => {
-                let Some(host) = self.lan.as_ref() else {
+                let Some(host) = self.side.lan.as_ref() else {
                     return;
                 };
                 let guest = &host.hub.guests[gi];
@@ -939,7 +943,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // START_SPRINTING and STOP_SPRINTING: the hub has set the sprint
             // and sends the packet on when it changed it.
             S::PlayerCommand(p) if matches!(p.action, 1 | 2) => {
-                let Some(host) = self.lan.as_ref() else {
+                let Some(host) = self.side.lan.as_ref() else {
                     return;
                 };
                 let guest = &host.hub.guests[gi];
@@ -981,13 +985,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .ok()
                     .and_then(|slot| bundle_inventory_slot(slot, own));
                 if !spectator && let Some(slot) = slot {
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     host.hub
                         .select_bundle_item(conn, slot, p.index, &mut self.world);
                     if mod_api::__private::listened(mod_api::HookId::PlayerBundleItemSelect) {
-                        let Some(host) = self.lan.as_ref() else {
+                        let Some(host) = self.side.lan.as_ref() else {
                             return;
                         };
                         let guest = &host.hub.guests[gi];
@@ -1005,7 +1009,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // A vehicle's menu closed: its slots go back to the vehicle
                 // (`ContainerEntity`), and a chest boat's `stopOpen` fires
                 // CONTAINER_CLOSE with the player as the source.
-                let Some(host) = self.lan.as_ref() else {
+                let Some(host) = self.side.lan.as_ref() else {
                     return;
                 };
                 let vehicle = host.hub.guests[gi]
@@ -1064,7 +1068,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // ServerCommonPacketListenerImpl.handleCustomClickAction: the server only logs
             // the click, so a mod's cancel leaves nothing else to skip.
             S::CustomClickAction(p) => {
-                let Some(host) = self.lan.as_ref() else {
+                let Some(host) = self.side.lan.as_ref() else {
                     return;
                 };
                 let g = &host.hub.guests[gi];
@@ -1100,7 +1104,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if self.ui.difficulty == 0 {
                         self.mobs.retain(|m| !m.hostile());
                     }
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     host.hub
@@ -1112,7 +1116,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             S::LockDifficulty(p) if permission >= 2 => {
                 self.level.difficulty_locked = p.locked;
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.hub
@@ -1122,7 +1126,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }));
             }
             S::ClientCommand(p) if p.action == 2 && permission >= 2 => {
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.hub.send_to(
@@ -1146,7 +1150,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         if let Some(rule) = self.ui.rules.rule(&entry.name).cloned()
                             && let Some(value) = self.ui.rules.get(&rule.name)
                         {
-                            let Some(host) = self.lan.as_ref() else {
+                            let Some(host) = self.side.lan.as_ref() else {
                                 return;
                             };
                             let guest = &host.hub.guests[gi];
@@ -1164,7 +1168,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             &[&entry.name, &entry.value],
                         );
                         let content = sunrise_sim::lan::data::component_nbt(&message.component());
-                        let Some(host) = self.lan.as_ref() else {
+                        let Some(host) = self.side.lan.as_ref() else {
                             return;
                         };
                         for g in &host.hub.guests {
@@ -1200,7 +1204,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .collect::<Vec<_>>()
                     });
                     for content in lines.unwrap_or_default() {
-                        let Some(host) = self.lan.as_mut() else {
+                        let Some(host) = self.side.lan.as_mut() else {
                             return;
                         };
                         host.hub.send_to(
@@ -1223,7 +1227,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         &format!("gameMode.{}", mode.name()),
                         &[],
                     );
-                    let Some(host) = self.lan.as_ref() else {
+                    let Some(host) = self.side.lan.as_ref() else {
                         return;
                     };
                     eprintln!(
@@ -1237,7 +1241,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // level gets its Entity.saveWithoutId.
             S::EntityTagQuery(p) if permission >= 2 => {
                 if let Some(tag) = self.level_entity_tag(p.entity) {
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     host.hub.send_to(
@@ -1255,7 +1259,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let tag = self
                     .block_entity_tag(p.pos)
                     .unwrap_or(sunrise_core::nbt::Tag::End);
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.hub.send_to(
@@ -1270,7 +1274,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if id == sunrise_protocol::ids::play::serverbound::COMMAND_SUGGESTION =>
             {
                 // ServerCommandSuggestionsProvider.request, then trySchedule.
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.play.entry(conn).or_default().suggestion = Some(payload);
@@ -1281,7 +1285,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             S::ClientCommand(c) if c.action == 0 => self.guest_respawn(conn),
             // ServerStatsCounter.sendStats.
             S::ClientCommand(c) if c.action == 1 => {
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 let stats = host
@@ -1351,7 +1355,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         id: i32,
     ) -> Option<sunrise_core::nbt::Tag> {
         use crate::game::commands::Target;
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let player = host
             .hub
             .guests
@@ -1374,7 +1378,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// ServerPlayer.sendSpawnProtectionMessage.
     pub(in crate::game::server_side) fn spawn_protection_message(&self, conn: u32, pos: [i32; 3]) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let message = sunrise_game_data::text::Text::translate(
@@ -1397,7 +1401,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// radius of 0 or less is never under it; else a block within the radius
     /// of the world spawn (square, in the Overworld) is.
     pub(in crate::game) fn under_spawn_protection(&self, gi: usize, pos: [i32; 3]) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         let g = &host.hub.guests[gi];

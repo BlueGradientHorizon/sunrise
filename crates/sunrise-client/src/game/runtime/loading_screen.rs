@@ -2,6 +2,13 @@
 //! takes over (`App`), and the checks a start makes first: missing or damaged prepared files,
 //! an unclean last exit, a fullscreen the window system could not show.
 use super::*;
+#[cfg(feature = "client")]
+use crate::game::client_side::{
+    launch_options_client::is_client_start, resource_tables_client::UiResources,
+    window_handler::follow_keymap,
+};
+use crate::game::integrated_link::{ProfileResolverFactory, RunComponentHarness, Serve};
+use sunrise_sim::lan::SessionVerifier;
 
 /// The window system ended the event loop with a failure (on Linux, a compositor dropping the
 /// connection after a protocol error) while fullscreen was on: the next start opens windowed, so a
@@ -30,7 +37,7 @@ pub(in crate::game) fn run_event_loop(
         // narrator::start ran for it too (options.txt's narrator setting).
         narrator::stop();
         let result = write_report(&game).and_then(|()| game.error.take().map_or(Ok(()), Err));
-        if game.options.is_client_start() {
+        if is_client_start(&game.options) {
             game.native_client_stopped();
             game.native_game_shutting_down();
         }
@@ -43,7 +50,7 @@ pub(in crate::game) fn run_event_loop(
         .map_err(Into::into)
         .and_then(|()| write_report(&game))
         .and_then(|()| game.error.take().map_or(Ok(()), Err));
-    if game.options.is_client_start() {
+    if is_client_start(&game.options) {
         game.native_client_stopped();
         game.native_game_shutting_down();
     }
@@ -53,6 +60,10 @@ pub(in crate::game) fn run_event_loop(
 /// The loading screen's state while the worker loads the resources.
 #[cfg(feature = "client")]
 pub(in crate::game) struct Loading {
+    pub(in crate::game) serve_integrated: Serve,
+    pub(in crate::game) run_component_harness: RunComponentHarness,
+    pub(in crate::game) profile_resolver: ProfileResolverFactory,
+    pub(in crate::game) session_verifier: SessionVerifier,
     pub(in crate::game) window: Option<Arc<Window>>,
     pub(in crate::game) renderer: Option<Renderer>,
     /// The boot screen's atlas, until the pack's GUI atlas replaces it.
@@ -222,10 +233,9 @@ impl Loading {
             "Sunrise: loading the title artwork after {} ms",
             self.started.elapsed().as_millis()
         );
-        let additional = self
-            .options
-            .as_ref()
-            .map_or_else(Vec::new, |options| pack_finders::data_packs(&options.mods));
+        let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
+            crate::game::pack_discovery::data_packs(&options.mods)
+        });
         self.menu
             .set_root(root, &self.settings, additional.into(), &gui.splashes);
         self.gui = Some(gui);
@@ -400,6 +410,10 @@ impl Loading {
             std::mem::take(&mut loaded.client_applies),
             loaded.entity_models,
             Some((window, renderer)),
+            self.serve_integrated,
+            self.run_component_harness,
+            self.session_verifier.clone(),
+            self.profile_resolver,
         )?
         else {
             return Ok(None);
@@ -505,86 +519,6 @@ impl ApplicationHandler for App {
         if let App::Ready(game) = self {
             game.exiting(event_loop);
         }
-    }
-}
-
-/// Every launch reads the prepared game files (`sunrise-prepare`'s output, whose
-/// manifest is `sunrise-resources.json`): without them, say where they were
-/// looked for and how to get them, before a window or a loader starts. `get` is
-/// the page a hook sends the player to (`sunrise_hooks::engine::get_the_game`).
-pub(in crate::game) fn preflight_resources(
-    root: &std::path::Path,
-    get: Option<sunrise_hooks::GetTheGame>,
-    dedicated: bool,
-) -> std::result::Result<sunrise_core::prepared_profile::Profile, String> {
-    use sunrise_core::{
-        prepared_profile::{MANIFEST, Manifest, Profile},
-        version::VERSION_ID,
-    };
-
-    if !root.join(MANIFEST).is_file() {
-        let launcher = get.filter(|_| !dedicated).map_or(String::new(), |get| {
-            format!(
-                "Sunrise is started from its launcher: download it at {} (Download). It needs \
-                 your own Minecraft: Java Edition; the launcher signs you in and prepares the \
-                 game files.\nDevelopers: ",
-                get.address
-            )
-        });
-        let shown = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
-        let profile = if dedicated {
-            Profile::Server
-        } else {
-            Profile::Full
-        };
-        return Err(format!(
-            "Sunrise's prepared game files are missing: no {MANIFEST} in {}\n\
-             {launcher}{}, or pass --resources <folder>",
-            shown.display(),
-            profile.repair(root),
-        ));
-    }
-    let manifest = Manifest::read(root).map_err(|problem| {
-        format!(
-            "Sunrise's prepared game files at {} are damaged: {problem}",
-            root.display(),
-        )
-    })?;
-    let profile = manifest.profile();
-    if profile == Profile::Server && !dedicated {
-        return Err(format!(
-            "{} contains server-only game files, not a full client preparation. Run \
-             `sunrise-prepare --prepare --server-jar PATH --output FULL_DIR` with your own \
-             client files, then pass --resources FULL_DIR.",
-            root.display(),
-        ));
-    }
-    let mut problems = manifest.version_problems(root, VERSION_ID);
-    if profile == Profile::Server {
-        problems.extend(manifest.server_inventory_problems(root));
-    }
-    // An empty JSON file left by an interrupted export fails with a generic
-    // parse error later. Name the file now, before starting a loader or a window.
-    if let Ok(entries) = std::fs::read_dir(root) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension() == Some(std::ffi::OsStr::new("json"))
-                && std::fs::metadata(&path).is_ok_and(|meta| meta.is_file() && meta.len() == 0)
-            {
-                problems.push(format!("{} is empty", entry.file_name().to_string_lossy()));
-            }
-        }
-    }
-    if problems.is_empty() {
-        Ok(profile)
-    } else {
-        Err(format!(
-            "Sunrise's prepared game files in {} are stale or damaged:\n  {}\n\
-             Prepare them again with `{}`.",
-            root.display(),
-            problems.join("\n  "),
-            profile.repair(root),
-        ))
     }
 }
 

@@ -1,5 +1,9 @@
 use super::*;
-use crate::game::world_entry::next_biome_keys_session;
+use crate::game::{
+    native_data_maps_common::{DataMaps, WorldRegistries},
+    server_side::{global_loot_modifiers, native_registry_entries_server},
+    world_entry::next_biome_keys_session,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Reload the content tables with the world's packs, as
@@ -76,7 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             advancements.clone(),
             wire_tags,
         );
-        if self.lan.is_some()
+        if self.side.lan.is_some()
             && let Some(sync) = wire
         {
             self.with_advancement_hub(|hub, owners| hub.reload_resources(sync, owners));
@@ -174,7 +178,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `/reload` reloads a server's (`ReloadableServerResources`).
     pub(in crate::game) fn prepare_world_reload(
         &mut self,
-        stack: &functions::PackStack,
+        stack: &crate::game::function_pack_stack::PackStack,
         root: &std::path::Path,
     ) -> Result<PreparedWorldReload> {
         let super::condition_reload_state::StagedWorldTables {
@@ -191,6 +195,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let wire_tags = sunrise_sim::lan::data::WorldTags::new(items.clone(), &health.damage);
         let overlay = pack_files(&tables);
         let kept = self
+            .side
             .lan
             .as_ref()
             .map(|host| host.hub.lan.shared.sync())
@@ -287,7 +292,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// so it runs once per world open and on `/reload`.
     pub(in crate::game) fn stage_world_tables(
         &mut self,
-        stack: &functions::PackStack,
+        stack: &crate::game::function_pack_stack::PackStack,
         reload: bool,
         root: &std::path::Path,
     ) -> Result<super::condition_reload_state::StagedWorldTables> {
@@ -461,7 +466,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // the registries they list.
         let mut datapack_candidate = datapack_candidate?;
         if let Some(candidate) = &mut datapack_candidate {
-            native_registry_entries::bind_datapack_tags(root, &tag_files, candidate)?;
+            native_registry_entries_server::bind_datapack_tags(root, &tag_files, candidate)?;
         }
         let datapack_registries =
             datapack_candidate.map(mod_api::DatapackRegistrySet::from_candidate);
@@ -471,7 +476,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             received.as_deref()
         };
-        let registries = native_data_maps::WorldRegistries::new(
+        let registries = WorldRegistries::new(
             self.ui
                 .registries
                 .by_registry
@@ -552,7 +557,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .is_ok(),
             },
         )?;
-        let data_maps = native_data_maps::DataMaps::load(&data_map_types, &overlay, &registries)
+        let data_maps = DataMaps::load(&data_map_types, &overlay, &registries)
             .with_builtins(builtin)
             .with_biome_keys(mod_api::__private::BiomeKeys::new(
                 next_biome_keys_session(),
@@ -611,7 +616,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the schema sees the file.
     pub(in crate::game) fn datapack_candidate(
         &self,
-        stack: &functions::PackStack,
+        stack: &crate::game::function_pack_stack::PackStack,
         conditions: &sunrise_world::conditions::LoadConditions,
     ) -> Result<Option<mod_api::DatapackCandidate>> {
         let declarations = mod_api::__private::datapack_registry_declarations();
@@ -654,7 +659,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Sends each joined Sunrise client the snapshot of the set just published, built from the
     /// offer owned by its connection. A refused replacement ends that connection with its reason.
     pub(in crate::game) fn send_datapack_snapshots(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         for guest in host
@@ -669,7 +674,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Close guest stonecutter windows before publishing a reloaded recipe generation.
     pub(in crate::game) fn close_stonecutters_for_reload(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let open: Vec<_> = host

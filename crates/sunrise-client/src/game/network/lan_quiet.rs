@@ -30,7 +30,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// A `sunrise:quiet_commands` payload from `conn`: queued (or logged as
     /// refused when it breaks the payload's caps).
     pub(in crate::game::server_side) fn guest_quiet_commands(&mut self, conn: u32, data: &[u8]) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(name) = host.hub.guest(conn).map(|g| g.name.clone()) else {
@@ -88,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut left: HashMap<u32, usize> = HashMap::new();
         let mut i = 0;
         loop {
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             let Some(batch) = host.quiet.get_mut(i) else {
@@ -115,7 +115,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             *budget -= 1;
             let line = batch.lines.pop_front().expect("not empty");
             let ok = self.run_quiet_line(conn, &line);
-            if let Some(batch) = self.lan.as_mut().and_then(|h| h.quiet.get_mut(i)) {
+            if let Some(batch) = self.side.lan.as_mut().and_then(|h| h.quiet.get_mut(i)) {
                 batch.ran += 1;
                 batch.failed += usize::from(!ok);
             }
@@ -127,7 +127,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`say`, `msg`...) is refused: it would need the player's signature.
     fn run_quiet_line(&mut self, conn: u32, line: &str) -> bool {
         let allowed = self.options.dedicated.is_some() || self.allow_commands();
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         let integrated = host.hub.config.integrated;

@@ -29,7 +29,7 @@ fn the_inventory_poll_releases_live_queues_only_when_it_opens_a_screen() {
         game.set_screen(Screen::Playing);
         game.remote_send_carried();
         sent(packets);
-        let mut boat = crate::game::boats::Boat::new(47, "oak".into(), Vec3::ZERO, 0.0);
+        let mut boat = crate::game::boats_common::Boat::new(47, "oak".into(), Vec3::ZERO, 0.0);
         boat.chest = true;
         game.boats.push(boat);
         game.riding = Some(47);

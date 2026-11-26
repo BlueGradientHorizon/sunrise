@@ -81,6 +81,22 @@ pub(in crate::game) struct Rocket {
     pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 impl Rocket {
+    /// Position and motion (the dispenser parity fixture).
+    pub(in crate::game) fn motion(&self) -> (Vec3, Vec3) {
+        (self.position, self.velocity)
+    }
+    /// `Projectile.updateRotation`: a fifth of the way from `old` (yaw,
+    /// pitch) toward its motion's direction, the short way round.
+    pub(in crate::game) fn update_rotation(&mut self, old: [f32; 2]) {
+        let v = self.velocity;
+        let horizontal = (v.x * v.x + v.z * v.z).sqrt();
+        let atan2 = sunrise_core::geometry::trig::atan2_degrees;
+        self.rotation = [
+            sunrise_sim::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
+            sunrise_sim::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
+        ];
+    }
+
     /// A rocket a server sent (`handleAddEntity`): placed and moved by it.
     pub(in crate::game) fn remote(id: u32, position: Vec3, velocity: Vec3) -> Self {
         let item = ItemStack::new("minecraft:firework_rocket", 1);
@@ -535,9 +551,15 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
-        let mut game =
-            crate::game::ServerGame::new(&res, loaded.pack, options, settings.sim_settings(), None)
-                .unwrap();
+        let mut game = crate::game::ServerGame::new(
+            &res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, -3.25))
                 .unwrap(),
@@ -619,3 +641,5 @@ pub(in crate::game) mod hit_attempt_tests;
 
 sunrise_sim::impl_joined!(Rocket);
 sunrise_mod_runtime::impl_attachment_lifetime!(Rocket);
+
+impl sunrise_sim::entity_rules::EntityRules for Rocket {}

@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::client_side::remote_client::{Remote, RemoteDimensionEntry};
 use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{AttachmentCodec, AttachmentType, Host};
 use sunrise_mod_runtime::attachments::AttachmentSync;
@@ -34,7 +35,7 @@ fn values(game: &crate::game::ClientGame<'_>) -> Vec<i32> {
         .collect()
 }
 fn client<'a>(game: &'a mut crate::game::ClientGame<'_>) -> &'a mut Remote {
-    game.remote.as_mut().unwrap()
+    game.side.remote.as_mut().unwrap()
 }
 fn sync(game: &mut crate::game::ClientGame<'_>, holder: Holder, value: i32) {
     game.remote_attachment_sync(Message {
@@ -113,7 +114,7 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
             sunrise_client::level_loading::Reason::Other,
         );
         assert!(values(game).is_empty());
-        assert!(game.remote.as_ref().unwrap().attachments.is_empty());
+        assert!(game.side.remote.as_ref().unwrap().attachments.is_empty());
         sync(game, Holder::Level, 81);
         assert_eq!(values(game), [81]);
     });

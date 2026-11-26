@@ -348,6 +348,7 @@ pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survive
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let comparator = BlockPos::new(1, 64, 1);
@@ -734,7 +735,7 @@ fn entity_attachment_boundary_does_not_alias_equal_uuid_passengers() {
     let child_id = root_id;
     let mut data = Attachments::default();
     key.set(&mut data, Holder::Level, 29).unwrap();
-    let mut maps = crate::game::native_colliders::EntityMaps::default();
+    let mut maps = crate::game::native_collider_state::EntityMaps::default();
     maps.insert(12, data);
     let mut root = Tag::compound([
         ("UUID", Tag::IntArray(root_id.to_vec())),
@@ -843,6 +844,7 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, AttachmentType};
@@ -986,6 +988,7 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let cloud = Tag::compound([
@@ -1116,6 +1119,7 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let types = game.res.mob_types();
@@ -1209,7 +1213,7 @@ fn an_orb_saves_its_live_portal_cooldown() {
         assert_eq!(game.orbs[0].fire_ticks, 39, "one tick of Fire");
         assert_eq!(game.orbs[0].air, 299, "the stored air does not tick");
         assert_eq!(
-            game.portals.entities.get(&id).map(|p| p.cooldown),
+            game.side.portals.entities.get(&id).map(|p| p.cooldown),
             Some(19),
             "the tick's portal cooldown"
         );
@@ -1227,7 +1231,7 @@ fn an_orb_saves_its_live_portal_cooldown() {
         assert_eq!(game.orbs[0].fire_ticks, 39, "the reload keeps the fire");
         assert_eq!(game.orbs[0].air, 299, "and the air");
         let read = game
-            .command_target_nbt(crate::game::commands::Target::Orb(game.orbs[0].id))
+            .command_target_nbt(crate::game::commands_common::Target::Orb(game.orbs[0].id))
             .unwrap();
         assert_eq!(read.get("PortalCooldown"), Some(&Tag::Int(19)));
         assert_eq!(read.get("Fire"), Some(&Tag::Short(39)));
@@ -1258,7 +1262,7 @@ fn an_orb_saves_its_live_portal_cooldown() {
             "an unrelated edit preserves the live fire and air"
         );
         let read = game
-            .command_target_nbt(crate::game::commands::Target::Orb(game.orbs[0].id))
+            .command_target_nbt(crate::game::commands_common::Target::Orb(game.orbs[0].id))
             .unwrap();
         assert_eq!(read.get("Invulnerable"), Some(&Tag::Byte(1)));
         assert_eq!(read.get("Fire"), Some(&Tag::Short(40)));

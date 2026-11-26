@@ -16,7 +16,7 @@ pub(in crate::game) enum Taken {
     Item(Box<ItemEntity>),
     Orb(Box<ExperienceOrb>),
     Arrow(Box<Projectile>),
-    Trident(Box<super::trident::ThrownTrident>),
+    Trident(Box<sunrise_sim::thrown_trident::ThrownTrident>),
 }
 impl Taken {
     /// The render state's position: the entity's at partial tick 1.
@@ -28,22 +28,6 @@ impl Taken {
             Taken::Trident(t) => t.position,
         };
         [p.x, p.y, p.z]
-    }
-    /// `ClientboundTakeItemEntityPacket`'s taken entity.
-    fn entity_id(&self) -> u32 {
-        match self {
-            Taken::Item(i) => i.id,
-            Taken::Orb(o) => o.id,
-            Taken::Arrow(a) => a.id,
-            Taken::Trident(t) => t.id,
-        }
-    }
-    /// The packet's amount: the stack's size, or one of the others.
-    fn amount(&self) -> i32 {
-        match self {
-            Taken::Item(i) => i.stack.count as i32,
-            Taken::Orb(_) | Taken::Arrow(_) | Taken::Trident(_) => 1,
-        }
     }
 }
 
@@ -112,18 +96,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleTakeItemEntity`: `particleEngine.add(new ItemPickupParticle(...))` when the
     /// collector is known; it joins the group at the end of the next particle tick.
     pub(in crate::game) fn add_pickup(&mut self, taken: Taken, collector: Collector) {
-        // The clients add the particle from ClientboundTakeItemEntityPacket;
-        // the server's own is never drawn, so a mob's take has to be sent (#12493).
-        if self.is_logical_server()
-            && let (Collector::Mob(id), Some(host)) = (collector, &self.lan)
-        {
-            host.hub.take_item(
-                taken.entity_id() as i32,
-                id as i32,
-                taken.amount(),
-                taken.position(),
-            );
-        }
         if let Some(target) = self.collector_target(collector) {
             self.add_pickup_toward(taken, collector, target);
         }

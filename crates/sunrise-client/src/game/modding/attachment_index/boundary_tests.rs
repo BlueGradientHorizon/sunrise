@@ -1,7 +1,8 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{AttachmentRowError, AttachmentType, AttachmentWriteToken};
-use sunrise_mod_runtime::attachments::Attachments;
+use std::sync::Mutex;
+use sunrise_mod_runtime::attachments::{Attachments, index::AttachmentIndex};
 
 static VALUE: AttachmentType<u32> = AttachmentType {
     namespace: "boundary",

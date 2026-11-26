@@ -222,7 +222,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|(m, name)| (m, name, true));
         // Who is riding whom: asked once per tag below, and rescanning every entity
         // for each tag made this quadratic in the number of loaded entities.
-        let local_entity_id = self.remote.as_ref().map(|r| r.entity_id as u32);
+        let local_entity_id = self.side.remote.as_ref().map(|r| r.entity_id as u32);
         let ridden = collect_vehicle_ids(
             &self.mobs,
             self.remote_vehicle_ids(),
@@ -893,15 +893,6 @@ pub(in crate::game) struct NameTag {
     pub(in crate::game) discrete: bool,
 }
 
-/// `Entity.DATA_CUSTOM_NAME` of a mob named `name`: its component with its style (a name
-/// summoned or set as `{text: "..", color: "red"}` keeps its colour), else the plain text.
-pub(in crate::game) fn name_component(m: &Mob, name: &str) -> sunrise_core::nbt::Tag {
-    match &m.custom_name_text {
-        Some(text) => sunrise_game_data::scoreboard::component_tag(&text.component()),
-        None => sunrise_protocol::text::literal(name),
-    }
-}
-
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/name_tag_tests.rs"]
@@ -911,6 +902,7 @@ pub(in crate::game) mod name_tag_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use crate::game::name_component::name_component;
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::{Anim, Brain, MobType, Species};

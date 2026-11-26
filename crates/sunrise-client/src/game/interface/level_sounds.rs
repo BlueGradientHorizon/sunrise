@@ -3,44 +3,11 @@
 
 use std::borrow::Cow;
 
-use mod_api::{HookId, Identifier, SoundSource};
+use crate::game::level_sounds_common::{HeardSound, LevelSound, listened};
+use mod_api::{Identifier, SoundSource};
 
 use super::Game;
 use super::native_hooks::level_sound_playable;
-
-/// A sound the server's level is about to play, as vanilla asked for it.
-pub(in crate::game) struct LevelSound<'a> {
-    pub name: &'a str,
-    pub at: [f64; 3],
-    pub volume: f32,
-    pub pitch: f32,
-    pub source: SoundSource,
-    /// The entity vanilla binds the sound to (`playSound(except, sourceEntity, ...)`);
-    /// none for a sound at a position, as `Entity.playSound`'s.
-    pub emitter: Option<u32>,
-}
-
-impl<'a> LevelSound<'a> {
-    /// A sound at `at` in the source its event name belongs to.
-    pub fn new(name: &'a str, at: [f64; 3], volume: f32, pitch: f32) -> Self {
-        let source = SoundSource::ALL
-            .get(sunrise_level::sim_settings::sound_source(name))
-            .copied()
-            .unwrap_or(SoundSource::Master);
-        Self {
-            name,
-            at,
-            volume,
-            pitch,
-            source,
-            emitter: None,
-        }
-    }
-
-    pub fn in_source(self, source: SoundSource) -> Self {
-        Self { source, ..self }
-    }
-}
 
 /// A sound bound to an entity (`level.playSound(except, entity, ...)`),
 /// waiting for the end of the tick to be asked of the mods and sent.
@@ -53,20 +20,6 @@ pub(in crate::game) struct BoundSound {
     pub emitter: u32,
     /// The connection of the player vanilla leaves out, who played it already.
     pub except: Option<u32>,
-}
-
-/// A sound after the mods: what goes in the packet.
-pub(in crate::game) struct HeardSound<'a> {
-    pub name: Cow<'a, str>,
-    pub source: SoundSource,
-    pub volume: f32,
-    pub pitch: f32,
-}
-
-/// Whether a mod listens to either level sound hook.
-pub(in crate::game) fn listened() -> bool {
-    mod_api::__private::listened(HookId::PlayLevelSoundAtPosition)
-        || mod_api::__private::listened(HookId::PlayLevelSoundAtEntity)
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -121,7 +74,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(heard) = self.ask_level_sound(dimension, sound) else {
             return;
         };
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.sound(
                 &heard.name,
                 at,
@@ -348,7 +301,7 @@ pub(in crate::game) mod tests {
             with_game(|game| {
                 host(game);
                 let (a, rx) = guest(21, 21, [1.0, 64.0, 2.0]);
-                game.lan.as_mut().unwrap().hub.guests.push(a);
+                game.side.lan.as_mut().unwrap().hub.guests.push(a);
                 let mob = |game: &mut crate::game::ServerGame<'_>, id, kind: &str, x| {
                     let kind = game.res.mob_types().get(kind).unwrap().clone();
                     game.mobs
@@ -453,9 +406,9 @@ pub(in crate::game) mod tests {
                 };
                 game.lan_host(settings, net, config).unwrap();
                 let (a, rx) = guest(21, 21, [1.0, 64.0, 2.0]);
-                game.lan.as_mut().unwrap().hub.guests.push(a);
+                game.side.lan.as_mut().unwrap().hub.guests.push(a);
                 let (b, rx_b) = guest(22, 22, [1.0, 64.0, 3.0]);
-                game.lan.as_mut().unwrap().hub.guests.push(b);
+                game.side.lan.as_mut().unwrap().hub.guests.push(b);
                 let at = [2.0, 64.0, 2.0];
 
                 // The tick's sounds, at their positions.
@@ -506,7 +459,7 @@ pub(in crate::game) mod tests {
                     panic!("expected a bound sound")
                 };
                 assert_eq!(p.id, 40);
-                let cow_ambient = game.lan.as_ref().unwrap().hub.sound_packet(
+                let cow_ambient = game.side.lan.as_ref().unwrap().hub.sound_packet(
                     "minecraft:entity.cow.ambient",
                     at,
                     1.0,

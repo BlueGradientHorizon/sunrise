@@ -1,4 +1,4 @@
-use super::super::{Game, commands::OtherEntity, persist::ItemDisplayTransformation};
+use crate::game::{Game, commands_common::OtherEntity, entity_memory::ItemDisplayTransformation};
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::{
     nbt_path::int_value,

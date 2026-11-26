@@ -111,7 +111,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .mobs
                 .iter_mut()
                 .find(|m| m.id == id && m.extra.chested)?;
-            let size = super::mount_menu::mount_columns(m) * 3;
+            let size = sunrise_gameplay_common::mount_rules::mount_columns(m) * 3;
             if m.extra.items.len() < size {
                 let dim = self.dim;
                 if let Some(level) = self.transactions.last_mut() {
@@ -124,7 +124,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.carts.iter().any(container) {
             return self.edit_cart_slots(id, |slots| edit(slots, position));
         }
-        self.unpack_loot(super::container_loot::LootTarget::Boat(id), None);
+        self.unpack_loot(
+            crate::game::container_loot_level::LootTarget::Boat(id),
+            None,
+        );
         let i = self.boats.iter().position(|b| b.id == id && b.chest)?;
         if let Some(super::BlockEntity::Chest(open)) = self.world.block_entities.get_mut(&key) {
             return Some(edit(open, position));
@@ -191,7 +194,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .mobs
                 .iter()
                 .find(|m| m.id == entity && m.extra.chested)?;
-            Some(super::mount_menu::mount_columns(m) * 3)
+            Some(sunrise_gameplay_common::mount_rules::mount_columns(m) * 3)
         })
     }
     /// How many slots the container entity `entity` of the level in place shows automation
@@ -231,7 +234,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         place: &ItemPlace,
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
     ) -> Option<()> {
-        super::native_living_refs::lend_equipment(self.game_stack_source(place)?, read)
+        crate::game::native_equipment_read::lend_equipment(self.game_stack_source(place)?, read)
     }
 
     /// Borrow the stack in a native place without initializing a player. Reading a chest
@@ -261,9 +264,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .iter()
                     .any(|c| c.id == *entity && c.kind.slots() > 0)
                 {
-                    self.unpack_loot(super::container_loot::LootTarget::Cart(*entity), None);
+                    self.unpack_loot(
+                        crate::game::container_loot_level::LootTarget::Cart(*entity),
+                        None,
+                    );
                 } else if self.boats.iter().any(|b| b.id == *entity && b.chest) {
-                    self.unpack_loot(super::container_loot::LootTarget::Boat(*entity), None);
+                    self.unpack_loot(
+                        crate::game::container_loot_level::LootTarget::Boat(*entity),
+                        None,
+                    );
                 }
                 let vehicle = self
                     .carts
@@ -288,7 +297,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .mobs
                         .iter()
                         .find(|m| m.id == *entity && m.extra.chested)?;
-                    let size = super::mount_menu::mount_columns(mob) * 3;
+                    let size = sunrise_gameplay_common::mount_rules::mount_columns(mob) * 3;
                     &mob.extra.items[..size.min(mob.extra.items.len())]
                 };
                 slots.get(*slot)?.as_ref()
@@ -469,7 +478,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 if let Some(index) = parked {
                     self.journal_parked_player(index);
-                    let host = self.lan.as_mut().expect("resolved guest");
+                    let host = self.side.lan.as_mut().expect("resolved guest");
                     host.hub.guests.update(index, |guest| {
                         apply(
                             slot.stack_mut(
@@ -514,7 +523,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 if let Some(index) = parked {
                     self.journal_parked_player(index);
-                    let host = self.lan.as_mut().expect("resolved guest");
+                    let host = self.side.lan.as_mut().expect("resolved guest");
                     host.hub.guests.update(index, |guest| {
                         apply(
                             guest.carried.as_mut().expect("prepared cursor stack"),
@@ -963,14 +972,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
-    /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
-    pub(in crate::game) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
-        self.entity_tag_matches(tag, entity_type)
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::BlockEntity;
@@ -1051,11 +1052,13 @@ pub(in crate::game) mod tests {
             open_to_lan(game);
             let mut player = guest(1);
             player.inventory[3] = Some(ItemStack::new("minecraft:paper", 16));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let host_before = game.inventory.clone();
             let dropped_before = game.dropped.len();
             let inventory = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0].inventory.clone()
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .inventory
+                    .clone()
             };
             let mut expected = inventory(game);
             let name = Tag::String("named paper".into());
@@ -1148,9 +1151,11 @@ pub(in crate::game) mod tests {
             player.selected = 3;
             player.inventory[3] = Some(ItemStack::new("minecraft:paper", 16));
             player.inventory[1] = Some(ItemStack::new("minecraft:paper", 16));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let inventory = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0].inventory.clone()
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .inventory
+                    .clone()
             };
             let before = inventory(game);
             let slot = ItemPlace::PlayerSlot {
@@ -1188,13 +1193,15 @@ pub(in crate::game) mod tests {
             let mut actor = guest(2);
             actor.selected = 1;
             actor.inventory[1] = Some(ItemStack::new("minecraft:paper", 16));
-            game.lan.as_mut().unwrap().hub.guests.push(actor);
+            game.side.lan.as_mut().unwrap().hub.guests.push(actor);
             let hand = ItemPlace::PlayerHand {
                 player: 123,
                 hand: Hand::Main,
             };
             let has_body = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0].motion.is_some()
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .motion
+                    .is_some()
             };
             game.as_guest(2, |game| {
                 let acting_before = game.inventory.clone();
@@ -1262,7 +1269,7 @@ pub(in crate::game) mod tests {
             let mut player = guest(1);
             player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 3));
             player.inventory[5] = Some(ItemStack::new("minecraft:lava_bucket", 1));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let slot = |slot| ItemPlace::PlayerSlot { player: 123, slot };
             // Up to a bucket from the cauldron at `at` into the bucket in `slot`, or back.
             let moved =
@@ -1279,7 +1286,9 @@ pub(in crate::game) mod tests {
                     })
                 };
             let inventory = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0].inventory.clone()
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .inventory
+                    .clone()
             };
             let block = |game: &crate::game::ServerGame<'_>, pos: [i32; 3]| {
                 game.world.block(pos[0], pos[1], pos[2])
@@ -1324,10 +1333,12 @@ pub(in crate::game) mod tests {
             open_to_lan(game);
             let mut guest = guest(1);
             guest.inventory[0] = Some(ItemStack::new("minecraft:bucket", 3));
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let host_before = game.inventory.clone();
             let guest_inventory = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0].inventory.clone()
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .inventory
+                    .clone()
             };
             let before = guest_inventory(game);
             let slot = ItemPlace::PlayerSlot {
@@ -1371,7 +1382,7 @@ pub(in crate::game) mod tests {
     fn an_armour_slot_holds_one() {
         with_game(|game| {
             open_to_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let host: &mut dyn ServerHost = game;
             let items = host
                 .entity(20)
@@ -1423,7 +1434,7 @@ pub(in crate::game) mod tests {
             viewer.loaded = true;
             viewer.load_timeout = 0;
             viewer.sent_chunks.insert((0, 0));
-            game.lan.as_mut().unwrap().hub.guests.push(viewer);
+            game.side.lan.as_mut().unwrap().hub.guests.push(viewer);
 
             // With no tickets every chunk is entity-ticking; the zombie must lie outside that
             // range for the tracker to describe it idle (`ChunkMap.tick`).
@@ -1457,7 +1468,7 @@ pub(in crate::game) mod tests {
                 game.mobs[0].needs_sync = false;
                 game.tick_lan(false);
             }
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert!(host.hub.guests[0].tracker.is_tracking(id as i32));
             assert!(
                 host.states
@@ -1485,7 +1496,7 @@ pub(in crate::game) mod tests {
             let tracked = |game: &mut crate::game::ServerGame<'_>| {
                 game.side.level_pass.packets_drained = true;
                 game.tick_lan(false);
-                let hub = &game.lan.as_ref().unwrap().hub;
+                let hub = &game.side.lan.as_ref().unwrap().hub;
                 rx.try_iter()
                     .flat_map(|message| match message {
                         Out::Packet(body) => vec![body],
@@ -1567,11 +1578,17 @@ pub(in crate::game) mod tests {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let stick = ItemStack::new("minecraft:stick", 32);
             let cursor_stack = ItemStack::new("minecraft:paper", 1);
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.game_mode = 1;
-                guest.inventory[0] = Some(stick.clone());
-                guest.carried = Some(cursor_stack.clone());
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.game_mode = 1;
+                    guest.inventory[0] = Some(stick.clone());
+                    guest.carried = Some(cursor_stack.clone());
+                });
             let player = game.player(12).unwrap();
             let menu = game.player_container_menu(player).unwrap();
             let hand = ItemPlace::PlayerHand {
@@ -1600,7 +1617,7 @@ pub(in crate::game) mod tests {
                 assert!(!edited);
                 assert_eq!(mismatch, Err(ItemPlaceEditError::InvalidContext));
             }
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref(), Some(&stick));
             assert_eq!(guest.carried.as_ref(), Some(&cursor_stack));
         });
@@ -1615,7 +1632,13 @@ pub(in crate::game) mod tests {
             open_to_lan(game);
             let mut player_guest = guest(1);
             player_guest.carried = Some(ItemStack::new("minecraft:paper", 16));
-            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .push(player_guest);
             let player = game.player(123).unwrap();
             let menu = game.player_container_menu(player).unwrap();
             let cursor = menu.cursor();
@@ -1645,7 +1668,9 @@ pub(in crate::game) mod tests {
                 Ok(())
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .carried
+                    .as_ref(),
                 Some(&expected)
             );
 
@@ -1672,7 +1697,9 @@ pub(in crate::game) mod tests {
                 )))
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .carried
+                    .as_ref(),
                 Some(&expected)
             );
 
@@ -1697,7 +1724,9 @@ pub(in crate::game) mod tests {
                 Err(())
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .carried
+                    .as_ref(),
                 Some(&expected)
             );
 
@@ -1743,12 +1772,15 @@ pub(in crate::game) mod tests {
             })
             .unwrap();
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                game.side.lan.as_ref().unwrap().hub.guests[0]
+                    .carried
+                    .as_ref(),
                 Some(&acting_expected)
             );
 
             // Empty cursor refuses with NotHeld before calling the editor.
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1778,7 +1810,7 @@ pub(in crate::game) mod tests {
                 let host: &mut dyn ServerHost = game;
                 host.menu(123, window).unwrap()
             };
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 2));
             });
             assert_eq!(
@@ -1791,7 +1823,7 @@ pub(in crate::game) mod tests {
                 let host: &mut dyn ServerHost = game;
                 host.close_menu(123);
             }
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 2));
             });
             assert_eq!(
@@ -1840,12 +1872,18 @@ pub(in crate::game) mod tests {
             let mut player_guest = guest(1);
             player_guest.sender = PlayerSender::new(tx, Arc::default());
             player_guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .push(player_guest);
 
             // Sync initial inventory + cursor; subsequent tick sync sends no SetCursorItem.
-            game.lan.as_mut().unwrap().hub.send_inventory(0);
+            game.side.lan.as_mut().unwrap().hub.send_inventory(0);
             let _ = cursor_packets(&rx);
-            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 
             let direct_instrument = Tag::compound([
@@ -1898,7 +1936,7 @@ pub(in crate::game) mod tests {
                 })
             })
             .unwrap();
-            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             let updates = cursor_packets(&rx);
             let [Some(parked)] = updates.as_slice() else {
                 panic!("expected one carried stack update, got {updates:?}");
@@ -1916,7 +1954,13 @@ pub(in crate::game) mod tests {
                 parked.component(component::DAMAGE),
                 Some(&Component::Int(0))
             );
-            let client = game.lan.as_ref().unwrap().hub.stack_from_network(parked);
+            let client = game
+                .side
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .stack_from_network(parked);
             let consumable = client
                 .consumable(None)
                 .expect("cursor's consumable override");
@@ -1954,12 +1998,12 @@ pub(in crate::game) mod tests {
                     rest: Vec::new(),
                 })
             );
-            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 
             // A resident component whose registry reference cannot be represented for
             // this connection must not block an independent cursor edit or cause a retry.
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.guests.update(0, |guest| {
                 let stack = guest.carried.as_mut().unwrap();
                 stack.data_mut().set_other(
@@ -1993,16 +2037,22 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .unwrap()
             };
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 4));
             });
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .resend_menu(1, window, &game.world);
             let _ = cursor_packets(&rx);
-            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_containers(&game.world);
             assert!(cursor_packets(&rx).is_empty());
 
             let open_menu = {
@@ -2025,11 +2075,27 @@ pub(in crate::game) mod tests {
                 .unwrap();
             })
             .unwrap();
-            let acting_net = game.lan.as_mut().unwrap().hub.stack(&Some(acting_expected));
-            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            let acting_net = game
+                .side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .stack(&Some(acting_expected));
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_containers(&game.world);
             assert_eq!(cursor_packets(&rx), vec![acting_net]);
-            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
-            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_containers(&game.world);
+            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
         });
     }
@@ -2076,7 +2142,7 @@ pub(in crate::game) mod tests {
             game: &mut crate::game::ServerGame<'_>,
             stack: &Option<ItemStack>,
         ) -> Option<Hashed> {
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             let net = hub.stack(stack)?;
             let sync = hub.sync_data();
             let names = SyncedNames {
@@ -2109,8 +2175,14 @@ pub(in crate::game) mod tests {
             player_guest.sender = PlayerSender::new(tx, Arc::default());
             let plain_paper = Some(ItemStack::new("minecraft:paper", 4));
             player_guest.carried = plain_paper.clone();
-            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
-            game.lan.as_mut().unwrap().hub.send_inventory(0);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .push(player_guest);
+            game.side.lan.as_mut().unwrap().hub.send_inventory(0);
             let _ = drain_packets(&rx);
 
             // Answer-click path: mod renames the carried paper (same item and count), then a
@@ -2130,7 +2202,7 @@ pub(in crate::game) mod tests {
                 })
             })
             .unwrap();
-            let inv_state = game.lan.as_ref().unwrap().hub.guests[0].menu_state;
+            let inv_state = game.side.lan.as_ref().unwrap().hub.guests[0].menu_state;
             game.lan_guest_packet(
                 1,
                 S::ContainerClick(ContainerClick {
@@ -2144,18 +2216,19 @@ pub(in crate::game) mod tests {
                 }),
             );
             let renamed_net = game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .stack(&Some(renamed_paper.clone()));
             assert_eq!(cursor_updates(&rx), vec![renamed_net]);
-            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // A follow-up click with the exact current component hash agrees silently.
             let fresh_inv_hash = hash_stack(game, &Some(renamed_paper.clone()));
-            let inv_state = game.lan.as_ref().unwrap().hub.guests[0].menu_state;
+            let inv_state = game.side.lan.as_ref().unwrap().hub.guests[0].menu_state;
             game.lan_guest_packet(
                 1,
                 S::ContainerClick(ContainerClick {
@@ -2169,7 +2242,7 @@ pub(in crate::game) mod tests {
                 }),
             );
             assert!(cursor_updates(&rx).is_empty());
-            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // Crafting-table path: open table (syncing renamed_paper), then change carried's
@@ -2179,10 +2252,11 @@ pub(in crate::game) mod tests {
             let table_tag = Tag::String("table renamed paper".into());
             let mut table_paper = ItemStack::new("minecraft:paper", 4);
             table_paper.data_mut().custom_name = Some(table_tag);
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(table_paper.clone());
             });
             let (table_window, table_state) = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -2204,6 +2278,7 @@ pub(in crate::game) mod tests {
                 }),
             );
             let table_net = game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -2224,12 +2299,13 @@ pub(in crate::game) mod tests {
                 })
                 .collect();
             assert_eq!(corrected_cursor, vec![table_net]);
-            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // A crafting click with the exact component hash agrees and sends no resync.
             let fresh_table_hash = hash_stack(game, &Some(table_paper));
             let (table_window, table_state) = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -2255,7 +2331,7 @@ pub(in crate::game) mod tests {
                 .filter(|packet| matches!(packet, C::SetCursorItem(_) | C::ContainerSetContent(_)))
                 .collect();
             assert!(resyncs.is_empty());
-            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.side.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
         });
     }
@@ -2281,7 +2357,7 @@ pub(in crate::game) mod tests {
                 player: 123,
                 slot: 3,
             };
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
 
             let name = Tag::String("live contents".into());
             game.storage_transaction(|host, tx| {
@@ -2307,7 +2383,7 @@ pub(in crate::game) mod tests {
                 })
             })
             .unwrap();
-            let bundle = game.lan.as_ref().unwrap().hub.guests[0].inventory[3]
+            let bundle = game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3]
                 .as_ref()
                 .unwrap();
             assert_eq!(bundle.villager_food(None), Some(7));
@@ -2326,7 +2402,7 @@ pub(in crate::game) mod tests {
                 })
             })
             .unwrap();
-            let bundle = game.lan.as_ref().unwrap().hub.guests[0].inventory[3]
+            let bundle = game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3]
                 .as_ref()
                 .unwrap();
             assert_eq!(bundle.villager_food(None), None);
@@ -2354,7 +2430,7 @@ pub(in crate::game) mod tests {
             let original = encode_extra_components(&banner).unwrap();
             let mut player = guest(1);
             player.inventory[3] = Some(banner);
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let place = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 3,
@@ -2370,7 +2446,7 @@ pub(in crate::game) mod tests {
                 .unwrap();
             };
             let banner = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0].inventory[3]
+                game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3]
                     .clone()
                     .unwrap()
             };
@@ -2908,7 +2984,7 @@ pub(in crate::game) mod tests {
             || {
                 with_game(|game| {
                     open_to_lan(game);
-                    game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+                    game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
                     let slot = ItemPlace::PlayerSlot {
                         player: 123,
                         slot: 3,
@@ -2929,16 +3005,22 @@ pub(in crate::game) mod tests {
                         (paper.clone(), explicit_default.clone()),
                         (explicit_default, paper),
                     ] {
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                            guest.inventory[3] = Some(resident.clone());
-                        });
+                        game.side
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(0, |guest| {
+                                guest.inventory[3] = Some(resident.clone());
+                            });
                         let resource = slot.resource(game).unwrap();
                         assert_eq!(resource.as_stack().damage_component(), Some(40));
                         let removed = game
                             .transaction(|host, tx| slot.extract(host, tx, &different_damage, 1));
                         assert_eq!(removed, Ok(0));
                         assert_eq!(
-                            game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3],
                             Some(resident.clone()),
                         );
 
@@ -2948,7 +3030,7 @@ pub(in crate::game) mod tests {
                         assert_eq!(removed, Ok(1));
                         resident.count = 1;
                         assert_eq!(
-                            game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3],
                             Some(resident),
                         );
                     }
@@ -2965,7 +3047,7 @@ pub(in crate::game) mod tests {
             let mut player = guest(1);
             player.game_mode = 1;
             player.inventory[0] = Some(ItemStack::new("minecraft:stick", 60));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let host: &mut dyn ServerHost = game;
             let items = host
                 .entity(20)
@@ -2979,7 +3061,7 @@ pub(in crate::game) mod tests {
                 Ok(4)
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].inventory[0]
+                game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0]
                     .as_ref()
                     .unwrap()
                     .count,
@@ -3027,7 +3109,7 @@ pub(in crate::game) mod tests {
                 .enchantments
                 .push(("minecraft:binding_curse".into(), 1));
             player.armor[0] = Some(helmet.clone());
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let host: &mut dyn ServerHost = game;
             let items = host
                 .entity(20)
@@ -3043,7 +3125,8 @@ pub(in crate::game) mod tests {
             // A creative player takes it off (`ArmorSlot.mayPickup`'s `isCreative`).
             {
                 let value = 1;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -3051,7 +3134,7 @@ pub(in crate::game) mod tests {
                     .update(0, |guest| guest.game_mode = value);
             }
             assert_eq!(take(game), Ok(1));
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].armor[0], None);
+            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].armor[0], None);
         });
     }
 
@@ -3061,7 +3144,7 @@ pub(in crate::game) mod tests {
         use mod_api::{ComponentId, Tag};
         with_game(|game| {
             open_to_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let host: &mut dyn ServerHost = game;
             let items = host
                 .entity(20)
@@ -3160,7 +3243,8 @@ pub(in crate::game) mod tests {
             let mut map = ItemStack::new("minecraft:filled_map", 1);
             map.data_mut().map_id = Some(source);
             map.data_mut().map_post_processing = Some(1);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3187,11 +3271,12 @@ pub(in crate::game) mod tests {
                 aborted,
                 Err(TransactionError::Aborted(CraftedByError::Unavailable))
             );
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.carried, Some(map.clone()));
             let conn = guest.conn;
             assert_eq!(
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .play
@@ -3208,7 +3293,7 @@ pub(in crate::game) mod tests {
                 host.transaction(|host, tx| cursor.on_crafted_by(host, tx, 3)),
                 Ok(())
             );
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             let carried = guest.carried.as_ref().unwrap();
             assert_eq!(
                 carried.data().and_then(|data| data.map_id),
@@ -3220,7 +3305,8 @@ pub(in crate::game) mod tests {
             );
             assert_eq!(game.map(source + 1).unwrap().scale, 1);
             assert_eq!(
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .play
@@ -3231,20 +3317,27 @@ pub(in crate::game) mod tests {
                 3
             );
 
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.carried = Some(ItemStack::new("minecraft:stick", 2))
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 2))
+                });
             let host: &mut dyn ServerHost = game;
             assert_eq!(
                 host.transaction(|host, tx| cursor.on_crafted_by(host, tx, 2)),
                 Ok(())
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].carried,
+                game.side.lan.as_ref().unwrap().hub.guests[0].carried,
                 Some(ItemStack::new("minecraft:stick", 2))
             );
             assert_eq!(
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .play
@@ -3276,10 +3369,16 @@ pub(in crate::game) mod tests {
                 stack.data_mut().map_post_processing = Some(directive);
                 stack
             };
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.carried = Some(map(1));
-                guest.inventory[0] = Some(map(0));
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.carried = Some(map(1));
+                    guest.inventory[0] = Some(map(0));
+                });
             let menu = game
                 .player_container_menu(game.player(12).unwrap())
                 .unwrap();
@@ -3579,7 +3678,7 @@ pub(in crate::game) mod tests {
             assert_eq!(game.map(source + 1).unwrap().scale, 2);
             assert_eq!(game.map(source).unwrap().scale, 1);
             assert_eq!(
-                game.lan.as_ref().unwrap().play[&12]
+                game.side.lan.as_ref().unwrap().play[&12]
                     .stats
                     .get("crafted", "minecraft:filled_map"),
                 3
@@ -3610,6 +3709,7 @@ pub(in crate::game) mod tests {
             assert!(game.map(source + 1).is_none());
             assert_eq!(game.peek_map_id(), source + 1);
             let crafted = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -3646,11 +3746,17 @@ pub(in crate::game) mod tests {
                 original.data_mut().map_id = Some(source);
                 original.data_mut().map_post_processing = Some(1);
                 game.as_guest(12, |_| {}).unwrap(); // Initialize the parked guest's body.
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(original.clone());
-                    guest.sender = sender;
-                    guest.motion.as_mut().unwrap().health.indicated_dir = Some(90.0);
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(original.clone());
+                        guest.sender = sender;
+                        guest.motion.as_mut().unwrap().health.indicated_dir = Some(90.0);
+                    });
                 let menu = game
                     .player_container_menu(game.player(12).unwrap())
                     .unwrap();
@@ -3675,7 +3781,7 @@ pub(in crate::game) mod tests {
                 assert!(game.map(source + 1).is_none());
                 assert_eq!(game.peek_map_id(), source + 1);
                 assert_eq!(
-                    game.lan.as_ref().unwrap().play[&12]
+                    game.side.lan.as_ref().unwrap().play[&12]
                         .stats
                         .get("crafted", "minecraft:filled_map"),
                     0
@@ -3707,6 +3813,7 @@ pub(in crate::game) mod tests {
             assert!(game.map(source + 1).is_none());
             assert_eq!(game.peek_map_id(), source + 1);
             let crafted = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -3736,7 +3843,7 @@ pub(in crate::game) mod tests {
                 game.level_set_block(level, [0, 64, 0], chest.unwrap(), flags),
                 Ok(true)
             );
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.guests.push(guest(1));
             let title = sunrise_core::nbt::Tag::String("chest".into());
             host.hub.open_container(
@@ -3764,7 +3871,7 @@ pub(in crate::game) mod tests {
                 else {
                     panic!("no chest")
                 };
-                let g = &game.lan.as_ref().unwrap().hub.guests[0];
+                let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 (
                     items[0].clone(),
                     g.inventory[9].clone(),
@@ -3834,9 +3941,9 @@ pub(in crate::game) mod tests {
             );
             let mut player = guest(1);
             player.inventory[8] = Some(ItemStack::new("minecraft:stick", 4));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let title = sunrise_core::nbt::Tag::String("chest".into());
-            game.lan.as_mut().unwrap().hub.open_container(
+            game.side.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:generic_9x3",
                 title,
@@ -3865,7 +3972,7 @@ pub(in crate::game) mod tests {
                 let swapped = host.transaction(|host, tx| place.exchange(host, tx, &stick, 1));
                 assert_eq!(swapped, Ok(0));
             }
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.inventory[8], Some(ItemStack::new("minecraft:stick", 4)));
             let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&(0, 64, 0)) else {
                 panic!("no furnace")
@@ -3881,7 +3988,7 @@ pub(in crate::game) mod tests {
             open_to_lan(game);
             let mut player = guest(1);
             player.craft_result = Some(ItemStack::new("minecraft:oak_planks", 4));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let menu = menu_of(game);
             // `InventoryMenu`: 0 the result, 5 the head, 8 the feet.
             let (result, head, feet) = (
@@ -3894,7 +4001,7 @@ pub(in crate::game) mod tests {
             assert_eq!(write(game, &head, "minecraft:iron_helmet", 2, true), 1);
             assert_eq!(write(game, &result, "minecraft:oak_planks", 1, true), 0);
             assert_eq!(write(game, &result, "minecraft:oak_planks", -4, true), 0);
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.armor[0], Some(ItemStack::new("minecraft:iron_helmet", 1)));
             assert_eq!(
                 g.craft_result,
@@ -3908,7 +4015,7 @@ pub(in crate::game) mod tests {
     fn a_crafting_grid_write_makes_its_result_at_the_commit() {
         with_game(|game| {
             open_to_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let menu = menu_of(game);
             let grid = ItemPlace::MenuSlot { menu, slot: 1 };
             let log = ItemResource::of(
@@ -3917,7 +4024,7 @@ pub(in crate::game) mod tests {
                     .unwrap(),
             );
             let result = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0]
+                game.side.lan.as_ref().unwrap().hub.guests[0]
                     .craft_result
                     .clone()
             };
@@ -3927,7 +4034,7 @@ pub(in crate::game) mod tests {
                 Err::<(), ()>(())
             });
             assert!(aborted.is_err());
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!((g.craft_grid[0].clone(), result(game)), (None, None));
             let host: &mut dyn ServerHost = game;
             let committed = host.transaction(|host, tx| {
@@ -3950,10 +4057,10 @@ pub(in crate::game) mod tests {
     fn a_mods_chest_menu_is_written_by_slot_and_a_replaced_menu_writes_nothing() {
         with_game(|game| {
             open_to_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let title = sunrise_core::nbt::Tag::String("shop".into());
             let open = |game: &mut crate::game::ServerGame<'_>| {
-                let hub = &mut game.lan.as_mut().unwrap().hub;
+                let hub = &mut game.side.lan.as_mut().unwrap().hub;
                 hub.open_native_menu(1, 1, title.clone(), vec![]).unwrap();
                 menu_of(game)
             };
@@ -3962,7 +4069,7 @@ pub(in crate::game) mod tests {
                 slot: 2,
             };
             let shown = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0].native_menu[2].clone()
+                game.side.lan.as_ref().unwrap().hub.guests[0].native_menu[2].clone()
             };
             assert_eq!(write(game, &shop, "minecraft:diamond", 5, false), 5);
             assert_eq!(shown(game), None);
@@ -4000,8 +4107,8 @@ pub(in crate::game) mod tests {
                 game.level_set_block(level, [0, 64, 0], furnace.unwrap(), flags),
                 Ok(true)
             );
-            game.lan.as_mut().unwrap().hub.guests.push(guest(1));
-            game.lan.as_mut().unwrap().hub.open_container(
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.side.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:furnace",
                 sunrise_core::nbt::Tag::String("furnace".into()),
@@ -4039,10 +4146,10 @@ pub(in crate::game) mod tests {
     fn a_stale_menus_cursor_reaches_nothing_of_the_next_ones() {
         with_game(|game| {
             open_to_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let stale = menu_of(game);
             let title = sunrise_core::nbt::Tag::String("new".into());
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.open_native_menu(1, 1, title, vec![]).unwrap();
             {
                 let value = Some(ItemStack::new("minecraft:stick", 1));
@@ -4063,7 +4170,7 @@ pub(in crate::game) mod tests {
     fn a_grid_written_in_and_around_an_aborted_child_makes_its_result_from_what_stays() {
         with_game(|game| {
             open_to_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let menu = menu_of(game);
             let (grid, other) = (
                 ItemPlace::MenuSlot { menu, slot: 1 },
@@ -4088,7 +4195,7 @@ pub(in crate::game) mod tests {
             });
             assert_eq!(committed, Ok(Some(None)));
             // Two logs in one slot: one craft's planks; the child's second log never landed.
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.craft_grid[1], None);
             assert_eq!(
                 g.craft_result,
@@ -4101,7 +4208,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game::server_side) fn inventories(
         game: &crate::game::ServerGame<'_>,
     ) -> Vec<Vec<Option<ItemStack>>> {
-        let guests = &game.lan.as_ref().unwrap().hub.guests;
+        let guests = &game.side.lan.as_ref().unwrap().hub.guests;
         guests.iter().map(|g| g.inventory.clone()).collect()
     }
 
@@ -4115,7 +4222,7 @@ pub(in crate::game) mod tests {
             player.inventory[4] = Some(ItemStack::new("minecraft:stick", 60));
             player.inventory[7] = Some(ItemStack::new("minecraft:stick", 10));
             player.inventory[2] = Some(ItemStack::new("minecraft:stone", 1));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let before = inventories(game);
             let host: &mut dyn ServerHost = game;
             let entity = host.entity(20).unwrap();
@@ -4201,7 +4308,8 @@ pub(in crate::game) mod tests {
             *slot = buyer_rest.clone();
         }
         buyer.offhand = buyer_rest;
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -4254,14 +4362,14 @@ pub(in crate::game) mod tests {
             let (diamonds, emeralds) = offers();
             // The seller used a diamond after offering three, and the buyer moved the emeralds
             // to another slot: each offer no longer matches its index.
-            let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
                 g.inventory[0] = Some(ItemStack::new("minecraft:diamond", 2))
             });
             let before = inventories(game);
             assert_eq!(trade(game, &diamonds, &emeralds), Err(()));
             assert_eq!(inventories(game), before);
-            let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
                 g.inventory[0] = Some(ItemStack::new("minecraft:diamond", 3))
             });
@@ -4275,7 +4383,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn scoped_boat_slots_use_the_open_menu_and_refuse_a_removed_owner() {
-        use super::super::boats::Boat;
+        use super::super::boats_common::Boat;
         use sunrise_core::geometry::Vec3;
         with_game(|game| {
             let mut boat = Boat::new(600, "oak".into(), Vec3::new(1.0, 65.0, 2.0), 0.0);
@@ -4361,7 +4469,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn reading_and_writing_vehicle_slots_unpack_pending_loot() {
-        use super::super::boats::Boat;
+        use super::super::boats_common::Boat;
         use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
         use sunrise_core::{geometry::Vec3, nbt::Tag};
         use sunrise_sim::save::PendingContainerLoot;
@@ -4489,7 +4597,7 @@ pub(in crate::game) mod tests {
             player.dead = true;
             player.health = 0.0;
             player.carried = Some(paper.clone());
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
 
             let menu = menu_of(game);
             let cursor = ItemPlace::PlayerCursor { menu };
@@ -4509,21 +4617,28 @@ pub(in crate::game) mod tests {
             assert_eq!(acting_read, Some(paper.try_into_api().unwrap()));
 
             // Empty cursor and air stack both read as None.
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .update(0, |guest| guest.carried = None);
             assert_eq!(cursor.with_stack(game, |_| ()), None);
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.carried = Some(ItemStack::new("minecraft:air", 1))
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:air", 1))
+                });
             assert_eq!(cursor.with_stack(game, |_| ()), None);
 
             // Closed/stale menu still reads as None even when the guest carries a stack.
             let title = sunrise_core::nbt::Tag::String("new".into());
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.open_native_menu(1, 1, title, vec![]).unwrap();
             hub.guests.update(0, |guest| {
                 guest.carried = Some(ItemStack::new("minecraft:stick", 2))
@@ -4876,7 +4991,7 @@ pub(in crate::game) mod tests {
             // A guest standing in the same cell, and no pig anywhere.
             let mut player = guest(1);
             player.position = [0.5, 63.0, 0.5];
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let host: &mut dyn ServerHost = game;
             let player = host.entity(20).unwrap();
             assert!(
@@ -5328,7 +5443,7 @@ pub(in crate::game) mod tests {
             open_to_lan(game);
             let mut player = guest(1);
             player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 10));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let api = |name, count| ItemStack::new(name, count).try_into_api().unwrap();
             let bucket = api("minecraft:bucket", 1);
             let buckets = ItemResource::of(&bucket);
@@ -5537,7 +5652,7 @@ pub(in crate::game) mod tests {
             let level = with_cauldron(game);
             let mut player = guest(1);
             player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 16));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let slot = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 0,
@@ -5558,7 +5673,9 @@ pub(in crate::game) mod tests {
                 move_resources(host, &block, &bucket, |_| true, 1000, Some(tx))
             });
             assert_eq!(moved, Ok(1000));
-            let held = game.lan.as_ref().unwrap().hub.guests[0].inventory.clone();
+            let held = game.side.lan.as_ref().unwrap().hub.guests[0]
+                .inventory
+                .clone();
             assert_eq!(held[0], Some(ItemStack::new("minecraft:bucket", 15)));
             let water = Some(ItemStack::new("minecraft:water_bucket", 1));
             assert!(held.contains(&water));

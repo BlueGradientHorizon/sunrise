@@ -64,25 +64,37 @@ fn lifecycle(heal: bool) {
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 crate::game::native_player_death::tests::add_guest(game);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.health = 0.0;
-                    guest.position = [4.5, 80.0, 4.5];
-                    guest.loaded = true;
-                    guest.load_timeout = 0;
-                    guest.inventory[0] = Some(ItemStack::new("minecraft:diamond", 3));
-                    guest.carried = Some(ItemStack::new("minecraft:diamond", 2));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.health = 0.0;
+                        guest.position = [4.5, 80.0, 4.5];
+                        guest.loaded = true;
+                        guest.load_timeout = 0;
+                        guest.inventory[0] = Some(ItemStack::new("minecraft:diamond", 3));
+                        guest.carried = Some(ItemStack::new("minecraft:diamond", 2));
+                    });
                 game.guest_die(0, 1);
                 for tick in 1..=20 {
                     if tick == 8 {
                         // A same-entity level restore has replaced the motion before
                         // the hook borrows it; entering the turn resets CombatTracker.
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                            let _ = guest.new_body(true);
-                        });
+                        game.side
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(0, |guest| {
+                                let _ = guest.new_body(true);
+                            });
                     }
                     game.tick_guests();
-                    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.death_time, if heal { 0 } else { tick });
                     assert_eq!(guest.body_present(), heal || tick < 20);
                     assert_eq!(seen.lock().unwrap().deaths, 1);
@@ -94,19 +106,25 @@ fn lifecycle(heal: bool) {
                     assert!(game.dropped.is_empty());
                 }
                 assert_eq!(seen.lock().unwrap().ticks, 20);
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(guest.position, [8.5, 80.0, 8.5]);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    let _ = guest.new_body(false);
-                    assert!(!guest.death_canceled);
-                    assert_eq!(guest.death_time, 0);
-                    // Clearing lifecycle is required even when no old motion remains.
-                    guest.death_canceled = true;
-                    guest.death_time = 19;
-                    assert!(guest.new_body(false).is_none());
-                    assert!(!guest.death_canceled);
-                    assert_eq!(guest.death_time, 0);
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        let _ = guest.new_body(false);
+                        assert!(!guest.death_canceled);
+                        assert_eq!(guest.death_time, 0);
+                        // Clearing lifecycle is required even when no old motion remains.
+                        guest.death_canceled = true;
+                        guest.death_time = 19;
+                        assert!(guest.new_body(false).is_none());
+                        assert!(!guest.death_canceled);
+                        assert_eq!(guest.death_time, 0);
+                    });
             })
         },
     );

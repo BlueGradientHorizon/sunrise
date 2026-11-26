@@ -2,7 +2,7 @@
 //! the engine's own clip and `randomTeleport` paths, for players and mobs
 //! alike.
 use super::{Game, commands::Target};
-use mod_api::{EntityRef, LivingRef, Pose};
+use mod_api::{EntityRef, LivingRef};
 use sunrise_core::geometry::Vec3;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -75,7 +75,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 let mut mobs = self.mobs.lift();
                 #[cfg(test)]
-                super::entity::taken_pass_tests::after_take(self);
+                crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
                 let w = self.mob_world_base(&[]);
                 let mut events = Vec::new();
                 let mut teleported = None;
@@ -101,84 +101,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// `LivingEntity.getDimensions(Pose)`: the box the living entity has in
-    /// `pose` — its width, height and eye height, `minecraft:scale`
-    /// included, the fixed 0.2 box of a sleeping pose included. The species'
-    /// own state still answers where its `getDefaultDimensions` reads it: a
-    /// digging sniffer or an emerging warden is low in every pose. None for
-    /// a stale or unavailable handle.
-    pub(in crate::game) fn living_dimensions_for_pose(
-        &self,
-        living: LivingRef,
-        pose: Pose,
-    ) -> Option<[f64; 3]> {
-        let target = self.native_living_read_target(living)?;
-        // LivingEntity.getDimensions is final: sleeping wins over every
-        // species' default dimensions, but never makes a stale handle valid.
-        if pose == Pose::Sleeping {
-            return Some([f64::from(0.2_f32); 3]);
-        }
-        match target {
-            t @ (Target::Player | Target::Guest(_)) => {
-                // `Avatar.getDefaultDimensions(pose).scale(getScale())`.
-                let scale = self.native_target_attribute(
-                    t,
-                    "minecraft:scale",
-                    sunrise_world::attribute_map::ValueKind::Computed,
-                )? as f32;
-                let d = sunrise_sim::pose::Dimensions::avatar(pose, scale);
-                Some([
-                    f64::from(d.width),
-                    f64::from(d.height),
-                    f64::from(d.eye_height),
-                ])
-            }
-            Target::Mob(id) => {
-                let (w, h, e) = self
-                    .mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
-                    .dims_in_pose(pose);
-                Some([w, h, e])
-            }
-            // ArmorStand.getDefaultDimensions ignores the pose: a marker's
-            // box is empty, a small stand's BABY_DIMENSIONS, else the type's.
-            Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
-                let dims = if a.marker {
-                    (0.0, 0.0, 0.0)
-                } else {
-                    a.probe_dimensions()
-                };
-                let scale = self.native_target_attribute(
-                    target,
-                    "minecraft:scale",
-                    sunrise_world::attribute_map::ValueKind::Computed,
-                )? as f32;
-                Some([dims.0, dims.1, dims.2].map(|v| f64::from(v as f32 * scale)))
-            }
-            Target::Dragon(id) => {
-                self.dragon.as_ref().filter(|d| d.id == id)?;
-                // EntityTypes.ENDER_DRAGON: scalable(16, 8), default eye
-                // height 8 * 0.85. Dragons are not in the ordinary mob table.
-                let scale = self.native_target_attribute(
-                    target,
-                    "minecraft:scale",
-                    sunrise_world::attribute_map::ValueKind::Computed,
-                )? as f32;
-                Some([16.0_f32, 8.0, 6.8].map(|v| f64::from(v * scale)))
-            }
-            _ => None,
-        }
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use mod_api::PathType;
+    use mod_api::{PathType, Pose};
     use sunrise_sim::mobs::Mob;
 
     #[test]
@@ -219,7 +146,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn pose_regression_dragon_dimensions() {
         with_game(|game| {
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 55;
             game.dragon.replace(dragon);
             let living = game.living(game.entity(55).unwrap()).unwrap();
@@ -360,46 +287,48 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn random_teleport_drops_to_the_ground_and_honours_the_avoid_tag() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
-            floor_and_zombies(game);
-            let zombie = game.living(game.entity(12).unwrap()).unwrap();
-            let at = |game: &crate::game::ServerGame<'_>| {
-                game.mobs.iter().find(|m| m.id == 12).unwrap().position
-            };
-            // From six blocks up it lands on the floor, one block lower per
-            // step down (`randomTeleport`).
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
+        crate::game::server_side::entity_server::taken_pass_tests::in_both_dimensions(
+            |game, balance| {
+                floor_and_zombies(game);
+                let zombie = game.living(game.entity(12).unwrap()).unwrap();
+                let at = |game: &crate::game::ServerGame<'_>| {
+                    game.mobs.iter().find(|m| m.id == 12).unwrap().position
+                };
+                // From six blocks up it lands on the floor, one block lower per
+                // step down (`randomTeleport`).
+                crate::game::server_side::entity_server::taken_pass_tests::assert_mob_spawn_survives(
                 game,
                 balance,
                 |game| {
                     assert!(zombie.random_teleport(game, [4.5, 70.0, 4.5], None));
                 },
             );
-            assert_eq!(at(game), Vec3::new(4.5, 64.0, 4.5));
-            assert_eq!(
-                game.mobs.iter().find(|m| m.id == 12).unwrap().previous,
-                at(game)
-            );
-            // No ground below (outside the floor): it stays.
-            assert!(!zombie.random_teleport(game, [12.5, 70.0, 12.5], None));
-            assert_eq!(at(game), Vec3::new(4.5, 64.0, 4.5));
-            // Ground in the avoid tag: bedrock is in the enderman's.
-            let bedrock = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:bedrock")
-                .unwrap();
-            game.world.set(-4, 63, -4, bedrock).unwrap();
-            assert!(!zombie.random_teleport(
-                game,
-                [-3.5, 66.0, -3.5],
-                Some("minecraft:enderman_does_not_teleport_to"),
-            ));
-            assert!(zombie.random_teleport(game, [-3.5, 66.0, -3.5], None));
-            assert_eq!(at(game), Vec3::new(-3.5, 64.0, -3.5));
-            assert!(!zombie.random_teleport(game, [f64::NAN, 66.0, 0.5], None));
-        });
+                assert_eq!(at(game), Vec3::new(4.5, 64.0, 4.5));
+                assert_eq!(
+                    game.mobs.iter().find(|m| m.id == 12).unwrap().previous,
+                    at(game)
+                );
+                // No ground below (outside the floor): it stays.
+                assert!(!zombie.random_teleport(game, [12.5, 70.0, 12.5], None));
+                assert_eq!(at(game), Vec3::new(4.5, 64.0, 4.5));
+                // Ground in the avoid tag: bedrock is in the enderman's.
+                let bedrock = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:bedrock")
+                    .unwrap();
+                game.world.set(-4, 63, -4, bedrock).unwrap();
+                assert!(!zombie.random_teleport(
+                    game,
+                    [-3.5, 66.0, -3.5],
+                    Some("minecraft:enderman_does_not_teleport_to"),
+                ));
+                assert!(zombie.random_teleport(game, [-3.5, 66.0, -3.5], None));
+                assert_eq!(at(game), Vec3::new(-3.5, 64.0, -3.5));
+                assert!(!zombie.random_teleport(game, [f64::NAN, 66.0, 0.5], None));
+            },
+        );
     }
 
     #[test]
@@ -464,7 +393,7 @@ pub(in crate::game) mod tests {
                 sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
                     .unwrap();
             guest.motion = Some(Box::new(motion));
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let living = game.living(game.entity(12).unwrap()).unwrap();
             // Avatar.POSES: the box of each stance a player takes.
             assert_eq!(
@@ -496,7 +425,7 @@ pub(in crate::game) mod tests {
                 Some([f64::from(0.2_f32), f64::from(0.2_f32), f64::from(1.62_f32)]),
                 "Avatar.POSES dying dimensions remain fixed even at scale 2"
             );
-            game.lan.as_mut().unwrap().hub.guests.clear();
+            game.side.lan.as_mut().unwrap().hub.guests.clear();
             assert_eq!(
                 living.dimensions_for_pose(game, Pose::Sleeping),
                 None,

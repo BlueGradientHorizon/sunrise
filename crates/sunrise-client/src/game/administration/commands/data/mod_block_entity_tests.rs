@@ -5,7 +5,7 @@ use crate::game::{Options, Progress, Settings, load_resources};
 use std::{path::PathBuf, sync::Arc};
 use sunrise_level::{
     chunk::Chunk,
-    containers::{ModBlockEntity, ModRevision},
+    containers::{BlockEntity, ModBlockEntity, ModRevision},
     world::World,
 };
 use sunrise_mod_package::content::{Block, Content};
@@ -145,6 +145,7 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.world = World::new(game.res.facts().air, 1);

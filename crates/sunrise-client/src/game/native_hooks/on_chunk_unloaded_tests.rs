@@ -123,7 +123,7 @@ fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
         game.options.dedicated = None;
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "UnloadProbe").unwrap();
-        game.remote.as_mut().unwrap().logged_in = true;
+        game.side.remote.as_mut().unwrap().logged_in = true;
         let other = [1620, 64, 1600];
         for (x, z) in [CHUNK, (101, 100)] {
             game.side

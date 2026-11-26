@@ -94,7 +94,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .spawn_areas()
                 .map(|(center, radius)| (center, radius - 1)),
         );
-        if let Some(host) = &self.lan {
+        if let Some(host) = &self.side.lan {
             self.side.streaming.extra.extend(
                 host.hub
                     .lan

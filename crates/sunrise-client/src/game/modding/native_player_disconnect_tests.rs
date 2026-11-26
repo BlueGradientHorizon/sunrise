@@ -8,14 +8,14 @@ use sunrise_protocol::text::translatable;
 use sunrise_sim::lan::{Out, PlayerSender};
 
 fn left_reason(game: &crate::game::ServerGame<'_>, conn: u32) -> String {
-    let hub = &game.lan.as_ref().unwrap().hub;
+    let hub = &game.side.lan.as_ref().unwrap().hub;
     hub.guest(conn).unwrap().left_reason.clone()
 }
 
 /// Gives guest `conn` a test channel, to read what its connection is sent.
 fn listen(game: &mut crate::game::ServerGame<'_>, conn: u32) -> Receiver<Out> {
     let (tx, rx) = std::sync::mpsc::channel();
-    let hub = &mut game.lan.as_mut().unwrap().hub;
+    let hub = &mut game.side.lan.as_mut().unwrap().hub;
     hub.update_guest(conn, |g| g.sender = PlayerSender::new(tx, Arc::default()));
     rx
 }
@@ -115,7 +115,7 @@ fn a_second_disconnect_while_pending_is_refused() {
             .unwrap();
         assert!(!refused);
         assert_eq!(left_reason(game, 12), "First reason");
-        let hub = &game.lan.as_ref().unwrap().hub;
+        let hub = &game.side.lan.as_ref().unwrap().hub;
         assert!(hub.guest(12).unwrap().disconnect_pending);
         assert!(!hub.guest(13).unwrap().disconnect_pending);
         let sent = disconnects(&to_a);
@@ -133,9 +133,9 @@ fn disconnect_refuses_the_owner_stale_and_offline_players() {
     with_guests(|game| {
         let players = game.players().server_players();
         let (a, b) = (players[0], players[1]);
-        game.lan.as_mut().unwrap().hub.singleplayer_owner = Some(12);
+        game.side.lan.as_mut().unwrap().hub.singleplayer_owner = Some(12);
         assert!(!a.disconnect(game, Text::literal("owner")).unwrap());
-        game.lan.as_mut().unwrap().hub.singleplayer_owner = None;
+        game.side.lan.as_mut().unwrap().hub.singleplayer_owner = None;
 
         let stale = mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(
@@ -161,7 +161,7 @@ fn disconnect_refuses_the_owner_stale_and_offline_players() {
         assert_eq!(left_reason(game, 12), "");
         assert_eq!(left_reason(game, 13), "");
 
-        game.lan.as_mut().unwrap().hub.guests.clear();
+        game.side.lan.as_mut().unwrap().hub.guests.clear();
         assert!(!a.disconnect(game, Text::literal("offline")).unwrap());
     });
 }

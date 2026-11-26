@@ -1,81 +1,21 @@
 //! The server thread's side of a capture (docs/perf-platform.md §4.1): it writes into the window's file, or into one of its own.
 use super::super::dedicated::{SLOW_TICK_MS, report::Recording};
 use super::super::perf_remote::Done;
-use super::super::profile_capture_server::{reply_text, shown};
 use super::super::{Game, tick_profile};
+use crate::game::profile_capture_common::{Live, Phase, Target, reply_text, shown};
 use std::io;
 use std::path::PathBuf;
-use std::sync::{
-    Arc,
-    atomic::{AtomicU8, Ordering},
-    mpsc::Sender,
-};
+use std::sync::{Arc, mpsc::Sender};
 use std::time::Instant;
 use sunrise_level::spans;
 use sunrise_perf_format::{
     files,
     v1::{GpuMode, Start, StopReason, Trigger},
 };
-use sunrise_sim::perf_types::{Failed, Join, ProfileSide, StartOptions, Stopped, Threads};
+use sunrise_sim::perf_types::{Failed, ProfileSide, StartOptions, Stopped, Threads};
 use sunrise_sim::server_perf::{
     self, CaptureEnd, CaptureOptions, MAX_WINDOW_S, Role, SamplerOptions, ServerPerf, TickDetail,
 };
-
-/// How far the server thread has got with the side of a capture the window asked for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum Phase {
-    /// Asked for, not yet picked up between two ticks.
-    Asked,
-    Running,
-    Ended,
-    /// Refused or failed to begin; nothing of this side is in the file.
-    Failed,
-}
-
-/// A [`Phase`] the window and the server thread share.
-pub(in crate::game) struct Live(AtomicU8);
-
-impl Live {
-    pub(in crate::game) fn new() -> Arc<Self> {
-        Arc::new(Self(AtomicU8::new(Phase::Asked as u8)))
-    }
-
-    pub(in crate::game::server_side) fn get(&self) -> Phase {
-        match self.0.load(Ordering::Relaxed) {
-            0 => Phase::Asked,
-            1 => Phase::Running,
-            2 => Phase::Ended,
-            _ => Phase::Failed,
-        }
-    }
-
-    pub(in crate::game) fn set(&self, phase: Phase) {
-        self.0.store(phase as u8, Ordering::Relaxed);
-    }
-
-    /// Whether this side is, or is about to be, writing.
-    pub(in crate::game) fn active(&self) -> bool {
-        matches!(self.get(), Phase::Asked | Phase::Running)
-    }
-
-    /// Whether the file holds, or will hold, this side.
-    pub(in crate::game) fn wrote(&self) -> bool {
-        self.get() != Phase::Failed
-    }
-}
-
-/// Where a server capture is written.
-pub(in crate::game) enum Target {
-    /// The window's file, which the window finishes.
-    Join(Join),
-    /// A file of its own, as a server-only capture needs.
-    Own {
-        options: StartOptions,
-        trigger: Trigger,
-        dir: PathBuf,
-        viewer: Option<fn() -> Option<String>>,
-    },
-}
 
 /// The server thread's health history and the capture it writes, if any.
 pub(in crate::game) struct ServerSide {
@@ -222,7 +162,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// What a capture of this server records as it starts.
     fn server_capture_options(&self, options: &StartOptions, trigger: Trigger) -> CaptureOptions {
         let (view, simulation, max_players, players) =
-            self.lan.as_ref().map_or((0, 0, 1, 0), |h| {
+            self.side.lan.as_ref().map_or((0, 0, 1, 0), |h| {
                 let c = &h.hub.config;
                 (
                     c.view_distance,

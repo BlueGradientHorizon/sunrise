@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::game) struct OwnerStamp {
-    pub(super) id: MenuId,
+    pub(in crate::game) id: MenuId,
     revision: Generation,
 }
 

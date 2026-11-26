@@ -330,7 +330,7 @@ fn generic_entries_follow_real_server_tables_and_atomic_reload() {
                 let wire = wire.unwrap();
                 let mut received = wire.dynamic.clone();
                 received.add_tags(&wire.tags);
-                game.remote.as_mut().unwrap().registries = Arc::new(received);
+                game.side.remote.as_mut().unwrap().registries = Arc::new(received);
                 check_rejected_sync_tags(game);
             });
         },
@@ -382,7 +382,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                 .unwrap();
                 let mut received = sync.dynamic.clone();
                 received.add_tags(&sync.tags);
-                game.remote.as_mut().unwrap().registries = Arc::new(received);
+                game.side.remote.as_mut().unwrap().registries = Arc::new(received);
                 let step = host(game)
                     .registry_entry("minecraft:game_event", "minecraft:step")
                     .unwrap();
@@ -466,7 +466,14 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                     host(game).registry_entry("registry_entry_test:secret", "addon:hidden"),
                     None
                 );
-                let mut replacement = game.remote.as_ref().unwrap().registries.as_ref().clone();
+                let mut replacement = game
+                    .side
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .registries
+                    .as_ref()
+                    .clone();
                 replacement.registries.remove("minecraft:damage_type");
                 replacement.add_tags(&UpdateTags {
                     registries: vec![RegistryTags {
@@ -474,7 +481,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                         tags: vec![],
                     }],
                 });
-                game.remote.as_mut().unwrap().registries = Arc::new(replacement);
+                game.side.remote.as_mut().unwrap().registries = Arc::new(replacement);
                 assert_eq!(
                     host(game).registry_entry_in_tag(&fall, "minecraft:is_fall"),
                     None

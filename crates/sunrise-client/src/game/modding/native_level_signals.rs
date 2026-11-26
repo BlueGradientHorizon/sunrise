@@ -216,7 +216,10 @@ impl<S: crate::game::Side> LevelHost for ReadLevel<'_, '_, S> {
             .side_level_block_face_sturdy(self.level, pos, face, support)
     }
     fn can_see_sky(&self, pos: [i32; 3]) -> Option<bool> {
-        Some(super::native_world_read::can_see_sky(&self.game.world, pos))
+        Some(crate::game::native_world_read_common::can_see_sky(
+            &self.game.world,
+            pos,
+        ))
     }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
         self.game.side_signal_block_entity(self.level, pos)
@@ -262,7 +265,7 @@ impl<S: crate::game::Side> LevelHost for ReadLevel<'_, '_, S> {
         namespace: &str,
         name: &str,
     ) -> Result<mod_api::AttachmentBatch, mod_api::PartStateError> {
-        super::native_block_entity_refs::part_snapshot(
+        crate::game::native_block_entity_read::part_snapshot(
             &self.game.world,
             Some(self.level),
             self.game.is_logical_server(),
@@ -306,7 +309,7 @@ impl<S: crate::game::Side> LevelHost for ReadLevel<'_, '_, S> {
         self.game.world.shape.height
     }
     fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
-        super::native_world_read::block_in_tag(block, tag)
+        crate::game::native_world_read_common::block_in_tag(block, tag)
     }
     fn tags(&self) -> &dyn mod_api::Tags {
         self
@@ -317,7 +320,7 @@ impl<S: crate::game::Side> LevelHost for ReadLevel<'_, '_, S> {
             .is_loaded_at(x, y, z)
             .then(|| self.game.world.block(x, y, z))
             .and_then(|state| {
-                super::native_world_read::state_fluid(
+                crate::game::native_world_read_common::state_fluid(
                     self.game.res.behaviours(),
                     self.game.pack.assets.registry,
                     state,
@@ -325,14 +328,14 @@ impl<S: crate::game::Side> LevelHost for ReadLevel<'_, '_, S> {
             })
     }
     fn state_fluid_state(&self, state: mod_api::BlockState) -> Option<mod_api::FluidState> {
-        super::native_world_read::state_fluid(
+        crate::game::native_world_read_common::state_fluid(
             self.game.res.behaviours(),
             self.game.pack.assets.registry,
             state.try_into_engine(&()).ok()?,
         )
     }
     fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        Some(super::native_world_read::fluid_in_tag(
+        Some(crate::game::native_world_read_common::fluid_in_tag(
             self.game.items(),
             fluid,
             tag,
@@ -354,7 +357,7 @@ impl<S: crate::game::Side> LevelHost for ReadLevel<'_, '_, S> {
         .ok()
     }
     fn brightness(&self, layer: mod_api::LightLayer, pos: [i32; 3]) -> i32 {
-        super::native_level_refs::world_brightness(&self.game.world, layer, pos)
+        crate::game::native_world_read_common::world_brightness(&self.game.world, layer, pos)
     }
     fn raw_brightness(&self, pos: [i32; 3], sky_darken: i32) -> i32 {
         // Java's unchecked subtraction: a listener may pass any darkening, including

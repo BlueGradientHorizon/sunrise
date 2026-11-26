@@ -1,8 +1,11 @@
 #[allow(unused_imports)]
-use super::{Game, shield::OFFHAND_SLOT};
+use super::Game;
 #[cfg(test)]
-use crate::game::server_side::item_use::ItemUseState;
-use crate::game::server_side::item_use::hand_of;
+use crate::game::held_items::OFFHAND_SLOT;
+#[cfg(test)]
+use crate::game::item_use_common::ItemUseState;
+use crate::game::item_use_common::hand_of;
+use sunrise_core::use_animation::UseAnimation;
 use sunrise_items::items::{ItemInfo, ItemStack};
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -78,6 +81,30 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 *cell = None;
             }
         }
+    }
+}
+
+/// The first person pose of a hand using an item of `animation`
+/// (`ItemInHandRenderer.renderArmWithItem`'s switch), for an item of no
+/// pose of its own.
+pub(in crate::game) fn use_pose(
+    animation: UseAnimation,
+    remaining: f32,
+    duration: f32,
+    partial: f32,
+) -> sunrise_client::first_person::ItemPose {
+    use sunrise_client::first_person::ItemPose;
+    let ticks_used = duration - (remaining - partial + 1.0);
+    match animation {
+        UseAnimation::Eat | UseAnimation::Drink => ItemPose::Eat {
+            remaining,
+            duration,
+            partial,
+        },
+        UseAnimation::Bow => ItemPose::Bow { ticks_used },
+        UseAnimation::Trident => ItemPose::Trident { ticks_used },
+        UseAnimation::Brush => ItemPose::Brush { remaining, partial },
+        _ => ItemPose::Using,
     }
 }
 

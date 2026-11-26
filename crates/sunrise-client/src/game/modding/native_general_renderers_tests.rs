@@ -280,7 +280,9 @@ fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Sc
     let registration = mod_platform::__private::RegistrationGuard::open();
     mod_platform::testing::with_mods(mods().into(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods()).unwrap();
-        super::mods::register_entity_renderers(super::execution_role::ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_entity_renderers(
+            super::execution_role::ExecutionRole::Client,
+        );
         // A frame draws with a world open, as the window does.
         drop(registration);
         super::native_entity_refs::tests::with_client_game(|game| {
@@ -320,6 +322,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Sc
             }
             snapshot(game, 5, 7);
             let row = game
+                .side
                 .remote
                 .as_mut()
                 .unwrap()
@@ -413,7 +416,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
     in_scene(
         "general_submission_keeps_lookup_order_across_removal_and_reentry",
         |game, _| {
-            let builtin = game.remote.as_ref().unwrap().builtin.clone();
+            let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
             let types = builtin.get("minecraft:entity_type").unwrap();
             let vanilla = |id, kind| {
                 C::AddEntity(play::AddEntity {
@@ -464,7 +467,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
             .unwrap();
             game.position_remote_general_passengers();
             assert_eq!(
-                game.remote.as_ref().unwrap().passenger_vehicle(12),
+                game.side.remote.as_ref().unwrap().passenger_vehicle(12),
                 Some(42)
             );
             assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
@@ -522,7 +525,7 @@ fn a_failing_renderer_is_dropped_until_reload_and_a_type_without_one_draws_nothi
                 "asked again after it"
             );
             // The reload kept the rows.
-            assert_eq!(game.remote.as_ref().unwrap().general.rows.len(), 3);
+            assert_eq!(game.side.remote.as_ref().unwrap().general.rows.len(), 3);
         },
     );
 }
@@ -637,7 +640,7 @@ fn integrated_scene(test: &str, place: fn(&mut crate::game::ServerGame<'_>, [f64
         let registration = mod_platform::__private::RegistrationGuard::open();
         mod_platform::testing::with_mods(mods, || {
             super::native_entity_refs::tests::with_client_game(|game| {
-                super::mods::register_entity_renderers(
+                crate::game::client_side::mods_client::register_entity_renderers(
                     super::execution_role::ExecutionRole::Client,
                 );
                 drop(registration);
@@ -651,14 +654,18 @@ fn integrated_scene(test: &str, place: fn(&mut crate::game::ServerGame<'_>, [f64
                 game.open_integrated("general_render", None, Some(1), true, Some(&options))
                     .unwrap();
                 poll_until(game, |g| {
-                    g.remote.as_ref().is_some_and(|r| r.logged_in && r.joined)
+                    g.side
+                        .remote
+                        .as_ref()
+                        .is_some_and(|r| r.logged_in && r.joined)
                 });
                 let (id, at) = game
+                    .side
                     .integrated
                     .as_ref()
                     .unwrap()
                     .call(move |server| {
-                        let [x, _, z] = server.lan.as_ref().unwrap().hub.guests[0].position;
+                        let [x, _, z] = server.side.lan.as_ref().unwrap().hub.guests[0].position;
                         // The headless fixture has no GPU to compile the section. Keep the row
                         // above build height, where the vanilla section gate does not apply.
                         let position = [
@@ -671,7 +678,8 @@ fn integrated_scene(test: &str, place: fn(&mut crate::game::ServerGame<'_>, [f64
                     .unwrap();
                 let camera = glam::DVec3::from_array(at) - glam::DVec3::Z * 5.0;
                 let ready = |g: &crate::game::ClientGame<'_>| {
-                    g.remote
+                    g.side
+                        .remote
                         .as_ref()
                         .unwrap()
                         .general

@@ -9,11 +9,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// `PlayerList.getViewDistance`.
     pub(in crate::game) fn server_view_distance(&self) -> Option<i32> {
-        Some(self.lan.as_ref()?.hub.config.view_distance)
+        Some(self.side.lan.as_ref()?.hub.config.view_distance)
     }
     /// `PlayerList.getSimulationDistance`.
     pub(in crate::game) fn server_simulation_distance(&self) -> Option<i32> {
-        Some(self.lan.as_ref()?.hub.config.simulation_distance)
+        Some(self.side.lan.as_ref()?.hub.config.simulation_distance)
     }
     /// `MinecraftServer.isPublished`: `DedicatedServer`'s is always true, `IntegratedServer`'s
     /// while it is open to LAN (`multiplayerScope != OFF`).
@@ -22,7 +22,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// `PlayerList.setViewDistance` on a dedicated server; the tickets read the settings.
     pub(in crate::game) fn server_set_view_distance(&mut self, distance: i32) -> bool {
-        if !(2..=32).contains(&distance) || self.options.dedicated.is_none() || self.lan.is_none() {
+        if !(2..=32).contains(&distance)
+            || self.options.dedicated.is_none()
+            || self.side.lan.is_none()
+        {
             return false;
         }
         self.set_view_distance(distance);
@@ -31,7 +34,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// `PlayerList.setSimulationDistance` on a dedicated server.
     pub(in crate::game) fn server_set_simulation_distance(&mut self, distance: i32) -> bool {
-        if !(2..=32).contains(&distance) || self.options.dedicated.is_none() || self.lan.is_none() {
+        if !(2..=32).contains(&distance)
+            || self.options.dedicated.is_none()
+            || self.side.lan.is_none()
+        {
             return false;
         }
         self.set_simulation_distance(distance);
@@ -89,7 +95,7 @@ mod tests {
         with_guests(|game| {
             assert_eq!(game.options.execution_role, ExecutionRole::IntegratedServer);
             game.options.dedicated = Some(Vec::new());
-            game.serving = Some(super::super::integrated::Serving::fixture(0));
+            game.side.serving = Some(super::super::integrated::Serving::fixture(0));
             let published = |game: &mut crate::game::ServerGame<'_>| {
                 let host: &dyn mod_api::ServerHost = game;
                 host.server_is_published()
@@ -104,7 +110,7 @@ mod tests {
             assert!(published(game), "opened to LAN");
             assert!(game.unpublish());
             assert!(!published(game), "the LAN closed");
-            game.serving = None;
+            game.side.serving = None;
             game.options.execution_role = ExecutionRole::DedicatedServer;
             assert!(published(game), "a dedicated server");
         });

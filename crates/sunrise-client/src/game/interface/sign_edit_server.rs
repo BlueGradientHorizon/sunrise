@@ -328,7 +328,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "lan_open_sign_editor called on Client role"
         );
         let pos = [edit.pos.0, edit.pos.1, edit.pos.2];
-        let Some(guest_uuid) = self.lan.as_ref().and_then(|host| {
+        let Some(guest_uuid) = self.side.lan.as_ref().and_then(|host| {
             let g = host.hub.guest(conn)?;
             (g.placed && g.participates_online() && g.within_block_range(pos, 4.0))
                 .then_some(g.uuid)
@@ -348,7 +348,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.world
             .block_entities
             .set_sign_editor(edit.pos, Some(guest_uuid));
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.send_authoritative_block(conn, &self.world, pos);
             host.hub.send_to(
                 conn,
@@ -368,7 +368,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         mut p: play::SignUpdate,
     ) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(g) = host.hub.guest(conn) else {
@@ -387,6 +387,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // go on the sign, with the player's state swapped in, and may rewrite
         // or refuse it.
         if let Some((uuid, name, dimension)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -418,6 +419,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         if self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.play.get(&conn))
@@ -504,7 +506,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 sunrise_sim::lan::guest::within_block_range(eye, self.reach() + 4.0, at)
             });
         }
-        self.lan.as_ref().is_some_and(|host| {
+        self.side.lan.as_ref().is_some_and(|host| {
             host.hub
                 .guests
                 .iter()

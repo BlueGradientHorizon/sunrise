@@ -3,6 +3,19 @@ use sunrise_client::hud::HudBatch;
 use sunrise_sim::mobs::Species;
 
 impl Game<'_, crate::game::client_side::ClientState> {
+    /// `LocalPlayer.jumpableVehicle`: controlled vehicle when it can jump now.
+    pub(in crate::game) fn jumpable_mount(&self) -> Option<u32> {
+        if !self.side.remote.as_ref().is_some_and(|r| r.first_passenger) {
+            return None;
+        }
+        let mount = &self.mobs[self.mount_index()?];
+        let can_jump = Self::jumps(mount.species())
+            && mount.extra.saddled()
+            && !(matches!(mount.species(), Species::Camel | Species::CamelHusk)
+                && sunrise_sim::mobs::camel::refuse_to_move(mount));
+        can_jump.then_some(mount.id)
+    }
+
     /// The jump bar when it is the contextual bar.
     pub(in crate::game) fn draw_jump_bar(&self, batch: &mut HudBatch, w: i32, h: i32) {
         let Some(i) = self.mount_index() else {
@@ -24,6 +37,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.mount.jump_scale > 0.0 || self.mount.jump_ticks < 0
     }
     pub(in crate::game) fn client_own_passenger_index(&self, _vehicle: u32) -> usize {
-        self.remote.as_ref().map_or(0, |r| r.passenger_index)
+        self.side.remote.as_ref().map_or(0, |r| r.passenger_index)
     }
 }

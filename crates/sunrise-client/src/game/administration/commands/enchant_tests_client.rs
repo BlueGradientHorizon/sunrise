@@ -117,11 +117,11 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
         with_game(|game| {
             game.player = None;
             game.build_registries();
-            game.lan = Some(LanHost::for_test(hub));
+            game.side.lan = Some(LanHost::for_test(hub));
             for packet in outgoing {
                 game.lan_guest_packet(1, packet);
             }
-            let player = &game.lan.as_ref().unwrap().hub.guests[index];
+            let player = &game.side.lan.as_ref().unwrap().hub.guests[index];
             assert_eq!(player.selected, selected);
             assert_eq!(riptide(player.inventory[selected].as_ref()), 0);
             if console {
@@ -133,7 +133,7 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
             } else {
                 game.run_guest_commands();
             }
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.sync_guest_after_tick(1);
             let mut feedback = Vec::new();
             for out in rx.try_iter() {

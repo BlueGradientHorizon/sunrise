@@ -6,6 +6,7 @@
 //! DialogScreen.WarningScreen ("Note about custom screens").
 //! https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/dialog/ServerLinksDialogScreen
 use super::{Game, Screen, packs::open_uri};
+use crate::game::untrusted_uri::valid_untrusted_uri;
 use sunrise_client::{clipboard::Clipboard, hud::HudBatch, ui};
 use sunrise_game_data::{Result, text::Text};
 use sunrise_protocol::packets::configuration::{ServerLink, ServerLinkKind};
@@ -37,24 +38,6 @@ pub(in crate::game) struct LinksUi {
     pub back: Option<Screen>,
 }
 
-/// `Util.parseAndValidateUntrustedUri`: an absolute `http`/`https` URI
-/// (java.net.URI's scheme then the allowlist; whitespace-free).
-pub(in crate::game) fn valid_untrusted_uri(uri: &str) -> bool {
-    let Some(colon) = uri.find(':') else {
-        return false;
-    };
-    let scheme = &uri[..colon];
-    let mut chars = scheme.chars();
-    if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-        || !chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
-    {
-        return false;
-    }
-    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
-        return false;
-    }
-    !uri.chars().any(|c| c.is_control() || c == ' ')
-}
 /// `ClientCommonPacketListenerImpl.handleServerLinks`: keep only the links
 /// that validate, warning about the dropped ones.
 pub(in crate::game::client_side) fn trusted(links: Vec<ServerLink>) -> Vec<ServerLink> {
@@ -139,7 +122,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `connection.serverLinks()`: the links the open server sent (empty for
     /// a world without a connection or one that sent none).
     pub(in crate::game::client_side) fn server_links(&self) -> &[ServerLink] {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .map_or(&[], |r| r.server_links.as_slice())
     }

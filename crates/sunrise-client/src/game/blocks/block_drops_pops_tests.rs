@@ -168,7 +168,7 @@ fn block_drops_on_keeps_the_pop() {
         }
         if meal {
             // `Block.popResource`'s own offsets from the level random.
-            let at = super::spill::pop_position(&mut expected, on);
+            let at = crate::game::spill_common::pop_position(&mut expected, on);
             let p = game.dropped[0].position;
             assert_eq!([p.x, p.y, p.z], at, "{block} pops where vanilla pops it");
         }

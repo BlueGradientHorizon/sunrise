@@ -31,27 +31,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 answers.insert(cell, emission);
             }
         }
-        Self::apply_chunk_light_emission(&mut self.world, key, pending, answers);
-    }
-
-    /// Store dynamic-light answers on a chunk and mark it for relight when they changed.
-    pub(in crate::game) fn apply_chunk_light_emission(
-        world: &mut sunrise_level::world::World,
-        key: (i32, i32),
-        pending: bool,
-        answers: FxHashMap<u32, u8>,
-    ) {
-        if let Some(chunk) = world.chunks.get_mut(&key)
-            && (pending || chunk.dynamic_emission != answers)
-        {
-            let relight = chunk.light_loaded && chunk.dynamic_emission != answers;
-            let chunk = Arc::make_mut(chunk);
-            chunk.dynamic_emission = answers;
-            chunk.dynamic_pending = false;
-            if relight {
-                world.dirty_light.insert(key);
-            }
-        }
+        apply_chunk_light_emission(&mut self.world, key, pending, answers);
     }
 
     /// Query dynamic-light cells affected by this update's light edits before relighting.
@@ -103,7 +83,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Dimension of the level in play, including a client's custom dimension.
     pub(in crate::game) fn current_light_emission_dimension(&self) -> LevelDimension {
         self.native_current_level()
-            .map_or_else(|| self.dim.level(), Self::light_emission_dimension)
+            .map_or_else(|| self.dim.level(), light_emission_dimension)
     }
 
     /// Query one cell's dynamic light emission, clamped to 15.
@@ -119,4 +99,30 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .flatten()
             .map(|emission| emission.min(15))
     }
+}
+
+/// Store dynamic-light answers on a chunk and mark it for relight when they changed.
+pub(in crate::game) fn apply_chunk_light_emission(
+    world: &mut sunrise_level::world::World,
+    key: (i32, i32),
+    pending: bool,
+    answers: FxHashMap<u32, u8>,
+) {
+    if let Some(chunk) = world.chunks.get_mut(&key)
+        && (pending || chunk.dynamic_emission != answers)
+    {
+        let relight = chunk.light_loaded && chunk.dynamic_emission != answers;
+        let chunk = Arc::make_mut(chunk);
+        chunk.dynamic_emission = answers;
+        chunk.dynamic_pending = false;
+        if relight {
+            world.dirty_light.insert(key);
+        }
+    }
+}
+
+pub(in crate::game) fn light_emission_dimension(level: mod_api::LevelRef) -> LevelDimension {
+    LevelDimension::of_level(sunrise_core::LevelKey::from_interned_id(
+        level.dimension_id(),
+    ))
 }

@@ -100,6 +100,7 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -111,6 +112,7 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
             // The server takes the dedicated role before it opens its socket, as a
             // dedicated server runs the same publication, hub and connections.
             let port = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -133,12 +135,13 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
 
             // The far peer leaves the near one's chunks; only the near one sees its chunk.
             let chunk = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()
                 .call(|server| {
                     assert!(server.native_run_command("tp SyncFar 4000 100 4000"));
-                    let lan = server.lan.as_ref().unwrap();
+                    let lan = server.side.lan.as_ref().unwrap();
                     let near = lan.hub.guests.iter().find(|g| g.name == "SyncNear");
                     near.unwrap().chunk()
                 })
@@ -147,7 +150,8 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
             // What the move itself sends it (its new chunks) is drained first.
             sync_packets_within(&mut far, Duration::from_secs(1));
             let holder = Holder::Chunk([chunk.0, chunk.1]);
-            game.integrated
+            game.side
+                .integrated
                 .as_ref()
                 .unwrap()
                 .call(move |server| VALUE.set(store(server), holder, 21).unwrap())
@@ -158,11 +162,12 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
 
             // Held gameplay packets keep their place around a message: before, the
             // message, after, on the wire in that order.
-            game.integrated
+            game.side
+                .integrated
                 .as_ref()
                 .unwrap()
                 .call(|server| {
-                    let lan = server.lan.as_ref().unwrap();
+                    let lan = server.side.lan.as_ref().unwrap();
                     let guest = lan.hub.guests.iter().find(|g| g.name == "SyncNear");
                     let sender = guest.unwrap().sender.clone();
                     let chat = |text: &str| {

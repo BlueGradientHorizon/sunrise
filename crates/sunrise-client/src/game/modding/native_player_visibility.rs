@@ -16,7 +16,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.native_lifecycle.epoch() != Some(player.entity().epoch()) {
             return Err(Refusal::Stale);
         }
-        let guests = &self.lan.as_ref().ok_or(Refusal::Stale)?.hub.guests;
+        let guests = &self.side.lan.as_ref().ok_or(Refusal::Stale)?.hub.guests;
         let index = guests
             .identity_index(player.uuid(), player.entity().id())
             .ok_or(Refusal::Stale)?;
@@ -42,7 +42,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             PlayerRead::Guest(g) if !g.is_fake() => g.conn,
             PlayerRead::Guest(_) => return Err(Refusal::NoConnection),
         };
-        let guest = self.lan.as_ref().and_then(|lan| lan.hub.guest(conn));
+        let guest = self.side.lan.as_ref().and_then(|lan| lan.hub.guest(conn));
         match guest {
             Some(guest) if !guest.is_fake() => Ok(conn),
             Some(_) => Err(Refusal::NoConnection),
@@ -60,7 +60,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if sequence < 0 {
             return Err(Refusal::NegativeSequence { sequence });
         }
-        let host = self.lan.as_ref().ok_or(Refusal::Stale)?;
+        let host = self.side.lan.as_ref().ok_or(Refusal::Stale)?;
         host.hub.ack(conn, sequence);
         Ok(())
     }
@@ -80,6 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(Refusal::UnknownState);
         }
         let guest = self
+            .side
             .lan
             .as_ref()
             .and_then(|lan| lan.hub.guest(conn))
@@ -104,6 +105,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(true);
         }
         let hidden = self
+            .side
             .lan
             .as_ref()
             .and_then(|lan| lan.hub.hidden.get(&t.uuid).copied());

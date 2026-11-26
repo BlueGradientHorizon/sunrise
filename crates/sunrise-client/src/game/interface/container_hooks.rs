@@ -2,11 +2,8 @@
 //! screens"): the engine's slot clicks and queries, the `Container` view over them, and the
 //! dispatch of input and drawing to the crates that registered hooks, at the screen events' own
 //! moments. With none registered nothing here builds a view.
-use super::{
-    key_codes::glfw_button,
-    mount_menu,
-    stations::{self, Kind as StationKind},
-};
+use super::stations::{self, Kind as StationKind};
+use crate::game::client_side::key_codes::glfw_button;
 use crate::game::{Game, Screen};
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
@@ -81,8 +78,8 @@ pub(in crate::game::client_side) fn local_menu_id(local: Local) -> Option<String
         Local::Brewing => "minecraft:brewing_stand".into(),
         Local::Crafter => "minecraft:crafter_3x3".into(),
         Local::Station(StationKind::Merchant) => "minecraft:merchant".into(),
-        Local::Station(kind) => super::lan_stations::menu_of(kind)?.0.into(),
-        Local::Mount => super::native_menus::MOUNT_MENU.into(),
+        Local::Station(kind) => crate::game::lan_station_data::menu_of(kind)?.0.into(),
+        Local::Mount => crate::game::native_menu_ids::MOUNT_MENU.into(),
     };
     Some(id)
 }
@@ -278,7 +275,7 @@ impl<'g> Game<'g, crate::game::client_side::ClientState> {
         if self.mount_active() {
             return local_menu_id(Local::Mount);
         }
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             return Some(self.remote_menu_type().unwrap_or("inventory").to_owned());
         }
         if let Some(station) = &self.station {
@@ -311,7 +308,9 @@ impl<'g> Game<'g, crate::game::client_side::ClientState> {
             9..36 => Role::Inventory,
             100..109 => Role::Input,
             200 | stations::RESULT => Role::Result,
-            500..=504 | mount_menu::SADDLE | mount_menu::ARMOR => Role::Equipment,
+            500..=504
+            | sunrise_gameplay_common::mount_rules::SADDLE
+            | sunrise_gameplay_common::mount_rules::ARMOR => Role::Equipment,
             s if (stations::INPUT..stations::RESULT).contains(&s) => Role::Input,
             s if self.is_mount_chest_slot(s) => Role::Storage,
             s if crate::game::inventory_slots::container_slot_index(s).is_some() => {
@@ -512,7 +511,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         button: i32,
         input: Input,
     ) -> bool {
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return false;
         }
         self.remote_menu_ops(&[(Some(slot), button, input)])
@@ -528,7 +527,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (Some(slot), kind | 1, Input::QuickCraft),
             (None, kind | 2, Input::QuickCraft),
         ];
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return false;
         }
         self.remote_menu_ops(&ops)

@@ -3,7 +3,10 @@ use super::{Game, Hit, remote::DryUse};
 use std::sync::Arc;
 use sunrise_client::actions::Action as Mapping;
 use sunrise_items::items::ItemStack;
-use sunrise_sim::cauldron::{self, Outcome, interactions::Dispatcher};
+use sunrise_sim::cauldron::{
+    self, Outcome,
+    interactions::{Dispatcher, Entry},
+};
 use sunrise_world::level::InteractionResult;
 
 struct DryHand<'a> {
@@ -31,6 +34,35 @@ impl cauldron::Player for DryHand<'_> {
 }
 
 impl Game<'_, crate::game::client_side::ClientState> {
+    /// The server's registration snapshot, not the client's installed mods,
+    /// determines whether the click needs an authoritative block result.
+    pub(in crate::game) fn has_server_cauldron_handler(
+        &self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> bool {
+        let (Some(table), Some(held)) = (
+            self.side
+                .remote
+                .as_ref()
+                .and_then(|r| r.cauldron_entries.as_ref()),
+            held,
+        ) else {
+            return false;
+        };
+        let block = self.block_name(pos);
+        let items = self.items();
+        matches!(
+            table.select(
+                &block,
+                &held.item,
+                cauldron::removes_dye(items, &held.item),
+                |tag| { items.item_in_tag(tag, &held.item) }
+            ),
+            Some(Entry::Mod(()))
+        )
+    }
+
     /// Predict vanilla cauldron clicks without invoking server-registered handlers.
     pub(in crate::game::client_side) fn client_cauldron_prediction(
         &self,

@@ -112,7 +112,6 @@ client_cracks	client	touches only ClientState fields	game/modding/client_cracks.
 client_executor	client	touches only ClientState fields	game/modding/client_executor.rs
 client_item_extensions	client	touches only client-owned fields	game/modding/client_item_extensions.rs
 client_reload	client	touches only ClientState fields	game/interface/client_reload/mod.rs
-client_text_client	client	hand-authored client role-split module	game/native_hooks/client_text_client.rs
 client_tick_steps	client	touches only ClientState fields	game/runtime/client_tick_steps.rs
 clip_ray	game	touches neither ClientState nor ServerState fields	game/items/clip_ray.rs
 clipboard	client	touches only ClientState fields	game/interface/clipboard.rs
@@ -203,7 +202,6 @@ dragon_client	client	hand-authored client role-split module	game/mobs/dragon_cli
 dragon_common	game	common dual-role module	game/mobs/dragon_common.rs
 dragon_fireball_motion_tests	server	touches only ServerState fields	game/mobs/dragon_fireball_motion_tests.rs
 draw_boundary	client	role-reachability:client	game/modding/draw_boundary.rs
-draw_measures_client	client	hand-authored client role-split module	game/native_hooks/draw_measures_client.rs
 dropped_by_player_tests	game	touches neither ClientState nor ServerState fields	game/items/dropped_by_player_tests.rs
 dropped_item_setter	server	re-homed server module	game/modding/dropped_item_setter.rs
 durability	game	touches neither ClientState nor ServerState fields	game/items/durability.rs
@@ -937,7 +935,6 @@ piston_nbt	game	touches neither ClientState nor ServerState fields	game/world/pi
 piston_push	game	touches both ClientState and ServerState fields (opposite side in tests)	game/blocks/piston_push.rs
 piston_push_carrying_server	server	hand-authored server role-split module	game/blocks/piston_push/carrying_server.rs
 piston_push_client	client	hand-authored client role-split module	game/blocks/piston_push_client.rs
-piston_push_reaction_tests_client	client	hand-authored client role-split module	game/native_hooks/piston_push_reaction_tests_client.rs
 piston_push_server	server	hand-authored server role-split module	game/blocks/piston_push_server.rs
 piston_push_shoving_server	server	hand-authored server role-split module	game/blocks/piston_push/shoving_server.rs
 place_feature_tests	server	touches only ServerState fields	game/blocks/place_feature_tests.rs

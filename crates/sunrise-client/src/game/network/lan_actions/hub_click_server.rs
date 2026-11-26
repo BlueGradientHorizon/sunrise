@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::{lan_menus::ClickReply, stacked_on_other::Pickup};
+use crate::game::{lan_menu_data::ClickReply, stacked_on_other::Pickup};
 use std::cell::RefCell;
 use sunrise_sim::menu::StackedOutcome;
 
@@ -37,7 +37,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: &play::ContainerClick,
     ) -> Option<Vec<ItemStack>> {
-        let host = self.lan.as_mut()?;
+        let host = self.side.lan.as_mut()?;
         let mut prepared = host.hub.prepare_click(conn, p, &self.world, false)?;
         let frozen = if crate::game::stacked_listened() {
             host.hub
@@ -69,7 +69,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 frozen,
                 move |game| {
                     let (carried, clicked) =
-                        game.lan
+                        game.side
+                            .lan
                             .as_ref()?
                             .hub
                             .click_stacks(conn, slot, &game.world)?;
@@ -132,10 +133,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         f: impl FnOnce(&mut Self, &mut LanHost) -> R,
     ) -> Option<R> {
-        let mut host = self.lan.take()?;
+        let mut host = self.side.lan.take()?;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self, &mut host)));
-        debug_assert!(self.lan.is_none(), "a lifted LAN host was replaced");
-        self.lan = Some(host);
+        debug_assert!(self.side.lan.is_none(), "a lifted LAN host was replaced");
+        self.side.lan = Some(host);
         match result {
             Ok(result) => Some(result),
             Err(payload) => std::panic::resume_unwind(payload),

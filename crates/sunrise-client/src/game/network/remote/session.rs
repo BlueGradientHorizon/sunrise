@@ -1,6 +1,7 @@
-use super::*;
-
+use std::sync::Arc;
+use sunrise_client_lib::net::Session;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_protocol::{registry::Builtin, text::Language};
 
 /// Connection already started; its eventual packets still belong to the next listener.
 pub(in crate::game) struct RemoteOpening {

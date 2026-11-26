@@ -4,12 +4,9 @@ use super::{
     entity::{
         Entity as _, EntityHandle, ThunderHit, entity_lists_of, for_each_entity, with_entity,
     },
-    minecarts::CartHit,
+    minecarts_server::CartHit,
 };
-use crate::game::client_side::lightning::Bolt;
-use crate::game::client_side::lightning::StrikeState;
-use crate::game::client_side::lightning::thunder_strike_column;
-use crate::game::client_side::lightning::*;
+use crate::game::lightning_common::{Bolt, StrikeState};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -17,6 +14,23 @@ use sunrise_core::{
 };
 use sunrise_sim::advancements::EntityView;
 use sunrise_sim::mobs::{Damage, DamageKind, Species};
+use sunrise_world::level::Ticks;
+
+/// The box `LightningBolt.tick` collects the `LightningStrikeTrigger` bystanders from: 15 blocks
+/// around the bolt, 15 down and `6 + 15` up.
+pub(in crate::game) fn in_viewer_box(bolt: [f64; 3], p: [f64; 3]) -> bool {
+    (p[0] - bolt[0]).abs() <= 15.0
+        && (p[2] - bolt[2]).abs() <= 15.0
+        && p[1] >= bolt[1] - 15.0
+        && p[1] <= bolt[1] + 21.0
+}
+
+/// `ServerLevel.tickThunder` -> `Level.getBlockRandomPos(minX, 0, minZ, 15)`:
+/// picks the strike column from the level's separate `randValue` LCG.
+pub(in crate::game) fn thunder_strike_column(ticks: &mut Ticks, cx: i32, cz: i32) -> (i32, i32) {
+    let r = ticks.block_random_pos(cx * 16, 0, cz * 16, 15);
+    (r.x, r.z)
+}
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.findLightningRod`: `PoiManager.findClosest` over the
@@ -751,7 +765,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 Species::Turtle => {
                     m.damage(
-                        crate::game::entity::damage_level_of!(
+                        crate::game::entity_server::damage_level_of!(
                             self,
                             &sunrise_sim::health::NO_ATTACK,
                             no_push,
@@ -790,7 +804,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
 
             m.damage(
-                crate::game::entity::damage_level_of!(
+                crate::game::entity_server::damage_level_of!(
                     self,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,

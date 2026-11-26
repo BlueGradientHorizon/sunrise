@@ -6,7 +6,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// leaving a world, and on quitting the game from one. Once per
     /// connection, whichever way out runs first.
     pub(in crate::game) fn client_logging_out(&mut self) {
-        let Some(remote) = self.remote.as_mut().filter(|r| !r.logged_out) else {
+        let Some(remote) = self.side.remote.as_mut().filter(|r| !r.logged_out) else {
             return;
         };
         remote.logged_out = true;
@@ -31,7 +31,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.refresh_recipe_property_context();
     }
     pub(in crate::game::client_side) fn refresh_remote_stonecutter(&mut self) {
-        self.recipe_tables.server_stations = self.remote.as_ref().map(|remote| {
+        self.recipe_tables.server_stations = self.side.remote.as_ref().map(|remote| {
             let item = |id: i32| {
                 remote
                     .builtin
@@ -62,12 +62,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )
         });
         if let Some((station, ui)) = self.station_and_ui_mut()
-            && station.kind == crate::game::stations::Kind::Stonecutter
+            && station.kind == crate::game::stations_common::Kind::Stonecutter
         {
             // The table and the menu's cached indices are one generation. Rebuild even
             // when the input stack has not changed since the previous packet.
-            station.reset_stonecutter_generation(ui);
-            self.remote_station_slot_changed(crate::game::stations::INPUT);
+            crate::game::client_side::stations_client::reset_stonecutter_generation(station, ui);
+            self.remote_station_slot_changed(crate::game::stations_common::INPUT);
         }
     }
     pub(in crate::game::client_side) fn remote_recipe_properties(

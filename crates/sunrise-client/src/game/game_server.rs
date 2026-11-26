@@ -1,14 +1,22 @@
-use crate::game::hud_render::is_game_master_block;
 use crate::game::*;
 use std::sync::Arc;
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::game_master_blocks::is_game_master_block;
 use sunrise_world::level::{Behaviours, BucketContent, LevelEvent, PlayerEffect, Ticks};
 use {
     sunrise_game_data::Result, sunrise_items::items::ItemStack,
     sunrise_level::containers::BlockEntity, sunrise_sim::entities::Experience,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::save::Level,
 };
+
+pub(in crate::game) fn reset_world_progress(
+    adv: &mut advancements_common::AdvState,
+    stats: &mut sunrise_gameplay_common::stats::Stats,
+) {
+    *adv = Default::default();
+    *stats = Default::default();
+}
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The UUID of the player acting: the guest whose turn it is, else the host.
@@ -32,7 +40,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         position: [f64; 3],
         velocity: Option<[f64; 3]>,
         pickup_delay: u32,
-        random: Option<spill::ItemRandom>,
+        random: Option<spill_common::ItemRandom>,
     ) -> [f64; 3] {
         let velocity = self.push_item_entity(stack, position, velocity, pickup_delay, random);
         let _ = self.join_item_entity(self.side.next_entity, position);
@@ -112,7 +120,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let facts = self.res.facts().get(state).clone();
         let held = self.held().cloned();
         let key = (pos[0], pos[1], pos[2]);
-        self.unpack_loot(container_loot::LootTarget::Block(key), None);
+        self.unpack_loot(container_loot_level::LootTarget::Block(key), None);
         let live = (!self.creative)
             .then(|| self.live_block_entity(key, &facts.name))
             .flatten();
@@ -136,7 +144,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             None => {
                 if !self.creative
-                    && let Some(tag) = spill::saved_entity(&self.world, pos)
+                    && let Some(tag) = spill_common::saved_entity(&self.world, pos)
                 {
                     self.pending.record_saved(pos, &tag);
                     // Pots and other saved-only entities have no resident object, but
@@ -144,7 +152,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if self.native_authoritative()
                         && mod_api::__private::listened(mod_api::HookId::BlockDrops)
                     {
-                        saved_data = spill::packed_block_entity_payload(tag);
+                        saved_data = spill_common::packed_block_entity_payload(tag);
                     }
                 }
                 None
@@ -183,8 +191,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         &facts.name,
                         self.res.items(),
                     );
-                    self.pending
-                        .record_source(pos, spill::source_snapshot(saved, name, lock.as_ref()));
+                    self.pending.record_source(
+                        pos,
+                        spill_common::source_snapshot(saved, name, lock.as_ref()),
+                    );
                 }
                 let stacks = self.block_loot_at(pos, state, held.as_ref());
                 let silk = held
@@ -374,7 +384,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn finish_open_world(
         &mut self,
         prepared: world_loading::PreparedWorld,
-    ) -> Result<functions::PackStack> {
+    ) -> Result<function_pack_stack::PackStack> {
         let world_loading::PreparedWorld {
             save_root,
             shapes,
@@ -442,7 +452,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // theirs in `open_level`).
         self.border = self.load_border(dim);
         self.set_mode_id(level.mode());
-        self.previous_mode = level.previous_game_mode.map(game_mode::mode_from_id);
+        self.previous_mode = level
+            .previous_game_mode
+            .map(sunrise_gameplay_common::game_modes::mode_from_id);
         let mut inventory = self.load_saved_inventory(&level);
         if self.creative && level.inventory.is_empty() && level.position.is_none() {
             for (i, name) in [
@@ -521,10 +533,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.side.spawn_hook_cancelled = false;
         self.side.spawn_spiral = Default::default();
         self.side.player_spawn = None;
-        self.creatures.reset_trader();
-        self.creatures.cat = Default::default();
+        self.side.trader = Default::default();
+        self.side.cat = Default::default();
         self.creatures.custom_spawners.clear();
-        self.portals = Default::default();
+        self.portal_player = Default::default();
+        self.portal_sections = Default::default();
+        self.side.portals = Default::default();
         self.experience = Experience {
             level: self.level.xp_level,
             progress: self.level.xp_progress,
@@ -540,7 +554,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         self.carried = None;
         self.using = None;
-        self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+        self.side.streaming.radius = crate::game::streaming_radius::streaming_radius_for(
             self.side.settings.render_distance,
             None,
         );
@@ -577,7 +591,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Some(&self.pack.block_registries),
                 &self.damage_hooks,
             )
-            .with_effects(crate::game::entity::hit_effects_of!(self, None));
+            .with_effects(crate::game::entity_server::hit_effects_of!(self, None));
             let contact = sunrise_sim::block_contact::Contact {
                 entity: id as i32,
                 kind: "minecraft:item",
@@ -742,7 +756,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.world.block_entities.get_or_insert_with(key, || {
                 BlockEntity::for_block(&name).unwrap_or(BlockEntity::Chest(Vec::new()))
             });
-        } else if storage::is_shulker_box(&name) && !self.shulker_can_open(pos) {
+        } else if sunrise_gameplay_common::chests::is_shulker_box(&name)
+            && !self.shulker_can_open(pos)
+        {
             // ShulkerBoxBlock.canOpen: the lid has no room; nothing opens.
         } else if let Some(entity) = BlockEntity::for_block(&name) {
             self.world.block_entities.get_or_insert_with(key, || entity);
@@ -775,7 +791,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "minecraft:hopper" => "inspect_hopper",
                 "minecraft:dropper" => "inspect_dropper",
                 "minecraft:dispenser" => "inspect_dispenser",
-                n if storage::is_shulker_box(n) => "open_shulker_box",
+                n if sunrise_gameplay_common::chests::is_shulker_box(n) => "open_shulker_box",
                 _ => "",
             };
             if !stat.is_empty() {
@@ -833,7 +849,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .into_iter()
             .collect();
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             followed.extend(
                 host.hub
                     .guests
@@ -1131,15 +1147,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
-        let mut players: Vec<((i32, i32), bool)> = self.lan.as_ref().map_or_else(Vec::new, |h| {
-            h.hub
-                .guests
-                .iter()
-                .filter(|g| h.hub.here(g))
-                .filter(|g| !g.is_fake()) // fake players hold small forced tickets below
-                .map(|g| (g.ticket_chunk(), g.spectator()))
-                .collect()
-        });
+        let mut players: Vec<((i32, i32), bool)> =
+            self.side.lan.as_ref().map_or_else(Vec::new, |h| {
+                h.hub
+                    .guests
+                    .iter()
+                    .filter(|g| h.hub.here(g))
+                    .filter(|g| !g.is_fake()) // fake players hold small forced tickets below
+                    .map(|g| (g.ticket_chunk(), g.spectator()))
+                    .collect()
+            });
         if let Some(p) = &self.player {
             players.push((
                 (
@@ -1156,7 +1173,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             sunrise_sim::ticket_levels::Sources {
                 players: players
                     .into_iter()
-                    .filter(|&(_, spectator)| game_mode::loads_chunks(rule, spectator))
+                    .filter(|&(_, spectator)| {
+                        sunrise_gameplay_common::game_modes::loads_chunks(rule, spectator)
+                    })
                     .map(|(chunk, _)| chunk)
                     .collect(),
                 forced: self.side.streaming.forced.iter().copied().collect(),
@@ -1230,6 +1249,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mode = self.mode_id();
         // The vehicle the player rides (`ServerPlayer.saveParentVehicle`).
         let others = self
+            .side
             .lan
             .as_ref()
             .map(|h| self.ridden_by_others(&h.hub.guests, self.dim.id(), None, false))
@@ -1894,7 +1914,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let registry = self.pack.assets.registry;
             let old = registry.state(clicked);
             if let Some(state) = self.honeycomb_waxed(clicked) {
-                let other = old.and_then(|old| storage::chest_connected_pos(old, hit.pos));
+                let other = old.and_then(|old| {
+                    sunrise_gameplay_common::chests::chest_connected_pos(old, hit.pos)
+                });
                 // HoneycombItem.useOn: ITEM_USED_ON_BLOCK before the swap.
                 self.trigger_block("minecraft:item_used_on_block", hit.pos, stack);
                 self.level_set(hit.pos, state)?;
@@ -2025,7 +2047,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The active guest's live body wakes here; the hub owns its wake
         // animation and sleeping metadata, not the suspended outer actor.
         if let Some(i) = self.side.lan_acting.and_then(|conn| self.guest_index(conn))
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             // The live turn may have changed its bed since entry.
             host.hub.guests.update(i, |guest| guest.bed = Some(head));
@@ -2149,7 +2171,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .iter()
                 .filter(|_| !spectator)
                 .map(|p| [p.position.x, p.position.y, p.position.z])
-                .chain(self.lan.iter().flat_map(|h| {
+                .chain(self.side.lan.iter().flat_map(|h| {
                     h.hub
                         .guests
                         .simulation_iter()
@@ -2178,7 +2200,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // `CompoundContainer`), and a spectator's menu counts for nothing.
             let mut open_containers: Vec<(i32, i32, i32)> = Vec::new();
             for key in self.container.into_iter().filter(|_| !spectator).chain(
-                self.lan
+                self.side
+                    .lan
                     .iter()
                     .flat_map(|h| {
                         h.hub
@@ -2215,24 +2238,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let dimension = self.dim.level();
         let rules = self.level_rules();
-        let native_authoritative = self.native_authoritative();
         let liquid_transaction_open = self.has_level_transaction();
-        let client_side = !self.is_logical_server();
         let environment = self.res.environment_of(&self.dimension_type().id);
         let other_entities = entity::entity_lists_of!(self, without_carts);
         let mut level = GameLevel {
             cake_probe: false,
             cake_requested: std::cell::Cell::new(false),
             cake_answer: None,
-            api_level: if native_authoritative {
-                self.level(self.dim.id())
-            } else {
-                self.native_client_level()
-            },
+            api_level: self.level(self.dim.id()),
             part_state_index: self.attachment_indexes.get(&self.dim),
             attachment_query_scopes: &self.transactions.attachment_query_scopes,
             command_block_transition: None,
-            positions: piston_carry_state::PositionState {
+            positions: piston_carry_common::PositionState {
                 gateways: &mut self.side.be_anims.gateway_servers,
                 hoppers: &mut self.side.hoppers,
             },
@@ -2260,14 +2277,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             environment,
             raining: rain > 0.2,
             thundering: thunder > 0.9,
-            enabled_features: if !client_side {
-                self.level.enabled_features.as_arc()
-            } else {
-                match &self.remote {
-                    Some(remote) => &remote.features,
-                    None => crate::game::tables::default_client_features(),
-                }
-            },
+            enabled_features: self.level.enabled_features.as_arc(),
             player_box,
             guest_boxes,
             building_player_boxes,
@@ -2278,13 +2288,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             behaviours: self.res.behaviours(),
             items: server_world_items!(self),
             recipes: server_world_recipes!(self),
-            // A client rolls no loot (LootTable.getRandomItems needs a
-            // ServerLevel): it doesn't load the tables on its game thread.
-            loot: if self.remote.is_some() {
-                None
-            } else {
-                self.side.server_loot.0.get()
-            },
+            loot: self.side.server_loot.0.get(),
             loot_storage: self.score.storage.snapshot(),
             registry: self.pack.assets.registry,
             block_registries: &self.pack.block_registries,
@@ -2299,8 +2303,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             lid_openers: &mut self.side.lid_openers,
             open_containers: &open_containers,
             golem_chests: &golem_chests,
-            client_side,
-            native_authoritative,
+            client_side: false,
+            native_authoritative: true,
             native_player: self.side.lan_acting_uuid,
             native_player_entity: self.side.lan_acting_entity.map(|id| id as i32),
             liquid_transaction_open,
@@ -2308,14 +2312,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             native_sounds: &mut self.side.pending_native_sounds,
             loop_context: &self.loop_context,
             native_particles: &mut self.side.pending_particles,
-            sound_seeds: self.lan.as_ref().map(|host| &host.hub),
+            sound_seeds: self.side.lan.as_ref().map(|host| &host.hub),
             drop_tool: None,
             drop_entity: None,
             interacting: None,
             location: location_world::LocationRefs {
                 dimension: self.dim.id(),
                 end: &self.end,
-                tags: advancements::TagSources {
+                tags: advancements_common::TagSources {
                     pack_tags: self.side.world_tables.0.as_ref().map(|t| &t.pack_tags),
                     items: server_world_items!(self),
                     mob_data: self.res.mob_data(),
@@ -2349,7 +2353,7 @@ pub(in crate::game) mod nested_orb_spawn_tests {
             }
             let _ = game.orbs.remove(1);
             let mut expected: Vec<_> = game.orbs.iter().map(|o| (o.id, o.join)).collect();
-            crate::game::entity::taken_pass_tests::with_spawn(
+            crate::game::entity_server::taken_pass_tests::with_spawn(
                 |g| g.add_orb([3.5, 80.0, 3.5], 1),
                 || game.tick_experience(),
             );

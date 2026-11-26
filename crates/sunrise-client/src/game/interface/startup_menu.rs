@@ -1,8 +1,13 @@
 //! The interactive title before world resources exist. Uses only the menu
 //! atlas/panorama; transfers the actual screen and queued entry to Game.
 use super::event_loop::EventLoopCtl;
-use super::key_focus::{self, Act};
 use super::*;
+use crate::game::client_side::{
+    key_focus::{self, Act},
+    pack_discovery_client::{data_packs_with_icons, into_resource_pack, selection_with_icon},
+    resource_load_client::load_resources_for_mods,
+};
+use crate::game::pack_discovery::discover;
 use sunrise_client::{
     clipboard::{self, AppendSelection, SystemClipboard},
     options_ui::{Event, OptionsUi, Page},
@@ -153,7 +158,7 @@ impl StartupMenu {
                 let title = title.with_user(|| game.options.player_name());
                 game.show_title_with_registry(title);
             }
-            None if game.remote.is_some() => game.side.title.0 = None,
+            None if game.side.remote.is_some() => game.side.title.0 = None,
             None => {
                 // Never leave a client game with neither a title screen nor a remote session.
                 log::warn!(
@@ -444,7 +449,7 @@ pub(in crate::game::client_side) fn spawn_loader(
                     .and_then(|roots| {
                         load_resources_for_mods(
                             roots,
-                            super::pack_finders::data_packs(&mod_sources),
+                            data_packs_with_icons(&mod_sources),
                             world.as_deref(),
                             &vanilla_root,
                             &settings,
@@ -630,7 +635,10 @@ impl Loading {
             &sunrise_assets::resource_source::ResourceSource::directory(self.menu.root.clone()),
         ]);
         let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
-            super::pack_finders::discover(mod_api::PackType::ClientResources, &options.mods)
+            discover(mod_api::PackType::ClientResources, &options.mods)
+                .into_iter()
+                .map(into_resource_pack)
+                .collect()
         });
         self.menu.options.pack_infos = packs::pack_infos(&self.vanilla_root, &[], &additional);
         self.menu
@@ -689,10 +697,10 @@ impl Loading {
                 }
                 Event::ImportPacks(paths) => {
                     let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
-                        super::pack_finders::discover(
-                            mod_api::PackType::ClientResources,
-                            &options.mods,
-                        )
+                        discover(mod_api::PackType::ClientResources, &options.mods)
+                            .into_iter()
+                            .map(into_resource_pack)
+                            .collect()
                     });
                     packs::import_resource_packs(
                         &mut self.menu.options,
@@ -935,9 +943,9 @@ impl Loading {
             Action::DataPacks { dir, selected } => {
                 let resources = self.vanilla_root.clone();
                 let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
-                    super::pack_finders::discover(mod_api::PackType::ServerData, &options.mods)
+                    discover(mod_api::PackType::ServerData, &options.mods)
                         .into_iter()
-                        .filter_map(|pack| pack.selection)
+                        .filter_map(|pack| selection_with_icon(&pack.meta))
                         .collect()
                 });
                 self.menu
@@ -1618,6 +1626,11 @@ mod tests {
 
     fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         Loading {
+            serve_integrated: crate::game::server_side::integrated::serve,
+            run_component_harness:
+                crate::game::server_side::integrated::run_component_harness_on_server,
+            profile_resolver: crate::game::profile_resolver,
+            session_verifier: crate::game::session_verifier(),
             window: None,
             renderer: None,
             boot: sunrise_client::hud::HudAtlas::boot(),

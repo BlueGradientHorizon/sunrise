@@ -8,9 +8,9 @@
 //! use the client's own cached state.
 //! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
 use super::{Game, commands::Target};
+use crate::game::native_entity_state_common::Body;
 use mod_api::EntityRef;
-use sunrise_sim::mobs::{Mob, Species, sync};
-use sunrise_sim::motion::PlayerMotion;
+use sunrise_sim::mobs::sync;
 use sunrise_sim::pose::Pose;
 
 /// `Pose`'s serialized names by id (`Pose.STANDING` is 0).
@@ -35,15 +35,6 @@ pub(in crate::game) const POSES: [&str; 18] = [
     "inhaling",
 ];
 
-/// `Entity.getMaxAirSupply`: a dolphin's 4800, an axolotl's 6000, else 300.
-pub(in crate::game::server_side) fn max_air(species: Option<Species>) -> i32 {
-    match species {
-        Some(Species::Dolphin) => 4800,
-        Some(Species::Axolotl) => sunrise_sim::mobs::axolotl::MAX_AIR,
-        _ => 300,
-    }
-}
-
 /// A player's pose as `Pose` names it.
 fn player_pose(pose: Pose) -> &'static str {
     match pose {
@@ -54,13 +45,6 @@ fn player_pose(pose: Pose) -> &'static str {
         Pose::SpinAttack => "spin_attack",
         Pose::Sleeping => "sleeping",
     }
-}
-
-/// What a handle names, as the flags read it.
-enum Body<'a> {
-    Player(&'a PlayerMotion),
-    Mob(&'a Mob),
-    Other(Target),
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -139,7 +123,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return false;
                 }
                 if let (Some(&conn), Some(lan)) =
-                    (self.side.lan_guest_swaps.last(), self.lan.as_mut())
+                    (self.side.lan_guest_swaps.last(), self.side.lan.as_mut())
                 {
                     lan.hub
                         .update_guest(conn, |guest| guest.sprinting = sprinting);
@@ -148,6 +132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // A parked guest: its row and, with it, the body's flag and speed modifier.
             Some(Target::Guest(conn)) => self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|lan| {
@@ -240,9 +225,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32> {
         let id = match self.native_entity_target(entity)? {
             // The acting guest's state is in place for its turn (the entry of `guest_turn`).
-            Target::Player => return Some(self.portals.player.cooldown),
+            Target::Player => return Some(self.portal_player.cooldown),
             Target::Guest(conn) => {
-                let play = self.lan.as_ref()?.play.get(&conn);
+                let play = self.side.lan.as_ref()?.play.get(&conn);
                 return Some(play.map_or(0, |p| p.portal.cooldown));
             }
             Target::Falling(id) => {
@@ -270,7 +255,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             | Target::Trident(id) => id,
             _ => return None,
         };
-        Some(self.portals.entities.get(&id).map_or(0, |p| p.cooldown))
+        Some(
+            self.side
+                .portals
+                .entities
+                .get(&id)
+                .map_or(0, |p| p.cooldown),
+        )
     }
     /// `Entity.setPortalCooldown`: writes the value `entity_portal_cooldown`
     /// reads, where that read keeps it — the level's portal state for the
@@ -307,7 +298,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 {
                     return false;
                 }
-                self.portals.entities.entry(id).or_default().cooldown = ticks;
+                self.side.portals.entities.entry(id).or_default().cooldown = ticks;
                 true
             }
             Some(Target::Mob(id))
@@ -318,7 +309,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             | Some(Target::Tnt(id))
             | Some(Target::Rocket(id))
             | Some(Target::Trident(id)) => {
-                self.portals.entities.entry(id).or_default().cooldown = ticks;
+                self.side.portals.entities.entry(id).or_default().cooldown = ticks;
                 true
             }
             _ => false,
@@ -336,6 +327,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 true
             }),
             Some(Target::Guest(conn)) => self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|lan| lan.hub.guests.motion_mut(conn))
@@ -386,6 +378,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 None => false,
             },
             Some(Target::Guest(conn)) => match self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|lan| lan.hub.guests.motion_mut(conn))
@@ -462,6 +455,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 true
             }),
             Some(Target::Guest(conn)) => self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|lan| lan.hub.guests.motion_mut(conn))
@@ -576,227 +570,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    fn native_target_body(&self, target: Target) -> Option<Body<'_>> {
-        Some(match target {
-            Target::Player => Body::Player(self.player.as_ref()?),
-            Target::Guest(conn) => Body::Player(self.command_guest(conn)?.motion.as_deref()?),
-            Target::Mob(id) => Body::Mob(self.mobs.iter().find(|m| m.id == id)?),
-            t => Body::Other(t),
-        })
-    }
-
-    /// Whether the entity touched water at its last fluid update
-    /// (`Entity.isInWater`): players and mobs.
-    pub(in crate::game) fn entity_is_in_water(&self, entity: EntityRef) -> Option<bool> {
-        match self.native_target_body(self.native_entity_read_target(entity)?)? {
-            Body::Player(p) => Some(p.fluids.was_touching_water),
-            Body::Mob(m) => Some(m.fluids.in_water),
-            Body::Other(_) => None,
-        }
-    }
-
-    /// The player's swimming flag, distinct from its pose (which also covers crawling).
-    pub(in crate::game) fn entity_is_swimming(&self, entity: EntityRef) -> Option<bool> {
-        match self.native_target_body(self.native_entity_read_target(entity)?)? {
-            Body::Player(p) => Some(p.swimming),
-            _ => None,
-        }
-    }
-
-    /// The fluids the entity touched at its last fluid update, each with how deep its box is in
-    /// it (`IEntityExtension.getFluidTypeHeight`), highest first; empty in no fluid. Players and
-    /// mobs: water and lava, the fluids Sunrise's entity update tracks. On a client these
-    /// are the predicted local player's state or the displayed entity's last fluid update.
-    pub(in crate::game) fn entity_fluid_heights(
-        &self,
-        entity: EntityRef,
-    ) -> Option<Vec<(String, f64)>> {
-        use sunrise_sim::motion::{LAVA, WATER};
-        Some(
-            match self.native_target_body(self.native_entity_read_target(entity)?)? {
-                Body::Player(p) => touched_fluids(
-                    (p.fluid_height(WATER), p.fluids.was_touching_water),
-                    (p.fluid_height(LAVA), p.is_in_lava()),
-                ),
-                Body::Mob(m) => touched_fluids(
-                    (m.fluids.water, m.fluids.in_water),
-                    (m.fluids.lava, m.fluids.in_lava),
-                ),
-                Body::Other(_) => return None,
-            },
-        )
-    }
-
-    /// The fluid at the entity's eyes from its last fluid update
-    /// (`IEntityExtension.getFirstEyeInFluidType`): water or lava, none in air. Players and mobs.
-    /// On a client this reads its own cached fluid update, without sampling the world again.
-    pub(in crate::game) fn entity_eye_fluid(&self, entity: EntityRef) -> Option<Option<String>> {
-        use sunrise_sim::motion::{LAVA, WATER};
-        Some(
-            match self.native_target_body(self.native_entity_read_target(entity)?)? {
-                Body::Player(p) => eye_fluid(p.is_eye_in_fluid(WATER), p.is_eye_in_fluid(LAVA)),
-                Body::Mob(m) => eye_fluid(m.fluids.eye_in_water, m.fluids.eye_in_lava),
-                Body::Other(_) => return None,
-            },
-        )
-    }
-
-    /// Entity.isUnderWater uses eye sample AND contact; LocalPlayer's override uses the sample alone.
-    pub(in crate::game) fn entity_is_under_water(&self, entity: EntityRef) -> Option<bool> {
-        match self.native_target_body(self.native_entity_read_target(entity)?)? {
-            Body::Player(p) if !self.is_logical_server() => Some(p.is_under_water()),
-            Body::Player(p) => Some(p.fluids.was_eye_in_water && p.fluids.was_touching_water),
-            Body::Mob(m) => Some(m.was_eye_in_water && m.fluids.in_water),
-            Body::Other(_) => None,
-        }
-    }
-
-    /// Entity.isOnFire: remaining ticks or the client's synced flag, unless fire immune.
-    pub(in crate::game) fn entity_is_on_fire(&self, entity: EntityRef) -> Option<bool> {
-        let (ticks, immune) = match self
-            .native_entity_read_target(entity)
-            .and_then(|target| self.native_target_body(target))
-        {
-            Some(Body::Player(p)) => (p.fire_ticks, p.mod_fire_immune),
-            Some(Body::Mob(m)) => (m.fire_ticks, m.fire_immune()),
-            Some(Body::Other(Target::Stand(stand))) => {
-                let stand = self.armor_stands.iter().find(|s| s.id == stand)?;
-                (stand.fire_ticks, stand.mod_fire_immune)
-            }
-            Some(Body::Other(Target::Item(item))) => {
-                let item = self.dropped.iter().find(|i| i.id == item)?;
-                (
-                    item.fire_ticks,
-                    self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false),
-                )
-            }
-            _ => (0, self.client_tracked_player_fire_immunity(entity)?),
-        };
-        let synced = !self.is_logical_server()
-            && self
-                .remote
-                .as_ref()?
-                .entity_on_fire(i32::try_from(entity.id()).ok()?)?;
-        Some(!immune && (ticks > 0 || synced))
-    }
-
-    /// `Entity.fireImmune`: effective immunity on the side of the host.
-    pub(in crate::game) fn entity_fire_immune(&self, entity: EntityRef) -> Option<bool> {
-        match self
-            .native_entity_read_target(entity)
-            .and_then(|target| self.native_target_body(target))
-        {
-            Some(Body::Player(p)) => Some(p.mod_fire_immune),
-            Some(Body::Mob(m)) => Some(m.fire_immune()),
-            Some(Body::Other(Target::Stand(id))) => self
-                .armor_stands
-                .iter()
-                .find(|s| s.id == id)
-                .map(|s| s.mod_fire_immune),
-            Some(Body::Other(Target::Dragon(_))) => Some(true),
-            _ => self.client_tracked_player_fire_immunity(entity),
-        }
-    }
-
-    fn client_tracked_player_fire_immunity(&self, entity: EntityRef) -> Option<bool> {
-        let (kind, _) = self.native_client_tracked(entity)?;
-        (kind == "minecraft:player").then_some(())?;
-        self.remote
-            .as_ref()?
-            .tracked_fire_immunity(i32::try_from(entity.id()).ok()?)
-    }
-
-    /// The entity's air (`Entity.getAirSupply`): players and mobs.
-    pub(in crate::game) fn entity_air_supply(&self, entity: EntityRef) -> Option<i32> {
-        match self.native_target_body(self.native_entity_read_target(entity)?)? {
-            Body::Player(p) => Some(p.air),
-            Body::Mob(m) => Some(m.air),
-            Body::Other(_) => None,
-        }
-    }
-
-    /// The most air the entity holds (`Entity.getMaxAirSupply`): 300, a
-    /// dolphin's 4800, an axolotl's 6000.
-    pub(in crate::game) fn entity_max_air_supply(&self, entity: EntityRef) -> Option<i32> {
-        match self.native_target_body(self.native_entity_read_target(entity)?)? {
-            Body::Mob(m) => Some(max_air(Some(m.species()))),
-            _ => Some(max_air(None)),
-        }
-    }
-
-    /// Ticks the entity has lived (`Entity.tickCount`): on a server, living entities, item
-    /// entities, experience orbs and minecarts; on a client, every entity of the level it
-    /// shows ([`Self::client_entity_tick_count`]). Wraps as vanilla's `int` does.
-    pub(in crate::game) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
-        if !self.is_logical_server() {
-            return self.client_entity_tick_count(entity);
-        }
-        Some(match self.native_entity_target(entity)? {
-            Target::Player => self.player.as_ref()?.health.tick_count,
-            Target::Guest(conn) => {
-                let guest = self.command_guest(conn)?;
-                guest
-                    .motion
-                    .as_deref()
-                    .map(|motion| motion.health.tick_count)
-                    .or(guest.carried_tick_count)
-                    .unwrap_or(0)
-            }
-            Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.age as i32,
-            Target::Stand(id) => self.armor_stands.iter().find(|s| s.id == id)?.tick_count,
-            Target::Dragon(id) => self.dragon.as_ref().filter(|d| d.id == id)?.ticks,
-            Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
-            Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
-            Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
-            _ => return None,
-        })
-    }
-
-    /// `Entity.tickCount` of a client's own copy: the local player's, or that of an entity the
-    /// server added to the level the client shows, whatever its kind, counted by the client's
-    /// entity pass (`Entity.commonTick`) since the client added it.
-    fn client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
-        // The local player from its admission (Login, Respawn), before the server's first
-        // teleport gives it a body.
-        if id == remote.entity_id {
-            return remote.has_logical_player.then_some(remote.own_tick_count);
-        }
-        remote
-            .entities
-            .get(&id)
-            .map(|tracked| tracked.tick_count)
-            .or_else(|| remote.general.rows.get(&id).map(|row| row.age as i32))
-    }
-}
-
-/// `(fluid, height)` for each fluid `(height, touched)` the entity touched, highest first;
-/// water before lava at the same height (`getMaxHeightFluidType`'s order).
-fn touched_fluids(water: (f64, bool), lava: (f64, bool)) -> Vec<(String, f64)> {
-    let mut heights: Vec<(String, f64)> = [("minecraft:water", water), ("minecraft:lava", lava)]
-        .into_iter()
-        .filter(|(_, (_, touched))| *touched)
-        .map(|(fluid, (height, _))| (fluid.to_owned(), height))
-        .collect();
-    // A stable sort keeps water first in a tie.
-    heights.sort_by(|a, b| b.1.total_cmp(&a.1));
-    heights
-}
-
-/// The first fluid at the eyes: water, then lava, as the trackers are kept.
-fn eye_fluid(water: bool, lava: bool) -> Option<String> {
-    let fluid = if water {
-        Some("minecraft:water")
-    } else {
-        lava.then_some("minecraft:lava")
-    };
-    fluid.map(str::to_owned)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::native_entity_state_common::{eye_fluid, max_air, touched_fluids};
+    use sunrise_sim::{
+        mobs::{Mob, Species},
+        motion::PlayerMotion,
+        thrown_trident::ThrownTrident,
+    };
 
     /// The reads' order: highest first, water before lava in a tie, an untouched fluid left
     /// out even with a height, and nothing for an entity in neither.
@@ -1042,7 +824,7 @@ mod tests {
             let item = game.entity(game.dropped[0].id).unwrap();
             assert_eq!(item.fire_ticks(game), Some(19));
 
-            game.boats.push(super::super::boats::Boat::new(
+            game.boats.push(super::super::boats_common::Boat::new(
                 44,
                 "oak".into(),
                 Vec3::ZERO,
@@ -1148,7 +930,7 @@ mod tests {
             let cart = game.entity(44).unwrap();
             assert_eq!(cart.tick_count(game), Some(5));
 
-            game.boats.push(super::super::boats::Boat::new(
+            game.boats.push(super::super::boats_common::Boat::new(
                 45,
                 "oak".into(),
                 Vec3::ZERO,
@@ -1166,8 +948,8 @@ mod tests {
     fn portal_cooldown_reads_simulated_kinds_and_refuses_others() {
         use super::super::native_guest_turn_tests::with_guests;
         use super::super::{
-            Dim, FallingBlock, boats::Boat, fireworks::Rocket, minecarts::CartKind,
-            minecarts::Minecart, trident::ThrownTrident,
+            Dim, FallingBlock, boats_common::Boat, fireworks::Rocket, minecarts::CartKind,
+            minecarts::Minecart,
         };
         use mod_api::WorldEpoch;
         use sunrise_core::{geometry::Vec3, position::BlockPos};
@@ -1177,10 +959,10 @@ mod tests {
 
         with_guests(|game| {
             // Players keep their own state: in place during their turn, beside the hub otherwise.
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.play.entry(12).or_default().portal.cooldown = 7;
             host.play.entry(13).or_default().portal.cooldown = 4;
-            game.portals.player.cooldown = 99;
+            game.portal_player.cooldown = 99;
             let (acting, other) = (game.entity(12).unwrap(), game.entity(13).unwrap());
             assert_eq!(acting.portal_cooldown(game), Some(7));
             game.as_guest(12, |game| {
@@ -1420,9 +1202,9 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_a_player() {
         with_player(|game, player| {
-            game.portals.player.cooldown = 7;
+            game.portal_player.cooldown = 7;
             assert!(!player.set_portal_cooldown(game, 40));
-            assert_eq!(game.portals.player.cooldown, 7);
+            assert_eq!(game.portal_player.cooldown, 7);
             assert_eq!(player.portal_cooldown(game), Some(7));
         });
     }
@@ -1433,12 +1215,13 @@ mod tests {
         use super::super::native_guest_turn_tests::with_guests;
 
         with_guests(|game| {
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.play.entry(12).or_default().portal.cooldown = 7;
             let guest = game.entity(12).unwrap();
             assert!(!guest.set_portal_cooldown(game, 40));
             assert_eq!(
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .play
@@ -1639,6 +1422,7 @@ mod tests {
                 // Spawn actual renderable client copies through the normal packet path.
                 for (id, name) in [(15, "minecraft:armor_stand"), (16, "minecraft:zombie")] {
                     let kind = g
+                        .side
                         .remote
                         .as_ref()
                         .unwrap()
@@ -1790,7 +1574,7 @@ mod tests {
             game.connect_local(client, "SneakReadTest").unwrap();
             // The joined client's state; the local-player and entity constructors must both
             // resolve it, not just a hand-built entity id accepted by an unreachable stub.
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -1810,7 +1594,7 @@ mod tests {
             );
             let stale = EntityRef::new(mod_api::WorldEpoch::new(0), 7);
             assert_eq!(stale.is_shift_key_down(game), None);
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert!(game.local_player().is_none());
             assert_eq!(entity.is_shift_key_down(game), None);
         });
@@ -1904,7 +1688,7 @@ mod tests {
                 None
             );
             assert_eq!(zombie.eye_fluid(&*game as &dyn mod_api::ClientHost), None);
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(
                 local.fluid_heights(&*game as &dyn mod_api::ClientHost),
                 None
@@ -1949,7 +1733,7 @@ mod tests {
             with_client_game(|game| {
                 let _server = logged_client(game);
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-                let types = game.remote.as_ref().unwrap().builtin.clone();
+                let types = game.side.remote.as_ref().unwrap().builtin.clone();
                 let kind = |name: &str| {
                     types
                         .get("minecraft:entity_type")
@@ -2039,7 +1823,7 @@ mod tests {
         }
         with_guests(|game| {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.update_guest(12, |g| g.info.main_hand = 0).unwrap();
             let read = |game: &crate::game::ServerGame<'_>, entity: EntityRef| {
                 let host: &dyn mod_api::ServerHost = game;

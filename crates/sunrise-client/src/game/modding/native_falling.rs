@@ -45,7 +45,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.entity_ids_exhausted() {
             return false;
         }
-        if (self.serving.is_none() && self.options.dedicated.is_none())
+        if (self.side.serving.is_none() && self.options.dedicated.is_none())
             || dimension != self.dim.id()
             || self.pack.assets.registry.state(state).is_none()
             || self.res.facts().is_air(state)
@@ -223,9 +223,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn falling_lifecycle_commands_unload_park_and_remote() {
-        use super::super::{
+        use crate::game::{
             commands::Target,
-            entity::taken_pass_tests::{LifecycleFixture, RemoteLifecycle, SlotIdentities},
+            server_side::entity_server::taken_pass_tests::{
+                LifecycleFixture, RemoteLifecycle, SlotIdentities,
+            },
         };
         let mut identities = SlotIdentities::default();
         LifecycleFixture {

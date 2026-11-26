@@ -131,7 +131,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
         with_client_game(|game| {
             let mut reader = logged_in(game);
             game.side.screen = Screen::Playing;
-            game.remote.as_mut().unwrap().loaded_sent = true;
+            game.side.remote.as_mut().unwrap().loaded_sent = true;
 
             // An owner for the off-hand kind does not suppress normal off-hand use or release.
             game.offhand = Some(ItemStack::new(SHIELD, 1));

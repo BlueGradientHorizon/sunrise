@@ -3,11 +3,7 @@ use serde::Deserialize;
 
 /// The manifest's file name at the root of a pack.
 pub const MANIFEST: &str = "sunrise-shaders.toml";
-/// The manifest schema this build reads.
-pub const SCHEMA: u32 = 1;
-/// The shader API line packs are written for unless they opt into a newer one: what the
-/// templates write, and what the game and the registry take.
-pub const API: &str = Api::V0_1.as_str();
+pub use sunrise_game_data::shader_versions::{API, SCHEMA};
 
 /// A shader API line: the stages, their signatures and the inputs a pack's WGSL may read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -25,7 +21,7 @@ impl Api {
     /// The manifest's `api` value.
     pub const fn as_str(self) -> &'static str {
         match self {
-            Api::V0_1 => "0.1",
+            Api::V0_1 => API,
             Api::V0_2 => "0.2",
         }
     }

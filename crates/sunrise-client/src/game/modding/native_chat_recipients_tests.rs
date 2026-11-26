@@ -141,7 +141,7 @@ fn two_guests(
         );
         guest.placed = true;
         guest.permission = 4;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     };
     (join(12), join(13))
@@ -299,9 +299,14 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
             game.command_block_tick(block);
             assert_eq!(lines(&first), 1);
             assert_eq!(lines(&second), 0);
-            game.lan.as_mut().unwrap().hub.update_guest(13, |guest| {
-                guest.info.chat_visibility = 1; // Commands Only
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(13, |guest| {
+                    guest.info.chat_visibility = 1; // Commands Only
+                });
             game.dedicated_console_say("public announcement".into());
             assert_eq!(lines(&first), 1);
             assert_eq!(lines(&second), 0, "Commands Only does not show /say");

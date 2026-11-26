@@ -1,10 +1,11 @@
 //! Specialized authoritative owners that are not homogeneous entity lists.
 use super::{Game, commands::Target};
+use crate::game::fishing_common::Hook;
 
 pub(in crate::game) enum SpecializedSource<'a> {
     Player(&'a sunrise_sim::motion::PlayerMotion),
     Guest(&'a sunrise_sim::lan::guest::Guest),
-    Hook(&'a super::fishing::Hook),
+    Hook(&'a Hook),
 }
 use sunrise_sim::join_seq::{
     Joined,
@@ -67,7 +68,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .residency
                 .identity()
                 .map(|identity| identity.id.get()),
-            _ => super::native_entities::target_id(target),
+            _ => crate::game::commands_common::target_id(target),
         }
     }
 
@@ -83,7 +84,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             )
     }
 
-    pub(in crate::game) fn install_fishing_hook(&mut self, mut hook: super::fishing::Hook) {
+    pub(in crate::game) fn install_fishing_hook(&mut self, mut hook: Hook) {
         hook.caster = self.side.lan_acting;
         hook.caster_generation = self.acting_player_join();
         self.hook.discard();
@@ -145,7 +146,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }) {
             self.hook.begin_loan();
         }
-        if let Some(host) = &mut self.lan {
+        if let Some(host) = &mut self.side.lan {
             host.hub
                 .guests
                 .bind_residency(journal, |id| super::Dim::from_id(id).key());
@@ -204,6 +205,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     ));
                 }
                 let Some(attachments) = self
+                    .side
                     .lan
                     .as_mut()
                     .and_then(|host| host.hub.guests.attachments_mut(conn))
@@ -216,7 +218,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let hook = if caster == self.side.lan_acting {
                     self.hook.as_mut()
                 } else {
-                    caster.and_then(|conn| self.lan.as_mut()?.play.get_mut(&conn)?.hook.as_mut())
+                    caster
+                        .and_then(|conn| self.side.lan.as_mut()?.play.get_mut(&conn)?.hook.as_mut())
                 };
                 let Some(hook) = hook else {
                     return SlotAccess::Missing;
@@ -228,7 +231,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn specialized_resident_source(
         &self,
         at: Location,
@@ -253,7 +256,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                 )
             }
             (Kind::Player, Source::Guest(conn)) => {
-                let host = self.lan.as_ref()?;
+                let host = self.side.lan.as_ref()?;
                 let guest = &host.hub.guests[host.hub.guests.connection_index(conn)?];
                 if guest.residency.location() != Some(at) || guest.released {
                     return None;
@@ -292,7 +295,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                         hook
                     }
                     Some(conn) => {
-                        let host = self.lan.as_ref()?;
+                        let host = self.side.lan.as_ref()?;
                         let guest = host
                             .hub
                             .guests

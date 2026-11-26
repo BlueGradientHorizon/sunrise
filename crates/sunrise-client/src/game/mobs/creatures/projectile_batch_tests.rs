@@ -582,7 +582,7 @@ fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
             .into_iter()
             .take(if case == "miss" { 1 } else { 2 })
         {
-            game.boats.push(crate::game::boats::Boat::new(
+            game.boats.push(crate::game::boats_common::Boat::new(
                 id,
                 Arc::from("oak"),
                 Vec3::new(8.5, y, 0.5),

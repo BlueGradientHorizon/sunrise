@@ -16,9 +16,9 @@
 //! from the join-order walk.
 
 use super::super::Game;
-use super::super::commands::Target;
 use super::super::native_ticks::TickRound;
-use super::{GeneralTypeCatalog, general_type_catalog};
+use crate::game::commands_common::Target;
+use crate::game::general::{GeneralTypeCatalog, general_type_catalog};
 use mod_api::EntityRef;
 use sunrise_sim::join_seq::JoinSeq;
 
@@ -44,7 +44,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// range gate), and a parked level never reaches here at all. A type
     /// slot resolved without subscribers costs its bookkeeping and nothing
     /// else: no per-row type lookup, call, or event allocation.
-    pub(in crate::game::server_side) fn tick_general(&mut self) -> sunrise_game_data::Result<()> {
+    pub(in crate::game) fn tick_general(&mut self) -> sunrise_game_data::Result<()> {
         if self.resident_entities.general.rows.is_empty() {
             return Ok(());
         }

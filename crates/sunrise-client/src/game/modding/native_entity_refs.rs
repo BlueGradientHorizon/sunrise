@@ -8,6 +8,7 @@
 //! copy: the local player and the entities the server told it of, in the level
 //! it shows. The entities are those of the level in place (the one a hook runs
 //! in) and the server's players, whatever their level.
+#[cfg(test)]
 #[path = "native_entity_refs/dragon_parts_table.rs"]
 pub(in crate::game) mod dragon_parts_table;
 #[path = "native_entity_refs/dragon_query.rs"]
@@ -22,16 +23,7 @@ pub(in crate::game) mod roll_loot_tests;
 pub(in crate::game) mod save_lending;
 #[allow(unused_imports)]
 use super::{
-    Game,
-    commands::Target,
-    entity::Entity,
-    pick_entity::{
-        aabb_extents,
-        pick_sections::{PickKind, PickMember},
-    },
-    remote::Remote,
-    text_displays::{RemoteTextDisplay, Shows},
-    transactions::After,
+    Game, commands::Target, entity::Entity, pick_entity_common::aabb_extents, transactions::After,
 };
 #[allow(unused_imports)]
 use core::ops::ControlFlow;
@@ -51,49 +43,6 @@ use sunrise_sim::join_seq::{
 };
 #[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
-
-/// The engine's direction of a mod API block face.
-pub(in crate::game::server_side) fn block_face_direction(
-    face: BlockFace,
-) -> sunrise_core::geometry::Direction {
-    use sunrise_core::geometry::Direction;
-    match face {
-        BlockFace::Down => Direction::Down,
-        BlockFace::Up => Direction::Up,
-        BlockFace::North => Direction::North,
-        BlockFace::South => Direction::South,
-        BlockFace::West => Direction::West,
-        BlockFace::East => Direction::East,
-        _ => unreachable!("BlockFace: unhandled variant"),
-    }
-}
-
-/// `ProjectileUtil.getEntityHitResult`'s test on a candidate: grow its box and clip it
-/// against the segment. A segment starting inside the grown box finds no entry (`AABB.clip`).
-pub(in crate::game::server_side) fn clip_entity_ray(
-    start: Vec3,
-    end: Vec3,
-    padding: Vec3,
-    entity: EntityRef,
-    [lo, hi]: [[f64; 3]; 2],
-) -> Option<(EntityRayHit, f64)> {
-    let grown = Aabb::new(
-        Vec3::new(lo[0], lo[1], lo[2]),
-        Vec3::new(hi[0], hi[1], hi[2]),
-    )
-    .inflate(padding);
-    let location = grown.clip(start, end)?.components();
-    let from = start.components();
-    let distance_squared = (0..3).map(|i| (location[i] - from[i]).powi(2)).sum::<f64>();
-    Some((
-        EntityRayHit {
-            entity,
-            location,
-            distance: distance_squared.sqrt(),
-        },
-        distance_squared,
-    ))
-}
 
 pub(in crate::game::server_side) fn list_query_body<T: Entity + Joined, const DIRECT: bool>(
     list: &JoinList<T, DIRECT>,
@@ -418,7 +367,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-        Some(self.with_level(|_, level, _| level.block_drops_of(at, state, tool, entity)))
+        Some(self.with_level(|_, level, _| {
+            crate::game::server_side::spill::block_drops_of(level, at, state, tool, entity)
+        }))
     }
     /// One roll of the world's loot table `table` (`LootTable.getRandomItems`) with `origin` as
     /// ORIGIN, `tool` as TOOL and `entity` as THIS_ENTITY when given: the context
@@ -707,28 +658,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// On a client, the one the server added it with (a player's is its
     /// profile's). API 373.
     pub(in crate::game) fn entity_uuid(&mut self, entity: EntityRef) -> Option<u128> {
-        if let Some(r) = &self.remote {
-            let id = i32::try_from(entity.id()).ok()?;
-            if self.native_entity_read_target(entity).is_none()
-                && self.native_client_tracked(entity).is_none()
-            {
-                return None;
-            }
-            if let Some(words) =
-                self.known_resident_entity_uuid_at(self.native_level_key(), entity.id())
-            {
-                return Some(uuid_from_words(words));
-            }
-            if let Some((uuid, _)) = r.level_player(id) {
-                return Some(uuid);
-            }
-            return self
-                .persist
-                .uuids
-                .get(&entity.id())
-                .copied()
-                .map(uuid_from_words);
-        }
         if self.native_lifecycle.epoch() == Some(entity.epoch())
             && self.mob_in_other_level(entity.id()).is_some()
         {
@@ -761,239 +690,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None => return None,
         };
         Some(self.level_ref(entity.epoch(), key))
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// What a handle names now, or None for a stale or foreign one.
-    pub(in crate::game) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
-        self.native_entity_target_with_location(entity)
-            .map(|(target, _)| target)
-    }
-
-    /// Resolve the handle and return its resident location, if admitted to the level.
-    pub(in crate::game) fn native_entity_target_with_location(
-        &self,
-        entity: EntityRef,
-    ) -> Option<(Target, Option<Location>)> {
-        self.native_entity_target_in(entity, self.dim.key())
-    }
-
-    /// [`Self::native_entity_target_with_location`] for an entity resident in the open server
-    /// level `dimension`, the one in place or a parked one.
-    pub(in crate::game) fn native_entity_target_in(
-        &self,
-        entity: EntityRef,
-        dimension: DimensionKey,
-    ) -> Option<(Target, Option<Location>)> {
-        if crate::game::Side::held_out(&self.side).contains(&entity.id())
-            || !self.is_logical_server()
-            || self.native_lifecycle.epoch() != Some(entity.epoch())
-        {
-            return None;
-        }
-        let EntityLookup::Found { location, value } = self.server_resident_entity(entity.id())
-        else {
-            // A lifecycle event lends the body without admitting it to the level.
-            let &(_, conn, _) = self
-                .player_state
-                .cloning_players
-                .iter()
-                .rev()
-                .find(|&&(_, _, id)| id == entity.id())?;
-            return if crate::game::Side::lan_acting(&self.side) == Some(conn) {
-                Some((Target::Player, None))
-            } else if crate::game::Side::lan_guest_swaps(&self.side).contains(&conn) {
-                None
-            } else {
-                Some((Target::Guest(conn), None))
-            };
-        };
-        // Players are server-wide records. Ordinary body operations retain
-        // their existing current-level domain; source membership is global.
-        (matches!(value, Target::Player | Target::Guest(_))
-            || location.owner.dimension == dimension)
-            .then_some((value, Some(location)))
-    }
-
-    pub(in crate::game) fn level_ray_trace_nearest_entity(
-        &self,
-        level: LevelRef,
-        from: [f64; 3],
-        to: [f64; 3],
-        margin: f64,
-        exclude: Option<EntityRef>,
-        accept: &mut dyn FnMut(EntityRef) -> bool,
-    ) -> Result<Option<EntityRayHit>, LevelReadError> {
-        let mut nearest = None;
-        self.visit_entity_ray_hits(
-            level,
-            from,
-            to,
-            margin,
-            exclude,
-            accept,
-            |hit, distance_squared| {
-                if nearest.is_none_or(|(_, best)| distance_squared < best) {
-                    nearest = Some((hit, distance_squared));
-                }
-            },
-        )?;
-        Ok(nearest.map(|(hit, _)| hit))
-    }
-
-    pub(in crate::game) fn visit_entity_ray_hits(
-        &self,
-        level: LevelRef,
-        from: [f64; 3],
-        to: [f64; 3],
-        margin: f64,
-        exclude: Option<EntityRef>,
-        mut accept: impl FnMut(EntityRef) -> bool,
-        mut visit: impl FnMut(EntityRayHit, f64),
-    ) -> Result<(), LevelReadError> {
-        if !(margin.is_finite() && from.iter().chain(&to).all(|v| v.is_finite())) {
-            return Err(LevelReadError::Unavailable);
-        }
-        // Every box the inflated or deflated test can hit meets the segment's own box
-        // padded by `margin.abs()` (including over-deflated boxes swapped by `Aabb::new`).
-        let pad = margin.abs();
-        let min = std::array::from_fn(|i| from[i].min(to[i]) - pad);
-        let max = std::array::from_fn(|i| from[i].max(to[i]) + pad);
-        let start = Vec3::new(from[0], from[1], from[2]);
-        let end = Vec3::new(to[0], to[1], to[2]);
-        let padding = Vec3::new(margin, margin, margin);
-        let _ = self.level_visit_entities_in(level, min, max, &mut |entity| {
-            // Match `ProjectileUtil.getEntityHitResult`: filter candidates before reading and
-            // clipping their bounding boxes. The walk releases any residency borrow before
-            // calling mod code.
-            if Some(entity) != exclude
-                && accept(entity)
-                && let Some(bounds) = self.entity_bounding_box(entity)
-                && let Some((hit, distance_squared)) =
-                    clip_entity_ray(start, end, padding, entity, bounds)
-            {
-                visit(hit, distance_squared);
-            }
-            ControlFlow::Continue(())
-        })?;
-        Ok(())
-    }
-
-    /// `ItemStack.getDestroySpeed` of `tool` on the block at `pos`.
-    pub(in crate::game) fn level_block_break_speed(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-        tool: Option<&ItemStack>,
-    ) -> Option<f32> {
-        let world = self.native_level_read_world(level)?;
-        if !world.loaded(pos[0], pos[2]) || !world.shape.contains_y(pos[1]) {
-            return None;
-        }
-        let state = world.block(pos[0], pos[1], pos[2]);
-        let name = &self.res.facts().get(state).name;
-        Some(self.items().mining_speed(tool, name))
-    }
-
-    /// The supplied state's block-local outline or collision boxes at a level
-    /// position with an empty context. The world is never modified. Returns None
-    /// for a stale or unavailable level. Unloaded neighbors
-    /// read as air; collision errors return no boxes, like `block_collision`.
-    pub(in crate::game) fn level_block_shape(
-        &self,
-        level: LevelRef,
-        state: BlockStateId,
-        pos: [i32; 3],
-        kind: BlockShapeKind,
-    ) -> Option<Vec<[f64; 6]>> {
-        if !self.is_logical_server() {
-            return (self.native_client_level() == Some(level)).then(|| {
-                self.state_shape_boxes(
-                    &self.world,
-                    crate::game::Side::shulkers(&self.side),
-                    state,
-                    pos,
-                    kind,
-                )
-            });
-        }
-        if !self.level_handle_current(level) {
-            return None;
-        }
-        let (world, shulkers) = if self.dim.key() == level.dimension() {
-            (&self.world, crate::game::Side::shulkers(&self.side))
-        } else {
-            let dim = crate::game::Side::levels(&self.side)?
-                .parked_dims()
-                .into_iter()
-                .find(|dim| dim.key() == level.dimension())?;
-            (
-                crate::game::Side::levels(&self.side)?.parked_world(dim)?,
-                &crate::game::Side::levels(&self.side)?
-                    .parked_anims(dim)?
-                    .shulkers,
-            )
-        };
-        Some(self.state_shape_boxes(world, shulkers, state, pos, kind))
-    }
-
-    /// The local face support in an open server level or the current client level,
-    /// including shapes published by local block entities. None for unavailable
-    /// levels, unloaded or out-of-height blocks, or a shape query error.
-    pub(in crate::game) fn level_block_face_sturdy(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-        face: BlockFace,
-        support: mod_api::SupportType,
-    ) -> Option<bool> {
-        super::native_world_read::block_face_sturdy(
-            self.native_level_read_world(level)?,
-            self.res.behaviours(),
-            self.res.collision(),
-            pos,
-            face,
-            support,
-        )
-    }
-
-    /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
-    /// for the kinds that don't turn. API 373.
-    pub(in crate::game) fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]> {
-        Some(self.target_rotation(self.native_entity_read_target(entity)?))
-    }
-
-    pub(in crate::game) fn native_client_general(
-        &self,
-        entity: EntityRef,
-    ) -> Option<&super::remote::RemoteGeneral> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
-        remote.general.rows.get(&id)
-    }
-
-    /// A mob of this game that is resident in a loaded level other than the
-    /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
-    /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
-    /// answer from there. None on a client or for anything else.
-    pub(in crate::game) fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
-        use sunrise_sim::join_seq::residency::table::EntityLookup;
-        if !self.is_logical_server() {
-            return None;
-        }
-        let EntityLookup::Found {
-            location,
-            value: Target::Mob(_),
-        } = self.server_resident_entity(id)
-        else {
-            return None;
-        };
-        let (dim, parked) = crate::game::Side::levels(&self.side)?
-            .parked
-            .iter()
-            .find(|(dim, _)| dim.key() == location.owner.dimension)?;
-        let mob = parked.mobs.get(parked.mobs.locate(location.join)?)?;
-        Some((*dim, mob))
     }
 }
 
@@ -1106,6 +802,7 @@ pub(in crate::game) mod general_handle_tests {
 #[cfg(test)]
 pub(in crate::game) mod ray_tests {
     use super::*;
+    use crate::game::native_entity_refs_common::clip_entity_ray;
 
     fn entity(id: u32) -> EntityRef {
         EntityRef::new(mod_api::WorldEpoch::new(1), id)
@@ -1554,7 +1251,7 @@ pub(in crate::game) mod tests {
             10,
         );
         guest.placed = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         game.reset_entity_residency();
     }
 
@@ -1835,6 +1532,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.reset_entity_residency();
@@ -1934,6 +1632,10 @@ pub(in crate::game) mod tests {
                 root.to_path_buf(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
 
@@ -3261,7 +2963,7 @@ pub(in crate::game) mod tests {
                 level_seeds: game.side.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             for id in [12, 13] {
                 let (tx, _rx) = std::sync::mpsc::channel();
                 let mut guest = Guest::new(
@@ -3305,7 +3007,8 @@ pub(in crate::game) mod tests {
                 sunrise_core::geometry::Vec3::new(3.0, 64.0, 5.0),
             )
             .unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3332,7 +3035,8 @@ pub(in crate::game) mod tests {
                 Some(20.0)
             );
             assert_eq!(guest_living.max_health(host), Some(20.0));
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3354,7 +3058,7 @@ pub(in crate::game) mod tests {
                 Some(&saddle)
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0]
+                game.side.lan.as_ref().unwrap().hub.guests[0]
                     .equipment
                     .get(sunrise_items::equipment::BODY)
                     .map(|s| &*s.item),
@@ -3470,7 +3174,7 @@ pub(in crate::game) mod tests {
                 assert!(game.player_set_abilities(player, a));
             })
             .unwrap();
-            let kept = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+            let kept = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
             assert_eq!(kept.game_mode, 1);
             assert_eq!(kept.previous_game_mode, Some(0));
             assert_eq!(
@@ -3481,7 +3185,15 @@ pub(in crate::game) mod tests {
             assert_eq!(kept.abilities.flying_speed, 0.4);
             assert_eq!(kept.abilities.walking_speed, 0.3);
             // The turn's write is stored in the guest's record.
-            let stored = game.lan.as_ref().unwrap().hub.guest(12).unwrap().abilities;
+            let stored = game
+                .side
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(12)
+                .unwrap()
+                .abilities;
             assert!(stored.may_fly && stored.walking_speed == 0.3);
             game.with_guest_swap(12, game.dim, |game| {
                 assert!(game.entity(12).is_some());
@@ -3534,7 +3246,8 @@ pub(in crate::game) mod tests {
             // default mode (survival) they get its abilities.
             let root = std::env::temp_dir().join(format!("abilities-force-{}", std::process::id()));
             game.side.world_root = root.clone();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3546,7 +3259,7 @@ pub(in crate::game) mod tests {
                 })
                 .unwrap();
             let joined = |game: &mut crate::game::ServerGame<'_>, force| {
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.hub.config.default_game_mode = 0;
                 host.hub.config.force_game_mode = force;
                 host.hub
@@ -3556,7 +3269,7 @@ pub(in crate::game) mod tests {
                     })
                     .unwrap();
                 game.lan_guest_joined(13, &[], [0.0, 64.0, 0.0], None);
-                let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
+                let g = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
                 (
                     g.game_mode,
                     g.abilities.may_fly,
@@ -3580,7 +3293,8 @@ pub(in crate::game) mod tests {
             assert_eq!(game.command_guest(12).unwrap().vehicle, Some(21));
             assert!(game.entity_stop_riding(guest));
             assert_eq!(game.command_guest(12).unwrap().vehicle, None);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3747,7 +3461,7 @@ pub(in crate::game) mod tests {
                 config,
             )
             .unwrap();
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.guests = std::mem::take(&mut hub.guests);
             {
                 let value = [1600.0, 64.0, 0.0];
@@ -3770,8 +3484,8 @@ pub(in crate::game) mod tests {
                     .any(|(chunk, _)| *chunk == (100, 0))
             );
             game.side.next_entity = 100;
-            game.lan.as_ref().unwrap().hub.lan.shared.next_id();
-            game.lan.as_ref().unwrap().hub.lan.shared.next_id();
+            game.side.lan.as_ref().unwrap().hub.lan.shared.next_id();
+            game.side.lan.as_ref().unwrap().hub.lan.shared.next_id();
             let level = game.level(game.dim.id()).unwrap();
             let role = game.options.execution_role;
             game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
@@ -3808,14 +3522,15 @@ pub(in crate::game) mod tests {
                 .join("target/fake-player-save-test");
             let _ = std::fs::remove_dir_all(&scratch);
             game.side.world_root = scratch.clone();
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let i = host.hub.guests.iter().position(|g| g.uuid == 1234).unwrap();
             let mut actor = host.hub.guests.remove(i);
             game.save_guest(&mut actor);
-            game.lan.as_mut().unwrap().hub.guests.insert(i, actor);
+            game.side.lan.as_mut().unwrap().hub.guests.insert(i, actor);
             assert!(!scratch.exists());
             game.side.world_root = saved_root;
             let conn = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -3918,7 +3633,8 @@ pub(in crate::game) mod tests {
             assert!(rolled_back.is_err());
             assert!(place.with_stack(game, |_| ()).is_none());
             assert_eq!(
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .hub
@@ -3986,7 +3702,8 @@ pub(in crate::game) mod tests {
             // A fake record in the Nether does not keep that level ticking.
             {
                 let value = "minecraft:the_nether".into();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -3997,7 +3714,8 @@ pub(in crate::game) mod tests {
             assert!(!ticking.contains(&super::super::Dim::Nether));
             {
                 let value = "minecraft:the_nether".into();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -4007,7 +3725,8 @@ pub(in crate::game) mod tests {
             assert!(game.levels_to_tick().contains(&super::super::Dim::Nether));
             {
                 let value = "minecraft:overworld".into();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -4097,7 +3816,7 @@ pub(in crate::game) mod tests {
                 game.side.guest_entity_events.is_empty() && game.side.guest_cooldowns.is_empty()
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[1]
+                game.side.lan.as_ref().unwrap().hub.guests[1]
                     .sender
                     .pending
                     .load(Ordering::Relaxed),
@@ -4197,7 +3916,7 @@ pub(in crate::game) mod tests {
                 10,
             );
             second.placed = true;
-            game.lan.as_mut().unwrap().hub.guests.push(second);
+            game.side.lan.as_mut().unwrap().hub.guests.push(second);
             game.with_guest_swap(real_id, game.dim, |game| {
                 game.side
                     .guest_cooldowns
@@ -4254,7 +3973,7 @@ pub(in crate::game) mod tests {
                 .join("target/fake-login-save-test");
             let _ = std::fs::remove_dir_all(&scratch);
             game.side.world_root = scratch.clone();
-            let shared = &game.lan.as_ref().unwrap().hub.lan.shared;
+            let shared = &game.side.lan.as_ref().unwrap().hub.lan.shared;
             let conn = shared.next_id().unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
             shared
@@ -4307,6 +4026,7 @@ pub(in crate::game) mod tests {
             );
             game.side.world_root = saved_root;
             let matching: Vec<_> = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -4323,6 +4043,7 @@ pub(in crate::game) mod tests {
             )]
             .into();
             let real_count = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -4333,16 +4054,22 @@ pub(in crate::game) mod tests {
                 .count();
             mod_platform::testing::with_mods(mods, || game.native_players_leaving());
             assert_eq!(logouts.load(Ordering::Relaxed), real_count);
-            game.lan.as_mut().unwrap().play.entry(fake_id).or_default();
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .play
+                .entry(fake_id)
+                .or_default();
             game.award_leave_game_to_all();
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             assert!(!host.play.get(&fake_id).unwrap().left_game);
             assert!(host.play.get(&real_id).unwrap().left_game);
             host.hub.ticks = 2401;
             assert_eq!(game.ban_ip_target("fake"), None);
             assert_eq!(game.ban_ip_target("real").as_deref(), Some("127.0.0.1"));
             game.kick_idle(1);
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert!(host.hub.guest(fake_id).unwrap().left_reason.is_empty());
             assert!(!host.hub.guest(real_id).unwrap().left_reason.is_empty());
             let old = game.fake_player(level, 6789, "reopen").unwrap();
@@ -4672,7 +4399,7 @@ pub(in crate::game) mod tests {
                     .is_none()
             );
             use sunrise_world::world_ray::RayWorld;
-            let mut ordinary = super::super::explosion::ColliderRays {
+            let mut ordinary = crate::game::collider_rays::ColliderRays {
                 scene: sunrise_level::collisions::SceneCollisions {
                     world: &game.world,
                     binding: game.collision,
@@ -4762,7 +4489,7 @@ pub(in crate::game) mod tests {
                 .clone();
             game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 14;
             game.dragon.replace(dragon);
             for (id, max) in [(12, 20.0), (13, 20.0), (14, 200.0)] {
@@ -4812,6 +4539,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.world
@@ -4951,6 +4679,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.world
@@ -5303,7 +5032,7 @@ pub(in crate::game) mod tests {
         with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -5350,7 +5079,7 @@ pub(in crate::game) mod tests {
                 ids(game, stale, [-1.0; 3], [3.0; 3]),
                 Err(LevelReadError::Stale)
             );
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(
                 ids(game, level, [-1.0; 3], [3.0; 3]),
                 Err(LevelReadError::Unavailable)
@@ -5382,7 +5111,7 @@ pub(in crate::game) mod tests {
         with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -5471,7 +5200,7 @@ pub(in crate::game) mod tests {
         with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;

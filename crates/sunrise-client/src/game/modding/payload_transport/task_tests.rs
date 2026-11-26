@@ -408,6 +408,7 @@ fn publish_task_server(game: &mut crate::game::ClientGame<'_>) -> u16 {
     .unwrap();
     let deadline = Instant::now() + Duration::from_secs(60);
     while !game
+        .side
         .remote
         .as_ref()
         .is_some_and(|r| r.logged_in && r.joined)
@@ -416,7 +417,8 @@ fn publish_task_server(game: &mut crate::game::ClientGame<'_>) -> u16 {
         assert!(Instant::now() < deadline);
         std::thread::yield_now();
     }
-    game.integrated
+    game.side
+        .integrated
         .as_ref()
         .unwrap()
         .call(|server| {
@@ -905,6 +907,7 @@ fn peer_completion_rejects_other_connections() {
             // The play Login is sent in the same tick as the join announcement.
             // Read the hook's record between ticks, while both connections are still open.
             let joins = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -953,7 +956,8 @@ fn retained_configuration_host_send_refuses_play_while_session_is_registered() {
                     }
                 }
                 let connection = fixture.connection.lock().unwrap().unwrap();
-                game.integrated
+                game.side
+                    .integrated
                     .as_ref()
                     .unwrap()
                     .call(move |server| {

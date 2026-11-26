@@ -1,6 +1,6 @@
 //! The tab list's entries as the client holds them, for reads that must not change them.
 
-use super::Remote;
+use super::session_state::Remote;
 use sunrise_level::profile_lookup::TabPlayer;
 
 impl Remote {

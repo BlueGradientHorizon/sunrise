@@ -2,8 +2,8 @@
 #[ignore = "daily"]
 fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
     use crate::game::Screen;
+    use crate::game::client_side::remote_client::RemoteDimensionEntry;
     use crate::game::native_entity_refs::tests::with_client_game;
-    use crate::game::remote::RemoteDimensionEntry;
     use mod_api::__private::game::RegistrationContextNew;
     use mod_api::{
         ClientHost, DimensionTransition, DimensionTransitionReason as ApiReason,
@@ -107,7 +107,7 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                             RemoteDimensionEntry::Login,
                             Reason::Other,
                         );
-                        let tracker = &mut game.remote.as_mut().unwrap().level_load;
+                        let tracker = &mut game.side.remote.as_mut().unwrap().level_load;
                         assert!(
                             tracker.transition_screen().is_none(),
                             "login skips incoming A"
@@ -116,7 +116,7 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
 
                         game.set_screen(Screen::Dead);
                         game.handle_packet(respawn(B, 0)).unwrap();
-                        let tracker = &game.remote.as_ref().unwrap().level_load;
+                        let tracker = &game.side.remote.as_ref().unwrap().level_load;
                         assert_eq!(tracker.reason, Reason::Other);
                         assert!(
                             tracker.transition_screen().is_none(),
@@ -124,7 +124,7 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                         );
 
                         game.handle_packet(respawn(A, 3)).unwrap();
-                        let tracker = &mut game.remote.as_mut().unwrap().level_load;
+                        let tracker = &mut game.side.remote.as_mut().unwrap().level_load;
                         assert!(
                             tracker.transition_screen().is_none(),
                             "an open vanilla screen also stays in place"
@@ -133,7 +133,7 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                         tracker.finish();
 
                         game.handle_packet(respawn(B, 3)).unwrap();
-                        let tracker = &game.remote.as_ref().unwrap().level_load;
+                        let tracker = &game.side.remote.as_ref().unwrap().level_load;
                         let mut batch = HudBatch::scratch([320, 240]);
                         assert!(game.draw_dimension_transition_screen(
                             &mut batch,
@@ -143,7 +143,7 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                         assert!(!batch.vertices.is_empty());
 
                         game.handle_packet(respawn(END, 3)).unwrap();
-                        let tracker = &game.remote.as_ref().unwrap().level_load;
+                        let tracker = &game.side.remote.as_ref().unwrap().level_load;
                         let mut updated = HudBatch::scratch([320, 240]);
                         assert!(game.draw_dimension_transition_screen(
                             &mut updated,
@@ -160,8 +160,8 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                             ]
                         );
 
-                        game.remote.as_mut().unwrap().level_load.finish();
-                        let tracker = &game.remote.as_ref().unwrap().level_load;
+                        game.side.remote.as_mut().unwrap().level_load.finish();
+                        let tracker = &game.side.remote.as_ref().unwrap().level_load;
                         assert!(!game.draw_dimension_transition_screen(
                             &mut updated,
                             tracker,
@@ -169,7 +169,7 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                         ));
                         game.handle_packet(respawn("minecraft:overworld", 3))
                             .unwrap();
-                        let tracker = &game.remote.as_ref().unwrap().level_load;
+                        let tracker = &game.side.remote.as_ref().unwrap().level_load;
                         let mut vanilla = HudBatch::scratch([320, 240]);
                         assert!(!game.draw_dimension_transition_screen(
                             &mut vanilla,

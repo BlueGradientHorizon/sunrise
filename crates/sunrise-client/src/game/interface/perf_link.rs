@@ -1,6 +1,6 @@
 //! `profile` against the server this window is connected to (docs/perf-platform.md §4.2): the request over `sunrise:perf`, its answer, and the warnings a refusal leaves in the client's capture.
 use super::Game;
-use super::profile_capture_server::{reply_text, reports_dir, shown};
+use crate::game::profile_capture_common::{reply_text, reports_dir, shown};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -109,11 +109,11 @@ fn unix_secs() -> i64 {
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether this window is a client of a server it does not run itself.
     pub(in crate::game::client_side) fn profiles_remote_server(&self) -> bool {
-        self.integrated.is_none() && self.remote.is_some()
+        self.side.integrated.is_none() && self.side.remote.is_some()
     }
 
     fn server_brand(&self) -> &str {
-        self.remote.as_ref().map_or("", |r| r.brand.as_str())
+        self.side.remote.as_ref().map_or("", |r| r.brand.as_str())
     }
 
     fn send_perf(&self, request: &Request) {
@@ -439,7 +439,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.abandon_part();
         }
         let now = Instant::now();
-        let lost = self.remote.is_none() && !self.side.profile.server_link.is_idle();
+        let lost = self.side.remote.is_none() && !self.side.profile.server_link.is_idle();
         let silent = self.side.profile.server_link.timed_out(now);
         let stalled = self.side.profile.server_link.stalled(now);
         if !lost && !silent && !stalled {

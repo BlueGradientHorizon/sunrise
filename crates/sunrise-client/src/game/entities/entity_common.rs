@@ -1,8 +1,8 @@
 //! Common entity helpers shared by client and server (`PlacementWorld`, spawn/placement checks,
 //! body motion/restitution/item contacts, suffocation, dismount, critical check, and sound wrapper).
 use super::{Game, Hit, entity::Entity as _};
-use crate::game::server_side::{
-    armor_stands::overlaps as stand_overlaps, cushions::aabb as cushion_aabb,
+use crate::game::{
+    armor_stands_common::overlaps as stand_overlaps, cushions_common::aabb as cushion_aabb,
 };
 use std::sync::Arc;
 use sunrise_core::geometry::{Aabb, Vec3};

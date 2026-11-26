@@ -1,116 +1,24 @@
 //! Particles a server sends its players and its clients draw:
 //! `ClientboundLevelParticlesPacket` (`ServerLevel.sendParticles`, which
 //! `/particle` uses) and `ClientboundExplodePacket` (`ServerLevel.explode`).
-use super::{Game, explosion_settings::BlastEffects, lan::LanHost, level_sounds::LevelSound};
-use mod_api::{SoundSource, client::particles::PositionSource};
+use super::{Game, explosion_settings::BlastEffects, lan::LanHost};
+use crate::game::level_sounds_common::LevelSound;
+use mod_api::SoundSource;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
-use sunrise_level::particle_options::{ParticleOptions, ParticleType};
-#[allow(unused_imports)]
+use sunrise_level::particle_options::ParticleType;
 use sunrise_protocol::{
-    entity_data::{Particle, ParticleData, PositionSource as NetworkPositionSource},
+    entity_data::Particle,
     packets::play::{self, Clientbound as C},
 };
 use sunrise_sim::lan::server_effects::{
-    ServerExplosion, ServerExplosionParticle, ServerParticle, ServerParticleData,
-    ServerQueuedParticle,
+    ServerExplosion, ServerExplosionParticle, ServerParticle, ServerQueuedParticle,
 };
 use sunrise_sim::lan::{Body, containers::within_range, hub::Hub};
 use sunrise_world::registry::BlockStateId;
-
-/// Convert engine `ParticleOptions` (from `/particle` or native mod APIs) into a portable
-/// [`ServerParticle`]. Returns `None` only when a typed mod particle fails stream encoding.
-pub(in crate::game) fn server_particle_from_options(
-    options: &ParticleOptions,
-    state: Option<BlockStateId>,
-) -> Option<ServerParticle> {
-    use ParticleType as T;
-    if let Some(name) = &options.mod_particle {
-        let bytes = if let Some((value, _)) = &options.typed_particle {
-            match mod_api::__private::encode_particle_stream(
-                value,
-                sunrise_protocol::frame::MAX_UNCOMPRESSED,
-            ) {
-                Ok(bytes) => bytes,
-                Err(error) => {
-                    log::warn!("Cannot encode particle {name}: {error}");
-                    return None;
-                }
-            }
-        } else {
-            Vec::new()
-        };
-        return Some(ServerParticle::mod_particle(name.as_ref(), bytes));
-    }
-    let rgb = [options.color[0], options.color[1], options.color[2]];
-    let data = match options.ty {
-        T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble => match state
-        {
-            Some(state) => ServerParticleData::Block(state),
-            None => ServerParticleData::None,
-        },
-        T::Dust => ServerParticleData::ColorScale {
-            rgb,
-            scale: options.scale,
-        },
-        T::DustColorTransition => ServerParticleData::ColorScale2 {
-            from: rgb,
-            to: options.to_color,
-            scale: options.scale,
-        },
-        T::Effect | T::InstantEffect => ServerParticleData::ColorPower {
-            rgb,
-            power: options.scale,
-        },
-        T::EntityEffect | T::TintedLeaves | T::Flash => {
-            ServerParticleData::ColorRgba(options.color)
-        }
-        T::DragonBreath | T::SculkCharge => ServerParticleData::Scalar(options.scale),
-        T::Shriek => ServerParticleData::Delay(options.scale as i32),
-        T::Geyser | T::GeyserPlume => match options.geyser {
-            Some((water_blocks, _)) => ServerParticleData::Geyser(water_blocks),
-            None => ServerParticleData::None,
-        },
-        T::GeyserBase | T::GeyserPoof => match options.geyser {
-            Some((water_blocks, burst_impulse_base)) => ServerParticleData::GeyserBase {
-                water_blocks,
-                burst_impulse_base,
-            },
-            None => ServerParticleData::None,
-        },
-        T::Vibration => match &options.vibration {
-            Some((source, _, ticks)) => ServerParticleData::Vibration {
-                source: source.clone(),
-                ticks: *ticks,
-            },
-            None => ServerParticleData::None,
-        },
-        T::Item => match &options.item_stack {
-            Some(stack) => ServerParticleData::Item(stack.clone()),
-            None => ServerParticleData::None,
-        },
-        T::Trail => match options.trail {
-            Some((target, duration)) => {
-                let b = |v: f32| ((v.clamp(0.0, 1.0) * 255.0).round() as u32) & 255;
-                let color = (b(rgb[0]) << 16) | (b(rgb[1]) << 8) | b(rgb[2]);
-                ServerParticleData::Trail {
-                    target,
-                    color,
-                    duration,
-                }
-            }
-            None => ServerParticleData::None,
-        },
-        _ => ServerParticleData::None,
-    };
-    Some(ServerParticle {
-        ty: options.ty,
-        data,
-    })
-}
 
 /// `PowderSnowBlock.entityInside`'s server roll. The branch and both float
 /// draws follow Java's `getKnownMovement`/`randomBetween` order.
@@ -138,29 +46,6 @@ pub(in crate::game::server_side) fn send_native_nearby(
             continue;
         }
         guest.sender.send(packet.clone());
-    }
-}
-
-/// Resolve and decode a custom envelope once, before any effect can spawn it.
-pub(in crate::game) fn decode_mod_particle(name: &str, bytes: &[u8]) -> Option<ParticleOptions> {
-    match mod_api::__private::decode_particle_stream(name, bytes) {
-        Ok(Some(value)) => ParticleOptions::typed(value),
-        Ok(None) => Some(ParticleOptions::named(name)),
-        Err(error) => {
-            log::warn!("Cannot decode particle {name}: {error}");
-            None
-        }
-    }
-}
-
-/// A protocol or mob-event listener as the API's plain particle data.
-pub(in crate::game) fn particle_position_source(source: &NetworkPositionSource) -> PositionSource {
-    match source {
-        NetworkPositionSource::Block(pos) => PositionSource::Block(*pos),
-        NetworkPositionSource::Entity { id, y_offset } => PositionSource::Entity {
-            id: *id,
-            y_offset: *y_offset,
-        },
     }
 }
 
@@ -200,7 +85,7 @@ pub(in crate::game::server_side) fn send_soul_particle(
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A snowflake from a vehicle (`PowderSnowBlock.entityInside`), to every player around.
     pub(in crate::game::server_side) fn lan_snowflake(&self, at: [f64; 3], velocity: [f64; 3]) {
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             send_snowflake_particle(host, at, velocity);
         }
     }
@@ -307,7 +192,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         particle: &ServerParticle,
         at: [f64; 3],
     ) {
-        let (Some(host), Some(particle)) = (&self.lan, self.network_particle(particle)) else {
+        let (Some(host), Some(particle)) = (&self.side.lan, self.network_particle(particle)) else {
             return;
         };
         let packet = C::LevelParticles(play::LevelParticles {
@@ -341,7 +226,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         speed: f64,
         count: u32,
     ) {
-        let Some(hub) = self.lan.as_ref().map(|h| &h.hub) else {
+        let Some(hub) = self.side.lan.as_ref().map(|h| &h.hub) else {
             return;
         };
         send_hub_level_particles(hub, particle, at, spread, speed, count);
@@ -444,7 +329,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         particle: &ServerParticle,
     ) -> Option<Particle> {
-        self.lan.as_ref()?.hub.server_particle(particle)
+        self.side.lan.as_ref()?.hub.server_particle(particle)
     }
 
     /// `ServerLevel.sendParticles` for the players a server serves: one
@@ -455,7 +340,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// guest) the packet waits for the turn to end so that it reaches every
     /// player, the guest too.
     pub(in crate::game) fn server_send_particles(&mut self, request: ServerQueuedParticle) {
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             if self.is_logical_server() {
                 self.side.pending_particles.push(request);
             }
@@ -474,7 +359,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(particle) = self.network_particle(&particle) else {
             return;
         };
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let sunrise_only = particle.sunrise_only();
@@ -510,7 +395,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<super::creatures::NativeSound> {
         let sound_known = |game: &Self, name: &str| {
             !name.starts_with("minecraft:")
-                || game.lan.as_ref().is_some_and(|host| {
+                || game.side.lan.as_ref().is_some_and(|host| {
                     host.hub
                         .registry_id("minecraft:sound_event", name)
                         .is_some()
@@ -556,7 +441,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         sound: &super::creatures::NativeSound,
     ) {
-        let Some(host) = &self.lan else { return };
+        let Some(host) = &self.side.lan else { return };
         let packet = host.hub.sound_packet(
             &sound.sound,
             sound.at,
@@ -601,7 +486,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// bound to an entity, `_at_position` otherwise). One at a position also
     /// goes wrapped to its level's viewers (`Hub::send_viewed_sound`).
     pub(in crate::game) fn flush_native_sounds(&mut self) {
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return;
         }
         // Leave sounds queued by callbacks for the next flush.
@@ -614,7 +499,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// The particles guests' turns put off.
     pub(in crate::game) fn flush_lan_particles(&mut self) {
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return;
         }
         for request in std::mem::take(&mut self.side.pending_particles) {
@@ -639,7 +524,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // In a guest's turn (their hit on an end crystal or a minecart) the
         // host holds the players (`as_guest`): the packet waits for the turn
         // to end so that it reaches every player, the guest too.
-        if self.side.lan_acting.is_some() && self.lan.is_none() {
+        if self.side.lan_acting.is_some() && self.side.lan.is_none() {
             self.side.pending_explosions.push(ServerExplosion {
                 center,
                 small,
@@ -650,7 +535,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
             return;
         }
-        let packet = self.lan.as_ref().and_then(|lan| {
+        let packet = self.side.lan.as_ref().and_then(|lan| {
             explosion_packet(
                 &lan.hub,
                 center,
@@ -697,7 +582,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             ParticleType::GustEmitterLarge
         });
-        let packet = self.lan.as_ref().and_then(|lan| {
+        let packet = self.side.lan.as_ref().and_then(|lan| {
             explosion_packet(&lan.hub, center, radius, block_count, &emitter, sound, &[])
         });
         if let Some(packet) = packet {
@@ -712,7 +597,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mut packet: play::Explode,
         pushed: &[(u32, [f64; 3])],
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let center = packet.center;
@@ -774,9 +659,16 @@ pub(in crate::game::server_side) fn explosion_packet(
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use crate::game::lan_particle_data::{
+        decode_mod_particle, particle_position_source, server_particle_from_options,
+    };
+    use mod_api::client::particles::PositionSource;
     use sunrise_core::random::LegacyRandom;
     use sunrise_level::particle_options::{ParticleOptions, ParticleType};
-    use sunrise_protocol::packets::play;
+    use sunrise_protocol::{
+        entity_data::{ParticleData, PositionSource as NetworkPositionSource},
+        packets::play,
+    };
     use sunrise_sim::lan::{
         Joined, Lan, NetConfig, Out, PlayerSender,
         chunks::ChunkEncoder,

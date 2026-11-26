@@ -2,9 +2,9 @@
 //! packet adopts a column and tells its load once the blocks are in; every route that frees a
 //! column (eviction, a radius shrink, the forget packet, level close) tells its unload, and the
 //! view centre moving away hides slots untold.
+use crate::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use crate::game::execution_role::ExecutionRole;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_role_client};
-use crate::game::remote::RemoteDimensionEntry;
 use mod_api::{ClientChunkLoadEvent, ClientChunkUnloadEvent, ClientHost, Hooks};
 use std::sync::Mutex;
 use sunrise_protocol::{
@@ -64,7 +64,8 @@ fn with_loopback(f: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
         root.prepared().to_path_buf(),
         ExecutionRole::Client,
         |game| {
-            game.native_lifecycle = crate::game::native_lifecycle::NativeLifecycle::default();
+            game.native_lifecycle =
+                crate::game::native_lifecycle_common::NativeLifecycle::default();
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "ChunkProbe").unwrap();
             game.enter_remote_dimension(
@@ -72,7 +73,7 @@ fn with_loopback(f: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
                 RemoteDimensionEntry::Login,
                 sunrise_client::level_loading::Reason::Other,
             );
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             take_calls();
             f(game);
         },

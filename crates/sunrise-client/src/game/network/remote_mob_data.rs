@@ -25,7 +25,7 @@ pub(in crate::game) fn apply(
 ) -> Option<[f64; 3]> {
     let species = m.species();
     let mut stare_sound = None;
-    let baby = super::lan::baby_index(species);
+    let baby = crate::game::lan_mob_metadata::baby_index(species);
     if &*m.kind.id == "minecraft:player" {
         player_poses(m, values);
     }
@@ -468,7 +468,7 @@ fn swirls(list: &Particles, builtin: &Builtin) -> Vec<ParticleOptions> {
     list.iter()
         .filter_map(|p| {
             if let Some(ParticleData::Mod { name, options }) = &p.data {
-                return super::lan_particles::decode_mod_particle(name, options);
+                return crate::game::lan_particle_data::decode_mod_particle(name, options);
             }
             let name = builtin.get("minecraft:particle_type")?.name(p.id)?;
             let ty = ParticleType::from_name(name)?;
@@ -498,7 +498,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         id: i32,
         values: &[(u8, i32, Value)],
     ) {
-        let Some(r) = &self.remote else {
+        let Some(r) = &self.side.remote else {
             return;
         };
         // LivingEntity.onSyncedDataUpdated(SLEEPING_POS_ID): any living entity
@@ -513,8 +513,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .and_then(|head| self.sleeping_position(head));
         let professions = r.professions.clone();
         if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32) {
-            let stare_sound =
-                super::villager_client::receive(m, values, &r.builtin, r.entity_id, &professions);
+            let stare_sound = crate::game::client_side::villager_client_client::receive(
+                m,
+                values,
+                &r.builtin,
+                r.entity_id,
+                &professions,
+            );
             apply_registry_data(m, values, &r.registries, self.world.game_time);
             if let Some(pos) = sleeping_pos {
                 m.extra.sleeping_pos = pos;
@@ -734,7 +739,11 @@ pub(in crate::game) mod tests {
             server.ticks_frozen = frozen;
             state.meta.clear();
             state.defaults.clear();
-            super::super::lan::mob_freeze_meta(&server, &mut state.meta, &mut state.defaults);
+            crate::game::lan_mob_metadata::mob_freeze_meta(
+                &server,
+                &mut state.meta,
+                &mut state.defaults,
+            );
             let mut packets = Vec::new();
             level.tick(
                 &[&state],
@@ -921,7 +930,11 @@ pub(in crate::game) mod tests {
             set(&mut server, on);
             state.meta.clear();
             state.defaults.clear();
-            super::super::lan::mob_raider_meta(&server, &mut state.meta, &mut state.defaults);
+            crate::game::lan_mob_metadata::mob_raider_meta(
+                &server,
+                &mut state.meta,
+                &mut state.defaults,
+            );
             let mut packets = Vec::new();
             level.tick(
                 &[&state],

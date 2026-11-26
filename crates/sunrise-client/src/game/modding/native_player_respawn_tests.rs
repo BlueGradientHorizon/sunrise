@@ -5,7 +5,8 @@ use mod_api::{Hooks, PlayerRespawnedEvent, RespawnRefusal, ServerHost, prelude::
 use std::sync::{Arc, Mutex};
 
 fn set_dead(game: &mut crate::game::ServerGame<'_>, conn: u32, dead: bool) {
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -17,7 +18,14 @@ fn set_dead(game: &mut crate::game::ServerGame<'_>, conn: u32, dead: bool) {
 }
 
 fn is_dead(game: &crate::game::ServerGame<'_>, conn: u32) -> bool {
-    game.lan.as_ref().unwrap().hub.guest(conn).unwrap().dead
+    game.side
+        .lan
+        .as_ref()
+        .unwrap()
+        .hub
+        .guest(conn)
+        .unwrap()
+        .dead
 }
 
 /// Records each `player_respawned`.
@@ -71,11 +79,12 @@ fn a_player_who_won_the_game_is_respawned_alive_as_the_button_does() {
     mod_platform::testing::with_mods(mods, || {
         with_guests(|game| {
             let b = game.players().server_players()[1];
-            game.lan.as_mut().unwrap().hub.update_guest(13, |g| {
+            game.side.lan.as_mut().unwrap().hub.update_guest(13, |g| {
                 g.spawn = Some([3.5, 64.0, 5.5]);
             });
             game.remove_old_player_for_clone(13, false);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -137,7 +146,7 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
             b.uuid(),
         );
         assert_eq!(stale.respawn(game), Err(RespawnRefusal::Stale));
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         let index = hub.guests.connection_index(13).unwrap();
         hub.guests.remove(index);
         assert_eq!(b.respawn(game), Err(RespawnRefusal::Stale));

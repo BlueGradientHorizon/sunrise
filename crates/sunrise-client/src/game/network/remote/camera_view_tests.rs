@@ -41,10 +41,10 @@ pub(in crate::game) fn with_spectator(test: impl FnOnce(&mut crate::game::Client
         game.connect_local(client, "CameraViewTest").unwrap();
         game.enter_remote_dimension(
             &spawn("minecraft:overworld"),
-            super::RemoteDimensionEntry::Login,
+            crate::game::client_side::remote_client::RemoteDimensionEntry::Login,
             Reason::Other,
         );
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = OWN;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
@@ -82,7 +82,7 @@ pub(in crate::game) fn registry_id(
     registry: &str,
     name: &str,
 ) -> i32 {
-    let remote = game.remote.as_ref().unwrap();
+    let remote = game.side.remote.as_ref().unwrap();
     remote.builtin.get(registry).unwrap().id(name).unwrap()
 }
 
@@ -528,7 +528,7 @@ fn a_canceled_tick_counts_no_effect_down() {
         with_spectator(|game| {
             // The spectator views the zombie: it is the camera entity.
             set_camera(game, ZOMBIE);
-            assert_eq!(game.remote.as_ref().unwrap().camera, Some(ZOMBIE));
+            assert_eq!(game.side.remote.as_ref().unwrap().camera, Some(ZOMBIE));
             add(game, HUSK, "minecraft:husk", [6.0, 64.0, 6.0]);
             add(game, TICKING, "minecraft:zombie", [7.0, 64.0, 7.0]);
             for id in [ZOMBIE, HUSK, TICKING] {

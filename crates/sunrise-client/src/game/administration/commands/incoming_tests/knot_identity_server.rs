@@ -15,7 +15,7 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
     let mut game = game(&mut resources);
     summon_pig(&mut game, 1, 16.5);
     step(&mut game);
-    assert!(game.lan.is_none());
+    assert!(game.side.lan.is_none());
     let [id] = knots(&game)[..] else {
         panic!("{:?}", knots(&game));
     };
@@ -28,7 +28,7 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
     host(&mut game);
     step(&mut game);
     step(&mut game);
-    assert!(game.lan.is_some());
+    assert!(game.side.lan.is_some());
     game.lan_assign_ids();
     assert_eq!(
         game.side.knot_ids.get(&[8, 201, 0]),
@@ -96,5 +96,5 @@ pub(in crate::game::server_side) fn host(game: &mut crate::game::ServerGame<'_>)
     );
     guest.placed = true;
     guest.loaded = true;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
 }

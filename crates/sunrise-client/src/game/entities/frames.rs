@@ -3,59 +3,15 @@
 //! `hurtServer` (take the item out, then break the frame) and
 //! `ItemFrameRenderer` (the frame model and the item at a 45 degree step).
 use super::{Game, Hit, InteractTarget};
-use sunrise_assets::{bake::bake_model, item_model::OwnerState, resolve::ModelLibrary};
+use crate::game::frames_common::center;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_gameplay_common::painting_variants::frame_coexists;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemFrame;
-/// A baked frame model: (corners in block units, unit UVs, sprite) per quad.
-pub(in crate::game) type FrameModel = Vec<([[f32; 3]; 4], [[f32; 2]; 4], String)>;
-
-/// Item-frame variants prepared together for one resource generation.
-pub(in crate::game) fn bake_frames(library: Option<&ModelLibrary>) -> [FrameModel; 4] {
-    [
-        "item_frame",
-        "glow_item_frame",
-        "item_frame_map",
-        "glow_item_frame_map",
-    ]
-    .map(|name| library.map_or_else(Vec::new, |library| bake_frame(library, name)))
-}
-
-/// Bake `block/<name>` (item_frame / glow_item_frame) from the resources.
-pub(in crate::game::server_side) fn bake_frame(library: &ModelLibrary, name: &str) -> FrameModel {
-    let Ok(resolved) = library.resolve(&format!("minecraft:block/{name}")) else {
-        return Vec::new();
-    };
-    let Ok(quads) = bake_model(&resolved) else {
-        return Vec::new();
-    };
-    let unit = if quads
-        .iter()
-        .flat_map(|q| q.positions)
-        .any(|p| p.iter().any(|v| *v > 1.5))
-    {
-        16.0
-    } else {
-        1.0
-    };
-    quads
-        .into_iter()
-        .map(|q| {
-            (
-                q.positions.map(|p| p.map(|v| v / unit)),
-                q.uv,
-                q.material
-                    .sprite
-                    .trim_start_matches("minecraft:")
-                    .to_owned(),
-            )
-        })
-        .collect()
-}
 pub(in crate::game::server_side) fn facing_of(face: [i32; 3]) -> u8 {
     match face {
         [0, -1, 0] => 0,
@@ -74,10 +30,6 @@ pub(in crate::game) fn sound(f: &ItemFrame, what: &str) -> String {
     };
     format!("minecraft:entity.{prefix}.{what}")
 }
-pub(in crate::game) fn center(f: &ItemFrame) -> [f64; 3] {
-    let (lo, hi) = f.bounds();
-    std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0)
-}
 /// `HangingEntity.spawnAtLocation`: drops sit 0.15 out from the wall.
 pub(in crate::game) fn hanging_drop_position(center: [f64; 3], step: [i32; 3]) -> [f64; 3] {
     [
@@ -85,41 +37,6 @@ pub(in crate::game) fn hanging_drop_position(center: [f64; 3], step: [i32; 3]) -
         center[1],
         center[2] + f64::from(step[2]) * 0.15,
     ]
-}
-/// A frame's item, waiting for its model: the frames' borrow of `self` ends
-/// before `resolve_item` reads the pack.
-pub(in crate::game) struct FramedItem {
-    pub(in crate::game) stack: ItemStack,
-    pub(in crate::game) id: u32,
-    pub(in crate::game) matrix: glam::Mat4,
-    pub(in crate::game) light: u8,
-    pub(in crate::game) cull: bool,
-    pub(in crate::game) kind: &'static str,
-    pub(in crate::game) owner: OwnerState,
-}
-/// `ItemFrameRenderer.extractRenderState`'s `ItemOwner` (`updateForNonLiving`
-/// with the frame entity): `ItemFrame.position` and
-/// `ItemFrame.getVisualRotationYInDegrees`.
-pub(in crate::game) fn frame_owner(f: &ItemFrame) -> OwnerState {
-    super::item_draw::owner_at(center(f), visual_rotation_y_degrees(f), f.kind())
-}
-/// `ItemFrame.getVisualRotationYInDegrees`: the frame's own yaw, as an item
-/// model's owner reads it (a framed compass's needle turns with it).
-pub(in crate::game::server_side) fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
-    // `Direction.get2DDataValue` of a wall frame, and the axis direction's
-    // step for the two flat ones.
-    let s = f.step();
-    let (two_d, correction) = match (s[0], s[1], s[2]) {
-        (0, 0, 1) => (0, 0),
-        (-1, 0, 0) => (1, 0),
-        (0, 0, -1) => (2, 0),
-        (1, 0, 0) => (3, 0),
-        (0, y, _) => (-1, 90 * y),
-        _ => (0, 0),
-    };
-    sunrise_level::camera_math::wrap_degrees(
-        180.0 + (two_d * 90) as f32 + f32::from(f.rotation) * 45.0 + correction as f32,
-    )
 }
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ItemFrame.survives` (not fixed): no collision, a solid block behind
@@ -149,7 +66,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ));
         let supported = behind.legacy_solid || (s[1] == 0 && behind.has_class("DiodeBlock"));
         // canCoexist(true): only hanging entities facing the same way block it.
-        supported && super::paintings::frame_coexists(f, &self.item_frames, &self.paintings)
+        supported && frame_coexists(f, &self.item_frames, &self.paintings)
     }
     /// Asks the mods whether the acting guest may place a hanging entity
     /// of type `kind` at `pos` (`native_hanging_place`): true when one
@@ -274,7 +191,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         target: Option<InteractTarget>,
     ) -> bool {
         let Some((i, d)) = (match target {
-            Some(t) => Self::named_entity(&self.item_frames, t.id, |f| f.id).map(|i| (i, 0.0)),
+            Some(t) => crate::game::item_actions::named_entity(&self.item_frames, t.id, |f| f.id)
+                .map(|i| (i, 0.0)),
             None => self.frame_hit(),
         }) else {
             return false;
@@ -606,7 +524,7 @@ pub(in crate::game) mod source_tests {
         let library = sunrise_client::model_library::ParsedModels::load(&source)
             .into_item_library()
             .unwrap();
-        let [model, ..] = super::bake_frames(Some(&library));
+        let [model, ..] = crate::game::client_side::frames_client::bake_frames(Some(&library));
         assert_eq!(model.len(), 1);
         assert_eq!(model[0].2, "example:block/frame");
     }

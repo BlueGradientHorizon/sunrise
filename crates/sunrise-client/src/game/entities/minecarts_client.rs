@@ -1,16 +1,20 @@
 use super::Game;
 use crate::game::minecarts::CartKind;
 use crate::game::minecarts::HEIGHT;
-use crate::game::minecarts::Minecart;
-use crate::game::minecarts::PreparedModelFace;
 use crate::game::minecarts::TNT_PRIME_EVENT;
 use crate::game::minecarts::WIDTH;
 use crate::game::minecarts::cart_render_bounds;
 use crate::game::minecarts::display_offset;
-use crate::game::minecarts::emit_model_faces;
 use crate::game::minecarts::shown_unless_air;
+use crate::game::minecarts::{Minecart, Shape};
+use crate::game::{
+    api_values::TryIntoApi, cart_rails::dispatch_cart_rail_direction,
+    native_level_signals::ReadLevel,
+};
+use std::collections::HashMap;
 use sunrise_client::{
     mesher::Vertex,
+    mobs::Part,
     sound_engine::{CartSound, PlayResult, SoundInstance, Sounds},
 };
 use sunrise_core::geometry::Vec3;
@@ -18,23 +22,193 @@ use sunrise_level::random_source;
 use sunrise_sim::mobs::anim::Poses;
 use sunrise_world::registry::BlockStateId;
 
-impl CartKind {
-    /// Whether this cart's `interact` passes on the client, so that
-    /// `Minecraft.startUseItem` uses the held item instead: `MinecartTNT` has
-    /// none of its own (`Entity.interact`), `MinecartCommandBlock.interact`
-    /// needs a game master, and `Minecart.interact` a player not sneaking at
-    /// an empty cart.
-    pub fn interact_passes(self, sneaking: bool, ridden: bool, game_master: bool) -> bool {
-        match self {
-            Self::Tnt | Self::Spawner => true,
-            Self::CommandBlock => !game_master,
-            Self::Rideable => sneaking || ridden,
-            Self::Chest | Self::Hopper | Self::Furnace => false,
+#[cfg_attr(test, derive(Clone))]
+pub(in crate::game) struct CartModels {
+    pub models: HashMap<CartKind, Part>,
+}
+impl CartModels {
+    pub fn load(document: Option<&sunrise_client::mobs::EntityModelDocument>) -> Self {
+        let kinds = [
+            CartKind::Rideable,
+            CartKind::Chest,
+            CartKind::Hopper,
+            CartKind::Furnace,
+            CartKind::Tnt,
+            CartKind::CommandBlock,
+            CartKind::Spawner,
+        ];
+        let models = kinds
+            .into_iter()
+            .filter_map(|k| document?.model(&format!("{}#main", k.id())).map(|m| (k, m)))
+            .collect();
+        Self { models }
+    }
+}
+/// Local geometry with atlas coordinates resolved for both CPU and GPU consumers.
+#[derive(Clone, Copy)]
+pub(in crate::game) struct PreparedModelFace {
+    pub(in crate::game) positions: [[f32; 3]; 4],
+    pub(in crate::game) uv: [[f32; 2]; 4],
+    pub(in crate::game) facing: sunrise_assets::model::Direction,
+    pub(in crate::game) tint_index: i32,
+    /// The side that hides this face when a neighbour covers it (`ModelQuad::cull`).
+    pub(in crate::game) cull: Option<sunrise_assets::model::Direction>,
+    pub(in crate::game) light_emission: u8,
+}
+
+impl PreparedModelFace {
+    pub(in crate::game) fn new(
+        quad: &sunrise_assets::bake::ModelQuad,
+        sprite: sunrise_client::hud::Rect,
+    ) -> Self {
+        Self {
+            positions: quad.positions,
+            uv: quad.uv.map(|uv| {
+                [
+                    sprite.u0 + uv[0] * (sprite.u1 - sprite.u0),
+                    sprite.v0 + uv[1] * (sprite.v1 - sprite.v0),
+                ]
+            }),
+            facing: quad.facing,
+            tint_index: quad.tint_index,
+            cull: quad.cull,
+            light_emission: quad.light_emission,
+        }
+    }
+
+    pub(in crate::game) fn positions(&self) -> [[f32; 3]; 4] {
+        self.positions
+    }
+}
+
+/// Shared transform, shading and light path for block-state and prepared standalone faces.
+pub(in crate::game) fn emit_model_faces(
+    faces: impl IntoIterator<Item = (PreparedModelFace, u32)>,
+    m: glam::Mat4,
+    diffuse: bool,
+    tint: impl Fn(i32) -> Option<u32>,
+    out: &mut Vec<Vertex>,
+) {
+    use sunrise_assets::model::Direction as D;
+    let mut normals = sunrise_client::item_render::FaceNormals::new(m);
+    for (quad, light) in faces {
+        let shade: u32 = match quad.facing {
+            D::Up => 255,
+            D::Down => 127,
+            D::North | D::South => 204,
+            D::West | D::East => 153,
+        };
+        let mut color = if diffuse {
+            u32::MAX
+        } else {
+            0xFF00_0000 | shade << 16 | shade << 8 | shade
+        };
+        if let Some(t) = tint(quad.tint_index) {
+            color =
+                sunrise_client::hud_layout::multiply(color, sunrise_client::mobs::render::abgr(t));
+        }
+        let normal = if diffuse {
+            let n = normals
+                .face(quad.facing)
+                .to_array()
+                .map(|v| (v.clamp(-1.0, 1.0) * 127.0) as i8);
+            [n[0], n[1], n[2], 127]
+        } else {
+            [0; 4]
+        };
+        let light = if diffuse {
+            let emission = u32::from(quad.light_emission) * 16;
+            (light & 0xFF) | (light >> 8 & 0xFF).max(emission) << 8
+        } else {
+            light
+        };
+        for k in 0..4 {
+            let uv = quad.uv[k];
+            out.push(Vertex {
+                normal,
+                pos: m
+                    .transform_point3(glam::Vec3::from_array(quad.positions[k]))
+                    .to_array(),
+                uv,
+                layer: 0,
+                color,
+                light,
+                glint_uv: [0.0, 0.0],
+            });
         }
     }
 }
 
+/// Vanilla multiplies tint, alpha included, only when `tintIndex != -1`.
+pub(in crate::game) fn scale_tint_alpha<'f>(
+    vertices: &mut [Vertex],
+    faces: impl IntoIterator<Item = &'f PreparedModelFace>,
+    tint: u32,
+) {
+    let alpha = tint >> 24;
+    if alpha == 255 {
+        return;
+    }
+    let (quads, _) = vertices.as_chunks_mut::<4>();
+    for (face, quad) in faces.into_iter().zip(quads) {
+        if face.tint_index < 0 {
+            continue;
+        }
+        for vertex in quad {
+            let scaled = (vertex.color >> 24) * alpha / 255;
+            vertex.color = vertex.color & 0x00FF_FFFF | scaled << 24;
+        }
+    }
+}
+
+/// `Minecart.tick`: stationary rotation does not turn the passenger.
+pub(in crate::game) fn accumulate_rotation(c: &mut Minecart) {
+    c.passenger_yaw_delta = 0.0;
+    if c.kind == CartKind::Rideable && c.position.subtract(c.previous).length() > 0.01 {
+        c.rotation_offset += ((f64::from(c.yaw) - f64::from(c.previous_yaw)) % 360.0) as f32;
+        c.rotation_offset %= 360.0;
+    }
+}
+/// `Minecart.positionRider`: double rotLerp, then round back to float.
+/// Only yaw follows; the player's pitch and manual look remain their own.
+pub(in crate::game) fn rotate_passenger(c: &mut Minecart, yaw: &mut f32) {
+    let mut delta = (f64::from(c.rotation_offset) - f64::from(c.player_rotation_offset)) % 360.0;
+    if delta >= 180.0 {
+        delta -= 360.0;
+    }
+    if delta < -180.0 {
+        delta += 360.0;
+    }
+    let next = (f64::from(c.player_rotation_offset) + 0.5 * delta) as f32;
+    let previous = *yaw;
+    *yaw -= next - c.player_rotation_offset;
+    c.passenger_yaw_delta = *yaw - previous;
+    c.player_rotation_offset = next;
+}
+
 impl Game<'_, crate::game::client_side::ClientState> {
+    pub(in crate::game) fn client_cart_rail_direction(
+        &self,
+        cart: Option<u32>,
+        state: BlockStateId,
+        pos: sunrise_core::position::BlockPos,
+        text: &str,
+        vanilla: Shape,
+    ) -> Shape {
+        let (Some(level), Some(epoch), Ok(api_state)) = (
+            self.level(self.dim.id()),
+            self.native_lifecycle.epoch(),
+            state.try_into_api(),
+        ) else {
+            return vanilla;
+        };
+        let read = ReadLevel { game: self, level };
+        let read = ReadLevel { game: self, level };
+        let side = mod_api::LevelSide::Client(&read);
+        let cart = cart.map(|id| mod_api::EntityRef::new(epoch, id));
+        dispatch_cart_rail_direction(side, self.dim.level(), api_state, pos, cart, text)
+    }
+
     /// `tinted_block_model_vertices` for baked models given as they are (a
     /// state's, or a standalone model).
     pub(in crate::game) fn baked_model_vertices<'m>(
@@ -581,36 +755,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let models = models.into_iter().map(|(_, model)| model);
         self.baked_model_vertices(models, m, light, diffuse, tint, out);
-    }
-}
-
-impl Minecart {
-    /// `Minecart.tick`: stationary rotation does not turn the passenger.
-    pub(in crate::game::client_side) fn accumulate_rotation(&mut self) {
-        self.passenger_yaw_delta = 0.0;
-        if self.kind == CartKind::Rideable && self.position.subtract(self.previous).length() > 0.01
-        {
-            self.rotation_offset +=
-                ((f64::from(self.yaw) - f64::from(self.previous_yaw)) % 360.0) as f32;
-            self.rotation_offset %= 360.0;
-        }
-    }
-    /// `Minecart.positionRider`: double rotLerp, then round back to float.
-    /// Only yaw follows; the player's pitch and manual look remain their own.
-    pub(in crate::game::client_side) fn rotate_passenger(&mut self, yaw: &mut f32) {
-        let mut delta =
-            (f64::from(self.rotation_offset) - f64::from(self.player_rotation_offset)) % 360.0;
-        if delta >= 180.0 {
-            delta -= 360.0;
-        }
-        if delta < -180.0 {
-            delta += 360.0;
-        }
-        let next = (f64::from(self.player_rotation_offset) + 0.5 * delta) as f32;
-        let previous = *yaw;
-        *yaw -= next - self.player_rotation_offset;
-        self.passenger_yaw_delta = *yaw - previous;
-        self.player_rotation_offset = next;
     }
 }
 

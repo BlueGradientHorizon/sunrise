@@ -1,16 +1,22 @@
 //! Real menu storage and Game journal integration, before hook-route migration.
 //! These exercise Menu::click, not the synthetic MenuState planner. They do not
 //! assert public hook dispatch.
-use super::*;
 use crate::game::{
-    native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
+    native_entity_refs::tests::run_fresh_cases,
+    native_guest_turn_tests::with_guests,
+    server_side::decision_engine_server::{EnginePlan, ServerDecisionTarget as Target},
+    transactions::decision::{
+        Admission, GameHost, Identity, Outcome, Reply, Side, StaleReason, run,
+    },
 };
-use sunrise_sim::menu::{Input, Kind};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::menu::{Input, Kind, Menu as EngineMenu};
 
 fn fixture(game: &mut crate::game::ServerGame<'_>) -> (Target, Identity) {
     let mut menu = Box::new(EngineMenu::new(Kind::Inventory));
     menu.carried = Some(ItemStack::new("minecraft:stone", 3));
     *game
+        .side
         .lan
         .as_mut()
         .unwrap()
@@ -143,6 +149,7 @@ fn actual_owner_replacement_is_stale_and_same_owner_reentry_is_busy() {
                     );
                     let same_menu = host
                         .game
+                        .side
                         .lan
                         .as_mut()
                         .unwrap()
@@ -155,6 +162,7 @@ fn actual_owner_replacement_is_stale_and_same_owner_reentry_is_busy() {
                     assert!(matches!(Target::admit(host.game, 12), Err(Admission::Busy)));
                     *host
                         .game
+                        .side
                         .lan
                         .as_mut()
                         .unwrap()

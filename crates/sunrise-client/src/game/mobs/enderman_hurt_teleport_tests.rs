@@ -35,6 +35,7 @@ fn floored_game<'a>(
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     for cx in -2..=2 {

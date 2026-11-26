@@ -1,6 +1,10 @@
 //! Control-socket commands for menus and item components, so scripts can
 //! drive the workstation screens (`sunrise-ctl click-slot 600`, ...).
 use super::{Game, Screen};
+use crate::game::{
+    integrated_link::NO_ANSWER,
+    owner_link::{ControlRequest, OwnerRequest},
+};
 use serde_json::{Value, json};
 use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
@@ -109,16 +113,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "xp" => {
                 let n: i32 = arg(1)?.parse()?;
                 let server = self
+                    .side
                     .integrated
                     .as_ref()
                     .ok_or("xp requires a single-player world")?;
                 let level = server
                     .ask(|reply| {
-                        super::owner_link::OwnerRequest::Control(
-                            super::owner_link::ControlRequest::GiveLevels { levels: n, reply },
-                        )
+                        OwnerRequest::Control(ControlRequest::GiveLevels { levels: n, reply })
                     })
-                    .ok_or(super::integrated::NO_ANSWER)??;
+                    .ok_or(NO_ANSWER)??;
                 Ok(Some(json!({ "ok": true, "level": level })))
             }
             "setblock" => {
@@ -137,7 +140,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             "use" => {
                 let pos = [arg(1)?.parse()?, arg(2)?.parse()?, arg(3)?.parse()?];
-                if self.remote.is_some() {
+                if self.side.remote.is_some() {
                     self.send_use_item_on_block(pos);
                 } else {
                     return Err("not connected to a world".into());
@@ -225,16 +228,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     ))
                 };
                 let server = self
+                    .side
                     .integrated
                     .as_ref()
                     .ok_or("effect requires a single-player world")?;
                 server
                     .ask(|reply| {
-                        super::owner_link::OwnerRequest::Control(
-                            super::owner_link::ControlRequest::StationEffect { effect, reply },
-                        )
+                        OwnerRequest::Control(ControlRequest::StationEffect { effect, reply })
                     })
-                    .ok_or(super::integrated::NO_ANSWER)??;
+                    .ok_or(NO_ANSWER)??;
                 ok()
             }
             "trade" => {

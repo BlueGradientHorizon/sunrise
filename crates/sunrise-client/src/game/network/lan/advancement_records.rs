@@ -18,7 +18,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(uuid) = self.records_uuid(host, guest.uuid) else {
             return;
         };
-        let path = super::stats::player_json(&self.side.world_root, "advancements", uuid);
+        let path = sunrise_gameplay_common::stats::player_json(
+            &self.side.world_root,
+            "advancements",
+            uuid,
+        );
         let json = guest
             .advancements
             .to_json(&self.adv.tree, sunrise_world::DATA_VERSION);
@@ -45,11 +49,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         self.save_guest_advancements(host, guest);
         if let Some(play) = host.play.get(&guest.conn) {
-            play.stats.write(&super::stats::player_json(
-                &self.side.world_root,
-                "stats",
-                uuid,
-            ));
+            play.stats
+                .write(&sunrise_gameplay_common::stats::player_json(
+                    &self.side.world_root,
+                    "stats",
+                    uuid,
+                ));
         }
     }
 }

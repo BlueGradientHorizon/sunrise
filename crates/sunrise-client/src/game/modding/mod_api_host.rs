@@ -2,7 +2,7 @@ use super::api_values::{TryIntoApi, TryIntoEngine};
 use mod_api::{AttachmentAccess, BlockPos, Direction};
 use {
     sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, attachment_compound},
-    sunrise_world::level::Ticks,
+    sunrise_world::level::{LevelEvent, Ticks},
 };
 
 pub(in crate::game) fn world_attachments(
@@ -190,7 +190,7 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
         if !self.is_loaded(pos) {
             return None;
         }
-        super::native_world_read::state_fluid(
+        crate::game::native_world_read_common::state_fluid(
             self.base.behaviours,
             self.base.registry,
             self.block(pos),
@@ -263,7 +263,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         if !self.native_authoritative {
             self.api_level?;
         }
-        super::native_world_read::block_face_sturdy(
+        crate::game::native_world_read_common::block_face_sturdy(
             self.world,
             self.behaviours,
             self.collision,
@@ -276,7 +276,9 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         if !self.native_authoritative {
             self.api_level?;
         }
-        Some(super::native_world_read::can_see_sky(self.world, pos))
+        Some(crate::game::native_world_read_common::can_see_sky(
+            self.world, pos,
+        ))
     }
     fn has_item_capability(&self, pos: [i32; 3], side: Option<mod_api::Direction>) -> Option<bool> {
         let level = self.api_level?;
@@ -288,7 +290,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         Some(mod_api::__private::item_capability_present(self, site))
     }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
-        super::native_block_entity_refs::world_block_entity(self.world, self.api_level?, pos)
+        crate::game::native_block_entity_read::world_block_entity(self.world, self.api_level?, pos)
     }
     fn container_size(&self, at: mod_api::BlockSide) -> Option<usize> {
         if !self.native_authoritative
@@ -320,7 +322,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         namespace: &str,
         name: &str,
     ) -> Result<mod_api::AttachmentBatch, mod_api::PartStateError> {
-        super::native_block_entity_refs::part_snapshot(
+        crate::game::native_block_entity_read::part_snapshot(
             self.world,
             self.api_level,
             self.native_authoritative,
@@ -343,7 +345,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         }
         let entity = self.world.block_entities.get(&key)?;
         let name = &self.facts.get(self.world.block(x, y, z)).name;
-        super::native_block_entity_refs::save_without_metadata(
+        crate::game::native_block_entity_read::save_without_metadata(
             self.world, key, entity, name, self.items,
         )
     }
@@ -379,7 +381,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         if !self.native_authoritative {
             return None;
         }
-        super::native_world_read::block_in_tag(block, tag)
+        crate::game::native_world_read_common::block_in_tag(block, tag)
     }
     fn tags(&self) -> &dyn mod_api::Tags {
         self
@@ -389,14 +391,14 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         if !(self.world.shape.contains_y(y) && self.world.loaded(x, z)) {
             return None;
         }
-        super::native_world_read::state_fluid(
+        crate::game::native_world_read_common::state_fluid(
             self.behaviours,
             self.registry,
             self.world.block(x, y, z),
         )
     }
     fn state_fluid_state(&self, state: mod_api::BlockState) -> Option<mod_api::FluidState> {
-        super::native_world_read::state_fluid(
+        crate::game::native_world_read_common::state_fluid(
             self.behaviours,
             self.registry,
             state.try_into_engine(&()).ok()?,
@@ -416,7 +418,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
     }
     fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
         self.native_authoritative
-            .then(|| super::native_world_read::fluid_in_tag(self.items, fluid, tag))
+            .then(|| crate::game::native_world_read_common::fluid_in_tag(self.items, fluid, tag))
     }
     fn state_with_property(
         &self,
@@ -429,7 +431,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
             .ok()
     }
     fn brightness(&self, layer: mod_api::LightLayer, pos: [i32; 3]) -> i32 {
-        super::native_level_refs::world_brightness(self.world, layer, pos)
+        crate::game::native_world_read_common::world_brightness(self.world, layer, pos)
     }
     fn raw_brightness(&self, pos: [i32; 3], sky_darken: i32) -> i32 {
         sunrise_world::level::raw_brightness(
@@ -479,7 +481,7 @@ impl mod_api::LevelRandomHost for super::GameLevel<'_> {
         if !self.native_authoritative || !self.world.is_loaded_at(pos[0], pos[1], pos[2]) {
             return None;
         }
-        Some(super::machines::container_signal(
+        Some(crate::game::machine_containers::container_signal(
             self,
             BlockPos::new(pos[0], pos[1], pos[2]),
         ))
@@ -510,13 +512,13 @@ impl mod_api::LevelHost for super::native_hooks::HitLevel<'_> {
     }
     fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
         self.0.tags()?;
-        super::native_world_read::block_in_tag(block, tag)
+        crate::game::native_world_read_common::block_in_tag(block, tag)
     }
     fn tags(&self) -> &dyn mod_api::Tags {
         self
     }
     fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        Some(super::native_world_read::fluid_in_tag(
+        Some(crate::game::native_world_read_common::fluid_in_tag(
             self.0.tags()?,
             fluid,
             tag,
@@ -779,9 +781,9 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
     ) -> Option<()> {
         let stack = super::native_living_body::body_equipment(
             self.party_body(party)?,
-            super::native_living_refs::hand_slot(hand),
+            crate::game::native_equipment_read::hand_slot(hand),
         )?;
-        super::native_living_refs::lend_equipment(stack, read)
+        crate::game::native_equipment_read::lend_equipment(stack, read)
     }
     fn living_no_ai(&self, party: mod_api::__private::LivingParty) -> Option<bool> {
         super::native_living_body::body_no_ai(self.party_body(party)?)
@@ -1322,7 +1324,7 @@ mod attachment_membership_tests {
             let player_id = game.player.as_ref().unwrap().entity_id as u32;
             assert_membership(game, player_id);
             assert!(!old_membership(game, player_id));
-            game.install_fishing_hook(crate::game::fishing::Hook::remote(
+            game.install_fishing_hook(crate::game::fishing_common::Hook::remote(
                 900,
                 Vec3::ZERO,
                 [1, 2, 3, 4],
@@ -1348,7 +1350,7 @@ mod attachment_membership_tests {
                 );
             }
             game.as_guest(12, |game| {
-                game.install_fishing_hook(crate::game::fishing::Hook::remote(
+                game.install_fishing_hook(crate::game::fishing_common::Hook::remote(
                     901,
                     Vec3::ZERO,
                     [5, 6, 7, 8],
@@ -1417,7 +1419,7 @@ mod attachment_membership_tests {
                 Err(mod_api::AttachmentError::HolderBusy)
             ));
             game.mobs.put_back(0, taken);
-            let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 500;
             game.dragon.replace(dragon);
             for id in 500..=508 {
@@ -1476,5 +1478,38 @@ mod attachment_membership_tests {
                 );
             }
         });
+    }
+}
+
+/// Whether level event `id` can play with `data`: the events that carry a
+/// block state (2001, 2014, 3008) need `data` to be one of the `states`.
+pub(in crate::game) fn level_event_data_ok(id: i32, data: i32, states: usize) -> bool {
+    !matches!(id, 2001 | 2014 | 3008) || usize::try_from(data).is_ok_and(|d| d < states)
+}
+
+impl super::GameLevel<'_> {
+    /// `Level.levelEvent(null, id, pos, data)` for a hook that holds the
+    /// level's write host: the event joins the ones the block behaviour
+    /// emits, in order, and plays when the write that runs the hook is
+    /// done (`process_level_events`), with the guests told as for any event
+    /// the behaviour raises. False off an authoritative server, or for an
+    /// event that carries a block state (see `level_level_event`)
+    /// when `data` isn't one.
+    pub(in crate::game) fn native_level_event(
+        &mut self,
+        id: i32,
+        pos: [i32; 3],
+        data: i32,
+    ) -> bool {
+        if !self.native_authoritative || !level_event_data_ok(id, data, self.facts.states.len()) {
+            return false;
+        }
+        self.events.push(LevelEvent::LevelEvent {
+            id,
+            pos: sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]),
+            data,
+            source: None,
+        });
+        true
     }
 }

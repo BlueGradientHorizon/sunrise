@@ -7,7 +7,7 @@ fn a_sound_entity_is_heard_where_its_entity_is() {
     let mut tracked = HashMap::new();
     tracked.insert(
         7,
-        crate::game::remote::Tracked {
+        crate::game::client_side::remote_client::Tracked {
             kind: "minecraft:cow".to_owned(),
             position: [8.5, 64.0, -3.5],
             previous: [8.5, 64.0, -3.5],
@@ -61,7 +61,7 @@ fn a_sound_entity_retains_silence_for_players_and_non_mob_targets() {
     let mut tracked = HashMap::new();
     tracked.insert(
         7,
-        crate::game::remote::Tracked {
+        crate::game::client_side::remote_client::Tracked {
             kind: "minecraft:arrow".to_owned(),
             position: [8.5, 64.0, -3.5],
             previous: [8.5, 64.0, -3.5],

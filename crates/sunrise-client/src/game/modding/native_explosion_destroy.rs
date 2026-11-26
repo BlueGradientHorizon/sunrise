@@ -32,7 +32,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(ExplosionDestroyError::InvalidBlast);
         }
         if !self.level_in_place(level)
-            || (self.serving.is_none() && self.options.dedicated.is_none())
+            || (self.side.serving.is_none() && self.options.dedicated.is_none())
         {
             return Err(ExplosionDestroyError::Unavailable);
         }

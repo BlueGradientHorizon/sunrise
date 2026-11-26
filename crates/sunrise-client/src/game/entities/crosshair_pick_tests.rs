@@ -1,13 +1,14 @@
 //! Crosshair targeting parity tests (#32 TNT/falling blocks, #34 root-vehicle exclusion) against vanilla 26.3.
 use crate::game::{
-    FallingBlock, InteractTarget, in_own_process,
-    interactions::RemoteInteraction,
+    FallingBlock, InteractTarget,
+    client_side::remote_client::session_state::RemoteDimensionEntry,
+    entity_memory::OffLevel,
+    in_own_process,
+    interactions_common::RemoteInteraction,
     native_client_session::tests::finish_login,
     native_entity_refs::tests::{with_client_game, with_game},
-    native_lifecycle::NativeLifecycle,
-    persist::OffLevel,
-    remote::RemoteDimensionEntry,
-    tnt::PrimedTnt,
+    native_lifecycle_common::NativeLifecycle,
+    tnt_common::PrimedTnt,
 };
 use mod_api::CrosshairTarget;
 use serde_json::Value;
@@ -73,7 +74,8 @@ fn face_from_name(name: &str) -> [i32; 3] {
 }
 
 fn entity_type_id(game: &crate::game::ClientGame<'_>, kind: &str) -> i32 {
-    game.remote
+    game.side
+        .remote
         .as_ref()
         .unwrap()
         .builtin
@@ -105,7 +107,7 @@ fn setup_remote_overworld(
         sea_level: 63,
     };
     game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-    let remote = game.remote.as_mut().unwrap();
+    let remote = game.side.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = player_id;
     remote.view_distance = 8;
@@ -188,7 +190,12 @@ fn pin_entity_pose(
         return;
     }
     let uid = id as u32;
-    if let Some(t) = game.remote.as_mut().and_then(|r| r.entities.get_mut(&id)) {
+    if let Some(t) = game
+        .side
+        .remote
+        .as_mut()
+        .and_then(|r| r.entities.get_mut(&id))
+    {
         (t.position, t.previous) = (pos_arr, pos_arr);
         (t.yaw, t.previous_yaw, t.pitch, t.previous_pitch) = (yaw, yaw, pitch, pitch);
     }
@@ -1254,7 +1261,7 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
 
             with_client_game(|game| {
                 let _pipe = crate::game::native_client_session::tests::logged_client(game);
-                game.remote.as_mut().unwrap().entity_id = 1;
+                game.side.remote.as_mut().unwrap().entity_id = 1;
                 ensure_chunk(game, 0, 0);
                 game.side.title.0 = None;
                 game.block_reach = 4.5;
@@ -1281,9 +1288,9 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                              kind: &str,
                              position: [f64; 3],
                              vehicle: Option<u32>| {
-                    game.remote.as_mut().unwrap().entities.insert(
+                    game.side.remote.as_mut().unwrap().entities.insert(
                         id,
-                        crate::game::remote::Tracked {
+                        crate::game::client_side::remote_client::session_state::Tracked {
                             kind: kind.into(),
                             position,
                             previous: position,
@@ -1413,13 +1420,18 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 game.mobs
                     .push(Mob::new(150, pig_type, Vec3::new(0.5, 66.2, 0.5), 0.0));
-                game.remote.as_mut().unwrap().passenger_vehicles.insert(
-                    150,
-                    crate::game::remote_vehicles::PassengerSeat {
-                        vehicle: 1,
-                        index: 0,
-                    },
-                );
+                game.side
+                    .remote
+                    .as_mut()
+                    .unwrap()
+                    .passenger_vehicles
+                    .insert(
+                        150,
+                        crate::game::remote::passengers::PassengerSeat {
+                            vehicle: 1,
+                            index: 0,
+                        },
+                    );
                 game.refresh_client_pick(1.0);
                 assert_eq!(
                     game.crosshair_entity_id(),
@@ -1446,13 +1458,18 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                     .push(Mob::new(130, camel_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
                 game.mobs
                     .push(Mob::new(131, husk_type, Vec3::new(0.5, 64.17, 1.0), 0.0));
-                game.remote.as_mut().unwrap().passenger_vehicles.insert(
-                    131,
-                    crate::game::remote_vehicles::PassengerSeat {
-                        vehicle: 130,
-                        index: 1,
-                    },
-                );
+                game.side
+                    .remote
+                    .as_mut()
+                    .unwrap()
+                    .passenger_vehicles
+                    .insert(
+                        131,
+                        crate::game::remote::passengers::PassengerSeat {
+                            vehicle: 130,
+                            index: 1,
+                        },
+                    );
                 let behind_tnt = Vec3::new(0.5, 65.3, 2.5);
                 game.tnts.push(PrimedTnt {
                     size_answer: None,
@@ -1537,13 +1554,18 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                     [0.5, 66.1, 1.9],
                     Some(110),
                 );
-                game.remote.as_mut().unwrap().passenger_vehicles.insert(
-                    113,
-                    crate::game::remote_vehicles::PassengerSeat {
-                        vehicle: 110,
-                        index: 1,
-                    },
-                );
+                game.side
+                    .remote
+                    .as_mut()
+                    .unwrap()
+                    .passenger_vehicles
+                    .insert(
+                        113,
+                        crate::game::remote::passengers::PassengerSeat {
+                            vehicle: 110,
+                            index: 1,
+                        },
+                    );
                 game.refresh_client_pick(1.0);
                 assert_eq!(
                     game.crosshair_entity_id(),

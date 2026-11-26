@@ -161,6 +161,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         m.position = at;
         m.previous = at;
         if let Some(handler) = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.stepped.get_mut(&(id as i32)))
@@ -215,6 +216,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             0 => {
                 if self.player.is_some()
                     && self
+                        .side
                         .remote
                         .as_ref()
                         .is_some_and(|remote| remote.entity_id == id)
@@ -296,7 +298,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.remote_swing_packet();
                 }
             } else {
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.destroying = None;
                     r.is_destroying = false;
                 }
@@ -312,7 +314,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     pub(in crate::game) fn remote_handle_input(&mut self) {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let stop = std::mem::take(&mut r.stop_mining);
@@ -331,7 +333,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The server's death message; chat uses the shared ChatComponent.
     pub(in crate::game::client_side) fn remote_hud(&self, batch: &mut HudBatch) {
-        let Some(r) = &self.remote else { return };
+        let Some(r) = &self.side.remote else { return };
         let atlas = &self.side.gui.atlas;
         let w = batch.width;
         if self.side.screen == Screen::Dead
@@ -482,7 +484,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // Minecraft.startUseItem returns before resetting rightClickDelay
         // while a survival block break is active.
-        if self.remote.as_ref().is_some_and(|r| r.is_destroying) {
+        if self.side.remote.as_ref().is_some_and(|r| r.is_destroying) {
             return;
         }
         self.use_delay = 4;
@@ -576,7 +578,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // the packet still goes and the server fills the bottle.
             return !source(Some(Fluid::Water));
         }
-        if crate::game::boats::any_boat_wood(id).is_some() {
+        if crate::game::boats_common::any_boat_wood(id).is_some() {
             return self.boat_to_place(held).is_none();
         }
         false
@@ -586,9 +588,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         action: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let previous = self.remote.as_ref().map(|remote| remote.interaction_swing);
+        let previous = self
+            .side
+            .remote
+            .as_ref()
+            .map(|remote| remote.interaction_swing);
         let result = action(self);
-        if let (Some(remote), Some(previous)) = (self.remote.as_mut(), previous) {
+        if let (Some(remote), Some(previous)) = (self.side.remote.as_mut(), previous) {
             remote.interaction_swing = previous;
         }
         result

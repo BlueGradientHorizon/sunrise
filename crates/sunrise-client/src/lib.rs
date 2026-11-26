@@ -26,7 +26,7 @@ static ALLOCATOR: sunrise_threads::GameAllocator = sunrise_threads::GAME_ALLOCAT
 )]
 #[cfg_attr(not(feature = "client"), allow(dead_code, unused_imports))]
 pub mod game;
-pub mod orb_limits;
+pub use sunrise_sim::orb_limits;
 #[cfg(test)]
 mod test_game_dir;
 

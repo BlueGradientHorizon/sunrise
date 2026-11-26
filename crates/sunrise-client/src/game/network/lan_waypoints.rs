@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         enabled: bool,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(guest) = host.hub.guest(conn) else {
@@ -108,7 +108,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::LOCATOR_BAR);
-        if let Some(host) = self.lan.as_mut()
+        if let Some(host) = self.side.lan.as_mut()
             && let Some(manager) = host.waypoints.get_mut(&level)
         {
             for (conn, packet) in manager.set_transmitting(&players, uuid, enabled, locator_bar) {
@@ -124,7 +124,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`ServerLevel.removePlayerImmediately`: untracked for everyone there)
     /// and joins the new one's (`addDuringTeleport`).
     pub(in crate::game::server_side) fn lan_update_waypoints(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let players: Vec<_> = host
@@ -132,7 +132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .online_players()
             .map(|g| (g.dimension.clone(), g.dead, self.waypoint_player(g)))
             .collect();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let mut respawned = Vec::new();

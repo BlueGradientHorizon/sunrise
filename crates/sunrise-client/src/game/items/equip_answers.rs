@@ -286,7 +286,7 @@ mod tests {
                 assert_eq!(contents.try_insert(game.items(), &mut helmet, true), 1);
                 contents.store(&mut bundle);
                 let held = |game: &crate::game::ServerGame<'_>| {
-                    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                     let name = |s: &Option<ItemStack>| s.as_ref().map(|s| s.item.to_string());
                     let inside = (guest.carried.as_ref())
                         .and_then(|b| Contents::of(game.items(), b))
@@ -301,9 +301,15 @@ mod tests {
                 };
                 // Right clicks (button 1) of the pickup mode on menu slots 5 (head) and 8 (feet).
                 let click = |game: &mut crate::game::ServerGame<'_>, slot: i16| {
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.carried = Some(bundle.clone());
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.carried = Some(bundle.clone());
+                        });
                     let click = ContainerClick {
                         container: 0,
                         state: 0,

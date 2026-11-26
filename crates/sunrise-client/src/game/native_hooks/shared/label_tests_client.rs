@@ -71,7 +71,8 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
             }
             // A server title lets the actual drawing path exercise both labels.
             let title = sunrise_game_data::text::Text::literal("Title");
-            game.remote
+            game.side
+                .remote
                 .as_mut()
                 .unwrap()
                 .set_menu_title(Some(title.clone()));

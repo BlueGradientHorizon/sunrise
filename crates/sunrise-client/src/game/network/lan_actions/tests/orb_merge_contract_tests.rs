@@ -37,7 +37,7 @@ fn open(game: &mut crate::game::ServerGame<'_>) {
     let mut g = guest(1);
     g.loaded = true;
     g.position = [0.5, 70.0, 0.5];
-    game.lan.as_mut().unwrap().hub.guests.push(g);
+    game.side.lan.as_mut().unwrap().hub.guests.push(g);
 }
 
 /// Forced merge of different values, then the exact total written back.
@@ -161,7 +161,7 @@ fn a_resident_merge_of_three_times_two_and_five_saves_and_pays_eleven() {
             assert_eq!((back[0].value, back[0].count), (11, 1));
             game.guest_orbs(0);
             assert!(game.orbs.is_empty());
-            paid = game.lan.as_ref().unwrap().hub.guests[0].xp_total;
+            paid = game.side.lan.as_ref().unwrap().hub.guests[0].xp_total;
         });
     });
     assert_eq!(paid, 11);
@@ -182,7 +182,7 @@ fn a_spawning_merge_of_three_times_two_and_five_saves_and_pays_eleven() {
             assert_eq!((back[0].value, back[0].count), (11, 1));
             game.guest_orbs(0);
             assert!(game.orbs.is_empty());
-            paid = game.lan.as_ref().unwrap().hub.guests[0].xp_total;
+            paid = game.side.lan.as_ref().unwrap().hub.guests[0].xp_total;
         });
     });
     assert_eq!(paid, 11);

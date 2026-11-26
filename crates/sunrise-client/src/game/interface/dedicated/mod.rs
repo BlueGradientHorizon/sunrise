@@ -22,7 +22,6 @@ use sunrise_core::nbt::{JavaString, Tag};
 use sunrise_game_data::{Result, text::Text};
 use sunrise_perf_format::v1::{StopReason, Trigger};
 use sunrise_protocol::text::translatable;
-use sunrise_server_files::profiles;
 use sunrise_server_files::{
     eula,
     properties::{GAME_MODES, ServerProperties, SystemEntropy},
@@ -33,7 +32,8 @@ use sunrise_server_files::{
     },
 };
 use sunrise_sim::lan::{
-    LoginGate, NetConfig, NetLog, OnlineMode, hub::HubConfig, viewed_levels::areas as viewed,
+    LoginGate, NetConfig, NetLog, OnlineMode, SessionVerifier, hub::HubConfig,
+    viewed_levels::areas as viewed,
 };
 
 pub(in crate::game) mod biome_regions;
@@ -45,6 +45,13 @@ use sunrise_gameplay::dedicated::predicate_graph;
 pub(in crate::game) mod report;
 mod status;
 mod transfer;
+
+pub(in crate::game) struct Services {
+    pub(in crate::game) find_name: fn(&str) -> Option<NameAndId>,
+    pub(in crate::game) find_id: fn(u128) -> Option<NameAndId>,
+    pub(in crate::game) profile_keys: fn() -> Vec<sunrise_protocol::rsa::RsaPublicKey>,
+    pub(in crate::game) verify_session: SessionVerifier,
+}
 
 #[cfg(test)]
 mod language_tests;
@@ -599,7 +606,10 @@ impl std::error::Error for DatapacksRefused {}
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Add the adopted packs' English at the dedicated server-starting notice.
     /// World and registry-load listeners still see only the built-in language.
-    fn start_loaded_dedicated_world(&mut self, packs: &super::functions::PackStack) {
+    fn start_loaded_dedicated_world(
+        &mut self,
+        packs: &crate::game::function_pack_stack::PackStack,
+    ) {
         use sunrise_game_data::lang::{self, Language, ResourceSource};
 
         let layers = self
@@ -888,6 +898,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .get()
             .and_then(|m| m.lock().unwrap().take())
             .ok_or("dedicated server not prepared")?;
+        let services = self
+            .side
+            .dedicated_services
+            .as_ref()
+            .ok_or("dedicated server services not configured")?;
+        let profile_keys = services.profile_keys;
+        let verify_session = props
+            .online_mode
+            .then(|| Arc::clone(&services.verify_session));
         let world_dir = std::env::current_dir()?.join(&universe).join(&level_name);
         let new_world = self.prepare_world_metadata(&world_dir, &props, allow_missing_mods)?;
         // The console thread starts first, as in initServer.
@@ -919,15 +938,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // background (they check players' chat keys).
         let secure_chat = Arc::new(sunrise_sim::lan::SecureChat::new(
             props.enforce_secure_profile && props.online_mode,
-            || {
-                let discovery = profiles::discovery_url();
-                sunrise_server_profiles_http::fetch_profile_key_keys(&discovery)
-                    .map(|keys| keys.player_certificate_keys)
-                    .unwrap_or_else(|e| {
-                        ::log::error!("{e}");
-                        Vec::new()
-                    })
-            },
+            profile_keys,
         ));
         log(
             "INFO",
@@ -948,19 +959,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let port = port.unwrap_or(props.server_port as u16);
         // MinecraftServer.initializeKeyPair (only online mode uses it).
         log("INFO", "Generating keypair");
-        let online = if props.online_mode {
+        let online = if let Some(verify_session) = verify_session {
             Some(Arc::new(OnlineMode::generate(
                 props.prevent_proxy_connections,
-                Arc::new(|name, digest, ip| {
-                    sunrise_server_profiles_http::has_joined(name, digest, ip)
-                        .map(|opt| {
-                            opt.map(|p| sunrise_sim::lan::VerifiedSession {
-                                uuid: p.uuid,
-                                properties: p.properties,
-                            })
-                        })
-                        .map_err(|_| sunrise_sim::lan::SessionVerifyError::Unavailable)
-                }),
+                verify_session,
             )?))
         } else {
             None
@@ -1163,7 +1165,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ),
             server_links: if props.bug_report_link.is_empty() {
                 Vec::new()
-            } else if super::server_links::valid_untrusted_uri(&props.bug_report_link) {
+            } else if crate::game::untrusted_uri::valid_untrusted_uri(&props.bug_report_link) {
                 vec![sunrise_protocol::packets::configuration::ServerLink {
                     kind: sunrise_protocol::packets::configuration::ServerLinkKind::Known(0),
                     link: props.bug_report_link.clone(),
@@ -1208,7 +1210,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(());
         }
         if let Some(transfers) = transfers
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             let s = &transfers.settings;
             log(
@@ -1226,7 +1228,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.sync_ops(&lists);
         self.read_runtime_level_cap(|key| props.raw.get(key));
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             // The viewed areas' chunk caps (#3716): server.toml's `max_viewed_*` settings.
             let (caps, clamped) = viewed::ViewedCaps::from_properties(|key| props.raw.get(key));
             if let Some(asked) = clamped {
@@ -1254,7 +1256,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.save_dedicated_checkpoint("server startup")? == 0 {
             self.log_saved_levels();
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.entity_range_percent = props.entity_broadcast_range_percentage;
         }
         // The dedicated server's open is complete before its first tick.
@@ -1338,7 +1340,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 crashed = Some(panic_message(payload.as_ref()));
                 break;
             }
-            let players = self.lan.as_ref().map_or(0, |h| h.hub.online_count());
+            let players = self.side.lan.as_ref().map_or(0, |h| h.hub.online_count());
             // Vanilla reads pauseWhenEmptySeconds on every tick, so management changes take effect
             // without restarting the server.
             let pause_after = state.pause_when_empty_seconds.wrapping_mul(20);
@@ -1413,7 +1415,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // DedicatedServer.sendLowDiskSpaceWarning: the operators hear of it
             // (no window drains the toasts here).
             if sunrise_sim::chunk_io::PROCESS_REPORTS.take().low_disk_space
-                && let Some(host) = self.lan.as_ref()
+                && let Some(host) = self.side.lan.as_ref()
             {
                 host.hub.send_low_disk_space_warning();
             }
@@ -1430,6 +1432,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // `ServerDebugSubscribers`, once per tick after the players ticked and before the
             // wait: this tick's recipients and whether the next tick measures.
             let recipients = self
+                .side
                 .lan
                 .as_ref()
                 .map_or_else(Vec::new, |h| h.hub.tick_time_subscribers());
@@ -1460,7 +1463,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     &overload_warning(behind, self.clock.tick_duration()),
                 );
             }
-            if tick_sampling && let Some(host) = self.lan.as_ref() {
+            if tick_sampling && let Some(host) = self.side.lan.as_ref() {
                 host.hub.send_to_each(
                     &recipients,
                     &sunrise_protocol::packets::play::Clientbound::DebugSample(
@@ -1540,7 +1543,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
-        let guest = self.lan.as_ref().and_then(|h| {
+        let guest = self.side.lan.as_ref().and_then(|h| {
             // A held player (arriving from another server) is sent the level too, so it
             // holds the world loaded around it as a placed player does.
             h.hub
@@ -1566,7 +1569,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if target.parse::<std::net::IpAddr>().is_ok() {
             Some(target.to_owned())
         } else {
-            self.lan
+            self.side
+                .lan
                 .as_ref()?
                 .hub
                 .guests
@@ -1578,7 +1582,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Network players `BanIpCommands` and the management service disconnect for an address.
     fn ip_ban_players(&self, ip: &str) -> Vec<u128> {
-        self.lan.as_ref().map_or_else(Vec::new, |h| {
+        self.side.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
                 .iter()
@@ -1591,7 +1595,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerGamePacketListenerImpl.tick: players idle longer than the
     /// timeout are kicked.
     pub(in crate::game::server_side) fn kick_idle(&mut self, minutes: i32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let idle: Vec<u32> = host
@@ -1612,7 +1616,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Ops' permission levels for the hub (PlayerList.getProfilePermissions).
     pub(in crate::game) fn sync_ops(&mut self, lists: &Arc<Mutex<Lists>>) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         host.hub.ops = lists
@@ -1636,6 +1640,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> bool {
         let old = lists.lock().unwrap().ops.get(user).map_or(0, |e| e.level);
         let entity = self
+            .side
             .lan
             .as_ref()
             .and_then(|h| {
@@ -1659,7 +1664,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// A player on the server, by name.
     pub(in crate::game::server_side) fn online_player(&self, name: &str) -> Option<NameAndId> {
-        let hub = &self.lan.as_ref()?.hub;
+        let hub = &self.side.lan.as_ref()?.hub;
         let g = hub
             .guests
             .iter()
@@ -1687,8 +1692,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn resolve_name(&self, name: &str) -> Option<NameAndId> {
         USER_CACHE.lock().unwrap().as_mut().and_then(|cache| {
             cache.get_by_name(name, |lower| {
-                let found =
-                    sunrise_server_profiles_http::find_by_name(&profiles::discovery_url(), lower);
+                let found = self
+                    .side
+                    .dedicated_services
+                    .as_ref()
+                    .and_then(|services| (services.find_name)(lower));
                 if found.is_none() {
                     log("WARN", &format!("Couldn't find profile with name: {lower}"));
                 }
@@ -1732,15 +1740,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The fixture panics with the hub out of the game, as a panic in the network tick does.
         crash_fixture("hub", || {
             let placed = self
+                .side
                 .lan
                 .as_ref()
                 .is_some_and(|host| host.hub.guests.iter().any(|g| g.placed));
             if placed {
-                self.lan = None;
+                self.side.lan = None;
             }
             placed
         });
-        if self.lan.is_some() {
+        if self.side.lan.is_some() {
             self.run_level_teleports();
             self.send_admin_feedback();
         }
@@ -1786,7 +1795,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(held) = held {
             CAPTURE.set(held);
         }
-        if let Some(host) = &self.lan {
+        if let Some(host) = &self.side.lan {
             host.hub.console_say(name, &message, &hidden);
         }
     }
@@ -1902,6 +1911,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "list" => {
                 let guests: Vec<(String, u128)> = self
+                    .side
                     .lan
                     .as_ref()
                     .map(|h| {
@@ -1912,6 +1922,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     })
                     .unwrap_or_default();
                 let max = self
+                    .side
                     .lan
                     .as_ref()
                     .map_or(0, |h| h.hub.lan.shared.max_players());
@@ -2027,6 +2038,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     ],
                 ));
                 let banned: Vec<(u128, String)> = self
+                    .side
                     .lan
                     .as_ref()
                     .map(|h| {
@@ -2163,7 +2175,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // the players' tick (`DedicatedServer.tickConnection`), so the
         // next tick is the first to count it down. A player's own
         // commands sync theirs the same way (`run_guest_command`).
-        if let Some(h) = self.lan.as_mut() {
+        if let Some(h) = self.side.lan.as_mut() {
             h.hub.sync_all_effects();
         }
     }
@@ -2276,7 +2288,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// server.properties.
     fn set_max_players(&mut self, state: &mut ServerState, max_players: usize) {
         state.max_players = max_players;
-        if let Some(lan) = &self.lan {
+        if let Some(lan) = &self.side.lan {
             lan.hub.lan.shared.set_max_players(max_players);
         }
         self.store_property("max-players", max_players.to_string());
@@ -2285,7 +2297,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `DedicatedServer.setAcceptsTransfers`: whether a transfer's handshake is accepted from
     /// now on, and `accepts-transfers` in server.properties.
     fn set_accepts_transfers(&mut self, accept: bool) {
-        if let Some(lan) = &self.lan {
+        if let Some(lan) = &self.side.lan {
             lan.hub.lan.shared.set_accepts_transfers(accept);
         }
         self.store_property("accepts-transfers", accept.to_string());
@@ -2325,7 +2337,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn kick_unlisted_players(&mut self, lists: &Arc<Mutex<Lists>>) {
         let unlisted: Vec<u128> = {
             let l = lists.lock().unwrap();
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             if !(l.enforce_whitelist && l.use_whitelist) {
@@ -2353,7 +2365,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn kick_uuid(&mut self, uuid: u128, reason: Tag) {
-        let conns: Vec<u32> = self.lan.as_ref().map_or_else(Vec::new, |h| {
+        let conns: Vec<u32> = self.side.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
                 .iter()
@@ -2369,7 +2381,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Hub::kick`, with the server's `kick` event recorded. Whether it started the guest's
     /// disconnect: false for a missing guest and one whose disconnect is already pending.
     pub(in crate::game) fn kick_conn(&mut self, conn: u32, reason: Tag) -> bool {
-        let Some(h) = self.lan.as_mut() else {
+        let Some(h) = self.side.lan.as_mut() else {
             return false;
         };
         if h.hub.guest(conn).is_none_or(|g| g.disconnect_pending) {
@@ -2427,7 +2439,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !crashed {
             self.save_leaving_guests();
         }
-        if let Some(h) = self.lan.as_mut() {
+        if let Some(h) = self.side.lan.as_mut() {
             let conns: Vec<u32> = h.hub.guests.iter().map(|g| g.conn).collect();
             for conn in conns {
                 h.hub.kick(
@@ -2500,7 +2512,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game::server_side) fn stop_after_crash(&mut self, message: &str) -> Result<()> {
         // Single player's server thread (`integrated.rs`) has no console: it logs to the game's log.
-        let integrated = self.serving.is_some();
+        let integrated = self.side.serving.is_some();
         let warn = |message: &str| {
             if integrated {
                 log::warn!("Sunrise: {message}");
@@ -2737,7 +2749,7 @@ mod tests {
             assert!(game.online_player("robot").is_none());
             assert_eq!(game.online_player("GUEST12").unwrap().id, 12);
             // A fake with the same name must not hide a real player later in join order.
-            let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
             let index = guests.iter().position(|g| g.uuid == 12).unwrap();
             guests.update(index, |g| g.name = "robot".into());
             guests.reverse();
@@ -2754,7 +2766,8 @@ mod tests {
             assert!(game.ip_ban_players("0.0.0.0").is_empty());
             assert_eq!(game.ip_ban_players("127.0.0.1"), [12, 13]);
             // Even with a matching real peer, the fake is not counted as affected.
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3194,6 +3207,7 @@ mod console_source_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

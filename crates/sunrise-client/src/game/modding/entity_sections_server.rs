@@ -1,10 +1,4 @@
 use super::Game;
-use crate::game::entity_sections::EntitySections;
-use crate::game::entity_sections::LiveSectionObserver;
-use crate::game::entity_sections::Scope;
-
-#[path = "entity_sections/observer_cache_server.rs"]
-pub(in crate::game) mod observer_cache;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The projectiles tick ([`Game::tick_projectiles_now`]), and each one's move is filed.
@@ -34,13 +28,4 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_pick_section_sync_moved_id(&mut self, _id: u32) {}
 
     pub(in crate::game) fn server_pick_section_remove(&mut self, _id: u32) {}
-}
-
-impl LiveSectionObserver {
-    pub(crate) fn new(
-        sections: std::rc::Rc<std::cell::RefCell<EntitySections>>,
-        scope: Scope,
-    ) -> Self {
-        Self { sections, scope }
-    }
 }

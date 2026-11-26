@@ -11,8 +11,11 @@ use sunrise_client_gameplay::agent_navigation as navigation;
 
 #[cfg(feature = "client")]
 use super::event_loop::EventLoopCtl;
-use super::owner_link::{ControlRequest, OwnerRequest};
 use super::{Game, Screen};
+use crate::game::{
+    integrated_link::NO_ANSWER,
+    owner_link::{ControlRequest, OwnerRequest},
+};
 use navigation::{Cell, Node, Plan, Progress};
 use serde_json::{Value, json};
 use std::{
@@ -569,12 +572,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "food": p.health.food.food,
                 "saturation": p.health.food.saturation,
                 "shield_cooldown": self
-                    .integrated
+                    .side.integrated
                     .as_ref()
                     .and_then(|server| {
                         server.ask(|reply| {
-                            super::owner_link::OwnerRequest::Control(
-                                super::owner_link::ControlRequest::ShieldCooldown(reply),
+                            OwnerRequest::Control(
+                                ControlRequest::ShieldCooldown(reply),
                             )
                         })
                     })
@@ -591,7 +594,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "dialog": self.dialog_status(),
             "screen": self.screen_label(),
             "menu": self.side.title.0.is_some().then(|| self.title_value()),
-            "world": (self.side.title.0.is_none()).then(|| match &self.integrated {
+            "world": (self.side.title.0.is_none()).then(|| match &self.side.integrated {
                 Some(server) => server.world_name.clone(),
                 None => self.level.name.clone(),
             }),
@@ -615,7 +618,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "selected": self.selected + 1,
             "held": self.held().map(|s| self.stack_value(s)),
             "looking_at": self.looking_at(),
-            "busy": self.agent.task.as_ref().map(|t| t.name),
+            "busy": self.side.agent.task.as_ref().map(|t| t.name),
             "ticks": self.ticks,
         });
         // Who caused the input, and whether a repro recording runs.
@@ -1047,10 +1050,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// while it waits, say).
     pub(in crate::game::client_side) fn agent_cancel(&mut self, why: &str) {
         let reply = json!({ "error": why, "cancelled": true }).to_string();
-        if let Some(t) = self.agent.task.take() {
+        if let Some(t) = self.side.agent.task.take() {
             let _ = t.reply.send(reply.clone());
         }
-        if let Some(g) = self.agent.glide.take() {
+        if let Some(g) = self.side.agent.glide.take() {
             let _ = g.reply.send(reply);
         }
         self.release_agent_keys();
@@ -1134,7 +1137,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         reply: &Sender<String>,
         timeout: f64,
     ) -> Result<Handled> {
-        self.agent.task = Some(Task {
+        self.side.agent.task = Some(Task {
             kind,
             reply: reply.clone(),
             deadline: Instant::now() + Duration::from_secs_f64(timeout.clamp(0.05, 3600.0)),
@@ -1145,7 +1148,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// A deferred agent action (goto, break, wait...) is still running.
     pub(in crate::game::client_side) fn agent_busy(&self) -> bool {
-        self.agent.task.is_some()
+        self.side.agent.task.is_some()
     }
 
     /// Agent commands; `Handled::No` when `words[0]` is not one of them.
@@ -1171,7 +1174,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 | "attack"
                 | "wait"
         );
-        if blocking && let Some(task) = &self.agent.task {
+        if blocking && let Some(task) = &self.side.agent.task {
             return Err(format!("busy with {}; wait for it or send stop", task.name).into());
         }
         match name {
@@ -1629,7 +1632,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.require_playing_screen()?;
                 let all = a.pos.first() == Some(&"all");
                 let before = self.held().map(|s| self.stack_value(s));
-                if self.remote.is_some() {
+                if self.side.remote.is_some() {
                     // As Q does on a server (and on the single-player server
                     // thread): the server throws the stack, the client predicts it.
                     if !self.spectator() {
@@ -1826,17 +1829,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 let command = format!("/{text}");
                 // Single player's console is its server thread's.
-                if let Some(server) = &self.integrated {
+                if let Some(server) = &self.side.integrated {
                     let (chat, outcome) = server
                         .ask(|reply| {
                             OwnerRequest::Control(ControlRequest::ConsoleCommand { command, reply })
                         })
-                        .ok_or(super::integrated::NO_ANSWER)?;
+                        .ok_or(NO_ANSWER)?;
                     return ok(command_reply(chat, outcome));
                 }
                 // A server we joined answers in the chat, not to this reply:
                 // no `success`, no `result`.
-                if self.remote.is_some() {
+                if self.side.remote.is_some() {
                     self.send_signed_chat_input(&command);
                     return ok(json!({ "ok": true }));
                 }
@@ -1857,13 +1860,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "stop" => {
                 // A cancelled `attack ID` must not leave its queued click to fire later.
                 self.finish_agent_attack_input(false);
-                let cancelled = self.agent.task.take().map(|t| {
+                let cancelled = self.side.agent.task.take().map(|t| {
                     let _ = t.reply.send(
                         json!({ "error": "cancelled by stop", "cancelled": true }).to_string(),
                     );
                     t.name
                 });
-                let turning = self.agent.glide.take().map(|g| {
+                let turning = self.side.agent.glide.take().map(|g| {
                     let _ = g.reply.send(
                         json!({ "error": "cancelled by stop", "cancelled": true }).to_string(),
                     );
@@ -1898,7 +1901,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// (`MouseHandler` turns the player while the mouse is grabbed).
     pub(in crate::game::client_side) fn turning(&self) -> Result<()> {
         self.require_playing_screen()?;
-        if self.agent.glide.is_some() {
+        if self.side.agent.glide.is_some() {
             return Err("already turning; wait for it or send stop".into());
         }
         Ok(())
@@ -1919,7 +1922,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let now = Instant::now();
         let over = Duration::from_secs_f64(over);
-        self.agent.glide = Some(Glide {
+        self.side.agent.glide = Some(Glide {
             total,
             fed: (0.0, 0.0),
             started: now,
@@ -1938,7 +1941,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// all of it has been turned by a frame, or with no motion once a pick
     /// (a tick's or a frame's) has been taken since the start.
     pub(in crate::game::client_side) fn advance_glide(&mut self) {
-        let Some(mut g) = self.agent.glide.take() else {
+        let Some(mut g) = self.side.agent.glide.take() else {
             return;
         };
         let done = |game: &Self, extra: Value| {
@@ -1995,7 +1998,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             );
             return;
         }
-        self.agent.glide = Some(g);
+        self.side.agent.glide = Some(g);
     }
 
     /// The tick's input is taking an attack click (`Minecraft.startAttack`): an `attack ID`
@@ -2010,7 +2013,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     ..
                 },
             ..
-        }) = self.agent.task.as_mut()
+        }) = self.side.agent.task.as_mut()
         else {
             return false;
         };
@@ -2022,7 +2025,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(Task {
             kind: TaskKind::Attack { id, aimed, .. },
             ..
-        }) = self.agent.task.as_mut()
+        }) = self.side.agent.task.as_mut()
         else {
             return false;
         };
@@ -2039,7 +2042,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(Task {
             kind: TaskKind::Attack { aimed, .. },
             ..
-        }) = self.agent.task.as_mut()
+        }) = self.side.agent.task.as_mut()
             && matches!(aimed, Some(AttackAim::Clicked { .. }))
         {
             *aimed = Some(AttackAim::Dropped);
@@ -2055,6 +2058,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn advance_agent(&mut self) {
         self.advance_glide();
         let timed_out = self
+            .side
             .agent
             .task
             .as_ref()
@@ -2062,7 +2066,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if timed_out {
             self.finish_agent_attack_input(false);
         }
-        let Some(mut task) = self.agent.task.take() else {
+        let Some(mut task) = self.side.agent.task.take() else {
             return;
         };
         let result = self.step_task(&mut task.kind, timed_out);
@@ -2073,7 +2077,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 let _ = task.reply.send(value.to_string());
             }
-            None => self.agent.task = Some(task),
+            None => self.side.agent.task = Some(task),
         }
     }
 
@@ -2201,7 +2205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // guest) sees the block once the server's answer comes.
                 if *place
                     && !changed
-                    && self.remote.is_some()
+                    && self.side.remote.is_some()
                     && self.ticks < *report_tick + 20
                     && !timed_out
                 {
@@ -2213,7 +2217,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if !*place
                     && pos.is_some()
                     && !changed
-                    && self.remote.is_some()
+                    && self.side.remote.is_some()
                     && self.side.screen == Screen::Playing
                     && *inventory == self.inventory_counts()
                     && self.ticks < *report_tick + 20

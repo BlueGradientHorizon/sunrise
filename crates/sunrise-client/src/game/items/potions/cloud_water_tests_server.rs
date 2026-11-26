@@ -3,7 +3,7 @@ use crate::game::client_side::potions::cloud_water_tests::parse_double_bits;
 use crate::game::client_side::potions::cloud_water_tests::parse_motion_bits;
 use crate::game::client_side::potions::cloud_water_tests::read_witness;
 use crate::game::commands::data::DataRef;
-use crate::game::dragon::Breath;
+use crate::game::dragon_common::Breath;
 use crate::game::native_entity_refs::tests::{
     bind_local_player, prepare_entity_ticking_neighborhood, with_game,
 };

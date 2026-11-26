@@ -230,7 +230,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         assert!(hurt(game, 1.0, Some(Target::Guest(22))));
         assert!(hurt(game, 5.0, Some(Target::Guest(23))));
         assert_eq!(
-            game.lan.as_ref().unwrap().mob_players.get(&warden_id),
+            game.side.lan.as_ref().unwrap().mob_players.get(&warden_id),
             Some(&23)
         );
         check_target(game, Some(first));

@@ -50,6 +50,10 @@ pub(in crate::game) fn with_remote_game<R>(
             root.to_path_buf(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();

@@ -144,7 +144,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Err(err("commands.drop.no_loot_table.block", &[&name]));
                 };
                 let tool = self.tool_stack(ctx)?;
-                let mut pending = crate::game::spill::Pending::default();
+                let mut pending = crate::game::spill_common::Pending::default();
                 let key = (p[0], p[1], p[2]);
                 if !self.world.block_entities.contains_key(&key)
                     && let Some(saved) = self.block_entity_nbt(p)
@@ -157,7 +157,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     Some(Some(Target::Guest(conn))) => self
                         .player_entity_id_by_connection(Some(conn))
                         .map(|id| id as u32),
-                    Some(Some(target)) => crate::game::native_entities::target_id(target),
+                    Some(Some(target)) => crate::game::commands_common::target_id(target),
                     Some(None) => None,
                 };
                 // The hook may borrow the live level mutably. Keep a read-only
@@ -447,6 +447,7 @@ pub(in crate::game) mod loot_mine_component_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

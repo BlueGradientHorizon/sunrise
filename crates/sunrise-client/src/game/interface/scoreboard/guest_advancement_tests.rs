@@ -72,14 +72,15 @@ fn selector_reads_independent_host_and_guest_progress() {
         guest.dimension = Dim::Overworld.id().into();
         guest.placed = true;
         guest.loaded = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
 
         const ROOT: &str = "minecraft:story/root";
         const CRITERION: &str = "crafting_table";
         game.advancement_tree();
         assert!(game.adv.tree.get(ROOT).is_some());
         assert!(
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -114,7 +115,8 @@ fn selector_reads_independent_host_and_guest_progress() {
                 .grant(ROOT, CRITERION, "2026-11-05 00:00:00 +0000")
         );
         assert!(
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

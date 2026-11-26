@@ -11,12 +11,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         for &t in players {
             match t {
-                Target::Player if self.side.lan_acting.is_some() || self.lan.is_none() => {
+                Target::Player if self.side.lan_acting.is_some() || self.side.lan.is_none() => {
                     self.side.guest_packets.push(packet.clone());
                 }
                 Target::Player => {}
                 Target::Guest(conn) => {
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = self.side.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
                     }
                 }

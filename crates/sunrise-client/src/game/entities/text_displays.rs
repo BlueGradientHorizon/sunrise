@@ -809,7 +809,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .get_mut(&id)?
             .apply_teleport_packet(position, yaw, pitch, relatives);
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.set_tracked_position(id, resolved);
         }
         if !interpolated {
@@ -855,7 +855,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `ClientLevel.isTickingEntity`: loaded chunk column membership on a remote client.
     pub(in crate::game::client_side) fn is_display_ticking(&self, pos: glam::DVec3) -> bool {
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return false;
         }
         let cx = pos.x.floor() as i32 >> 4;
@@ -863,7 +863,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.world.chunks.contains_key(&(cx, cz))
     }
     pub(in crate::game::client_side) fn client_entity_vehicle(&self, id: u32) -> Option<u32> {
-        self.remote.as_ref().and_then(|r| r.passenger_vehicle(id))
+        self.side
+            .remote
+            .as_ref()
+            .and_then(|r| r.passenger_vehicle(id))
     }
     pub(in crate::game::client_side) fn entity_has_ancestor(
         &self,
@@ -883,7 +886,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         false
     }
     pub(in crate::game::client_side) fn entity_is_player(&self, id: u32) -> bool {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .is_some_and(|r| r.entity_id as u32 == id || r.level_players.contains_key(&(id as i32)))
     }
@@ -892,6 +896,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         id: u32,
     ) -> Option<glam::DVec3> {
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.entity_id as u32 == id)
@@ -947,7 +952,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.display_has_indirect_local_player(id) {
             return true;
         }
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return false;
         };
         for &pid in r.level_players.keys() {

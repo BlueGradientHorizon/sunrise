@@ -221,7 +221,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 return Err(TransferError::UnsupportedBlock([pos.x, pos.y, pos.z]));
             }
             // Saved-only entities have no carrier payload adapter yet.
-            if super::spill::saved_entity(&self.world, [pos.x, pos.y, pos.z]).is_some() {
+            if crate::game::spill_common::saved_entity(&self.world, [pos.x, pos.y, pos.z]).is_some()
+            {
                 return Err(TransferError::SavedBlockEntity([pos.x, pos.y, pos.z]));
             }
             // The passive-or-supported rule runs before anything is
@@ -592,7 +593,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .contains_key(&(world[0], world[1], world[2]));
             let replaceable =
                 self.with_level(|b, _level, _ticks| b.facts(state).flags & REPLACEABLE != 0);
-            if super::spill::saved_entity(&self.world, world).is_some() {
+            if crate::game::spill_common::saved_entity(&self.world, world).is_some() {
                 return Err(TransferError::SavedBlockEntity(world));
             }
             if !replaceable || occupied {
@@ -785,7 +786,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .world
                 .block_entities
                 .contains_key(&(pos[0], pos[1], pos[2]));
-            if super::spill::saved_entity(&self.world, pos).is_some() {
+            if crate::game::spill_common::saved_entity(&self.world, pos).is_some() {
                 return Err(TransferError::SavedBlockEntity(pos));
             }
             if !replaceable || entity {
@@ -833,7 +834,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Result<(), TransferError> {
         for cell in cells {
             let pos = cell.world;
-            if super::spill::saved_entity(&self.world, pos).is_some() {
+            if crate::game::spill_common::saved_entity(&self.world, pos).is_some() {
                 return Err(TransferError::SavedBlockEntity(pos));
             }
             let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -1058,7 +1059,7 @@ fn carrier_stop_session(
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
-    use crate::game::spill;
+    use crate::game::spill_common;
     use std::sync::Arc;
     use sunrise_core::geometry::Direction as CoreDirection;
     use sunrise_core::position::BlockPos;
@@ -1404,7 +1405,7 @@ mod tests {
                 "minecraft:chest",
                 &Default::default(),
             );
-            spill::put_saved_entity(&mut game.world, [4, 64, 4], tag.clone());
+            spill_common::put_saved_entity(&mut game.world, [4, 64, 4], tag.clone());
             assert!(matches!(
                 game.carrier_assemble(7, &[BlockPos::new(4, 64, 4)]),
                 Err(TransferError::SavedBlockEntity([4, 64, 4]))
@@ -1419,7 +1420,7 @@ mod tests {
             Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).saved = None;
             game.carrier_assemble(7, &[BlockPos::new(4, 64, 4)])
                 .unwrap();
-            spill::put_saved_entity(&mut game.world, [4, 64, 4], tag.clone());
+            spill_common::put_saved_entity(&mut game.world, [4, 64, 4], tag.clone());
             assert!(matches!(
                 game.carrier_disassemble(7, 1, [4, 64, 4], [1.0, 0.0, 0.0, 0.0]),
                 Err(TransferError::SavedBlockEntity([4, 64, 4]))
@@ -1443,7 +1444,10 @@ mod tests {
                 Err(TransferError::SavedBlockEntity([4, 64, 4]))
             ));
             assert_eq!(game.world.block(4, 64, 4), air);
-            assert_eq!(spill::saved_entity(&game.world, [4, 64, 4]), Some(tag));
+            assert_eq!(
+                spill_common::saved_entity(&game.world, [4, 64, 4]),
+                Some(tag)
+            );
         });
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1481,7 +1485,7 @@ mod tests {
                 "minecraft:chest",
                 &Default::default(),
             );
-            spill::put_saved_entity(&mut game.world, [4, 64, 4], tag.clone());
+            spill_common::put_saved_entity(&mut game.world, [4, 64, 4], tag.clone());
             let images = [sunrise_sim::carrier_store::OperationCell {
                 world: [4, 64, 4],
                 local: [0, 0, 0],
@@ -1501,7 +1505,10 @@ mod tests {
                 Err(TransferError::SavedBlockEntity([4, 64, 4]))
             ));
             assert_eq!(game.world.block(4, 64, 4), chest);
-            assert_eq!(spill::saved_entity(&game.world, [4, 64, 4]), Some(tag));
+            assert_eq!(
+                spill_common::saved_entity(&game.world, [4, 64, 4]),
+                Some(tag)
+            );
         });
         let _ = std::fs::remove_dir_all(&root);
     }

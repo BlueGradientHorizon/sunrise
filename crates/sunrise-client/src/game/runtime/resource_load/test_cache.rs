@@ -650,8 +650,8 @@ pub(in crate::game) fn load(
         );
     };
     #[cfg(feature = "client")]
-    let dynamic_texture_pool =
-        load_role.execution.is_client() && resource_tables::dynamic_texture_pool();
+    let dynamic_texture_pool = load_role.execution.is_client()
+        && crate::game::client_side::resource_tables_client::dynamic_texture_pool();
     let key = CacheKey {
         stamps: root_stamps(&canon_root),
         root: canon_root,

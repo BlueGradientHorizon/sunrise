@@ -309,6 +309,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let me = self
+            .side
             .remote
             .as_ref()
             .map(|r| sunrise_sim::lan::playerdata::uuid_ints(r.profile))
@@ -322,7 +323,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let at = [p.position.x, p.position.y, p.position.z];
                     players.push((at, p.dimensions.height));
                 }
-            } else if let Some(remote) = self.remote.as_ref()
+            } else if let Some(remote) = self.side.remote.as_ref()
                 && let Some(&id) = remote
                     .level_uuids
                     .get(&sunrise_sim::lan::playerdata::ints_uuid(*uuid))

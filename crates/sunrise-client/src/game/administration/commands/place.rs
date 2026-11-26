@@ -379,7 +379,7 @@ pub(in crate::game) mod live_dungeon_spawner_tests {
                 .join(format!("h173-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        crate::game::growth::install_live_features(
+        crate::game::growth_features::install_live_features(
             &loaded.resources,
             &loaded.pack,
             &options,
@@ -391,6 +391,7 @@ pub(in crate::game) mod live_dungeon_spawner_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

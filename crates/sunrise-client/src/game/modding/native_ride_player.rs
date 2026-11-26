@@ -100,16 +100,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// allocated, while no mob rides a player, which is every vanilla game.
     pub(in crate::game) fn eject_player_riders(&mut self, vehicle: Option<u32>) {
         let own = self.player.as_ref().map(|_| self.own_entity_id() as u32);
-        let is_player = |game: &Self, v: u32| match vehicle {
-            Some(only) => v == only,
-            None => {
-                own == Some(v)
-                    || game
-                        .lan
-                        .as_ref()
-                        .is_some_and(|host| host.hub.guests.iter().any(|g| g.entity_id as u32 == v))
-            }
-        };
+        let is_player =
+            |game: &Self, v: u32| match vehicle {
+                Some(only) => v == only,
+                None => {
+                    own == Some(v)
+                        || game.side.lan.as_ref().is_some_and(|host| {
+                            host.hub.guests.iter().any(|g| g.entity_id as u32 == v)
+                        })
+                }
+            };
         if !self
             .mobs
             .iter()
@@ -195,7 +195,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// its wearer. Nothing is sent while no guest carries anything and none
     /// was told it did, which is every vanilla tick.
     pub(in crate::game) fn tell_vehicle_players(&self, riding: &mut Riding) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let guests = &host.hub.guests;
@@ -232,7 +232,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The server player whose entity id is `id`, in the level in place: the
     /// player in place or a guest here. None on a client, or for any other id.
     pub(in crate::game) fn player_vehicle(&self, id: u32) -> Option<Target> {
@@ -316,7 +316,7 @@ mod tests {
                     let pig = game.entity(80).unwrap();
                     assert_eq!(game.entity_ride_player(pig, player, false), Ok(()));
                     heard.lock().unwrap().clear();
-                    let conn = game.lan.as_ref().unwrap().hub.guests[0].conn;
+                    let conn = game.side.lan.as_ref().unwrap().hub.guests[0].conn;
                     case(game, conn);
                     // The unload save takes the pig away with its chunk; every other case keeps it.
                     let mount = |game: &crate::game::ServerGame<'_>| {
@@ -407,13 +407,13 @@ mod tests {
     #[ignore = "daily"]
     fn a_logout_ejects_a_mob_riding_the_player() {
         ejected(|game, _| {
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.guests.update(0, |g| g.placed = true);
             // The hub takes a guest out of its list before it reports the leave.
             let guest = host.hub.guests.remove(0);
             let event = sunrise_sim::lan::hub::HostEvent::Left(Box::new(guest));
-            let host = game.lan.take().unwrap();
-            game.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
+            let host = game.side.lan.take().unwrap();
+            game.side.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
         });
     }
 
@@ -421,7 +421,8 @@ mod tests {
     #[ignore = "daily"]
     fn a_death_ejects_a_mob_riding_the_player() {
         ejected(|game, conn| {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -528,7 +529,8 @@ mod tests {
             assert_eq!(game.entity_vehicle(first), Some(player));
 
             // The player riding the second pig: that pig can't ride the player.
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -538,10 +540,16 @@ mod tests {
                 game.entity_ride_player(second, player, true),
                 Err(Refusal::Cycle)
             );
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.vehicle = None;
-                guest.dimension = "minecraft:the_nether".into();
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.vehicle = None;
+                    guest.dimension = "minecraft:the_nether".into();
+                });
             // The player left the level: its passenger gets off.
             game.sync_riders();
             assert_eq!(game.mobs[0].extra.mount, None);

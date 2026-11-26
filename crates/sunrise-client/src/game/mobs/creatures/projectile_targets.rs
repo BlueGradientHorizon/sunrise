@@ -1,4 +1,5 @@
 //! Single-source-of-truth live pickable target query and non-mob projectile hit dispatch.
+use crate::game::deflect_common::redirectable;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_sim::mobs::Who;
 use sunrise_sim::projectiles::{Projectile, ProjectileKind};
@@ -56,9 +57,7 @@ pub(in crate::game) fn projectile_skips_no_physics(kind: &ProjectileKind) -> boo
 
 /// Whether `p` is pickable by other projectiles (`#redirectable_projectile` or `ShulkerBullet`).
 pub(in crate::game) fn is_pickable_projectile(p: &Projectile) -> bool {
-    !p.stuck
-        && (super::super::deflect::redirectable(p)
-            || matches!(p.kind, ProjectileKind::ShulkerBullet { .. }))
+    !p.stuck && (redirectable(p) || matches!(p.kind, ProjectileKind::ShulkerBullet { .. }))
 }
 
 /// `LeashFenceKnotEntity.recalculateBoundingBox` around `position` (`(x+0.5, y+0.375, z+0.5)`).

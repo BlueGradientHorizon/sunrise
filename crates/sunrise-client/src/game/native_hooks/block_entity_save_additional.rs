@@ -79,7 +79,7 @@ fn save_additional(
         return None;
     }
     output.remove(&key);
-    let mut output = crate::game::native_block_entity_refs::mod_payload(output);
+    let mut output = crate::game::native_block_entity_read::mod_payload(output);
     if let Some(attachments) = input.get(&key) {
         output.insert(key, attachments.clone());
     }

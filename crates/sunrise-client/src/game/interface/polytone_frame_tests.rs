@@ -45,6 +45,10 @@ fn with_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
         settings,
         Audio::silent(&ResourceSource::directory(root)),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.world

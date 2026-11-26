@@ -2,12 +2,12 @@ use super::piston_push::Lid;
 use super::{Dim, Game, entity_culling::EntityCullDecision, native_mob_draw::PlayerRender};
 use crate::game::creatures::MobDrawFrame;
 use crate::game::creatures::Skinned;
-use crate::game::creatures::flame_geometry;
 use crate::game::creatures::is_item_billboard;
 use crate::game::creatures::living_draw::LivingFrame;
 use crate::game::creatures::thrown_item_axes;
 use crate::game::creatures::thrown_item_quad;
 use crate::game::creatures::*;
+use crate::game::wither_common::skull_kind;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{graphics::EntityCullingMode, mesher::Vertex};
 use sunrise_client_render::render_geometry::EntitySpan;
@@ -24,6 +24,64 @@ use sunrise_sim::{
 
 #[path = "living_draw_client.rs"]
 pub(in crate::game) mod living_draw;
+
+/// `FlameFeatureRenderer`: fire quads stacked up a burning entity's box,
+/// turned to the camera around Y, at full block light. `at` is the entity's
+/// feet relative to the camera.
+pub(in crate::game) fn flame_geometry(
+    atlas: &sunrise_client::hud::HudAtlas,
+    at: glam::Vec3,
+    width: f32,
+    height: f32,
+    camera_yaw: f32,
+    light: u8,
+    out: &mut Vec<Vertex>,
+) {
+    let (Some(fire0), Some(fire1)) = (
+        atlas.sprites.get("block/fire_0").copied(),
+        atlas.sprites.get("block/fire_1").copied(),
+    ) else {
+        return;
+    };
+    let s = width * 1.4;
+    let mut h = height / s;
+    // Mth.rotationAroundAxis(Y, camera.orientation): the camera's turn about Y.
+    let turn = glam::Mat3::from_rotation_y(std::f32::consts::PI - camera_yaw.to_radians());
+    let lift = 0.3 - (h as i32) as f32 * 0.02;
+    let packed = (u32::from(light >> 4) * 16) | ((15 * 16) << 8);
+    let (mut r, mut yo, mut zo, mut ss) = (0.5f32, 0.0f32, 0.0f32, 0);
+    while h > 0.0 {
+        let tex = if ss % 2 == 0 { fire0 } else { fire1 };
+        let (mut u0, v0, mut u1, v1) = (tex.u0, tex.v0, tex.u1, tex.v1);
+        if ss / 2 % 2 == 0 {
+            std::mem::swap(&mut u0, &mut u1);
+        }
+        for (x, y, uv) in [
+            (-r, -yo, [u1, v1]),
+            (r, -yo, [u0, v1]),
+            (r, 1.4 - yo, [u0, v0]),
+            (-r, 1.4 - yo, [u1, v0]),
+        ] {
+            let p = at + turn * glam::Vec3::new(x, y, zo + lift) * s;
+            out.push(Vertex {
+                normal: [0; 4],
+                pos: p.to_array(),
+                uv,
+                // HDR output: the flames shine like fire (entity.wgsl fs_hdr_mark).
+                layer: u32::from(sunrise_client::mesher::INCANDESCENT) << 16,
+                color: 0xFFFF_FFFF,
+                light: packed,
+
+                glint_uv: [0.0, 0.0],
+            });
+        }
+        h -= 0.45;
+        yo -= 0.45;
+        r *= 0.9;
+        zo -= 0.03;
+        ss += 1;
+    }
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side arrow particles and local sounds.
@@ -667,7 +725,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 continue;
             }
             // WitherSkullRenderer: the skull model facing its flight.
-            if let Some(dangerous) = super::wither::skull_kind(a) {
+            if let Some(dangerous) = skull_kind(a) {
                 let model = &self.side.entity_models.wither_skull;
                 let tex = if dangerous {
                     "entity/wither/wither_invulnerable"

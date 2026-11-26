@@ -1,6 +1,6 @@
 use super::Game;
-use crate::game::server_side::block_entity_anims::AnimTick;
-use crate::game::server_side::block_entity_anims::PLAYER;
+use crate::game::block_entity_anims_common::PLAYER;
+use crate::game::client_side::block_entity_anims_common_client::AnimTick;
 use sunrise_client::{
     block_entity_anim::{BellEntity, ConduitTarget, Ticker},
     skins,
@@ -142,6 +142,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let u = sunrise_sim::lan::playerdata::ints_uuid(*uuid);
         let id = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.level_uuids.get(&u).copied())
@@ -354,6 +355,10 @@ pub(in crate::game) mod conduit_target_tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -429,6 +434,7 @@ pub(in crate::game) mod conduit_target_tests {
         );
         client.persist.uuids.insert(watched, uuid);
         let kind = client
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.builtin.get("minecraft:block_entity_type"))

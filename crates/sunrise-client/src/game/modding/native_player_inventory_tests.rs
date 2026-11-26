@@ -19,7 +19,7 @@ fn guest<'a>(
     game: &'a crate::game::ServerGame<'_>,
     conn: u32,
 ) -> &'a sunrise_sim::lan::guest::Guest {
-    game.lan.as_ref().unwrap().hub.guest(conn).unwrap()
+    game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap()
 }
 
 // Rollback checks need an owned copy across the intervening write.
@@ -73,7 +73,8 @@ fn inventory_slots_are_read_and_written_by_vanillas_numbers() {
             assert_ne!(g.menu_slot(menu), g.menu_sent[menu], "menu slot {menu}");
         }
         // Seed extra slots directly, independently of the API's numbered setter.
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -174,7 +175,8 @@ fn each_inventory_refusal_has_its_own_name_and_writes_nothing() {
             b.with_inventory(game, |view| view.iter().next().is_none()),
             Some(true)
         );
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -189,13 +191,15 @@ fn each_inventory_refusal_has_its_own_name_and_writes_nothing() {
             Some(true),
             "a dead player is read, not written"
         );
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
             .guests
             .update_connection(13, |g| g.dead = false);
         let index = game
+            .side
             .lan
             .as_ref()
             .unwrap()
@@ -203,7 +207,7 @@ fn each_inventory_refusal_has_its_own_name_and_writes_nothing() {
             .guests
             .connection_index(13)
             .unwrap();
-        game.lan.as_mut().unwrap().hub.guests.remove(index);
+        game.side.lan.as_mut().unwrap().hub.guests.remove(index);
         assert_eq!(
             b.set_inventory_slot(game, 0, Some(rock)),
             Err(PlayerDataRefusal::Stale)

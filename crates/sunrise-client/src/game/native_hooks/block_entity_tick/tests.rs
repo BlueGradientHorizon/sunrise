@@ -285,7 +285,7 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
         mod_api::__private::mark_game_thread();
         let root = crate::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
         with_guests_at(root.prepared().to_owned(), |game| {
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             let kind = hub
                 .registry_id("minecraft:block_entity_type", MACHINE)
                 .unwrap();
@@ -368,7 +368,8 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
                     });
                 assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
 
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -381,7 +382,8 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
 
                 // A later sync of the restored entity must not replay either batch.
                 game.block_entity_sync(AT);
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -601,7 +603,7 @@ fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
             game.world.set(2, 64, 1, pot).unwrap();
             let stock = ItemStack::new("minecraft:diamond", 64);
             let item = sunrise_sim::save::item_to_nbt(&stock, game.res.items());
-            crate::game::spill::put_saved_entity(
+            crate::game::spill_common::put_saved_entity(
                 &mut game.world,
                 AT,
                 Tag::compound([
@@ -623,7 +625,7 @@ fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
             game.flush_spill();
 
             assert_eq!(game.world.block(POS.0, POS.1, POS.2), game.world.air);
-            assert!(crate::game::spill::saved_entity(&game.world, AT).is_none());
+            assert!(crate::game::spill_common::saved_entity(&game.world, AT).is_none());
             assert!(game.dropped.len() > 1);
             assert!(
                 game.dropped

@@ -1,7 +1,7 @@
 //! File and tell each player move before `Entity.move` resumes.
 
 use super::{EntitySections, Game, PlayerMoveState, Scope, SectionWriter, tell_live};
-use crate::game::native_lifecycle::NativeLifecycle;
+use crate::game::native_lifecycle_common::NativeLifecycle;
 use mod_api::{EntityRef, PlayerRef};
 use std::{
     cell::{Cell, RefCell},

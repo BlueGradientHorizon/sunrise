@@ -1299,7 +1299,7 @@ pub(in crate::game) fn setup_interaction_guest(
     );
     guest.placed = true;
     guest.game_mode = 1;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     rx
 }
 

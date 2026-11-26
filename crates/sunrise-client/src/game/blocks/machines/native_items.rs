@@ -2,143 +2,18 @@
 //! container slots and the composter's state-backed input/output, by the rules hoppers follow.
 //! Side-local slots are numbered from zero. It acts where the world is simulated, never on
 //! a client's copy, and only on the level in place.
-use super::{Game, Insertion, Kind, MoveIn, PlacementAttempt, Pos, Slots, View};
-use crate::game::{decorated_pot::DECORATED_POT, transactions::After};
-use mod_api::{
-    BlockCapabilitySite, BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext,
+use super::{Game, Insertion, MoveIn};
+use crate::game::{
+    machine_containers::{Kind, PlacementAttempt, View},
+    spill_common::{put_saved_entity, saved_entity},
+    transactions::After,
 };
+use mod_api::{BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext};
 use sunrise_core::geometry::Direction;
+use sunrise_gameplay_common::hoppers::Pos;
 use sunrise_items::items::ItemStack;
-use sunrise_level::containers::BlockEntity;
 use sunrise_sim::save;
-use sunrise_world::registry::BlockStateId;
 
-impl View {
-    /// Composter capability ports keep one slot as their level changes; hopper views retain
-    /// vanilla's level-dependent slot enumeration.
-    fn capability_slots(&self, face: Option<Direction>) -> Slots<'_> {
-        if matches!(self.kind, Kind::Composter(_)) {
-            Slots::Range(0..1)
-        } else {
-            self.slots_for_face_iter(face)
-        }
-    }
-}
-
-/// What the game offers without looking at any stack contents or walking a double chest.
-enum ItemTarget {
-    Composter(i32),
-    Pot,
-    Container,
-}
-
-/// `Level.isInValidBounds` and the resident-only `getChunkNow` / `getChunk(..., false)` query.
-fn valid_resident_position(world: &sunrise_level::world::World, [x, y, z]: [i32; 3]) -> bool {
-    sunrise_level::chunk_streamer::chunk_pos_is_valid((x >> 4, z >> 4))
-        && world.is_loaded_at(x, y, z)
-}
-
-impl super::Containers<'_> {
-    fn item_target(
-        &self,
-        state: BlockStateId,
-        side: Option<Direction>,
-        entity: Option<&BlockEntity>,
-    ) -> Option<ItemTarget> {
-        match self.name(state) {
-            // NeoForge `ComposterWrapper.get`: no unsided or horizontal port. Inactive
-            // ports use the level-7 container's transfer rules but still have a handler.
-            "minecraft:composter" => {
-                let level = self.prop(state, "level")?.parse().ok()?;
-                match side {
-                    Some(Direction::Up) if level < 7 => Some(ItemTarget::Composter(level)),
-                    Some(Direction::Down) if level == 8 => Some(ItemTarget::Composter(8)),
-                    Some(Direction::Up | Direction::Down) => Some(ItemTarget::Composter(7)),
-                    _ => None,
-                }
-            }
-            // The pot's implicit entity and saved slot use the block's resident state, not
-            // `world.block_entities`. A new empty pot need not have a saved tag yet.
-            DECORATED_POT => Some(ItemTarget::Pot),
-            _ => match entity? {
-                BlockEntity::Mod(_) => self
-                    .world
-                    .block_entities
-                    .mod_container(state.0)
-                    .map(|_| ItemTarget::Container),
-                entity => (!entity.slots().is_empty()).then_some(ItemTarget::Container),
-            },
-        }
-    }
-
-    pub(in crate::game) fn capability_site(
-        &self,
-        at: BlockSide,
-        state: BlockStateId,
-        entity_removed: bool,
-    ) -> Option<BlockCapabilitySite> {
-        use crate::game::{api_values::TryIntoApi, native_block_entity_refs::block_entity_handle};
-        if !valid_resident_position(self.world, at.pos) {
-            return None;
-        }
-        let [x, y, z] = at.pos;
-        let entity = if entity_removed {
-            None
-        } else {
-            self.world.block_entities.get(&(x, y, z))
-        };
-        let resident = entity.and_then(|entity| {
-            let handle = block_entity_handle(self.world, at.level, at.pos)?;
-            let kind = mod_api::__private::block_entity_type_key(save::block_entity_id(
-                entity,
-                self.name(state),
-            ));
-            Some((handle, kind))
-        });
-        Some(BlockCapabilitySite::new(
-            at,
-            state.try_into_api().ok()?,
-            resident,
-            self.item_target(state, at.side, entity).is_some(),
-        ))
-    }
-
-    fn capability_view(&self, at: BlockSide) -> Option<View> {
-        if !valid_resident_position(self.world, at.pos) {
-            return None;
-        }
-        let [x, y, z] = at.pos;
-        let pos = (x, y, z);
-        let state = self.world.block(x, y, z);
-        let entity = self.world.block_entities.get(&pos);
-        match self.item_target(state, at.side, entity)? {
-            ItemTarget::Composter(level) => Some(View {
-                parts: vec![(pos, 1)],
-                kind: Kind::Composter(level),
-                container: None,
-            }),
-            ItemTarget::Pot => Some(View {
-                parts: vec![(pos, 1)],
-                kind: Kind::Pot,
-                container: None,
-            }),
-            ItemTarget::Container => self.view(pos, false),
-        }
-    }
-    pub(in crate::game) fn capability_size(&self, at: BlockSide) -> Option<usize> {
-        Some(self.capability_view(at)?.capability_slots(at.side).count())
-    }
-    pub(in crate::game) fn capability_stack(
-        &self,
-        at: BlockSide,
-        slot: usize,
-    ) -> Option<ItemStack> {
-        let view = self.capability_view(at)?;
-        let slot = view.capability_slots(at.side).nth(slot)?;
-        self.insertion_item(&view, slot)
-            .map(std::borrow::Cow::into_owned)
-    }
-}
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Vanilla containers and `WorldlyContainerHolder`s keep their direct automation path.
     /// This owner check borrows storage; it never builds a container view on the tick path.
@@ -223,14 +98,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    /// The level in place (`minecraft:overworld`), for a hook that isn't told
-    /// which it runs in.
-    pub(in crate::game) fn dimension(&self) -> &'static str {
-        self.dim.id()
-    }
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Up to `count` out of slot `slot` of `view`, without `setChanged`.
     fn take_up_to(&mut self, view: &View, slot: usize, count: u32) -> Option<ItemStack> {
@@ -241,7 +108,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if view.kind == Kind::Pot {
             let pos = view.parts[0].0;
             let at = [pos.0, pos.1, pos.2];
-            let mut tag = super::spill::saved_entity(&self.world, at)?;
+            let mut tag = saved_entity(&self.world, at)?;
             let mut item = tag.get("item").and_then(save::item_from_nbt)?;
             let taken = count.min(item.count);
             let out = ItemStack {
@@ -254,7 +121,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 &mut tag,
                 (item.count != 0).then_some(item),
             );
-            super::spill::put_saved_entity(&mut self.world, at, tag);
+            put_saved_entity(&mut self.world, at, tag);
             return Some(out);
         }
         self.containers().get(view, slot)?;

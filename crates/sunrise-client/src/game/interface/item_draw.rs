@@ -5,6 +5,8 @@
 //! (`ItemEnv`) and the special renderers' registries to the game.
 use super::api_values::TryIntoApi;
 use super::{Dim, Game, entity_culling::EntityCullDecision};
+#[cfg(feature = "client")]
+use crate::game::client_side::item_model_context;
 use serde_json::Value;
 use std::{cell::RefCell, collections::HashMap};
 use sunrise_assets::item_model::{
@@ -84,11 +86,13 @@ impl item_render::ItemDrawEnv for Env<'_, '_> {
 
 #[cfg(feature = "client")]
 fn item_model_context(ctx: &sunrise_assets::item_model::Context<'_>) -> mod_api::ItemModelContext {
-    let Ok(display) = ctx.display.try_into_api();
+    let Ok(display) = item_model_context::display_context(&ctx.display);
     mod_api::ItemModelContext::new(
         display,
-        ctx.owner.and_then(|owner| owner.try_into_api().ok()),
-        ctx.level.and_then(|level| level.try_into_api().ok()),
+        ctx.owner
+            .and_then(|owner| item_model_context::owner_state(owner).ok()),
+        ctx.level
+            .and_then(|level| item_model_context::level_state(level).ok()),
         ctx.seed,
     )
 }

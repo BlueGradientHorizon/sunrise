@@ -1,5 +1,6 @@
 //! Exercise both owning player tick routes, not the standalone swim oracle.
 use super::*;
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use crate::game::native_entity_refs::tests::{with_client_game, with_game};
 use mod_api::{CanStartSwimmingEvent, EquipmentSlot, Hooks, Host, LogicalSide, SwimmingCheck};
 use std::sync::Mutex;
@@ -91,7 +92,7 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                         RemoteDimensionEntry::Login,
                         sunrise_client::level_loading::Reason::Other,
                     );
-                    let remote = game.remote.as_mut().unwrap();
+                    let remote = game.side.remote.as_mut().unwrap();
                     remote.logged_in = true;
                     remote.loaded_sent = true;
                     remote.entity_id = 42;
@@ -165,7 +166,7 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                     let p = game.player.as_mut().unwrap();
                     p.swimming = false;
                     p.set_sprinting(true).unwrap();
-                    game.boats.push(crate::game::boats::Boat::new(
+                    game.boats.push(crate::game::boats_common::Boat::new(
                         71,
                         "oak".into(),
                         Vec3::new(10.5, 64.5, 10.5),
@@ -220,9 +221,10 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
                         ));
                         body.armor[3] = Some(ItemStack::new(boots, 1));
                         ids.push(body.entity_id as u32);
-                        game.lan.as_mut().unwrap().hub.guests.push(body);
+                        game.side.lan.as_mut().unwrap().hub.guests.push(body);
                         game.guest_server_tick(conn, true);
-                        game.lan
+                        game.side
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub
@@ -231,7 +233,7 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
                     }
                     for (conn, swims) in [(1, false), (2, true)] {
                         game.guest_server_tick(conn, true);
-                        let body = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                        let body = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
                         assert_eq!(body.motion.as_ref().unwrap().swimming, swims);
                         assert!(body.sprinting);
                     }
@@ -242,14 +244,15 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
                             (LogicalSide::Server, SwimmingCheck::Entry, ids[1]),
                         ]
                     );
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
                         .update_guest(1, |g| g.armor[3] = None)
                         .unwrap();
                     game.guest_server_tick(1, true);
-                    let body = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let body = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     assert!(body.motion.as_ref().unwrap().swimming);
                 });
             });

@@ -113,7 +113,7 @@ fn with_remote_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
         game.side.settings.render_distance = 32;
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "ClientTick").unwrap();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         Arc::make_mut(&mut remote.builtin).registries.insert(
             "minecraft:block_entity_type".into(),
@@ -351,7 +351,7 @@ fn send_column(
             block: Vec::new(),
         },
     };
-    let format = game.remote.as_ref().unwrap().chunk_format.clone();
+    let format = game.side.remote.as_ref().unwrap().chunk_format.clone();
     game.remote_chunk(&packet, Some((&format, Ok(chunk))));
     let order: Vec<Pos> = listed.iter().map(|&i| entities[i].0).collect();
     sunrise_level::block_entities::chunk_map_order(order.iter().copied()) != order
@@ -428,7 +428,7 @@ fn start_case(
     } else {
         sunrise_command::args::GameMode::Survival
     };
-    game.remote.as_mut().unwrap().profile = sunrise_sim::lan::playerdata::ints_uuid(PLAYER);
+    game.side.remote.as_mut().unwrap().profile = sunrise_sim::lan::playerdata::ints_uuid(PLAYER);
     game.level.player_uuid = Some(PLAYER);
     game.side
         .particles
@@ -767,7 +767,7 @@ fn a_decorated_pots_wobble_survives_the_client_ticks() {
         let case = case_of(1000, [6.5, 64.0, 2.5], serde_json::json!([]), fills);
         start_case(game, &case, &mut false);
         send_column(game, &[], (0, 0), &[], &case["fills"]);
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         Arc::make_mut(&mut remote.builtin).registries.insert(
             "minecraft:block".into(),
             sunrise_protocol::registry::Ids::from_names(vec!["minecraft:decorated_pot".into()]),
@@ -936,7 +936,7 @@ fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
         start_case(game, &case, &mut false);
         // The engine makes the particles, not the harness's log.
         game.side.particles.0.requested = None;
-        game.remote.as_mut().unwrap().loaded_sent = true;
+        game.side.remote.as_mut().unwrap().loaded_sent = true;
         for _ in 0..40 {
             game.tick_remote().unwrap();
             assert_eq!(

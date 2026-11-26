@@ -171,7 +171,7 @@ pub(in crate::game) fn run_local_tick(game: &mut crate::game::ClientGame<'_>) {
 pub(in crate::game) fn player_info_mode_name(
     game: &crate::game::ClientGame<'_>,
 ) -> Option<&'static str> {
-    let r = game.remote.as_ref()?;
+    let r = game.side.remote.as_ref()?;
     let t = r.tab_players.get(&r.profile)?;
     Some(mode_from_id(t.game_mode).name())
 }
@@ -826,6 +826,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 // #10: camera_entity_is_spectator reads the attached camera entity's PlayerInfo.
                 let other_uuid = 0x2222_3333_4444_5555_6666_7777_8888_9999_u128;
                 let player_type = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()
@@ -848,12 +849,12 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                     data: 0,
                 }))
                 .unwrap();
-                game.remote.as_mut().unwrap().camera = Some(99);
+                game.side.remote.as_mut().unwrap().camera = Some(99);
                 assert!(game.own_player_is_spectator());
                 assert!(!game.camera_entity_is_spectator());
                 game.handle_packet(player_info_mode(other_uuid, 3)).unwrap();
                 assert!(game.camera_entity_is_spectator());
-                game.remote.as_mut().unwrap().camera = None;
+                game.side.remote.as_mut().unwrap().camera = None;
 
                 // #10: underwater vision decides underwater from the local body's sampled eye fluid
                 // (`Entity.baseTick` -> `EntityFluidInteraction.update` -> `LocalPlayer.aiStep`),
@@ -896,7 +897,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                         .streaming
                         .insert_remote(&mut game.world, Chunk::empty(cx, cz));
                 }
-                game.remote.as_mut().unwrap().camera = Some(99);
+                game.side.remote.as_mut().unwrap().camera = Some(99);
                 assert_eq!(
                     game.camera_fog_type(game.aim().unwrap().0),
                     FogType::Atmospheric
@@ -938,7 +939,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                     game.side.fog.water_vision_time,
                     water_rows[3]["water_vision_time"].as_i64().unwrap() as i32
                 );
-                game.remote.as_mut().unwrap().camera = None;
+                game.side.remote.as_mut().unwrap().camera = None;
                 for y in 64..=66 {
                     game.world.set(0, y, 0, air).unwrap();
                     game.world.set(2, y, 2, air).unwrap();
@@ -999,6 +1000,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
                     .unwrap();
                 let chest_menu = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()
@@ -1022,6 +1024,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 assert!(game.container.is_some());
 
                 let crafting_menu = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()
@@ -1218,6 +1221,7 @@ pub(in crate::game) fn add_entity_packet(
     kind_name: &str,
 ) -> C {
     let kind = game
+        .side
         .remote
         .as_ref()
         .unwrap()

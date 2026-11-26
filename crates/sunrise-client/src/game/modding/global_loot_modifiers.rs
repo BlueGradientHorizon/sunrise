@@ -212,7 +212,7 @@ impl mod_api::RandomSource for RollAdapter<'_> {
 /// the enabled packs. Readers run only after the loader selects each winning id.
 pub(super) fn files(
     root: &Path,
-    stack: &super::functions::PackStack,
+    stack: &super::function_pack_stack::PackStack,
     contributed: Vec<ModifierFile>,
 ) -> Vec<ModifierFile> {
     let mut files = Vec::new();

@@ -1,14 +1,10 @@
 //! Shared cauldron client selection. Prediction never invokes authoritative callbacks.
-use super::*;
 use sunrise_core::vanilla_bytes::Writer;
 use sunrise_protocol::{
     buf::{Codec, Ident, Reader},
     packets::{configuration::CustomPayload, play::Clientbound},
 };
-use sunrise_sim::cauldron::{
-    self,
-    interactions::{Dispatcher, Entry},
-};
+use sunrise_sim::cauldron::interactions::Dispatcher;
 
 pub(super) use sunrise_protocol::packets::custom_payload::{
     CAULDRON_ENTRIES_CHANNEL as ENTRIES_CHANNEL, CAULDRON_USE_CHANNEL as USE_CHANNEL,
@@ -17,7 +13,7 @@ pub(super) use sunrise_protocol::packets::custom_payload::{
 /// Publish the server's selection snapshot only to peers that can suspend
 /// and resume these clicks. Vanilla and other peers keep their vanilla packets.
 pub(super) fn publish_registrations<'a>(
-    table: &cauldron_interactions::Table,
+    table: &crate::game::cauldron_interactions::Table,
     guests: impl IntoIterator<Item = &'a sunrise_sim::lan::guest::Guest>,
 ) {
     let mut packet = None;
@@ -33,7 +29,9 @@ pub(super) fn publish_registrations<'a>(
 
 /// Only selection keys are synchronized; the server never exports or predicts
 /// a callback. An empty snapshot also clears entries after a reload.
-pub(super) fn registration_packet(table: &cauldron_interactions::Table) -> Clientbound {
+pub(super) fn registration_packet(
+    table: &crate::game::cauldron_interactions::Table,
+) -> Clientbound {
     let mut body = Writer::new();
     table.for_each_mod_entry(|block, item, tag| {
         body.string(block);
@@ -79,34 +77,4 @@ pub(super) fn use_result(receipt: i64, outcome: UseOnOutcome) -> Clientbound {
         channel: USE_CHANNEL.into(),
         data: body.data,
     })
-}
-
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    /// The server's registration snapshot, not the client's installed mods,
-    /// determines whether the click needs an authoritative block result.
-    pub(super) fn has_server_cauldron_handler(
-        &self,
-        pos: [i32; 3],
-        held: Option<&ItemStack>,
-    ) -> bool {
-        let (Some(table), Some(held)) = (
-            self.remote
-                .as_ref()
-                .and_then(|r| r.cauldron_entries.as_ref()),
-            held,
-        ) else {
-            return false;
-        };
-        let block = self.block_name(pos);
-        let items = self.items();
-        matches!(
-            table.select(
-                &block,
-                &held.item,
-                cauldron::removes_dye(items, &held.item),
-                |tag| { items.item_in_tag(tag, &held.item) }
-            ),
-            Some(Entry::Mod(()))
-        )
-    }
 }

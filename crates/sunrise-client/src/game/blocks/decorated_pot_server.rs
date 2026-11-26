@@ -1,7 +1,8 @@
-use super::{Game, spill};
+use super::Game;
 use crate::game::decorated_pot::WOBBLE_NEGATIVE;
 use crate::game::decorated_pot::WOBBLE_POSITIVE;
 use crate::game::decorated_pot::unpack_loot;
+use crate::game::spill_common as spill;
 use {sunrise_core::nbt::Tag, sunrise_world::loot::ContainerLootContext};
 use {
     sunrise_items::items::ItemStack, sunrise_level::particle_options::ParticleType,

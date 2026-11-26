@@ -146,12 +146,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some((entity_id, at)) = self.resolve_entity_broadcast_event(entity) else {
             return false;
         };
-        self.emit_level_effect(super::journal_level_write::PendingWrite::EntityEvent {
-            level: self.dim,
-            entity_id,
-            event: id as i8,
-            at,
-        });
+        self.emit_level_effect(
+            crate::game::journal_level_effects::PendingWrite::EntityEvent {
+                level: self.dim,
+                entity_id,
+                event: id as i8,
+                at,
+            },
+        );
         true
     }
     /// Immediate counterpart to `entity_broadcast_event` for unjournaled direct writes whose

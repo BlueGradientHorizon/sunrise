@@ -2,10 +2,7 @@
 //! assets (`content_root`), and the Mods page's rows. Code mods are native (`native_hooks.rs`)
 //! with content-only packages loaded separately.
 #[allow(unused_imports)]
-use super::{
-    Game, execution_role::ExecutionRole, owner_link::OwnerRequest,
-    registration_capability_coverage as coverage,
-};
+use super::{Game, execution_role::ExecutionRole, registration_capability_coverage as coverage};
 pub(in crate::game) mod menu_books;
 pub(in crate::game) mod package_files;
 pub(in crate::game) mod runtime_files;
@@ -14,8 +11,6 @@ pub(in crate::game) mod standalone;
 use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
 #[allow(unused_imports)]
 use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
-#[allow(unused_imports)]
-use standalone::collect_standalone_models;
 #[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -113,6 +108,15 @@ pub(in crate::game) struct CodeSwitches {
     pub(in crate::game) applied: std::sync::atomic::AtomicBool,
 }
 
+pub(in crate::game) type ContentMaterializer =
+    fn(
+        &Path,
+        PathBuf,
+        &Path,
+        &[sunrise_sim::mod_content::ContentMod],
+        PathBuf,
+    ) -> sunrise_game_data::Result<sunrise_assets::resource_source::ResourceRoot>;
+
 #[derive(Clone, Default)]
 pub(in crate::game) struct ModsState {
     pub(in crate::game) active_condition_root: Option<Arc<()>>,
@@ -130,6 +134,7 @@ pub(in crate::game) struct ModsState {
     /// the window and its server. A later data reload must not overlay an
     /// already generated root recursively.
     pub(in crate::game) content_base: Arc<std::sync::OnceLock<PathBuf>>,
+    pub(in crate::game) content_materializer: Option<ContentMaterializer>,
     /// `--dev-mod PATH`: content mods always on.
     pub(in crate::game) dev: Vec<PathBuf>,
     pub(in crate::game) native: std::sync::Arc<sunrise_mod_package::runtime::Runtime>,
@@ -633,45 +638,6 @@ pub(in crate::game) fn native_declared() -> std::borrow::Cow<'static, NativeDecl
         std::borrow::Cow::Owned(declare())
     }
 }
-/// The native mods' standalone models (`native_standalone_models`), set once
-/// before the resources first load.
-pub(in crate::game) fn register_standalone_models(role: ExecutionRole) {
-    if let Some(registrations) = collect_standalone_models(role) {
-        sunrise_client::models::register_standalone(registrations);
-    }
-    register_fluid_models(role);
-}
-
-/// Recollect before each resource bake, retaining registration-phase attribution.
-pub(in crate::game) fn register_fluid_models(role: ExecutionRole) {
-    if let Some(models) = collect_fluid_models(role) {
-        sunrise_client::fluid_models::register(models);
-    }
-}
-
-pub(in crate::game) fn collect_fluid_models(
-    role: ExecutionRole,
-) -> Option<Vec<sunrise_mod_package::content::FluidModel>> {
-    if !role.is_client() {
-        return None;
-    }
-    let mut models = Vec::new();
-    crate::game::native_hooks::native_register_fluid_models(
-        &RegistrationContext::new(),
-        &mut models,
-    );
-    Some(
-        models
-            .into_iter()
-            .map(|model| sunrise_mod_package::content::FluidModel {
-                fluid: model.fluid,
-                still: model.still,
-                flowing: model.flowing,
-                overlay: model.overlay,
-            })
-            .collect(),
-    )
-}
 
 pub(in crate::game) fn collect_key_mappings<'declared>(
     role: ExecutionRole,
@@ -680,356 +646,15 @@ pub(in crate::game) fn collect_key_mappings<'declared>(
     if role.is_client() { declared } else { &[] }
 }
 
-/// Freeze the native mods' entity model layer definitions at startup, then bake their skull
-/// types (`native_create_skull_models`) from those definitions or vanilla's under `vanilla_root`.
-pub(in crate::game) fn register_layer_definitions(
-    role: ExecutionRole,
-    vanilla_root: &std::path::Path,
-) -> sunrise_game_data::Result<()> {
-    if !role.is_client() {
-        return Ok(());
-    }
-    let mut suppliers = Vec::new();
-    crate::game::native_hooks::native_register_layer_definitions(
-        &RegistrationContext::new(),
-        &mut suppliers,
-    );
-    sunrise_client::mobs::model_layers::register(suppliers, vanilla_root)?;
-    let mut models = Vec::new();
-    crate::game::native_hooks::native_create_skull_models(&RegistrationContext::new(), &mut models);
-    sunrise_client::skull_models::register(models, vanilla_root);
-    Ok(())
-}
-/// Freeze the native mods' F3 text callbacks and renderer toggles at client startup.
-pub(in crate::game) fn register_debug_entries(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut entries = Vec::new();
-    crate::game::native_hooks::native_register_debug_entries(
-        &RegistrationContext::new(),
-        &mut entries,
-    );
-    sunrise_client::debug_entries::register(entries);
-}
 /// The native mods' map decoration types (`native_map_decoration_types`), frozen once at start on
 /// every side.
 pub(in crate::game) fn register_map_decoration_types() {
     let mut types = Vec::new();
     crate::game::native_hooks::native_map_decoration_types(&RegistrationContext::new(), &mut types);
-    sunrise_sim::map_decoration_types::register(types, Game::is_vanilla_decoration_sprite);
-}
-/// Install the native mods' HUD draw callbacks among the vanilla anchors once at client startup.
-pub(in crate::game) fn register_gui_layers(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut layers = sunrise_client::gui_layers::GuiLayers::default();
-    crate::game::native_hooks::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
-    sunrise_client::gui_layers::freeze(layers);
-}
-/// Install the native mods' client tooltip component factories once at client startup.
-pub(in crate::game) fn register_client_tooltip_component_factories(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut factories = sunrise_client::tooltip_components::TooltipComponentFactories::default();
-    crate::game::native_hooks::native_register_client_tooltip_component_factories(
-        &RegistrationContext::new(),
-        &mut factories,
+    sunrise_sim::map_decoration_types::register(
+        types,
+        crate::game::maps::is_vanilla_decoration_sprite,
     );
-    sunrise_client::tooltip_components::freeze(factories);
-}
-/// Collect the native mods' owned debug renderers and their owners on each list refresh.
-pub(in crate::game) fn debug_renderers(
-    role: ExecutionRole,
-    entries: &dyn mod_api::__private::DebugEntryStates,
-) -> Vec<mod_api::Answered<mod_api::DebugRenderer>> {
-    let mut renderers = Vec::new();
-    if role.is_client() {
-        crate::game::native_hooks::native_register_debug_renderers(
-            &RegistrationContext::new(),
-            entries,
-            &mut renderers,
-        );
-    }
-    renderers
-}
-/// The native mods' numeric item model properties
-/// (`native_register_range_select_item_model_property`), kept once at start, before
-/// resources load, so `range_dispatch` models on them read the mod's number.
-pub(in crate::game) fn register_range_select_item_model_properties(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut properties = Vec::new();
-    crate::game::native_hooks::native_register_range_select_item_model_property(
-        &RegistrationContext::new(),
-        &mut properties,
-    );
-    sunrise_client::item_render::install_range_property_factories(properties);
-}
-/// The native mods' categorical item model properties
-/// (`native_register_select_item_model_property`), kept once at start, before resources
-/// load, so `select` models on them read the mod's value.
-pub(in crate::game) fn register_select_item_model_properties(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut properties = Vec::new();
-    crate::game::native_hooks::native_register_select_item_model_property(
-        &RegistrationContext::new(),
-        &mut properties,
-    );
-    sunrise_client::item_render::install_select_property_factories(properties);
-}
-/// The types native mods register for resource definitions, kept once at start, before
-/// resources load: item tint sources (`native_register_item_tint_sources`), so `tints` entries on
-/// them read the mod's colour; atlas sprite sources (`native_register_sprite_sources`), so atlas
-/// definitions' entries on them list the mod's sprites; model loaders
-/// (`native_register_model_loaders`), so models naming one get the mod's quads; item model node
-/// types (`native_register_item_models`), so item definitions' nodes of them draw what the mod
-/// answers; and animation targets and interpolations (`native_register_json_animation_types`),
-/// bound directly to their callbacks so animation files resolve and convert them at parse time.
-/// Block-state
-/// definition types (`native_register_block_state_models`), so blockstate files naming one get
-/// the models the mod picks; and special item model factories
-/// (`native_register_special_model_renderer`), so each special model node of a registered type
-/// bakes its own renderer.
-pub(in crate::game) fn register_resource_sources(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut sources = Vec::new();
-    crate::game::native_hooks::native_register_item_tint_sources(
-        &RegistrationContext::new(),
-        &mut sources,
-    );
-    sunrise_client::item_render::install_item_tint_factories(sources);
-    let mut sources = Vec::new();
-    crate::game::native_hooks::native_register_sprite_sources(
-        &RegistrationContext::new(),
-        &mut sources,
-    );
-    sunrise_client_render::mod_sprite_sources::register(sources);
-    let mut loaders = Vec::new();
-    crate::game::native_hooks::native_register_model_loaders(
-        &RegistrationContext::new(),
-        &mut loaders,
-    );
-    sunrise_client_render::mod_model_loaders::register(loaders);
-    let mut models = Vec::new();
-    crate::game::native_hooks::native_register_item_models(
-        &RegistrationContext::new(),
-        &mut models,
-    );
-    sunrise_client::item_render::install_item_model_factories(models);
-    let mut types = Vec::new();
-    crate::game::native_hooks::native_register_json_animation_types(
-        &RegistrationContext::new(),
-        &mut types,
-    );
-    sunrise_client_render::mod_animations::register(types);
-    let mut definitions = Vec::new();
-    crate::game::native_hooks::native_register_block_state_models(
-        &RegistrationContext::new(),
-        &mut definitions,
-    );
-    sunrise_client_render::mod_block_state_models::register(definitions);
-    register_special_model_renderers();
-}
-/// The native mods' special item model renderers (`native_register_special_model_renderer`),
-/// kept once at start, before resources load: their types are what a `minecraft:special` model
-/// may name besides vanilla's, or in place of one. A later registration of a type replaces the
-/// earlier one, and the log names both mods.
-pub(in crate::game) fn register_special_model_renderers() {
-    let mut registry = mod_api::SpecialModelRendererRegistry::default();
-    crate::game::native_hooks::native_register_special_model_renderer(
-        &RegistrationContext::new(),
-        &mut registry,
-    );
-    for (kind, owner) in registry.initial_owners() {
-        if sunrise_assets::item_model::SpecialModel::is_builtin_type(&kind.to_string()) {
-            log::warn!(
-                "Sunrise: special model type {kind} registered by the game is replaced by {}'s registration",
-                owner.unwrap_or("the game")
-            );
-        }
-    }
-    let (factories, replaced) = registry.into_renderers();
-    for replaced in replaced {
-        let name = |id: Option<&str>| id.unwrap_or("the game").to_owned();
-        log::warn!(
-            "Sunrise: special model type {} registered by {} is replaced by {}'s registration",
-            replaced.kind,
-            name(replaced.earlier),
-            name(replaced.later)
-        );
-    }
-    sunrise_client::item_render::install_special_model_factories(
-        factories
-            .into_iter()
-            .filter_map(|(kind, (owner, factory))| {
-                let owner = owner?;
-                Some((
-                    kind,
-                    sunrise_client::item_render::OwnedSpecialModelFactory::new(owner, factory),
-                ))
-            })
-            .collect(),
-    );
-}
-/// The client presentation registrations, kept once at start, before resources load: the
-/// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
-/// renderers.
-pub(in crate::game) fn register_client_presentations(
-    role: ExecutionRole,
-) -> sunrise_game_data::Result<()> {
-    register_preset_editors(role);
-    register_dimension_transition_screens(role);
-    register_entity_spectator_shaders(role);
-    register_render_pipelines(role)?;
-    register_entity_renderers(role);
-    Ok(())
-}
-
-/// Resolve client dimension-transition registrations once, before the first level opens.
-pub(in crate::game) fn register_dimension_transition_screens(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut screens = Vec::new();
-    crate::game::native_hooks::native_register_dimension_transition_screen(
-        &RegistrationContext::new(),
-        &mut screens,
-    );
-    sunrise_client_render::dimension_transition::register(screens);
-}
-
-/// Resolve client spectator post-effect registrations once, before the first level opens.
-pub(in crate::game) fn register_entity_spectator_shaders(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut shaders = Vec::new();
-    crate::game::native_hooks::native_register_entity_spectator_shaders(
-        &RegistrationContext::new(),
-        &mut shaders,
-    );
-    sunrise_client_render::spectator_shaders::register(shaders);
-}
-
-pub(in crate::game) fn register_preset_editors(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut editors = Vec::new();
-    crate::game::native_hooks::native_register_preset_editors(
-        &RegistrationContext::new(),
-        &mut editors,
-    );
-    sunrise_client::title::preset_editors::register(editors);
-}
-
-/// Keep the mods' render pipeline registrations once at startup, before resources load: every
-/// load builds them from its own shader files.
-pub(in crate::game) fn register_render_pipelines(
-    role: ExecutionRole,
-) -> sunrise_game_data::Result<()> {
-    if !role.is_client() {
-        return Ok(());
-    }
-    let mut pipelines = Vec::new();
-    crate::game::native_hooks::native_register_render_pipelines(
-        &RegistrationContext::new(),
-        &mut pipelines,
-    );
-    sunrise_client_render::mod_pipelines::register(pipelines)?;
-    Ok(())
-}
-
-/// The native mods' meshing registrations, kept once at start, before resources load: colour
-/// resolvers, then the block tint sources that read them, then section geometry renderers.
-pub(in crate::game) fn register_meshing(role: ExecutionRole) {
-    register_color_resolvers(role);
-    register_block_tint_sources(role);
-    add_section_geometry(role);
-}
-
-/// The native mods' colour resolvers (`native_register_color_resolvers`), kept once at start,
-/// before the block tint sources that read them and before resources load.
-pub(in crate::game) fn register_color_resolvers(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::ColorResolverRegistry::default();
-    crate::game::native_hooks::native_register_color_resolvers(
-        &RegistrationContext::new(),
-        &mut registry,
-    );
-    sunrise_client::mesher::register_color_resolvers(registry.into_resolvers());
-}
-
-/// The native mods' block tint sources (`native_register_block_tint_sources`), kept once at
-/// start, before resources load; every resource load applies them to its mesh tables.
-pub(in crate::game) fn register_block_tint_sources(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::BlockTintRegistry::default();
-    crate::game::native_hooks::native_register_block_tint_sources(
-        &RegistrationContext::new(),
-        &mut registry,
-    );
-    sunrise_client::mesher::register_block_tint_sources(registry.into_layers());
-}
-/// The native mods' section geometry renderers (`native_add_section_geometry`), kept once at
-/// start, before resources load; every mesh of a section asks them to add their quads.
-pub(in crate::game) fn add_section_geometry(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::SectionGeometryRegistry::default();
-    crate::game::native_hooks::native_add_section_geometry(
-        &RegistrationContext::new(),
-        &mut registry,
-    );
-    sunrise_client::mesher::register_section_geometry(registry.into_renderers());
-}
-/// The native mods' entity renderers (`native_register_entity_renderers`), kept once at start,
-/// before resources load; every resource load resolves each type's renderer.
-pub(in crate::game) fn register_entity_renderers(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::EntityRendererRegistry::default();
-    crate::game::native_hooks::native_register_entity_renderers(
-        &RegistrationContext::new(),
-        &mut registry,
-    );
-    #[cfg(feature = "client")]
-    super::native_entity_renderers::register(registry.into_renderers());
-}
-/// The native mods' particle providers (`native_register_particle_providers`) and render groups
-/// (`native_register_particle_groups`) are registered once at startup. Each particle engine
-/// constructs its groups once; sprite-set loads associate types with those groups and providers.
-pub(in crate::game) fn register_particles(role: ExecutionRole) -> sunrise_game_data::Result<()> {
-    if !role.is_client() {
-        return Ok(());
-    }
-    let mut registry = mod_api::ParticleProviderRegistry::default();
-    crate::game::native_hooks::native_register_particle_providers(
-        &RegistrationContext::new(),
-        &mut registry,
-    );
-    sunrise_client::particles::register_particle_providers(registry.into_providers());
-    let mut group_factories = Vec::new();
-    crate::game::native_hooks::native_register_particle_groups(
-        &RegistrationContext::new(),
-        &mut group_factories,
-    );
-    sunrise_client::particles::register_particle_groups(group_factories)?;
-    Ok(())
 }
 
 /// `root` with the content mods that are on layered over it
@@ -1449,13 +1074,14 @@ pub(in crate::game) fn content_overlay_with_refusals(
     let prepared = super::load_conditions::content_root_with_conditions(
         root, jar_store, &mods, &cache, &inventory, sources,
     )?;
-    let root = if sources.installation_side == sunrise_mod_package::manifest::Side::Server {
-        mod_content::resolved_server_resources(root, prepared, jar_store, &mods, cache)?
+    let materialize = if sources.installation_side == sunrise_mod_package::manifest::Side::Server {
+        mod_content::resolved_server_resources
     } else {
-        sunrise_client::mod_content_client::resolved_resources(
-            root, prepared, jar_store, &mods, cache,
-        )?
+        sources
+            .content_materializer
+            .unwrap_or(mod_content::resolved_server_resources)
     };
+    let root = materialize(root, prepared, jar_store, &mods, cache)?;
     let _ = sources.content_base.set(original_base);
     *sources.load_notices.lock().unwrap() = resolved.warnings;
     Ok(ContentOverlay {
@@ -1557,6 +1183,14 @@ pub(in crate::game) fn content_root(
     root: &std::path::Path,
     sources: &ModsState,
 ) -> sunrise_game_data::Result<sunrise_assets::resource_source::ResourceRoot> {
+    content_root_with(root, sources, sunrise_sim::mod_content::set_fluid_looks)
+}
+
+pub(in crate::game) fn content_root_with(
+    root: &Path,
+    sources: &ModsState,
+    set_fluid_looks: impl FnOnce(&[sunrise_sim::mod_content::ContentMod]),
+) -> sunrise_game_data::Result<sunrise_assets::resource_source::ResourceRoot> {
     let _step = sunrise_level::spans::startup::step("mods.content_root");
     let jar_store = sunrise_level::logging::game_home().join("jars");
     let overlay = {
@@ -1613,11 +1247,7 @@ pub(in crate::game) fn content_root(
     })?;
     register_entity_types(&overlay.mods);
     register_menu_types(&overlay.mods)?;
-    if sources.installation_side == sunrise_mod_package::manifest::Side::Server {
-        sunrise_sim::mod_content::set_fluid_looks(&overlay.mods);
-    } else {
-        sunrise_client::mod_content_client::set_fluid_looks(&overlay.mods);
-    }
+    set_fluid_looks(&overlay.mods);
     sunrise_sim::mod_content::set_fluid_interactions(&overlay.mods);
     // Freeze ownership with the startup registries, before preparing Parts. Pack and data
     // reloads can change layers but cannot replace the registered blocks and block entity types.
@@ -1642,7 +1272,7 @@ pub(in crate::game) fn register_iterated_registries(
         .ok_or("missing entity type registry")?
         .names;
     let prepared = ids.iter().map(String::as_str).filter(|id| !id.is_empty());
-    let general = super::general::general_type_catalog();
+    let general = crate::game::general::general_type_catalog();
     let mut spawner_types = SpawnerTypeFacts::load_registered(root, prepared.clone())?;
     for slot in 0..general.len() {
         let (width, height) = general.dimensions(slot);
@@ -1884,7 +1514,7 @@ pub(in crate::game) fn register_mob_effects(
 /// enter through different paths. Refuse the collision before building the content root.
 pub(in crate::game) fn validate_entity_type_families(
     mods: &[sunrise_sim::mod_content::ContentMod],
-    general: &super::general::GeneralTypeCatalog,
+    general: &crate::game::general::GeneralTypeCatalog,
 ) -> Result<(), String> {
     for package in mods {
         for entity in &package.content.entity_types {
@@ -2473,7 +2103,7 @@ pub(in crate::game) fn register_cauldron_fluid_contents(
     for refusal in refusals {
         log::warn!("Sunrise: cauldron fluid content refused: {refusal}");
     }
-    crate::game::machines::cauldron_contents::install(contents);
+    sunrise_gameplay_common::cauldron_contents::install(contents);
 }
 
 /// Ask the mods, then resolve each registration against `registry` into the table after
@@ -2483,10 +2113,10 @@ pub(in crate::game) fn register_cauldron_fluid_contents(
 pub(in crate::game) fn collect_cauldron_fluid_contents(
     registry: &sunrise_world::registry::BlockRegistry,
 ) -> (
-    crate::game::machines::cauldron_contents::CauldronContents,
+    sunrise_gameplay_common::cauldron_contents::CauldronContents,
     Vec<String>,
 ) {
-    use crate::game::machines::cauldron_contents::{CauldronContent, CauldronContents};
+    use sunrise_gameplay_common::cauldron_contents::{CauldronContent, CauldronContents};
     let mut registrations = mod_api::CauldronFluidContentRegistry::default();
     crate::game::native_hooks::native_register_cauldron_fluid_content(
         &RegistrationContext::new(),
@@ -5086,13 +4716,17 @@ pub(in crate::game) mod tests {
                             measures: Default::default(),
                         },
                     ]);
-                    register_fluid_models(ExecutionRole::Client);
+                    crate::game::client_side::mods_client::register_fluid_models(
+                        ExecutionRole::Client,
+                    );
                     assert_eq!(
                         sunrise_client::fluid_models::resolved()[0].still,
                         "reload_fluid:block/oil_0"
                     );
                     generation.store(1, Ordering::SeqCst);
-                    register_fluid_models(ExecutionRole::Client);
+                    crate::game::client_side::mods_client::register_fluid_models(
+                        ExecutionRole::Client,
+                    );
                     assert_eq!(
                         sunrise_client::fluid_models::resolved()[0].still,
                         "reload_fluid:block/oil_1"
@@ -5140,9 +4774,15 @@ pub(in crate::game) mod tests {
                         ExecutionRole::IntegratedServer,
                         ExecutionRole::DedicatedServer,
                     ] {
-                        assert_eq!(collect_fluid_models(server), None);
+                        assert_eq!(
+                            crate::game::client_side::mods_client::collect_fluid_models(server),
+                            None
+                        );
                     }
-                    let models = collect_fluid_models(ExecutionRole::Client).unwrap();
+                    let models = crate::game::client_side::mods_client::collect_fluid_models(
+                        ExecutionRole::Client,
+                    )
+                    .unwrap();
                     assert_eq!(models.len(), 1);
                     assert_eq!(models[0].fluid, "registration_test:oil");
                     assert_eq!(
@@ -5707,5 +5347,42 @@ pub(in crate::game) mod server_side_tests {
             );
             assert_eq!(mod_api::__private::client_requirement("quiet"), None);
         });
+    }
+}
+
+impl ModsState {
+    pub(in crate::game) fn startup_admission(&self) -> Option<&package_files::StartupAdmission> {
+        self.startup_admission
+            .as_deref()
+            .filter(|admission| admission.matches_selection(&self.selected))
+    }
+}
+
+impl ModsState {
+    pub(in crate::game) fn perf_metadata<'a>(
+        &self,
+        packages: impl Iterator<Item = &'a mod_api::PackageInfo>,
+    ) -> Vec<sunrise_perf_format::v1::Mod> {
+        use sunrise_perf_format::v1::{Mod, ModKind};
+        packages
+            .map(|package| {
+                let native = self
+                    .native
+                    .built()
+                    .iter()
+                    .any(|candidate| candidate.id == package.id());
+                Mod {
+                    id: package.id().to_owned(),
+                    version: package.version().to_owned(),
+                    kind: match package.kind() {
+                        mod_api::PackageKind::Content => ModKind::Content,
+                        mod_api::PackageKind::Code if native => ModKind::Native,
+                        _ => ModKind::Unspecified,
+                    } as i32,
+                    // AdjacentManifest does not expose a compiled crate name.
+                    crate_name: String::new(),
+                }
+            })
+            .collect()
     }
 }

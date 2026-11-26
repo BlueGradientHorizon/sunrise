@@ -43,6 +43,10 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
             root.clone(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.init_remote_for_replay().unwrap();
@@ -63,7 +67,7 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
 
     // StartConfiguration after a Login: no player, ServerReconfigScreen.
     let ticks = game.ticks;
-    let r = game.remote.as_mut().unwrap();
+    let r = game.side.remote.as_mut().unwrap();
     r.logged_in = true;
     r.reconfiguring = Some(ticks);
     game.player = None;
@@ -76,7 +80,7 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
     assert!(menu, "the menu music starts under ServerReconfigScreen");
 
     // With a level again the camera probe reads that column: plains' music.
-    game.remote.as_mut().unwrap().reconfiguring = None;
+    game.side.remote.as_mut().unwrap().reconfiguring = None;
     let (music, _) = game.situational_music();
     assert!(music.is_some_and(|m| m != Music::menu()));
 }
@@ -125,7 +129,7 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
         game.wait_for_test_remote_event(|event| matches!(event, Event::Reconfiguring(_)));
         game.poll_remote_events(true).unwrap();
 
-        assert!(game.remote.as_ref().unwrap().reconfiguring.is_some());
+        assert!(game.side.remote.as_ref().unwrap().reconfiguring.is_some());
         assert_eq!(stream.state(), AudioStreamState::Stopped);
     });
 }
@@ -134,8 +138,9 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
 #[ignore = "daily"]
 fn client_level_transitions_stop_streams_opened_during_unload() {
     use crate::game::{
-        integrated::Integrated, native_client_session::tests::logged_client,
-        native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry,
+        client_side::integrated_client::Integrated,
+        client_side::remote_client::RemoteDimensionEntry,
+        native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
     };
     use mod_api::{
         AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost,
@@ -232,7 +237,7 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
                     );
                 } else {
                     if integrated {
-                        game.integrated = Some(Integrated::stopped_for_test());
+                        game.side.integrated = Some(Integrated::stopped_for_test());
                     }
                     game.leave_server(None).unwrap();
                 }

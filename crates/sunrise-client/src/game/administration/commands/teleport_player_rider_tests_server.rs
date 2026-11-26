@@ -8,7 +8,7 @@ pub(in crate::game) mod fake_travel_tests {
     fn a_fake_player_is_not_teleported_to_another_dimension() {
         super::super::super::native_entity_refs::tests::with_game(|game| {
             super::super::super::bossbars::audience_tests::add_real_and_fake(game);
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             let conn = |uuid| {
                 host.hub
                     .guests
@@ -47,6 +47,7 @@ pub(in crate::game) mod fake_travel_tests {
         super::super::super::native_entity_refs::tests::with_game(|game| {
             super::super::super::bossbars::audience_tests::add_real_and_fake(game);
             let conn = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()

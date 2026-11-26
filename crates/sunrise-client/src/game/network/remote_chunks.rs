@@ -84,7 +84,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// chunk hooks: none off a server (an integrated world's chunks are the
     /// server's `chunk_load` and `chunk_unload`).
     fn client_chunk_dimension(&self) -> Option<String> {
-        self.remote.as_ref()?.heard_level.clone()
+        self.side.remote.as_ref()?.heard_level.clone()
     }
 }
 
@@ -98,7 +98,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         p: &play::LevelChunkWithLight,
         decoded: Option<(&Arc<ChunkFormat>, Result<Chunk, String>)>,
     ) {
-        let Some(format) = self.remote.as_ref().map(|r| r.chunk_format.clone()) else {
+        let Some(format) = self.side.remote.as_ref().map(|r| r.chunk_format.clone()) else {
             return;
         };
         let key = (p.x, p.z);
@@ -109,7 +109,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 p.z
             );
             // Only block admission failed; handleLevelChunkWithLight still queues its light.
-            if let Some(r) = &mut self.remote {
+            if let Some(r) = &mut self.side.remote {
                 r.chunk_light.enqueue(
                     key,
                     LightTask::Apply {
@@ -133,7 +133,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let (x, z) = key;
         if let Some(alias) = self.world.chunks.client_chunk_alias(key) {
-            if let Some(r) = &mut self.remote {
+            if let Some(r) = &mut self.side.remote {
                 // ClientLevel.unload disables the old slot's column, not its successor.
                 r.chunk_light.columns.remove(&alias);
             }
@@ -141,7 +141,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let previous = self.world.chunks.get(&key);
         let resident = previous.is_some();
-        let pending = self.remote.as_mut().and_then(|r| {
+        let pending = self.side.remote.as_mut().and_then(|r| {
             if r.chunk_light.queued_counts.contains_key(&key) {
                 // The decoder already hydrated this packet. Apply its supplied layers
                 // again in order if earlier queued packets can still overwrite them.
@@ -173,7 +173,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .find_map(|(kind, words)| (*kind == 4).then_some(words.as_slice()));
         // LevelChunk.replaceWithPacketData reads the map after the sections. Do it
         // before either streaming replacement path so it doesn't depend on mesh changes.
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             chunk.adopt_packet_motion_blocking(
                 previous.map(Arc::as_ref),
                 [remote.dimension.min_y, remote.dimension.height],
@@ -205,7 +205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.load_block_entities((x, z), &p.chunk.block_entities);
         // After the column's block entities load: an attachment keeps its block entity if the
         // packet sent it again, and one left from a forgotten column goes.
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.attachments.retain(|holder, _| match *holder {
                 Holder::BlockEntity([bx, by, bz]) => {
                     (bx >> 4, bz >> 4) != (x, z)
@@ -258,7 +258,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// of it and of its neighbours is drawn again, as their colours blend
     /// across columns (`LevelExtractor.setSectionDirty`).
     pub(in crate::game) fn remote_chunks_biomes(&mut self, p: &play::ChunksBiomes) {
-        let Some(format) = self.remote.as_ref().map(|r| r.chunk_format.clone()) else {
+        let Some(format) = self.side.remote.as_ref().map(|r| r.chunk_format.clone()) else {
             return;
         };
         for data in &p.chunks {
@@ -291,7 +291,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// `handleLightUpdatePacket`: queue light independently of block admission.
     pub(in crate::game) fn remote_light_update(&mut self, p: &play::LightUpdate) {
-        if let Some(r) = &mut self.remote {
+        if let Some(r) = &mut self.side.remote {
             let layers = r.chunk_format.light(&p.light);
             r.chunk_light.enqueue(
                 (p.x, p.z),
@@ -307,7 +307,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         positions: &FxHashSet<Column>,
     ) {
-        if let Some(r) = &mut self.remote {
+        if let Some(r) = &mut self.side.remote {
             for &key in positions {
                 r.chunk_light.enqueue(key, LightTask::Forget);
             }
@@ -315,20 +315,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn clear_remote_light(&mut self) {
-        if let Some(r) = &mut self.remote {
+        if let Some(r) = &mut self.side.remote {
             r.chunk_light = RemoteLight::default();
         }
     }
 
     /// `ClientLevel.pollLightUpdates`, before streaming takes the light inputs for meshes.
     pub(in crate::game) fn poll_remote_light(&mut self) {
-        let Some(r) = &self.remote else { return };
+        let Some(r) = &self.side.remote else { return };
         let size = r.chunk_light.queue.len();
         // `ClientLevel.pollLightUpdates`: under 1000 queued, the greater of 10 and a
         // tenth of them; otherwise all of them.
         let limit = if size < 1000 { 10.max(size / 10) } else { size };
         for _ in 0..limit {
-            let Some(r) = &mut self.remote else { break };
+            let Some(r) = &mut self.side.remote else {
+                break;
+            };
             let Some((key @ (x, z), task)) = r.chunk_light.pop() else {
                 break;
             };

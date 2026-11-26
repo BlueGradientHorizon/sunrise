@@ -422,7 +422,7 @@ fn run_isolated() {
         native_entity_refs::tests::with_client_game(|game| {
             let (local, _peer) = Pipe::pair();
             game.connect_local(local, "DestroyTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 71;
             remote.profile = PLAYER;

@@ -1,6 +1,10 @@
 //! Portable simulation/server settings subset extracted from `settings::Settings`.
 use crate::tick_mode::ParallelTickMode;
 
+/// Sunrise's render distance cap (vanilla stops at 32): the server protocol's
+/// view distance tops out at 127 anyway.
+pub const MAX_RENDER_DISTANCE: i32 = 128;
+
 pub use sunrise_game_data::sound_source::{
     SOUND_SOURCES, ServerSound, sound_source_for_event as sound_source,
 };

@@ -1,6 +1,6 @@
 //! Server-side entity-bound player sound broadcast and entity sound state lookup.
 use super::Game;
-use crate::game::client_side::entity_sounds::saved_silent;
+use crate::game::entity_sounds_common::saved_silent;
 use sunrise_game_data::sound_source::SoundEntityState;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -42,7 +42,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 removed: false,
             });
         }
-        if let Some(guest) = self.lan.as_ref().and_then(|host| {
+        if let Some(guest) = self.side.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
                 .iter()

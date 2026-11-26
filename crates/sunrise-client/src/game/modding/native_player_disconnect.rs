@@ -21,7 +21,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The guest record of a network or fake player, including an acting or displaced one.
     fn disconnect_target(&self, player: PlayerRef) -> Option<u32> {
         (self.native_lifecycle.epoch()? == player.entity().epoch()).then_some(())?;
-        let hub = &self.lan.as_ref()?.hub;
+        let hub = &self.side.lan.as_ref()?.hub;
         let guest = hub.guests.get(
             hub.guests
                 .identity_index(player.uuid(), player.entity().id())?,

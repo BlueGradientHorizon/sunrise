@@ -53,7 +53,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         id: i32,
         slot: EquipmentSlot,
     ) {
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
+        if self.side.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             let stack = match slot {
                 EquipmentSlot::MainHand => self.held().cloned(),
                 EquipmentSlot::OffHand => self.offhand.clone(),

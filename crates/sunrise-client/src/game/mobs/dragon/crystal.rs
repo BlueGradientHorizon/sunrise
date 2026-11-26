@@ -1,50 +1,6 @@
 //! An end crystal's construction and the blocks its tick reads.
 use super::*;
 
-impl Crystal {
-    /// `new EndCrystal(level, x, y, z)`: no beam, not invulnerable, on no
-    /// ground with no fall (what `Entity`'s constructor leaves).
-    pub(in crate::game) fn new(id: u32, position: Vec3, show_bottom: bool, time: i32) -> Self {
-        Self {
-            size_answer: None,
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id,
-            position,
-            rotation: [0.0; 2],
-            fire: 0,
-            show_bottom,
-            time,
-            beam: None,
-            invulnerable: false,
-            fall: (false, 0.0),
-        }
-    }
-    /// `EndCrystal.<init>`'s draws, all from the crystal's own random (`Entity.random`,
-    /// `RandomSource.create()`): its UUID (`Mth.createInsecureUUID`), then
-    /// `time = random.nextInt(100000)`. The level's random draws nothing. Returns the drawn time
-    /// (for `start_time`) and the UUID.
-    pub(in crate::game::server_side) fn own_draws() -> (i32, [i32; 4]) {
-        let mut random = sunrise_level::random_source::entity();
-        let uuid = sunrise_sim::save::insecure_uuid(&mut random);
-        (random.next_int_bound(100_000).unwrap_or(0), uuid)
-    }
-    /// The start of `time` (the spin and bob) for a crystal at `position`: the random draw
-    /// vanilla makes, or under `SUNRISE_STILL` one seeded from the position alone. Which crystal
-    /// gets which draw, and a server's entity ids, follow the order chunks load in, which differs
-    /// between launches; the position is the same in every copy of the world. The draw is made
-    /// either way, so the random stays where it would be.
-    pub(in crate::game) fn start_time(position: Vec3, drawn: i32, still: bool) -> i32 {
-        if still {
-            sunrise_sim::mobs::entity_random(0, position)
-                .next_int_bound(100_000)
-                .unwrap_or(0)
-        } else {
-            drawn
-        }
-    }
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `EndCrystal.tick`'s `applyEffectsFromBlocks` for crystal `i`, which never
     /// moves: a cobweb or powder snow in its box (2 x 2 x 2, deflated by

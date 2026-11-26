@@ -107,7 +107,7 @@ fn game_with_guest<'a>(
     );
     guest.dimension = "minecraft:overworld".into();
     guest.placed = true;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     (game, rx)
 }
 
@@ -129,7 +129,7 @@ fn install_warps(game: &mut crate::game::ServerGame<'_>) {
     let mut dispatcher = (*game.ui.dispatcher.0).clone();
     register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
     game.ui.dispatcher.0 = Arc::new(dispatcher);
-    let host = game.lan.as_mut().unwrap();
+    let host = game.side.lan.as_mut().unwrap();
     host.hub.set_mod_commands(0, tree);
 }
 
@@ -290,7 +290,12 @@ fn a_providers_answer_reaches_the_player_without_passing_through_the_completion_
         let mut dispatcher = (*game.ui.dispatcher.0).clone();
         register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
         game.ui.dispatcher.0 = Arc::new(dispatcher);
-        game.lan.as_mut().unwrap().hub.set_mod_commands(0, tree);
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .set_mod_commands(0, tree);
         last_tree(&rx);
 
         // The provider's argument: its matching candidate, its tooltip, and nothing the listener
@@ -340,7 +345,12 @@ fn an_identifier_listener_replies_on_the_wire_and_leaves_room_for_the_next_argum
         let mut dispatcher = (*game.ui.dispatcher.0).clone();
         register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
         game.ui.dispatcher.0 = Arc::new(dispatcher);
-        game.lan.as_mut().unwrap().hub.set_mod_commands(0, tree);
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .set_mod_commands(0, tree);
         last_tree(&rx);
 
         let typed = "probe ex";
@@ -484,7 +494,12 @@ fn a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quota
                 "Unclosed quoted string"
             );
             game.ui.dispatcher.0 = Arc::new(dispatcher);
-            game.lan.as_mut().unwrap().hub.set_mod_commands(0, tree);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .set_mod_commands(0, tree);
             let packet = last_tree(&rx);
             let node = |parent: &str, child: &str| {
                 let parent = packet
@@ -594,13 +609,13 @@ fn a_plain_players_tree_and_completions_leave_out_the_paths_they_may_not_run() {
     );
 
     // `/op`: the operator list changes and the hub sends the trees again.
-    let uuid = game.lan.as_ref().unwrap().hub.guests[0].uuid;
+    let uuid = game.side.lan.as_ref().unwrap().hub.guests[0].uuid;
     {
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         host.hub.ops.insert(uuid, 4);
         host.hub.resend_commands();
     }
-    assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].permission, 4);
+    assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].permission, 4);
     assert_eq!(children(&last_tree(&rx), "warp"), ["admin", "go"]);
     assert_eq!(suggestions(&mut game, &rx, "warp "), ["admin", "go"]);
     assert_eq!(suggestions(&mut game, &rx, "warp go "), ["secret", "spawn"]);

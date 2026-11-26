@@ -1,5 +1,7 @@
 //! Model-batch equivalence tests and an opt-in benchmark of the actual loaders.
-use super::{armor_stands::ArmorStandAssets, boats::BoatModels, minecarts::CartModels};
+use crate::game::client_side::{
+    armor_stands_client::ArmorStandAssets, boats_client::BoatModels, minecarts_client::CartModels,
+};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, hint::black_box, path::Path, time::Instant};
 use sunrise_client::mobs::Part;

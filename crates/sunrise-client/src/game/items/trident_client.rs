@@ -2,9 +2,10 @@ use super::Game;
 #[allow(unused_imports)]
 use sunrise_client::mesher::Vertex;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
-use sunrise_gameplay::trident::{HALF, ThrownTrident};
+use sunrise_sim::thrown_trident::{HALF, ThrownTrident};
 #[allow(unused_imports)]
 use sunrise_sim::{arrows::Pickup, mobs::anim::Poses};
+use sunrise_sim::{arrows::back_off, projectiles::ProjectileWorld};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// ThrownTridentRenderer.
@@ -210,6 +211,64 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 true,
             );
         }
+    }
+}
+
+/// `ThrownTrident.tick` on a server's client: it flies on by itself
+/// between the server's updates (`AbstractArrow.tick`: gravity and drag,
+/// a block holds it), and Loyalty pulls it back to its owner; only the
+/// server decides what it hits.
+pub(in crate::game) fn remote_tick(
+    t: &mut ThrownTrident,
+    w: &impl ProjectileWorld,
+    owner_eye: Option<Vec3>,
+) {
+    t.previous = t.position;
+    t.shake -= i32::from(t.shake > 0);
+    if t.in_ground_time > 4 {
+        t.dealt_damage = true;
+    }
+    if t.loyalty > 0
+        && (t.dealt_damage || t.no_physics)
+        && let Some(eye) = owner_eye
+    {
+        t.no_physics = true;
+        t.in_ground = false;
+        t.loyalty_pull(eye);
+    }
+    // AbstractArrow.tick releases a changed block only on the server;
+    // clients release from the non-SELF move after a piston push.
+    if t.in_ground && !t.no_physics {
+        t.in_ground_time += 1;
+        return;
+    }
+    t.in_ground_time = 0;
+    let m = t.velocity;
+    let (x, z) = if t.no_physics {
+        (-m.x, -m.z)
+    } else {
+        (m.x, m.z)
+    };
+    // Projectile.updateRotation's targets: Mth.atan2 times the folded 180F / (float)PI, the pitch over
+    // Vec3.horizontalDistance.
+    t.yaw = sunrise_core::geometry::trig::atan2_degrees(x, z);
+    t.pitch = sunrise_core::geometry::trig::atan2_degrees(m.y, m.horizontal_distance());
+    let to = t.position.add_vector(m);
+    if !t.no_physics
+        && let Some((at, _, _)) = w.clip(t.position, to)
+    {
+        // AbstractArrow.onHitBlock's back-off, as the server's tick does it.
+        t.position = back_off(at, m);
+        t.velocity = Vec3::ZERO;
+        t.in_ground = true;
+        t.shake = 7;
+        return;
+    }
+    t.position = to;
+    // A trident's water inertia (0.99) equals the air drag.
+    t.velocity = t.velocity.scale(0.99);
+    if !t.no_physics && !t.no_gravity {
+        t.velocity.y -= 0.05;
     }
 }
 

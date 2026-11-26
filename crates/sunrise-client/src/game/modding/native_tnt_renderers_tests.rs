@@ -116,7 +116,7 @@ fn cube_flashing(remaining: f32) -> bool {
 /// `tnt_geometry`. Used so a deterministic change to the cube cannot pass by matching itself.
 fn expected_cube(
     game: &crate::game::ClientGame<'_>,
-    tnt: &super::tnt::PrimedTnt,
+    tnt: &crate::game::tnt_common::PrimedTnt,
     camera: glam::DVec3,
     alpha: f64,
 ) -> Vec<Vertex> {
@@ -216,9 +216,9 @@ fn expected_cube(
     out
 }
 
-fn primed(id: u32, fuse: i32) -> super::tnt::PrimedTnt {
+fn primed(id: u32, fuse: i32) -> crate::game::tnt_common::PrimedTnt {
     let at = Vec3::new(FEET[0], FEET[1], FEET[2]);
-    super::tnt::PrimedTnt {
+    crate::game::tnt_common::PrimedTnt {
         size_answer: None,
         attachment_lifetime: Default::default(),
         rotation: [90.0, -10.0],
@@ -340,7 +340,9 @@ fn in_scene(
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            super::mods::register_entity_renderers(super::execution_role::ExecutionRole::Client);
+            crate::game::client_side::mods_client::register_entity_renderers(
+                super::execution_role::ExecutionRole::Client,
+            );
             super::native_entity_refs::tests::with_client_game(|game| {
                 game.resolve_entity_renderers();
                 check(game, &heard, &flaky);
@@ -354,7 +356,9 @@ fn in_scene(
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        super::mods::register_entity_renderers(super::execution_role::ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_entity_renderers(
+            super::execution_role::ExecutionRole::Client,
+        );
         super::native_entity_refs::tests::with_client_game(|game| {
             game.resolve_entity_renderers();
             check(game, &heard, &flaky);

@@ -186,7 +186,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         assert_eq!(body.impulse.reset_grace_time, 7);
         assert!(!body.spawn_extra_particles_on_fall);
         guest.motion = Some(Box::new(body));
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         let guest_tag = game
             .for_player(commands::Target::Guest(2), |g| {
                 assert_eq!(g.player.as_ref().unwrap().impulse.reset_grace_time, 7);
@@ -219,7 +219,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
             &mut failures,
         );
         let mut saved_guest = sunrise_sim::save::Level::default();
-        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.motion.as_ref().unwrap().impulse.reset_grace_time, 7);
         playerdata::store(guest, &mut saved_guest, None);
         check(

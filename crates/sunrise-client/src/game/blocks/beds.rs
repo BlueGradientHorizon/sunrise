@@ -72,7 +72,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a player in the level in place still sleeps in `head`.
     fn player_in_bed(&self, head: [i32; 3]) -> bool {
         self.sleeping == Some(head)
-            || self.lan.as_ref().is_some_and(|h| {
+            || self.side.lan.as_ref().is_some_and(|h| {
                 h.hub
                     .guests
                     .iter()

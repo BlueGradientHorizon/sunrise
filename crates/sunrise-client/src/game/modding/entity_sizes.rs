@@ -80,7 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if id == 0 {
                 continue;
             }
-            let vanilla = super::dragon::Crystal::DIMENSIONS;
+            let vanilla = crate::game::dragon_common::Crystal::DIMENSIONS;
             if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
                 self.crystals.update(i, |c| c.size_answer = Some(answer));
             }
@@ -92,7 +92,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
             return;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let asked: Vec<_> = host
@@ -112,6 +112,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .collect();
         for (conn, answer, fit_sizes) in asked {
             if let Some(body) = self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|host| host.hub.guests.motion_mut(conn))
@@ -578,6 +579,7 @@ pub(in crate::game) mod tests {
     ) {
         use sunrise_protocol::packets::play::{AddEntity, Clientbound};
         let kind = game
+            .side
             .remote
             .as_ref()
             .unwrap()

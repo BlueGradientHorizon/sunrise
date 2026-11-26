@@ -3,7 +3,7 @@
 //! its `open` (`viewed_worlds`). Only the player's level also takes the type's environment
 //! attributes (`build_level_environments`).
 use super::Remote;
-use crate::game::{Dim, remote_chunks::ChunkFormat};
+use crate::game::{Dim, client_side::remote_chunks::ChunkFormat};
 use std::sync::{Arc, Weak};
 use sunrise_level::{chunk::LevelShape, environment::Environment};
 use sunrise_protocol::{packets::play, registry::DimensionType};
@@ -117,7 +117,7 @@ impl Remote {
                 })()
                 .map_err(|why| log::warn!("the server's dimension type {name} is refused ({why})"))
                 .unwrap_or_else(|_| base.clone());
-                if !sane_facts(&facts) {
+                if !super::level_format::sane_facts(&facts) {
                     log::warn!(
                         "the server's dimension type {name} is refused (a value out of range)"
                     );

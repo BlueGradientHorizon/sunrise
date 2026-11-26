@@ -44,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .iter()
             .find(|p| p.id as i32 == id)
         {
-            if !crate::game::deflect::redirectable(projectile) {
+            if !crate::game::deflect_common::redirectable(projectile) {
                 let bullet = matches!(
                     projectile.kind,
                     sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
@@ -62,6 +62,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.remote_object_attack();
             }
         } else if let Some(kind) = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.general.rows.get(&id))
@@ -71,7 +72,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.remote_sweep_event(kind, false);
         }
         self.reset_attack_strength();
-        if let Some(remote) = self.remote.as_mut()
+        if let Some(remote) = self.side.remote.as_mut()
             && remote.abilities.instabuild
         {
             remote.destroy_delay = 5;
@@ -108,8 +109,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use crate::game::boats::Boat;
-    use crate::game::dragon::Crystal;
+    use crate::game::boats_common::Boat;
+    use crate::game::dragon_common::Crystal;
     use crate::game::minecarts::{CartKind, Minecart};
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};

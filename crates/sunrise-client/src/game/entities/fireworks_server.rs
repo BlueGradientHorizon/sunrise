@@ -1,4 +1,4 @@
-use super::{Game, Hit, dragon::FightWho};
+use super::{Game, Hit, dragon_common::FightWho};
 use crate::game::fireworks::FIREWORK_EXPLODE_EVENT;
 use crate::game::fireworks::Rocket;
 use crate::game::fireworks::blast_damage;
@@ -73,6 +73,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             // A guest's rocket follows them and sweeps their motion (`FireworkRocketEntity.tick`).
             let guest = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
@@ -187,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // FireworkRocketEntity.explode broadcasts before discard. Send now:
         // tick_lan removes missing tracked entities before flushing effects.
         if r.id != 0
-            && let Some(host) = &self.lan
+            && let Some(host) = &self.side.lan
         {
             host.hub.entity_event(r.id as i32, FIREWORK_EXPLODE_EVENT);
         }
@@ -225,7 +226,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     SplashTarget::Host,
                 ));
             }
-            if let Some(host) = self.lan.as_ref() {
+            if let Some(host) = self.side.lan.as_ref() {
                 for g in &host.hub.guests {
                     if host.hub.here(g)
                         && !g.spectator()
@@ -314,7 +315,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     .as_guest(conn, |g| g.rocket_hurt_mobs(&hits, r.id, owner, at))
                                     .is_some();
                                 if ran
-                                    && let Some(host) = self.lan.as_mut()
+                                    && let Some(host) = self.side.lan.as_mut()
                                     && host
                                         .hub
                                         .guest(conn)
@@ -487,15 +488,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             // The hit's causing entity, lent to its listeners beside the victim.
             let causing = self.causer_id(attacker);
-            let decision = crate::game::entity::causer_decision!(self, causing);
+            let decision = crate::game::entity_server::causer_decision!(self, causing);
             let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
             if let Some(index) = self.mob_index.find(&self.mobs, id) {
                 let before = self.mobs[index].health;
                 let join = self.mobs[index].join;
                 let (victim, lend) =
-                    crate::game::entity::victim_and_causer!(self, index, causing, decision);
+                    crate::game::entity_server::victim_and_causer!(self, index, causing, decision);
                 let hurt = victim.damage(
-                    crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
+                    crate::game::entity_server::damage_level_of!(self, &attack, &mut credit, lend),
                     amount,
                     Damage::fireworks(attacker, at),
                 );
@@ -712,7 +713,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(conn) = guest.filter(|_| owner == Who::Player) else {
             return Some(owner);
         };
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let g = host.hub.guests.iter().find(|g| g.conn == conn)?;
         Some(Who::Mob(g.entity_id as u32))
     }
@@ -779,7 +780,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     old_rotation[0] += rot;
                     r.velocity = r.velocity.scale(-0.5);
                     r.last_deflected_by = Some(id);
-                    let sound = super::level_sounds::LevelSound::new(
+                    let sound = super::level_sounds_common::LevelSound::new(
                         "minecraft:entity.breeze.deflect",
                         [at.x, at.y, at.z],
                         1.0,
@@ -870,24 +871,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .map_or(i, |index| index + 1)
             };
         }
-    }
-}
-
-impl Rocket {
-    /// Position and motion (the dispenser parity fixture).
-    pub(in crate::game) fn motion(&self) -> (Vec3, Vec3) {
-        (self.position, self.velocity)
-    }
-    /// `Projectile.updateRotation`: a fifth of the way from `old` (yaw,
-    /// pitch) toward its motion's direction, the short way round.
-    pub(in crate::game) fn update_rotation(&mut self, old: [f32; 2]) {
-        let v = self.velocity;
-        let horizontal = (v.x * v.x + v.z * v.z).sqrt();
-        let atan2 = sunrise_core::geometry::trig::atan2_degrees;
-        self.rotation = [
-            sunrise_sim::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
-            sunrise_sim::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
-        ];
     }
 }
 

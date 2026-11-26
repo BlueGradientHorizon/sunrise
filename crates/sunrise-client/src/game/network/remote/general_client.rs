@@ -1,11 +1,97 @@
-use super::{Game, Remote};
+//! A native mod's general rows as a Sunrise client sees them (#792, stage 5): the server's
+//! `sunrise:general_entity` spawn adds one immediately, the vanilla packets keyed by its network
+//! id move and remove it as they do any tracked entity, and its declared fields are its synced
+//! attachments (`Remote::attachments`). Initial non-empty synced attachments arrive atomically
+//! with the spawn inside a `BundleDelimiter` pairing bundle (`ServerEntity.addPairing` +
+//! `ClientPacketListener.handleBundlePacket`, matching NeoForge `AttachmentSync`). Render
+//! extraction retains the published generation, not the live synced holder. The row's behaviour
+//! is the server's.
+use super::{Game, Lerp, Remote};
 use crate::game::general::general_type_catalog;
-use crate::game::remote::general::RemoteGeneral;
-use crate::game::remote::general::RemoteGenerals;
-pub(in crate::game::client_side) use crate::game::remote::general::tick_remote_general;
+use indexmap::IndexMap;
+use std::collections::HashMap;
+use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::general_entity::{self, Message};
 use sunrise_sim::join_seq::JoinSeq;
+
+/// One general row the server shows the window.
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::game) struct RemoteGeneral {
+    /// Admission to the level, even if the first attachment snapshot has yet to arrive.
+    pub join: JoinSeq,
+    /// The client's frozen catalog slot for the row's type.
+    pub type_slot: usize,
+    pub uuid: u128,
+    pub position: [f64; 3],
+    /// Where it was when the last client tick began, for a frame's partial tick.
+    pub previous: [f64; 3],
+    /// Yaw, then pitch, in degrees.
+    pub rotation: [f32; 2],
+    pub previous_rotation: [f32; 2],
+    /// Client ticks since the spawn: `Entity.tickCount`, which wraps as Java's `int` does
+    /// (read as `i32`).
+    pub age: u32,
+    /// Frozen synced fields, initialized on spawn and rebuilt at each attachment sync boundary.
+    pub render_attachments: mod_api::EntityRenderAttachments,
+}
+
+impl RemoteGeneral {
+    pub(in crate::game) fn bounds(&self) -> Aabb {
+        let [x, y, z] = self.position;
+        general_type_catalog().bounds(self.type_slot, Vec3::new(x, y, z))
+    }
+
+    pub(in crate::game) fn kind(&self) -> &'static str {
+        general_type_catalog().key(self.type_slot)
+    }
+}
+
+/// The rows the server shows the window, by network id, and the warnings already given.
+#[derive(Default)]
+pub(in crate::game) struct RemoteGenerals {
+    /// Client entity lookup order: inserts append; removing one keeps the others in order.
+    pub rows: IndexMap<i32, RemoteGeneral>,
+    /// Type keys this client's catalog does not hold, each warned about once.
+    pub(in crate::game) unknown: std::collections::HashSet<String>,
+    /// Whether a spawn for an id already held was refused before, warned about once.
+    pub(in crate::game) duplicate: bool,
+    // Reuse the parent-before-child placement order while the window ticks.
+    pub(in crate::game) riders: Vec<(usize, i32, u32, usize)>,
+}
+
+impl Remote {
+    /// Discard the synced attachment mirror.
+    pub(in crate::game) fn clear_attachments(&mut self) {
+        self.attachments.clear();
+    }
+}
+
+/// One client tick of the rows: `setOldPosAndRot`, then a step of the non-living
+/// `InterpolationHandler` (`Entity.moveOrInterpolateTo`, 3 steps) toward the server's last move.
+pub(in crate::game) fn tick_remote_general(
+    rows: &mut IndexMap<i32, RemoteGeneral>,
+    lerps: &mut HashMap<i32, Lerp>,
+) {
+    for (id, row) in rows.iter_mut() {
+        row.previous = row.position;
+        row.previous_rotation = row.rotation;
+        row.age = row.age.wrapping_add(1);
+        let Some(l) = lerps.get_mut(id).filter(|l| l.steps > 0) else {
+            continue;
+        };
+        let n = f64::from(l.steps);
+        for k in 0..3 {
+            row.position[k] += (l.target[k] - row.position[k]) / n;
+        }
+        if let Some((yaw, pitch)) = l.rotation {
+            row.rotation[0] =
+                crate::game::remote_objects::lerp_yaw_step(row.rotation[0], yaw, l.steps);
+            row.rotation[1] += (pitch - row.rotation[1]) / l.steps as f32;
+        }
+        l.steps -= 1;
+    }
+}
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -30,7 +116,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Both sides froze the same declarations (general types come from both-side
         // packages): a key this client lacks comes from a server that does not match it.
         let Some(type_slot) = general_type_catalog().slot(&type_key) else {
-            if let Some(r) = self.remote.as_mut()
+            if let Some(r) = self.side.remote.as_mut()
                 && r.general.unknown.insert(type_key.clone())
             {
                 log::warn!(
@@ -39,7 +125,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             return;
         };
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         if r.general.rows.contains_key(&id) {
@@ -69,7 +155,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             position,
             [rotation[0], rotation[1], rotation[0]],
         );
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.general.rows.insert(id, row);
             r.lerps.remove(&id);
         }
@@ -79,7 +165,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.tickPassenger` for the general rows in an applied passenger
     /// list. Seat a nested general vehicle before its own general passengers.
     pub(in crate::game) fn position_remote_general_passengers(&mut self) {
-        let Some(remote) = self.remote.as_mut() else {
+        let Some(remote) = self.side.remote.as_mut() else {
             return;
         };
         if remote.general.rows.is_empty() || remote.passenger_vehicles.is_empty() {
@@ -100,13 +186,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         riders.sort_unstable();
         for &(_, id, vehicle, _) in &riders {
             if let Some(at) = self.general_passenger_position(vehicle, id as u32)
-                && let Some(remote) = self.remote.as_mut()
+                && let Some(remote) = self.side.remote.as_mut()
                 && let Some(row) = remote.general.rows.get_mut(&id)
             {
                 row.position = [at.x, at.y, at.z];
             }
         }
-        if let Some(remote) = self.remote.as_mut() {
+        if let Some(remote) = self.side.remote.as_mut() {
             remote.general.riders = riders;
         }
     }

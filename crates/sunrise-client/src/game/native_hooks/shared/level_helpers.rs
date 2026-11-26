@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_level::containers::ModBlockEntity;
 
 /// Server-level helpers for native mods.
 impl GameLevel<'_> {
@@ -72,7 +73,7 @@ impl GameLevel<'_> {
             return false;
         }
         let Some(particle) =
-            crate::game::lan_particles::server_particle_from_options(options, state)
+            crate::game::lan_particle_data::server_particle_from_options(options, state)
         else {
             return false;
         };
@@ -260,7 +261,7 @@ pub(in crate::game) fn block_entity_for_block(
     if let Some(kind) = sunrise_game_data::block_entity_types::type_for(name) {
         let slots = mod_api::__private::parts_installation::block_container(name)
             .map_or(0, |container| container.slots);
-        return Some(BlockEntity::Mod(Box::new(EngineBlockEntity::new(
+        return Some(BlockEntity::Mod(Box::new(ModBlockEntity::new(
             kind.to_owned(),
             ModBlockEntityFields {
                 nbt: initial,

@@ -2,7 +2,7 @@
 //! that decide which device or screen a key press goes to.
 use super::*;
 
-pub(super) fn follow_named_keymap(
+pub(in crate::game) fn follow_named_keymap(
     logical_key: &winit::keyboard::Key,
     physical_key: &mut PhysicalKey,
 ) {
@@ -56,7 +56,7 @@ pub(super) fn follow_named_keymap(
 /// input hooks: `GLFW_MOD_SHIFT` 1, `GLFW_MOD_CONTROL` 2, `GLFW_MOD_ALT` 4,
 /// `GLFW_MOD_SUPER` 8 — the word a NeoForge listener reads off its event
 /// (`getModifiers`). The lock keys are not modifiers there.
-pub(super) fn glfw_modifiers(modifiers: winit::keyboard::ModifiersState) -> u32 {
+pub(in crate::game) fn glfw_modifiers(modifiers: winit::keyboard::ModifiersState) -> u32 {
     let mut bits = 0;
     if modifiers.shift_key() {
         bits |= 1;
@@ -80,7 +80,7 @@ pub(super) fn glfw_modifiers(modifiers: winit::keyboard::ModifiersState) -> u32 
 /// right and middle by name and numbers the rest (`key.mouse.<index + 1>`);
 /// vanilla's `InputConstants` numbers left 1, middle 2, right 3, so the index
 /// plus one is vanilla's number only from the back button on.
-pub(super) fn glfw_button(button: MouseButton) -> i32 {
+pub(in crate::game) fn glfw_button(button: MouseButton) -> i32 {
     match button {
         MouseButton::Left => 0,
         MouseButton::Right => 1,
@@ -96,7 +96,7 @@ pub(super) fn glfw_button(button: MouseButton) -> i32 {
 /// reach `KeyMapping.set(key, true)` and `KeyMapping.click` alike, so a held
 /// key keeps attacking; a release lets go. `None` behind a screen, which takes
 /// the key.
-pub(super) fn keyboard_button(playing: bool, action: KeyAction) -> Option<bool> {
+pub(in crate::game) fn keyboard_button(playing: bool, action: KeyAction) -> Option<bool> {
     playing.then_some(action != KeyAction::Release)
 }
 
@@ -105,13 +105,17 @@ pub(super) fn keyboard_button(playing: bool, action: KeyAction) -> Option<bool> 
 /// a sign editor, a prompt). Each is a `Screen` in vanilla, so `Gui.setScreen`
 /// runs `KeyMapping.releaseAll` and `Minecraft.tick` skips `handleKeybinds`
 /// while it is up: a mouse button held into it is let go of (#9729).
-pub(super) fn gameplay_has_keyboard(screen: Screen, title: bool, screen_over: bool) -> bool {
+pub(in crate::game) fn gameplay_has_keyboard(
+    screen: Screen,
+    title: bool,
+    screen_over: bool,
+) -> bool {
     screen == Screen::Playing && !title && !screen_over
 }
 
 /// A dialog drops held keys and mouse buttons it does not see (#4974).
 #[cfg(test)]
-pub(super) fn drop_held_behind_dialog(
+pub(in crate::game) fn drop_held_behind_dialog(
     dialog: bool,
     keys: &mut sunrise_client::held::HeldKeys,
     left: &mut bool,

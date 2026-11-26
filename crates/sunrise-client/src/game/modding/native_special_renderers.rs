@@ -2,7 +2,7 @@
 //! scoped submission, rollback and the session's callback failure policy.
 use super::{
     Game,
-    api_values::{TryIntoApi, engine_display_context, stack_value},
+    api_values::{engine_display_context, stack_value},
 };
 use mod_api::{ItemDisplayContext, ItemStack, SpecialModelContext};
 use std::num::NonZeroU32;
@@ -18,7 +18,8 @@ pub(in crate::game::client_side) fn draw_input<'a>(
     // Match vanilla's `ItemModelResolver.updateForTopItem`: empty stacks are skipped cleanly.
     let count = u32::try_from(stack.count).ok().and_then(NonZeroU32::new)?;
     let item = mod_api::__private::item_key(&stack.item)?;
-    let Ok(display) = context.display.try_into_api();
+    let Ok(display) =
+        crate::game::client_side::item_model_context::display_context(&context.display);
     Some(SpecialModelInput {
         host: game,
         item,

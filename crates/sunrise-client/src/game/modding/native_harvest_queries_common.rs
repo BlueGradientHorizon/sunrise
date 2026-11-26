@@ -1,5 +1,6 @@
 //! Common entry points for `player_destroy_progress` and `player_has_correct_tool_for_drops`.
 use super::Game;
+use crate::game::held_items::{BreakSpeedDispatch, HarvestDispatch};
 use mod_api::{LevelRef, PlayerRef};
 use sunrise_world::registry::BlockStateId;
 
@@ -13,9 +14,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         state: BlockStateId,
     ) -> Option<f32> {
         self.pack.assets.registry.state(state)?;
-        if crate::game::hand::BreakSpeedDispatch::running()
-            || crate::game::hand::HarvestDispatch::running()
-        {
+        if BreakSpeedDispatch::running() || HarvestDispatch::running() {
             return None;
         }
         self.side_player_destroy_progress(player, level, pos, state)
@@ -31,7 +30,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
         // From inside a harvest hook the query would run the hook again, without bound.
-        if crate::game::hand::HarvestDispatch::running() {
+        if HarvestDispatch::running() {
             return None;
         }
         self.side_player_has_correct_tool_for_drops(player, level, pos, state)

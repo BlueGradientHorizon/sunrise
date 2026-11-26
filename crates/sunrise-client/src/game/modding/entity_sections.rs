@@ -558,3 +558,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         sections.end_telling(batch);
     }
 }
+
+impl LiveSectionObserver {
+    pub(crate) fn new(
+        sections: std::rc::Rc<std::cell::RefCell<EntitySections>>,
+        scope: Scope,
+    ) -> Self {
+        Self { sections, scope }
+    }
+}

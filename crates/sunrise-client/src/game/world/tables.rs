@@ -1,5 +1,8 @@
 //! Read-only world content tables shared by server and client games.
 use super::*;
+use crate::game::{
+    native_data_maps_common, native_world_read_common, side_ops::tables::SideOps as _,
+};
 use std::sync::LazyLock;
 use sunrise_core::nbt::Tag;
 use sunrise_sim::{menu::Env, neoforge_mob_maps::NeoForgeMobMaps};
@@ -17,12 +20,20 @@ pub(in crate::game) fn level_suffocation_of<'a>(
         .map_or_else(|| res.suffocation(), |t| &t.suffocation)
 }
 
+fn loaded_data_maps(
+    tables: Option<&WorldTables>,
+) -> std::result::Result<&native_data_maps_common::DataMaps, mod_api::DataMapError> {
+    tables
+        .map(|tables| &tables.data_maps)
+        .ok_or(mod_api::DataMapError::Unavailable)
+}
+
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Server reads active station enchantments; client reads synced remote enchantments or active items.
     pub(in crate::game) fn item_enchantments(&self) -> &Arc<sunrise_items::enchant::Enchantments> {
         if self.is_logical_server() {
             &self.stations().enchantments
-        } else if let Some(ench) = self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
+        } else if let Some(ench) = self.side.side_remote_enchantments() {
             ench
         } else {
             &self.items().enchantments
@@ -148,14 +159,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     pub(in crate::game) fn enabled_feature_ids(&self) -> &Arc<[String]> {
-        if self.is_logical_server() {
-            self.level.enabled_features.as_arc()
-        } else {
-            match &self.remote {
-                Some(remote) => &remote.features,
-                None => default_client_features(),
-            }
-        }
+        self.side
+            .side_level_features(self.level.enabled_features.as_arc())
     }
 
     pub fn limited_crafting(&self) -> bool {
@@ -164,7 +169,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::LIMITED_CRAFTING)
         } else {
-            self.remote.as_ref().is_some_and(|r| r.do_limited_crafting)
+            self.side.side_remote_limited_crafting()
         }
     }
 
@@ -191,22 +196,17 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
     }
 
-    pub(in crate::game) fn loaded_data_maps(
-        &self,
-    ) -> std::result::Result<&native_data_maps::DataMaps, mod_api::DataMapError> {
-        self.side_world_tables()
-            .map(|tables| &tables.data_maps)
-            .ok_or(mod_api::DataMapError::Unavailable)
-    }
-
     pub(in crate::game) fn data_map_value(
         &self,
         registry: &str,
         entry: &str,
         map: &str,
     ) -> std::result::Result<Option<&Tag>, mod_api::DataMapError> {
-        self.loaded_data_maps()?
-            .value(registry, map, &native_data_maps::full_id(entry))
+        loaded_data_maps(self.side_world_tables())?.value(
+            registry,
+            map,
+            &native_data_maps_common::full_id(entry),
+        )
     }
 
     pub(in crate::game) fn data_map_entries(
@@ -214,19 +214,21 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         registry: &str,
         map: &str,
     ) -> std::result::Result<&[(String, Tag)], mod_api::DataMapError> {
-        self.loaded_data_maps()?.entries(registry, map)
+        loaded_data_maps(self.side_world_tables())?.entries(registry, map)
     }
 
     pub(in crate::game) fn biome_key(&self, id: &str) -> Option<mod_api::BiomeKey> {
-        self.loaded_data_maps().ok()?.biome_keys.key(id)
+        loaded_data_maps(self.side_world_tables())
+            .ok()?
+            .biome_keys
+            .key(id)
     }
 
     pub(in crate::game) fn biome_key_id(
         &self,
         key: mod_api::BiomeKey,
     ) -> std::result::Result<&str, mod_api::BiomeKeyError> {
-        let maps = self
-            .loaded_data_maps()
+        let maps = loaded_data_maps(self.side_world_tables())
             .map_err(|_| mod_api::BiomeKeyError::Unavailable)?;
         maps.biome_keys.id(key)
     }
@@ -244,12 +246,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let mut sets = HashMap::<String, HashSet<String>>::new();
         if !self.is_logical_server() {
             if let Some(server) = &self.recipe_tables.server_properties.sets
-                && let Some(remote) = &self.remote
+                && let Some(item_ids) = self.side.side_remote_item_registry()
             {
                 for (key, ids) in server.iter().filter(|(k, _)| !k.starts_with("minecraft:")) {
                     let items = ids
                         .iter()
-                        .filter_map(|id| remote.builtin.get("minecraft:item")?.name(*id))
+                        .filter_map(|id| item_ids?.name(*id))
                         .filter(|name| *name != "minecraft:air")
                         .map(str::to_owned)
                         .collect();
@@ -281,16 +283,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let context = Arc::make_mut(&mut self.loop_context);
         context.set_recipe_properties(Arc::new(sets));
         context.set_item_tags(tags);
-        if self.is_logical_server()
-            && let Some(host) = self.lan.as_mut()
-        {
-            host.hub.loop_context = self.loop_context.clone();
+        if self.is_logical_server() {
+            self.side.side_install_lan_loop_context(&self.loop_context);
         }
     }
 
     pub(in crate::game) fn native_tag_items(&self) -> Option<&Items> {
         if !self.is_logical_server() {
-            return self.remote.as_ref()?.tags.as_ref();
+            return self.side.side_game_tag_items(&self.res);
         }
         self.side_tags_ready().then(|| self.items())
     }
@@ -299,7 +299,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &self,
         items: &Items,
     ) -> HashMap<String, HashSet<mod_api::BlockKey>> {
-        native_world_read::prepare_block_tags(&items.block_tags)
+        native_world_read_common::prepare_block_tags(&items.block_tags)
     }
 
     pub(in crate::game) fn resolve_level_infiniburn(
@@ -376,12 +376,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     pub(in crate::game) fn resolve_parts(&self) -> Result<()> {
         let prepared = self.prepare_parts(self.items())?;
-        if !self.is_logical_server()
-            && self
-                .remote
-                .as_ref()
-                .is_some_and(|r| !r.registries.tags.is_empty())
-        {
+        if !self.is_logical_server() && self.side.side_remote_tags_present() {
             self.bind_parts(prepared);
         } else {
             self.install_parts(prepared);
@@ -396,16 +391,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     pub(in crate::game) fn bind_parts(&self, prepared: PreparedParts) {
-        if self.is_logical_server()
-            && let Some(host) = &self.lan
-        {
-            cauldron_prediction::publish_registrations(
-                &prepared.cauldrons,
-                host.hub
-                    .guests
-                    .simulation_iter()
-                    .filter(|g| g.placed || g.held),
-            );
+        if self.is_logical_server() {
+            self.side
+                .side_publish_cauldron_registrations(&prepared.cauldrons);
         }
         cauldron_interactions::install(prepared.cauldrons);
         if self.is_logical_server() {
@@ -416,7 +404,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             );
         }
         api_values::install_block_states(&self.tick, prepared.block_states);
-        native_world_read::install_block_tags(prepared.tags);
+        native_world_read_common::install_block_tags(prepared.tags);
         api_values::install_resolved_parts(&self.tick, prepared.parts);
         self.mark_collision_shape_states();
         self.side_resolve_block_paths();

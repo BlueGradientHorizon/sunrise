@@ -224,7 +224,7 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
             ));
             // The trident: a thrown one in flight, a `setPos` flyer.
             let id = game.take_entity_id();
-            let mut trident = super::trident::ThrownTrident::remote(
+            let mut trident = sunrise_sim::thrown_trident::ThrownTrident::remote(
                 id,
                 sunrise_core::geometry::Vec3::new(at(10)[0], 40.5, at(10)[2]),
                 10.0,
@@ -266,7 +266,7 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
                 general: ["General"],
             };
             let mut listed = Vec::new();
-            super::entity::entity_lists!(walk_lists, families, family, {
+            super::entity::entity_lists!(crate::game::entity::walk_lists, families, family, {
                 listed.push(family);
             });
             let case_families: std::collections::BTreeSet<&str> =
@@ -397,7 +397,7 @@ fn the_off_walk_movers_fire_too() {
             }
             game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
             // The dragon: off the walk, moved by its own physics-less step.
-            let mut dragon = crate::game::dragon::Dragon::new(
+            let mut dragon = crate::game::dragon_common::Dragon::new(
                 sunrise_core::geometry::Vec3::new(5.0, 30.0, 5.0),
                 0.0,
                 605,

@@ -47,7 +47,7 @@ impl PickAccumulator {
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn pick_camera_id(&self) -> Option<u32> {
-        if let Some(remote) = self.remote.as_ref() {
+        if let Some(remote) = self.side.remote.as_ref() {
             if let Some(id) = remote.camera {
                 remote.detached_camera.is_none().then_some(id as u32)
             } else {
@@ -82,12 +82,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn pick_vehicle_step(&self, entity: u32) -> Option<u32> {
         if self.pick_camera_id() == Some(entity) && self.remote_camera_id().is_none() {
             return self.riding.or_else(|| {
-                self.remote
+                self.side
+                    .remote
                     .as_ref()
                     .and_then(|r| r.passenger_vehicle(entity))
             });
         }
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             return remote.passenger_vehicle(entity);
         }
         None

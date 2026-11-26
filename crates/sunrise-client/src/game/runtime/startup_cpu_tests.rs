@@ -156,7 +156,7 @@ fn worker_prepares_owned_models_and_inventory_before_handoff() {
     assert_eq!(prepared.frame_model.len(), 1);
     assert_eq!(prepared.frame_model[0].2, "example:block/startup_frame");
     let reloaded = models("example:block/reloaded_frame");
-    let [frame, ..] = frames::bake_frames(Some(&reloaded));
+    let [frame, ..] = crate::game::client_side::frames_client::bake_frames(Some(&reloaded));
     assert_eq!(frame.len(), 1);
     assert_eq!(frame[0].2, "example:block/reloaded_frame");
     std::fs::remove_dir_all(&root).unwrap();

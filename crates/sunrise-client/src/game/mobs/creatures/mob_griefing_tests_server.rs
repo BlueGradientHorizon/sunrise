@@ -42,7 +42,7 @@ fn a_mod_denies_one_entity_griefing() {
             // by the guest the mod denies lights none and another guest's
             // does. A gone owner, or none, reads the rule without asking.
             use super::Who;
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.guests.push(guest(5));
             hub.guests.push(guest(6));
             heard.lock().unwrap().clear();

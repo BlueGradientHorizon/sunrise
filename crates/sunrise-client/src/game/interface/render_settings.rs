@@ -27,7 +27,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         window: Arc<Window>,
         pack: &PackResources,
-        client_pack: &ClientPackResources,
+        client_pack: &crate::game::client_side::resource_tables_client::ClientPackResources,
         gui: &UiResources,
     ) -> Result<Box<Renderer>> {
         build_renderer(
@@ -147,9 +147,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     fn apply_streaming_settings(&mut self) {
-        let streaming_target = crate::game::entity_culling::streaming_radius_for(
+        let streaming_target = crate::game::streaming_radius::streaming_radius_for(
             self.side.settings.render_distance,
-            self.remote.as_ref().map(|r| r.view_distance),
+            self.side.remote.as_ref().map(|r| r.view_distance),
         );
         let render_distance_changed = self.side.streaming.radius != streaming_target;
         self.side.streaming.radius = streaming_target;
@@ -229,10 +229,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn server_far_terrain(
         &self,
     ) -> Option<sunrise_sim::lod_net::Offer> {
-        if self.integrated.is_some() {
+        if self.side.integrated.is_some() {
             return None;
         }
-        self.remote.as_ref()?.far_terrain
+        self.side.remote.as_ref()?.far_terrain
     }
 
     /// LOD Distance as far terrain uses it (`graphics::lod_distance_capped`).

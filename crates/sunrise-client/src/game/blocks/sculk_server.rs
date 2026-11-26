@@ -28,13 +28,6 @@ pub(in crate::game) use crate::game::side_ops::events::{
     TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS,
 };
 
-pub const HELP: &[&str] = &[
-    "sculk                          sculk listeners, the warning level and the darkness blend",
-    "sculk charge X Y Z AMOUNT      a mob dying there with that much experience (the nearest catalyst takes it)",
-    "sculk warn LEVEL               set the player's warden warning level",
-    "sculk dig                      end the minute of calm of every warden",
-];
-
 /// The sculk block kinds by state id, built once.
 #[derive(Default)]
 pub(in crate::game) struct Tables {
@@ -48,27 +41,6 @@ pub(in crate::game) struct Tables {
     /// every mob on every tick.
     pub(in crate::game) climbable: Vec<bool>,
     pub(in crate::game) redstone_ore: Vec<bool>,
-}
-/// `SculkSensorBlock.getAnalogOutputSignal`: the last vibration's frequency
-/// while the sensor is active.
-pub(in crate::game) fn sensor_signal(
-    world: &sunrise_level::world::World,
-    behaviours: &sunrise_world::level::Behaviours,
-    state: BlockStateId,
-    pos: BlockPos,
-) -> Option<i32> {
-    match world.block_entities.get(&(pos.x, pos.y, pos.z)) {
-        Some(BlockEntity::Sculk(e))
-            if matches!(e.kind, SculkKind::Sensor | SculkKind::Calibrated) =>
-        {
-            Some(if behaviours.sculk_sensor_active(state) {
-                e.last_frequency
-            } else {
-                0
-            })
-        }
-        _ => None,
-    }
 }
 #[derive(Default)]
 pub(in crate::game) struct PlayerEvents {
@@ -918,6 +890,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn owner_tick_canceled(&self) -> bool {
         !self.creatures.canceled_players.is_empty()
             && self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| {
@@ -2085,7 +2058,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         to: [f64; 3],
         ticks: i32,
     ) {
-        let source = super::lan_particles::particle_position_source(&source);
+        let source = crate::game::lan_particle_data::particle_position_source(&source);
         self.vibration_particle(source, from, to, ticks);
     }
 
@@ -2224,7 +2197,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         bounds: Aabb,
         living: bool,
     ) {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
+        if self.options.execution_role.is_client() {
             return;
         }
         self.sculk_prepare();
@@ -2869,6 +2842,7 @@ pub(in crate::game) mod command_damage_listener_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

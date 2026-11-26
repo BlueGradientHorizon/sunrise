@@ -4,6 +4,7 @@
 //! vehicle's interaction checks. Mobs keep theirs in `extra.boarding_cooldown`
 //! (`boat_passengers::BOARDING_COOLDOWN`).
 use super::Game;
+use crate::game::entity_memory::OffLevel;
 use sunrise_sim::mobs::Mob;
 
 /// `Entity.getIndirectPassengersStream` for `vehicle`: the vehicle and every
@@ -28,6 +29,88 @@ pub(in crate::game::server_side) fn passenger_vehicles(
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
+    /// `Entity.passengers` of `vehicle`, first passenger first: each one's place, id and whether
+    /// it is a player. Places tie only for those that never boarded through `addPassenger` (a
+    /// load keeps its list order), players ahead.
+    pub(in crate::game) fn seated_passengers(&self, vehicle: u32) -> Vec<(i64, u32, bool)> {
+        let mut seats = Vec::new();
+        self.any_passenger_seat(vehicle, &[], |seat| {
+            seats.push(seat);
+            false
+        });
+        seats.sort_by_key(|&(place, ..)| place);
+        seats
+    }
+
+    /// `Entity.isVehicle`: any kind of rider makes this a vehicle.
+    pub(in crate::game) fn has_seated_passengers(&self, vehicle: u32) -> bool {
+        self.has_seated_passengers_with_lent_mobs(vehicle, &[])
+    }
+
+    /// The same check while the mob tick holds the resident list out of `Game`.
+    pub(in crate::game) fn has_seated_passengers_with_lent_mobs(
+        &self,
+        vehicle: u32,
+        lent_mobs: &[Mob],
+    ) -> bool {
+        self.any_passenger_seat(vehicle, lent_mobs, |_| true)
+    }
+
+    /// Shared seat enumeration; visit only until `matches` returns true. The
+    /// enumeration order breaks ties for passengers with the same seat order.
+    fn any_passenger_seat(
+        &self,
+        vehicle: u32,
+        lent_mobs: &[Mob],
+        mut matches: impl FnMut((i64, u32, bool)) -> bool,
+    ) -> bool {
+        let acting = crate::game::Side::lan_acting(&self.side).filter(|_| self.player.is_some());
+        let mut acting_listed = false;
+        for g in self
+            .side
+            .lan
+            .iter()
+            .flat_map(|h| h.hub.guests.iter())
+            .filter(|g| g.placed && g.dimension == self.dim.id())
+        {
+            let rides = if acting == Some(g.conn) {
+                acting_listed = true;
+                self.riding
+            } else {
+                g.vehicle
+            };
+            if rides == Some(vehicle) && matches((g.vehicle_order, g.entity_id as u32, true)) {
+                return true;
+            }
+        }
+        // An unlisted acting guest goes first. This game's own player keeps its seat order.
+        if let Some((me, place)) = self.riding_player()
+            && !acting_listed
+            && self.player.is_some()
+            && self.riding == Some(vehicle)
+            && matches((place, me, true))
+        {
+            return true;
+        }
+        let other_mobs = lent_mobs
+            .iter()
+            .chain(self.persist.off_level.values().filter_map(OffLevel::as_mob))
+            .filter(|m| m.extra.mount == Some(vehicle));
+        self.resident_mob_riders(vehicle)
+            .map(|(_, m)| m)
+            .chain(other_mobs)
+            .filter(|m| !m.removed)
+            .any(|m| matches((m.extra.vehicle_order, m.id, false)))
+            || self
+                .general_passengers(vehicle)
+                .any(|row| matches((row.vehicle_order, row.id, false)))
+            || self
+                .bolts
+                .iter()
+                .filter(|b| b.mount == Some(vehicle))
+                .any(|b| matches((b.vehicle_order, b.id, false)))
+    }
+
     /// `Entity.startRiding` for the acting player: the rider link, then
     /// `CriteriaTriggers.START_RIDING_TRIGGER` for every server player the
     /// vehicle carries.
@@ -64,12 +147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// `Entity.addPassenger`: the place of `rider` getting on `vehicle`. On a server a player
     /// goes ahead of a first passenger that is no player; everything else goes last.
-    pub(in crate::game::server_side) fn boarding_order(
-        &self,
-        vehicle: u32,
-        rider: u32,
-        player: bool,
-    ) -> i64 {
+    pub(in crate::game) fn boarding_order(&self, vehicle: u32, rider: u32, player: bool) -> i64 {
         let mut aboard = self.seated_passengers(vehicle);
         aboard.retain(|&(_, id, _)| id != rider);
         match (aboard.first(), aboard.last()) {
@@ -95,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match (self.side.lan_acting, self.side.lan_acting_entity) {
             (Some(conn), Some(me)) => {
                 let order = self.boarding_order(vehicle, me, true);
-                if let Some(host) = self.lan.as_mut() {
+                if let Some(host) = self.side.lan.as_mut() {
                     host.hub.update_guest(conn, |g| g.vehicle_order = order);
                 }
             }
@@ -114,7 +192,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// [`Self::flush_started_riding`] once every player is back in place.
     pub(in crate::game) fn note_started_riding(&mut self, vehicle: u32) {
         self.side.started_riding.push(vehicle);
-        if self.lan.is_some() && self.side.lan_acting.is_none() {
+        if self.side.lan.is_some() && self.side.lan_acting.is_none() {
             self.flush_started_riding();
         }
     }
@@ -124,21 +202,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for vehicle in std::mem::take(&mut self.side.started_riding) {
             self.trigger_started_riding(vehicle);
         }
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// `Entity.passengers` of `vehicle`, first passenger first: each one's place, id and whether
-    /// it is a player. Places tie only for those that never boarded through `addPassenger` (a
-    /// load keeps its list order), players ahead.
-    pub(in crate::game) fn seated_passengers(&self, vehicle: u32) -> Vec<(i64, u32, bool)> {
-        let mut seats = Vec::new();
-        self.any_passenger_seat(vehicle, &[], |seat| {
-            seats.push(seat);
-            false
-        });
-        seats.sort_by_key(|&(place, ..)| place);
-        seats
     }
 }
 
@@ -161,79 +224,6 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             }),
             _ => None,
         }
-    }
-
-    /// `Entity.isVehicle`: any kind of rider makes this a vehicle.
-    pub(in crate::game) fn has_seated_passengers(&self, vehicle: u32) -> bool {
-        self.has_seated_passengers_with_lent_mobs(vehicle, &[])
-    }
-
-    /// The same check while the mob tick holds the resident list out of `Game`.
-    pub(in crate::game) fn has_seated_passengers_with_lent_mobs(
-        &self,
-        vehicle: u32,
-        lent_mobs: &[Mob],
-    ) -> bool {
-        self.any_passenger_seat(vehicle, lent_mobs, |_| true)
-    }
-
-    /// Shared seat enumeration; visit only until `matches` returns true. The
-    /// enumeration order breaks ties for passengers with the same seat order.
-    fn any_passenger_seat(
-        &self,
-        vehicle: u32,
-        lent_mobs: &[Mob],
-        mut matches: impl FnMut((i64, u32, bool)) -> bool,
-    ) -> bool {
-        let acting = crate::game::Side::lan_acting(&self.side).filter(|_| self.player.is_some());
-        let mut acting_listed = false;
-        for g in self
-            .lan
-            .iter()
-            .flat_map(|h| h.hub.guests.iter())
-            .filter(|g| g.placed && g.dimension == self.dim.id())
-        {
-            let rides = if acting == Some(g.conn) {
-                acting_listed = true;
-                self.riding
-            } else {
-                g.vehicle
-            };
-            if rides == Some(vehicle) && matches((g.vehicle_order, g.entity_id as u32, true)) {
-                return true;
-            }
-        }
-        // An unlisted acting guest goes first. This game's own player keeps its seat order.
-        if let Some((me, place)) = self.riding_player()
-            && !acting_listed
-            && self.player.is_some()
-            && self.riding == Some(vehicle)
-            && matches((place, me, true))
-        {
-            return true;
-        }
-        let other_mobs = lent_mobs
-            .iter()
-            .chain(
-                self.persist
-                    .off_level
-                    .values()
-                    .filter_map(super::persist::OffLevel::as_mob),
-            )
-            .filter(|m| m.extra.mount == Some(vehicle));
-        self.resident_mob_riders(vehicle)
-            .map(|(_, m)| m)
-            .chain(other_mobs)
-            .filter(|m| !m.removed)
-            .any(|m| matches((m.extra.vehicle_order, m.id, false)))
-            || self
-                .general_passengers(vehicle)
-                .any(|row| matches((row.vehicle_order, row.id, false)))
-            || self
-                .bolts
-                .iter()
-                .filter(|b| b.mount == Some(vehicle))
-                .any(|b| matches((b.vehicle_order, b.id, false)))
     }
 }
 
@@ -258,7 +248,7 @@ mod tests {
                 m.extra.vehicle_order = order;
                 game.persist
                     .off_level
-                    .insert(id, crate::game::persist::OffLevel::Mob(m));
+                    .insert(id, crate::game::entity_memory::OffLevel::Mob(m));
             }
             let mut resident = Mob::new(73, pig, Vec3::ZERO, 0.0);
             resident.extra.mount = Some(71);
@@ -294,7 +284,8 @@ mod tests {
                 .push(Mob::new(vehicle, pig.clone(), Vec3::ZERO, 0.0));
             let order = game.boarding_order(vehicle, 12, true);
             let dimension = game.dim.id().to_owned();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -344,7 +335,8 @@ mod tests {
                 .push(Mob::new(vehicle, ghast, Vec3::new(8.5, 64.0, 8.5), 0.0));
             let order = game.boarding_order(vehicle, 12, true);
             let dimension = game.dim.id().to_owned();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

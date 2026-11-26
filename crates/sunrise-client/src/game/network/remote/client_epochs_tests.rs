@@ -1,9 +1,9 @@
 #[test]
 #[ignore = "daily"]
 fn client_epochs_follow_level_replacement_and_logout() {
-    use crate::game::remote::RemoteDimensionEntry;
+    use crate::game::client_side::remote_client::RemoteDimensionEntry;
     use crate::game::{
-        native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
+        native_entity_refs::tests::with_client_game, native_lifecycle_common::NativeLifecycle,
     };
     use mod_api::{CrosshairTarget, EntityRef};
     use sunrise_client::level_loading::Reason;
@@ -35,7 +35,7 @@ fn client_epochs_follow_level_replacement_and_logout() {
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         let joined = game.native_lifecycle.epoch().unwrap();
         let old = EntityRef::new(joined, 12);
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.menu.set(Some((7, "minecraft:generic_9x3".into())));
         let open_generation = remote.menu.generation;
         game.handle_packet(Clientbound::Respawn(Respawn {
@@ -44,7 +44,7 @@ fn client_epochs_follow_level_replacement_and_logout() {
         }))
         .unwrap();
         assert_eq!(game.native_lifecycle.epoch(), Some(joined));
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         assert!(remote.menu.as_ref().is_none());
         assert_ne!(remote.menu.generation, open_generation);
         let inventory_generation = remote.menu.generation;
@@ -54,7 +54,7 @@ fn client_epochs_follow_level_replacement_and_logout() {
         }))
         .unwrap();
         assert_eq!(game.native_lifecycle.epoch(), Some(joined));
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         assert!(remote.menu.as_ref().is_none());
         assert_ne!(remote.menu.generation, inventory_generation);
         remote.menu.set(Some((7, "minecraft:generic_9x3".into())));
@@ -68,7 +68,7 @@ fn client_epochs_follow_level_replacement_and_logout() {
         let replaced = game.native_lifecycle.epoch().unwrap();
         assert_ne!(replaced, joined);
         let current = EntityRef::new(replaced, 12);
-        game.remote.as_mut().unwrap().logged_in = true;
+        game.side.remote.as_mut().unwrap().logged_in = true;
         game.spawn_entity(12, "minecraft:pig", [0.0, 1.0, 2.0], [0.0; 3]);
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         game.yaw = 0.0;

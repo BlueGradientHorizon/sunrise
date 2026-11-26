@@ -118,7 +118,8 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
             ] {
                 mode.store(answer, Ordering::SeqCst);
                 g.world.set(3, 64, 4, state).unwrap();
-                g.lan
+                g.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -131,6 +132,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                 SEEN.with_borrow_mut(Vec::clear);
                 if packet {
                     let gi = g
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -160,7 +162,8 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
             let initial = g.pack.assets.registry.default_state(block).unwrap();
             for packet in [false, true] {
                 g.world.set(3, 64, 4, initial).unwrap();
-                g.lan
+                g.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -171,6 +174,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                 SEEN.with_borrow_mut(Vec::clear);
                 if packet {
                     let gi = g
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -209,7 +213,8 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                 if original_item == "minecraft:water_bucket" {
                     g.world.set(3, 64, 4, cauldron).unwrap();
                 }
-                g.lan
+                g.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -220,6 +225,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                 SEEN.with_borrow_mut(Vec::clear);
                 if packet {
                     let gi = g
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -289,7 +295,8 @@ fn resource_gated_block_use_order_and_stacks_on_server_and_guest() {
             let after = ItemStack::new("minecraft:glowstone", 4);
             SEEN.with_borrow_mut(Vec::clear);
             if packet {
-                g.lan
+                g.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -299,6 +306,7 @@ fn resource_gated_block_use_order_and_stacks_on_server_and_guest() {
                     })
                     .unwrap();
                 let gi = g
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -375,7 +383,8 @@ fn resource_gated_map_on_banner_fires_once_and_toggles_the_real_marker() {
         );
         let mut stack = ItemStack::new("minecraft:filled_map", 1);
         stack.data_mut().map_id = Some(42);
-        g.lan
+        g.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -393,6 +402,7 @@ fn resource_gated_map_on_banner_fires_once_and_toggles_the_real_marker() {
         for marked in [true, false] {
             SEEN.with_borrow_mut(Vec::clear);
             let gi = g
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -530,7 +540,8 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                         .default_state("minecraft:respawn_anchor")
                         .unwrap();
                     g.world.set(3, 64, 4, anchor).unwrap();
-                    g.lan
+                    g.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -543,6 +554,7 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                     SEEN.with_borrow_mut(Vec::clear);
                     if packet {
                         let gi = g
+                            .side
                             .lan
                             .as_ref()
                             .unwrap()
@@ -694,7 +706,8 @@ fn run_block_use_regression(g: &mut crate::game::ServerGame<'_>, packet: bool, s
         point: [3.5, 65.0, 4.5],
         inside: false,
     };
-    g.lan
+    g.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -706,6 +719,7 @@ fn run_block_use_regression(g: &mut crate::game::ServerGame<'_>, packet: bool, s
     SEEN.with_borrow_mut(Vec::clear);
     if packet {
         let gi = g
+            .side
             .lan
             .as_ref()
             .unwrap()

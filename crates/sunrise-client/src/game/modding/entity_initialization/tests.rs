@@ -302,7 +302,7 @@ fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
                 enforces_secure_chat: false,
             }))
             .unwrap();
-            let profile = game.remote.as_ref().unwrap().profile;
+            let profile = game.side.remote.as_ref().unwrap().profile;
             assert_eq!(VALUE.get(game, Holder::Player(profile)), Ok(41));
             game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
                 actions: 1,
@@ -314,6 +314,7 @@ fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
             }))
             .unwrap();
             let registry = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -407,7 +408,8 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
             game.side.world_root = game.side.save.0.root.clone();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -421,7 +423,8 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
                 calls.lock().unwrap().as_slice(),
                 &[(false, Holder::Player(12))]
             );
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -749,9 +752,9 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                 |game: &mut crate::game::ServerGame<'_>, id: u32, position: [f64; 3], yaw: f32| {
                     let at =
                         sunrise_core::geometry::Vec3::new(position[0], position[1], position[2]);
-                    let mut d = crate::game::dragon::Dragon::new(at, yaw, i64::from(id));
+                    let mut d = crate::game::dragon_common::Dragon::new(at, yaw, i64::from(id));
                     d.id = id;
-                    d.phase = crate::game::dragon::Phase::from_id(10);
+                    d.phase = crate::game::dragon_common::Phase::from_id(10);
                     d.join = sunrise_sim::join_seq::JoinSeq::next();
                     if let Some(old) = game.dragon.as_ref().map(|d| d.id) {
                         remove_dragon(game, old);

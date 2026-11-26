@@ -91,7 +91,7 @@ fn data_edits_reach_the_same_live_interaction() {
 #[test]
 #[ignore = "daily"]
 fn the_live_settings_are_what_the_interaction_saves() {
-    use super::interactions::{InteractionState, PlayerAction};
+    use crate::game::interactions_common::{InteractionState, PlayerAction};
     game(|game| {
         assert!(game.run_command("summon interaction 4.5 100 4.5 {UUID:[I;66,0,0,1]}"));
         assert!(game.run_command("summon marker 8.5 100 4.5 {UUID:[I;66,0,0,3],data:{a:1}}"));

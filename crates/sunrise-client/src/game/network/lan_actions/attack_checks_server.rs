@@ -9,7 +9,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `multiplayer.disconnect.invalid_entity_attacked`.
     pub(in crate::game::server_side) fn guest_attack_stops(&mut self, gi: usize, id: i32) -> bool {
         use crate::game::commands::Target;
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return true;
         };
         let guest = &host.hub.guests[gi];
@@ -54,7 +54,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return true;
         }
-        let host = self.lan.as_mut().unwrap();
+        let host = self.side.lan.as_mut().unwrap();
         let name = host.hub.guests[gi].name.clone();
         host.hub.kick(
             conn,
@@ -119,6 +119,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -219,7 +220,8 @@ pub(in crate::game) mod tests {
             guest
         };
         game.side.next_entity += 1;
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -242,16 +244,28 @@ pub(in crate::game) mod tests {
         assert!(hp(&game) < full, "the pig is not hurt: {full} health left");
         attack(&mut game, 2, far_item);
         assert_eq!(disconnects(&rx), vec![], "an item out of reach");
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.inventory[0] = Some(ItemStack::new("minecraft:iron_spear", 1));
-            guest.selected = 0;
-        });
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                guest.inventory[0] = Some(ItemStack::new("minecraft:iron_spear", 1));
+                guest.selected = 0;
+            });
         attack(&mut game, 2, item);
         assert_eq!(disconnects(&rx), vec![], "a spear in hand");
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.inventory[0] = None;
-        });
-        game.lan.as_mut().unwrap().hub.guests.remove(0);
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                guest.inventory[0] = None;
+            });
+        game.side.lan.as_mut().unwrap().hub.guests.remove(0);
         for (case, (what, target)) in [
             ("an item", Some(item)),
             ("an experience orb", Some(orb)),
@@ -267,7 +281,8 @@ pub(in crate::game) mod tests {
             game.side.next_entity += 1;
             let me = game.side.next_entity as i32;
             let conn = 3 + case as u32;
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -275,7 +290,7 @@ pub(in crate::game) mod tests {
                 .push(fresh_guest(conn, me));
             attack(&mut game, conn, target.unwrap_or(me));
             assert_eq!(disconnects(&rx), kicked, "{what}");
-            game.lan.as_mut().unwrap().hub.guests.remove(0);
+            game.side.lan.as_mut().unwrap().hub.guests.remove(0);
         }
     }
 }

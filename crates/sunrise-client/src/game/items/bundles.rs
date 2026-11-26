@@ -70,7 +70,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(stack) = self.slot_mut(slot) {
             toggle_selected(stack, index);
         }
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             let (_, menu) = self.remote_menu();
             if let Some(menu_slot) = Self::menu_slot_index(&menu, slot) {
                 self.send(S::SelectBundleItem(play::SelectBundleItem {

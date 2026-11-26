@@ -157,12 +157,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// vanilla's tick sends it once the key future is done, after the login's
     /// teleport confirm.
     pub(in crate::game::client_side) fn remote_chat_login(&mut self) {
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.secure_chat = SecureChat::default();
             r.signatures = Default::default();
         }
         // Only when the server says it is in online mode (handleLogin).
-        if self.remote.as_ref().is_some_and(|r| r.online_mode)
+        if self.side.remote.as_ref().is_some_and(|r| r.online_mode)
             && let Some(account) = self.auth()
         {
             auth::prepare_chat_keys_for(account, true);
@@ -175,11 +175,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // shouldRefreshKeyPair is asked only once there is a chat session; a
         // first key pair arrives through the join's prepareKeyPair.
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.logged_in && r.online_mode)
         {
-            if self.remote.as_ref().is_some_and(|r| r.secure_chat.signed())
+            if self
+                .side
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.secure_chat.signed())
                 && let Some(account) = self.auth()
             {
                 auth::prepare_chat_keys_for(account, false);
@@ -195,7 +200,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(account) = self.auth() else {
             return;
         };
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         if !r.logged_in || r.profile() != account.uuid {
@@ -227,7 +232,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn send_signed_chat(&mut self, content: &str) {
         let content = truncate_utf16(content, 256);
         let (timestamp, salt) = (now_millis(), salt());
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let chat = &mut r.secure_chat;
@@ -259,7 +264,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// signature list is empty, as in vanilla); any other command goes as the
     /// unsigned packet.
     pub(in crate::game) fn send_command(&mut self, command: &str) {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let arguments: Vec<(String, String)> = if r.chat_tree_received {
@@ -315,7 +320,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if command.is_empty() || !self.chat_abilities().allows(&format!("/{command}")) {
             return false;
         }
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return false;
         };
         // Vanilla's dispatcher is empty until the server sends its tree.
@@ -439,7 +444,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         match (yes, prompt.accept, prompt.behind) {
             (true, CommandAccept::Run, _) => {
-                if self.remote.is_some() {
+                if self.side.remote.is_some() {
                     self.send(S::ChatCommand(play::ChatCommand {
                         command: prompt.command,
                     }));
@@ -513,7 +518,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// any Chat Delay): whether it was shown, and an acknowledgement once more
     /// than 64 wait (sendChatAcknowledgement).
     pub(in crate::game) fn mark_message_processed(&mut self, signature: &Signature, shown: bool) {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let tracker = &mut r.secure_chat.tracker;
@@ -527,6 +532,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// configuration transition flushes the delayed chat queue.
     pub(in crate::game::client_side) fn send_chat_acknowledgement(&mut self) {
         let offset = self
+            .side
             .remote
             .as_mut()
             .map(|r| r.secure_chat.tracker.take_offset())

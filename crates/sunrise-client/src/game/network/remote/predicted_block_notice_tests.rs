@@ -1,4 +1,5 @@
 // Applied client writes, held server updates and reconciliation through the real Game.
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::remote::*;
 use mod_api::{BlockPart, LevelDimension, LevelSide, OnBlockStateChangeEvent, Registrar};
@@ -80,7 +81,7 @@ fn with_client(
                 RemoteDimensionEntry::Login,
                 sunrise_client::level_loading::Reason::Other,
             );
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

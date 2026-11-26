@@ -25,11 +25,11 @@ fn a_client_mod_leaves_at_the_end_of_the_frame_with_its_reason() {
         let host: &mut dyn ClientHost = game;
         assert_eq!(host.disconnect(Some(kicked())), Ok(()));
         assert!(
-            game.remote.is_some(),
+            game.side.remote.is_some(),
             "still connected until the frame ends"
         );
         game.native_leave_if_asked().unwrap();
-        assert!(game.remote.is_none());
+        assert!(game.side.remote.is_none());
         let mode = &game.side.title.0.as_ref().expect("the title screen").mode;
         assert!(
             matches!(
@@ -56,11 +56,11 @@ fn a_leave_request_does_not_follow_a_world_switch() {
         game.native_lifecycle
             .begin_open(mod_api::Authority::RemoteClient);
         game.native_leave_if_asked().unwrap();
-        assert!(game.remote.is_some(), "the new world is not left");
+        assert!(game.side.remote.is_some(), "the new world is not left");
         assert!(game.side.title.0.is_none());
         // Nothing is left over for a later frame either.
         game.native_leave_if_asked().unwrap();
-        assert!(game.remote.is_some());
+        assert!(game.side.remote.is_some());
     });
 }
 
@@ -129,11 +129,11 @@ fn a_deep_local_disconnect_reason_reaches_the_screen() {
         let host: &mut dyn ClientHost = game;
         host.disconnect(Some(deep)).unwrap();
         assert!(
-            game.remote.is_some(),
+            game.side.remote.is_some(),
             "the call queues the leave until frame end"
         );
         game.native_leave_if_asked().unwrap();
-        assert!(game.remote.is_none());
+        assert!(game.side.remote.is_none());
         let Mode::Multiplayer(sunrise_client::multiplayer::Screen::Disconnected { reason, .. }) =
             &game.side.title.0.as_ref().unwrap().mode
         else {

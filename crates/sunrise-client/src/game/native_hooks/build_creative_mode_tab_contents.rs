@@ -392,8 +392,8 @@ pub(in crate::game) fn snapshot(
 
 /// `CreativeModeTab.getDisplayName`: the tab's `itemGroup.*` key with its title as fallback.
 pub(in crate::game) fn display_name(id: &str, title: &str) -> mod_api::Text {
-    let key = sunrise_client::creative::item_group_key(id).map_or_else(
-        || sunrise_client::creative::mod_item_group_key(id),
+    let key = sunrise_items::creative_catalog::item_group_key(id).map_or_else(
+        || sunrise_items::creative_catalog::mod_item_group_key(id),
         str::to_owned,
     );
     mod_api::Text::new(mod_api::text::TextContent::Translatable {

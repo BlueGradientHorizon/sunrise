@@ -2,7 +2,7 @@
 //! template the game has by id or for vanilla structure NBT a mod carries.
 use super::{
     Game,
-    native_structures::{engine_mirror, engine_rotation, template_id},
+    native_structure_values::{engine_mirror, engine_rotation, template_id},
     structure_blocks::load_settings,
 };
 use mod_api::{StructureMirror, StructureRotation, StructureTemplateSource};
@@ -345,7 +345,7 @@ mod tests {
     fn ready_chunked_game(game: &mut crate::game::ServerGame<'_>) {
         // The templates' resources the level places from, as opening a world
         // installs them.
-        crate::game::growth::install_live_features(
+        crate::game::growth_features::install_live_features(
             &game.res,
             &game.pack,
             &game.options,

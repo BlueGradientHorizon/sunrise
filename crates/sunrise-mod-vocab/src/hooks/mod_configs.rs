@@ -10,6 +10,7 @@ pub trait Hooks {
     /// time. Receives a [`ConfigContext`] with settings reads and the scoped
     /// `ConfigFiles` service. A file outside `config/`, or one already registered, is skipped.
     #[hook(
+        target = "sunrise_client::game::native_hooks::mod_configs::native_register_configs",
         receiver = "associated",
         context = "config",
         dispatch = "flat",
@@ -28,6 +29,7 @@ pub trait Hooks {
     /// settings reads and the scoped `ConfigFiles` service. Client and Common
     /// load once on their owning side, Server once per world.
     #[hook(
+        target = "sunrise_client::game::native_hooks::mod_configs::native_config_loading",
         receiver = "associated",
         context = "config",
         dispatch = "flat",

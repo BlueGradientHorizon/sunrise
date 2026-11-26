@@ -38,7 +38,8 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
         game.world
             .block_entities
             .insert(pos, BlockEntity::Chest(vec![None; 27]));
-        game.remote
+        game.side
+            .remote
             .as_mut()
             .unwrap()
             .menu

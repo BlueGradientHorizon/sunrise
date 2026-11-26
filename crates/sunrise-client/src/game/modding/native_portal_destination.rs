@@ -6,7 +6,7 @@
 use super::Game;
 use crate::game::{
     Dim,
-    end::END_SPAWN,
+    end_state::END_SPAWN,
     nether_portal::{Plan, PortalSide, end_portal_rotation},
 };
 use mod_api::{LevelRef, PortalAngle, PortalError, PortalExit, PortalRotation, PortalShape};

@@ -3,7 +3,7 @@ use super::*;
 impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]
     pub(in crate::game) fn client_acting_player_uuid(&self) -> Option<u128> {
-        self.remote.as_ref().map(|r| r.profile())
+        self.side.remote.as_ref().map(|r| r.profile())
     }
     #[inline(always)]
     pub(in crate::game) fn client_resolve_enchant_particles(&self) {
@@ -54,7 +54,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let overrides = title
                 .creation_packs()
                 .map(|(dir, packs)| {
-                    world_loading::creation_worldgen_overrides(
+                    crate::game::world_preload::creation_worldgen_overrides(
                         dir.as_deref(),
                         &self.options.resources,
                         &packs,
@@ -145,7 +145,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 sunrise_client::title::Mode::Main | sunrise_client::title::Mode::Multiplayer(_)
             )
         });
-        world_loading::preload_world_data(
+        crate::game::world_preload::preload_world_data(
             on_world_screens,
             &self.options.resources,
             &self.pack.data_changes,

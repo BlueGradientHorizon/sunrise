@@ -124,7 +124,7 @@ fn join(game: &mut crate::game::ServerGame<'_>, conn: u32, uuid: u128, name: &st
         10,
     );
     guest.placed = true;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     let players = game.players().server_players();
     *players
         .iter()
@@ -133,7 +133,8 @@ fn join(game: &mut crate::game::ServerGame<'_>, conn: u32, uuid: u128, name: &st
 }
 
 fn leave(game: &mut crate::game::ServerGame<'_>, conn: u32) {
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -178,7 +179,7 @@ fn the_startup_hooks_read_the_whole_launch_profile_before_the_hub() {
                 OWNER,
                 Some(&account),
             ));
-            assert!(game.lan.is_none(), "no hub yet");
+            assert!(game.side.lan.is_none(), "no hub yet");
             game.native_server_about_to_start(false);
             game.native_server_starting(false);
             open_hub(game, ExecutionRole::IntegratedServer);
@@ -211,13 +212,13 @@ fn the_integrated_owner_is_the_launch_profile_matched_by_name() {
         ));
         open_hub(game, ExecutionRole::IntegratedServer);
         // Commands off: the owner is no operator (`IntegratedPlayerList`).
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         hub.ops.insert(OWNER, 0);
         hub.singleplayer_owner = Some(OWNER);
         assert_eq!(read(game), Some(launched()), "before the owner joins");
 
         let guest = join(game, 12, 12, "guest12");
-        game.lan.as_mut().unwrap().hub.ops.insert(12, 4);
+        game.side.lan.as_mut().unwrap().hub.ops.insert(12, 4);
         assert!(
             !guest.is_singleplayer_owner(game),
             "a guest who joined first, op 4"
@@ -267,7 +268,7 @@ fn a_dedicated_server_has_no_singleplayer_owner() {
     super::native_entity_refs::tests::with_game_role(root, role, |game| {
         open_hub(game, role);
         let op = join(game, 12, OWNER, "Owner");
-        game.lan.as_mut().unwrap().hub.ops.insert(OWNER, 4);
+        game.side.lan.as_mut().unwrap().hub.ops.insert(OWNER, 4);
         assert_eq!(read(game), None);
         assert!(!op.is_singleplayer_owner(game));
     });

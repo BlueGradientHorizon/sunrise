@@ -1262,8 +1262,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.carts.push(c);
             return Ok(Target::Cart(id));
         }
-        if let Some((wood, chest)) = super::boats::any_boat_wood(kind) {
-            let mut boat = super::boats::Boat::new(id, wood.into(), at, yaw);
+        if let Some((wood, chest)) = crate::game::boats_common::any_boat_wood(kind) {
+            let mut boat = crate::game::boats_common::Boat::new(id, wood.into(), at, yaw);
             if chest {
                 boat = boat.with_chest();
             }

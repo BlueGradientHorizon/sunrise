@@ -2,7 +2,6 @@
 use super::{
     Screen,
     execution_role::ExecutionRole,
-    mods,
     native_entity_refs::tests::{run_fresh_cases, with_client_game},
 };
 use mod_api::{
@@ -283,7 +282,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             )]
             .into(),
         );
-        mods::register_gui_layers(ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
         game.side.title.0 = None;
         game.side.screen = super::Screen::Playing;
         game.side.chat_ui.hide_gui = false;
@@ -460,7 +459,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             ]
             .into(),
         );
-        mods::register_gui_layers(ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
         let mut batch = HudBatch::new([320, 240], game.side.settings.gui_scale_inputs());
 
         // Simulate the HUD paint sites with the crosshair skipped (third person).
@@ -596,7 +595,7 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                 ]
                 .into(),
             );
-            mods::register_gui_layers(ExecutionRole::Client);
+            crate::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
             let mut batch = HudBatch::scratch([320, 240]);
             let white = rgba(255, 255, 255, 255);
             let green = rgba(0, 255, 0, 255);
@@ -889,7 +888,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
     // Install before the game fixture snapshots registrations and resolves the stick's Part.
     mod_platform::__private::install(entries.into());
     with_client_game(|game| {
-        mods::register_gui_layers(ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
         enter_test_world(game);
         game.side.settings.main_hand_left = false;
         game.selected = 0;
@@ -953,7 +952,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
         for frame in frames {
             if frame.variant == Variant::Mob {
                 server = Some(super::native_client_session::tests::logged_client(game));
-                game.remote.as_mut().unwrap().level_load.finish();
+                game.side.remote.as_mut().unwrap().level_load.finish();
                 enter_test_world(game);
                 let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
                 game.mobs.push(Mob::new(31, cow, Vec3::ZERO, 0.0));
@@ -1174,7 +1173,7 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
             mod_platform::__private::install(
                 vec![ModEntry::new("observer", Box::new(Observer))].into(),
             );
-            mods::register_gui_layers(ExecutionRole::Client);
+            crate::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
             let size = [640, 480];
             let screen_events = ["screen pre", "screen background", "screen post"];
             let saves = tempfile::tempdir().unwrap();
@@ -1622,7 +1621,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             mod_platform::__private::install(
                 vec![ModEntry::new(OWNER, Box::new(BrokenHud))].into(),
             );
-            mods::register_gui_layers(ExecutionRole::Client);
+            crate::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
             enter_test_world(game);
             game.toggle_hide_gui();
             assert!(game.side.chat_ui.player_hides_gui && game.side.chat_ui.hide_gui);

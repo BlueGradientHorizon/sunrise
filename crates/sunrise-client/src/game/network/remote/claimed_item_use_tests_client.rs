@@ -45,7 +45,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
         with_client_game(|game| {
             let _peer = logged_in(game);
             game.side.screen = Screen::Playing;
-            game.remote.as_mut().unwrap().loaded_sent = true;
+            game.side.remote.as_mut().unwrap().loaded_sent = true;
             let shield = mod_api::__private::item_key(SHIELD).unwrap();
             let call = |phase, count, marker| Call {
                 phase,
@@ -151,7 +151,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
             assert!(!game.dialog_open());
             assert!(game.side.client_item_use.0.is_some());
             {
-                let registries = Arc::make_mut(&mut game.remote.as_mut().unwrap().registries);
+                let registries = Arc::make_mut(&mut game.side.remote.as_mut().unwrap().registries);
                 let mut notice = std::collections::BTreeMap::new();
                 notice.insert(
                     JavaString::from("type"),

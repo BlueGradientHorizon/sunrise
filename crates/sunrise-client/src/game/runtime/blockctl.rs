@@ -1,7 +1,6 @@
 //! Control-socket block commands for scripted tests: `setblock`, `fill`,
 //! `getblock` and `container` (list or put items in a block entity).
 use super::Game;
-use super::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use sunrise_game_data::Result;
@@ -63,34 +62,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         Ok(())
     }
-    /// Block commands; None when `words[0]` is not one of them.
-    pub(super) fn block_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
-        let ours = matches!(
-            words.first(),
-            Some(&("setblock" | "fill" | "getblock" | "container"))
-        );
-        // Single player on its server thread: the world is the server's, so
-        // the command runs there, in the owner's level, and the client hears
-        // of it like any change.
-        if ours && let Some(server) = &self.integrated {
-            let owned: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
-            return server
-                .ask(|reply| {
-                    OwnerRequest::Control(ControlRequest::BlockCommand {
-                        words: owned,
-                        reply,
-                    })
-                })
-                .ok_or(super::integrated::NO_ANSWER)?
-                .map_err(Into::into);
-        }
-        // Another server's world changes only through its own commands, which
-        // it checks as the player's; `getblock` and `container` read what this
-        // client has of it.
-        if self.remote.is_some() && matches!(words.first(), Some(&("setblock" | "fill"))) {
-            self.side_send_chat_command(&format!("/{}", words.join(" ")));
-            return Ok(Some(json!({ "ok": true, "sent": true })));
-        }
+    pub(in crate::game) fn block_command_local(&mut self, words: &[&str]) -> Result<Option<Value>> {
         if !self.is_logical_server() && matches!(words.first(), Some(&("setblock" | "fill"))) {
             return Err("cannot modify blocks without a world connection".into());
         }

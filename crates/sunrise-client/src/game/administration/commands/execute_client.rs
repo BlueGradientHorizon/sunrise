@@ -31,6 +31,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .map_or(0.0, |i| f64::from(i.eye_height())),
             Target::General(id) => {
                 let ty = self
+                    .side
                     .remote
                     .as_ref()
                     .and_then(|r| r.general.rows.get(&(id as i32)))

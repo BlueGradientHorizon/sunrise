@@ -1,5 +1,6 @@
 //! Role-dispatched side operations for the `modapi-modding` lane.
-use crate::game::{Game, commands::Target, native_server::PlayerRead};
+use crate::game::Dim;
+use crate::game::{Game, commands_common::Target, native_server::PlayerRead};
 use core::ops::ControlFlow;
 use mod_api::{
     BlockCapabilitySite, BlockEntityRef, BlockFace, BlockSide, CollisionFlags, Compound,
@@ -7,14 +8,128 @@ use mod_api::{
     ItemEntityRef, LevelReadError, LevelRef, LivingRef, MainHand, MenuRef, PlayerRef, SupportType,
     WorldEpoch, client::first_person::Hand,
 };
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
+use sunrise_assets::resource_source::ResourceSource;
+use sunrise_core::identifier::Identifier;
 use sunrise_items::items::{ItemStack, Items};
 use sunrise_level::world::World;
 use sunrise_sim::{lan::PlayerSender, mobs::finalize::EquipmentRead};
 use sunrise_world::{native_load_context::LoopContext, registry::BlockStateId};
 
+pub(in crate::game) enum FunctionRegistry {
+    Predicate,
+    ItemModifier,
+    SlotSource,
+}
+
 impl<__Side: crate::game::Side> Game<'_, __Side> {
+    #[inline(always)]
+    pub(in crate::game) fn side_vanilla_data_disabled(&self) -> bool {
+        <__Side as SideOps>::side_vanilla_data_disabled(&self.side)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_native_client_tracked(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(&str, [f64; 3])> {
+        <__Side as SideOps>::side_native_client_tracked(self, entity)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_native_client_level(&self) -> Option<LevelRef> {
+        <__Side as SideOps>::side_native_client_level(self)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_native_level_key(&self) -> DimensionKey {
+        <__Side as SideOps>::side_native_level_key(self)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_client_tracked_player_fire_immunity(
+        &self,
+        entity: EntityRef,
+    ) -> Option<bool> {
+        <__Side as SideOps>::side_client_tracked_player_fire_immunity(self, entity)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
+        <__Side as SideOps>::side_client_entity_tick_count(self, entity)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_native_client_general_type_slot(
+        &self,
+        entity: EntityRef,
+    ) -> Option<usize> {
+        <__Side as SideOps>::side_native_client_general_type_slot(self, entity)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_client_entity_on_fire(&self, entity: EntityRef) -> Option<bool> {
+        <__Side as SideOps>::side_client_entity_on_fire(&self.side, entity)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_remote_logged_in(&self) -> bool {
+        <__Side as SideOps>::side_remote_logged_in(&self.side)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_level_player_name(
+        &self,
+        entity: EntityRef,
+    ) -> Option<std::result::Result<Option<&str>, std::num::TryFromIntError>> {
+        <__Side as SideOps>::side_level_player_name(&self.side, entity)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_remote_overworld_clock(&self) -> Option<i64> {
+        <__Side as SideOps>::side_remote_overworld_clock(&self.side)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_guest_player_effects(
+        &self,
+        conn: u32,
+    ) -> Option<&sunrise_level::effects::PlayerEffects> {
+        <__Side as SideOps>::side_guest_player_effects(&self.side, conn)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_guest_used_hand(
+        &self,
+        conn: u32,
+    ) -> Option<sunrise_sim::first_person_sim::Hand> {
+        <__Side as SideOps>::side_guest_used_hand(&self.side, conn)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_remote_registry_names(
+        &self,
+    ) -> Option<sunrise_protocol::registry::SyncedNames<'_>> {
+        <__Side as SideOps>::side_remote_registry_names(&self.side)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_server_registry_protocol_id(
+        &self,
+        registry: &Identifier,
+        name: &Identifier,
+    ) -> Option<i32> {
+        <__Side as SideOps>::side_server_registry_protocol_id(&self.side, registry, name)
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_registry_sync(
+        &self,
+    ) -> Option<Arc<sunrise_sim::lan::data::SyncData>> {
+        <__Side as SideOps>::side_registry_sync(self)
+    }
+
     pub(in crate::game) fn side_bind_constructed_entity_attachments(&mut self, id: u32) {
         <__Side as SideOps>::side_bind_constructed_entity_attachments(self, id)
     }
@@ -119,7 +234,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         min: [f64; 3],
         max: [f64; 3],
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
-    ) -> Result<ControlFlow<()>, LevelReadError> {
+    ) -> std::result::Result<ControlFlow<()>, LevelReadError> {
         <__Side as SideOps>::side_level_visit_entities_in(self, level, min, max, visit)
     }
 
@@ -222,7 +337,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn side_player_collision_flags(
         &self,
         player: PlayerRef,
-    ) -> Result<Option<CollisionFlags>, LevelReadError> {
+    ) -> std::result::Result<Option<CollisionFlags>, LevelReadError> {
         <__Side as SideOps>::side_player_collision_flags(self, player)
     }
 
@@ -331,6 +446,49 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
 // Generated by Shape G codemod from side_* role dispatchers.
 pub(in crate::game) trait SideOps: Sized {
+    fn side_visit_parked_dimensions(&self, visit: impl FnMut(Dim));
+    fn side_append_function_pack_sources<'a>(&'a self, to: &mut Vec<&'a ResourceSource>);
+    fn side_function_registry(
+        &self,
+        registry: FunctionRegistry,
+    ) -> Option<&BTreeMap<String, serde_json::Value>>;
+    fn side_slot_source_tag_contains(&self, tag: &str, id: &str) -> bool;
+    fn side_vanilla_data_disabled(&self) -> bool;
+    fn side_native_client_tracked<'g>(
+        game: &'g Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<(&'g str, [f64; 3])>;
+    fn side_native_client_level(game: &Game<'_, Self>) -> Option<LevelRef>;
+    fn side_native_level_key(game: &Game<'_, Self>) -> DimensionKey;
+    fn side_client_tracked_player_fire_immunity(
+        game: &Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<bool>;
+    fn side_client_entity_tick_count(game: &Game<'_, Self>, entity: EntityRef) -> Option<i32>;
+    fn side_native_client_general_type_slot(
+        game: &Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<usize>;
+    fn side_client_entity_on_fire(&self, entity: EntityRef) -> Option<bool>;
+    fn side_remote_logged_in(&self) -> bool;
+    fn side_level_player_name(
+        &self,
+        entity: EntityRef,
+    ) -> Option<std::result::Result<Option<&str>, std::num::TryFromIntError>>;
+    fn side_remote_overworld_clock(&self) -> Option<i64>;
+    fn side_guest_player_effects(
+        &self,
+        conn: u32,
+    ) -> Option<&sunrise_level::effects::PlayerEffects>;
+    fn side_guest_used_hand(&self, conn: u32) -> Option<sunrise_sim::first_person_sim::Hand>;
+    fn side_remote_registry_names(&self) -> Option<sunrise_protocol::registry::SyncedNames<'_>>;
+    fn side_server_registry_protocol_id(
+        &self,
+        registry: &Identifier,
+        name: &Identifier,
+    ) -> Option<i32>;
+    fn side_registry_sync(game: &Game<'_, Self>) -> Option<Arc<sunrise_sim::lan::data::SyncData>>;
+
     fn side_bind_constructed_entity_attachments(game: &mut crate::game::Game<'_, Self>, id: u32);
     fn side_collision_scan_world<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
@@ -404,7 +562,7 @@ pub(in crate::game) trait SideOps: Sized {
         min: [f64; 3],
         max: [f64; 3],
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
-    ) -> Result<ControlFlow<()>, LevelReadError>;
+    ) -> std::result::Result<ControlFlow<()>, LevelReadError>;
     fn side_lid_openers<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> Option<&'__side_g HashMap<(i32, i32, i32), i32>>;
@@ -459,7 +617,7 @@ pub(in crate::game) trait SideOps: Sized {
     fn side_player_collision_flags(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
-    ) -> Result<Option<CollisionFlags>, LevelReadError>;
+    ) -> std::result::Result<Option<CollisionFlags>, LevelReadError>;
     fn side_player_container_menu(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
@@ -532,6 +690,97 @@ pub(in crate::game) trait SideOps: Sized {
 }
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
+    fn side_visit_parked_dimensions(&self, visit: impl FnMut(Dim)) {
+        self.levels.0.parked.keys().copied().for_each(visit);
+    }
+    fn side_append_function_pack_sources<'a>(&'a self, to: &mut Vec<&'a ResourceSource>) {
+        to.extend(self.fns.0.pack_sources().rev());
+    }
+    fn side_function_registry(
+        &self,
+        registry: FunctionRegistry,
+    ) -> Option<&BTreeMap<String, serde_json::Value>> {
+        Some(match registry {
+            FunctionRegistry::Predicate => &self.fns.0.store.predicates,
+            FunctionRegistry::ItemModifier => &self.fns.0.store.item_modifiers,
+            FunctionRegistry::SlotSource => &self.fns.0.store.slot_sources,
+        })
+    }
+    fn side_slot_source_tag_contains(&self, tag: &str, id: &str) -> bool {
+        self.fns
+            .0
+            .store
+            .slot_source_tag(tag)
+            .is_ok_and(|members| members.iter().any(|member| member == id))
+    }
+    fn side_vanilla_data_disabled(&self) -> bool {
+        self.cmds.0.vanilla_disabled
+    }
+    fn side_native_client_tracked<'g>(
+        game: &'g Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<(&'g str, [f64; 3])> {
+        None
+    }
+    fn side_native_client_level(game: &Game<'_, Self>) -> Option<LevelRef> {
+        None
+    }
+    fn side_native_level_key(game: &Game<'_, Self>) -> DimensionKey {
+        game.dim.key()
+    }
+    fn side_client_tracked_player_fire_immunity(
+        game: &Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<bool> {
+        None
+    }
+    fn side_client_entity_tick_count(game: &Game<'_, Self>, entity: EntityRef) -> Option<i32> {
+        None
+    }
+    fn side_native_client_general_type_slot(
+        game: &Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<usize> {
+        None
+    }
+    fn side_client_entity_on_fire(&self, entity: EntityRef) -> Option<bool> {
+        None
+    }
+    fn side_remote_logged_in(&self) -> bool {
+        false
+    }
+    fn side_level_player_name(
+        &self,
+        entity: EntityRef,
+    ) -> Option<std::result::Result<Option<&str>, std::num::TryFromIntError>> {
+        None
+    }
+    fn side_remote_overworld_clock(&self) -> Option<i64> {
+        None
+    }
+    fn side_guest_player_effects(
+        &self,
+        conn: u32,
+    ) -> Option<&sunrise_level::effects::PlayerEffects> {
+        Some(&self.lan.as_ref()?.hub.guest(conn)?.effects)
+    }
+    fn side_guest_used_hand(&self, conn: u32) -> Option<sunrise_sim::first_person_sim::Hand> {
+        self.lan.as_ref()?.play.get(&conn)?.used_hand()
+    }
+    fn side_remote_registry_names(&self) -> Option<sunrise_protocol::registry::SyncedNames<'_>> {
+        None
+    }
+    fn side_server_registry_protocol_id(
+        &self,
+        registry: &Identifier,
+        name: &Identifier,
+    ) -> Option<i32> {
+        self.lan.as_ref()?.hub.synced_id(registry, name)
+    }
+    fn side_registry_sync(game: &Game<'_, Self>) -> Option<Arc<sunrise_sim::lan::data::SyncData>> {
+        game.server_registry_sync()
+    }
+
     fn side_bind_constructed_entity_attachments(game: &mut crate::game::Game<'_, Self>, id: u32) {
         {
             game.server_bind_constructed_entity_attachments(id);
@@ -649,7 +898,7 @@ impl SideOps for crate::game::server_side::ServerState {
         min: [f64; 3],
         max: [f64; 3],
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
-    ) -> Result<ControlFlow<()>, LevelReadError> {
+    ) -> std::result::Result<ControlFlow<()>, LevelReadError> {
         game.server_level_visit_entities_in(level, min, max, visit)
     }
     fn side_lid_openers<'__side_g>(
@@ -762,7 +1011,7 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_player_collision_flags(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
-    ) -> Result<Option<CollisionFlags>, LevelReadError> {
+    ) -> std::result::Result<Option<CollisionFlags>, LevelReadError> {
         game.server_player_collision_flags(player)
     }
     fn side_player_container_menu(
@@ -874,6 +1123,97 @@ impl SideOps for crate::game::server_side::ServerState {
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
+    fn side_visit_parked_dimensions(&self, visit: impl FnMut(Dim)) {}
+    fn side_append_function_pack_sources<'a>(&'a self, to: &mut Vec<&'a ResourceSource>) {}
+    fn side_function_registry(
+        &self,
+        registry: FunctionRegistry,
+    ) -> Option<&BTreeMap<String, serde_json::Value>> {
+        None
+    }
+    fn side_slot_source_tag_contains(&self, tag: &str, id: &str) -> bool {
+        false
+    }
+    fn side_vanilla_data_disabled(&self) -> bool {
+        false
+    }
+    fn side_native_client_tracked<'g>(
+        game: &'g Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<(&'g str, [f64; 3])> {
+        game.native_client_tracked(entity)
+    }
+    fn side_native_client_level(game: &Game<'_, Self>) -> Option<LevelRef> {
+        game.client_level_handle()
+    }
+    fn side_native_level_key(game: &Game<'_, Self>) -> DimensionKey {
+        game.side
+            .remote
+            .as_ref()
+            .map_or_else(|| game.dim.key(), |remote| remote.level_key)
+    }
+    fn side_client_tracked_player_fire_immunity(
+        game: &Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<bool> {
+        game.client_tracked_player_fire_immunity(entity)
+    }
+    fn side_client_entity_tick_count(game: &Game<'_, Self>, entity: EntityRef) -> Option<i32> {
+        game.client_entity_tick_count(entity)
+    }
+    fn side_native_client_general_type_slot(
+        game: &Game<'_, Self>,
+        entity: EntityRef,
+    ) -> Option<usize> {
+        game.native_client_general(entity).map(|row| row.type_slot)
+    }
+    fn side_client_entity_on_fire(&self, entity: EntityRef) -> Option<bool> {
+        self.remote
+            .as_ref()?
+            .entity_on_fire(i32::try_from(entity.id()).ok()?)
+    }
+    fn side_remote_logged_in(&self) -> bool {
+        self.remote.as_ref().is_some_and(|remote| remote.logged_in)
+    }
+    fn side_level_player_name(
+        &self,
+        entity: EntityRef,
+    ) -> Option<std::result::Result<Option<&str>, std::num::TryFromIntError>> {
+        let remote = self.remote.as_ref()?;
+        Some(
+            i32::try_from(entity.id()).map(|id| remote.level_player(id).and_then(|(_, name)| name)),
+        )
+    }
+    fn side_remote_overworld_clock(&self) -> Option<i64> {
+        self.remote.as_ref().map(|r| r.overworld_clock_time())
+    }
+    fn side_guest_player_effects(
+        &self,
+        conn: u32,
+    ) -> Option<&sunrise_level::effects::PlayerEffects> {
+        None
+    }
+    fn side_guest_used_hand(&self, conn: u32) -> Option<sunrise_sim::first_person_sim::Hand> {
+        None
+    }
+    fn side_remote_registry_names(&self) -> Option<sunrise_protocol::registry::SyncedNames<'_>> {
+        let remote = self.remote.as_ref()?;
+        Some(sunrise_protocol::registry::SyncedNames {
+            builtin: &remote.builtin,
+            dynamic: &remote.registries,
+        })
+    }
+    fn side_server_registry_protocol_id(
+        &self,
+        registry: &Identifier,
+        name: &Identifier,
+    ) -> Option<i32> {
+        None
+    }
+    fn side_registry_sync(game: &Game<'_, Self>) -> Option<Arc<sunrise_sim::lan::data::SyncData>> {
+        None
+    }
+
     fn side_bind_constructed_entity_attachments(game: &mut crate::game::Game<'_, Self>, id: u32) {
         {
             game.client_bind_constructed_entity_attachments(id);
@@ -991,7 +1331,7 @@ impl SideOps for crate::game::client_side::ClientState {
         min: [f64; 3],
         max: [f64; 3],
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
-    ) -> Result<ControlFlow<()>, LevelReadError> {
+    ) -> std::result::Result<ControlFlow<()>, LevelReadError> {
         game.client_level_visit_entities_in(level, min, max, visit)
     }
     fn side_lid_openers<'__side_g>(
@@ -1106,7 +1446,7 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_player_collision_flags(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
-    ) -> Result<Option<CollisionFlags>, LevelReadError> {
+    ) -> std::result::Result<Option<CollisionFlags>, LevelReadError> {
         game.client_player_collision_flags(player)
     }
     fn side_player_container_menu(

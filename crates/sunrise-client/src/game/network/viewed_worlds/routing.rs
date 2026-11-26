@@ -8,8 +8,8 @@ use super::{
 use crate::game::remote_chunks::section_blocks;
 use crate::game::{
     Game,
+    client_side::remote_client::Remote,
     native_connection_groups::{block_groups, check_group_updates},
-    remote::Remote,
 };
 use sunrise_items::blocks::BlockFacts;
 use sunrise_level::world::World;
@@ -285,7 +285,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Message::Swap { level } => {
                 let (slot, epoch) = bound(level)?;
-                let Some(r) = self.remote.as_mut() else {
+                let Some(r) = self.side.remote.as_mut() else {
                     return Ok(());
                 };
                 if !r.viewed.is_new(epoch) {
@@ -321,7 +321,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Message::Close { level } => {
                 let (level, epoch) = bound(level)?;
                 if self.live(level, epoch)?
-                    && let Some(r) = self.remote.as_mut()
+                    && let Some(r) = self.side.remote.as_mut()
                 {
                     r.viewed.remove(level);
                 }
@@ -342,7 +342,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             self.connection_group_limit()
         };
-        let Some(world) = self.remote.as_mut().and_then(|r| r.viewed.get_mut(level)) else {
+        let Some(world) = self
+            .side
+            .remote
+            .as_mut()
+            .and_then(|r| r.viewed.get_mut(level))
+        else {
             return Ok(());
         };
         let (groups, snapshot) =
@@ -377,7 +382,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether a `run` or `close` of `slot` at `epoch` goes to its world: false for one of a level
     /// the slot no longer holds, which is dropped (`ViewedWorlds::binding`).
     fn live(&self, slot: i32, epoch: i32) -> Result<bool, RouteError> {
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return Ok(false);
         };
         match r.viewed.binding(slot, epoch) {
@@ -398,7 +403,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         spawn: &SpawnInfo,
     ) -> Result<(), RouteError> {
         let air = self.res.facts().air;
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return Ok(());
         };
         if !r.viewed.is_new(epoch) {
@@ -439,7 +444,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             columns,
         );
         world.nether_shading = facts.cardinal_light == CardinalLight::Nether;
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.viewed.insert(slot, epoch, world);
         }
         Ok(())

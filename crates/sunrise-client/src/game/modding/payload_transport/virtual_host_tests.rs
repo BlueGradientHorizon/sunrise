@@ -60,6 +60,7 @@ fn virtual_host_is_the_rewritten_handshake_host() {
                 .unwrap();
                 let deadline = Instant::now() + Duration::from_secs(60);
                 while !game
+                    .side
                     .remote
                     .as_ref()
                     .is_some_and(|r| r.logged_in && r.joined)
@@ -69,6 +70,7 @@ fn virtual_host_is_the_rewritten_handshake_host() {
                     std::thread::yield_now();
                 }
                 let port = game
+                    .side
                     .integrated
                     .as_ref()
                     .unwrap()

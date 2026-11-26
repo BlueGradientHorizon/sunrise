@@ -1,10 +1,11 @@
 //! Inventory reads preserve CompoundContainer's short-circuit traversal.
 use super::*;
+use crate::game::{container_loot_level::LootTarget, machine_containers::View};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn unpack_inventory_slot(&mut self, view: &View, slot: usize) {
         if let Some((pos, _)) = view.locate(slot) {
-            self.unpack_loot(super::super::container_loot::LootTarget::Block(pos), None);
+            self.unpack_loot(LootTarget::Block(pos), None);
         }
     }
     /// One pending lookup per visited half, without allocating a visited set.
@@ -17,7 +18,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some((pos, _)) = view.locate(slot)
             && prepared.replace(pos) != Some(pos)
         {
-            self.unpack_loot(super::super::container_loot::LootTarget::Block(pos), None);
+            self.unpack_loot(LootTarget::Block(pos), None);
         }
     }
     /// `CompoundContainer.isEmpty` visits the other half only if needed.

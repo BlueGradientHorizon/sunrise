@@ -101,7 +101,7 @@ pub(in crate::game) mod tests {
         };
         game.lan_host(settings, net, config).unwrap();
         let guest = new_guest(1, 123);
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         game.player(123).unwrap()
     }
 
@@ -114,15 +114,21 @@ pub(in crate::game) mod tests {
             assert_eq!(player.last_death_location(&*game), None);
 
             // A death records the level and block (`ServerPlayer.die`).
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.last_death = Some(("minecraft:overworld".into(), [4, 70, -9]));
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.last_death = Some(("minecraft:overworld".into(), [4, 70, -9]));
+                });
             assert_eq!(player.last_death_location(&*game), Some(at([4, 70, -9])));
 
             // The setter stores it, and None forgets it.
             assert!(player.set_last_death_location(game, Some(at([1, 2, 3]))));
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].last_death,
+                game.side.lan.as_ref().unwrap().hub.guests[0].last_death,
                 Some(("minecraft:overworld".into(), [1, 2, 3]))
             );
             assert_eq!(player.last_death_location(&*game), Some(at([1, 2, 3])));
@@ -140,7 +146,8 @@ pub(in crate::game) mod tests {
             );
             {
                 let value = Some(("minecraft:overworld".into(), [1, 2, 3]));
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -151,7 +158,8 @@ pub(in crate::game) mod tests {
             assert!(!stale.set_last_death_location(game, None));
             {
                 let value = false;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -161,7 +169,8 @@ pub(in crate::game) mod tests {
             assert_eq!(player.last_death_location(&*game), None);
             {
                 let value = true;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -172,7 +181,8 @@ pub(in crate::game) mod tests {
             // Raw saved data crosses the Identifier boundary only here.
             {
                 let value = Some(("not a dimension key".into(), [1, 2, 3]));
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -190,7 +200,8 @@ pub(in crate::game) mod tests {
             let player = add_guest(game);
             {
                 let value = Some(("minecraft:overworld".into(), [4, 70, -9]));
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -207,7 +218,7 @@ pub(in crate::game) mod tests {
                 .unwrap();
             assert_eq!(seen, (Some(at([4, 70, -9])), true, Some(at([1, 2, 3]))));
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].last_death,
+                game.side.lan.as_ref().unwrap().hub.guests[0].last_death,
                 Some(("minecraft:overworld".into(), [1, 2, 3]))
             );
         });
@@ -229,7 +240,7 @@ pub(in crate::game) mod tests {
             ));
             std::fs::create_dir_all(&world).unwrap();
             playerdata::save(
-                &game.lan.as_ref().unwrap().hub.guests[0],
+                &game.side.lan.as_ref().unwrap().hub.guests[0],
                 &world,
                 &Default::default(),
             );
@@ -244,7 +255,7 @@ pub(in crate::game) mod tests {
             );
 
             // Put in place of the saved one, it reads through the handle.
-            game.lan.as_mut().unwrap().hub.guests.replace(0, fresh);
+            game.side.lan.as_mut().unwrap().hub.guests.replace(0, fresh);
             assert_eq!(player.last_death_location(&*game), Some(at([4, 70, -9])));
             std::fs::remove_dir_all(&world).unwrap();
         });
@@ -257,15 +268,21 @@ pub(in crate::game) mod tests {
             let player = add_guest(game);
             {
                 // Dying in the Nether at a fractional position.
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.dimension = "minecraft:the_nether".into();
-                    guest.position = [-1.2, 64.9, 7.1];
-                    guest.health = 0.0;
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.dimension = "minecraft:the_nether".into();
+                        guest.position = [-1.2, 64.9, 7.1];
+                        guest.health = 0.0;
+                    });
             }
             game.guest_die(0, 1);
 
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.dead);
             assert_eq!(
                 guest.last_death,

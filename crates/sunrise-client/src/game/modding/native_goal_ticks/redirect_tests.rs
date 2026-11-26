@@ -39,7 +39,7 @@ fn redirect_to_another_guest_switches_view_and_tags_subsequent_events() {
             for conn in [12, 13] {
                 let mut placed = guest(conn);
                 placed.loaded = true;
-                game.lan.as_mut().unwrap().hub.guests.push(placed);
+                game.side.lan.as_mut().unwrap().hub.guests.push(placed);
             }
             let level = game.level(game.dim.id()).unwrap();
             let fake = game.fake_player(level, 999, "fake").unwrap();
@@ -74,7 +74,12 @@ fn redirect_to_another_guest_switches_view_and_tags_subsequent_events() {
             let mut actor = Mob::new(9001, kind, Vec3::ZERO, 0.0);
             let mut other = Mob::new(9002, actor.kind.clone(), Vec3::ZERO, 0.0);
             other.ai.target = Some(Who::Player);
-            game.lan.as_mut().unwrap().mob_players.insert(other.id, 12);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .mob_players
+                .insert(other.id, 12);
             let mut world = game.mob_world_base(&[]);
             world.goal_host = Some(game);
             world.player_selection = Some(&selection);

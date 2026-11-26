@@ -4,7 +4,7 @@ use crate::game::{
     commands_common::Target,
     entity::Entity as _,
     held_items::attack_reach,
-    pick_entity::{AttackRangePickResult, CrosshairDecision, aabb_extents},
+    pick_entity_common::{AttackRangePickResult, CrosshairDecision, aabb_extents},
     pick_ray::{PickAccumulator, PickCandidate, pick_ray_segment},
     remote::movement::MovePacket,
     view_vector,
@@ -307,9 +307,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let has_wire_id = d.id != 0;
             for i in 0..8 {
                 let part_id = if has_wire_id {
-                    crate::game::dragon::dragon_part_id(d.id, i)
+                    crate::game::dragon_common::dragon_part_id(d.id, i)
                 } else {
-                    crate::game::dragon::SPECIAL + i as u32
+                    crate::game::dragon_common::SPECIAL + i as u32
                 };
                 emit(part_id, d.part_geometry(i).1, 0.0);
             }

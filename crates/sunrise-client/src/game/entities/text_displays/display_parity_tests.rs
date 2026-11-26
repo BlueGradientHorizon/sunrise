@@ -1442,6 +1442,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         game.tick_text_displays(game.clock.runs_normally());
         let mob_start = game.mobs.len();
         let zombie_kind = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -1766,7 +1767,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
     ) {
         return;
     }
-    use crate::game::remote::RemoteDimensionEntry;
+    use crate::game::client_side::remote_client::RemoteDimensionEntry;
     use sunrise_client::level_loading::Reason;
     use sunrise_protocol::{
         connection::Pipe,
@@ -1788,7 +1789,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
 
@@ -1800,6 +1801,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         }
 
         let td_kind = game
+            .side
             .remote
             .as_ref()
             .unwrap()

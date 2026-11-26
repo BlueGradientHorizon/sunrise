@@ -99,6 +99,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Whether `dimension` is the authoritative level being ticked: where a server mod's world helpers act.
     pub(in crate::game) fn native_level_open(&self, dimension: &str) -> bool {
-        (self.serving.is_some() || self.options.dedicated.is_some()) && dimension == self.dim.id()
+        (self.side.serving.is_some() || self.options.dedicated.is_some())
+            && dimension == self.dim.id()
     }
 }

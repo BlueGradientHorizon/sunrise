@@ -87,10 +87,10 @@ fn nested_blast_skips_the_stand_or_cushion_already_being_removed() {
 #[ignore = "daily"]
 fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
     use super::{
-        boats::Boat,
         hook_meddler_tests::with_meddler,
         minecarts::{CartKind, Minecart},
     };
+    use crate::game::boats_common::Boat;
     use sunrise_items::items::ItemStack;
 
     for case in ["stand", "boat", "cart"] {
@@ -262,7 +262,7 @@ fn mob_removal_keeps_a_veto_until_the_next_eligible_pre_with_or_without_off_leve
                 rejected.extra.mount = Some(73);
                 game.persist
                     .off_level
-                    .insert(75, super::persist::OffLevel::Mob(rejected));
+                    .insert(75, crate::game::entity_memory::OffLevel::Mob(rejected));
             }
             finish_death_on_next_tick(game, 71);
             assert!(game.entity(71).is_none());
@@ -301,8 +301,12 @@ fn mob_removal_order_witness() {
 pub(in crate::game::server_side) fn run_mob_removal_order_witness() {
     let observation = Arc::new(Observation::default());
     with_removal_test_hooks(Observe(observation.clone()), |game| {
-        game.boats
-            .push(super::boats::Boat::new(70, "oak".into(), AT, 0.0));
+        game.boats.push(crate::game::boats_common::Boat::new(
+            70,
+            "oak".into(),
+            AT,
+            0.0,
+        ));
         for id in 71..=75 {
             push_pig(game, id);
         }

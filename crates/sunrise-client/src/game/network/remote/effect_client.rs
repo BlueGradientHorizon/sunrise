@@ -18,7 +18,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let blend = p.flags & 8 != 0;
         let darkness_added =
             |e: &EffectInstance| super::super::sculk::darkness_blend_added(e, blend);
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+        if self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == p.id)
+        {
             let list = &mut self.potions.effects.list;
             match force_add_effect(list, e, blend, &["darkness", "nausea"]) {
                 Some(e) if e.id == "darkness" => self.side.darkness_blend = darkness_added(e),

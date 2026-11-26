@@ -30,6 +30,7 @@ fn selectors_reject_criteria_absent_from_the_selected_definition() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(

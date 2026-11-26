@@ -34,7 +34,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// `LevelEventHandler` 1010 on a client of a server.
     pub(in crate::game) fn jukebox_song_event(&mut self, pos: [i32; 3], data: i32) {
-        if let Some(song) = jukebox_song_name(self.remote.as_ref().map(|r| &*r.registries), data) {
+        if let Some(song) =
+            jukebox_song_name(self.side.remote.as_ref().map(|r| &*r.registries), data)
+        {
             self.start_song(pos, &song);
         }
     }
@@ -71,7 +73,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let playing = matches!(self.world.block_entities.get(&k), Some(BlockEntity::Jukebox(j)) if j.playing);
             if !keeps_song(
                 self.side.audio.0.engine.is_active(id),
-                self.remote.is_some(),
+                self.side.remote.is_some(),
                 playing,
             ) {
                 self.side.audio.0.stop_and_release(id);

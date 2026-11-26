@@ -85,8 +85,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         else {
             return action(self, menu, None);
         };
-        let conn = self.lan.as_ref()?.hub.guests[gi].conn;
-        let route = self.lan.as_mut()?.menus.entry(conn).or_default().hub.id();
+        let conn = self.side.lan.as_ref()?.hub.guests[gi].conn;
+        let route = self
+            .side
+            .lan
+            .as_mut()?
+            .menus
+            .entry(conn)
+            .or_default()
+            .hub
+            .id();
         let mut ran = None;
         let (carried, same, resolved_slot, primary) = (
             frozen.carried.clone(),
@@ -99,7 +107,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             route,
             frozen,
             move |game| {
-                let now = game.lan.as_ref()?.hub.guests.get(gi)?.carried.clone();
+                let now = game.side.lan.as_ref()?.hub.guests.get(gi)?.carried.clone();
                 (now == carried).then(|| same.clone())
             },
             move |game, carried, clicked| {

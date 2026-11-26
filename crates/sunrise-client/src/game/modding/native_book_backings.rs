@@ -98,6 +98,7 @@ impl Backings {
             }
             sunrise_sim::lan::menu::Slots::Block(_) => {
                 let guest = game
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|h| h.hub.guest(before.conn))
@@ -139,6 +140,7 @@ impl Backings {
             }
         } else {
             let guest = game
+                .side
                 .lan
                 .as_ref()
                 .and_then(|h| h.hub.guest(before.conn))

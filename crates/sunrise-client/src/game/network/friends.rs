@@ -7,7 +7,8 @@
 //! LAN one, unchanged: tunnelled guests are LAN guests that connect from the
 //! loopback address. The joining side is sunrise-friends' (`game`), registered by
 //! sunrise-official.
-use super::{Game, lan::LanSettings};
+use super::Game;
+use crate::game::lan_common::LanSettings;
 use std::time::{Duration, Instant};
 use sunrise_client::hud::HudBatch;
 use sunrise_friends::{Host, HostConfig, HostEvent, PathMode, host::DEFAULT_PORT, reach, stun};
@@ -60,12 +61,14 @@ fn env_flag(name: &str, default: bool) -> bool {
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Start sharing the open world.
     pub(in crate::game::client_side) fn friends_start(&mut self) -> Result<()> {
-        if self.friends.is_some() {
+        if self.side.friends.is_some() {
             return Ok(());
         }
         // Single player on its server thread shares that server, as Open to
         // LAN publishes it; another server can't be shared.
-        if self.side.title.0.is_some() || (self.remote.is_some() && self.integrated.is_none()) {
+        if self.side.title.0.is_some()
+            || (self.side.remote.is_some() && self.side.integrated.is_none())
+        {
             return Err("open a singleplayer world first".into());
         }
         let opened_lan = self.lan_port().is_none();
@@ -104,7 +107,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return Err(e.into());
             }
         };
-        self.friends = Some(Sharing {
+        self.side.friends = Some(Sharing {
             host,
             port,
             opened_lan,
@@ -120,7 +123,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Stop sharing: the code ends (direct port closed, router mapping
     /// deleted); the world closes to LAN again if sharing opened it.
     pub(in crate::game::client_side) fn friends_stop(&mut self) {
-        let Some(mut sharing) = self.friends.take() else {
+        let Some(mut sharing) = self.side.friends.take() else {
             return;
         };
         sharing.host.stop();
@@ -136,7 +139,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The LAN server is closing: the code goes with it.
     pub(in crate::game) fn friends_lan_closed(&mut self) {
-        if let Some(mut sharing) = self.friends.take() {
+        if let Some(mut sharing) = self.side.friends.take() {
             sharing.host.stop();
         }
     }
@@ -144,13 +147,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// New codes and sessions, once a tick and while the pause menu is drawn.
     pub(in crate::game) fn tick_friends(&mut self) {
         // Retire stale sharing if LAN closed or rebound to a different port.
-        if let Some(port) = self.friends.as_ref().map(|s| s.port)
+        if let Some(port) = self.side.friends.as_ref().map(|s| s.port)
             && self.lan_port() != Some(port)
         {
             self.friends_lan_closed();
             return;
         }
-        let Some(sharing) = self.friends.as_mut() else {
+        let Some(sharing) = self.side.friends.as_mut() else {
             return;
         };
         let mut announce = false;
@@ -200,12 +203,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn friends_copy(&mut self) {
-        let Some(code) = self.friends.as_ref().and_then(|s| s.code.clone()) else {
+        let Some(code) = self.side.friends.as_ref().and_then(|s| s.code.clone()) else {
             return;
         };
         use sunrise_client::clipboard::Clipboard;
         self.side.clipboard.0.set(&code);
-        if let Some(s) = self.friends.as_mut() {
+        if let Some(s) = self.side.friends.as_mut() {
             s.copied = Some(Instant::now());
         }
     }
@@ -270,7 +273,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// What Play with Friends shows.
     pub(in crate::game::client_side) fn friends_view(&self) -> FriendsView {
-        let guests = if self.integrated.is_some() {
+        let guests = if self.side.integrated.is_some() {
             let me = self.options.player_name();
             let mut names = self.remote_online_names().unwrap_or_default();
             names.retain(|n| *n != me);
@@ -278,9 +281,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             Vec::new()
         };
-        let Some(s) = &self.friends else {
+        let Some(s) = &self.side.friends else {
             return FriendsView {
-                shown: self.integrated.is_some(),
+                shown: self.side.integrated.is_some(),
                 ..FriendsView::default()
             };
         };
@@ -340,7 +343,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some("status") => {
                 self.tick_friends();
                 let view = self.friends_view();
-                let state = self.friends.as_ref().map(|s| s.host.state());
+                let state = self.side.friends.as_ref().map(|s| s.host.state());
                 Ok(Some(json!({
                     "sharing": view.sharing,
                     "code": view.code,
@@ -349,9 +352,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     "reachable": view.reachable,
                     "verdict": state.as_ref().and_then(|s| s.verdict.as_ref().map(|v| format!("{v:?}"))),
                     "direct_port": state.as_ref().map(|s| s.port),
-                    "sessions": self.friends.as_ref().map_or(0, |s| s.host.sessions()),
-                    "direct": self.friends.as_ref().map_or(0, |s| s.paths.0),
-                    "relayed": self.friends.as_ref().map_or(0, |s| s.paths.1),
+                    "sessions": self.side.friends.as_ref().map_or(0, |s| s.host.sessions()),
+                    "direct": self.side.friends.as_ref().map_or(0, |s| s.paths.0),
+                    "relayed": self.side.friends.as_ref().map_or(0, |s| s.paths.1),
                     "guests": view.guests,
                     "lan_port": self.lan_port(),
                 })))

@@ -71,8 +71,10 @@ pub(in crate::game) fn knot_bounds(block: [i32; 3]) -> Aabb {
 }
 
 /// Whether Pick Block can name an item for the entity (`Entity.getPickResult`).
-pub(in crate::game) fn has_pick_result(target: Option<crate::game::commands::Target>) -> bool {
-    use crate::game::commands::Target;
+pub(in crate::game) fn has_pick_result(
+    target: Option<crate::game::commands_common::Target>,
+) -> bool {
+    use crate::game::commands_common::Target;
     !matches!(
         target,
         Some(
@@ -102,7 +104,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .or_else(|| {
                 self.dragon
                     .as_ref()
-                    .is_some_and(|d| d.id == id && (d.id != 0 || self.remote.is_some()))
+                    .is_some_and(|d| d.id == id && (d.id != 0 || self.side_has_remote()))
                     .then_some("minecraft:ender_dragon")
             });
         let item = if let Some(kind) = mob_kind {

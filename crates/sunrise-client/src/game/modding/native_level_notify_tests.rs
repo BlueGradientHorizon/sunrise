@@ -16,7 +16,8 @@ fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let (tx, rx) = std::sync::mpsc::channel();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -95,7 +96,8 @@ fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.world.block_log = Some(Vec::new());
         let (tx, rx) = std::sync::mpsc::channel();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -185,7 +187,8 @@ fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
         game.world.modified.clear();
         game.world.dirty_sections.clear();
         let (tx, rx) = std::sync::mpsc::channel();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -289,7 +292,8 @@ fn biome_negative_min_y_and_unwind_restore_without_publication() {
         game.world.modified.clear();
         game.world.dirty_sections.clear();
         let (tx, rx) = std::sync::mpsc::channel();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

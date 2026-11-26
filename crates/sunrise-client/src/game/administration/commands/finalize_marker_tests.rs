@@ -41,6 +41,7 @@ fn with_game(f: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

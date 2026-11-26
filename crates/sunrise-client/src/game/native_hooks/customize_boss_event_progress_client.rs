@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub(in crate::game) mod customize_boss_event_progress_tests {
-    use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::run_fresh_cases};
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::{
              ModEntry,
         text::TextFormError};
@@ -70,7 +70,9 @@ use crate::game::native_hooks::customize_boss_event_progress::customize_boss_eve
                 0,
             );
             assert!(matches!(
-                game.side.boss_overlay.mod_bar(0, 0).unwrap().try_into_api(),
+                crate::game::client_side::api_values_client::mod_bar_value(
+                    &game.side.boss_overlay.mod_bar(0, 0).unwrap()
+                ),
                 Err(TextFormError::Malformed)
             ));
             let vanilla = game.boss_bar_draws(480, 270);

@@ -78,7 +78,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // The width, height and response follow in SetEntityData.
             self.side.interactions.insert(
                 id as i32,
-                super::interactions::RemoteInteraction::new_with_rotation(position, yaw, pitch),
+                crate::game::interactions_common::RemoteInteraction::new_with_rotation(
+                    position, yaw, pitch,
+                ),
             );
         } else if let Some(cart) = super::minecarts::CartKind::from_id(kind) {
             let mut c = super::minecarts::Minecart::new(id, cart, at);
@@ -87,10 +89,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             c.pitch = pitch;
             c.previous_pitch = pitch;
             self.carts.push(c);
-        } else if let Some((wood, chest)) = super::boats::any_boat_wood(kind)
+        } else if let Some((wood, chest)) = crate::game::boats_common::any_boat_wood(kind)
             && self.side.boat_models.has(wood, chest)
         {
-            let mut b = super::boats::Boat::new(id, Arc::from(wood), at, yaw);
+            let mut b = crate::game::boats_common::Boat::new(id, Arc::from(wood), at, yaw);
             if chest {
                 b = b.with_chest();
             }
@@ -127,7 +129,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 id,
                 position: at,
                 pos: block,
-                yaw: super::cushions::snap_yaw(yaw),
+                yaw: crate::game::cushions_common::snap_yaw(yaw),
                 color: 0,
                 check_interval: 0,
                 custom_name: None,
@@ -169,12 +171,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     /// A `painting_variant` by its network id, preferring the synced registry entry over local resources.
-    fn remote_painting_variant(&self, id: i32) -> Option<super::paintings::Variant> {
-        let r = self.remote.as_ref()?;
+    fn remote_painting_variant(
+        &self,
+        id: i32,
+    ) -> Option<sunrise_gameplay_common::painting_variants::Variant> {
+        let r = self.side.remote.as_ref()?;
         let (name, tag) = r.registries.entry("minecraft:painting_variant", id)?;
         if let Some(tag) = tag {
             let json = sunrise_game_data::scoreboard::tag_to_json(tag);
-            return super::paintings::Variant::decode(name, &json).ok();
+            return sunrise_gameplay_common::painting_variants::Variant::decode(name, &json).ok();
         }
         self.painting_variants.get(name).cloned()
     }
@@ -438,7 +443,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if !lerp_cart(c) {
                     c.position = step(c.id, c.position);
                 }
-                c.accumulate_rotation();
+                crate::game::client_side::minecarts_client::accumulate_rotation(c);
                 // MinecartTNT.tick on the client: the fuse counts down in smoke.
                 let fuse = c.kind == super::minecarts::CartKind::Tnt && c.fuse > 0;
                 if fuse {

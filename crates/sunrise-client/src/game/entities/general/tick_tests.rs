@@ -10,6 +10,7 @@ use mod_api::{
     EntityTickPreEvent, Flow, GeneralEntityCategory, GeneralEntityTickEvent, GeneralSavePolicy,
     Holder, Hooks, HostSide, Registrar, ServerHost,
 };
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::{Compound, Tag};
 

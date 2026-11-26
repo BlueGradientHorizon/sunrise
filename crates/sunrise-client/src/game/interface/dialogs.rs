@@ -259,6 +259,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         dynamic: Option<&Dynamic>,
     ) -> Option<Dialog> {
         let items = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.builtin.get("minecraft:item"));
@@ -288,7 +289,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let dynamic = configuration
             .as_deref()
-            .or_else(|| self.remote.as_ref().map(|r| r.registries.as_ref()));
+            .or_else(|| self.side.remote.as_ref().map(|r| r.registries.as_ref()));
         let Some(mut dialog) = self.decode_dialog(tag, dynamic) else {
             log::warn!("Sunrise: failed to show dialog for data {tag:?}");
             return;
@@ -458,7 +459,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         match click {
             Some(Click::Custom { id, payload }) => {
-                if let Some(r) = &self.remote {
+                if let Some(r) = &self.side.remote {
                     r.session.send_custom_click(&id, payload);
                 }
             }
@@ -508,7 +509,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if !self.dialog_open() && self.side.chat_ui.chat_screen.is_some() {
                     let m = sunrise_client::screen_draw::Measure(&self.side.gui.atlas.font);
                     let c = sunrise_client::chat::Commands {
-                        dispatcher: super::chat::chat_tree(&self.remote),
+                        dispatcher: super::chat::chat_tree(&self.side.remote),
                         registries: &self.ui.registries,
                     };
                     if let Some(screen) = self.side.chat_ui.chat_screen.as_mut() {
@@ -550,7 +551,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let dynamic = configuration
                 .as_deref()
-                .or_else(|| self.remote.as_ref().map(|r| r.registries.as_ref()));
+                .or_else(|| self.side.remote.as_ref().map(|r| r.registries.as_ref()));
             let found = dynamic.and_then(|registry| {
                 let id = registry.id("minecraft:dialog", &name.to_string())?;
                 registry.data("minecraft:dialog", id).cloned()
@@ -574,6 +575,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             DialogHolder::Direct(tag) => self.show_dialog(tag),
             DialogHolder::Registry(id) => {
                 let tag = self
+                    .side
                     .remote
                     .as_ref()
                     .and_then(|r| r.registries.data("minecraft:dialog", *id).cloned());
@@ -1395,9 +1397,8 @@ fn draw_background(batch: &mut HudBatch, atlas: &sunrise_client::hud::HudAtlas, 
 #[cfg(test)]
 mod warning_tests {
     use crate::game::{
-        in_own_process,
-        integrated::{Integrated, Serving},
-        native_entity_refs::tests::with_client_game,
+        client_side::integrated_client::Integrated, in_own_process,
+        native_entity_refs::tests::with_client_game, server_side::integrated::Serving,
     };
     use sunrise_protocol::connection::Pipe;
 
@@ -1418,7 +1419,7 @@ mod warning_tests {
                     // The same client connection backs singleplayer, even after publishing to LAN.
                     for port in [0, 25565] {
                         let serving = Serving::fixture(port);
-                        game.integrated = Some(Integrated::fixture_for(&serving));
+                        game.side.integrated = Some(Integrated::fixture_for(&serving));
                         let (_, _, [disconnect, back]) = game.warning_texts();
                         assert_eq!(disconnect.translation_key(), Some("menu.returnToMenu"));
                         assert_eq!(back.translation_key(), Some("gui.back"));

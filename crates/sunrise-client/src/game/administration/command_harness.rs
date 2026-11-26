@@ -55,11 +55,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// server command. Always put them back, also when a script operation fails.
     fn harness_owner<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
         let owner = self
+            .side
             .serving
             .as_ref()
             .ok_or("command harness: not a server")?
             .owner;
-        let host = self.lan.as_ref().ok_or("command harness: no hub")?;
+        let host = self.side.lan.as_ref().ok_or("command harness: no hub")?;
         let guest = host.hub.guests.iter().find(|g| g.uuid == owner && g.placed);
         let Some(guest) = guest else {
             return Err("command harness: owner is not connected".into());
@@ -69,7 +70,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let result = self
             .with_guest_swap(conn, back, f)
             .ok_or("command harness: owner is already acting")?;
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.sync_all_effects();
         }
         self.run_level_teleports();
@@ -81,9 +82,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The connected owner's authoritative block/crafting menu, without
     /// client prediction. Only its own slots are counted (not the inventory).
     fn harness_owner_menu(&mut self) -> Result<(u32, usize, i32)> {
-        let owner = self.serving.as_ref().ok_or("menu state: no server")?.owner;
+        let owner = self
+            .side
+            .serving
+            .as_ref()
+            .ok_or("menu state: no server")?
+            .owner;
         self.in_owner_level(|g| {
-            let host = g.lan.as_ref().ok_or("menu state: no hub")?;
+            let host = g.side.lan.as_ref().ok_or("menu state: no hub")?;
             let guest = host
                 .hub
                 .guests
@@ -137,7 +143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Start travel after the turn restores the owner's body to the hub.
         // Otherwise the turn would overwrite the hub record updated by change_level.
         self.in_owner_level(|g| {
-            if g.lan.is_none() {
+            if g.side.lan.is_none() {
                 return Err("command harness: no hub".into());
             }
             g.start_server_trip(conn, plan.dim, Some(plan));
@@ -216,6 +222,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
         // Join/configuration uses the normal hub, but never advances the world.
         while !self
+            .side
             .lan
             .as_ref()
             .is_some_and(|h| h.hub.guests.iter().any(|g| g.placed && g.loaded))
@@ -281,7 +288,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .clamp(earlier.min(len), len);
                         self.adv.announced.drain(earlier.min(len)..end).collect()
                     };
-                    if let Some(host) = self.lan.as_mut() {
+                    if let Some(host) = self.side.lan.as_mut() {
                         for text in &earned {
                             host.hub
                                 .system_message(sunrise_sim::lan::data::component_nbt(
@@ -425,9 +432,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         if Some(m.kind.id.as_str()) != op["kind"].as_str() {
                             return Err("anger state: wrong actor type".into());
                         }
-                        let hub = &g.lan.as_ref().ok_or("anger state: no connected hub")?.hub;
+                        let hub = &g
+                            .side
+                            .lan
+                            .as_ref()
+                            .ok_or("anger state: no connected hub")?
+                            .hub;
                         let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-                        super::lan::mob_meta(
+                        crate::game::lan_mob_metadata::mob_meta(
                             m,
                             hub,
                             None,
@@ -458,7 +470,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 "server_distances" => {
                     let state = self.harness_owner(|g| {
-                        let hub = &g.lan.as_ref().ok_or("no connected hub")?.hub;
+                        let hub = &g.side.lan.as_ref().ok_or("no connected hub")?.hub;
                         Ok([hub.config.view_distance, hub.config.simulation_distance])
                     })?;
                     out.push_str(
@@ -674,12 +686,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let yaw = op["yaw"].as_f64().unwrap_or(0.0) as f32;
                     let pitch = op["pitch"].as_f64().unwrap_or(0.0) as f32;
                     let owner = self
+                        .side
                         .serving
                         .as_ref()
                         .ok_or("command harness: no server")?
                         .owner;
                     self.in_owner_level(|g| -> Result<()> {
                         let conn = g
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -701,7 +715,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 },
                             ),
                         );
-                        let ack = g.lan.as_ref().is_some_and(|host| {
+                        let ack = g.side.lan.as_ref().is_some_and(|host| {
                             host.hub
                                 .guest(conn)
                                 .is_some_and(|guest| guest.ack_up_to.get() >= sequence)
@@ -726,8 +740,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let id = g
                             .boat_by_uuid(sunrise_sim::lan::playerdata::uuid_ints(uuid))
                             .ok_or("boat click: missing live boat")?;
-                        let owner = g.serving.as_ref().ok_or("boat click: no server")?.owner;
+                        let owner = g
+                            .side
+                            .serving
+                            .as_ref()
+                            .ok_or("boat click: no server")?
+                            .owner;
                         let conn = g
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -766,8 +786,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .mob_by_uuid(sunrise_sim::lan::playerdata::uuid_ints(uuid))
                             .filter(|id| g.mobs.iter().any(|m| m.id == *id && !m.removed))
                             .ok_or("mob click: missing live mob")?;
-                        let owner = g.serving.as_ref().ok_or("mob click: no server")?.owner;
+                        let owner = g.side.serving.as_ref().ok_or("mob click: no server")?.owner;
                         let conn = g
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -802,12 +823,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     };
                     let data = op["data"].as_i64().ok_or("player command: missing data")? as i32;
                     let owner = self
+                        .side
                         .serving
                         .as_ref()
                         .ok_or("command harness: no server")?
                         .owner;
                     self.in_owner_level(|g| -> Result<()> {
                         let (conn, id) = g
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -818,7 +841,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     .map(|p| (p.conn, p.entity_id))
                             })
                             .ok_or("player command: owner not connected")?;
-                        g.lan.as_ref().ok_or("player command: no hub")?;
+                        g.side.lan.as_ref().ok_or("player command: no hub")?;
                         g.lan_guest_packet(
                             conn,
                             sunrise_protocol::packets::play::Serverbound::PlayerCommand(
@@ -830,12 +853,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 "use_item" => {
                     let owner = self
+                        .side
                         .serving
                         .as_ref()
                         .ok_or("command harness: no server")?
                         .owner;
                     self.in_owner_level(|g| -> Result<()> {
                         let conn = g
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -918,13 +943,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     })?;
                 }
                 "craft_menu_click" | "craft_menu_state" | "craft_menu_close" => {
-                    let owner = self.serving.as_ref().ok_or("no server")?.owner;
+                    let owner = self.side.serving.as_ref().ok_or("no server")?.owner;
                     let state = self.in_owner_level(|g| -> Result<Value> {
-                        let conn = g.lan.as_ref().and_then(|h| h.hub.guests.iter()
+                        let conn = g.side.lan.as_ref().and_then(|h| h.hub.guests.iter()
                             .find(|p| p.uuid == owner && p.placed).map(|p| p.conn))
                             .ok_or("craft fixture: no connected owner")?;
                         (|| -> Result<Value> {
-                            let host = g.lan.as_ref().ok_or("no hub")?;
+                            let host = g.side.lan.as_ref().ok_or("no hub")?;
                             let (window, revision, _, _) = host.menus.get(&conn)
                                 .and_then(|p| p.crafting.table.as_ref())
                                 .ok_or("craft fixture: crafting menu not open")?;
@@ -1082,9 +1107,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "merchant_action" | "merchant_state" => {
                     let observe = op["op"] == "merchant_state";
                     let state = self.in_owner_level(|g| -> Result<Value> {
-                        let host = g.lan.as_ref().ok_or("merchant oracle: no hub")?;
+                        let host = g.side.lan.as_ref().ok_or("merchant oracle: no hub")?;
                         let owner = g
-                            .serving
+                            .side.serving
                             .as_ref()
                             .ok_or("merchant oracle: no server")?
                             .owner;
@@ -1195,12 +1220,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let sequence = op["sequence"].as_i64().unwrap_or(0) as i32;
                     let face = op["face"].as_i64().unwrap_or(1) as i32;
                     let owner = self
+                        .side
                         .serving
                         .as_ref()
                         .ok_or("command harness: no server")?
                         .owner;
                     self.in_owner_level(|g| -> Result<()> {
                         let conn = g
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -1226,6 +1253,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             ),
                         );
                         if !g
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|h| h.hub.guest(conn))

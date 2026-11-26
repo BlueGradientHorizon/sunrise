@@ -257,7 +257,8 @@ mod tests {
         use sunrise_core::profile::AccountProperty;
 
         super::super::native_guest_turn_tests::with_guests(|game| {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

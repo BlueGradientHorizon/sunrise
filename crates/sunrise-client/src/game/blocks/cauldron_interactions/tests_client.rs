@@ -1,12 +1,8 @@
 use super::*;
+use crate::game::cauldron_interactions::tests::{
+    POS, Seen, TestMod, events, fixture, fixture_mods_client, setup_common, unchanged,
+};
 use crate::game::native_entity_refs::tests::run_fresh_cases;
-use crate::game::server_side::cauldron_interactions::tests::POS;
-use crate::game::server_side::cauldron_interactions::tests::Seen;
-use crate::game::server_side::cauldron_interactions::tests::TestMod;
-use crate::game::server_side::cauldron_interactions::tests::events;
-use crate::game::server_side::cauldron_interactions::tests::fixture;
-use crate::game::server_side::cauldron_interactions::tests::unchanged;
-use crate::game::server_side::cauldron_interactions::tests::*;
 use std::sync::atomic::Ordering;
 use sunrise_sim::cauldron::Outcome;
 

@@ -29,6 +29,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             target,
         } = alert;
         let player = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.mob_players.get(&source).copied())
@@ -498,7 +499,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .as_ref()
             .filter(|p| !p.health.dead_or_dying() && !self.spectator())
             .map(|p| [p.position.x, p.position.y, p.position.z]);
-        let guests = self.lan.iter().flat_map(|h| {
+        let guests = self.side.lan.iter().flat_map(|h| {
             h.hub
                 .guests
                 .iter()
@@ -545,7 +546,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 best = Some((uuid, d2));
             }
         }
-        if let Some(h) = self.lan.as_ref() {
+        if let Some(h) = self.side.lan.as_ref() {
             for g in &h.hub.guests {
                 if h.hub.here(g) && g.loaded && !g.dead && !g.spectator() && g.game_mode != 1 {
                     let eye = [g.position[0], g.position[1] + 1.62, g.position[2]];

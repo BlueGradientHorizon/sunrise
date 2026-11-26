@@ -1,11 +1,16 @@
 use super::*;
+use crate::game::Game;
 use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game_at};
+use mod_api::__private::game::RegistrationContextNew;
 use mod_api::{
     BlockUpdateFlags, CauldronDecision, CauldronUse, Hooks, ItemPlace, ItemResource, ServerHost,
     StatType,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use sunrise_gameplay_common::hit::Hit;
+use sunrise_items::items::ItemStack;
 use sunrise_sim::cauldron::{Outcome, interactions::Entry};
+use sunrise_sim::first_person_sim::Hand;
 
 pub(in crate::game) const POS: [i32; 3] = [0, 64, 0];
 #[derive(Default)]
@@ -271,7 +276,7 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
     );
 }
 
-pub(in crate::game::server_side) fn fixture_mods(
+pub(in crate::game) fn fixture_mods(
     mods: mod_api::Mods,
     test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
@@ -301,7 +306,7 @@ pub(in crate::game) fn fixture_mods_client(
         test,
     );
 }
-pub(in crate::game::server_side) fn fixture_mods_pair(
+pub(in crate::game) fn fixture_mods_pair(
     mods: mod_api::Mods,
     test: impl FnOnce(&mut crate::game::ServerGame<'_>, &mut crate::game::ClientGame<'_>),
 ) {
@@ -376,12 +381,7 @@ pub(in crate::game) fn setup(
     count: u32,
 ) {
     setup_common(game, block, level, item, count);
-    if game.remote.is_none() {
-        bind_local_player(game, 7, 123);
-    } else {
-        game.side.lan_acting_entity = None;
-        game.side.lan_acting_uuid = None;
-    }
+    bind_local_player(game, 7, 123);
     game.side.pending_native_sounds.clear();
     game.side.audio_capture_active = true;
     game.side.pending_sounds.clear();
@@ -413,7 +413,7 @@ pub(in crate::game) fn unchanged<S>(game: &Game<'_, S>, seen: &Seen) {
         0
     );
 }
-pub(in crate::game::server_side) fn bottles(game: &crate::game::ServerGame<'_>) -> u32 {
+pub(in crate::game) fn bottles(game: &crate::game::ServerGame<'_>) -> u32 {
     game.inventory
         .iter()
         .flatten()
@@ -425,7 +425,7 @@ pub(in crate::game::server_side) fn bottles(game: &crate::game::ServerGame<'_>) 
 #[ignore = "daily"]
 fn cauldron_syrup_applies_once() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_syrup_applies_once",
+        "game::cauldron_interactions::tests::cauldron_syrup_applies_once",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -492,7 +492,7 @@ fn cauldron_syrup_applies_once() {
 #[ignore = "daily"]
 fn cauldron_dye_tag_shadows_exact_handler_even_on_pass() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_dye_tag_shadows_exact_handler_even_on_pass",
+        "game::cauldron_interactions::tests::cauldron_dye_tag_shadows_exact_handler_even_on_pass",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -528,7 +528,7 @@ fn cauldron_dye_tag_shadows_exact_handler_even_on_pass() {
 #[ignore = "daily"]
 fn cauldron_transfer_awards_two_statistics_once() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_transfer_awards_two_statistics_once",
+        "game::cauldron_interactions::tests::cauldron_transfer_awards_two_statistics_once",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -559,7 +559,7 @@ fn cauldron_transfer_awards_two_statistics_once() {
 #[ignore = "daily"]
 fn cauldron_register_to_all_and_admission_errors() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_register_to_all_and_admission_errors",
+        "game::cauldron_interactions::tests::cauldron_register_to_all_and_admission_errors",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -670,7 +670,7 @@ fn cauldron_register_to_all_and_admission_errors() {
 #[ignore = "daily"]
 fn cauldron_world_close_discards_callbacks_before_failed_preparation() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_world_close_discards_callbacks_before_failed_preparation",
+        "game::cauldron_interactions::tests::cauldron_world_close_discards_callbacks_before_failed_preparation",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -734,7 +734,7 @@ fn cauldron_world_close_discards_callbacks_before_failed_preparation() {
 #[ignore = "daily"]
 fn cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set",
+        "game::cauldron_interactions::tests::cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -846,7 +846,7 @@ fn cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set
 #[ignore = "daily"]
 fn cauldron_decision_controls_swing_and_fallback() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_decision_controls_swing_and_fallback",
+        "game::cauldron_interactions::tests::cauldron_decision_controls_swing_and_fallback",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -947,7 +947,7 @@ fn cauldron_decision_controls_swing_and_fallback() {
 #[ignore = "daily"]
 fn cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items",
+        "game::cauldron_interactions::tests::cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -1093,7 +1093,7 @@ fn cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items() {
 #[ignore = "daily"]
 fn cauldron_panicking_handler_disables_callback_and_reports_toast() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_panicking_handler_disables_callback_and_reports_toast",
+        "game::cauldron_interactions::tests::cauldron_panicking_handler_disables_callback_and_reports_toast",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -1477,7 +1477,7 @@ fn cauldron_displaced_handlers_drop_under_original_owner_and_order_edits() {
 #[ignore = "daily"]
 fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_packet_pass_resumes_item_use_once_without_client_prediction",
+        "game::cauldron_interactions::tests::cauldron_packet_pass_resumes_item_use_once_without_client_prediction",
         "SUNRISE_CAULDRON_CASE",
         &[
             "pass",
@@ -1504,7 +1504,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     }
     use crate::game::{
         cauldron_prediction::{USE_CHANNEL, UseOnOutcome, registration_packet, use_result},
-        native_sound_refs::tests::{guest, packets},
+        server_side::native_sound_refs::tests::{guest, packets},
     };
     use sunrise_protocol::packets::play::{Clientbound as C, Serverbound as S};
 
@@ -1658,9 +1658,15 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(client);
         let mut read_uses = |client: &crate::game::ClientGame<'_>| {
             // Use the same writer, outside the actor hold, to fence each burst.
-            client.remote.as_ref().unwrap().session.send(S::PingRequest(
-                sunrise_protocol::packets::status::Ping { time: 0 },
-            ));
+            client
+                .side
+                .remote
+                .as_ref()
+                .unwrap()
+                .session
+                .send(S::PingRequest(sunrise_protocol::packets::status::Ping {
+                    time: 0,
+                }));
             let mut uses = Vec::new();
             loop {
                 let (id, bytes) = peer.recv().unwrap();
@@ -1674,7 +1680,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             }
         };
         assert!(read_uses(client).is_empty());
-        client.remote.as_mut().unwrap().joined = true;
+        client.side.remote.as_mut().unwrap().joined = true;
         client.set_local_mode(sunrise_command::args::GameMode::Survival);
         setup_common(client, "minecraft:cauldron", None, item, 1);
         let aim = (35.0, -12.0);
@@ -1777,7 +1783,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         if !already_sent {
             player.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
         }
-        server.lan.as_mut().unwrap().hub.guests.push(player);
+        server.side.lan.as_mut().unwrap().hub.guests.push(player);
         server.lan_guest_packet(1, block_use);
         assert_eq!(
             calls.load(Ordering::SeqCst),
@@ -1934,7 +1940,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
 #[ignore = "daily"]
 fn cauldron_input_projection_failure_consumes_without_fallthrough() {
     if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_input_projection_failure_consumes_without_fallthrough",
+        "game::cauldron_interactions::tests::cauldron_input_projection_failure_consumes_without_fallthrough",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {

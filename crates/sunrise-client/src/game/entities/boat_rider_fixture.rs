@@ -1,5 +1,6 @@
 //! Headless passenger-order regression through the real remote client paths.
-use super::{Game, Keys, boats::Boat};
+use super::{Game, Keys};
+use crate::game::boats_common::Boat;
 use serde::Deserialize;
 use serde_json::json;
 use std::path::Path;
@@ -28,7 +29,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             serde_json::from_str(&std::fs::read_to_string(directory.join("inputs.json"))?)?;
         let (client, peer) = Pipe::pair();
         self.connect_local(client, "BoatSeatFixture")?;
-        self.remote.as_mut().unwrap().entity_id = 1;
+        self.side.remote.as_mut().unwrap().entity_id = 1;
         self.player = Some(PlayerMotion::new(self.motion, Vec3::new(0.0, 100.0, 0.0))?);
         self.spawn_entity(2, "minecraft:marker", [0.0, 100.0, 0.0], [0.0; 3]);
         self.spawn_entity(3, "minecraft:oak_boat", [0.0, 100.0, 0.0], [0.0; 3]);
@@ -77,7 +78,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 let boat = &self.boats[0];
                 steps.push(json!({
-                    "controlled": self.remote.as_ref().unwrap().first_passenger,
+                    "controlled": self.side.remote.as_ref().unwrap().first_passenger,
                     "accepts_server_moves": accepts_server_moves,
                     "hands_busy": self.hands_busy(),
                     "moves": packets.iter().filter(|p| matches!(p, Serverbound::MoveVehicle(_))).count(),
@@ -89,7 +90,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             output.push(json!({"name": case.name, "steps": steps}));
         }
         peer.shutdown();
-        self.remote = None;
+        self.side.remote = None;
         std::fs::write(directory.join("rust.json"), serde_json::to_vec(&output)?)?;
         Ok(())
     }

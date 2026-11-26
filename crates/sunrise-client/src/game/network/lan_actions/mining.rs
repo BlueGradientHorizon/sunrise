@@ -12,7 +12,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         gi: usize,
         pos: [i32; 3],
     ) -> Result<bool, ActionRefused> {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return Err(ActionRefused::Stale);
         };
         if !host.hub.guests.update(gi, |g| g.may_reach_block(pos)) {
@@ -33,6 +33,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // progress on a block of destroy time -1 (bedrock, barriers, command blocks): only a
         // creative one breaks those.
         let creative = self
+            .side
             .lan
             .as_ref()
             .is_some_and(|host| host.hub.guests[gi].creative());
@@ -50,7 +51,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// breaking, or had left to break (`hasDelayedDestroy`), stays, and its
     /// crack goes. Respawning gives it a new ServerPlayerGameMode (#1315).
     pub(in crate::game) fn guest_forget_digging(&mut self, conn: u32) {
-        let Some(play) = self.lan.as_mut().and_then(|host| host.play.get_mut(&conn)) else {
+        let Some(play) = self
+            .side
+            .lan
+            .as_mut()
+            .and_then(|host| host.play.get_mut(&conn))
+        else {
             return;
         };
         let cracked = play.digging.take().filter(|_| play.last_progress >= 0);
@@ -76,6 +82,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         progress: i32,
     ) {
         let Some(id) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -83,7 +90,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         else {
             return;
         };
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         host.hub.broadcast_near(

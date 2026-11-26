@@ -12,7 +12,7 @@ fn client_day_time_reads_overworld_clock_across_packets_and_levels() {
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "ClockReadTest").unwrap();
-        let mut registries = (*game.remote.as_ref().unwrap().registries).clone();
+        let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
         let dimensions = vec![
             ("minecraft:overworld".into(), None),
             ("minecraft:the_end".into(), None),

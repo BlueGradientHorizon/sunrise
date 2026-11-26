@@ -218,7 +218,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match self.target_by_uuid(playerdata::ints_uuid(uuid))? {
             Target::Player => Some(Target::Player),
             Target::Guest(conn) => {
-                let g = self.lan.as_ref()?.hub.guest(conn)?;
+                let g = self.side.lan.as_ref()?.hub.guest(conn)?;
                 (g.dimension == self.dim.id()).then_some(Target::Guest(conn))
             }
             _ => None,

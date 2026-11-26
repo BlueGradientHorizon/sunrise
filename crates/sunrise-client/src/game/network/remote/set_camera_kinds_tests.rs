@@ -1,5 +1,7 @@
-use crate::game::remote::RemoteDimensionEntry;
-use crate::game::{native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle};
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
+use crate::game::{
+    native_entity_refs::tests::with_client_game, native_lifecycle_common::NativeLifecycle,
+};
 use mod_api::ClientHost;
 use sunrise_client::level_loading::Reason;
 use sunrise_core::geometry::Vec3;
@@ -41,7 +43,7 @@ pub(in crate::game) fn run_set_camera_follows_the_real_26_3_clients_camera_for_e
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -51,6 +53,7 @@ pub(in crate::game) fn run_set_camera_follows_the_real_26_3_clients_camera_for_e
             let (kind, expected) = row.split_once('\t').unwrap();
             let target = 40 + n as i32;
             let kind_id = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()

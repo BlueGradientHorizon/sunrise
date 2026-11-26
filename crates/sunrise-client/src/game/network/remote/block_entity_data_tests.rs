@@ -72,8 +72,8 @@ fn block_entity_data_received_after_merge() {
         with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "Notice").unwrap();
-            game.remote.as_mut().unwrap().logged_in = true;
-            Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
+            game.side.remote.as_mut().unwrap().logged_in = true;
+            Arc::make_mut(&mut game.side.remote.as_mut().unwrap().builtin)
                 .registries
                 .insert(
                     "minecraft:block_entity_type".into(),
@@ -117,7 +117,7 @@ fn block_entity_data_received_after_merge() {
                     block: Vec::new(),
                 },
             };
-            let format = game.remote.as_ref().unwrap().chunk_format.clone();
+            let format = game.side.remote.as_ref().unwrap().chunk_format.clone();
             game.remote_chunk(&packet, Some((&format, Ok(column.clone()))));
             assert_eq!(seen.lock().unwrap().len(), 0, "chunk empty");
             packet.chunk.block_entities[0].tag = tag(3);

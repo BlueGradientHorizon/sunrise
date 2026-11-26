@@ -74,7 +74,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // the mob tick does. No mod hook fires during pathfinding.
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let moved = mobs[index].nav_move_to(&self.mob_world_base(&[]), at, speed);
         self.mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
@@ -112,7 +112,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // mob tick does. No mod hook fires during classification.
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let followed = mobs[index].nav_move_to_supplied(&self.mob_world_base(&[]), &nodes, speed);
         self.mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
@@ -337,102 +337,104 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn navigation_starts_a_real_path_and_refuses_stale_handles() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            for x in 0..16 {
-                for z in 0..16 {
-                    game.world.set(x, 64, z, stone).unwrap();
+        crate::game::server_side::entity_server::taken_pass_tests::in_both_dimensions(
+            |game, balance| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                for x in 0..16 {
+                    for z in 0..16 {
+                        game.world.set(x, 64, z, stone).unwrap();
+                    }
                 }
-            }
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            let mut zombie = Mob::new(99, kind, Vec3::new(3.5, 65.0, 3.5), 0.0);
-            zombie.ground.on_ground = true;
-            game.mobs.push(zombie);
-            let entity = game.entity(99).unwrap();
-            let mob = game.mob(entity).unwrap();
-            assert_eq!(mob.is_done(game), Some(true));
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
+                let kind = game
+                    .res
+                    .mob_types()
+                    .get("minecraft:zombie")
+                    .unwrap()
+                    .clone();
+                let mut zombie = Mob::new(99, kind, Vec3::new(3.5, 65.0, 3.5), 0.0);
+                zombie.ground.on_ground = true;
+                game.mobs.push(zombie);
+                let entity = game.entity(99).unwrap();
+                let mob = game.mob(entity).unwrap();
+                assert_eq!(mob.is_done(game), Some(true));
+                crate::game::server_side::entity_server::taken_pass_tests::assert_mob_spawn_survives(
                 game,
                 balance,
                 |game| {
                     assert!(mob.move_to(game, [10.5, 65.0, 3.5], 1.25));
                 },
             );
-            assert_eq!(mob.is_done(game), Some(false));
-            assert_eq!(game.mobs[0].ai.nav.speed_modifier, 1.25);
-            assert!(!mob.move_to(game, [f64::NAN, 65.0, 3.5], 1.0));
-            assert_eq!(mob.is_done(game), Some(false));
-            assert!(mob.stop(game));
-            assert_eq!(mob.is_done(game), Some(true));
-            assert!(!mob.move_to(game, [1000.0, 65.0, 0.0], 1.0));
-            let compare_extreme =
-                |game: &mut crate::game::ServerGame<'_>, extreme: f64, boundary: f64| {
-                    let result = mob.move_to(game, [10.5, boundary, 3.5], 1.0);
-                    let path = game.mobs[0].ai.nav.path.clone();
-                    mob.stop(game);
-                    assert_eq!(mob.move_to(game, [10.5, extreme, 3.5], 1.0), result);
-                    assert_eq!(game.mobs[0].ai.nav.path, path);
-                    mob.stop(game);
-                };
-            let top = f64::from(game.world.top_y() - 1);
-            let bottom = f64::from(game.world.bottom_y());
-            compare_extreme(game, 2_000_000_000.0, top);
-            compare_extreme(game, -2_000_000_000.0, bottom);
-            game.world.shape =
-                sunrise_level::chunk::LevelShape::new(0, 128, 128, true, false).unwrap();
-            assert_eq!(game.world.shape.max_y(), 128);
-            compare_extreme(game, 2_000_000_000.0, 127.0);
-            compare_extreme(game, -2_000_000_000.0, 0.0);
-            game.world.shape = sunrise_level::chunk::LevelShape::OVERWORLD;
-            let stale = MobRef::new(EntityRef::new(
-                WorldEpoch::new(entity.epoch().get() + 1),
-                99,
-            ));
-            assert!(!stale.move_to(game, [5.0, 65.0, 3.0], 1.0));
-            assert!(!stale.stop(game));
-            assert_eq!(stale.is_done(game), None);
-            let taken = game.mobs.lift();
-            assert_eq!(mob.is_done(game), None);
-            assert!(!mob.stop(game));
-            game.mobs
-                .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-            game.armor_stands
-                .push(sunrise_sim::entities::ArmorStand::new(102, Vec3::ZERO, 0.0));
-            let wrong = MobRef::new(game.entity(102).unwrap());
-            assert!(!wrong.move_to(game, [5.0, 65.0, 3.0], 1.0));
-            assert!(!wrong.stop(game));
-            assert_eq!(wrong.is_done(game), None);
-            let parrot = game
-                .res
-                .mob_types()
-                .get("minecraft:parrot")
-                .unwrap()
-                .clone();
-            game.mobs
-                .push(Mob::new(100, parrot, Vec3::new(3.5, 66.0, 5.5), 0.0));
-            let flying = game.mob(game.entity(100).unwrap()).unwrap();
-            assert!(flying.move_to(game, [9.5, 66.0, 5.5], 1.0));
-            assert_eq!(flying.is_done(game), Some(false));
-            let cod = game.res.mob_types().get("minecraft:cod").unwrap().clone();
-            game.mobs
-                .push(Mob::new(101, cod, Vec3::new(3.5, 65.0, 7.5), 0.0));
-            let fish = game.mob(game.entity(101).unwrap()).unwrap();
-            assert!(!fish.move_to(game, [9.5, 65.0, 7.5], 1.0));
-            assert_eq!(fish.is_done(game), Some(true));
-        });
+                assert_eq!(mob.is_done(game), Some(false));
+                assert_eq!(game.mobs[0].ai.nav.speed_modifier, 1.25);
+                assert!(!mob.move_to(game, [f64::NAN, 65.0, 3.5], 1.0));
+                assert_eq!(mob.is_done(game), Some(false));
+                assert!(mob.stop(game));
+                assert_eq!(mob.is_done(game), Some(true));
+                assert!(!mob.move_to(game, [1000.0, 65.0, 0.0], 1.0));
+                let compare_extreme =
+                    |game: &mut crate::game::ServerGame<'_>, extreme: f64, boundary: f64| {
+                        let result = mob.move_to(game, [10.5, boundary, 3.5], 1.0);
+                        let path = game.mobs[0].ai.nav.path.clone();
+                        mob.stop(game);
+                        assert_eq!(mob.move_to(game, [10.5, extreme, 3.5], 1.0), result);
+                        assert_eq!(game.mobs[0].ai.nav.path, path);
+                        mob.stop(game);
+                    };
+                let top = f64::from(game.world.top_y() - 1);
+                let bottom = f64::from(game.world.bottom_y());
+                compare_extreme(game, 2_000_000_000.0, top);
+                compare_extreme(game, -2_000_000_000.0, bottom);
+                game.world.shape =
+                    sunrise_level::chunk::LevelShape::new(0, 128, 128, true, false).unwrap();
+                assert_eq!(game.world.shape.max_y(), 128);
+                compare_extreme(game, 2_000_000_000.0, 127.0);
+                compare_extreme(game, -2_000_000_000.0, 0.0);
+                game.world.shape = sunrise_level::chunk::LevelShape::OVERWORLD;
+                let stale = MobRef::new(EntityRef::new(
+                    WorldEpoch::new(entity.epoch().get() + 1),
+                    99,
+                ));
+                assert!(!stale.move_to(game, [5.0, 65.0, 3.0], 1.0));
+                assert!(!stale.stop(game));
+                assert_eq!(stale.is_done(game), None);
+                let taken = game.mobs.lift();
+                assert_eq!(mob.is_done(game), None);
+                assert!(!mob.stop(game));
+                game.mobs
+                    .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
+                game.armor_stands
+                    .push(sunrise_sim::entities::ArmorStand::new(102, Vec3::ZERO, 0.0));
+                let wrong = MobRef::new(game.entity(102).unwrap());
+                assert!(!wrong.move_to(game, [5.0, 65.0, 3.0], 1.0));
+                assert!(!wrong.stop(game));
+                assert_eq!(wrong.is_done(game), None);
+                let parrot = game
+                    .res
+                    .mob_types()
+                    .get("minecraft:parrot")
+                    .unwrap()
+                    .clone();
+                game.mobs
+                    .push(Mob::new(100, parrot, Vec3::new(3.5, 66.0, 5.5), 0.0));
+                let flying = game.mob(game.entity(100).unwrap()).unwrap();
+                assert!(flying.move_to(game, [9.5, 66.0, 5.5], 1.0));
+                assert_eq!(flying.is_done(game), Some(false));
+                let cod = game.res.mob_types().get("minecraft:cod").unwrap().clone();
+                game.mobs
+                    .push(Mob::new(101, cod, Vec3::new(3.5, 65.0, 7.5), 0.0));
+                let fish = game.mob(game.entity(101).unwrap()).unwrap();
+                assert!(!fish.move_to(game, [9.5, 65.0, 7.5], 1.0));
+                assert_eq!(fish.is_done(game), Some(true));
+            },
+        );
     }
 
     /// A refusal names its cause, so a mod tells an invalid number from a mob

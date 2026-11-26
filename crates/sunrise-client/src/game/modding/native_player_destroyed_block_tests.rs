@@ -547,7 +547,7 @@ fn put_chest(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3]) {
 #[test]
 #[ignore = "daily"]
 fn block_drops_lends_the_saved_only_pot_payload() {
-    use super::spill;
+    use crate::game::spill_common as spill;
     use mod_api::{Compound, Tag};
     use sunrise_sim::mobs::MobEvent;
 
@@ -875,7 +875,7 @@ fn block_drops_names_the_mob_that_broke_the_block() {
                 .default_state("minecraft:oak_leaves")
                 .unwrap();
             game.world.set(9, 64, 4, leaves).unwrap();
-            let no_entity = super::spill::BlockDropEntity::None;
+            let no_entity = crate::game::spill_common::BlockDropEntity::None;
             game.entity_block_dropped([9, 64, 4], leaves, Some(51), no_entity, Vec::new());
             game.world.set(10, 64, 4, leaves).unwrap();
             game.entity_block_dropped([10, 64, 4], leaves, None, no_entity, Vec::new());

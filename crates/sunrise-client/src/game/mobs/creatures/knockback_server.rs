@@ -59,7 +59,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         if let Some(p) = self.player.as_mut() {
-            let level = crate::game::entity::damage_level_of!(self, attack, &mut credit, None);
+            let level = crate::game::server_side::entity_server::damage_level_of!(
+                self,
+                attack,
+                &mut credit,
+                None
+            );
             let mut push = |level: &mut sunrise_sim::health::DamageLevel<'_>| {
                 apply_player_knockback(p, level, power, (xd, zd), source);
             };

@@ -231,33 +231,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The entity's name as plain text (`Entity.getName`): its custom name,
-    /// a player's name, else its type's name. On a client (API
-    /// @API:client_entity_refs@), from the custom name the server synced
-    /// (`Entity.DATA_CUSTOM_NAME`) and a player's profile name. API
-    /// 386.
-    pub(in crate::game) fn entity_name(&self, entity: EntityRef) -> Option<String> {
-        let t = self.native_entity_read_target(entity)?;
-        if let Some(r) = &self.remote {
-            let id = i32::try_from(entity.id()).ok()?;
-            if let Some((_, Some(name))) = r.level_player(id) {
-                return Some(name.to_owned());
-            }
-            if let Target::Stand(id) = t
-                && let Some(name) = self
-                    .armor_stands
-                    .iter()
-                    .find(|a| a.id == id)
-                    .and_then(|a| a.custom_name.as_ref())
-            {
-                return Some(name.plain());
-            }
-        }
-        Some(self.target_name(t).plain())
-    }
-}
-
 /// The id of an entity whose custom name the game keeps and saves
 /// (`target_name` reads it): the struct's own for mobs, armor stands and
 /// item frames, the saved compound's for the rest.
@@ -382,7 +355,7 @@ mod tests {
             assert!(!saved.contains_key(&"CustomName".into()));
 
             // The dragon keeps no name: refused, and a stale handle too.
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 14;
             game.dragon.replace(dragon);
             let dragon = game.entity(14).unwrap();
@@ -424,7 +397,7 @@ mod tests {
             game.armor_stands.push(ArmorStand::new(27, Vec3::ZERO, 0.0));
             let stand = game.entity(27).unwrap();
             assert_eq!(stand.classification(game), Some(MobCategory::Misc));
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 28;
             game.dragon.replace(dragon);
             let dragon = game.entity(28).unwrap();

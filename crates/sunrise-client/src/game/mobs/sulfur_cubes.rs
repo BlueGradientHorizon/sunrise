@@ -343,7 +343,7 @@ pub(in crate::game) mod off_level_tests {
             let ghost = sunrise_sim::mobs::Mob::new(72, kind, Vec3::ZERO, 0.0);
             game.persist
                 .off_level
-                .insert(72, crate::game::persist::OffLevel::Mob(ghost));
+                .insert(72, crate::game::entity_memory::OffLevel::Mob(ghost));
             let primable = game.sulfur_cubes_adopted_explosive();
             game.sulfur_cube_power_priming(&primable);
             assert!(!sulfur_cube::primed(game.mob_object(73).unwrap()));

@@ -91,12 +91,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.prepare_knockback_credit(id as i32, source.attacker, self.side.combat.0.attack());
         // The projectile's shooter, the hit's causing entity.
         let shooter = self.side.combat.0.attack().attacker;
-        let decision = crate::game::entity::causer_decision!(self, shooter);
+        let decision = crate::game::server_side::entity_server::causer_decision!(self, shooter);
         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-        let (victim, lend) =
-            crate::game::entity::victim_and_causer!(self, index, shooter, decision);
+        let (victim, lend) = crate::game::server_side::entity_server::victim_and_causer!(
+            self, index, shooter, decision
+        );
         let hurt = victim.damage_projectile(
-            crate::game::entity::damage_level_of!(
+            crate::game::server_side::entity_server::damage_level_of!(
                 self,
                 self.side.combat.0.attack(),
                 &mut credit,
@@ -450,7 +451,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Who::Player => player,
             Who::Mob(id) => id,
         };
-        let victim = if victim >= crate::game::dragon::SPECIAL {
+        let victim = if victim >= crate::game::dragon_common::SPECIAL {
             self.dragon.as_ref().map_or(victim, |dragon| dragon.id)
         } else {
             victim

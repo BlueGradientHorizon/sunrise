@@ -1,4 +1,5 @@
-use super::{follow_keymap, follow_named_keymap};
+use super::follow_keymap;
+use crate::game::client_side::key_codes::follow_named_keymap;
 use std::collections::HashSet;
 use sunrise_client::{
     debug_keys::{DebugAction, DebugHost, DebugKeys, KeyAction, OpenScreen},

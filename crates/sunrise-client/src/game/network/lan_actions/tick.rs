@@ -6,7 +6,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {}
 impl crate::game::ServerGame<'_> {
     #[cfg(test)]
     pub(in crate::game) fn tick_guests(&mut self) {
-        building_cache(self.lan.as_ref());
+        use crate::game::server_side::lan_actions_server::building_cache;
+        building_cache(self.side.lan.as_ref());
         self.tick_guests_inner();
         building_cache(None);
     }

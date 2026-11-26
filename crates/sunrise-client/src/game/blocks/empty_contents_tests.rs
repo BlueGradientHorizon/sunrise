@@ -202,7 +202,8 @@ fn a_player_pour_with_a_changed_hand_is_refused() {
             ..Plan::default()
         };
         crate::game::native_item_places::tests::open_to_lan(game);
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

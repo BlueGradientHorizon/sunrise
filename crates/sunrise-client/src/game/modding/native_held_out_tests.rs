@@ -7,7 +7,7 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Mob, leash::Holder, transport_items};
 
 use super::{
-    boats::Boat,
+    boats_common::Boat,
     minecarts::{CartKind, Minecart},
     native_entity_refs::tests::with_game,
 };

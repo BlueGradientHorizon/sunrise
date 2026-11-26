@@ -5,17 +5,18 @@ use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::creatures::NativeSound;
 use super::native_level_signals::ReadLevel;
 use super::transactions::After;
+use crate::game::journal_level_effects::PendingWrite;
 use mod_api::{
     AttachmentBatch, AttachmentStore, BlockEntityRef, BlockKey, BlockPos, BlockSide, BlockState,
     BlockUpdateFlags, Compound, Direction, FeatureFlags, FluidState, ItemStack, LevelHost,
     LevelRandomHost, LevelRef, LevelTicksHost, LevelWriteHost, LightLayer, PartStateError,
-    ParticleOptions, PlayerRef, RandomDraw, Tags,
+    ParticleOptions, RandomDraw, Tags,
 };
 use sunrise_core::{random::RandomSource, ticks::TickPriority};
 use sunrise_sim::lan::server_effects::ServerQueuedParticle;
 use sunrise_world::{
     fluid::FluidKind,
-    level::{FluidWrite, LevelAccess as _, flags, states::BlockId},
+    level::{FluidWrite, LevelAccess as _, flags},
     registry::BlockStateId,
 };
 
@@ -220,7 +221,7 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         volume: f32,
         pitch: f32,
     ) -> bool {
-        if self.game.lan.is_none()
+        if self.game.side.lan.is_none()
             || !super::native_hooks::mod_sound_ok(sound, at, source, volume, pitch)
         {
             return false;
@@ -268,7 +269,8 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         ) {
             return false;
         }
-        let Some(particle) = super::lan_particles::server_particle_from_options(&options, state)
+        let Some(particle) =
+            crate::game::lan_particle_data::server_particle_from_options(&options, state)
         else {
             return false;
         };
@@ -284,62 +286,14 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         }))
     }
     fn level_event(&mut self, id: i32, pos: [i32; 3], data: i32) -> bool {
-        super::native_level_events::level_event_data_ok(
-            id,
-            data,
-            self.game.res.facts().states.len(),
-        ) && self.queue(PendingWrite::Event {
-            level: super::Dim::from_id(self.level.dimension_id()),
-            id,
-            pos,
-            data,
-        })
+        crate::game::mod_api_host::level_event_data_ok(id, data, self.game.res.facts().states.len())
+            && self.queue(PendingWrite::Event {
+                level: super::Dim::from_id(self.level.dimension_id()),
+                id,
+                pos,
+                data,
+            })
     }
-}
-
-pub(in crate::game) enum PendingWrite {
-    BlockTick(super::Dim, BlockPos, BlockId, i32),
-    FluidTick(super::Dim, BlockPos, FluidKind, i32),
-    /// A level or entity-bound sound. `seed` is the caller's (`ServerLevel.playSeededSound`), or
-    /// `None` to draw the level's next sound seed when the sound is published (`Level.playSound`).
-    Sound {
-        sound: NativeSound,
-        seed: Option<i64>,
-    },
-    Particles(ServerQueuedParticle),
-    Event {
-        level: super::Dim,
-        id: i32,
-        pos: [i32; 3],
-        data: i32,
-    },
-    GlobalEvent {
-        level: super::Dim,
-        id: i32,
-        pos: [i32; 3],
-        data: i32,
-    },
-    EntityEvent {
-        level: super::Dim,
-        entity_id: i32,
-        event: i8,
-        at: [f64; 3],
-    },
-    PlayerSound {
-        level: super::Dim,
-        player: PlayerRef,
-        sound: String,
-        at: [f64; 3],
-        source: usize,
-        volume: f32,
-        pitch: f32,
-    },
-    PlayerStopSound {
-        level: super::Dim,
-        player: PlayerRef,
-        sound: Option<String>,
-        source: Option<usize>,
-    },
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -459,7 +413,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             PendingWrite::Sound { mut sound, seed } => {
                 // The network's sound seed advances only for a published sound, and not for one
                 // whose caller gave its seed.
-                if let Some(host) = &self.lan {
+                if let Some(host) = &self.side.lan {
                     sound.seed = seed.unwrap_or_else(|| host.hub.next_sound_seed());
                     if deliver_now {
                         self.send_resolved_native_sound(&sound);
@@ -566,7 +520,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return None;
         }
         let state = write.from.try_into_api().ok()?;
-        let fluid = super::native_world_read::api_fluid_state(write.source_fluid_state())?;
+        let fluid =
+            crate::game::native_world_read_common::api_fluid_state(write.source_fluid_state())?;
         let mut answer = None;
         mod_api::dispatch_place_liquid_with(write.pos, state, fluid, &mut answer, |part, event| {
             // For a player bucket this can be the root scope; the fluid

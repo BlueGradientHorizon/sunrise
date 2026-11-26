@@ -6,35 +6,12 @@
 //! entities the server shows the window, and nothing moves one.
 use super::entity::{Entity as _, EntityHandle, with_entity, with_entity_mut};
 use super::{Game, commands::Target};
+use crate::game::native_entity_motion_values::{corners, on_block_position, turned_view_vector};
 use mod_api::{ClipBlock, ClipFluid, ClipHit, EntityRef, LevelWriteError};
-use sunrise_core::geometry::{Aabb, Axis, Vec3};
+use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::motion::player_context;
-
-/// `Entity.calculateViewVector` for a look turned `pitch_offset` degrees down: the unit
-/// vector along `yaw` and `pitch + pitch_offset`.
-pub(in crate::game::server_side) fn turned_view_vector(
-    yaw: f32,
-    pitch: f32,
-    pitch_offset: f32,
-) -> [f64; 3] {
-    let v = sunrise_world::view_direction::view_vector(pitch + pitch_offset, yaw);
-    [v.x, v.y, v.z]
-}
-
-/// `Entity.getOnPos()`: the supporting block when there is one, else the block `1.0E-5F`
-/// under the feet at `position`.
-pub(in crate::game) fn on_block_position(support: Option<BlockPos>, position: Vec3) -> [i32; 3] {
-    match support {
-        Some(p) => [p.x, p.y, p.z],
-        None => [
-            position.x.floor() as i32,
-            (position.y - f64::from(1.0e-5_f32)).floor() as i32,
-            position.z.floor() as i32,
-        ],
-    }
-}
 
 /// The end of a ray `distance` blocks from `from` along the unit vector `look`
 /// (`from.add(look.scale(distance))`).
@@ -46,22 +23,7 @@ pub(in crate::game::server_side) fn ray_end(
     std::array::from_fn(|i| from[i] + look[i] * distance)
 }
 
-pub(in crate::game) fn corners(b: Aabb) -> [[f64; 3]; 2] {
-    let axes = [Axis::X, Axis::Y, Axis::Z];
-    [axes.map(|a| b.min(a)), axes.map(|a| b.max(a))]
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// This window's own player, when a client's target names it.
-    #[allow(dead_code)]
-    pub(in crate::game::server_side) fn native_client_player(
-        &self,
-        t: Target,
-    ) -> Option<&sunrise_sim::motion::PlayerMotion> {
-        self.remote.as_ref()?;
-        (t == Target::Player).then_some(())?;
-        self.player.as_ref()
-    }
     /// The entity's velocity in blocks a tick (`Entity.getDeltaMovement`). A
     /// player's is the move its client last reported (`getKnownMovement`); an
     /// entity Sunrise doesn't simulate (a display, a painting) has none, so
@@ -187,6 +149,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let motion = match target {
                 Target::Player => self.player.as_mut(),
                 Target::Guest(conn) => self
+                    .side
                     .lan
                     .as_mut()
                     .and_then(|host| host.hub.guests.motion_mut(conn)),
@@ -309,7 +272,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(false);
         };
         body.ground = ground;
-        if let Some((conn, host)) = conn.zip(self.lan.as_mut()) {
+        if let Some((conn, host)) = conn.zip(self.side.lan.as_mut()) {
             host.hub
                 .update_guest(conn, |guest| guest.on_ground = on_ground);
         }
@@ -438,56 +401,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let p = self.entity_position(entity)?;
         let [dx, dy, dz] = std::array::from_fn(|i| p[i] - pos[i]);
         Some(dx * dx + dy * dy + dz * dz)
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The simulated entity (one of the shared entity walk's lists) with `id`.
-    pub(in crate::game) fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
-        self.entity_handles()
-            .find(|h| with_entity!(self, *h, e => e.id() == id))
-    }
-
-    /// The server's copy of the player a target names.
-    pub(in crate::game) fn native_target_guest(
-        &self,
-        t: Target,
-    ) -> Option<&sunrise_sim::lan::guest::Guest> {
-        match t {
-            Target::Player => self.command_guest(crate::game::Side::lan_acting(&self.side)?),
-            Target::Guest(conn) => self.command_guest(conn),
-            _ => None,
-        }
-    }
-
-    /// Whether the entity stands on a block (`Entity.onGround`). API 379.
-    pub(in crate::game) fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
-        let t = self.native_entity_read_target(entity)?;
-        if t == Target::Player
-            && let Some(p) = self.player.as_ref()
-        {
-            return Some(p.ground.on_ground);
-        }
-        if let Some(g) = self.native_target_guest(t) {
-            return Some(g.on_ground);
-        }
-        if let Target::Hook(id) = t
-            && let Some((hook, _)) = self.fishing_hook_by_id(id)
-        {
-            return Some(hook.ground.on_ground);
-        }
-        Some(
-            self.native_walk_entity(entity.id())
-                .is_some_and(|h| with_entity!(self, h, e => e.on_ground())),
-        )
-    }
-
-    /// The unit vector that points up out of the entity's head
-    /// (`Entity.getUpVector`): its view vector turned a quarter of a turn
-    /// toward the zenith.
-    pub(in crate::game) fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        let [yaw, pitch] = self.entity_rotation(entity)?;
-        Some(turned_view_vector(yaw, pitch, -90.0))
     }
 }
 
@@ -837,7 +750,8 @@ pub(in crate::game) mod tests {
             assert_eq!(entity.set_on_ground(game, true), Ok(false), "no body yet");
             game.as_guest(12, |_| {}).unwrap();
             // The hub has the latest position; the parked motion still sits elsewhere.
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -863,7 +777,8 @@ pub(in crate::game) mod tests {
                     // The sneak callback runs after assigning the hub flag, before the body tick.
                     game.world.set(1, 64, 0, scaffolding).unwrap();
                     assert!(!game.player.as_ref().unwrap().shift_key_down);
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -871,7 +786,8 @@ pub(in crate::game) mod tests {
                         .unwrap();
                     assert_eq!(entity.set_on_ground(game, true), Ok(true));
                     assert_eq!(entity.on_block(game), Some([0, 64, 0]));
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -883,7 +799,7 @@ pub(in crate::game) mod tests {
                     game.world.set(1, 64, 0, stone).unwrap();
 
                     // The caster's live hook moves between the acting slot and the hub.
-                    game.install_fishing_hook(super::super::fishing::Hook::remote(
+                    game.install_fishing_hook(crate::game::fishing_common::Hook::remote(
                         900,
                         Vec3::new(0.95, 65.0, 0.5),
                         [101, 102, 103, 104],
@@ -913,7 +829,7 @@ pub(in crate::game) mod tests {
         use super::super::minecarts::{CartKind, Minecart};
         use sunrise_sim::mobs::Mob;
         fn fake_fall<'a>(game: &'a mut crate::game::ServerGame<'_>) -> &'a mut f64 {
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let conn = host.hub.guests.iter().find(|g| g.uuid == 2).unwrap().conn;
             &mut host
                 .hub

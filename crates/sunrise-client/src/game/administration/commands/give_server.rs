@@ -49,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         kind: GiveItem,
     ) {
         let at = [eye[0], eye[1] - f64::from(0.3f32), eye[2]];
-        let mut random = super::super::spill::prepare_item_random(None);
+        let mut random = crate::game::spill_common::prepare_item_random(None);
         let delay = match kind {
             GiveItem::Overflow(owner) => {
                 random.state.target = owner.map(sunrise_sim::lan::playerdata::ints_uuid);

@@ -7,7 +7,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.remote_screen_up() {
             return false;
         }
-        let Some(r) = &self.remote else { return false };
+        let Some(r) = &self.side.remote else {
+            return false;
+        };
         let loading = r.level_load.is_active();
         if self.player.is_some() && !loading {
             return false;
@@ -30,6 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // (`LevelLoadTracker.statusView`, `hasProgress`), and so is what
             // the narrator says of it.
             let progress = self
+                .side
                 .integrated
                 .as_ref()
                 .map(|i| i.load_view())
@@ -57,7 +60,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             self.draw_level_loading_background(batch, r.level_load.reason);
             let atlas = &self.side.gui.atlas;
-            match self.integrated.as_ref().map(|i| i.load_view()) {
+            match self.side.integrated.as_ref().map(|i| i.load_view()) {
                 Some(view) => {
                     let status = |x: i32, z: i32| view.status(x, z);
                     let progress = view.has_progress().then_some(self.side.loading_progress);
@@ -70,8 +73,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let cancel = self.connect_cancel((w, h)).is_some();
         // ConnectScreen.extractRenderState: "Joining the world" every 2 s (a
         // server's: single player's isn't joined through ConnectScreen).
-        if self.integrated.is_none()
-            && let Some(r) = self.remote.as_mut()
+        if self.side.integrated.is_none()
+            && let Some(r) = self.side.remote.as_mut()
             && r.joining_narrated
                 .is_none_or(|t| t.elapsed() > Duration::from_millis(2000))
         {
@@ -81,10 +84,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 &[],
             ));
         }
-        let Some(r) = &self.remote else { return false };
+        let Some(r) = &self.side.remote else {
+            return false;
+        };
         // ConnectScreen: `GameNarrator.NO_TITLE`, then its Cancel; single
         // player's server is joined under its LevelLoadingScreen.
-        let single_player = self.integrated.is_some();
+        let single_player = self.side.integrated.is_some();
         sunrise_client::widgets::begin_screen(|| {
             if single_player {
                 super::super::screen_info::level_loading(None, &super::super::screen_info::tr)
@@ -134,7 +139,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The inventory key when the vehicle owns its screen.
     pub(in crate::game) fn remote_request_mount_inventory(&self) {
-        if let Some(r) = &self.remote {
+        if let Some(r) = &self.side.remote {
             self.send(S::PlayerCommand(play::PlayerCommand {
                 id: r.entity_id,
                 action: 5,

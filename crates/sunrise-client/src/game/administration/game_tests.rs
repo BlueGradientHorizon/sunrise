@@ -1539,7 +1539,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     });
                 }
                 Out::Players(text) => {
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = self.side.lan.as_ref() {
                         host.hub.system_message(component_nbt(&text.component()));
                     }
                 }
@@ -1747,9 +1747,15 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game =
-            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-                .unwrap();
+        let mut game = crate::game::ServerGame::new(
+            res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
         game.reset_entity_residency();
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);

@@ -45,7 +45,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut entity_tag_snapshots = Vec::new();
         while Instant::now() < deadline {
             self.side_update_world();
-            if self.remote.is_none() {
+            if self.side.remote.is_none() {
                 error = Some(match self.side.title.0.as_ref().map(|t| &t.mode) {
                     Some(sunrise_client::title::Mode::Multiplayer(
                         sunrise_client::multiplayer::Screen::Disconnected { reason, .. },
@@ -72,7 +72,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // Each step waits for what it sent to be answered (its chat line,
             // the /list reply), however busy the machine, up to 15 s.
-            let shown = self.remote.as_ref().map_or(0, |r| r.chat.len());
+            let shown = self.side.remote.as_ref().map_or(0, |r| r.chat.len());
             let answered = shown > chat_at
                 || self.side.command_prompt.0.is_some()
                 || now - step_at > Duration::from_secs(15);
@@ -90,7 +90,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     && now - quiet_since > Duration::from_secs(3) =>
                 {
                     chunks = count;
-                    signed = self.remote.as_ref().is_some_and(|r| r.secure_chat.signed());
+                    signed = self
+                        .side
+                        .remote
+                        .as_ref()
+                        .is_some_and(|r| r.secure_chat.signed());
                     self.send_signed_chat_input(&lines[0]);
                     sent = 1;
                     step = 2;
@@ -147,11 +151,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             error = Some(format!("timed out at step {step}"));
         }
         let chat: Vec<String> = self
+            .side
             .remote
             .as_ref()
             .map(|r| r.chat.iter().map(|(t, _)| t.clone()).collect())
             .unwrap_or_default();
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.leave_server(None)?;
         }
         std::fs::write(

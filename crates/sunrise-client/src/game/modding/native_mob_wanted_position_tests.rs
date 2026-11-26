@@ -127,7 +127,7 @@ fn wanted_position_names_invalid_inputs_and_refuses_unavailable_mobs() {
         assert_eq!(mob.wanted_position(game), None);
         game.mobs
             .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-        let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+        let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 15;
         game.dragon.replace(dragon);
         let dragon = game.mob(game.entity(15).unwrap()).unwrap();

@@ -335,17 +335,17 @@ fn an_interact_packet_clicks_the_entity_it_names_not_the_nearest() {
     // (server id, distance from the guest) in the level's own order.
     let cows = [(17u32, 1.5f64), (23, 2.5)];
     assert_eq!(
-        crate::game::ServerGame::named_entity(&cows, 23, |c| c.0),
+        crate::game::item_actions::named_entity(&cows, 23, |c| c.0),
         Some(1)
     );
     // The near cow is reachable too, when that is the one named.
     assert_eq!(
-        crate::game::ServerGame::named_entity(&cows, 17, |c| c.0),
+        crate::game::item_actions::named_entity(&cows, 17, |c| c.0),
         Some(0)
     );
     // An id the level does not hold clicks nothing (Level.getEntity).
     assert_eq!(
-        crate::game::ServerGame::named_entity(&cows, 31, |c| c.0),
+        crate::game::item_actions::named_entity(&cows, 31, |c| c.0),
         None
     );
 }
@@ -1002,6 +1002,7 @@ pub(in crate::game) mod wind_charge_burst_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

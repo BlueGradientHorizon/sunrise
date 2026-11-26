@@ -106,7 +106,7 @@ pub(in crate::game) fn with_callback_game(
             game.set_local_mode(sunrise_command::args::GameMode::Survival);
             game.side.title.0 = None;
             game.side.screen = Screen::Playing;
-            game.remote.as_mut().unwrap().loaded_sent = true;
+            game.side.remote.as_mut().unwrap().loaded_sent = true;
             let attack = click.then(|| {
                 let attack = game.vanilla_key_mapping("key.attack").unwrap();
                 attack_mapping.set(attack).unwrap();

@@ -6,7 +6,7 @@ use sunrise_protocol::attachment_sync::Message;
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Apply an already decoded sync in play packet order, when its holder should exist.
     pub(in crate::game) fn remote_attachment_sync(&mut self, message: Message) {
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return;
         };
         let foreign_player = match message.holder {
@@ -16,7 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     || remote.tracked(id_i32).is_some()
                     || remote.tracked_entity(id_i32).is_some()
                     || self.dragon.as_ref().is_some_and(|d| {
-                        crate::game::server_side::dragon::dragon_part_index(d.id, id).is_some()
+                        crate::game::dragon_common::dragon_part_index(d.id, id).is_some()
                     });
                 if !known {
                     log::warn!("Sunrise: received attachment sync for unknown entity {id}");
@@ -34,7 +34,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // The recipient's own initial sync does not come from an entity pairing.
             _ => None,
         };
-        let remote = self.remote.as_mut().unwrap();
+        let remote = self.side.remote.as_mut().unwrap();
         let map = remote.attachments.entry(message.holder).or_default();
         if message.replace {
             map.replace_contents(Attachments::default());
@@ -55,7 +55,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     fn bind_remote_attachment_with_player(&mut self, holder: Holder, player: Option<u32>) {
         use mod_api::{AttachmentHolder as H, ChunkRef, EntityRef};
-        let Some(remote) = &self.remote else { return };
+        let Some(remote) = &self.side.remote else {
+            return;
+        };
         let Some(level) = self.level(&remote.level) else {
             return;
         };
@@ -79,7 +81,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     return;
                 };
                 let Some(entity) =
-                    crate::game::native_block_entity_refs::world_block_entity(world, level, pos)
+                    crate::game::native_block_entity_read::world_block_entity(world, level, pos)
                 else {
                     return;
                 };
@@ -89,6 +91,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => return,
         };
         if let Some(map) = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.attachments.get_mut(&holder))

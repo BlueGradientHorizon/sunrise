@@ -7,13 +7,13 @@
 //! `attributes` and `attribute_modifiers`), which on a client answer for the
 //! local player from the client's own copy; and `effect`/`effects`.
 use super::Game;
-use super::api_values::{StackReadMetadata, project_stack, stack_read_metadata};
 use super::commands::{Target, items::Owner};
 use super::living_attributes::AttributeWrite;
+use crate::game::native_equipment_read::hand_slot;
 use mod_api::client::first_person::Hand;
 use mod_api::{
     AttributeModifier, AttributeOperation, Direction, EntityRef, EquipmentSlot, Identifier,
-    ItemStackView, LivingRef, ModifierLifetime,
+    LivingRef, ModifierLifetime,
 };
 use sunrise_items::items::{EntityTypeTags, ItemStack};
 use sunrise_sim::health::{Attack, DamageLevel, HitEffects, Hurting, Knock, NO_ATTACK};
@@ -22,7 +22,7 @@ use sunrise_sim::mobs::{
     Mob,
     finalize::{self, EquipmentRead},
 };
-use sunrise_world::attributes::{Modifier, Operation};
+use sunrise_world::attributes::Operation;
 
 /// A player's armour slots (`armor`, head first) by equipment slot.
 pub(in crate::game::server_side) fn armor_index(slot: EquipmentSlot) -> Option<usize> {
@@ -49,34 +49,6 @@ pub(in crate::game::server_side) fn player_slot<'a>(
         EquipmentSlot::OffHand => offhand.as_ref(),
         EquipmentSlot::Body | EquipmentSlot::Saddle => equipment.get(slot as usize),
         _ => armor[armor_index(slot)?].as_ref(),
-    }
-}
-
-/// Lend one equipment slot to the API, applying overlays and encoding components only on demand.
-pub(in crate::game) fn lend_equipment(
-    stack: EquipmentRead<'_>,
-    read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
-) -> Option<()> {
-    let metadata = stack_read_metadata(stack.base()).ok()?;
-    with_equipment_view(&stack, metadata, read);
-    Some(())
-}
-
-/// Use checked slot metadata to lend the same lazy view to readers and component editors.
-pub(in crate::game) fn with_equipment_view<R>(
-    stack: &EquipmentRead<'_>,
-    metadata: StackReadMetadata,
-    read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
-) -> R {
-    let project = |metadata| project_stack(&stack.project(), metadata).ok();
-    read(ItemStackView::resident(metadata, &project))
-}
-
-/// The equipment slot of a hand (`LivingEntity.getItemInHand`/`setItemInHand`).
-pub(in crate::game) fn hand_slot(hand: Hand) -> EquipmentSlot {
-    match hand {
-        Hand::Main => EquipmentSlot::MainHand,
-        Hand::Off => EquipmentSlot::OffHand,
     }
 }
 
@@ -118,27 +90,6 @@ pub(in crate::game::server_side) fn alive_at(health: f32) -> bool {
 
 pub(in crate::game::server_side) fn equipment_stack(stack: Option<ItemStack>) -> Option<ItemStack> {
     stack.filter(|s| s.count > 0 && &*s.item != "minecraft:air")
-}
-
-/// The map's modifiers as the API's, in their order. Their ids are canonical
-/// (`Modifier` normalizes them), so none is dropped.
-pub(in crate::game::server_side) fn attribute_modifiers(
-    list: Vec<Modifier>,
-) -> Vec<AttributeModifier> {
-    list.iter().filter_map(api_modifier).collect()
-}
-
-/// One map modifier as the API's.
-pub(in crate::game::server_side) fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
-    Some(AttributeModifier::new(
-        Identifier::parse(m.id()).ok()?,
-        m.amount(),
-        match m.operation() {
-            Operation::AddValue => AttributeOperation::AddValue,
-            Operation::AddMultipliedBase => AttributeOperation::AddMultipliedBase,
-            Operation::AddMultipliedTotal => AttributeOperation::AddMultipliedTotal,
-        },
-    ))
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -184,8 +135,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
                 let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-                let level =
-                    crate::game::entity::damage_level_of!(self, &NO_ATTACK, &mut credit, None);
+                let level = crate::game::server_side::entity_server::damage_level_of!(
+                    self,
+                    &NO_ATTACK,
+                    &mut credit,
+                    None
+                );
                 self.mobs[i].knockback(
                     level,
                     strength,
@@ -200,12 +155,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let resistance = self.dragon_knockback_resistance();
                 let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
                 let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-                let level =
-                    crate::game::entity::damage_level_of!(self, &NO_ATTACK, &mut credit, None);
+                let level = crate::game::server_side::entity_server::damage_level_of!(
+                    self,
+                    &NO_ATTACK,
+                    &mut credit,
+                    None
+                );
                 level.through_short_knockback(|level| {
-                    self.dragon
-                        .as_mut()
-                        .is_some_and(|d| d.knockback(level, knock, SOURCE, resistance))
+                    self.dragon.as_mut().is_some_and(|d| {
+                        crate::game::server_side::dragon::knockback(
+                            d, level, knock, SOURCE, resistance,
+                        )
+                    })
                 })
             }
             _ => false,
@@ -227,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .living_last_attacker(living)
             .map(|attacker| self.last_attacker_attack(attacker.id()));
         let attack = remembered.as_ref().unwrap_or(&NO_ATTACK);
-        let hub = &self.lan.as_ref()?.hub;
+        let hub = &self.side.lan.as_ref()?.hub;
         let player = match target {
             Target::Player => {
                 hub.guest(self.side.lan_acting?)?;
@@ -311,7 +272,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .unwrap_or(0.0);
         let plan = self.prepare_knockback_credit(id as i32, None, attack);
         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-        let level = crate::game::entity::damage_level_of!(self, attack, &mut credit, None);
+        let level = crate::game::server_side::entity_server::damage_level_of!(
+            self,
+            attack,
+            &mut credit,
+            None
+        );
         let pushed = Hurting::ArmorStand(id as i32, source);
         if level.through_short_knockback(|level| level.knockback_canceled(pushed, &mut knock)) {
             return false;
@@ -342,9 +308,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<Option<u32>> {
         match self.server_living_read_target(living)? {
             Target::Player => Some(self.using.map(|(_, ticks)| ticks)),
-            Target::Guest(conn) => {
-                Some(self.lan.as_ref()?.play.get(&conn)?.using().map(|(_, t)| t))
-            }
+            Target::Guest(conn) => Some(
+                self.side
+                    .lan
+                    .as_ref()?
+                    .play
+                    .get(&conn)?
+                    .using()
+                    .map(|(_, t)| t),
+            ),
             Target::Mob(id) => {
                 let mob = self.mobs.iter().find(|m| m.id == id)?;
                 Some(
@@ -620,7 +592,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     g.player.as_mut()?.set_health(health, false).ok()?;
                     if revived
                         && let Some(conn) = g.side.lan_acting
-                        && let Some(host) = g.lan.as_mut()
+                        && let Some(host) = g.side.lan.as_mut()
                         && let Some(gi) =
                             host.hub.guests.iter().position(|guest| guest.conn == conn)
                         && host.hub.guests[gi].death_canceled
@@ -753,7 +725,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 Some(self.side.lan_acting_entity?)
                             }
                             Some(conn) => Some(
-                                self.lan
+                                self.side
+                                    .lan
                                     .iter()
                                     .flat_map(|h| h.hub.guests.iter())
                                     .find(|g| g.conn == conn)?
@@ -1283,196 +1256,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The base value of an attribute, before modifiers
-    /// (`AttributeMap.getBaseValue`), read as the effective value is.
-    pub(in crate::game) fn living_attribute_base(
-        &self,
-        living: LivingRef,
-        id: &str,
-    ) -> Option<f64> {
-        self.native_living_attribute(living, id, sunrise_world::attribute_map::ValueKind::Base)
-    }
-
-    /// The ids of the attributes the entity's type has
-    /// (`AttributeMap`'s holder's attribute set), in registry order: the same
-    /// set the value and base reads answer for. None for a stale handle or an
-    /// unavailable entity; on a client, for any entity but the local player
-    /// (the client keeps no attribute map of another entity's, only the few
-    /// fields it draws).
-    pub(in crate::game) fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
-        let catalog = &self.motion.attributes;
-        let entity = self.native_living_attribute_entity(living)?;
-        Some(
-            catalog
-                .attributes()
-                .filter(|(id, _)| catalog.default_base(entity, *id).is_some())
-                // The catalog's names are canonical, so none is dropped.
-                .filter_map(|(_, a)| Identifier::parse(&a.name).ok())
-                .collect(),
-        )
-    }
-
-    /// The modifiers on the entity's attribute `id`
-    /// (`AttributeInstance.getModifiers`), in the order they were added: a
-    /// mod's transient and permanent ones, the saved list's, and what the
-    /// worn and held items grant. An attribute no modifier is on answers an
-    /// empty list; None for an attribute the entity type does not have, a
-    /// stale handle, or on a client for any entity but the local player,
-    /// whose copy of the synced instances it reads.
-    pub(in crate::game) fn living_attribute_modifiers(
-        &self,
-        living: LivingRef,
-        id: &str,
-    ) -> Option<Vec<AttributeModifier>> {
-        self.native_target_attribute_modifiers(self.native_living_read_target(living)?, id)
-    }
-
-    pub(in crate::game) fn native_living_attribute(
-        &self,
-        living: LivingRef,
-        name: &str,
-        kind: sunrise_world::attribute_map::ValueKind,
-    ) -> Option<f64> {
-        self.native_target_attribute(self.native_living_read_target(living)?, name, kind)
-    }
-
-    /// The entity's type key, for the catalog's attribute defaults: the same
-    /// set the value and base reads answer for. On a client only the local
-    /// player resolves (`native_living_read_target`).
-    pub(in crate::game) fn native_living_attribute_entity(
-        &self,
-        living: LivingRef,
-    ) -> Option<&str> {
-        match self.native_living_read_target(living)? {
-            Target::Player | Target::Guest(_) => Some("minecraft:player"),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id && !m.removed)
-                .map(|m| m.kind.id.as_str()),
-            Target::Stand(_) => Some("minecraft:armor_stand"),
-            Target::Dragon(_) => Some("minecraft:ender_dragon"),
-            _ => None,
-        }
-    }
-
-    /// The modifiers of `name` on `target`'s attribute map, as
-    /// `native_target_attribute` reads its value.
-    pub(in crate::game) fn native_target_attribute_modifiers(
-        &self,
-        target: Target,
-        name: &str,
-    ) -> Option<Vec<AttributeModifier>> {
-        let catalog = &self.motion.attributes;
-        let player = match target {
-            Target::Player => self.player.as_ref()?,
-            Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref()?,
-            Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-                return m
-                    .extra
-                    .live
-                    .modifiers(catalog, &m.kind.id, name, || {
-                        sunrise_sim::entity_nbt::attribute_entries(m)
-                            .into_iter()
-                            .map(|(_, entry)| entry)
-                            .collect()
-                    })
-                    .map(attribute_modifiers);
-            }
-            Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
-                return a
-                    .live
-                    .modifiers(catalog, "minecraft:armor_stand", name, Vec::new)
-                    .map(attribute_modifiers);
-            }
-            Target::Dragon(id) => {
-                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
-                return d
-                    .live
-                    .modifiers(catalog, "minecraft:ender_dragon", name, Vec::new)
-                    .map(attribute_modifiers);
-            }
-            _ => return None,
-        };
-        // The base read's own None: an attribute the type does not have.
-        let key = player.attributes.key(name)?;
-        player
-            .attributes
-            .value(
-                Some(key.clone()),
-                sunrise_world::attribute_map::ValueKind::Base,
-            )
-            .ok()?;
-        Some(
-            player
-                .attributes
-                .lookup(Some(&key))
-                .and_then(|handle| player.attributes.instance(&handle).ok())
-                .map(|instance| instance.modifiers())
-                .unwrap_or_default()
-                .iter()
-                .filter_map(api_modifier)
-                .collect(),
-        )
-    }
-
-    pub(in crate::game) fn native_target_attribute(
-        &self,
-        target: Target,
-        name: &str,
-        kind: sunrise_world::attribute_map::ValueKind,
-    ) -> Option<f64> {
-        super::native_living_body::body_attribute(
-            self.native_living_body(target)?,
-            &self.motion.attributes,
-            name,
-            kind,
-        )
-    }
-
-    /// The entity's health (`LivingEntity.getHealth`; Paper's
-    /// `Damageable#getHealth`). During a player's turn only that player
-    /// resolves: the hub is out for their action, and other players'
-    /// handles read `None` until it is back.
-    pub(in crate::game) fn living_health(&self, living: LivingRef) -> Option<f32> {
-        let target = self.native_living_read_target(living)?;
-        super::native_living_body::body_health(self.native_living_body(target)?)
-    }
-
-    /// The entity's maximum health (`LivingEntity.getMaxHealth`; Paper's
-    /// `Damageable#getMaxHealth`). Players and guests read their attribute
-    /// map; a mob, an armor stand and the dragon their own fields (the
-    /// armor stand the fixed 20 the game seeds it with, the dragon its
-    /// 200) until live attribute maps cover them.
-    pub(in crate::game) fn living_max_health(&self, living: LivingRef) -> Option<f32> {
-        let target = self.native_living_read_target(living)?;
-        super::native_living_body::body_max_health(self.native_living_body(target)?)
-    }
-
-    /// Lend the stack in `slot` (`LivingEntity.getItemBySlot`).
-    pub(in crate::game) fn living_equipment(
-        &self,
-        living: LivingRef,
-        slot: EquipmentSlot,
-        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
-    ) -> Option<()> {
-        lend_equipment(self.living_equipment_stack(living, slot)?, read)
-    }
-
-    /// Lend the stack in `hand` (`LivingEntity.getItemInHand`).
-    pub(in crate::game) fn living_hand_item(
-        &self,
-        living: LivingRef,
-        hand: Hand,
-        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
-    ) -> Option<()> {
-        self.living_equipment(living, hand_slot(hand), read)
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::api_values::TryIntoApi;
@@ -1880,7 +1663,7 @@ pub(in crate::game) mod tests {
                 .clone();
             game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // The eight dragon parts must not overlap the player at ID 20.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -1949,7 +1732,8 @@ pub(in crate::game) mod tests {
             assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(12));
             {
                 let value = "minecraft:the_nether".into();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1959,7 +1743,8 @@ pub(in crate::game) mod tests {
             assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(12));
             {
                 let value = false;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -2173,7 +1958,12 @@ pub(in crate::game) mod tests {
             let i = game.mobs.iter().position(|m| m.id == pig).unwrap();
             let mob = &mut game.mobs[i];
             mob.knockback(
-                crate::game::entity::damage_level_of!(game, &NO_ATTACK, &mut credit, None),
+                crate::game::server_side::entity_server::damage_level_of!(
+                    game,
+                    &NO_ATTACK,
+                    &mut credit,
+                    None
+                ),
                 0.4,
                 1.0,
                 0.0,
@@ -2216,7 +2006,7 @@ pub(in crate::game) mod tests {
             game.mobs[0].ai.last_hurt_by = Some(Who::Player);
             game.side
                 .last_hurt_by_player
-                .insert(12, super::super::combat::PlayerCredit(123));
+                .insert(12, super::super::combat_common::PlayerCredit(123));
             assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(20));
             // The same record inside a guest's turn: the host's displaced
             // body is out of reach, so the attacker reads None.
@@ -2405,7 +2195,7 @@ pub(in crate::game) mod tests {
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 game.note_attacker("minecraft:mob_attack", 15);
                 let rules = game.world.health_rules;
-                let level = super::super::entity::damage_level_of!(
+                let level = crate::game::server_side::entity_server::damage_level_of!(
                     game,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,
@@ -2663,7 +2453,7 @@ pub(in crate::game) mod tests {
                 Some(ItemStack::new("minecraft:air", 1))
             ));
             expect_slot(game, horse, EquipmentSlot::Body, None);
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the stand.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -2689,7 +2479,7 @@ pub(in crate::game) mod tests {
                 .as_ref()
                 .unwrap()
                 .to_nbt([0; 4], None, &Default::default());
-            let loaded = super::super::dragon::Dragon::from_nbt(&saved, 0).unwrap();
+            let loaded = super::super::dragon_common::Dragon::from_nbt(&saved, 0).unwrap();
             assert_eq!(loaded.equipment, game.dragon.as_ref().unwrap().equipment);
             let stored = game.armor_stands.last().unwrap();
             let saved = sunrise_sim::entity_nbt::armor_stand_to_nbt(
@@ -3208,7 +2998,7 @@ pub(in crate::game) mod tests {
         super::super::native_guest_turn_tests::with_guests(|game| {
             // The fixture leaves the guest without a body: give one, as a
             // joined player's server record keeps.
-            game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+            game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                 g.motion = Some(Box::new(
                     sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
@@ -3220,20 +3010,23 @@ pub(in crate::game) mod tests {
             let living = game.living(game.entity(12).unwrap()).unwrap();
             let host: &dyn Host = game;
             assert_eq!(living.can_use_portal(host), Some(true));
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .update_guest(12, |g| g.vehicle = Some(99));
             let host: &dyn Host = game;
             assert_eq!(living.can_use_portal(host), Some(false));
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .update_guest(12, |g| g.vehicle = None);
             // Asleep: the rule's sleep half answers, over their body.
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3242,12 +3035,14 @@ pub(in crate::game) mod tests {
             assert_eq!(living.can_use_portal(host), Some(false));
             // A passenger crosses with its vehicle, not as its own
             // traveller: the rule's riding half answers false.
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .update_guest(12, |g| g.sleeping = false);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3387,7 +3182,7 @@ pub(in crate::game) mod tests {
             let mut stand = sunrise_sim::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
             stand.id = 16;
             game.armor_stands.push(stand);
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 17;
             game.dragon.replace(dragon);
             let stand = game.living(game.entity(16).unwrap()).unwrap();

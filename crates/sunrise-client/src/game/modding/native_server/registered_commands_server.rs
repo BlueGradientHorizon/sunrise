@@ -1,5 +1,4 @@
 use super::{BaseTree, Game, command_arguments, command_tree_for, register_command_nodes};
-use crate::game::native_server::registered_commands::NativeCommandState;
 use crate::game::native_server::registered_commands::NativeCommands;
 use crate::game::native_server::registered_commands::RegisteredExecutor;
 use crate::game::native_server::registered_commands::without_reserved_roots;
@@ -81,7 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// when one asked (`native_refresh_commands`), and then sends every player their tree.
     pub(in crate::game) fn register_native_commands(&mut self) {
         let refresh = std::mem::take(&mut self.side.native_commands.0.refresh);
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return;
         }
         if refresh || self.side.native_commands.0.registered.is_none() {
@@ -99,7 +98,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Send accepted display data, without rebuilding usages or exposing executor slots.
     /// Forced when vanilla itself changes, even if the accepted mod report did not.
     pub(in crate::game::server_side) fn send_native_command_report(&mut self, force_resend: bool) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let state = &self.side.native_commands.0;
@@ -126,15 +125,5 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         self.resend_commands_filtered();
-    }
-}
-
-impl NativeCommandState {
-    /// The traversal level of a mod's root (`line`, without its slash), when registered.
-    /// The parsed executable node enforces its own usage level separately.
-    pub(in crate::game) fn level(&self, line: &str) -> Option<u8> {
-        let name = line.split(' ').next().unwrap_or_default();
-        self.report["children"].get(name)?;
-        self.registered.as_ref()?.levels.get(name).copied()
     }
 }

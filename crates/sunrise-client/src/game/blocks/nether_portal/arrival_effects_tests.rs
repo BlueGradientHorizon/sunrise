@@ -26,13 +26,13 @@ fn depart(game: &mut crate::game::ServerGame<'_>, id: u32, restart_waiting: bool
         .unwrap();
     game.world.set(entry.x, entry.y, entry.z, portal).unwrap();
     game.send_through_portal(id, entry);
-    assert_eq!(game.portals.arrivals.len(), 1);
+    assert_eq!(game.side.portals.arrivals.len(), 1);
     if restart_waiting {
-        let saved = arrival_tag(&game.portals.arrivals[0]);
-        game.portals.arrivals[0] = arrival_from_tag(&saved).unwrap();
+        let saved = arrival_tag(&game.side.portals.arrivals[0]);
+        game.side.portals.arrivals[0] = arrival_from_tag(&saved).unwrap();
     }
     game.enter_level(Dim::Nether).unwrap();
-    let plan = game.portals.arrivals[0].plan;
+    let plan = game.side.portals.arrivals[0].plan;
     assert_eq!(plan.dim, Dim::Nether);
     let (cx, cz) = (plan.approximate.x >> 4, plan.approximate.z >> 4);
     for z in cz - 1..=cz + 1 {
@@ -78,7 +78,7 @@ pub(in crate::game::server_side) fn run_portal_arrival_effects_merge_items_befor
             );
             game.dropped[0].age = waiting_age;
             game.resolve_arrivals();
-            assert!(game.portals.arrivals.is_empty());
+            assert!(game.side.portals.arrivals.is_empty());
             let mergeable = incoming_age != -32768 && incoming_age < 6000;
             assert_eq!(game.dropped.len(), if mergeable { 1 } else { 2 });
             if mergeable {
@@ -127,7 +127,7 @@ pub(in crate::game) fn assert_tnt_blast(game: &mut crate::game::ServerGame<'_>, 
     }
     game.world.set(x, y, z + 1, dirt).unwrap();
     let id = game.tnts[0].id;
-    game.portals.entities.insert(
+    game.side.portals.entities.insert(
         id,
         PortalState {
             cooldown: if protected { 0 } else { 300 },
@@ -169,7 +169,7 @@ pub(in crate::game::server_side) fn run_portal_arrival_effects_tnt_protection_is
             assert!(!game.tnts[0].used_portal);
             depart(game, old, restart_waiting);
             game.resolve_arrivals();
-            assert!(game.portals.arrivals.is_empty());
+            assert!(game.side.portals.arrivals.is_empty());
             assert_eq!(game.tnts.len(), 1);
             assert_ne!(game.tnts[0].id, old);
             assert!(game.tnts[0].used_portal);
@@ -259,7 +259,7 @@ fn complete_callback_arrival(
 ) {
     if portal {
         game.resolve_arrivals();
-        assert!(game.portals.arrivals.is_empty());
+        assert!(game.side.portals.arrivals.is_empty());
     } else {
         game.enter_level(Dim::Overworld).unwrap();
         let entity = game.entity(id).unwrap();

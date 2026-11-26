@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::durability::Wearer;
+use crate::game::server_side::durability::Wearer;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The parts' answer for `loss` points of wear on `stack`, worn or used by

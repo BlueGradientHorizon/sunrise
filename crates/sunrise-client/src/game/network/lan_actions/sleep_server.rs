@@ -4,11 +4,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlayerList.broadcastSystemMessage` of the advancements guests made
     /// (their own actions, commands and ticks).
     pub(in crate::game) fn announce_guest_advancements(&mut self) {
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return;
         }
         for text in std::mem::take(&mut self.adv.announced) {
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 host.hub
                     .system_message(sunrise_sim::lan::data::component_nbt(&text.component()));
             }
@@ -24,7 +24,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.side.sleep_seen = (active, sleeping);
         let changed = (old_sleeping > 0 || sleeping > 0)
             && (old_active != active || old_sleeping != sleeping);
-        let published = self.lan.is_some() || self.options.dedicated.is_some();
+        let published = self.side.lan.is_some() || self.options.dedicated.is_some();
         if !changed || !published {
             return;
         }
@@ -49,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ],
             )
         };
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub
                 .overlay_message(sunrise_sim::lan::data::component_nbt(&text.component()));
         }
@@ -74,6 +74,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && !g.spectator()
             && (g.bed.is_some()
                 || !self
+                    .side
                     .lan
                     .as_ref()
                     .is_some_and(|host| host.sleep_ignored.contains(&g.uuid)))
@@ -81,7 +82,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.tick`'s sleep counter, and `LivingEntity.tick`'s wake-up of a
     /// sleeper who died or whose bed is gone.
     pub(crate) fn guest_sleep_tick(&mut self, gi: usize, body: bool) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let (identity, bed, gone, uuid) = host.hub.guests.update(gi, |g| {
@@ -98,7 +99,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let bed_exists = self.res.facts().get(block).name.ends_with("_bed");
             let modded = !mod_api::__private::mods().is_empty();
             let name = if modded && !gone {
-                self.lan
+                self.side
+                    .lan
                     .as_ref()
                     .map(|host| host.hub.guests[gi].name.clone())
             } else {
@@ -140,7 +142,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             if !keep_sleeping {
                 self.wake_guest(gi, wake_immediately, true);
-            } else if let Some(host) = self.lan.as_mut() {
+            } else if let Some(host) = self.side.lan.as_mut() {
                 // LivingEntity.tick: a sleeper's xRot is 0.
                 host.hub.guests.update(gi, |g| {
                     g.pitch = 0.0;
@@ -171,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.player.is_some() && !self.side.lan_acting_fake && !self.spectator() {
             count(self.sleeping.is_some(), self.sleep_timer);
         }
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             // A native mod's ignored players count only once in bed.
             for g in host
                 .hub
@@ -202,7 +204,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         wake_immediately: bool,
         update_level: bool,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let g = &host.hub.guests[gi];
@@ -216,7 +218,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // The list may have changed, and a reconnect can share the departing guest's UUID.
         // Find the same connection; `wake` does nothing if the listener already woke it.
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(gi) = host.hub.guests.connection_index(conn) else {
@@ -233,7 +235,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// guest who woke up from `head`: stand beside the bed facing it, and
     /// teleport the client there.
     pub(in crate::game::server_side) fn wake_guest_from(&mut self, gi: usize, head: [i32; 3]) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let yaw = host.hub.guests[gi].yaw;
@@ -241,7 +243,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let at = [stand.x, stand.y, stand.z];
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let alive = host.hub.guests.update(gi, |g| {
@@ -265,7 +267,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// `ServerLevel.wakeUpAllPlayers` for the guests.
     pub(in crate::game) fn wake_guests(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let count = host.hub.guests.len();
@@ -274,12 +276,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
     pub(in crate::game) fn wake_woken_guests(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let count = host.hub.guests.len();
         for gi in 0..count {
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             if host.hub.here(&host.hub.guests[gi])

@@ -1,10 +1,8 @@
 //! Resource reads for native mods through the game's selected pack stacks.
-use super::Game;
+use crate::game::side_ops::modapi_modding::SideOps as ModdingSideOps;
 use mod_api::{Identifier, PackType};
 use std::collections::BTreeSet;
 use sunrise_assets::resource_source::{ResourceSource, read_winning_resource};
-
-impl Game<'_, crate::game::server_side::ServerState> {}
 
 impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `pack_type`'s top folder and its stack, lowest priority first. Client
@@ -25,14 +23,12 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             ("assets", vec![&self.pack.source])
         } else {
             let mut sources = Vec::new();
-            if !crate::game::Side::cmds(&self.side).is_some_and(|c| c.vanilla_disabled) {
+            if !self.side_vanilla_data_disabled() {
                 sources.push(&self.pack.data_source);
             }
             sources.push(&self.pack.data_changes);
-            if self.options.execution_role.is_logical_server()
-                && let Some(fns) = crate::game::Side::fns(&self.side)
-            {
-                sources.extend(fns.pack_sources().rev());
+            if self.options.execution_role.is_logical_server() {
+                ModdingSideOps::side_append_function_pack_sources(&self.side, &mut sources);
             }
             ("data", sources)
         })

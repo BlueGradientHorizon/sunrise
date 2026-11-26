@@ -55,7 +55,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => swing,
         };
         if key != InteractionKey::PickBlock
-            && let Some(remote) = self.remote.as_mut()
+            && let Some(remote) = self.side.remote.as_mut()
         {
             remote.interaction_swing[usize::from(hand == Hand::Off)] = swing;
         }

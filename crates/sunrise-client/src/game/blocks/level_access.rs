@@ -1,5 +1,28 @@
 //! The world behaviour adapter, kept beside the block operations it serves.
 use super::*;
+use sunrise_level::sculk::SculkKind;
+
+/// `SculkSensorBlock.getAnalogOutputSignal`: the last vibration's frequency
+/// while the sensor is active.
+pub(in crate::game) fn sensor_signal(
+    world: &sunrise_level::world::World,
+    behaviours: &sunrise_world::level::Behaviours,
+    state: BlockStateId,
+    pos: BlockPos,
+) -> Option<i32> {
+    match world.block_entities.get(&(pos.x, pos.y, pos.z)) {
+        Some(BlockEntity::Sculk(e))
+            if matches!(e.kind, SculkKind::Sensor | SculkKind::Calibrated) =>
+        {
+            Some(if behaviours.sculk_sensor_active(state) {
+                e.last_frequency
+            } else {
+                0
+            })
+        }
+        _ => None,
+    }
+}
 
 impl LevelAccess for GameLevel<'_> {
     fn infiniburn(&self) -> Option<&sunrise_world::level::data::BlockSet> {
@@ -142,7 +165,7 @@ impl LevelAccess for GameLevel<'_> {
         if !self.has_liquid_container_part(state) {
             return None;
         }
-        let fluid = super::native_world_read::api_fluid_state(
+        let fluid = crate::game::native_world_read_common::api_fluid_state(
             sunrise_world::fluid::FluidState::new(fluid, 8, false),
         )?
         .fluid;
@@ -174,7 +197,7 @@ impl LevelAccess for GameLevel<'_> {
             );
             return None;
         }
-        let fluid = super::native_world_read::api_fluid_state(fluid)?;
+        let fluid = crate::game::native_world_read_common::api_fluid_state(fluid)?;
         let mut answer = None;
         self.native_place_liquid(ticks, pos, state, fluid, &mut answer);
         answer
@@ -693,7 +716,7 @@ impl LevelAccess for GameLevel<'_> {
         answer: &mut Option<Option<BlockStateId>>,
     ) {
         // Asked on both sides: a client's placement prediction asks it too.
-        if let Some(fluid) = native_world_read::api_fluid_state(fluid) {
+        if let Some(fluid) = crate::game::native_world_read_common::api_fluid_state(fluid) {
             self.view(ticks)
                 .previewing(preview)
                 .native_state_for_placement(self.dimension, state, context, fluid, answer);
@@ -776,7 +799,7 @@ impl LevelAccess for GameLevel<'_> {
         fluid_pos: BlockPos,
         hydrates: &mut Option<bool>,
     ) {
-        if let Some(fluid) = native_world_read::api_fluid_state(fluid) {
+        if let Some(fluid) = crate::game::native_world_read_common::api_fluid_state(fluid) {
             self.native_can_be_hydrated(self.dimension, state, pos, fluid, fluid_pos, hydrates);
         }
     }
@@ -882,11 +905,13 @@ impl LevelAccess for GameLevel<'_> {
         if !(data.is(Class::Chest) || data.is(Class::EnderChest) || data.is(Class::Barrel)) {
             return None;
         }
-        Some(crate::game::block_entity_anims::recheck_opener_count(
-            self.lid_openers,
-            self.open_containers,
-            (pos.x, pos.y, pos.z),
-        ))
+        Some(
+            sunrise_gameplay_common::container_openers::recheck_opener_count(
+                self.lid_openers,
+                self.open_containers,
+                (pos.x, pos.y, pos.z),
+            ),
+        )
     }
 
     fn block_entity_analog_signal(
@@ -903,18 +928,21 @@ impl LevelAccess for GameLevel<'_> {
                 s.properties.get("powered").is_some_and(|v| v == "true"),
             );
         }
-        if let Some(signal) = command_blocks::analog_signal(self.world, (pos.x, pos.y, pos.z)) {
+        if let Some(signal) = sunrise_gameplay_common::command_blocks::analog_signal(
+            self.world,
+            (pos.x, pos.y, pos.z),
+        ) {
             return signal;
         }
-        if let Some(signal) =
-            super::sculk_server::sensor_signal(self.world, self.behaviours, state, pos)
+        if let Some(signal) = sensor_signal(self.world, self.behaviours, state, pos) {
+            return signal;
+        }
+        if let Some((_, comparator)) =
+            crate::game::jukebox_common::jukebox_signals(self.world, self.items, pos)
         {
-            return signal;
-        }
-        if let Some((_, comparator)) = jukebox::jukebox_signals(self.world, self.items, pos) {
             return comparator;
         }
-        if let Some(signal) = creaking::heart_signal(self.world, pos) {
+        if let Some(signal) = crate::game::creaking_common::heart_signal(self.world, pos) {
             return if self.registry.state(state).is_some_and(|s| {
                 s.properties
                     .get("creaking_heart_state")
@@ -925,15 +953,21 @@ impl LevelAccess for GameLevel<'_> {
                 signal
             };
         }
-        if let Some(signal) = books::lectern_signal(self.world, self.registry, state, pos) {
-            return signal;
-        }
         if let Some(signal) =
-            machines::shelf_signal(self.world, self.registry, state, pos, direction)
+            sunrise_gameplay_common::lectern::lectern_signal(self.world, self.registry, state, pos)
         {
             return signal;
         }
-        machines::container_signal(self, pos)
+        if let Some(signal) = sunrise_gameplay_common::hoppers::shelf_signal(
+            self.world,
+            self.registry,
+            state,
+            pos,
+            direction,
+        ) {
+            return signal;
+        }
+        crate::game::machine_containers::container_signal(self, pos)
     }
     fn item_frame_analog_output(&self, pos: BlockPos, facing: Direction) -> Option<i32> {
         let mut frames = self
@@ -1142,7 +1176,7 @@ impl LevelAccess for GameLevel<'_> {
         let others = || {
             self.crystals
                 .iter()
-                .map(dragon::Crystal::bounds)
+                .map(crate::game::dragon_common::Crystal::bounds)
                 .chain(self.trigger_hooks.iter().map(|&(bounds, _)| bounds))
                 .chain(self.trigger_extras.iter().copied())
                 .filter(|b| area.intersects(*b))
@@ -1237,7 +1271,7 @@ impl LevelAccess for GameLevel<'_> {
         self.world
             .shulkers
             .get(&[pos.x, pos.y, pos.z])
-            .map(|s| s.status == sunrise_client::block_entity_anim::ShulkerStatus::Closed)
+            .map(|s| s.status == sunrise_level::shulker_box::ShulkerStatus::Closed)
     }
     /// What a mod block entity published for a block that may (`shapes_from_block_entity`).
     fn published_collision_shape(
@@ -1304,7 +1338,12 @@ impl LevelAccess for GameLevel<'_> {
         self.load_block_entity(pos, nbt);
     }
     fn set_command_block_powered(&mut self, pos: BlockPos, powered: bool) -> Option<(bool, bool)> {
-        command_blocks::set_powered(self.world, self.registry, (pos.x, pos.y, pos.z), powered)
+        sunrise_gameplay_common::command_blocks::set_powered(
+            self.world,
+            self.registry,
+            (pos.x, pos.y, pos.z),
+            powered,
+        )
     }
     /// `PotentSulfurBlockEntity.resetCountdown`.
     fn reset_potent_sulfur_countdown(&mut self, pos: BlockPos) {

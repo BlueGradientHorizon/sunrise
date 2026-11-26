@@ -47,7 +47,7 @@ fn a_servers_synced_enchantment_reaches_the_registry_reads() {
                     .with_entries([("fixture:drill", &definition)])
                     .unwrap()
                     .unwrap();
-                game.remote.as_mut().unwrap().enchantments = Some(std::sync::Arc::new(synced));
+                game.side.remote.as_mut().unwrap().enchantments = Some(std::sync::Arc::new(synced));
 
                 let drill = game
                     .enchantments()

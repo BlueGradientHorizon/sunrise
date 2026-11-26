@@ -1,12 +1,55 @@
+#[cfg(feature = "client")]
 use super::{Dim, Game};
-use crate::game::server_side::end::CrystalDrawFrame;
-#[cfg(test)]
-use crate::game::server_side::end::*;
 use sunrise_client::{gfx::CelestialBody, mesher::Vertex};
+#[cfg(feature = "client")]
 use sunrise_core::random::RandomSource;
+#[cfg(feature = "client")]
 use sunrise_items::items::ItemStack;
+#[cfg(feature = "client")]
 use sunrise_level::environment::Environment;
+#[cfg(feature = "client")]
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+
+#[cfg(feature = "client")]
+pub(in crate::game) struct CrystalDrawFrame<'a> {
+    pub(in crate::game) model: &'a sunrise_client::mobs::Part,
+    pub(in crate::game) uv: [f32; 4],
+    pub(in crate::game) partial: f32,
+}
+
+/// item/generated's ground display `translation [0, 2, 0]` is 2/16 of a block, and
+/// ThrownItemRenderer draws the eye at scale 1.0.
+pub(in crate::game) const GROUND_LIFT: f32 = 0.125;
+
+/// `ThrownItemRenderer.submit`: the four camera-facing vertices of an eye of ender at `at` (the
+/// entity's position; the quad itself is lifted above it). `right` and `up` are the camera's axes
+/// times the quad's 0.25 half extent.
+pub(in crate::game) fn eye_quad(
+    at: glam::Vec3,
+    right: glam::Vec3,
+    up: glam::Vec3,
+    r: sunrise_client::hud::Rect,
+) -> [Vertex; 4] {
+    // The lift is along the billboard's own up axis (the camera's up, so world +Y only at pitch 0):
+    // item/ender_eye parents item/generated with no display override, so its ground transform's
+    // `translation [0, 2, 0]` = 0.125 blocks applies here.
+    let c = at + up.normalize() * GROUND_LIFT;
+    [
+        (c - right - up, [r.u0, r.v1]),
+        (c + right - up, [r.u1, r.v1]),
+        (c + right + up, [r.u1, r.v0]),
+        (c - right + up, [r.u0, r.v0]),
+    ]
+    .map(|(pos, uv)| Vertex {
+        normal: [0; 4],
+        pos: pos.to_array(),
+        uv,
+        layer: 0,
+        color: 0xFFFF_FFFF,
+        light: (15 * 16) | ((15 * 16) << 8),
+        glint_uv: [0.0, 0.0],
+    })
+}
 
 /// SkyRenderer.renderEndFlash's quad: the end_flash `sprite` at height 100, scale 60, turned by
 /// `pose`, at `intensity`; none when the flash is out or has no sprite. Each quad comes with what
@@ -46,13 +89,14 @@ pub(in crate::game) fn end_flash_quad(
     (out, bodies)
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The environment attributes the frame draws: the packs' Polytone layers over the
     /// current dimension's, when a pack has some. Gameplay keeps `dim_environment`. A client of a
     /// server draws the type its server sent, with the packs' layers over it where they have a
     /// stack of that type.
     pub(in crate::game) fn view_environment(&self) -> &Environment {
-        if let Some(own) = self.remote.as_ref().and_then(|r| {
+        if let Some(own) = self.side.remote.as_ref().and_then(|r| {
             r.level_pack_environment
                 .as_deref()
                 .or(r.level_environment.as_deref())
@@ -108,7 +152,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `EndCrystalRenderer.submit`: the crystal and its beam to the respawn target.
     pub(in crate::game) fn end_crystal_geometry(
         &self,
-        crystal: &super::dragon::Crystal,
+        crystal: &crate::game::dragon_common::Crystal,
         frame: &CrystalDrawFrame<'_>,
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
@@ -183,7 +227,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 continue;
             }
             let p = eye.previous + (eye.position - eye.previous) * alpha - camera;
-            out.extend(crate::game::end::eye_quad(p.as_vec3(), right, up, r));
+            out.extend(eye_quad(p.as_vec3(), right, up, r));
         }
     }
 
@@ -319,6 +363,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use crate::game::end_state::flash_pose;
 
     /// The End's flash quad says it is the End's flash, and there is no entry without the quad.
     #[test]

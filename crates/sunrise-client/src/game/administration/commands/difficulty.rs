@@ -37,7 +37,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.sync_rules();
         // MinecraftServer.setDifficulty: every player, guests included, is
         // sent the new difficulty.
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub
                 .broadcast(&C::ChangeDifficulty(play::ChangeDifficulty {
                     difficulty: i32::from(i),

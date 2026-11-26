@@ -1,5 +1,4 @@
 //! Client-side `LocalPlayer.abilities` and `PlayerInfo` game mode sync (`ClientPacketListener`).
-use super::*;
 use sunrise_sim::lan::abilities::PlayerAbilities;
 
 /// `Abilities.walkingSpeed` before the server sends one.
@@ -10,35 +9,9 @@ pub(in crate::game) fn walking_speed(abilities: Option<&PlayerAbilities>) -> f32
     abilities.map_or(WALKING_SPEED, |a| a.walking_speed)
 }
 
-impl Remote {
-    /// `AbstractClientPlayer.gameMode()` for a remote player entity in `level_players`.
-    pub(in crate::game) fn remote_player_info_game_mode(&self, entity_id: i32) -> Option<i32> {
-        if let Some(slot) = self.level_player_infos.get(&entity_id)
-            && let Some(cell) = slot.get()
-        {
-            return Some(cell.load(std::sync::atomic::Ordering::Relaxed));
-        }
-        let uuid = self.level_players.get(&entity_id)?;
-        if let Some(cell) = self.tab_game_modes.get(uuid) {
-            if let Some(slot) = self.level_player_infos.get(&entity_id) {
-                let _ = slot.set(Arc::clone(cell));
-            }
-            return Some(cell.load(std::sync::atomic::Ordering::Relaxed));
-        }
-        self.tab_players.get(uuid).map(|t| t.game_mode)
-    }
-}
-
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    /// `Abilities.getWalkingSpeed()` of the local player: the server's, on a server.
-    pub(in crate::game) fn remote_walking_speed(&self) -> f32 {
-        walking_speed(self.remote.as_ref().map(|r| &r.abilities))
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::*;
+    use super::{PlayerAbilities, walking_speed};
     use {sunrise_client::camera::field_of_view_modifier, sunrise_level::camera_math::FovPlayer};
 
     fn fov(walking: f32, movement: f64) -> f32 {

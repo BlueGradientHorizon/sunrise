@@ -40,6 +40,27 @@ pub(in crate::game) struct MountedScreenWidgets {
     pub(in crate::game) inner: RefCell<MountedWidgetsInner>,
 }
 
+impl Default for MountedScreenWidgets {
+    fn default() -> Self {
+        Self {
+            generation: Cell::new(0),
+            next_id: Cell::new(1),
+            inner: RefCell::new(MountedWidgetsInner {
+                entries: Vec::new(),
+                removed_pause_actions: Vec::new(),
+                focused: None,
+                dragging: None,
+            }),
+        }
+    }
+}
+
+impl Drop for MountedScreenWidgets {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
 impl MountedScreenWidgets {
     pub(in crate::game::client_side) fn generation(&self) -> u64 {
         self.generation.get()

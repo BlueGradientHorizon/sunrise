@@ -102,7 +102,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.minecart_improvements() || !self.carts.iter().any(|c| c.id == p.id as u32) {
             return;
         }
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let at = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);

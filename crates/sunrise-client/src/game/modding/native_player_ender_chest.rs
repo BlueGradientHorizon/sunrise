@@ -127,6 +127,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     fn open_ender_menu(&mut self, conn: u32, title: Tag) -> bool {
         const MENU: &str = "minecraft:generic_9x3";
         if self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -136,7 +137,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         self.close_for_open(conn, MenuReplace::CloseFirst);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return false;
         };
         let Some(mut items) = host.hub.guest(conn).map(|g| g.ender_items.clone()) else {

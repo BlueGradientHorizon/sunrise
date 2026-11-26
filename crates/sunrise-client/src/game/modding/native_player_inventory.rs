@@ -2,31 +2,10 @@
 //! Reads lend the current slots; writes go through the authoritative server.
 use super::{
     Game,
-    api_values::{project_stack, stack_read_metadata},
-    commands::items::Slot,
-    native_server::PlayerRead,
+    native_server::{PlayerRead, SLOTS, inventory_slot},
 };
-use mod_api::{InventoryView, PlayerDataRefusal, PlayerRef};
-use sunrise_items::equipment::{BODY, SADDLE};
+use mod_api::{PlayerDataRefusal, PlayerRef};
 use sunrise_items::items::ItemStack;
-
-/// `Inventory`'s slot numbers past the 36 main slots (`EQUIPMENT_SLOT_MAPPING`).
-const SLOTS: u32 = 43;
-
-/// 0..35 main (0..8 hotbar), 36..39 feet to head, 40 offhand, 41 body, 42 saddle.
-/// ItemPlace uses 100..103 for armour and -106 for offhand; InventoryMenu has no 41/42.
-/// The slot the game keeps `Inventory` slot `slot` in.
-fn inventory_slot(slot: u32) -> Option<Slot> {
-    Some(match slot {
-        0..36 => Slot::Inv(slot as usize),
-        // `armor` is head first: 36 feet is its last.
-        36..40 => Slot::Armor((39 - slot) as usize),
-        40 => Slot::Offhand,
-        41 => Slot::Equipment(BODY),
-        42 => Slot::Equipment(SADDLE),
-        _ => return None,
-    })
-}
 
 /// The authority refusals shared by writes to a server player's own state.
 pub(in crate::game) enum PlayerWriteRefusal {
@@ -43,28 +22,6 @@ impl From<PlayerWriteRefusal> for PlayerDataRefusal {
             PlayerWriteRefusal::Dead => Self::Dead,
         }
     }
-}
-
-/// Lend `Inventory.getItem` over a player's 43 vanilla inventory slots.
-pub(in crate::game) fn lend_inventory_view(
-    inventory: &[Option<ItemStack>],
-    armor: &[Option<ItemStack>; 4],
-    offhand: &Option<ItemStack>,
-    equipment: &sunrise_items::equipment::Equipment,
-    read: &mut dyn for<'a> FnMut(InventoryView<'a>),
-) {
-    let stack_at = |slot| match inventory_slot(slot)? {
-        Slot::Inv(i) => inventory.get(i)?.as_ref(),
-        Slot::Armor(i) => armor[i].as_ref(),
-        Slot::Offhand => offhand.as_ref(),
-        Slot::Equipment(i) => equipment.get(i),
-        _ => None,
-    };
-    read(InventoryView::new(
-        0..SLOTS,
-        &|slot| stack_read_metadata(stack_at(slot)?).ok(),
-        &|slot, metadata| project_stack(stack_at(slot)?, metadata).ok(),
-    ));
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -108,23 +65,5 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             Err(PlayerDataRefusal::Stale)
         }
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// Lend `Inventory.getItem` over the resident slots.
-    pub(in crate::game) fn player_inventory_slots(
-        &self,
-        player: PlayerRef,
-        read: &mut dyn for<'a> FnMut(InventoryView<'a>),
-    ) -> Option<()> {
-        let (inventory, armor, offhand, equipment) = match self.player_read_both(player)? {
-            PlayerRead::Acting { .. } => {
-                (&self.inventory, &self.armor, &self.offhand, &self.equipment)
-            }
-            PlayerRead::Guest(g) => (&g.inventory, &g.armor, &g.offhand, &g.equipment),
-        };
-        lend_inventory_view(inventory, armor, offhand, equipment, read);
-        Some(())
     }
 }

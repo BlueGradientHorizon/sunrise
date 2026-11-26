@@ -11,7 +11,8 @@
 //! that client's position back (`handleMoveVehicle`), so vanilla never moves
 //! it by the rope either. Here the pull lands on the server's copy and the
 //! rider's client overwrites it the same way (`tick_boats`).
-use super::{Game, boats::Boat};
+use super::Game;
+use crate::game::boats_common::Boat;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
@@ -71,7 +72,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Holder::Player => {
                 let want = player.or(self.level.player_uuid);
                 // A server's guest (single player's window included) first.
-                let guest = self.lan.as_ref().and_then(|host| {
+                let guest = self.side.lan.as_ref().and_then(|host| {
                     let g =
                         host.hub.guests.iter().find(|g| {
                             Some(sunrise_sim::lan::playerdata::uuid_ints(g.uuid)) == want
@@ -315,7 +316,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let found = match pending {
             Pending::Knot(p) => Some((Holder::Knot(p), None)),
             Pending::Uuid(u) => {
-                let guest = self.lan.as_ref().is_some_and(|h| {
+                let guest = self.side.lan.as_ref().is_some_and(|h| {
                     h.hub
                         .guests
                         .iter()

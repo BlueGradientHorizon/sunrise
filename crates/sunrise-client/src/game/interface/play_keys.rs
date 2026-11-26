@@ -31,7 +31,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
         // Scripted presses and controller presses are delivered to the same mappings
         // as window input; direct screen keys remain immediate.
-        if !self.mod_mappings_screen_open() && !self.replay.playing() {
+        if !self.mod_mappings_screen_open() && !self.side.replay.playing() {
             let key = if key == KeyCode::Enter {
                 KeyCode::KeyT
             } else {
@@ -67,7 +67,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         raw: KeyCode,
     ) -> Result<()> {
         self.direct_craft_stop();
-        if self.side.screen == Screen::Playing && self.replay.playing() {
+        if self.side.screen == Screen::Playing && self.side.replay.playing() {
             self.studio_key(key);
             return Ok(());
         }
@@ -105,7 +105,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.options_key(KeyCode::Escape, None)?;
                 }
                 Screen::Playing => {
-                    if self.replay.playing() && self.side.captured {
+                    if self.side.replay.playing() && self.side.captured {
                         self.capture(false);
                         return Ok(());
                     }
@@ -229,12 +229,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.open_quick_actions();
         }
         while self.consume_mapping_click("key.swapOffhand") {
-            if !self.own_player_is_spectator() && self.remote.is_some() {
+            if !self.own_player_is_spectator() && self.side.remote.is_some() {
                 self.remote_swap_hands();
             }
         }
         while self.consume_mapping_click("key.drop") {
-            if !self.own_player_is_spectator() && self.remote.is_some() {
+            if !self.own_player_is_spectator() && self.side.remote.is_some() {
                 let all = self.has_control_down() || self.input_takes_stack_drop();
                 self.remote_drop(all);
             }
@@ -246,9 +246,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.in_portal_transition() {
             return;
         }
-        if self.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat()) {
+        if self.side.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat())
+        {
             self.remote_request_mount_inventory();
-        } else if self.remote.is_some() || !self.spectator() {
+        } else if self.side.remote.is_some() || !self.spectator() {
             if self.side.tutorial.open_inventory() {
                 self.persist_tutorial_step();
             }

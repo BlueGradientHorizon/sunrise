@@ -1,7 +1,6 @@
 //! Network ids of registry entries for mods (`registry_protocol_id`).
 use super::Game;
 use sunrise_core::identifier::Identifier;
-use sunrise_protocol::registry::SyncedNames;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The network id of `name` in `registry`: a client's own connection's registries (never the
@@ -12,13 +11,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         registry: &Identifier,
         name: &Identifier,
     ) -> Option<i32> {
-        if let Some(remote) = self.remote.as_ref() {
-            return SyncedNames {
-                builtin: &remote.builtin,
-                dynamic: &remote.registries,
-            }
-            .id(registry, name);
+        if let Some(names) = self.side_remote_registry_names() {
+            return names.id(registry, name);
         }
-        self.lan.as_ref()?.hub.synced_id(registry, name)
+        self.side_server_registry_protocol_id(registry, name)
     }
 }

@@ -4,8 +4,9 @@ use mod_api::__private::game::*;
 #[cfg(test)]
 #[path = "server_reload_tests.rs"]
 mod tests;
-use super::packs::reload_files;
-use super::{Game, functions::PackStack};
+use super::Game;
+use crate::game::function_pack_stack::PackStack;
+use crate::game::packs_common::reload_files;
 use mod_api::{
     __private::reload::{ReloadStageError, RetainedEntry, apply_listeners, prepare_listeners},
     FileToIdConverter, HookId, Identifier, ServerReloadContext, ServerReloadListener,

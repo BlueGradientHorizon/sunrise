@@ -67,7 +67,8 @@ fn scenario(interruption: Interruption) {
             "the advancement tree is loaded, so a save would write advancement files"
         );
         for conn in [12, 13] {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -93,13 +94,14 @@ fn scenario(interruption: Interruption) {
         let (before_12, before_13) = (read(12), read(13));
         // Guest 12 rides a boat alone; a save would move it into the player file.
         let boat = 700;
-        game.boats.push(crate::game::boats::Boat::new(
+        game.boats.push(crate::game::boats_common::Boat::new(
             boat,
             "oak".into(),
             sunrise_core::geometry::Vec3::ZERO,
             0.0,
         ));
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

@@ -11,7 +11,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{entities::ItemEntity, lan::playerdata::uuid_ints};
 
-use super::spill::{BlockItemDrop, DropState, prepare_item_random};
+use crate::game::spill_common::{BlockItemDrop, DropState, prepare_item_random};
 
 const KILLER: u128 = 0x1234;
 const THROWER: u128 = 0x5678;

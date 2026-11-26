@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Opened by a mod (`open_menu`), never here.
             Slots::Native => return MenuOpen::NoProvider,
         };
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return MenuOpen::Refused;
         };
         let Some(items) = host
@@ -128,7 +128,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             locked |= check;
         }
         if locked {
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return MenuOpen::Refused;
             };
             host.hub.send_to(
@@ -160,7 +160,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A mod menu type only for a client that has it and negotiated the
         // `sunrise:menu_extra` opening layout: as `ServerPlayer.openMenu` with
         // no menu, nothing opens.
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return MenuOpen::Refused;
         };
         let Some(guest) = host.hub.guest(conn) else {
@@ -196,7 +196,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return MenuOpen::Refused;
         }
         // ServerPlayer.openMenu closes the menu that was open.
-        let previous_window = self.lan.as_ref().and_then(|host| {
+        let previous_window = self.side.lan.as_ref().and_then(|host| {
             super::super::native_menus::open_menu_of(host, conn).map(|(window, ..)| window)
         });
         self.guest_close_all(conn);
@@ -215,7 +215,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         sunrise_protocol::menu_extra::MAX_DATA
                     );
                     if let Some(container) = previous_window
-                        && let Some(host) = self.lan.as_mut()
+                        && let Some(host) = self.side.lan.as_mut()
                         && super::super::native_menus::open_menu_of(host, conn).is_none()
                     {
                         host.hub
@@ -229,7 +229,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if self.world.block_entities.generation(&pos) != generation {
             if let Some(container) = previous_window
-                && let Some(host) = self.lan.as_mut()
+                && let Some(host) = self.side.lan.as_mut()
                 && super::super::native_menus::open_menu_of(host, conn).is_none()
             {
                 host.hub
@@ -265,6 +265,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.guest_container_opener(conn, pos, true);
         // The game-event listener can close or replace the installed menu.
         if self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -304,7 +305,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &[],
         );
         let slots = Slots::Block(pos);
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return MenuOpen::Refused;
         };
         // The mods may stop the menu; the click is spent. A fake player is
@@ -342,7 +343,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         };
         if let Some(denied) = denied {
-            let viewed = self.lan.as_ref().is_some_and(|host| {
+            let viewed = self.side.lan.as_ref().is_some_and(|host| {
                 host.hub
                     .guests
                     .iter()
@@ -369,6 +370,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         let Some(items) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -401,6 +403,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// has left.
     pub(in crate::game) fn guest_container_closed(&mut self, conn: u32) {
         if let Some(pos) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -441,7 +444,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let gi = self.guest_index(conn)?;
         if removal.drops_items() {
             self.guest_drop_carried(gi);
-        } else if let Some(host) = self.lan.as_mut() {
+        } else if let Some(host) = self.side.lan.as_mut() {
             let returned = host.hub.take_closed_menu_cursors(conn).collect();
             // Inputs of a processing menu the hub closed itself keep the drop decision made
             // when it closed (a dead player's drop), even though this removal is live.
@@ -458,7 +461,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // Overflow listeners can open a menu. Remember the window we will
         // retire now, not the one that was open before returning cursors.
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let retired_window =
             super::super::native_menus::open_menu_of(host, conn).map(|(window, _, _)| window);
         let open_menu = host
@@ -525,7 +528,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Container.stopOpen`'s no-op. Called by the close packet and by the
     /// `ServerPlayer.tick` reach/destroyed close.
     pub(in crate::game) fn close_guest_vehicle_menu(&mut self, conn: u32, key: (i32, i32, i32)) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let other_viewers =
@@ -547,6 +550,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if let Some(at) = at {
             let spect = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
@@ -571,7 +575,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn guest_close_menus(&mut self, conn: u32, removal: MenuRemoval) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let mut windows: Vec<i32> = host
@@ -590,7 +594,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             windows.extend(p.lectern.as_ref().map(|l| l.window));
             windows.extend(p.mount_window.as_ref().map(|m| m.window));
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             for container in windows {
                 host.hub
                     .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));

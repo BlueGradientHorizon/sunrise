@@ -1,7 +1,6 @@
 //! Common game-mode queries, adventure predicates, chat abilities, and player abilities.
 use super::{Game, Screen};
 use mod_api::{PlayerAbilities, PlayerRef};
-use sunrise_client::chat::{ChatAbilities, ChatVisibility};
 use sunrise_command::args::GameMode;
 use sunrise_items::items::ItemStack;
 
@@ -67,10 +66,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
     pub(in crate::game) fn mode_id(&self) -> i32 {
         self.mode.id()
-    }
-    /// `Minecraft.computeChatAbilities` from the Chat option.
-    pub(in crate::game) fn chat_abilities(&self) -> ChatAbilities {
-        ChatAbilities::new(ChatVisibility::from_option(self.side.chat_visibility()))
     }
     /// `Player.getAbilities`; Paper `Player#getAllowFlight/isFlying/getFlySpeed/getWalkSpeed`.
     pub(in crate::game) fn player_abilities(&self, player: PlayerRef) -> Option<PlayerAbilities> {

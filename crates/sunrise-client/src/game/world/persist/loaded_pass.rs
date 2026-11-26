@@ -19,7 +19,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Install one fixture record or explicitly owned live transfer through the same
     /// metadata and join boundary. The transfer token belongs only to this call.
     #[cfg(test)]
-    pub(in crate::game::server_side) fn spawn_loaded_entity(
+    pub(in crate::game) fn spawn_loaded_entity(
         &mut self,
         key: ChunkKey,
         tag: Tag,
@@ -78,7 +78,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             return;
         }
-        if !super::super::general::quarantined_kind(&kind) {
+        if !crate::game::general::quarantined_kind(&kind) {
             drop_unleashable_leash(&mut tag, &kind, is_mob);
         }
         let uuid = entity_nbt::uuid(&tag);
@@ -151,19 +151,5 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             self.native_joins_flush(from_disk, 0);
         }
-    }
-}
-
-impl EntityMemory {
-    /// Puts back the raw record `kept` holds, or takes out the one a spawn added where none was:
-    /// the abort of a transaction whose spawn wrote over it (`journal_anon`).
-    pub(in crate::game::server_side) fn put_back_anon(
-        &mut self,
-        (key, was): ((String, [u64; 3]), Option<(Vec3, Tag)>),
-    ) {
-        match was {
-            Some(record) => self.anon.insert(key, record),
-            None => self.anon.remove(&key),
-        };
     }
 }

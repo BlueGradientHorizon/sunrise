@@ -28,7 +28,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let id = entity.id() as i32;
         Some(
-            self.lan
+            self.side
+                .lan
                 .iter()
                 .flat_map(|h| h.hub.guests.iter().map(move |g| (&h.hub, g)))
                 .filter(|(hub, g)| hub.here(g) && g.entity_id != id && g.tracker.is_tracking(id))
@@ -44,7 +45,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let dimension = chunk.level().dimension_id();
         let [x, z] = chunk.pos();
         Some(
-            self.lan
+            self.side
+                .lan
                 .iter()
                 .flat_map(|h| h.hub.guests.iter())
                 .filter(|g| g.tracks_chunk(dimension, (x, z)))
@@ -135,7 +137,7 @@ mod tests {
                 nether.visit_online_players(game, &mut count),
                 Ok(ControlFlow::Continue(()))
             );
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let moved = host.hub.guests.connection_index(13).unwrap();
             host.hub.guests.update(moved, |guest| {
                 guest.dimension = "minecraft:the_nether".to_owned();
@@ -166,6 +168,7 @@ mod tests {
                 [(99, 99), (12, 12), (13, 13)]
             );
             let conn = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -202,7 +205,7 @@ mod tests {
                         .insert((cx, cz), std::sync::Arc::new(chunk));
                 }
             }
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.ticks = 10;
             hub.guests.update_all(|g| g.max_unacknowledged = 64);
             let id = game
@@ -232,7 +235,7 @@ mod tests {
                     .contains(&fake.uuid())
             );
 
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let far = host.hub.guests.connection_index(13).unwrap();
             host.hub
                 .guests
@@ -246,7 +249,7 @@ mod tests {
             assert_eq!(game.entity_trackers(stale), None);
 
             // A live guest in a parked level is not in the level in place: no trackers.
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let moved = host.hub.guests.connection_index(13).unwrap();
             host.hub.guests.update(moved, |g| {
                 g.dimension = "minecraft:the_nether".to_owned();
@@ -271,7 +274,7 @@ mod tests {
                 Some(vec![]),
                 "nothing sent yet"
             );
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             for conn in [12, 13] {
                 let i = host.hub.guests.connection_index(conn).unwrap();
                 host.hub.guests.update(i, |g| {
@@ -291,7 +294,7 @@ mod tests {
 
             // View distance 8 (the guests' client setting): ChunkTrackingView.contains
             // keeps a chunk while max(|dx| - 2, 0)^2 + max(|dz| - 2, 0)^2 < 8^2.
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let far = host.hub.guests.connection_index(13).unwrap();
             assert_eq!(host.hub.guests[far].view_distance, 8);
             host.hub.guests.update(far, |g| g.center = Some((9, 0)));
@@ -300,7 +303,7 @@ mod tests {
                 Some(vec![12, 13]),
                 "7 past the buffer"
             );
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.guests.update(far, |g| g.center = Some((10, 0)));
             assert_eq!(
                 uuids(chunk.watchers(game)),
@@ -308,7 +311,7 @@ mod tests {
                 "8 past the buffer"
             );
 
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let near = host.hub.guests.connection_index(12).unwrap();
             host.hub.guests.update(near, |g| {
                 g.dimension = "minecraft:the_nether".to_owned();

@@ -80,7 +80,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.world.block_entities.unload_column(column);
             }
         });
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.attachments.retain(|holder, _| match *holder {
                 Holder::Chunk([x, z]) => !gone.contains(&(x, z)),
                 Holder::BlockEntity([x, _, z]) => !gone.contains(&(x >> 4, z >> 4)),
@@ -90,17 +90,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         gone.clear();
     }
     pub(in crate::game::client_side) fn remote_chunk_in_range(&self, x: i32, z: i32) -> bool {
-        self.replay.playing()
-            || self.remote.as_ref().is_none_or(|r| {
+        self.side.replay.playing()
+            || self.side.remote.as_ref().is_none_or(|r| {
                 ClientChunkRange::new(r.chunk_center, r.view_distance).contains((x, z))
             })
     }
     pub(in crate::game) fn set_remote_chunk_cache_center(&mut self, center: Column) {
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.chunk_center = center;
             let range = ClientChunkRange::new(center, r.view_distance);
             let adopted_view = std::mem::take(&mut r.awaiting_viewed_chunk_center);
-            if !self.replay.playing() {
+            if !self.side.replay.playing() {
                 if adopted_view {
                     // Viewed worlds hold arbitrary areas, not a ring. Only copy entries
                     // in the new active view when establishing its cache for the first time.
@@ -118,15 +118,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     pub(in crate::game) fn set_remote_chunk_cache_radius(&mut self, distance: i32) {
-        self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+        self.side.streaming.radius = crate::game::streaming_radius::streaming_radius_for(
             self.side.settings.render_distance,
             Some(distance),
         );
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             let old = ClientChunkRange::new(r.chunk_center, r.view_distance);
             let range = ClientChunkRange::new(r.chunk_center, distance);
             r.view_distance = distance;
-            if old != range && !r.awaiting_viewed_chunk_center && !self.replay.playing() {
+            if old != range && !r.awaiting_viewed_chunk_center && !self.side.replay.playing() {
                 // ClientChunkCache.updateViewRadius copies the in-range slots into new
                 // storage and abandons the rest. Their data is freed here, so each tells
                 // its `client_chunk_unload`, unlike a centre move's hidden slots.

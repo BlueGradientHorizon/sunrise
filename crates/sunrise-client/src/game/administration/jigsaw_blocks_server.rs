@@ -61,7 +61,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: play::SetJigsawBlock,
     ) {
-        let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;
@@ -74,7 +74,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// `handleJigsawGenerate` for a guest.
     pub(in crate::game) fn lan_jigsaw_generate(&mut self, conn: u32, p: play::JigsawGenerate) {
-        let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;

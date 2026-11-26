@@ -288,13 +288,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 if let Some(moved) = self.side.last_quick_moved.clone() {
                     // The creative screen clicks its own menu, on a server too.
-                    if self.remote.is_some() && self.side.screen != Screen::Creative {
+                    if self.side.remote.is_some() && self.side.screen != Screen::Creative {
                         self.remote_quick_move_all(slot, &moved);
                     } else {
                         self.menu_session(|menu, env, to_menu| {
                             Some(menu.quick_move_all(env, to_menu(slot)?, &moved).is_ok())
                         });
-                        if self.remote.is_some() {
+                        if self.side.remote.is_some() {
                             self.send_creative_slots();
                         }
                     }
@@ -510,7 +510,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         input: sunrise_sim::menu::Input,
     ) {
         let button = i32::from(right);
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             if self.side.screen == Screen::Creative {
                 self.remote_creative_drop(right);
             } else {

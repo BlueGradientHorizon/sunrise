@@ -1,29 +1,7 @@
-use super::*;
-
-/// `IItemExtension.onEntityItemUpdate`: a dropped item entity is about to
-/// tick (`ItemEntity.tick`). Set `canceled` and its
-/// movement and merging are skipped for this tick. Server-side.
-pub(in crate::game) fn native_on_entity_item_update(
-    call: mod_api::__private::OnEntityItemUpdateCall<'_>,
-) {
-    crate::game::native_hooks::fire::fire_on_entity_item_update(call);
-}
-
-pub(in crate::game) struct ResidentDroppedItem<'g, 'w> {
-    pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
-    pub(in crate::game) subject: mod_api::ItemEntityRef,
-    pub(in crate::game) index: usize,
-}
-
-pub(in crate::game) struct ItemEntityTickAccess<'g, 'w> {
-    pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
-    pub(in crate::game) subject: mod_api::ItemEntityRef,
-    pub(in crate::game) index: usize,
-}
-
 #[cfg(test)]
 pub(in crate::game) mod on_entity_item_update_tests {
-    use super::*;
+    use super::super::*;
+    use crate::game::server_side::native_hooks_server::on_entity_item_update::ItemEntityTickAccess;
     use crate::game::{
         api_values::{STACK_PROJECTIONS, test_snapshot},
         native_entity_refs::tests::with_game,

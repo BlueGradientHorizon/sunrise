@@ -212,7 +212,8 @@ pub(in crate::game) fn guest_case(
 ) -> Outcome {
     clear_ground(game);
     let room = case.room;
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -228,7 +229,7 @@ pub(in crate::game) fn guest_case(
     let id = spawn(game, [3.0, 64.0, 5.0], case);
     let gi = game.guest_index(12).unwrap();
     game.guest_pickups(gi);
-    let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+    let guest = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
     let first = guest.inventory[0].as_ref().map_or(0, |stack| {
         if &*stack.item == "minecraft:apple" {
             stack.count

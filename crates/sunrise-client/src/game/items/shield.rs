@@ -4,6 +4,7 @@
 //! the block sound, attacker knockback (`blockedByItem`) and axes disabling
 //! the shield (`Player.blockUsingItem`, `BlocksAttacks.disable`).
 use super::Game;
+use crate::game::held_items::block_delay_passed;
 use sunrise_core::random::RandomSource;
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
@@ -14,15 +15,6 @@ use sunrise_world::blocking_rules::{BlockingRules, DamageReduction, ItemDamageFu
 
 /// `Inventory.SLOT_OFFHAND`: the `using` slot of an off-hand item.
 pub(in crate::game) use super::held_items::OFFHAND_SLOT;
-
-/// `LivingEntity.getItemBlockingWith`'s delay: an item that blocks attacks blocks once it has been
-/// used for `BlocksAttacks.blockDelayTicks` (`Math.round(seconds * 20)`) ticks.
-pub(in crate::game) fn block_delay_passed(
-    component: &sunrise_items::items::BlocksAttacks,
-    ticks: u32,
-) -> bool {
-    ticks as i32 >= (component.delay_seconds * 20.0).round() as i32
-}
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractArrow.onHitEntity` on the player: a piercing arrow passes item blocking, whoever

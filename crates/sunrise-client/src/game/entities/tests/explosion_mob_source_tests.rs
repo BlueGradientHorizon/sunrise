@@ -2,7 +2,7 @@
 //! primed TNT spares vehicles without `mobGriefing`, and a mob's own blast
 //! hands its kind and UUID to the TNT it primes.
 use super::*;
-use crate::game::boats::Boat;
+use crate::game::boats_common::Boat;
 use crate::game::game_tests::tests::server_game;
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::gamerules::Value;

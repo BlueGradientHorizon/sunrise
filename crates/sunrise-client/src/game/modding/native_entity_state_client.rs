@@ -1,8 +1,37 @@
 //! Client-side entity state reads and client fire-immunity writes.
-use super::{Game, commands::Target};
+use super::{Game, commands_common::Target};
 use mod_api::EntityRef;
 
 impl Game<'_, crate::game::client_side::ClientState> {
+    /// `Entity.tickCount` of a client's own copy: the local player's, or that of an entity the
+    /// server added to the level the client shows, whatever its kind, counted by the client's
+    /// entity pass (`Entity.commonTick`) since the client added it.
+    pub(in crate::game) fn client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        // The local player from its admission (Login, Respawn), before the server's first
+        // teleport gives it a body.
+        if id == remote.entity_id {
+            return remote.has_logical_player.then_some(remote.own_tick_count);
+        }
+        remote
+            .entities
+            .get(&id)
+            .map(|tracked| tracked.tick_count)
+            .or_else(|| remote.general.rows.get(&id).map(|row| row.age as i32))
+    }
+
+    pub(in crate::game) fn client_tracked_player_fire_immunity(
+        &self,
+        entity: EntityRef,
+    ) -> Option<bool> {
+        let (kind, _) = self.native_client_tracked(entity)?;
+        (kind == "minecraft:player").then_some(())?;
+        self.side
+            .remote
+            .as_ref()?
+            .tracked_fire_immunity(i32::try_from(entity.id()).ok()?)
+    }
+
     pub(in crate::game) fn client_entity_is_shift_key_down(
         &self,
         entity: EntityRef,
@@ -72,6 +101,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .native_client_tracked(entity)
             .is_some_and(|(kind, _)| kind == "minecraft:player")
             && self
+                .side
                 .remote
                 .as_ref()
                 .and_then(|r| {
@@ -83,7 +113,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !tracked_player {
             return false;
         }
-        self.remote
+        self.side
+            .remote
             .as_mut()
             .is_some_and(|remote| remote.set_tracked_fire_immunity(entity.id() as i32, immune))
     }

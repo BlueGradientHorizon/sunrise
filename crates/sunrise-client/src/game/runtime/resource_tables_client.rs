@@ -1,9 +1,8 @@
 use super::*;
 use crate::game::api_values::TryIntoApi;
+#[cfg(test)]
+use crate::game::resource_tables::DYNAMIC_TEXTURE_POOL_OVERRIDE;
 use crate::game::resource_tables::PackParts;
-use crate::game::resource_tables::PlainTexts;
-use crate::game::resource_tables::UiResources;
-use crate::game::resource_tables::dynamic_texture_pool;
 use std::path::Path;
 use sunrise_client_render::streaming::{MeshWorkerContext, WorkerContext};
 use sunrise_level::chunk_streamer::ChunkWorkerContext;
@@ -38,7 +37,7 @@ impl PackResources {
                 &render,
                 facts,
                 visibility,
-                api_values::mod_tint_values(assets.registry)?,
+                crate::game::client_side::api_values_client::mod_tint_values(assets.registry)?,
             )?
             .with_polytone_colormaps(root.source(), assets.registry),
         );
@@ -372,20 +371,126 @@ pub(in crate::game) fn read_colors(
 impl crate::game::client_side::ClientState {
     #[inline]
     pub(in crate::game) fn expect_client_res(
-        slot: &std::sync::OnceLock<crate::game::ClientResources>,
-    ) -> &crate::game::ClientResources {
+        slot: &std::sync::OnceLock<ClientResources>,
+    ) -> &ClientResources {
         slot.get().expect("world resources joined before entry")
     }
 
     #[inline]
-    pub(in crate::game) fn client_res(&self) -> &crate::game::ClientResources {
+    pub(in crate::game) fn client_res(&self) -> &ClientResources {
         Self::expect_client_res(&self.client_res)
     }
 }
 
 impl Game<'_, crate::game::client_side::ClientState> {
     #[inline]
-    pub(in crate::game) fn client_res(&self) -> &crate::game::ClientResources {
+    pub(in crate::game) fn client_res(&self) -> &ClientResources {
         self.side.client_res()
     }
+}
+
+#[cfg(feature = "client")]
+pub(in crate::game) struct ClientMobTables {
+    pub(in crate::game) models: sunrise_client::mobs_render::ClientMobModels,
+    pub(in crate::game) data: sunrise_client::mobs_render::ClientMobData,
+}
+
+#[cfg(feature = "client")]
+pub(in crate::game) struct ClientResources {
+    pub(in crate::game) block_entity_render: BlockEntityRenderer,
+    pub(in crate::game) animate: sunrise_client::animate_tick::AnimateTables,
+    pub(in crate::game) fog: sunrise_client::fog::FogTables,
+    pub(in crate::game) music: sunrise_client::music::MusicTables,
+    pub(in crate::game) ambient: sunrise_client::ambience::AmbientTables,
+    /// The player model's right and left arms.
+    pub(in crate::game) player_arm: [Option<sunrise_client::mobs::Part>; 2],
+    /// The slim model's right and left arms (3 pixels wide).
+    pub(in crate::game) player_arm_slim: [Option<sunrise_client::mobs::Part>; 2],
+    pub(in crate::game) player_type: Option<Arc<MobType>>,
+    /// `SpinAttackEffectModel` (Riptide's spinning boxes).
+    pub(in crate::game) spin_attack: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) client_mobs: ClientMobTables,
+}
+
+#[cfg(feature = "client")]
+#[derive(Clone)]
+pub(in crate::game) struct ClientPackResources {
+    /// `Blocks.WATER.defaultBlockState()` for screen-effect extraction.
+    pub(in crate::game) water_overlay_state: mod_api::BlockState,
+    pub(in crate::game) render: Arc<RenderAssets>,
+    pub(in crate::game) context: Arc<sunrise_client_render::streaming::WorkerContext>,
+    pub(in crate::game) layer_names: Arc<HashMap<u32, String>>,
+    /// Item definitions, baked item models and special renderers.
+    pub(in crate::game) item_renderer: Arc<sunrise_client::item_render::ItemRenderer>,
+    /// clouds.png: (width, height, filled cells).
+    pub(in crate::game) clouds: Arc<(u32, u32, Vec<bool>)>,
+    /// misc/forcefield.png: (width, height, RGBA) for the world border wall.
+    pub(in crate::game) forcefield: Arc<(u32, u32, Vec<u8>)>,
+    /// Custom sky layers (OptiFine's `optifine/sky`) with their textures; none without them.
+    pub(in crate::game) custom_sky: Arc<dyn sunrise_client::custom_sky::SkyLayers>,
+    /// The overworld's, Nether's and End's attribute stacks with the packs' Polytone biome and
+    /// dimension modifiers (#11486), when a pack has some: what the frame draws.
+    pub(in crate::game) environments: Option<Arc<[Environment; 3]>>,
+    /// The packs' Polytone custom particles and block emitters (#11486), when a pack has some.
+    pub(in crate::game) polytone_particles:
+        Option<Arc<sunrise_client::particles::polytone::Registry>>,
+    /// The packs' Polytone post chains (#11486), when a pack has some.
+    pub(in crate::game) polytone_post: Option<Arc<sunrise_client::polytone_post::PolytonePost>>,
+    /// The packs' Polytone custom colours (`polytone/colors.json`).
+    pub(in crate::game) polytone_colors: Arc<sunrise_client::pack_palette::PackColors>,
+}
+
+/// Everything the title and menus draw: the GUI atlas with its font, the
+/// title panorama and the splash pool. Kept apart from the world bundle so the
+/// title can appear before the block sprites, models and gameplay tables are ready.
+#[cfg(feature = "client")]
+pub struct UiResources {
+    /// The GUI, font, particle, map and skin atlas.
+    pub atlas: HudAtlas,
+    /// The title screen's panorama faces.
+    pub panorama: Arc<sunrise_client::gfx::panorama::Faces>,
+    /// The title screen's splashes (`sunrise_client::splashes::pool`).
+    pub splashes: Arc<str>,
+    /// The `Text` of each plain string mods draw (`DrawContext::text`).
+    pub plain_texts: PlainTexts,
+}
+
+/// The `Text` of each plain string a mod draws by `&str` (`DrawContext::text`), kept so drawing
+/// the same string again builds no new `Text`. It holds at most [`PlainTexts::MAX`] strings and
+/// starts over past that, so text that changes every frame can't grow it.
+#[cfg(feature = "client")]
+#[derive(Default)]
+#[rustfmt::skip]
+pub struct PlainTexts(
+    pub(in crate::game)
+        std::cell::RefCell<std::collections::HashMap<Box<str>, sunrise_game_data::text::Text>>,
+);
+
+#[cfg(feature = "client")]
+impl PlainTexts {
+    pub(in crate::game) const MAX: usize = 256;
+}
+
+/// Whether the HUD atlas packs the pool of dynamic texture slots: whenever a client mod is
+/// loaded, since any of them can call `ClientHost::create_dynamic_texture`, with
+/// no mixin and no opt-in (#4437). A game with no mod packs no slot and its atlas does not grow.
+/// Read where the atlas is built: at the first load and on a resource reload.
+#[cfg(feature = "client")]
+pub(in crate::game) fn dynamic_texture_pool() -> bool {
+    #[cfg(test)]
+    if let Some(pool) = DYNAMIC_TEXTURE_POOL_OVERRIDE.get() {
+        return pool;
+    }
+    !mod_api::__private::mods().is_empty()
+}
+
+/// misc/forcefield.png for the world border wall (square, power of two).
+#[cfg(feature = "client")]
+fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u32, u32, Vec<u8>) {
+    root.read("assets/minecraft/textures/misc/forcefield.png")
+        .map_err(Into::into)
+        .and_then(|bytes| sunrise_client::hud::decode_bytes(&bytes))
+        .ok()
+        .filter(|(w, h, _)| w == h && w.is_power_of_two())
+        .unwrap_or((1, 1, vec![0; 4]))
 }

@@ -1,6 +1,6 @@
 //! Client-side implementations of `side_ops::world` and client-only world/harness helpers.
 use super::*;
-use crate::game::piston_carry_state::PositionChange;
+use crate::game::piston_carry_common::PositionChange;
 use sunrise_sim::join_seq::{
     Joined as _,
     residency::{Kind, Owner, Source},
@@ -142,7 +142,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut scratch_hoppers = HashMap::new();
         let mut scratch_rand_sequences =
             sunrise_items::random_sequences::RandomSequences::default();
-        let mut client_spill = spill::Spill::default();
+        let mut client_spill = crate::game::spill_common::Spill::default();
         let mut scratch_random_tick_sections =
             sunrise_sim::random_tick_sections::RandomTickSections::default();
         let mut scratch_lid_openers = HashMap::new();
@@ -158,7 +158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .synced
             .as_ref()
             .unwrap_or_else(|| self.res.recipes());
-        let enabled_features = match &self.remote {
+        let enabled_features = match &self.side.remote {
             Some(remote) => &remote.features,
             None => crate::game::tables::default_client_features(),
         };
@@ -175,7 +175,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             part_state_index: self.attachment_indexes.get(&self.dim),
             attachment_query_scopes: &self.transactions.attachment_query_scopes,
             command_block_transition: None,
-            positions: piston_carry_state::PositionState {
+            positions: crate::game::piston_carry_common::PositionState {
                 gateways: &mut scratch_gateways,
                 hoppers: &mut scratch_hoppers,
             },
@@ -241,7 +241,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             location: location_world::LocationRefs {
                 dimension: self.dim.id(),
                 end: &self.end,
-                tags: advancements::TagSources {
+                tags: crate::game::advancements_common::TagSources {
                     pack_tags: None,
                     items,
                     mob_data: self.res.mob_data(),
@@ -264,7 +264,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Client-visible spill cleanup (moving-piston animation/container state and removed block
     /// entity container reset); omits server drops, hopper caches, guest menus, and LAN broadcasts.
-    fn client_finish_spill(&mut self, spill: spill::Spill) {
+    fn client_finish_spill(&mut self, spill: crate::game::spill_common::Spill) {
         for change in spill.piston_positions {
             match change {
                 PositionChange::Carry { from, to, partner } => {
@@ -334,7 +334,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game) fn client_tick(&mut self) -> Result<()> {
-        let client_level = self.remote.is_some();
+        let client_level = self.side.remote.is_some();
         // Held through the carry too: a carried body's move asks the parts as its own does.
         let _parts = client_level.then(|| self.collision_parts()).flatten();
         // A client's tick of the level it shows holds the colliders as it began, then carries
@@ -346,7 +346,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )
         });
         self.expire_client_cracks();
-        if self.agent.hold_server {
+        if self.side.agent.hold_server {
             return Ok(());
         }
         self.abort_open_transactions();
@@ -387,7 +387,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let table = self.resident_entities.table.get_mut();
         table.reset();
         let journal = table.producer();
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Mob,
             self.mobs,
             &journal,
@@ -396,7 +396,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Mob
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Item,
             self.dropped,
             &journal,
@@ -405,7 +405,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Item
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Orb,
             self.orbs,
             &journal,
@@ -414,7 +414,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Orb
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Stand,
             self.armor_stands,
             &journal,
@@ -423,7 +423,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Stand
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Frame,
             self.item_frames,
             &journal,
@@ -432,7 +432,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Frame
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Painting,
             self.paintings,
             &journal,
@@ -441,7 +441,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Painting
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Boat,
             self.boats,
             &journal,
@@ -450,7 +450,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Boat
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Cart,
             self.carts,
             &journal,
@@ -459,7 +459,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Cart
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Fangs,
             self.fangs.list,
             &journal,
@@ -468,7 +468,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Fangs
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Crystal,
             self.crystals,
             &journal,
@@ -477,7 +477,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Crystal
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Tnt,
             self.tnts,
             &journal,
@@ -486,7 +486,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Tnt
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Cushion,
             self.cushions,
             &journal,
@@ -495,7 +495,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Cushion
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Knot,
             self.resident_entities.knots,
             &journal,
@@ -504,7 +504,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Knot
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Falling,
             self.falling,
             &journal,
@@ -513,7 +513,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Falling
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Rocket,
             self.rockets,
             &journal,
@@ -522,7 +522,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Rocket
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Trident,
             self.tridents,
             &journal,
@@ -531,7 +531,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Trident
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Spawner,
             self.ominous_spawners,
             &journal,
@@ -540,7 +540,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Spawner
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Cloud,
             self.breath_clouds,
             &journal,
@@ -549,7 +549,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Cloud
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Bolt,
             self.bolts,
             &journal,
@@ -558,7 +558,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 kind: Kind::Bolt
             }
         );
-        crate::game::entity_residency::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             General,
             self.resident_entities.general.rows,
             &journal,
@@ -730,14 +730,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn run_component_harness(
         &self,
-        fixture: integrated::ComponentHarness,
+        fixture: crate::game::integrated_link::ComponentHarness,
     ) -> Result<()> {
-        integrated::run_component_harness_on_server(
+        (self.side.run_component_harness)(
             self.res.clone(),
             self.pack.clone(),
             self.options.clone(),
             self.side.settings.sim_settings(),
             fixture,
+            self.side.profile_resolver,
         )
     }
 
@@ -748,10 +749,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let starting = self
+            .side
             .integrated_starting
             .take()
             .map(|starting| starting.handle);
-        for mut server in self.integrated.take().into_iter().chain(starting) {
+        for mut server in self.side.integrated.take().into_iter().chain(starting) {
             if let Err(error) = server.halt() {
                 log::error!("Sunrise: crashed integrated server: {error}");
             }

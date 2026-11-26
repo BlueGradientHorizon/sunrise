@@ -3,7 +3,12 @@ use super::*;
 use crate::game::minecarts::{CartKind, Minecart};
 use mod_api::LevelRandomHost as _;
 use std::sync::{Arc, Mutex};
-use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
+use sunrise_core::{
+    geometry::Vec3,
+    nbt::Tag,
+    position::BlockPos,
+    random::{LegacyRandom, RandomSource},
+};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::save::PendingContainerLoot;
 use sunrise_world::loot::{LootData, PackOverlay};
@@ -73,7 +78,7 @@ fn level_container_reads_preserve_snapshot_and_unpack_comparator_once() {
             let (chunk, chest) = snapshot.take().unwrap();
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "ContainerReadTest").unwrap();
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             game.world.chunks.insert((0, 0), chunk);
             game.world.block_entities.insert(POS, chest);
             let client_level = game.level(game.dim.id()).unwrap();
@@ -456,7 +461,7 @@ fn chest_minecart_break_unpacks_before_drop() {
                     100.0,
                     false,
                     false,
-                    crate::game::minecarts::CartHit::default(),
+                    crate::game::server_side::minecarts_server::CartHit::default(),
                 );
             }
         }
@@ -688,7 +693,7 @@ fn clone_move_transfers_pending_loot() {
 }
 fn structure_capture_disk_round_trip_keeps_pending_loot() {
     with_game(|g| {
-        crate::game::growth::install_live_features(
+        crate::game::growth_features::install_live_features(
             &g.res,
             &g.pack,
             &g.options,

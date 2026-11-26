@@ -8,7 +8,7 @@ use sunrise_mod_runtime::attachments::{
 #[test]
 #[ignore = "daily"]
 fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() {
-    use crate::game::entity::taken_pass_tests::{
+    use crate::game::server_side::entity_server::taken_pass_tests::{
         LifecycleFixture, RemoteLifecycle, SlotIdentities, run_remote_lifecycle,
     };
     use sunrise_protocol::{
@@ -373,7 +373,7 @@ fn a_bound_tnt_cart_keeps_its_join_when_damage_primes_it() {
             5.0,
             false,
             true,
-            crate::game::minecarts::CartHit::default(),
+            crate::game::server_side::minecarts_server::CartHit::default(),
         );
         assert_eq!(
             game.carts

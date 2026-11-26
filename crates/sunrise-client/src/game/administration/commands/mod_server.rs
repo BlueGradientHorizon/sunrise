@@ -1,4 +1,4 @@
-use super::{Dim, Game, chat_common::PLAYER_NAME, vehicle_teleport::TeleportMotion};
+use super::{Dim, Game, vehicle_teleport::TeleportMotion};
 use crate::game::commands::OtherEntity;
 use crate::game::commands::R;
 use crate::game::commands::Target;
@@ -583,13 +583,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .lan_broadcast_source_say(&name, &message, captured_for)
                     .ok_or_else(|| err("command.failed", &[]))?;
                 let line = Text::translate("chat.type.announcement", &[name, message]);
-                if self.lan.is_some() && self.is_dedicated_server() {
+                if self.side.lan.is_some() && self.is_dedicated_server() {
                     self.lan_log_event(sunrise_sim::lan::hub::HostEvent::Chat {
                         line: line.plain(),
                         secure: false,
                     });
                 }
-                if self.lan.is_some() {
+                if self.side.lan.is_some() {
                     if capture_say && let Some(capture) = self.side.chat_capture.as_mut() {
                         capture.push(line);
                     }
@@ -599,7 +599,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Ok(1)
             }
             "me" => {
-                if self.lan.is_some() {
+                if self.side.lan.is_some() {
                     let captured_for = self.side.chat_capture.as_ref().and(self.side.lan_acting);
                     let capture_me = self
                         .lan_broadcast_source_emote(&name, &message, captured_for)
@@ -637,7 +637,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .italic();
                     match target {
                         Target::Guest(conn) => {
-                            if let Some(host) = self.lan.as_ref() {
+                            if let Some(host) = self.side.lan.as_ref() {
                                 host.hub.send_to(
                                     conn,
                                     &C::SystemChat(play::SystemChat {
@@ -829,10 +829,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.side.next_entity += 1;
                     let id = self.side.next_entity;
                     let at = Vec3::new(pos[0], pos[1], pos[2]);
-                    let (drawn, uuid) = super::dragon::Crystal::own_draws();
+                    let (drawn, uuid) = crate::game::dragon_common::Crystal::own_draws();
                     self.persist.uuids.insert(id, uuid);
-                    let time = super::dragon::Crystal::start_time(at, drawn, self.clock.still());
-                    let crystal = super::dragon::Crystal::new(id, at, true, time);
+                    let time = crate::game::dragon_common::Crystal::start_time(
+                        at,
+                        drawn,
+                        self.clock.still(),
+                    );
+                    let crystal = crate::game::dragon_common::Crystal::new(id, at, true, time);
                     self.crystals.push(crystal);
                     // tryAddFreshEntityWithPassengers refused: ERROR_DUPLICATE_UUID.
                     if !self.native_joins_flush(false, id) {
@@ -1279,7 +1283,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 | Target::DragonPart(_)
         ))
         .then(|| {
-            super::native_entities::target_id(t)
+            crate::game::commands_common::target_id(t)
                 .and_then(|id| self.persist.uuid_of(id).map(|uuid| (id, uuid)))
         })
         .flatten();
@@ -1504,7 +1508,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.getId` as the players' clients know it: a player's is the one the
     /// hub gave it, any other entity's is its own id.
     pub(in crate::game) fn network_entity_id(&self, t: Target) -> Option<i32> {
-        let host = self.lan.as_ref();
+        let host = self.side.lan.as_ref();
         match t {
             Target::Player => self.player_entity_id_by_connection(self.side.lan_acting),
             Target::Guest(conn) => host?.hub.guest(conn).map(|g| g.entity_id),
@@ -1618,7 +1622,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.side.guest_packets.push(packet)
             }
             Target::Guest(conn) => {
-                if let Some(host) = self.lan.as_ref() {
+                if let Some(host) = self.side.lan.as_ref() {
                     host.hub.send_to(conn, &packet);
                 }
             }
@@ -1905,37 +1909,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The name of the player the game acts for: a guest's own while their
-    /// command or action runs (`Player.getName`).
-    pub(in crate::game) fn acting_player_name(&self) -> &str {
-        crate::game::Side::lan_acting_name(&self.side).unwrap_or(PLAYER_NAME)
-    }
-
-    /// Entity.getDisplayName.
-    pub(in crate::game) fn target_name(&self, t: Target) -> Text {
-        match t {
-            Target::Player => {
-                let name = self.acting_player_name();
-                if let Some(uuid) = crate::game::Side::lan_acting_uuid(&self.side) {
-                    return self.player_text(name, uuid);
-                }
-                match self.score.board.players_team(name) {
-                    // PlayerTeam.formatNameForTeam.
-                    Some(team) => team.formatted_name(Text::literal(name)),
-                    None => Text::literal(name),
-                }
-            }
-            Target::Guest(conn) => match self.command_guest(conn) {
-                Some(g) => self.player_text(&g.name, g.uuid),
-                None => Text::empty(),
-            },
-            Target::Mob(id) => self.mob_command_name(id),
-            other => self.entity_display_name(other),
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "enchant_tests_server.rs"]
 pub(in crate::game) mod enchant_tests;
@@ -2036,6 +2009,7 @@ pub(in crate::game) mod query_feedback_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

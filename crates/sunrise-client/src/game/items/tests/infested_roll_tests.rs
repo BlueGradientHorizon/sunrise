@@ -40,6 +40,7 @@ fn floored_game<'a>(
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     for cx in -2..=2 {
@@ -174,7 +175,7 @@ fn a_starving_infested_player_rolls_the_infested_effect() {
         p.health.hurt.cooldown = 0;
         p.food_tick(
             &g.loop_context,
-            crate::game::entity::damage_level_of!(
+            crate::game::server_side::entity_server::damage_level_of!(
                 g,
                 &sunrise_sim::health::NO_ATTACK,
                 no_push,

@@ -247,7 +247,7 @@ fn a_client_keeps_only_the_surface_and_draws_the_bobber_floating() {
         with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "Fisher").unwrap();
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));

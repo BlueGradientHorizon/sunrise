@@ -1,6 +1,5 @@
 use super::super::{Game, Result};
-use crate::game::server_side::nether_portal::respawn_attributes::Carried;
-use crate::game::server_side::nether_portal::respawn_attributes::RespawnAttributes;
+use super::respawn_attributes_state::{Carried, RespawnAttributes};
 use sunrise_protocol::packets::play::AttributeSnapshot;
 use sunrise_sim::{lan::attributes::apply, motion::PlayerMotion};
 
@@ -12,14 +11,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         if let Some(player) = self.player.as_mut() {
             apply(&mut player.attributes, &values);
-        } else if let Some(carried) = self.portals.respawn_attributes.carried.as_mut() {
+        } else if let Some(carried) = self.side.respawn_attributes.carried.as_mut() {
             carried.early.push(values);
         }
     }
     /// The old player goes (`handleRespawn`, `handleLogin`): after a respawn its attributes are
     /// kept for the next one; a login starts from nothing.
     pub(in crate::game) fn drop_remote_player(&mut self) {
-        let respawn = &mut self.portals.respawn_attributes;
+        let respawn = &mut self.side.respawn_attributes;
         match (respawn.keep_modifiers.take(), self.player.as_ref()) {
             (Some(keep_modifiers), Some(old)) => {
                 respawn.carried = Some(Carried {
@@ -45,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         player: &mut PlayerMotion,
     ) -> Result<()> {
-        let Some(carried) = self.portals.respawn_attributes.carried.take() else {
+        let Some(carried) = self.side.respawn_attributes.carried.take() else {
             return Ok(());
         };
         for (name, old) in &carried.instances {

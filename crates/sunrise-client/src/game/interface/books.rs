@@ -3,7 +3,9 @@
 //! pixels, 1024 characters, 100 pages), signing it into a written book,
 //! reading written books, and lecterns (placing a book, turning its pages
 //! with a redstone pulse, the comparator output and taking the book).
-use super::{Game, screen_info};
+use super::Game;
+#[cfg(feature = "client")]
+use crate::game::client_side::screen_info;
 use sunrise_client::{
     hud::{HudBatch, rgba},
     ui,
@@ -206,7 +208,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ClickEvent::ShowDialog(dialog) => self.show_dialog_ref(&dialog),
             // Screen.defaultHandleGameClickEvent: custom actions retain the book.
             ClickEvent::Custom { id, payload } => {
-                if let Some(remote) = &self.remote {
+                if let Some(remote) = &self.side.remote {
                     remote
                         .session
                         .send_custom_click(&id, payload.map(std::sync::Arc::unwrap_or_clone));
@@ -305,7 +307,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 lectern: Some(_),
                 ..
             })
-        ) && self.remote.is_some()
+        ) && self.side.remote.is_some()
         {
             self.remote_close_container();
         }
@@ -329,7 +331,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             pages.pop();
         }
         let title = sign.then(|| title.trim().to_owned());
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.send(S::EditBook(play::EditBook {
                 slot: slot as i32,
                 pages: pages.clone(),
@@ -337,6 +339,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }));
         }
         let author = self
+            .side
             .remote
             .as_ref()
             .map(|r| r.profile_name.clone())
@@ -831,7 +834,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// lectern, so the screen closes (the server closes the menu once the
     /// book is gone; a server's client closes at once rather than wait).
     pub(in crate::game::client_side) fn take_lectern_book(&mut self, key: (i32, i32, i32)) {
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return;
         }
         self.lectern_button(key, 3);
@@ -844,7 +847,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// with the player's inventory, and the screen follows the block entity.
     pub(in crate::game) fn lectern_button(&mut self, key: (i32, i32, i32), id: i32) {
         let _ = key;
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             let _ = self.remote_button_click(id);
         }
     }
@@ -1208,6 +1211,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 // BookSignScreen: `owner.getName()`, the account's name on a server.
                 let owner = self
+                    .side
                     .remote
                     .as_ref()
                     .map_or(super::chat_common::PLAYER_NAME, |r| r.profile_name.as_str());
@@ -1406,8 +1410,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
 }
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::lectern::lectern_signal;
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod title_box_tests {
@@ -1440,8 +1442,8 @@ pub(in crate::game) mod lectern_tests;
 #[cfg(test)]
 pub(in crate::game) mod lectern_signal_tests {
     use super::super::game_tests::tests::server_game;
-    use super::lectern_signal;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay_common::lectern::lectern_signal;
     use sunrise_items::{item_data::WrittenBook, items::ItemStack};
     use sunrise_level::containers::{BlockEntity, Lectern};
     use sunrise_world::level::LevelAccess;

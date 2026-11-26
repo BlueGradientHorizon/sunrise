@@ -362,7 +362,8 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                     case == "config-unloading-save-panic",
                                 ))
                             };
-                            let lan = Arc::downgrade(&game.lan.as_ref().unwrap().hub.lan.shared);
+                            let lan =
+                                Arc::downgrade(&game.side.lan.as_ref().unwrap().hub.lan.shared);
                             *stopped_probe.lock().unwrap() = Some(StoppedProbe {
                                 serving_stopped,
                                 lan,
@@ -449,8 +450,8 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             "storage released after {case}"
                         );
                         assert!(!game.side.world_adopted, "adoption cleared after {case}");
-                        assert!(game.serving.is_none(), "serving retired after {case}");
-                        assert!(game.lan.is_none(), "LAN dropped after {case}");
+                        assert!(game.side.serving.is_none(), "serving retired after {case}");
+                        assert!(game.side.lan.is_none(), "LAN dropped after {case}");
                         if config_panic {
                             let registry = &game.pack.assets.registry;
                             let chunk = game

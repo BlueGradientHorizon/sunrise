@@ -256,7 +256,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `BeaconScreen`'s confirm button sends `ServerboundSetBeaconPacket` to the server.
     fn confirm_beacon(&mut self, sel: [Option<usize>; 2]) {
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             let id = |e: Option<usize>| e.and_then(|e| self.remote_effect_network_id(EFFECTS[e].0));
             let (primary, secondary) = (id(sel[0]), id(sel[1]));
             self.send(S::SetBeacon(play::SetBeacon { primary, secondary }));

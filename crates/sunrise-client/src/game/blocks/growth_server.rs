@@ -1,5 +1,5 @@
 use super::Game;
-use crate::game::client_side::growth::install_live_features;
+use crate::game::growth_features::install_live_features;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;

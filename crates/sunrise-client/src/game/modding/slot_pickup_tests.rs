@@ -219,7 +219,7 @@ fn with_pot_mod(
                 .block_entities
                 .insert(POS, BlockEntity::Mod(Box::new(entity)));
             let (tx, rx) = mpsc::channel();
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let title = sunrise_core::nbt::Tag::String("pot".into());
             let items = vec![None; SLOTS];
             host.hub
@@ -260,7 +260,7 @@ fn predicted(menu: &Menu) -> Shown {
         .collect()
 }
 fn served(game: &crate::game::ServerGame<'_>) -> Shown {
-    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
     let pot = game.world.block_entities.get(&POS).unwrap().slots();
     pot.iter()
         .map(Option::as_ref)
@@ -275,7 +275,7 @@ fn serve(game: &mut crate::game::ServerGame<'_>, menu: &Menu) {
     for (s, slot) in pot.iter_mut().enumerate() {
         *slot = menu.slot(s).cloned();
     }
-    let hub = &mut game.lan.as_mut().unwrap().hub;
+    let hub = &mut game.side.lan.as_mut().unwrap().hub;
     let window = hub.guests[0].menu.as_ref().unwrap().window;
     hub.guests.update(0, |guest| {
         for i in 0..36 {
@@ -289,6 +289,7 @@ fn serve(game: &mut crate::game::ServerGame<'_>, menu: &Menu) {
 /// A client's claim that a slot or the cursor holds `count` stone.
 fn claim(game: &mut crate::game::ServerGame<'_>, count: u32) -> Option<Hashed> {
     let item = game
+        .side
         .lan
         .as_mut()
         .unwrap()
@@ -321,7 +322,7 @@ fn click(
         Input::QuickCraft => 5,
         Input::PickupAll => 6,
     };
-    let menu = game.lan.as_ref().unwrap().hub.guests[0].menu.as_ref();
+    let menu = game.side.lan.as_ref().unwrap().hub.guests[0].menu.as_ref();
     let (container, state) = menu.map(|m| (m.window, m.state)).unwrap();
     rx.try_iter().for_each(drop);
     game.lan_guest_packet(
@@ -556,17 +557,23 @@ fn link_pot(game: &mut crate::game::ServerGame<'_>) {
             },
         ))),
     );
-    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-        let menu = guest.menu.as_mut().unwrap();
-        menu.mod_type = Some(Box::leak(Box::new(ModMenuType {
-            links: Some(ModLinks {
-                from: LINKED_SLOT,
-                count: 1,
-            }),
-            ..pot_type().clone()
-        })));
-        menu.links = vec![LINK];
-    });
+    game.side
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .guests
+        .update(0, |guest| {
+            let menu = guest.menu.as_mut().unwrap();
+            menu.mod_type = Some(Box::leak(Box::new(ModMenuType {
+                links: Some(ModLinks {
+                    from: LINKED_SLOT,
+                    count: 1,
+                }),
+                ..pot_type().clone()
+            })));
+            menu.links = vec![LINK];
+        });
 }
 
 #[test]
@@ -591,7 +598,7 @@ fn an_unhandled_quick_move_uses_the_live_linked_neighbor_for_its_only_pickup_che
             stone(7)
         );
         assert_eq!(
-            game.lan.as_ref().unwrap().hub.guests[0].inventory[8],
+            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[8],
             stone(5)
         );
     });
@@ -660,7 +667,7 @@ fn a_cached_machine_menu_reopens_a_linked_slot_when_its_backing_appears() {
             None
         );
         assert_eq!(
-            game.lan.as_ref().unwrap().hub.guests[0].inventory[8],
+            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[8],
             stone(7)
         );
     });
@@ -677,17 +684,23 @@ fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
         };
         let log = Some(ItemStack::new("minecraft:oak_log", 1));
         serve(game, &prediction(&[(craft.grid, log.clone())], None));
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            let menu = guest.menu.as_mut().unwrap();
-            menu.mod_type = Some(Box::leak(Box::new(ModMenuType {
-                crafting: Some(craft),
-                ..pot_type().clone()
-            })));
-            menu.craft = Some(ModCraft {
-                grid: vec![log, None, None, None],
-                result: stone(5),
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                let menu = guest.menu.as_mut().unwrap();
+                menu.mod_type = Some(Box::leak(Box::new(ModMenuType {
+                    crafting: Some(craft),
+                    ..pot_type().clone()
+                })));
+                menu.craft = Some(ModCraft {
+                    grid: vec![log, None, None, None],
+                    result: stone(5),
+                });
             });
-        });
         QUICK_MOVE_LEFT.set(Some(3));
         QUICK_MOVE_CONSUME.set(Some(craft.grid));
         click(
@@ -703,7 +716,7 @@ fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
         assert_eq!(block.slots()[RESULT], None);
 
         game.lan_mod_crafting_tick();
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         assert_eq!(host.hub.view_slot(0, &game.world, RESULT), stone(3));
         // The next shift-click is given what the player still sees, not a recipe lookup on an
         // empty grid. The handler can empty the result without re-consuming an input.
@@ -716,7 +729,7 @@ fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
             None,
         );
         assert_eq!(QUICK_MOVE_SOURCE.take(), Some(3));
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         assert_eq!(host.hub.view_slot(0, &game.world, RESULT), None);
 
         // A subsequent input change invalidates the published result. Even before the next
@@ -732,7 +745,7 @@ fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
             None,
         );
         assert_eq!(QUICK_MOVE_SOURCE.take(), Some(4));
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         assert_eq!(
             host.hub.view_slot(0, &game.world, RESULT),
             Some(ItemStack::new("minecraft:oak_planks", 2))
@@ -794,7 +807,7 @@ fn quick_move_projection_failures_report_every_time_and_refuse_the_move() {
         }
         assert!(MOVED.with(|moved| moved.borrow().is_empty()));
         assert!(
-            game.lan.as_ref().unwrap().hub.guests[0]
+            game.side.lan.as_ref().unwrap().hub.guests[0]
                 .inventory
                 .iter()
                 .all(Option::is_none)
@@ -1212,9 +1225,15 @@ fn a_drag_and_a_creative_clone_never_ask_the_pickup_rule() {
         let mut menu = prediction(&[(SHOWN, stone(5))], None);
         menu.creative = true;
         serve(game, &menu);
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.game_mode = sunrise_sim::lan::guest::CREATIVE;
-        });
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                guest.game_mode = sunrise_sim::lan::guest::CREATIVE;
+            });
         menu.click(&game.menu_env(), SHOWN as i32, 2, Input::Clone)
             .unwrap();
         click(game, rx, (SHOWN as i32, 2, Input::Clone), Vec::new(), None);

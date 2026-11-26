@@ -47,7 +47,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A cancelled edit leaves the client's own copy of the book: forget
         // what was sent so the next broadcast resends the server's stack.
         if cancelled == Some(true)
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             let _ = host
                 .hub

@@ -3,6 +3,8 @@
 #[cfg(feature = "client")]
 use super::shader_packs::{TogglePlan, active_pack, dev_pack, plan_shader_toggle};
 use super::{Game, ResizeState, Screen};
+#[cfg(feature = "client")]
+use crate::game::client_side::pack_discovery_client;
 use serde_json::{Value, json};
 use sunrise_client::{
     hdr_calibration::WindowState,
@@ -527,7 +529,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     super::packs::open_folder(&dir);
                 }
                 Event::ImportPacks(paths) => {
-                    let additional = self.discover_mod_packs(mod_api::PackType::ClientResources);
+                    let additional = self
+                        .discover_mod_packs(mod_api::PackType::ClientResources)
+                        .into_iter()
+                        .map(pack_discovery_client::into_resource_pack)
+                        .collect::<Vec<_>>();
                     let vanilla = self.vanilla_root();
                     super::packs::import_resource_packs(
                         &mut self.side.chat_ui.options,
@@ -938,17 +944,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
-/// This player's `options.txt`: in the game folder, or in `--player-dir` when several
-/// players share one (`logging::set_player_dir`).
-pub(in crate::game) fn options_path() -> std::path::PathBuf {
-    sunrise_level::logging::player_dir().join("options.txt")
-}
-
-/// The game folder (the working directory): what its players share, saves, packs, mods.
-pub(in crate::game) fn game_dir() -> std::path::PathBuf {
-    std::env::current_dir().unwrap_or_default()
-}
-
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Fullbright as this window may draw it (`fullbright_held`): the renderer's flag and the
@@ -956,8 +951,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// joining or leaving a server needs no call of its own.
     pub(in crate::game::client_side) fn hold_fullbright(&mut self) {
         let held = fullbright_held(
-            self.remote.as_ref().map(|_| self.integrated.is_some()),
-            self.replay.playing(),
+            self.side
+                .remote
+                .as_ref()
+                .map(|_| self.side.integrated.is_some()),
+            self.side.replay.playing(),
         );
         self.side.settings.fullbright_held = held;
         if let Some(r) = self.side.renderer.0.as_mut() {

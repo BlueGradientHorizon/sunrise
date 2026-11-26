@@ -52,12 +52,19 @@ fn transactional_bucket_hands_reach_the_owning_client() {
 
     with_guests(|server| {
         let (tx, rx) = std::sync::mpsc::channel();
-        server.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.sender = PlayerSender::new(tx, std::sync::Arc::default());
-            guest.selected = 2;
-            guest.inventory[2] = Some(ItemStack::new("minecraft:bucket", 1));
-            guest.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
-        });
+        server
+            .side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                guest.sender = PlayerSender::new(tx, std::sync::Arc::default());
+                guest.selected = 2;
+                guest.inventory[2] = Some(ItemStack::new("minecraft:bucket", 1));
+                guest.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
+            });
         let main = ItemPlace::PlayerHand {
             player: 12,
             hand: sunrise_sim::first_person_sim::Hand::Main,
@@ -133,7 +140,7 @@ fn transactional_bucket_hands_reach_the_owning_client() {
                     Some(ItemStack::new(held, 1))
                 );
                 assert_eq!(client.offhand, Some(ItemStack::new(other, 1)));
-                let guest = &server.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &server.side.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(guest.inventory[2], client.inventory[2]);
                 assert_eq!(guest.offhand, client.offhand);
             }

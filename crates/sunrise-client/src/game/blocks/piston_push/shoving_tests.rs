@@ -188,7 +188,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                     game.player = Some(player);
                     let source = 80;
                     game.spawn_entity(source, "minecraft:pig", [4.0, PIG_Y, 4.5], [0.0; 3]);
-                    let remote = game.remote.as_mut().unwrap();
+                    let remote = game.side.remote.as_mut().unwrap();
                     remote.entity_id = PLAYER as i32;
                     remote.loaded_sent = true;
                     remote.level_load.finish();
@@ -248,7 +248,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                 // The packet belongs to the hub guest, not a second local body.
                 game.side_remove_local_player_body();
                 game.side.lan_acting = None;
-                let hub = &mut game.lan.as_mut().unwrap().hub;
+                let hub = &mut game.side.lan.as_mut().unwrap().hub;
                 hub.update_guest(CONN, |g| {
                     g.loaded = true;
                     g.load_timeout = 0;
@@ -257,7 +257,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                 });
                 let placed = game.placed_moving_colliders();
                 moving_colliders::in_level(placed, || game.tick_lan_packets());
-                let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+                let guest = game.side.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
                 assert_eq!(
                     guest.received_moves, 1,
                     "the normal movement handler read the report"

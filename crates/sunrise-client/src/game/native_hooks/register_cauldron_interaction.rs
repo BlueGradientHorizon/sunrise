@@ -1,4 +1,3 @@
-use super::*;
 use crate::game::cauldron_interactions::Registrar;
 
 /// Declare cauldron interactions before publishing the resource snapshot.

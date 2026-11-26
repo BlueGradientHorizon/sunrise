@@ -43,7 +43,8 @@ pub(in crate::game) fn vec3_bits_expected(v: &Value) -> [u64; 3] {
 }
 
 pub(in crate::game) fn entity_type_id(game: &crate::game::ClientGame<'_>, kind: &str) -> i32 {
-    game.remote
+    game.side
+        .remote
         .as_ref()
         .unwrap()
         .builtin

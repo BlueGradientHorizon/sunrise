@@ -1,19 +1,12 @@
 //! Vehicles and passengers through an `EntityRef`: what an entity rides, who rides it,
 //! getting off, and who holds its lead. Basic topology reads also answer from the client's
 //! packet state; riding writes and the remaining reads are server-only.
-use super::{
-    Game, commands::Target, mounts::steering_item, remote::Remote, remote_vehicles::passenger_root,
-};
+use super::{Game, commands::Target, mounts_common::steering_item};
 use mod_api::{EntityRef, LeashHolder, LivingRef, StartRidingRefusal};
 use sunrise_sim::{
     lan::playerdata::ints_uuid,
     mobs::{Mob, Species, equine, happy_ghast, leash::Holder, nautilus},
 };
-
-pub(in crate::game) enum RidingRead<'a> {
-    Server(Target),
-    Client(&'a Remote),
-}
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The dismount search with a vehicle or passenger lent out of `self.mobs`.
@@ -781,41 +774,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The id of the entity `t` rides, if it rides one.
-    pub(in crate::game) fn native_vehicle_id(&self, t: Target) -> Option<u32> {
-        match t {
-            Target::Player => self.riding,
-            Target::Guest(conn) => self.command_guest(conn)?.vehicle,
-            Target::Mob(id) => self.mob_object(id).filter(|m| !m.removed)?.extra.mount,
-            Target::General(id) => self.general_row(id)?.mount,
-            _ => None,
-        }
-    }
-
-    /// The side's own copy of the entity for a read. On a client only tracked
-    /// entities and the local player have handles.
-    pub(in crate::game) fn riding_read(&self, entity: EntityRef) -> Option<RidingRead<'_>> {
-        if self.is_logical_server() {
-            return self.native_entity_target(entity).map(RidingRead::Server);
-        }
-        (self.entity(entity.id())? == entity).then_some(RidingRead::Client(self.remote.as_ref()?))
-    }
-
+impl Game<'_, crate::game::server_side::ServerState> {
     /// What the entity rides (`Entity.getVehicle`), if its vehicle has a handle.
     pub(in crate::game) fn entity_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
-        match self.riding_read(entity)? {
-            RidingRead::Server(target) => self.entity(self.native_vehicle_id(target)?),
-            RidingRead::Client(remote) => self.entity(remote.passenger_vehicle(entity.id())?),
-        }
+        let target = self.native_entity_target(entity)?;
+        self.entity(self.native_vehicle_id(target)?)
     }
 
     /// Whether the entity rides another object, even one without a handle.
     pub(in crate::game) fn entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
-        let vehicle = match self.riding_read(entity)? {
-            RidingRead::Server(target) => self.native_vehicle_id(target),
-            RidingRead::Client(remote) => remote.passenger_vehicle(entity.id()),
-        };
+        let target = self.native_entity_target(entity)?;
+        let vehicle = self.native_vehicle_id(target);
         Some(vehicle.is_some())
     }
 
@@ -823,15 +792,25 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// entity itself when it rides nothing. Off-level intermediaries are traversed;
     /// an off-level root or a cycle returns no handle, never a descendant substitute.
     pub(in crate::game) fn entity_root_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
-        match self.riding_read(entity)? {
-            RidingRead::Server(target) => {
-                self.entity(self.native_root_vehicle_id(entity.id(), target)?)
-            }
-            RidingRead::Client(remote) => {
-                let root = passenger_root(&remote.passenger_vehicles, entity.id()).ok()?;
-                self.entity(root)
-            }
-        }
+        let target = self.native_entity_target(entity)?;
+        self.entity(self.native_root_vehicle_id(entity.id(), target)?)
+    }
+
+    /// The entities riding this one (`Entity.getPassengers`), in `addPassenger`'s order.
+    pub(in crate::game) fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
+        self.native_entity_target(entity)?;
+        Some(
+            self.seated_passengers(entity.id())
+                .into_iter()
+                .filter_map(|(_, id, _)| self.entity(id))
+                .collect(),
+        )
+    }
+
+    /// Whether any object rides the entity, even one without a handle.
+    pub(in crate::game) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
+        self.native_entity_target(entity)?;
+        Some(self.has_seated_passengers(entity.id()))
     }
 
     /// Follow full object links, returning no root for a cycle without allocating a visited set.
@@ -854,35 +833,12 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         self.mobs.len()
             + self.persist.off_level.len()
             + self.resident_entities.general.rows.len()
-            + self.lan.as_ref().map_or(0, |host| host.hub.guests.len())
+            + self
+                .side
+                .lan
+                .as_ref()
+                .map_or(0, |host| host.hub.guests.len())
             + 1
-    }
-
-    /// The entities riding this one (`Entity.getPassengers`), in `addPassenger`'s order.
-    pub(in crate::game) fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
-        Some(match self.riding_read(entity)? {
-            RidingRead::Server(_) => self
-                .seated_passengers(entity.id())
-                .into_iter()
-                .filter_map(|(_, id, _)| self.entity(id))
-                .collect(),
-            RidingRead::Client(remote) => {
-                let mut seats: Vec<_> = remote
-                    .passenger_seats(entity.id())
-                    .filter_map(|(id, index)| Some((index, self.entity(id)?)))
-                    .collect();
-                seats.sort_unstable_by_key(|seat| seat.0);
-                seats.into_iter().map(|(_, handle)| handle).collect()
-            }
-        })
-    }
-
-    /// Whether any object rides the entity, even one without a handle.
-    pub(in crate::game) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
-        Some(match self.riding_read(entity)? {
-            RidingRead::Server(_) => self.has_seated_passengers(entity.id()),
-            RidingRead::Client(remote) => remote.has_passengers(entity.id()),
-        })
     }
 }
 
@@ -1100,7 +1056,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn full_vehicle_checks_distinguish_forced_mobs_from_storage_limits() {
-        use super::super::boats::Boat;
+        use super::super::boats_common::Boat;
         let events = Arc::new(Mutex::new(Vec::new()));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "mount_observer",
@@ -1134,7 +1090,8 @@ pub(in crate::game) mod tests {
                 game.mobs[1].extra.rider = Some(42);
                 game.mobs[3].extra.mount = Some(44);
                 super::super::native_player_death::tests::add_guest(game);
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1186,7 +1143,8 @@ pub(in crate::game) mod tests {
             // Capacity counts real player bodies, not an unbound `riding` pointer.
             let player = super::super::native_player_death::tests::add_guest(game);
             let player_id = player.entity().id() as i32;
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1205,7 +1163,8 @@ pub(in crate::game) mod tests {
             game.dismount_mob(73);
             game.dismount_mob(74);
             game.dismount_mob(75);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1246,7 +1205,7 @@ pub(in crate::game) mod tests {
     fn boat_and_cart_interactions_use_shared_mount_path() {
         use super::super::{
             InteractTarget,
-            boats::Boat,
+            boats_common::Boat,
             minecarts::{CartKind, Minecart},
         };
         use sunrise_sim::motion::PlayerMotion;
@@ -1373,7 +1332,7 @@ pub(in crate::game) mod tests {
             let ghost = game.mobs.remove(index);
             game.persist
                 .off_level
-                .insert(81, super::super::persist::OffLevel::Mob(ghost));
+                .insert(81, crate::game::entity_memory::OffLevel::Mob(ghost));
             assert!(game.entity(81).is_none());
             assert_eq!(camel.passengers(game), Some(vec![second]));
             assert_eq!(
@@ -1398,7 +1357,7 @@ pub(in crate::game) mod tests {
             let ghost = game.mobs.remove(index);
             game.persist
                 .off_level
-                .insert(82, super::super::persist::OffLevel::Mob(ghost));
+                .insert(82, crate::game::entity_memory::OffLevel::Mob(ghost));
             assert_eq!(camel.passengers(game), Some(Vec::new()));
             assert_eq!(
                 camel.is_vehicle(game),
@@ -1410,7 +1369,7 @@ pub(in crate::game) mod tests {
             let ghost = game.mobs.remove(index);
             game.persist
                 .off_level
-                .insert(80, super::super::persist::OffLevel::Mob(ghost));
+                .insert(80, crate::game::entity_memory::OffLevel::Mob(ghost));
             assert_eq!(
                 top.root_vehicle(game),
                 None,
@@ -1432,7 +1391,7 @@ pub(in crate::game) mod tests {
             let ghost = game.mobs.remove(index);
             game.persist
                 .off_level
-                .insert(85, super::super::persist::OffLevel::Mob(ghost));
+                .insert(85, crate::game::entity_memory::OffLevel::Mob(ghost));
             game.persist.uuids.insert(80, [1, 2, 3, 4]);
             game.persist.uuids.insert(85, [1, 2, 3, 4]);
             game.mob_object_mut(84).unwrap().extra.mount = Some(85);
@@ -1522,11 +1481,11 @@ pub(in crate::game) mod tests {
             let one = super::super::native_player_death::tests::add_guest(game).entity();
             let mut guest = super::super::native_player_death::tests::new_guest(2, 456);
             guest.entity_id = 21;
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.guests.push(guest);
             for conn in [1, 2] {
                 let motion = PlayerMotion::new(game.motion, at).unwrap();
-                let hub = &mut game.lan.as_mut().unwrap().hub;
+                let hub = &mut game.side.lan.as_mut().unwrap().hub;
                 hub.update_guest(conn, |g| g.motion = Some(Box::new(motion)))
                     .unwrap();
             }
@@ -1560,7 +1519,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_first_passenger_controls_only_what_it_can_steer() {
-        use super::super::boats::Boat;
+        use super::super::boats_common::Boat;
         use sunrise_items::items::ItemStack;
         super::super::native_entity_refs::tests::with_game(|game| {
             let ravager = add_mob(game, 90, "minecraft:ravager", Vec3::ZERO);
@@ -1595,7 +1554,8 @@ pub(in crate::game) mod tests {
             assert_eq!(boat.controlling_passenger(game), None);
             let pig = add_mob(game, 96, "minecraft:pig", Vec3::ZERO);
             let ride = |game: &mut crate::game::ServerGame<'_>, vehicle| {
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1613,7 +1573,8 @@ pub(in crate::game) mod tests {
             let index = game.mobs.iter().position(|m| m.id == 96).unwrap();
             game.mobs[index].extra.set_saddled(true);
             assert_eq!(pig.controlling_passenger(game), None);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1640,7 +1601,8 @@ pub(in crate::game) mod tests {
             let (strider, index) = mount(game, 99, "minecraft:strider");
             game.mobs[index].extra.set_saddled(true);
             assert_eq!(strider.controlling_passenger(game), None);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1706,7 +1668,7 @@ pub(in crate::game) mod tests {
             // Neither does `Entity.dropAllLeashConnections`, which calls it for a player's mobs.
             let player = super::super::native_player_death::tests::add_guest(game).entity();
             let motion = PlayerMotion::new(game.motion, at).unwrap();
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.update_guest(1, |g| {
                 g.motion = Some(Box::new(motion));
                 g.position = [at.x, at.y, at.z];
@@ -1756,7 +1718,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_mob_gets_off_where_the_query_says() {
         use super::super::{
-            boats::Boat,
+            boats_common::Boat,
             minecarts::{CartKind, Minecart},
         };
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1794,7 +1756,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_player_gets_off_where_the_query_says() {
         use super::super::{
-            boats::Boat,
+            boats_common::Boat,
             minecarts::{CartKind, Minecart},
         };
         use sunrise_sim::motion::PlayerMotion;
@@ -1803,7 +1765,7 @@ pub(in crate::game) mod tests {
             let at = Vec3::new(0.5, 64.0, 0.5);
             let player = super::super::native_player_death::tests::add_guest(game).entity();
             let motion = PlayerMotion::new(game.motion, at).unwrap();
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.update_guest(1, |g| g.motion = Some(Box::new(motion)))
                 .unwrap();
 
@@ -1839,14 +1801,14 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_player_gets_off_along_their_own_yaw_on_their_turn_or_not() {
-        use super::super::boats::Boat;
+        use super::super::boats_common::Boat;
         use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             lay_floor(game);
             let at = Vec3::new(0.5, 64.0, 0.5);
             let player = super::super::native_player_death::tests::add_guest(game).entity();
             let motion = PlayerMotion::new(game.motion, at).unwrap();
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.update_guest(1, |g| {
                 g.motion = Some(Box::new(motion));
                 g.yaw = 45.0;
@@ -1927,7 +1889,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn leash_writes_change_the_holder_and_tell_the_mods() {
-        use super::super::boats::Boat;
+        use super::super::boats_common::Boat;
         use mod_api::LeashHolder;
         use sunrise_sim::{mobs::leash::Pending, motion::PlayerMotion};
         let unleashed = Arc::new(Mutex::new(0));
@@ -2004,7 +1966,7 @@ pub(in crate::game) mod tests {
                 assert!(!player.leash_to(game, cow));
                 assert_eq!(player.leash_holder(game), None);
                 let motion = PlayerMotion::new(game.motion, at).unwrap();
-                let hub = &mut game.lan.as_mut().unwrap().hub;
+                let hub = &mut game.side.lan.as_mut().unwrap().hub;
                 hub.update_guest(1, |g| g.motion = Some(Box::new(motion)))
                     .unwrap();
                 assert!(cow.detach_leash(game, false));

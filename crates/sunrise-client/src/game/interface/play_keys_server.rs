@@ -65,8 +65,8 @@ pub(in crate::game) mod swap_hands_tests {
         mod_platform::testing::with_mods(mods, || {
             let mut resources = None;
             let (mut game, receivers) = fixture(&mut resources);
-            let selected = game.lan.as_ref().unwrap().hub.guests[0].selected;
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            let selected = game.side.lan.as_ref().unwrap().hub.guests[0].selected;
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory[selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
                 g.offhand = None;
             });
@@ -79,7 +79,7 @@ pub(in crate::game) mod swap_hands_tests {
                     direction: 0,
                     sequence: 0,
                 });
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.hub
                     .guests
                     .update_connection(1, |g| {
@@ -90,7 +90,7 @@ pub(in crate::game) mod swap_hands_tests {
                 game.side.level_pass.first = false;
                 game.side.level_pass.packets_drained = false;
                 game.tick_lan_packets();
-                let hub = &game.lan.as_ref().unwrap().hub;
+                let hub = &game.side.lan.as_ref().unwrap().hub;
                 sunrise_sim::lan::flush_all(hub.guests.iter().map(|g| &g.sender));
                 output(&receivers[0])
                     .into_iter()
@@ -103,14 +103,14 @@ pub(in crate::game) mod swap_hands_tests {
                     .next_back()
                     .expect("the client was sent its inventory")
             };
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             let sword = hub.stack(&Some(ItemStack::new("minecraft:diamond_sword", 1)));
             let torch = hub.stack(&Some(ItemStack::new("minecraft:torch", 1)));
             assert!(sword.is_some() && torch.is_some());
             // Cancelled: both hands as they were.
             assert_eq!(press(&mut game), (sword.clone(), None));
             assert_eq!(calls.load(Ordering::SeqCst), 1);
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 g.inventory[selected].as_ref().map(|s| &*s.item),
                 Some("minecraft:diamond_sword")
@@ -121,7 +121,7 @@ pub(in crate::game) mod swap_hands_tests {
             cancel.store(false, Ordering::SeqCst);
             assert_eq!(press(&mut game), (None, torch));
             assert_eq!(calls.load(Ordering::SeqCst), 2);
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert!(g.inventory[selected].is_none());
             assert_eq!(
                 g.offhand.as_ref().map(|s| &*s.item),

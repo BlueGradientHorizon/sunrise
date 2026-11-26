@@ -16,9 +16,7 @@ use sunrise_sim::{
     mobs::Who,
     stand_up::{StandUpLevel, StandUpType, stand_up_fallback},
 };
-use sunrise_world::{
-    collision_context::CollisionContext, level::data::state_flags, registry::BlockStateId,
-};
+use sunrise_world::{level::data::state_flags, registry::BlockStateId};
 
 /// `ServerPlayer.RespawnConfig`: a respawn point other than the world spawn
 /// that the game resolves through its block (a respawn anchor).
@@ -568,30 +566,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    pub(in crate::game) fn block_collision_shape_in(
-        &self,
-        world: &sunrise_level::world::World,
-        p: [i32; 3],
-    ) -> VoxelShape {
-        let state = world.block(p[0], p[1], p[2]);
-        let binding = self.collision;
-        let mut scene = SceneCollisions {
-            world,
-            binding,
-            subject: None,
-        };
-        binding
-            .collision_shape_with_context(
-                &mut scene,
-                state,
-                BlockPos::new(p[0], p[1], p[2]),
-                &CollisionContext::empty(false),
-            )
-            .unwrap_or_else(|_| VoxelShape::empty())
-    }
-}
-
 /// `RespawnPosAngle.calculateLookAtYaw`: the yaw from the position to the
 /// bottom centre of the block.
 pub(in crate::game::server_side) fn look_at_yaw(position: Vec3, block: [i32; 3]) -> f32 {
@@ -825,10 +799,10 @@ pub(in crate::game) mod connected_spawnpoint_rotation_tests {
         guest.game_mode = 0;
         guest.yaw = 0.0;
         guest.pitch = 0.0;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         let clock = game.world.game_time;
         command(&mut game, "spawnpoint Alice 12 100 12 45 10");
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         assert!(host.owner.is_none());
         let guest = &host.hub.guests[0];
         assert_eq!(
@@ -850,7 +824,7 @@ pub(in crate::game) mod connected_spawnpoint_rotation_tests {
         );
         command(&mut game, "kill Alice");
         game.tick_lan(false);
-        let host = game.lan.take().unwrap();
+        let host = game.side.lan.take().unwrap();
         assert_eq!(host.hub.guests[0].uuid, 77);
         assert_eq!(host.hub.guests[0].health, 0.0);
         assert!(
@@ -858,10 +832,10 @@ pub(in crate::game) mod connected_spawnpoint_rotation_tests {
             "actual command death before request"
         );
         for _ in rx.try_iter() {}
-        game.lan = Some(host);
+        game.side.lan = Some(host);
         game.lan_guest_packet(7, S::ClientCommand(play::ClientCommand { action: 0 }));
         game.tick_server_travel();
-        let host = game.lan.take().unwrap();
+        let host = game.side.lan.take().unwrap();
         assert!(
             !game.on_server_trip(7),
             "admitted lit columns permit actual arrival"

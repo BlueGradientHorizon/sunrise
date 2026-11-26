@@ -66,7 +66,7 @@ fn game_with_guest<'a>(
     );
     guest.dimension = "minecraft:overworld".into();
     guest.placed = true;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     (game, rx)
 }
 

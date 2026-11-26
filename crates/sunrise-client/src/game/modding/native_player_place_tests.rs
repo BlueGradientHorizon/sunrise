@@ -110,7 +110,8 @@ fn each_place_block_refusal_has_its_own_name_and_writes_nothing() {
             Err(Refusal::Stale)
         );
         assert_eq!(game.world.block(3, 70, 3), empty, "nothing written");
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

@@ -1,4 +1,4 @@
-use crate::game::remote::RemoteDimensionEntry;
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use crate::game::remote::tests::camera_parity_red_tests::add_entity;
 use crate::game::remote::tests::camera_parity_red_tests::add_entity_with_data;
 use crate::game::remote::tests::camera_parity_red_tests::hex_f32;
@@ -8,7 +8,7 @@ use crate::game::remote::tests::camera_parity_red_tests::parity_witness;
 use crate::game::remote::tests::camera_parity_red_tests::sync_interaction_size;
 use crate::game::remote::tests::camera_parity_red_tests::vec3_bits_expected;
 use crate::game::{
-    Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
+    Game, native_entity_refs::tests::with_client_game, native_lifecycle_common::NativeLifecycle,
 };
 use std::sync::Arc;
 use sunrise_client::{
@@ -137,7 +137,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         game.side.avatar.bob_o = 0.04;
         game.side.settings.view_bobbing = true;
         game.set_local_mode(sunrise_command::args::GameMode::Spectator);
-        let profile = game.remote.as_ref().unwrap().profile;
+        let profile = game.side.remote.as_ref().unwrap().profile;
         game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
             actions: 0x01 | 0x04 | 0x08,
             entries: vec![play::PlayerInfo {
@@ -580,6 +580,7 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
                     .unwrap()
                     .0 as i32;
                 let stone_item = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()
@@ -666,11 +667,9 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
                 let mut additive = Vec::new();
                 let (verts, _, _, _) =
                     game.entity_geometry(cam, 1.0, None, Vec::new(), &mut additive);
-                let has_local_run = game
-                    .side
-                    .entity_runs
-                    .iter()
-                    .any(|r| r.family == crate::game::entity::DrawFamily::LocalPlayer);
+                let has_local_run = game.side.entity_runs.iter().any(|r| {
+                    r.family == crate::game::client_side::entity_client::DrawFamily::LocalPlayer
+                });
                 if has_local_run != want_local {
                     failures.push(format!(
                         "{name} {ct_name}: LocalPlayer run present={has_local_run} want {want_local}"
@@ -725,6 +724,7 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
         game.tick_player_model();
 
         let stone_item = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -832,7 +832,8 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
             .unwrap_or_else(|| panic!("missing fov case {name}"))
     };
     let item_id = |game: &Game<'_, crate::game::client_side::ClientState>, name: &str| {
-        game.remote
+        game.side
+            .remote
             .as_ref()
             .unwrap()
             .builtin
@@ -1757,7 +1758,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
                 .collect();
             for (idx, want) in expected_parts.into_iter().enumerate() {
                 assert_eq!(
-                    crate::game::dragon::dragon_part_wire_id(wire, idx),
+                    crate::game::dragon_common::dragon_part_wire_id(wire, idx),
                     want,
                     "dragon part wire id mismatch for {key}[{idx}]"
                 );
@@ -1894,6 +1895,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
         // Finding 12: Watched living entity blindness blocks sky.
         add_entity(game, 450, "minecraft:creeper", [5.0, 64.0, 5.0], 0.0, 0.0);
         let blindness_id = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -2196,7 +2198,7 @@ pub(in crate::game) fn setup_remote_overworld(
         sea_level: 63,
     };
     game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-    let remote = game.remote.as_mut().unwrap();
+    let remote = game.side.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = player_id;
     remote.view_distance = 8;

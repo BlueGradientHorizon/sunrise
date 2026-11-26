@@ -4,7 +4,7 @@ use super::*;
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A slot's hand, or no hand for armour and inventory ammunition.
     pub(super) fn item_slot_hand(&self, slot: usize) -> Option<Hand> {
-        if slot == shield::OFFHAND_SLOT {
+        if slot == held_items::OFFHAND_SLOT {
             Some(Hand::Off)
         } else if slot == self.selected {
             Some(Hand::Main)

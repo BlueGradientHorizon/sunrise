@@ -2,9 +2,10 @@
 //! state is compared once per event loop turn, after the game ran, so watching never changes
 //! what the game does.
 use super::Game;
+use crate::game::events_common::{Condition, Events, KEPT, Snapshot, Wait};
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::BTreeMap,
     sync::mpsc::Sender,
     time::{Duration, Instant},
 };
@@ -14,26 +15,6 @@ pub(in crate::game) const HELP: &[&str] = &[
     "events [--since SEQ]           what happened (screen, chat, death, respawn, item, hurt, heal, food, dimension, world), oldest first",
     "wait-for screen NAME|widget ID|loaded|chat TEXT|event KIND [--timeout S] [--since SEQ]  reply once it holds (default 30 s; chat and event count from SEQ, else from now)",
 ];
-
-/// Events kept for `events`.
-pub(in crate::game) const KEPT: usize = 256;
-
-/// What the last turn saw.
-#[derive(PartialEq)]
-pub(in crate::game) struct Snapshot {
-    pub(in crate::game) screen: &'static str,
-    pub(in crate::game) world: Option<String>,
-    pub(in crate::game) dimension: String,
-    pub(in crate::game) chat: u64,
-    pub(in crate::game) counts: BTreeMap<String, i64>,
-    /// The player's health and food level, while there is a player.
-    pub(in crate::game) vitals: Option<(f32, i64)>,
-    pub(in crate::game) hit: Option<Hit>,
-}
-
-/// The newest damage: a number that changes with each, the damage type, the amount and the
-/// name of what dealt it.
-pub(in crate::game) type Hit = (i64, String, Option<f32>, Option<String>);
 
 /// What the newest damage was, for a `hurt` or `death` event.
 pub(in crate::game::client_side) fn add_cause(
@@ -55,64 +36,22 @@ pub(in crate::game::client_side) fn add_cause(
     }
 }
 
-pub(in crate::game) enum Condition {
-    Screen(String),
-    Widget(String),
-    Loaded,
-    Chat(String),
-    Event(String),
+/// An event from outside the once-a-turn comparison (`user-input`).
+pub(in crate::game::client_side) fn note(events: &mut Events, tick: u64, event: Value) {
+    events.push(tick, event);
 }
-
-pub(in crate::game) struct Wait {
-    pub(in crate::game) condition: Condition,
-    /// The event sequence number when the wait started.
-    pub(in crate::game) since: u64,
-    pub(in crate::game) started: Instant,
-    pub(in crate::game) timeout: Duration,
-    pub(in crate::game) reply: Sender<String>,
+/// Whether a `wait-for` is waiting: its agent is still watching.
+pub(in crate::game::client_side) fn has_waits(events: &Events) -> bool {
+    !events.waits.is_empty()
 }
-
-#[derive(Default)]
-pub(in crate::game) struct Events {
-    /// The sequence number of the newest event (the first is 1).
-    pub(in crate::game) seq: u64,
-    pub(in crate::game) log: VecDeque<Value>,
-    pub(in crate::game) last: Option<Snapshot>,
-    pub(in crate::game) waits: Vec<Wait>,
-    /// On a server's client (single player included), where the combat tracker is the
-    /// server's: the newest `DamageEvent` it sent about this player.
-    pub(in crate::game) remote_hit: Option<Hit>,
-}
-
-impl Events {
-    pub(in crate::game::client_side) fn push(&mut self, tick: u64, mut event: Value) {
-        self.seq += 1;
-        event["seq"] = self.seq.into();
-        event["tick"] = tick.into();
-        if self.log.len() == KEPT {
-            self.log.pop_front();
-        }
-        self.log.push_back(event);
-    }
-    /// `ClientboundDamageEventPacket` for this player: the damage type and the causing
-    /// entity's type.
-    pub(in crate::game) fn note_hit(&mut self, cause: String, by: Option<String>) {
-        let n = self.remote_hit.as_ref().map_or(0, |h| h.0) + 1;
-        self.remote_hit = Some((n, cause, None, by));
-    }
-    /// An event from outside the once-a-turn comparison (`user-input`).
-    pub(in crate::game::client_side) fn note(&mut self, tick: u64, event: Value) {
-        self.push(tick, event);
-    }
-    /// Whether a `wait-for` is waiting: its agent is still watching.
-    pub(in crate::game::client_side) fn has_waits(&self) -> bool {
-        !self.waits.is_empty()
-    }
-    pub(in crate::game::client_side) fn since(&self, seq: u64) -> impl Iterator<Item = &Value> {
-        self.log
-            .iter()
-            .filter(move |e| e["seq"].as_u64() > Some(seq))
-    }
+pub(in crate::game::client_side) fn since(
+    events: &Events,
+    seq: u64,
+) -> impl Iterator<Item = &Value> {
+    events
+        .log
+        .iter()
+        .filter(move |e| e["seq"].as_u64() > Some(seq))
 }
 
 /// The events between two snapshots.
@@ -246,13 +185,13 @@ pub(in crate::game::client_side) fn parse_wait(
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn snapshot(&self) -> Snapshot {
-        let world =
-            (self.side.title.0.is_none() && self.remote.is_some()).then(|| self.level.name.clone());
+        let world = (self.side.title.0.is_none() && self.side.remote.is_some())
+            .then(|| self.level.name.clone());
         Snapshot {
             screen: self.screen_label(),
             dimension: self.dim.id().to_string(),
             // Without a remote connection, a client has no world chat stream.
-            chat: self.remote.as_ref().map_or(0, |r| r.chat_received),
+            chat: self.side.remote.as_ref().map_or(0, |r| r.chat_received),
             counts: if world.is_some() {
                 self.inventory_counts()
             } else {
@@ -263,7 +202,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .as_ref()
                 .filter(|_| world.is_some())
                 .map(|p| (p.health.health(), p.health.food.food as i64)),
-            hit: if self.remote.is_some() {
+            hit: if self.side.remote.is_some() {
                 self.events.remote_hit.clone()
             } else {
                 None
@@ -287,7 +226,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Joining or leaving a server starts another count.
             let new_chat = now.chat.saturating_sub(before.chat).min(100) as usize;
             // Newest first; the remote client keeps its lines oldest first.
-            let lines = match &self.remote {
+            let lines = match &self.side.remote {
                 Some(r) => r
                     .chat
                     .iter()
@@ -322,11 +261,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Condition::Screen(name) => self.screen_label() == name,
                 Condition::Widget(id) => self.ui_nodes().iter().any(|n| &n.id == id),
                 Condition::Loaded => self.loaded(),
-                Condition::Chat(text) => self.events.since(wait.since).any(|e| {
+                Condition::Chat(text) => since(&self.events, wait.since).any(|e| {
                     e["event"] == "chat" && e["text"].as_str().is_some_and(|t| t.contains(text))
                 }),
                 Condition::Event(kind) => {
-                    self.events.since(wait.since).any(|e| e["event"] == **kind)
+                    since(&self.events, wait.since).any(|e| e["event"] == **kind)
                 }
             };
             let waited = wait.started.elapsed();
@@ -357,8 +296,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Result<Option<Option<Value>>> {
         match words[0] {
             "events" => {
-                let (since, limit) = parse_events(&words[1..])?;
-                let events: Vec<&Value> = self.events.since(since).collect();
+                let (old_seq, limit) = parse_events(&words[1..])?;
+                let events: Vec<&Value> = since(&self.events, old_seq).collect();
                 let skipped = events.len().saturating_sub(limit.unwrap_or(usize::MAX));
                 Ok(Some(Some(json!({
                     "events": events[skipped..],
@@ -506,8 +445,8 @@ pub(in crate::game) mod tests {
             e.push(i, json!({ "event": "chat" }));
         }
         assert_eq!(e.log.len(), KEPT);
-        assert_eq!(e.since(295).count(), 5);
-        assert_eq!(e.since(0).next().unwrap()["seq"], 45);
+        assert_eq!(since(&e, 295).count(), 5);
+        assert_eq!(since(&e, 0).next().unwrap()["seq"], 45);
     }
 
     #[test]

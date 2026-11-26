@@ -674,9 +674,6 @@ impl mobs::part_goals::GoalHost for Game<'_, crate::game::server_side::ServerSta
     }
 
     fn mob_tags(&self, mob: &Mob) -> Option<EntityTags<'_>> {
-        if self.remote.is_some() {
-            return None;
-        }
         Some(self.saved_entity_tags(super::commands::Target::Mob(mob.id)))
     }
 
@@ -696,7 +693,11 @@ impl mobs::part_goals::GoalHost for Game<'_, crate::game::server_side::ServerSta
     }
 
     fn mob_portal_cooldown(&self, mob: &Mob) -> i32 {
-        self.portals.entities.get(&mob.id).map_or(0, |p| p.cooldown)
+        self.side
+            .portals
+            .entities
+            .get(&mob.id)
+            .map_or(0, |p| p.cooldown)
     }
 
     fn mob_invulnerable_to_damage(&self, mob: &Mob, damage_type: &str) -> bool {
@@ -756,7 +757,7 @@ impl mobs::part_goals::GoalHost for Game<'_, crate::game::server_side::ServerSta
                 let id = match redirected {
                     Some(id) => id,
                     None => {
-                        let host = self.lan.as_ref()?;
+                        let host = self.side.lan.as_ref()?;
                         let conn = host.mob_players.get(&mob.id)?;
                         u32::try_from(host.hub.guest(*conn)?.entity_id).ok()?
                     }
@@ -793,7 +794,10 @@ impl mobs::part_goals::GoalHost for Game<'_, crate::game::server_side::ServerSta
     }
 
     fn mob_on_block(&self, mob: &Mob) -> [i32; 3] {
-        super::native_entity_motion::on_block_position(mob.ground.supporting_block, mob.position)
+        crate::game::native_entity_motion_values::on_block_position(
+            mob.ground.supporting_block,
+            mob.position,
+        )
     }
 
     fn entities_team_damage_allowed(

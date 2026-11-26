@@ -1,8 +1,10 @@
+use crate::game::client_side::native_hooks_client::{OpenNativeMenu, OpenNativeScreen, SlotMoves};
+
 /// A data packet for an old window leaves the open mod screen alone.
 #[test]
 fn mod_screen_data_is_its_windows_only() {
-    let mut s = super::OpenNativeScreen {
-        menu: super::OpenNativeMenu {
+    let mut s = OpenNativeScreen {
+        menu: OpenNativeMenu {
             key: (0, 0, 0),
             window: 4,
             generation: 1,
@@ -48,7 +50,7 @@ fn slot_moves_refuse_what_the_screen_does_not_show() {
         }),
     ];
     use mod_api::ScreenSlotRefusal::*;
-    let moves = super::SlotMoves::default();
+    let moves = SlotMoves::default();
     // The current place again changes nothing, not even the count.
     assert_eq!(moves.set(&declared, 0, Some([8.0, 18.0])), Ok(()));
     assert_eq!(moves.count.get(), 0);

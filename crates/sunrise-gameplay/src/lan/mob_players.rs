@@ -1,9 +1,7 @@
 //! Which player a mob sees in an open world, and how the blocks that look for players see a guest.
 use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_sim::mobs::{Mob, MobEvent, PlayerView, Species, Who};
-
-/// The guests mobs can see this tick, by connection.
-pub type GuestViews = Vec<(u32, PlayerView)>;
+pub use sunrise_gameplay_common::lan::mob_players::{GuestViews, acts_on_player};
+use sunrise_sim::mobs::{Mob, PlayerView, Species, Who};
 
 /// The player a mob sees this tick: `None` for the host, else a guest.
 /// A mob's target is one player (`Mob.getTarget` is an entity): while it has
@@ -108,50 +106,6 @@ pub fn choose(
     nearest(&targetable)
         .or_else(|| nearest(&|v: &PlayerView| v.alive && !v.spectator))
         .and_then(|(conn, _)| conn)
-}
-
-/// The events of a mob's tick that act on the player it sees.
-#[inline]
-pub fn acts_on_player(e: &MobEvent) -> bool {
-    matches!(
-        e,
-        MobEvent::AttackPlayer(..)
-            | MobEvent::CubeHurtPlayer { .. }
-            | MobEvent::AttackPlayerWithEffect { .. }
-            | MobEvent::Sting {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::DamagePlayer { .. }
-            | MobEvent::SonicBoom {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::Push {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::Knockback {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::StabDismount {
-                target: Who::Player,
-            }
-            | MobEvent::StabMemory {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::Ignite(Who::Player, _)
-            | MobEvent::ZombieIgnite(Who::Player, _)
-            | MobEvent::IronGolemHit {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::EffectPlayer { .. }
-            | MobEvent::AxolotlSupportPlayer { .. }
-            | MobEvent::ParrotToShoulder { .. }
-    )
 }
 
 /// A guest's `player_view`, taken with their state swapped in, as the mobs see

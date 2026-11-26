@@ -57,6 +57,10 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
             scratch.clone(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
 
@@ -86,7 +90,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
         game.side.chat_ui.chat_screen = Some(ChatScreen::new(
             &Measure(&game.side.gui.atlas.font),
             &Commands {
-                dispatcher: chat_tree(&game.remote),
+                dispatcher: chat_tree(&game.side.remote),
                 registries: &game.ui.registries,
             },
             "",

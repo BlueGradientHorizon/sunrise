@@ -1,24 +1,5 @@
 use super::*;
 
-/// The hook points. Each does nothing in Sunrise.
-impl crate::game::ServerGame<'_> {
-    /// `IItemExtension.onLeftClickEntity`: `player`, holding `stack`, is
-    /// about to attack the entity `entity` of type `kind`, where
-    /// `Player.attack` starts, once `attack_entity` let the blow through and
-    /// before any damage, `hurt_enemy` or wear. Set `canceled` and the attack
-    /// ends there.
-    pub(in crate::game) fn native_on_left_click_entity(
-        &mut self,
-        player: u128,
-        stack: &ItemStack,
-        entity: i32,
-        kind: &str,
-        canceled: &mut bool,
-    ) {
-        self.fire_on_left_click_entity(player, stack, entity, kind, canceled);
-    }
-}
-
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `IItemExtension.onEntitySwing`: the player in place (`entity`) is
     /// about to swing `stack` in `hand`, where `LivingEntity.swing` starts.

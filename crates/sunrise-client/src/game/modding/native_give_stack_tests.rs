@@ -129,7 +129,8 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
         let rock = r#"{id:"minecraft:stone",count:10,components:{"minecraft:custom_name":"Rock"}}"#;
         let named = api_item(game, rock).unwrap();
         let engine = game.item_from_snbt(rock).unwrap();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -144,7 +145,7 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
             .unwrap();
         let before = game.dropped.len();
         assert_eq!(b.give_stack(game, named.clone()), Ok(None));
-        let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
+        let g = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
         assert_eq!(g.inventory[5].as_ref().map(|s| s.count), Some(64));
         assert_eq!(game.dropped.len(), before + 1);
         let dropped = game.dropped.last().unwrap();
@@ -156,14 +157,15 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
             Some(sunrise_sim::lan::playerdata::uuid_ints(13)),
             "only its player picks it up"
         );
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
             .update_guest(13, |g| g.inventory[7] = None)
             .unwrap();
         assert_eq!(b.give_stack(game, named), Ok(None));
-        let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
+        let g = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
         assert_eq!(g.inventory[7].as_ref(), Some(&engine));
         assert_eq!(game.dropped.len(), before + 2);
         let fake = game.dropped.last().unwrap();
@@ -182,7 +184,8 @@ fn a_dead_player_is_given_nothing() {
     with_guests(|game| {
         let b = game.players().server_players()[1];
         let rock = api_item(game, r#"{id:"minecraft:stone",count:3}"#).unwrap();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

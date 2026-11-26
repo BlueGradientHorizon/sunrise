@@ -29,6 +29,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let connection = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().find(|guest| guest.uuid == uuid))

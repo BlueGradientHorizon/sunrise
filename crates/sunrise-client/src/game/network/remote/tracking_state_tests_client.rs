@@ -3,7 +3,7 @@
 fn tracking_emitters_follow_the_packet_target() {
     use crate::game::{
         Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
-        totem::TOTEM_EVENT,
+        totem_common::TOTEM_EVENT,
     };
     use sunrise_core::geometry::Vec3;
     use sunrise_level::particle_options::ParticleType;
@@ -43,11 +43,15 @@ fn tracking_emitters_follow_the_packet_target() {
             root.clone(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(client, "EmitterTest").unwrap();
-    let remote = game.remote.as_mut().unwrap();
+    let remote = game.side.remote.as_mut().unwrap();
     remote.entity_id = 7;
     remote.logged_in = true;
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap());

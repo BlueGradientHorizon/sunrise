@@ -79,6 +79,10 @@ fn joining_a_server_empties_the_off_hand_too() {
             root.clone(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     let (first, _first_server) = sunrise_protocol::connection::Pipe::pair();

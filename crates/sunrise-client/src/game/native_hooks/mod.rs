@@ -9,12 +9,7 @@
 /// Generated dispatch entry points, not hand-written hook implementations.
 pub(in crate::game) mod fire;
 #[allow(unused_imports)]
-pub(in crate::game) use block_entity_tick::ResidentBlockEntityAccess;
-#[allow(unused_imports)]
 pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_pick::ClientPick;
 #[allow(unused_imports)]
 pub(in crate::game) use fire::{
     ConnectsToCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
@@ -22,7 +17,6 @@ pub(in crate::game) use fire::{
 };
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
-use super::native_data_maps::DataMapType;
 use super::{
     Game, GameLevel, LevelDimension, Screen,
     execution_role::{self, ExecutionRole},
@@ -34,6 +28,7 @@ use super::{
     native_block_entity_draw::BlockEntityDraw,
     native_mob_draw::{MobRender, PlayerRender},
 };
+use crate::game::native_data_maps_common::DataMapType;
 use mod_api::__private::game::{
     BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
     JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
@@ -46,14 +41,13 @@ use mod_api::GameTests;
 pub use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
 use mod_api::{
     self, Answered, BlockTintSources, CauldronFluidContents, CauldronInteractions,
-    ClientGuiOptions, ClientMiningPrediction, ClientReloadListeners, ColorResolvers,
-    EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers,
-    GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
-    InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
-    NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
-    PoiTypeExtensions, RecipeBookCategory, ScreenOpening, ScreenTarget, ScreenWidgets,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
-    TicketController, ToolUse, VillagerProfessions, WorldPhase,
+    ClientMiningPrediction, ClientReloadListeners, ColorResolvers, EnchantmentDamageEffects,
+    EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers, GameRuleActor, GuiLayerRegistrar,
+    HandDrawContext, HandRender, InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef,
+    LifecycleContext, LivingRef, LoadConditions, NoteBlockChange, ParticleProviders,
+    PathComputationType, Placement, PlayerRef, PoiTypeExtensions, RecipeBookCategory,
+    ScreenOpening, ScreenWidgets, ScreenshotImage, ServerReloadListeners, ServerTickPhase,
+    SpecialModelRenderers, TicketController, ToolUse, VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -87,17 +81,15 @@ use sunrise_game_data::suggestion::Suggestion;
 #[cfg(test)]
 use sunrise_sim::mobs::Damage;
 use sunrise_world::level::BonemealCheck;
-#[allow(unused_imports)]
-use winit::{event::MouseButton, keyboard::KeyCode};
 use {
-    sunrise_client::atlas_sources::qualified, sunrise_client::extras::Corner,
-    sunrise_client::extras_hud::Corners, sunrise_client::hud::HudBatch, sunrise_client::hud::rgba,
-    sunrise_client::keybinds, sunrise_client::music::Music, sunrise_client::music::MusicLayer,
-    sunrise_game_data::text::Text, sunrise_items::items::ItemStack,
-    sunrise_level::biome::BiomeColors, sunrise_level::biome::SpawnEntry,
-    sunrise_level::block_entities::Pos, sunrise_level::containers::BlockEntity,
-    sunrise_level::containers::MOD_MENUS, sunrise_level::containers::ModBlockEntityFields,
-    sunrise_level::fast_hash::FxHashMap, sunrise_level::particle_options::ParticleOptions,
+    sunrise_client::atlas_sources::qualified, sunrise_client::extras_hud::Corners,
+    sunrise_client::hud::HudBatch, sunrise_client::hud::rgba, sunrise_client::keybinds,
+    sunrise_client::music::Music, sunrise_client::music::MusicLayer, sunrise_game_data::text::Text,
+    sunrise_items::items::ItemStack, sunrise_level::biome::BiomeColors,
+    sunrise_level::biome::SpawnEntry, sunrise_level::block_entities::Pos,
+    sunrise_level::containers::BlockEntity, sunrise_level::containers::MOD_MENUS,
+    sunrise_level::containers::ModBlockEntityFields, sunrise_level::fast_hash::FxHashMap,
+    sunrise_level::particle_options::ParticleOptions,
     sunrise_level::particle_options::ParticleType, sunrise_mod_package::mod_list,
     sunrise_sim::crafting::Ingredient, sunrise_sim::crafting::recipe_result,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::health::Attack,
@@ -181,7 +173,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 check: None,
             };
         }
-        let client = self.remote.is_some();
+        let client = self.side_has_remote();
         let check = self.with_level(|b, level, _| b.is_valid_bonemeal_target(level, pos, client));
         let valid = check.is_valid();
         let state = self.world.block(pos.x, pos.y, pos.z);
@@ -277,11 +269,8 @@ pub(in crate::game) mod baby_entity_spawn;
 pub(in crate::game) mod base;
 pub(in crate::game) mod beacon_color_multiplier;
 pub(in crate::game) mod block_drops;
-pub(in crate::game) mod block_entity_client_tick;
 #[cfg(test)]
 pub(in crate::game) mod block_entity_client_tick_tests;
-#[cfg(feature = "client")]
-pub(in crate::game) mod block_entity_data_received;
 pub(in crate::game) mod block_entity_load_additional;
 pub(in crate::game) mod block_entity_neighbors;
 #[cfg(test)]
@@ -289,9 +278,9 @@ pub(in crate::game) mod block_entity_neighbors_tests;
 pub(in crate::game) mod block_entity_on_load;
 pub(in crate::game) mod block_entity_on_load_routes_tests;
 pub(in crate::game) mod block_entity_on_load_tests;
+pub(in crate::game) mod block_entity_read;
 pub(in crate::game) mod block_entity_save_additional;
 pub(in crate::game) mod block_entity_save_additional_tests;
-pub(in crate::game) mod block_entity_tick;
 pub(in crate::game) mod block_entity_type_add_blocks;
 pub(in crate::game) mod block_entity_view_distance;
 pub(in crate::game) mod block_grow_feature;
@@ -310,7 +299,7 @@ pub(in crate::game) mod bounce_restitution;
 pub(in crate::game) mod break_progress_positions;
 pub(in crate::game) mod build_creative_mode_tab_contents;
 pub(in crate::game) mod calculate_player_turn;
-pub(in crate::game) mod camera_pose;
+pub(in crate::game) mod camera_math;
 #[cfg(test)]
 pub(in crate::game) mod camera_pose_tests;
 pub(in crate::game) mod camera_read;
@@ -344,18 +333,19 @@ pub(in crate::game) mod client_chunk_load;
 pub(in crate::game) mod client_chunk_unload;
 pub(in crate::game) mod client_gui_state;
 pub(in crate::game) mod client_information_updated;
-pub(in crate::game) mod client_input_reads;
 pub(in crate::game) mod client_input_reads_tests;
 pub(in crate::game) mod client_mining_predict;
 pub(in crate::game) mod client_narrator;
 #[cfg(test)]
 pub(in crate::game) mod client_narrator_tests;
+#[cfg(test)]
 pub(in crate::game) mod client_options;
 pub(in crate::game) mod client_packet;
 pub(in crate::game) mod client_packet_send;
 pub(in crate::game) mod client_pause_change;
 pub(in crate::game) mod client_pause_read;
 #[cfg(feature = "client")]
+#[cfg(test)]
 pub(in crate::game) mod client_pick;
 pub(in crate::game) mod client_player_change_game_type;
 pub(in crate::game) mod client_player_clone;
@@ -376,7 +366,6 @@ pub(in crate::game) mod connects_to;
 pub(in crate::game) mod console_line;
 pub(in crate::game) mod contained_fluid;
 pub(in crate::game) mod container_loot_filled;
-pub(in crate::game) mod contents_changed;
 pub(in crate::game) mod crafting_remainder;
 pub(in crate::game) mod create_fluid_source;
 pub(in crate::game) mod create_skull_models;
@@ -436,6 +425,7 @@ pub(in crate::game) mod fire_behaviour;
 pub(in crate::game) mod fire_odds;
 pub(in crate::game) mod fishing_medium;
 pub(in crate::game) mod flip_frame;
+#[cfg(test)]
 pub(in crate::game) mod fluid_draw;
 pub(in crate::game) mod fluid_place_block;
 pub(in crate::game) mod fluid_rules;
@@ -446,6 +436,7 @@ pub(in crate::game) mod game_rule_changed;
 pub(in crate::game) mod game_shutting_down;
 pub(in crate::game) mod gather_effect_screen_tooltips;
 pub(in crate::game) mod gather_skipped_attribute_tooltips;
+#[cfg(test)]
 pub(in crate::game) mod general_entity_tick;
 pub(in crate::game) mod get_arm_pose;
 pub(in crate::game) mod grindstone_place;
@@ -551,6 +542,7 @@ pub(in crate::game) mod on_destroyed_by_push_reaction;
 #[cfg(test)]
 pub(in crate::game) mod on_destroyed_by_push_reaction_tests;
 pub(in crate::game) mod on_dropped_by_player;
+#[cfg(test)]
 pub(in crate::game) mod on_entity_item_update;
 pub(in crate::game) mod on_item_use_first;
 pub(in crate::game) mod panel_recipes;
@@ -594,7 +586,6 @@ pub(in crate::game) mod portal_spawn;
 pub(in crate::game) mod potion_brew_post;
 pub(in crate::game) mod potion_brew_pre;
 pub(in crate::game) mod pre_remove_side_effects;
-pub(in crate::game) mod preset_title;
 pub(in crate::game) mod rails;
 pub(in crate::game) mod recipe_book_categories;
 pub(in crate::game) mod recipe_book_ghost;
@@ -604,21 +595,16 @@ pub(in crate::game) mod register_block_state_models;
 pub(in crate::game) mod register_block_tint_sources;
 pub(in crate::game) mod register_cauldron_fluid_content;
 pub(in crate::game) mod register_cauldron_interaction;
-pub(in crate::game) mod register_client_item_extensions;
-pub(in crate::game) mod register_client_tooltip_component_factories;
 pub(in crate::game) mod register_color_resolvers;
 pub(in crate::game) mod register_configuration_tasks;
 pub(in crate::game) mod register_debug_entries;
 pub(in crate::game) mod register_debug_renderers;
 pub(in crate::game) mod register_dimension_transition_screen;
 pub(in crate::game) mod register_enchantment_damage_effects;
-#[cfg(feature = "client")]
-pub(in crate::game) mod register_entity_layers;
 pub(in crate::game) mod register_entity_renderers;
 pub(in crate::game) mod register_entity_spectator_shaders;
 pub(in crate::game) mod register_fluid_models;
 pub(in crate::game) mod register_game_tests;
-pub(in crate::game) mod register_gui_layers;
 pub(in crate::game) mod register_item_models;
 pub(in crate::game) mod register_item_tint_sources;
 pub(in crate::game) mod register_json_animation_types;
@@ -740,37 +726,23 @@ pub(in crate::game) use base::{
     native_menu_button, native_menu_quick_move, native_standalone_models,
 };
 #[allow(unused_imports)]
-pub(in crate::game) use block_entity_client_tick::native_block_entity_client_tick;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use block_entity_data_received::native_block_entity_data_received;
-#[allow(unused_imports)]
 pub(in crate::game) use block_entity_on_load::native_block_entity_on_load;
 #[allow(unused_imports)]
 pub(in crate::game) use block_entity_on_load::{authoritative_world_for_mods, world_for_mods};
 #[allow(unused_imports)]
-pub(in crate::game) use block_entity_tick::native_block_entity_tick;
-#[allow(unused_imports)]
 pub(in crate::game) use block_entity_type_add_blocks::native_block_entity_type_add_blocks;
 #[allow(unused_imports)]
 pub(in crate::game) use can_place_item::native_can_place_item;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_pick::native_can_rider_interact;
 #[allow(unused_imports)]
 pub(in crate::game) use create_skull_models::native_create_skull_models;
 #[allow(unused_imports)]
 pub(in crate::game) use extend_poi_types::native_extend_poi_types;
-#[allow(unused_imports)]
-pub(in crate::game) use general_entity_tick::native_general_entity_tick;
 #[allow(unused_imports)]
 pub(in crate::game) use map_decoration_types::native_map_decoration_types;
 #[allow(unused_imports)]
 pub(in crate::game) use math::startup_math_profile;
 #[allow(unused_imports)]
 pub(in crate::game) use menu_slot_take::native_menu_slot_take;
-#[allow(unused_imports)]
-pub(in crate::game) use on_entity_item_update::native_on_entity_item_update;
 #[allow(unused_imports)]
 pub(in crate::game) use piston_push_reaction::native_piston_push_reaction;
 #[allow(unused_imports)]
@@ -782,10 +754,6 @@ pub(in crate::game) use register_cauldron_fluid_content::native_register_cauldro
 #[allow(unused_imports)]
 pub(in crate::game) use register_cauldron_interaction::native_register_cauldron_interaction;
 #[allow(unused_imports)]
-pub(in crate::game) use register_client_item_extensions::native_register_client_item_extensions;
-#[allow(unused_imports)]
-pub(in crate::game) use register_client_tooltip_component_factories::native_register_client_tooltip_component_factories;
-#[allow(unused_imports)]
 pub(in crate::game) use register_color_resolvers::native_register_color_resolvers;
 #[allow(unused_imports)]
 pub(in crate::game) use register_debug_entries::native_register_debug_entries;
@@ -795,17 +763,12 @@ pub(in crate::game) use register_debug_renderers::native_register_debug_renderer
 pub(in crate::game) use register_dimension_transition_screen::native_register_dimension_transition_screen;
 #[allow(unused_imports)]
 pub(in crate::game) use register_enchantment_damage_effects::native_register_enchantment_damage_effects;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use register_entity_layers::native_register_entity_layers;
 #[allow(unused_imports)]
 pub(in crate::game) use register_entity_renderers::native_register_entity_renderers;
 #[allow(unused_imports)]
 pub(in crate::game) use register_entity_spectator_shaders::native_register_entity_spectator_shaders;
 #[allow(unused_imports)]
 pub(in crate::game) use register_fluid_models::native_register_fluid_models;
-#[allow(unused_imports)]
-pub(in crate::game) use register_gui_layers::native_register_gui_layers;
 #[allow(unused_imports)]
 pub(in crate::game) use register_item_models::native_register_item_models;
 #[allow(unused_imports)]

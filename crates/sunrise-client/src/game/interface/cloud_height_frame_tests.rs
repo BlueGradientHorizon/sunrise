@@ -53,7 +53,7 @@ fn join_overworld(game: &mut crate::game::ClientGame<'_>, height: f64) {
     json["attributes"]["minecraft:visual/cloud_height"] = serde_json::json!(height);
     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(client, "CloudHeightFrameTest").unwrap();
-    let mut registries = (*game.remote.as_ref().unwrap().registries).clone();
+    let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
     registries.registries.insert(
         "minecraft:dimension_type".into(),
         vec![(
@@ -89,7 +89,7 @@ fn join_overworld(game: &mut crate::game::ClientGame<'_>, height: f64) {
     }))
     .unwrap();
     // The level's terrain is in: the loading screen closes.
-    game.remote.as_mut().unwrap().level_load.finish();
+    game.side.remote.as_mut().unwrap().level_load.finish();
 }
 
 /// A pixel left of the hotbar and the crosshair.

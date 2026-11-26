@@ -19,7 +19,7 @@ pub(in crate::game) fn spawn(dimension: &str) -> play::SpawnInfo {
     }
 }
 
-impl super::Remote {
+impl crate::game::client_side::remote_client::Remote {
     /// Lists this client's own player with `latency`, as the server's player info update does.
     pub(in crate::game) fn list_self(&mut self, latency: i32) {
         let mut me = sunrise_level::profile_lookup::TabPlayer::new(self.profile, "SessionReadTest");

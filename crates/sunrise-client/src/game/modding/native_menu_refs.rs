@@ -127,7 +127,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game) fn native_client_menu_name(&self, menu: MenuRef) -> Option<&str> {
-        let remote = self.remote.as_ref().filter(|remote| remote.logged_in)?;
+        let remote = self
+            .side
+            .remote
+            .as_ref()
+            .filter(|remote| remote.logged_in)?;
         let epoch = self.native_lifecycle.epoch()?;
         (menu.fields().player.fields().entity.epoch() == epoch
             && menu.fields().player.fields().entity.id()
@@ -149,7 +153,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         player: PlayerRef,
     ) -> Option<MenuRef> {
         self.player_read_both(player)?;
-        let remote = self.remote.as_ref()?;
+        let remote = self.side.remote.as_ref()?;
         let (window, name) = remote
             .menu
             .as_ref()
@@ -347,7 +351,7 @@ pub(in crate::game) mod tests {
                     super::super::native_entity_refs::tests::with_client_game(|game| {
                         let _server =
                             super::super::native_client_session::tests::logged_client(game);
-                        Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
+                        Arc::make_mut(&mut game.side.remote.as_mut().unwrap().builtin)
                             .registries
                             .insert(
                                 "minecraft:menu".into(),
@@ -435,7 +439,7 @@ pub(in crate::game) mod tests {
         let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([320, 240]);
         game.options.offscreen = true;
         game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.level_load.finish();
         let mut body =
             sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)

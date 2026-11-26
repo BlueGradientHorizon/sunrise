@@ -1,8 +1,126 @@
+//! The one stored pick, refreshed before tick inputs and frame extraction.
 use super::*;
-use crate::game::native_hooks::client_pick::ResidentClientPickEntity;
 use crate::game::view_vector;
+use crate::game::{Dim, commands_common::Target};
 use mod_api::CrosshairTarget;
 
+#[derive(Default)]
+pub(in crate::game) struct ClientPick {
+    pub ray: Option<([f64; 3], [f64; 3])>,
+    pub(in crate::game) epoch: Option<mod_api::WorldEpoch>,
+    pub(in crate::game) dimension: Option<Dim>,
+    pub(in crate::game) origin: [f64; 3],
+    pub(in crate::game) entity_reach: f64,
+    pub(in crate::game) result: Option<CrosshairTarget>,
+    pub entity_metadata: (bool, bool),
+    pub rider_candidates: Vec<crate::game::pick_ray::PickCandidate>,
+    #[cfg(test)]
+    pub(in crate::game) test_forced_hit: Option<crate::game::Hit>,
+    pub sections: std::cell::RefCell<crate::game::pick_entity::pick_sections::PickSectionStorage>,
+    pub(in crate::game) dispatching: bool,
+    /// How many picks have been taken.
+    pub(in crate::game) taken: u64,
+}
+
+#[cfg(feature = "client")]
+impl crate::game::ClientGame<'_> {
+    /// A window always has a decision, including before the first pick (a miss).
+    /// None in the outer option means a server ray or the current pick computation.
+    pub(in crate::game) fn cached_entity_pick(&self) -> Option<Option<(EntityRef, f64, [f64; 3])>> {
+        self.side_uses_stored_pick()
+            .then(|| match self.crosshair_target() {
+                Some(CrosshairTarget::Entity { entity, point }) => {
+                    Some((entity, self.pick_distance(point), point))
+                }
+                _ => None,
+            })
+    }
+
+    pub(in crate::game) fn pick_target_live(&self, result: CrosshairTarget) -> bool {
+        use crate::game::api_values::TryIntoApi;
+        match result {
+            CrosshairTarget::Block { pos, state, .. } => {
+                self.world.block(pos.x, pos.y, pos.z).try_into_api().ok() == Some(state)
+            }
+            CrosshairTarget::Entity { entity, .. } => {
+                self.native_client_entity_target(entity).is_some()
+            }
+            _ => false,
+        }
+    }
+
+    pub(in crate::game) fn ask_can_rider_interact(
+        &mut self,
+        subject: mod_api::EntityRef,
+        allowed: &mut bool,
+    ) {
+        let mut access = ClientPickEntityAccess {
+            game: self,
+            subject,
+        };
+        native_can_rider_interact(mod_api::__private::CanRiderInteractCall {
+            subject: mod_api::EntityClientScope::new(&mut access),
+            allowed,
+        });
+    }
+
+    pub(in crate::game) fn native_client_pick(
+        &mut self,
+        call: mod_api::__private::ClientPickCall<'_>,
+    ) {
+        self.fire_client_pick(call);
+    }
+}
+
+pub(in crate::game) fn native_can_rider_interact(
+    call: mod_api::__private::CanRiderInteractCall<'_>,
+) {
+    crate::game::native_hooks::fire::fire_can_rider_interact(call);
+}
+
+pub(in crate::game) struct ResidentClientPickEntity {
+    pub(in crate::game) kind: Option<mod_api::EntityTypeKey>,
+    pub(in crate::game) position: [f64; 3],
+    pub(in crate::game) rotation: [f32; 2],
+    pub(in crate::game) uuid: Option<u128>,
+}
+
+impl mod_api::ResidentClientEntity for ResidentClientPickEntity {
+    fn kind(&self) -> Option<mod_api::EntityTypeKey> {
+        self.kind
+    }
+    fn position(&self) -> [f64; 3] {
+        self.position
+    }
+    fn rotation(&self) -> [f32; 2] {
+        self.rotation
+    }
+    fn uuid(&self) -> Option<u128> {
+        self.uuid
+    }
+}
+
+pub(in crate::game) struct ClientPickEntityAccess<'g, 'w> {
+    pub(in crate::game) game: &'g mut crate::game::ClientGame<'w>,
+    pub(in crate::game) subject: mod_api::EntityRef,
+}
+
+impl mod_api::EntityClientAccess for ClientPickEntityAccess<'_, '_> {
+    fn route_kind(&self) -> Option<mod_api::EntityTypeKey> {
+        self.game.client_pick_route_kind(self.subject)
+    }
+
+    fn with_view(&mut self, call: &mut dyn FnMut(mod_api::EntityClientView<'_>)) {
+        let Some(data) = self.game.client_pick_entity_view(self.subject) else {
+            return;
+        };
+        call(mod_api::EntityClientView::new(self.subject, &data));
+    }
+
+    fn host(&mut self) -> &mut dyn mod_api::ClientHost {
+        self.game
+    }
+}
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The sole mod-output geometry boundary. Occlusion is intentionally not reapplied.
     pub(in crate::game::client_side) fn accept_client_pick(&self, result: CrosshairTarget) -> bool {
@@ -46,15 +164,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         self.native_client_entity_target(entity),
                     ),
                 self.dragon.as_ref().is_none_or(|d| {
-                    crate::game::server_side::dragon::dragon_part_index(d.id, entity.id()).is_none()
+                    crate::game::dragon_common::dragon_part_index(d.id, entity.id()).is_none()
                 }),
             ),
             _ => (false, false),
         };
     }
 
-    fn client_target_kind_name(&self, target: crate::game::commands::Target) -> Option<&str> {
-        use crate::game::commands::Target;
+    fn client_target_kind_name(&self, target: Target) -> Option<&str> {
         Some(match target {
             Target::Player | Target::Guest(_) => crate::game::native_living_body::PLAYER,
             Target::Mob(id) => crate::game::native_living_body::body_kind_name(
@@ -69,7 +186,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .find(|p| p.id == id)?
                 .entity_type(),
             Target::Stand(_) => crate::game::native_living_body::ARMOR_STAND,
-            Target::General(id) => self.remote.as_ref()?.general.rows.get(&(id as i32))?.kind(),
+            Target::General(id) => self
+                .side
+                .remote
+                .as_ref()?
+                .general
+                .rows
+                .get(&(id as i32))?
+                .kind(),
             Target::Frame(id) => {
                 if self.item_frames.iter().any(|f| f.id == id && f.glow) {
                     "minecraft:glow_item_frame"
@@ -84,7 +208,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if self.side.interactions.contains_key(&(id as i32)) {
                     "minecraft:interaction"
                 } else {
-                    self.remote.as_ref()?.tracked(id as i32)?.0
+                    self.side.remote.as_ref()?.tracked(id as i32)?.0
                 }
             }
             Target::Crystal(_) => "minecraft:end_crystal",
@@ -105,11 +229,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         })
     }
 
-    fn client_target_kind_key(
-        &self,
-        target: crate::game::commands::Target,
-    ) -> Option<mod_api::EntityTypeKey> {
-        use crate::game::commands::Target;
+    fn client_target_kind_key(&self, target: Target) -> Option<mod_api::EntityTypeKey> {
         let keys = self.res.living_type_keys();
         match target {
             Target::Player | Target::Guest(_) => keys.player,
@@ -122,8 +242,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
 
-    fn client_target_position(&self, target: crate::game::commands::Target) -> Option<[f64; 3]> {
-        use crate::game::commands::Target;
+    fn client_target_position(&self, target: Target) -> Option<[f64; 3]> {
         match target {
             Target::Player => self
                 .player
@@ -187,7 +306,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .interactions
                 .get(&(id as i32))
                 .map(|e| [e.position.x, e.position.y, e.position.z])
-                .or_else(|| self.remote.as_ref()?.tracked(id as i32).map(|(_, p)| p)),
+                .or_else(|| {
+                    self.side
+                        .remote
+                        .as_ref()?
+                        .tracked(id as i32)
+                        .map(|(_, p)| p)
+                }),
             Target::Crystal(id) => self
                 .crystals
                 .iter()
@@ -204,7 +329,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .find(|c| c.id == id)
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
             Target::DragonPart(id) => self.dragon.as_ref().and_then(|d| {
-                let i = crate::game::server_side::dragon::dragon_part_index(d.id, id)?;
+                let i = crate::game::dragon_common::dragon_part_index(d.id, id)?;
                 let p = d.parts[i].0;
                 Some([p.x, p.y, p.z])
             }),
@@ -231,7 +356,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .iter()
                 .find(|h| h.id == id)
                 .map(|h| [h.position.x, h.position.y, h.position.z])
-                .or_else(|| self.remote.as_ref()?.tracked(id as i32).map(|(_, p)| p)),
+                .or_else(|| {
+                    self.side
+                        .remote
+                        .as_ref()?
+                        .tracked(id as i32)
+                        .map(|(_, p)| p)
+                }),
             Target::Trident(id) => self
                 .tridents
                 .iter()
@@ -243,8 +374,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .iter()
                 .find(|s| s.id == id)
                 .map(|s| s.position),
-            Target::Knot(id) => self.remote.as_ref()?.tracked(id as i32).map(|(_, p)| p),
+            Target::Knot(id) => self
+                .side
+                .remote
+                .as_ref()?
+                .tracked(id as i32)
+                .map(|(_, p)| p),
             Target::General(id) => self
+                .side
                 .remote
                 .as_ref()?
                 .general
@@ -254,13 +391,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
 
-    fn client_target_rotation(&self, target: crate::game::commands::Target) -> [f32; 2] {
-        use crate::game::commands::Target;
-        use crate::game::entity::Entity;
+    fn client_target_rotation(&self, target: Target) -> [f32; 2] {
         use sunrise_sim::entity_nbt::loaded_rotation;
         let saved_rotation = |id| self.persist.raw.get(&id).map_or([0.0; 2], loaded_rotation);
         let tracked_rotation = |id: u32| {
-            self.remote
+            self.side
+                .remote
                 .as_ref()
                 .and_then(|r| r.entities.get(&(id as i32)))
                 .map_or([0.0; 2], |t| [t.yaw, t.pitch])
@@ -272,28 +408,28 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .mobs
                 .iter()
                 .find(|m| m.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| [a.yaw, a.head_pitch]),
             Target::Item(id) => self
                 .dropped
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| a.rotation),
             Target::Orb(id) => self
                 .orbs
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| a.rotation),
             Target::Projectile(id) => self
                 .creatures
                 .projectiles
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| [a.yaw, a.pitch]),
             Target::Stand(id) => self
                 .armor_stands
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| [a.yaw, a.pitch]),
             Target::Frame(id) => self
                 .item_frames
                 .iter()
@@ -310,12 +446,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .boats
                 .iter()
                 .find(|b| b.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| [a.yaw, a.pitch]),
             Target::Cart(id) => self
                 .carts
                 .iter()
                 .find(|c| c.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| [a.yaw, a.pitch]),
             Target::Fangs(id) => self
                 .fangs
                 .list
@@ -342,7 +478,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .tnts
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| a.rotation),
             Target::Cushion(id) => self
                 .cushions
                 .iter()
@@ -352,17 +488,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .falling
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| a.rotation),
             Target::Rocket(id) => self
                 .rockets
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| a.rotation),
             Target::Trident(id) => self
                 .tridents
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
+                .map_or([0.0; 2], |a| [a.yaw, a.pitch]),
             Target::Spawner(id) => self
                 .ominous_spawners
                 .iter()
@@ -376,6 +512,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .get(&(id as i32))
                 .map_or_else(|| tracked_rotation(id), |e| [e.yaw, e.pitch]),
             Target::General(id) => self
+                .side
                 .remote
                 .as_ref()
                 .and_then(|r| r.general.rows.get(&(id as i32)))
@@ -422,6 +559,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             } else {
                 let (name, position) = self.native_client_tracked(subject)?;
                 let rotation = self
+                    .side
                     .remote
                     .as_ref()
                     .and_then(|r| {
@@ -435,7 +573,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     rotation,
                 )
             };
-        let uuid = self.remote.as_ref().and_then(|r| {
+        let uuid = self.side.remote.as_ref().and_then(|r| {
             let id = i32::try_from(subject.id()).ok()?;
             if r.logged_in && id == r.entity_id {
                 return Some(r.profile());
@@ -465,7 +603,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         id: i32,
     ) -> Option<String> {
-        use crate::game::commands::Target;
         let entity = EntityRef::new(self.native_lifecycle.epoch()?, u32::try_from(id).ok()?);
         if let Some(target) = self.native_client_entity_target(entity) {
             return match target {
@@ -563,17 +700,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|range| self.attack_range_pick_result(&range));
         let mut entity_in_range = None;
         let original = match attack_result {
-            Some(crate::game::pick_entity::AttackRangePickResult::Entity(hit)) => self
+            Some(crate::game::pick_entity_common::AttackRangePickResult::Entity(hit)) => self
                 .native_lifecycle
                 .epoch()
                 .map(|epoch| CrosshairTarget::Entity {
                     entity: EntityRef::new(epoch, hit.id),
                     point: hit.point,
                 }),
-            Some(crate::game::pick_entity::AttackRangePickResult::Block(hit)) => {
+            Some(crate::game::pick_entity_common::AttackRangePickResult::Block(hit)) => {
                 self.crosshair_block_target(hit)
             }
-            None | Some(crate::game::pick_entity::AttackRangePickResult::Miss) => {
+            None | Some(crate::game::pick_entity_common::AttackRangePickResult::Miss) => {
                 let raw_entity_hit =
                     self.pick_entity_candidate_within(entity_max_distance, search_max_distance_sq);
                 // Refuse the pick if a rider listener changed camera, epoch, or dimension.
@@ -614,7 +751,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Supply block and entity candidates independently only when a ClientPick listener is active.
         let entity_candidate = if matches!(
             attack_result,
-            Some(crate::game::pick_entity::AttackRangePickResult::Entity(_))
+            Some(crate::game::pick_entity_common::AttackRangePickResult::Entity(_))
         ) {
             original
         } else if entity_in_range.is_some() {
@@ -622,7 +759,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if block_hit.is_some()
             || matches!(
                 attack_result,
-                Some(crate::game::pick_entity::AttackRangePickResult::Block(_))
+                Some(crate::game::pick_entity_common::AttackRangePickResult::Block(_))
             )
         {
             let independent = self.pick_entity_candidate_within(

@@ -2,7 +2,7 @@
 //! → `getRedstoneSignalFromContainer`): a pot's one slot lives in the chunk's
 //! saved block entity, so a comparator beside it has to read that tag.
 use super::*;
-use crate::game::{game_tests::tests::server_game, spill};
+use crate::game::{game_tests::tests::server_game, spill_common as spill};
 use sunrise_sim::save;
 use sunrise_world::level::LevelAccess;
 

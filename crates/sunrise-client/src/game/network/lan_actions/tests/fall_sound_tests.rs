@@ -30,13 +30,14 @@ fn run(distance: f64, expected: usize) {
             observer.loaded = true;
             let (tx, other) = mpsc::channel();
             observer.sender = PlayerSender::new(tx, Arc::default());
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .extend([landing, observer]);
-            let target = match game.lan.as_ref().unwrap().hub.sound_packet(
+            let target = match game.side.lan.as_ref().unwrap().hub.sound_packet(
                 "minecraft:block.stone.fall",
                 [1.5, 64.0, 1.5],
                 0.5,

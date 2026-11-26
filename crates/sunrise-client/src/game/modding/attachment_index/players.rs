@@ -11,7 +11,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(epoch) = self.native_lifecycle.epoch() else {
             return;
         };
-        let Some(guest) = self.lan.as_ref().and_then(|host| {
+        let Some(guest) = self.side.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
                 .connection_index(conn)
@@ -36,6 +36,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &mut self.player_state.attachments
         } else {
             let Some(map) = self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|host| host.hub.guests.attachments_mut(conn))

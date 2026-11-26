@@ -16,7 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `Minecraft.getQuickActionsDialog`: the dialogs the tag names, from
     /// `RegistryAccess.lookupOrThrow(Registries.DIALOG)`.
     fn quick_actions_dialog(&self) -> Option<Tag> {
-        let registries = &self.remote.as_ref()?.registries;
+        let registries = &self.side.remote.as_ref()?.registries;
         let dialogs = registries.registries.get("minecraft:dialog")?;
         let tag = registries.tag("minecraft:dialog", "minecraft:quick_actions")?;
         match tag.len() {

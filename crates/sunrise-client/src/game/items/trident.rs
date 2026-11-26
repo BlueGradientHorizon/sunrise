@@ -3,8 +3,8 @@
 //! 8 damage plus Impaling, the reversed bounce off a hit, sticking, Loyalty's
 //! return to the owner, pickup) with `ThrownTridentRenderer`, and Channeling's
 //! lightning on a hit (`channeling.json`).
-use super::level_sounds::LevelSound;
 use super::{Game, commands::Target};
+use crate::game::level_sounds_common::LevelSound;
 use mod_api::{__private::TransactionFrame, SoundSource};
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
@@ -20,68 +20,11 @@ use sunrise_sim::{
     arrows::{Pickup, back_off, clip_block_hit},
     join_seq::JoinSeq,
     mobs::{Damage, DamageKind, Species, Who},
-    projectiles::{Hit, ProjectileWorld},
+    projectiles::Hit,
 };
 
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::trident::{HALF, ThrownTrident, breeze_deflect};
-/// `ThrownTrident.tick` on a server's client: it flies on by itself
-/// between the server's updates (`AbstractArrow.tick`: gravity and drag,
-/// a block holds it), and Loyalty pulls it back to its owner; only the
-/// server decides what it hits.
-pub(in crate::game) fn remote_tick(
-    t: &mut ThrownTrident,
-    w: &impl ProjectileWorld,
-    owner_eye: Option<Vec3>,
-) {
-    t.previous = t.position;
-    t.shake -= i32::from(t.shake > 0);
-    if t.in_ground_time > 4 {
-        t.dealt_damage = true;
-    }
-    if t.loyalty > 0
-        && (t.dealt_damage || t.no_physics)
-        && let Some(eye) = owner_eye
-    {
-        t.no_physics = true;
-        t.in_ground = false;
-        t.loyalty_pull(eye);
-    }
-    // AbstractArrow.tick releases a changed block only on the server;
-    // clients release from the non-SELF move after a piston push.
-    if t.in_ground && !t.no_physics {
-        t.in_ground_time += 1;
-        return;
-    }
-    t.in_ground_time = 0;
-    let m = t.velocity;
-    let (x, z) = if t.no_physics {
-        (-m.x, -m.z)
-    } else {
-        (m.x, m.z)
-    };
-    // Projectile.updateRotation's targets: Mth.atan2 times the folded 180F / (float)PI, the pitch over
-    // Vec3.horizontalDistance.
-    t.yaw = sunrise_core::geometry::trig::atan2_degrees(x, z);
-    t.pitch = sunrise_core::geometry::trig::atan2_degrees(m.y, m.horizontal_distance());
-    let to = t.position.add_vector(m);
-    if !t.no_physics
-        && let Some((at, _, _)) = w.clip(t.position, to)
-    {
-        // AbstractArrow.onHitBlock's back-off, as the server's tick does it.
-        t.position = back_off(at, m);
-        t.velocity = Vec3::ZERO;
-        t.in_ground = true;
-        t.shake = 7;
-        return;
-    }
-    t.position = to;
-    // A trident's water inertia (0.99) equals the air drag.
-    t.velocity = t.velocity.scale(0.99);
-    if !t.no_physics && !t.no_gravity {
-        t.velocity.y -= 0.05;
-    }
-}
+use sunrise_gameplay::trident::breeze_deflect;
+use sunrise_sim::thrown_trident::{HALF, ThrownTrident};
 /// A player a trident can return to (its owner) or that can pick it up: this
 /// game's own, or a server's guest in this level, which is all a server has.
 pub(in crate::game) struct Catcher {
@@ -251,7 +194,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && let (Some(conn), Some(body), Some(host)) = (
                         self.side.lan_acting,
                         self.player.as_ref(),
-                        self.lan.as_mut(),
+                        self.side.lan.as_mut(),
                     )
                 {
                     // ServerPlayer inherits Entity.move: commit the lift to its server record,
@@ -394,7 +337,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// The connection of the guest whose entity id is `id`.
     pub(in crate::game::server_side) fn trident_guest_conn(&self, id: u32) -> Option<u32> {
-        self.lan
+        self.side
+            .lan
             .as_ref()?
             .hub
             .guests
@@ -412,7 +356,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         damage: f32,
         attack: sunrise_sim::health::Attack,
     ) -> bool {
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return false;
         }
         let refused = !self.guest_may_harm(t.guest, conn);
@@ -447,7 +391,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 uuid: self.level.player_uuid,
             });
         }
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             for g in host.hub.guests.iter().filter(|g| host.hub.here(g)) {
                 let [x, y, z] = g.position;
                 out.push(Catcher {
@@ -837,16 +781,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                         .prepare_knockback_credit(id as i32, owner_who, &attack);
                                     // The hit's causing entity, lent to its listeners beside the victim.
                                     let causing = self.causer_id(owner_who);
-                                    let decision =
-                                        crate::game::entity::causer_decision!(self, causing);
+                                    let decision = crate::game::server_side::entity_server::causer_decision!(
+                                        self, causing
+                                    );
                                     let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                                     let from_pos = Some([t.position.x, t.position.y, t.position.z]);
                                     let join = self.mobs[mob_idx].join;
-                                    let (victim, lend) = crate::game::entity::victim_and_causer!(
+                                    let (victim, lend) = crate::game::server_side::entity_server::victim_and_causer!(
                                         self, mob_idx, causing, decision
                                     );
                                     let hurt = victim.damage_projectile(
-                                        crate::game::entity::damage_level_of!(
+                                        crate::game::server_side::entity_server::damage_level_of!(
                                             self,
                                             &attack,
                                             &mut credit,
@@ -945,7 +890,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     .find(|m| m.id == id && m.join == join && !m.removed)
                                     .map(|m| m.position.components())
                             } else if let Some(conn) = hurt_guest {
-                                self.lan
+                                self.side
+                                    .lan
                                     .as_ref()
                                     .and_then(|h| h.hub.guest(conn))
                                     .map(|g| g.position)
@@ -1165,7 +1111,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Player.take, for a creative thrower's trident too: the clients near
         // play the pickup sound and fly the trident to its collector.
         if by.guest.is_some()
-            && let Some(host) = self.lan.as_ref()
+            && let Some(host) = self.side.lan.as_ref()
         {
             let at = [t.position.x, t.position.y, t.position.z];
             host.hub.take_item(t.id as i32, by.id, 1, at);
@@ -1189,8 +1135,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 pub(in crate::game) mod impact_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::{ThrownTrident, remote_tick};
+    use crate::game::client_side::trident_client::remote_tick;
     use sunrise_core::geometry::{Aabb, Vec3};
+    use sunrise_sim::thrown_trident::ThrownTrident;
     use sunrise_sim::{mobs::Who, projectiles::ProjectileWorld};
 
     struct Air;
@@ -1251,6 +1198,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.player =
@@ -1333,6 +1281,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.world.chunks.insert(

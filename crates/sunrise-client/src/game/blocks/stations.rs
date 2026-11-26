@@ -152,59 +152,6 @@ pub(in crate::game) use super::stations_client::{CyclingSlot, EnchantBook, renam
 pub(in crate::game) use super::stations_client::{EMPTY_TEMPLATE_ICONS, StationUi};
 pub(in crate::game) use crate::game::stations_common::{INPUT, Kind, RESULT, Station};
 
-impl Kind {
-    pub(in crate::game::client_side) fn texture(self) -> &'static str {
-        match self {
-            Self::Enchanting => "gui/container/enchanting_table",
-            Self::Anvil => "gui/container/anvil",
-            Self::Grindstone => "gui/container/grindstone",
-            Self::Smithing => "gui/container/smithing",
-            Self::Stonecutter => "gui/container/stonecutter",
-            Self::Merchant => "gui/container/villager",
-            Self::Beacon => "gui/container/beacon",
-            Self::Cartography => "gui/container/cartography_table",
-            Self::Loom => "gui/container/loom",
-        }
-    }
-    /// (titleLabelX, titleLabelY).
-    pub(in crate::game::client_side) fn title_pos(self) -> (f32, f32) {
-        match self {
-            Self::Anvil => (60.0, 6.0),
-            Self::Smithing => (44.0, 15.0),
-            Self::Stonecutter => (8.0, 5.0),
-            Self::Cartography | Self::Loom => (8.0, 4.0),
-            _ => (8.0, 6.0),
-        }
-    }
-    pub(in crate::game::client_side) fn input_pos(self, i: usize) -> (f32, f32) {
-        let table: &[(f32, f32)] = match self {
-            Self::Enchanting => &[(15.0, 47.0), (35.0, 47.0)],
-            Self::Anvil => &[(27.0, 47.0), (76.0, 47.0)],
-            Self::Grindstone => &[(49.0, 19.0), (49.0, 40.0)],
-            Self::Smithing => &[(8.0, 48.0), (26.0, 48.0), (44.0, 48.0)],
-            Self::Stonecutter => &[(20.0, 33.0)],
-            Self::Merchant => &[(86.0, 37.0), (112.0, 37.0)],
-            Self::Beacon => &[(109.0, 110.0)],
-            Self::Cartography => &[(15.0, 15.0), (15.0, 52.0)],
-            Self::Loom => &[(13.0, 26.0), (33.0, 26.0), (23.0, 45.0)],
-        };
-        table[i.min(table.len() - 1)]
-    }
-    pub(in crate::game::client_side) fn result_pos(self) -> Option<(f32, f32)> {
-        match self {
-            Self::Enchanting => None,
-            Self::Anvil => Some((134.0, 47.0)),
-            Self::Grindstone => Some((129.0, 34.0)),
-            Self::Smithing => Some((98.0, 48.0)),
-            Self::Stonecutter => Some((143.0, 33.0)),
-            Self::Merchant => Some((170.0, 37.0)),
-            Self::Beacon => None,
-            Self::Cartography => Some((145.0, 39.0)),
-            Self::Loom => Some((143.0, 57.0)),
-        }
-    }
-}
-
 /// `at` is on one of a list's `rows`, with no row further that way.
 pub(in crate::game::client_side) fn off_visible_rows(
     rows: &[[f32; 4]],
@@ -376,7 +323,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let s = self.station.as_ref()?;
         if s.kind == Kind::Merchant && i < 36 {
-            return Some(super::trading::inventory_slot(i));
+            return Some(crate::game::client_side::trading_client::inventory_slot(i));
         }
         if s.kind == Kind::Beacon {
             return super::beacon::slot_position(i);
@@ -469,7 +416,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 );
                 // AnvilUpdateEvent on a server's client menu, as on the server,
                 // whenever createResult ran with a left input.
-                if s.inputs.first().is_some_and(Option::is_some) && self.remote.is_some() {
+                if s.inputs.first().is_some_and(Option::is_some) && self.side.remote.is_some() {
                     self.update_anvil_answer(&mut s, &name);
                 }
                 s.result = s.anvil.result.clone();
@@ -517,7 +464,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         slot: usize,
         stack: &ItemStack,
     ) -> (bool, u32) {
-        if (super::mount_menu::SADDLE..crate::game::inventory_slots::MOD_MENU_SLOT_BASE)
+        if (sunrise_gameplay_common::mount_rules::SADDLE
+            ..crate::game::inventory_slots::MOD_MENU_SLOT_BASE)
             .contains(&slot)
         {
             return self.mount_slot_rules(slot, stack);
@@ -743,7 +691,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return;
         }
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             // EnchantmentScreen.mouseClicked: the client menu took it, the server enchants.
             self.remote_station_button(button as i32);
         }
@@ -783,7 +731,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn station_click(&mut self, right: bool) -> bool {
         // A server's brewing stand: its slots are the server's.
-        if self.station.is_none() && (!self.brewing_open() || self.remote.is_some()) {
+        if self.station.is_none() && (!self.brewing_open() || self.side.remote.is_some()) {
             return false;
         }
         let Some(size) = self
@@ -803,7 +751,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if kind == Kind::Merchant && !right && self.merchant_click(local) {
                 return true;
             }
-            if kind == Kind::Merchant && self.remote.is_some() {
+            if kind == Kind::Merchant && self.side.remote.is_some() {
                 // A server's trading window: its slots are the server's.
                 return false;
             }
@@ -932,7 +880,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let shown = |g: &Self| {
             g.station_and_ui().map(|(s, ui)| {
                 let merchant = s.merchant.as_ref().map(|m| m.scroll);
-                (ui.start, s.loom.start_row, merchant)
+                (ui.start, g.side.station_loom.start_row, merchant)
             })
         };
         let before = shown(self);
@@ -959,7 +907,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let rows = stonecutter_offscreen_rows(s.stone.recipes.len());
         let offs = ui.scroll - d / rows as f32;
-        s.stonecutter_scroll_to(ui, offs);
+        crate::game::client_side::stations_client::stonecutter_scroll_to(s, ui, offs);
         true
     }
     /// The mouse moved with a button held on a station: the loom's,
@@ -985,7 +933,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && ui.scrolling
             && s.stonecutter_scrolls()
         {
-            s.stonecutter_scroll_to(ui, stonecutter_drag_offs(y));
+            crate::game::client_side::stations_client::stonecutter_scroll_to(
+                s,
+                ui,
+                stonecutter_drag_offs(y),
+            );
             return true;
         }
         handled
@@ -2265,7 +2217,8 @@ pub(in crate::game) mod tests {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilDrag").unwrap();
-                game.remote
+                game.side
+                    .remote
                     .as_mut()
                     .unwrap()
                     .menu
@@ -2320,7 +2273,8 @@ pub(in crate::game) mod tests {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilTake").unwrap();
-                game.remote
+                game.side
+                    .remote
                     .as_mut()
                     .unwrap()
                     .menu
@@ -2989,7 +2943,7 @@ pub(in crate::game) mod tests {
         mod_platform::testing::with_mods(mods, || {
             let mut factories = TooltipComponentFactories::default();
             {
-                crate::game::native_hooks::native_register_client_tooltip_component_factories(
+                crate::game::client_side::native_hooks_client::register_client_tooltip_component_factories::native_register_client_tooltip_component_factories(
                     &RegistrationContext::new(),
                     &mut factories,
                 );
@@ -3174,10 +3128,10 @@ pub(in crate::game) mod tests {
         s.stone.recipes = (0..26).collect();
         assert!(s.stonecutter_scrolls());
         let offs = ui.scroll + 1.0 / 4.0;
-        s.stonecutter_scroll_to(&mut ui, offs);
+        crate::game::client_side::stations_client::stonecutter_scroll_to(&s, &mut ui, offs);
         assert_eq!(ui.start, 4);
         let offs = ui.scroll + 5.0;
-        s.stonecutter_scroll_to(&mut ui, offs);
+        crate::game::client_side::stations_client::stonecutter_scroll_to(&s, &mut ui, offs);
         assert_eq!((ui.scroll, ui.start), (1.0, 16));
         s.stone.recipes.truncate(12);
         assert!(!s.stonecutter_scrolls());

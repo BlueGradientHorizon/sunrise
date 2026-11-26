@@ -42,9 +42,15 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::Serve
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     for x in 0..2 {
@@ -111,7 +117,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::Serve
     let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
     sword.data_mut().enchantments = vec![("minecraft:looting".into(), 3)];
     guest.inventory[0] = Some(sword);
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     game.player.as_mut().unwrap().position = Vec3::new(4.5, 100.0, 4.5);
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
     assert!(game.run_command("setblock 8 100 8 chest"));
@@ -214,6 +220,7 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
     let mut first_resources = None;
     let mut first = game(&mut first_resources);
     first
+        .side
         .lan
         .as_mut()
         .unwrap()
@@ -247,7 +254,7 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
         ([p.x, p.y, p.z], first.dim),
         ([4.5, 100.0, 4.5], Dim::Overworld)
     );
-    let g = first.lan.as_ref().unwrap().hub.guest(2).unwrap();
+    let g = first.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
     assert_eq!(
         (g.position, g.selected, g.inventory[0].is_none()),
         ([22.5, 101.0, 9.5], 0, true)

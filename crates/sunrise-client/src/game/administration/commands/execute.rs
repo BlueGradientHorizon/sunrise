@@ -620,26 +620,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-/// Whether `uuid` is the player in place (`Target::Player`): during a guest's turn that is the guest, not the
-/// level's own player (the world owner), whom `Level.getEntity(UUID)` finds only while they are in the level.
-pub(in crate::game) fn is_player_in_place(
-    uuid: [i32; 4],
-    acting: Option<u128>,
-    level_player: Option<[i32; 4]>,
-) -> bool {
-    match acting {
-        Some(guest) => sunrise_sim::lan::playerdata::ints_uuid(uuid) == guest,
-        None => Some(uuid) == level_player,
-    }
-}
-
 #[cfg(test)]
 #[path = "execute_facing_tests.rs"]
 pub(in crate::game) mod execute_facing_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::is_player_in_place;
+    use crate::game::commands_common::is_player_in_place;
     use sunrise_sim::lan::playerdata::ints_uuid;
 
     const OWNER: [i32; 4] = [0, 0, 0, 12];
@@ -730,6 +717,7 @@ pub(in crate::game) use crate::game::server_side::commands_server::execute::term
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

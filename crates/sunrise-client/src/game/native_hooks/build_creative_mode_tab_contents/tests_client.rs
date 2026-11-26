@@ -48,6 +48,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         game: &mut crate::game::Game<'g, S>,
         side: LogicalSide,
         seen: &Arc<Mutex<Seen>>,
+        set_features: impl Fn(&mut crate::game::Game<'g, S>, [String; 2]),
         mut before_build: impl FnMut(&mut crate::game::Game<'g, S>),
         mut after_build: impl FnMut(&mut crate::game::Game<'g, S>),
     ) -> Arc<CreativeModeTabs>
@@ -55,12 +56,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         crate::game::Game<'g, S>: mod_api::Host + ItemsHost,
     {
         let flags = |game: &mut crate::game::Game<'g, S>, ids: [&str; 2]| {
-            let flags = ids.map(str::to_owned);
-            if let Some(remote) = &mut game.remote {
-                remote.features = flags.into();
-            } else {
-                game.level.enabled_features = flags.into();
-            }
+            set_features(game, ids.map(str::to_owned));
         };
         flags(game, ["test:alpha", "test:beta"]);
         before_build(game);
@@ -192,7 +188,14 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
             install_dedicated_holders(game, 2);
             game.test_set_creative_catalog(check_catalog.clone());
-            dedicated = Some(check(game, LogicalSide::Server, &seen, |_| {}, |_| {}));
+            dedicated = Some(check(
+                game,
+                LogicalSide::Server,
+                &seen,
+                |game, flags| game.level.enabled_features = flags.into(),
+                |_| {},
+                |_| {},
+            ));
         });
         with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
             install_dedicated_holders(game, 4);
@@ -210,6 +213,13 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
                 game,
                 LogicalSide::Client,
                 &seen,
+                |game, flags| {
+                    if let Some(remote) = &mut game.side.remote {
+                        remote.features = flags.into();
+                    } else {
+                        game.level.enabled_features = flags.into();
+                    }
+                },
                 |game| assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:stick"),
                 |game| assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:torch"),
             );

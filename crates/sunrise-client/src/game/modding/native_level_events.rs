@@ -5,12 +5,12 @@
 //! writes, they act on the level in place, the one the hook runs in; a parked
 //! level, a stale handle or a client returns false. Reaching a parked level, as `play_sound` and the
 //! reads do through `native_level_world`, is a follow-up.
-use super::{Game, GameLevel};
+use super::Game;
+use crate::game::mod_api_host::level_event_data_ok;
 use mod_api::{
     BlockKey, EntityRef, ExplodeError, ExplosionInteraction, ExplosionSettings, LevelRef,
 };
-use sunrise_world::level::{BlockEventData, LevelEvent};
-use sunrise_world::registry::BlockStateId;
+use sunrise_world::{level::BlockEventData, registry::BlockStateId};
 
 /// A position inside the world's horizontal and vertical bounds.
 fn in_bounds(at: [f64; 3]) -> bool {
@@ -18,39 +18,6 @@ fn in_bounds(at: [f64; 3]) -> bool {
         && at[0].abs() < 30_000_000.0
         && at[2].abs() < 30_000_000.0
         && at[1].abs() < 20_000_000.0
-}
-
-/// Whether level event `id` can play with `data`: the events that carry a
-/// block state (2001, 2014, 3008) need `data` to be one of the `states`.
-pub(in crate::game::server_side) fn level_event_data_ok(id: i32, data: i32, states: usize) -> bool {
-    !matches!(id, 2001 | 2014 | 3008) || usize::try_from(data).is_ok_and(|d| d < states)
-}
-
-impl GameLevel<'_> {
-    /// `Level.levelEvent(null, id, pos, data)` for a hook that holds the
-    /// level's write host: the event joins the ones the block behaviour
-    /// emits, in order, and plays when the write that runs the hook is
-    /// done (`process_level_events`), with the guests told as for any event
-    /// the behaviour raises. False off an authoritative server, or for an
-    /// event that carries a block state (see `level_level_event`)
-    /// when `data` isn't one.
-    pub(in crate::game) fn native_level_event(
-        &mut self,
-        id: i32,
-        pos: [i32; 3],
-        data: i32,
-    ) -> bool {
-        if !self.native_authoritative || !level_event_data_ok(id, data, self.facts.states.len()) {
-            return false;
-        }
-        self.events.push(LevelEvent::LevelEvent {
-            id,
-            pos: sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]),
-            data,
-            source: None,
-        });
-        true
-    }
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -73,7 +40,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !level_event_data_ok(id, data, self.res.facts().states.len()) {
             return false;
         }
-        self.emit_level_effect(super::journal_level_write::PendingWrite::Event {
+        self.emit_level_effect(crate::game::journal_level_effects::PendingWrite::Event {
             level: super::Dim::from_id(level.dimension_id()),
             id,
             pos,
@@ -107,12 +74,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !level_event_data_ok(id, data, self.res.facts().states.len()) {
             return false;
         }
-        self.emit_level_effect(super::journal_level_write::PendingWrite::GlobalEvent {
-            level: super::Dim::from_id(level.dimension_id()),
-            id,
-            pos,
-            data,
-        });
+        self.emit_level_effect(
+            crate::game::journal_level_effects::PendingWrite::GlobalEvent {
+                level: super::Dim::from_id(level.dimension_id()),
+                id,
+                pos,
+                data,
+            },
+        );
         true
     }
     /// Sends game event `event` (`minecraft:block_change`...) from `at`, as
@@ -516,7 +485,7 @@ mod tests {
                 );
                 guest.placed = true;
                 guest.dimension = game.dim.id().to_owned();
-                game.lan.as_mut().unwrap().hub.guests.push(guest);
+                game.side.lan.as_mut().unwrap().hub.guests.push(guest);
                 rx
             };
             let near = guest_at(12, [30.5, 64.0, -3.5]);

@@ -16,7 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             log::warn!("Sunrise Studio replay: {e}");
         }
         // A disconnect during poll_remote ends the client session; stop before world work runs.
-        if self.side.title.0.is_some() || self.remote.is_none() {
+        if self.side.title.0.is_some() || self.side.remote.is_none() {
             return;
         }
         self.poll_remote_light();
@@ -96,7 +96,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The viewed levels' meshing, queued after the player's level's (nothing while no view
         // names one).
         if self.side.streaming.mesh
-            && let Some(remote) = &mut self.remote
+            && let Some(remote) = &mut self.side.remote
         {
             let streaming = &self.side.streaming;
             remote
@@ -155,7 +155,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             sunrise_level::spans::time("far_terrain_choice", || self.far_terrain_choice());
         // Terrain still on its way from the server (single player's integrated one
         // too): the view's outermost columns not all in, or its events not all handled.
-        let radius = match &self.remote {
+        let radius = match &self.side.remote {
             // As far as the server fills it: its view distance and one.
             Some(r) => self.side.streaming.radius.min(r.view_distance + 1),
             None => self.side.streaming.radius,
@@ -311,6 +311,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // inside the render distance. Thousands of chunk-sized tiles
                 // between the two filled in long after the coarser ones.
                 let detail = self
+                    .side
                     .remote
                     .as_ref()
                     .map_or(self.side.streaming.radius, |r| {
@@ -399,7 +400,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn clear_lod(&mut self) {
         // The samplers waiting on the server stop first: dropping the far
         // terrain joins them.
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             remote.session.cancel_far_terrain();
         }
         self.side.lod.0 = None;
@@ -432,7 +433,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .side
             .lod_level
             .as_ref()
-            .is_some_and(|level| self.remote.as_ref().is_some_and(|r| r.level != *level))
+            .is_some_and(|level| self.side.remote.as_ref().is_some_and(|r| r.level != *level))
         {
             self.clear_lod();
         }
@@ -442,9 +443,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.lod_source_attempted = true;
         self.side.lod_level = None;
         let dim = self.dim;
-        let source = match (&self.integrated, self.server_far_terrain(), &self.remote) {
+        let source = match (
+            &self.side.integrated,
+            self.server_far_terrain(),
+            &self.side.remote,
+        ) {
             (Some(server), ..) => server
-                .ask(|reply| super::owner_link::OwnerRequest::LodSource(dim, reply))
+                .ask(|reply| crate::game::owner_link::OwnerRequest::LodSource(dim, reply))
                 .flatten(),
             (None, Some(offer), Some(remote)) => {
                 let states = self.res.facts().states.len() as u32;

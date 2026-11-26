@@ -6,9 +6,10 @@
 #[allow(unused_imports)]
 use super::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
 #[allow(unused_imports)]
-use super::level_sounds::LevelSound;
-#[allow(unused_imports)]
 use super::{Dim, Game, item_abilities::ability};
+#[allow(unused_imports)]
+use crate::game::level_sounds_common::LevelSound;
+use crate::game::spill_common;
 #[allow(unused_imports)]
 use mod_api::SoundSource;
 #[allow(unused_imports)]
@@ -152,14 +153,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: Pos,
         facing: Direction,
         stack: ItemStack,
-    ) -> super::spill::Spawn {
+    ) -> spill_common::Spawn {
         let s = step(facing);
         let p = Self::dispense_position(pos, facing, 0.7, [0.0; 3]);
         let mut at = [p.x, p.y, p.z];
         at[1] -= if s[1] != 0 { 0.125 } else { 0.156_25 };
         // Vanilla constructs the entity and samples the source level's RNG before adding it.
         // Keep those draws in order even when publication is deferred by the journal.
-        let random = super::spill::prepare_item_random(None);
+        let random = spill_common::prepare_item_random(None);
         let r = &mut self.world.random;
         let pow = r.next_double() * 0.1 + 0.2;
         let spread = 0.017_227_5 * 6.0;
@@ -168,7 +169,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             r.triangle(0.2, spread),
             r.triangle(f64::from(s[2]) * pow, spread),
         ];
-        super::spill::Spawn {
+        spill_common::Spawn {
             random: Some(random),
             stack,
             pos: at,
@@ -211,7 +212,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         pos: Pos,
         facing: Direction,
-        spawn: super::spill::Spawn,
+        spawn: spill_common::Spawn,
         play_events: bool,
     ) {
         self.add_item_entity_prepared(
@@ -263,7 +264,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stack: mod_api::ItemStack,
     ) -> std::result::Result<Option<mod_api::ItemStack>, mod_api::StackWriteError> {
         let stack = stack.try_into_engine_preserving_count(self.items())?;
-        let left = if !(self.serving.is_some() || self.options.dedicated.is_some())
+        let left = if !(self.side.serving.is_some() || self.options.dedicated.is_some())
             || dimension != self.dim.id()
             || !self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
         {
@@ -284,7 +285,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stack: ItemStack,
         remainder: ItemStack,
     ) -> Option<ItemStack> {
-        if !(self.serving.is_some() || self.options.dedicated.is_some())
+        if !(self.side.serving.is_some() || self.options.dedicated.is_some())
             || dimension != self.dim.id()
             || !self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
             || stack.count == 0
@@ -302,7 +303,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         facing: Direction,
         remainder: ItemStack,
     ) -> std::result::Result<(), mod_api::LevelWriteError> {
-        if !(self.serving.is_some() || self.options.dedicated.is_some())
+        if !(self.side.serving.is_some() || self.options.dedicated.is_some())
             || dimension != self.dim.id()
             || !self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
         {
@@ -460,7 +461,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stack: ItemStack,
     ) -> Result<ControlFlow<(), Option<ItemStack>>> {
         let mut answer = None;
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.side.serving.is_some() || self.options.dedicated.is_some() {
             // The block the dispenser faces has the first say (`dispense_method`), then the
             // item's own part (`dispense_item`); the first answer wins.
             let front = self.block_at(offset(pos, facing));
@@ -561,7 +562,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ if self.dispenses_as_filled_bucket(&item) => {
                 self.dispense_filled_bucket(pos, facing, stack)?
             }
-            _ if super::boats::any_boat_wood(&item).is_some() => {
+            _ if crate::game::boats_common::any_boat_wood(&item).is_some() => {
                 self.dispense_boat(pos, facing, stack)
             }
             _ if super::minecarts::CartKind::from_id(&item).is_some() => {
@@ -634,7 +635,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `ServerLevel.getEntities`: every player placed in this level, the
         // integrated owner included (a server has no player of its own), its
         // client loaded or not (it joins the level at placeNewPlayer/respawn).
-        if let Some(host) = &self.lan {
+        if let Some(host) = &self.side.lan {
             found.extend(
                 (host.hub.guests.iter())
                     .filter(|g| host.hub.here(g) && !g.dead && !g.spectator())
@@ -962,7 +963,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "minecraft:experience_bottle"
             | "minecraft:splash_potion"
             | "minecraft:lingering_potion" => {
-                let mut shot = super::potions::thrown_projectile(one, at, false);
+                let mut shot =
+                    crate::game::server_side::potions_server::thrown_projectile(one, at, false);
                 shot.shoot_own(dir, power, uncertainty);
                 self.add_projectile(shot);
             }
@@ -1085,7 +1087,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         facing: Direction,
         stack: ItemStack,
     ) -> Dispensed {
-        let Some((wood, chest)) = super::boats::registered_boat_item(&stack.item, self.res.items())
+        let Some((wood, chest)) =
+            crate::game::boats_common::registered_boat_item(&stack.item, self.res.items())
         else {
             return (self.dispense_default_in_level(pos, facing, stack), CLICK);
         };
@@ -1108,7 +1111,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return (self.dispense_default_in_level(pos, facing, stack), CLICK);
         };
         self.side.next_entity += 1;
-        let mut boat = super::boats::Boat::new(
+        let mut boat = crate::game::boats_common::Boat::new(
             self.side.next_entity,
             wood.into(),
             Vec3::new(x, y + y_offset, z),
@@ -1124,7 +1127,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // then setYRot(direction.toYRot()).
         self.apply_item_stack_config(super::commands::Target::Boat(id), &kind, &stack, false);
         self.set_boat_yaw(id, yaw);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.side.serving.is_some() || self.options.dedicated.is_some() {
             let boat = self.boats.last().unwrap();
             self.native_vehicle_create(
                 boat.entity_type().as_str(),
@@ -1178,7 +1181,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // AbstractMinecart.createMinecart: createDefaultStackConfig with no user.
         let id = self.side.next_entity;
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), &stack, false);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.side.serving.is_some() || self.options.dedicated.is_some() {
             let cart = self.carts.last().unwrap();
             self.native_vehicle_create(
                 cart.kind.id(),
@@ -2010,7 +2013,7 @@ pub(in crate::game) mod tests {
             ];
             let mut stack = helmet_with(Some(fields));
             assert!(!game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
-            assert!(game.lan.as_ref().unwrap().hub.guest(2).unwrap().armor[0].is_none());
+            assert!(game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().armor[0].is_none());
         }
         let fits = Fits::new("minecraft:armor_stand");
         fits.installed(|| {
@@ -2020,7 +2023,15 @@ pub(in crate::game) mod tests {
             game.native_lifecycle
                 .begin_open(mod_api::Authority::IntegratedServer);
             game.reset_entity_residency();
-            let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap().entity_id as u32;
+            let guest = game
+                .side
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(2)
+                .unwrap()
+                .entity_id as u32;
             assert_eq!(
                 dispense_at_guest(&mut game, "minecraft:iron_helmet"),
                 (false, 2)
@@ -2249,7 +2260,7 @@ pub(in crate::game) mod tests {
         guest.dimension = "minecraft:overworld".into();
         guest.placed = true;
         guest.loaded = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         game
     }
 
@@ -2276,7 +2287,7 @@ pub(in crate::game) mod tests {
         let mut stack = ItemStack::new("minecraft:carved_pumpkin", 3);
         assert!(game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
         assert_eq!(stack.count, 2);
-        let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
+        let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
         assert_eq!(
             guest.armor[0].as_ref().map(|s| (&*s.item, s.count)),
             Some(("minecraft:carved_pumpkin", 1))
@@ -2287,7 +2298,7 @@ pub(in crate::game) mod tests {
         // A boots piece still has its own empty slot.
         let (done, left) = dispense_at_guest(&mut game, "minecraft:iron_boots");
         assert_eq!((done, left), (true, 1), "boots go on the free feet slot");
-        let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
+        let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
         assert!(guest.armor[3].is_some() && guest.armor[1].is_none());
     }
 
@@ -2298,7 +2309,7 @@ pub(in crate::game) mod tests {
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
         for spectate in [true, false] {
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.game_mode = if spectate { 3 } else { 0 };
                 g.dead = !spectate;
             });
@@ -2317,7 +2328,7 @@ pub(in crate::game) mod tests {
         use sunrise_sim::entities::ArmorStand;
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
-        game.lan.as_mut().unwrap().hub.guests.clear();
+        game.side.lan.as_mut().unwrap().hub.guests.clear();
         let at = sunrise_core::geometry::Vec3::new(8.5, 200.0, 8.5);
         let mut stands = [(1, 1u32 << 4), (2, 0)].map(|(id, locked)| {
             let mut s = ArmorStand::new(id, at, 0.0);
@@ -2363,12 +2374,12 @@ pub(in crate::game) mod tests {
     fn a_dispenser_equips_a_player_whose_client_is_still_loading() {
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
-        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             (g.loaded, g.loading) = (false, true);
         });
         let (done, left) = dispense_at_guest(&mut game, "minecraft:iron_helmet");
         assert_eq!((done, left), (true, 1));
-        let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
+        let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
         let head = guest.armor[0].as_ref().map(|s| &*s.item);
         assert_eq!(head, Some("minecraft:iron_helmet"));
     }
@@ -2382,7 +2393,8 @@ pub(in crate::game) mod tests {
         for (stand_id, guest_id, guest_first) in [(7, 5, true), (3, 5, false)] {
             let mut resources = None;
             let mut game = server_with_guest(&mut resources);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -2392,7 +2404,7 @@ pub(in crate::game) mod tests {
             game.armor_stands.extend(vec![stand_at(stand_id, 8.5, 8.5)]);
             let (done, _) = dispense_at_guest(&mut game, "minecraft:iron_helmet");
             assert!(done);
-            let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
+            let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
             assert_eq!(
                 guest.armor[0].is_some(),
                 guest_first,
@@ -2410,7 +2422,7 @@ pub(in crate::game) mod tests {
     fn a_dispenser_walks_entity_sections_before_ids() {
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
-        game.lan.as_mut().unwrap().hub.guests.clear();
+        game.side.lan.as_mut().unwrap().hub.guests.clear();
         // Stand boxes are 0.5 wide: x 16.2 spans 15.95..16.45.
         game.armor_stands.clear();
         game.armor_stands
@@ -2645,6 +2657,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
             }
             Target::Guest(conn) => self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|h| h.hub.guest(conn))

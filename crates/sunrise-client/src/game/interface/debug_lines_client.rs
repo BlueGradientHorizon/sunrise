@@ -1,7 +1,6 @@
 use super::Game;
 use crate::game::debug_lines::LOOKING_AT_RANGE;
 use crate::game::debug_lines::SERVER_ENTRIES;
-use crate::game::debug_lines::ServerDebug;
 use sunrise_client::{
     debug_entries::{self, ENTRIES},
     debug_overlay as overlay,
@@ -10,7 +9,26 @@ use sunrise_client::{
 use sunrise_core::java_number;
 use sunrise_world::heightmap::HeightmapType;
 
+#[derive(Clone, Debug, Default)]
+pub(in crate::game) struct FormattedServerDebug {
+    /// The server chunk's heightmaps at the feet (`keepAfterWorldgen`).
+    pub heights: Option<[i32; 4]>,
+    pub difficulty: Option<String>,
+    pub spawn_counts: Option<String>,
+    pub chunks: Option<String>,
+}
+
+#[derive(Default)]
+pub(in crate::game) struct DebugLinesCache {
+    revision: Option<u64>,
+    lines: FormattedServerDebug,
+}
+
 impl Game<'_, crate::game::client_side::ClientState> {
+    pub(in crate::game::client_side) fn reset_server_debug_lines(&mut self) {
+        *self.side.debug_server_lines.get_mut() = Default::default();
+    }
+
     /// `Minecraft.crosshairPickEntity`'s type: the nearest entity under the
     /// crosshair before any block.
     pub(in crate::game::client_side) fn crosshair_entity_type(&self) -> Option<String> {
@@ -98,12 +116,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn debug_chunk_source_lines(
         &self,
         d: &mut Displayer,
-        server: Option<&ServerDebug>,
+        server: Option<&FormattedServerDebug>,
     ) {
         if self.player.is_none() {
             return;
         }
         let range = self
+            .side
             .remote
             .as_ref()
             .map_or(self.side.settings.render_distance, |r| r.view_distance);
@@ -126,6 +145,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let simulation = self
+            .side
             .remote
             .as_ref()
             .map_or(self.side.settings.simulation_distance, |r| {
@@ -304,6 +324,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "chunk_generation_stats" => {
                     if let Some(feet) = self.debug_feet() {
                         let terrain = self
+                            .side
                             .integrated
                             .as_ref()
                             .and_then(|server| server.terrain(self.dim.id()));
@@ -369,7 +390,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn debug_heightmap_lines(
         &self,
         d: &mut Displayer,
-        server: Option<&ServerDebug>,
+        server: Option<&FormattedServerDebug>,
     ) {
         let Some([x, _, z]) = self.debug_feet() else {
             return;
@@ -471,13 +492,32 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The integrated server's lines when an entry wants them; the request
     /// (the dimension and the feet) goes with it, for the next server tick.
-    pub(in crate::game::client_side) fn server_debug(&self, wanted: bool) -> Option<ServerDebug> {
-        let server = self.integrated.as_ref()?;
+    pub(in crate::game::client_side) fn server_debug(
+        &self,
+        wanted: bool,
+    ) -> Option<FormattedServerDebug> {
+        let server = self.side.integrated.as_ref()?;
         let at = self
             .debug_feet()
             .filter(|_| wanted)
             .map(|feet| (self.dim, feet));
         server.request_debug(at);
-        at.map(|_| server.debug())
+        at?;
+        let (revision, sample) = server.debug();
+        let mut cache = self.side.debug_server_lines.borrow_mut();
+        if cache.revision != Some(revision) {
+            cache.lines = FormattedServerDebug {
+                heights: sample.heights,
+                difficulty: sample.difficulty.map(overlay::local_difficulty_line),
+                spawn_counts: sample
+                    .spawn_counts
+                    .map(|(chunks, counts)| overlay::spawn_counts_line(chunks, &counts)),
+                chunks: sample.chunks.map(|(loaded, entities, sections)| {
+                    format!("Chunks[S] W: {loaded} E: {entities},{entities},{sections},{loaded},{loaded},0,0")
+                }),
+            };
+            cache.revision = Some(revision);
+        }
+        Some(cache.lines.clone())
     }
 }

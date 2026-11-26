@@ -10,7 +10,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         columns: &[(i32, i32)],
         heightmap: mod_api::Heightmap,
     ) -> Result<Vec<Option<i32>>, String> {
-        if !self.remote.as_ref().is_some_and(|r| r.logged_in) {
+        if !self.side.remote.as_ref().is_some_and(|r| r.logged_in) {
             return Err("no client world is open".to_string());
         }
         if columns.len() > MAX_COLUMNS {

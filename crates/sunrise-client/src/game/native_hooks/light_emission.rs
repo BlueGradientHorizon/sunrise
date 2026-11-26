@@ -2,12 +2,6 @@ use super::*;
 use crate::game::tables::BlockProviderQuery;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
-    pub(in crate::game) fn light_emission_dimension(level: mod_api::LevelRef) -> LevelDimension {
-        LevelDimension::of_level(sunrise_core::LevelKey::from_interned_id(
-            level.dimension_id(),
-        ))
-    }
-
     /// One dynamic provider answer: outer `None` refuses an active cycle, `Some(None)` keeps
     /// the state's own value. Publication is separate from reading this raw answer.
     pub(in crate::game) fn query_dynamic_light_emission(

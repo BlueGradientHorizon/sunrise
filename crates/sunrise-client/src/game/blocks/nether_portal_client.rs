@@ -1,16 +1,16 @@
-#[allow(unused_imports)]
-use super::entity::Entity as _;
 use super::{Game, Screen};
-use crate::game::server_side::nether_portal::PLAYER_DELAY;
 use sunrise_core::random::RandomSource;
+use sunrise_sim::nether_portal::PLAYER_DELAY;
 
 #[path = "nether_portal/respawn_attributes_client.rs"]
 pub(in crate::game) mod respawn_attributes;
+#[path = "nether_portal/respawn_attributes.rs"]
+pub(in crate::game) mod respawn_attributes_state;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the inventory key opens nothing while standing in a nether portal.
     pub(in crate::game) fn in_portal_transition(&self) -> bool {
-        self.portals.client_was_inside
+        self.side.client_was_inside
     }
 
     /// Client-side `setAsInsidePortal`, driving `client_portal_effect`.
@@ -18,10 +18,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.player_can_use_portal() {
             return;
         }
-        if self.portals.player.cooldown > 0 {
-            self.portals.player.cooldown = PLAYER_DELAY;
+        if self.portal_player.cooldown > 0 {
+            self.portal_player.cooldown = PLAYER_DELAY;
         } else {
-            self.portals.client_inside = true;
+            self.side.client_inside = true;
         }
     }
 
@@ -30,8 +30,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// it does not allow it (`Screen.isAllowedInPortal`), and plays
     /// `block.portal.trigger` when the effect starts from nothing.
     pub(in crate::game::client_side) fn client_portal_effect(&mut self) -> bool {
-        let inside = std::mem::take(&mut self.portals.client_inside);
-        self.portals.client_was_inside = inside;
+        let inside = std::mem::take(&mut self.side.client_inside);
+        self.side.client_was_inside = inside;
         if !inside {
             return false;
         }

@@ -45,6 +45,10 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::ga
             root.clone(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.world

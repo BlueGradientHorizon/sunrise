@@ -45,7 +45,7 @@ EnchantmentHelper.onHitBlock	port	crates/sunrise-client/src/game/items/trident.r
 EnchantmentHelper.modifyDurabilityToRepairFromXp	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::mending	Mending's repair with XP
 EnchantmentHelper.getFishingLuckBonus	port	crates/sunrise-client/src/game/items/fishing.rs::Game::use_fishing_rod	Luck of the Sea read when the rod is cast
 EnchantmentHelper.getFishingTimeReduction	port	crates/sunrise-client/src/game/items/fishing.rs::Game::use_fishing_rod	Lure ticks read at cast; used by catching_fish
-EnchantmentHelper.getTridentReturnToOwnerAcceleration	port	crates/sunrise-gameplay/src/trident.rs::ThrownTrident::loyalty_pull	Loyalty level pull and acceleration
+EnchantmentHelper.getTridentReturnToOwnerAcceleration	port	crates/sunrise-sim/src/thrown_trident.rs::ThrownTrident::loyalty_pull	Loyalty level pull and acceleration
 EnchantmentHelper.modifyCrossbowChargingTime	port	crates/sunrise-client/src/game/items/held_items.rs::Game::charge_ticks	Quick Charge: 1.25 s minus 0.25 s per level
 EnchantmentHelper.getTridentSpinAttackStrength	inline	crates/sunrise-client/src/game/items/trident.rs::Game::release_trident	Riptide's strength 1.5 + 0.75 per level above the first, folded into the release
 EnchantmentHelper.hasTag	port	crates/sunrise-items/src/enchant.rs::Enchantments::in_tag	per enchantment id; callers loop over the stack
@@ -59,7 +59,7 @@ Equippable.llamaSwag	skip:data		datagen factory for the carpet equippable data
 Equippable.saddle	skip:data		datagen factory for the saddle equippable data
 Equippable.harness	skip:data		datagen factory for the harness equippable data
 Equippable.equipOnTarget	port	crates/sunrise-client/src/game/mobs/ghasts_server.rs::Game::interact_happy_ghast	gap: minor: the harness on a happy ghast only; saddles are put on in mounts.rs and nautili.rs
-Equippable.canBeEquippedBy	port	crates/sunrise-gameplay/src/mount_rules.rs::shows_saddle	gap: minor: the saddle slot's entity check only; the armour swap has no entity test
+Equippable.canBeEquippedBy	port	crates/sunrise-gameplay-common/src/mount_rules.rs::shows_saddle	gap: minor: the saddle slot's entity check only; the armour swap has no entity test
 Equippable.Builder	skip:data		datagen builder for equippable data
 ItemCost.withComponents	skip:data		datagen helper; no runtime caller in 26.3
 ItemCost.test	port	crates/sunrise-client/src/merchant.rs::ItemCost::test	item match, then the stack data when the cost has data

@@ -151,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let w = self.mob_world_base(&[]);
         for m in &mut mobs {
             if m.species() == Species::Panda
@@ -176,10 +176,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod nested_spawn_tests {
+    use crate::game::server_side::entity_server::taken_pass_tests;
+
     #[test]
     #[ignore = "daily"]
     fn lifted_mob_callback_keeps_nested_spawns_until_the_next_pass() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
+        taken_pass_tests::in_both_dimensions(|game, balance| {
             let kind = game.res.mob_types().get("minecraft:panda").unwrap().clone();
             game.mobs.push(sunrise_sim::mobs::Mob::new(
                 99,
@@ -187,13 +189,9 @@ pub(in crate::game) mod nested_spawn_tests {
                 sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
                 0.0,
             ));
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
-                game,
-                balance,
-                |game| {
-                    game.panda_sneezed(99);
-                },
-            );
+            taken_pass_tests::assert_mob_spawn_survives(game, balance, |game| {
+                game.panda_sneezed(99);
+            });
         });
     }
 }

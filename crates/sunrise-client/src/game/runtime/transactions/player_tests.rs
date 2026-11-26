@@ -95,7 +95,7 @@ fn abort_restores_fake_players_with_the_same_uuid_in_different_levels() {
             Err(())
         });
         assert_eq!(result, Err(()));
-        let guests = &game.lan.as_ref().unwrap().hub.guests;
+        let guests = &game.side.lan.as_ref().unwrap().hub.guests;
         for (player, count) in [(outside, 3), (inside, 5)] {
             let guest = &guests[guests.identity_index(99, player.entity().id()).unwrap()];
             assert_player_storage(
@@ -176,7 +176,8 @@ fn abort_restores_the_suspended_guest_without_touching_the_inner_guest() {
 fn nested_player_turns_preserve_binding_and_rollback_whole_membership() {
     with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -194,6 +195,7 @@ fn nested_player_turns_preserve_binding_and_rollback_whole_membership() {
                 OTHER.set(map, Holder::Level, 4).unwrap();
             }
             let storage = game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -254,7 +256,8 @@ fn nested_player_turns_preserve_binding_and_rollback_whole_membership() {
 fn retained_player_records_and_save_snapshots_do_not_keep_residency() {
     with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -267,7 +270,8 @@ fn retained_player_records_and_save_snapshots_do_not_keep_residency() {
                 .test_attachment_slot(Holder::Player(uuid), AttachmentAccess::Existing)
                 .unwrap();
             VALUE.set(map, Holder::Level, uuid as i32).unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -284,14 +288,14 @@ fn retained_player_records_and_save_snapshots_do_not_keep_residency() {
             .test_attachment_slot(Holder::Player(112), AttachmentAccess::Existing)
             .unwrap()
             .clone();
-        let mut removed = game.lan.as_mut().unwrap().hub.guests.remove(0);
+        let mut removed = game.side.lan.as_mut().unwrap().hub.guests.remove(0);
         assert_eq!(rows(&index, "value"), [(113, 113)]);
         VALUE
             .set(&mut removed.attachments, Holder::Level, 99)
             .unwrap();
         assert_eq!(rows(&index, "value"), [(113, 113)]);
         assert_eq!(VALUE.get_existing(&mut saved, Holder::Level), Ok(Some(112)));
-        game.lan.as_mut().unwrap().hub.guests.clear();
+        game.side.lan.as_mut().unwrap().hub.guests.clear();
         assert!(rows(&index, "value").is_empty());
         assert_eq!(before[0].entry.read(&VALUE), Ok(&112));
         assert_eq!(before[1].entry.read(&VALUE), Ok(&113));

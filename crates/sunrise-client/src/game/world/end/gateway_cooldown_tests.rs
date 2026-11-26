@@ -1,6 +1,6 @@
 //! Production gateway counters and direct phases over a silent, empty Game.
 use crate::game::{
-    boats::Boat,
+    boats_common::Boat,
     minecarts::{CartKind, Minecart},
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos};
@@ -114,6 +114,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

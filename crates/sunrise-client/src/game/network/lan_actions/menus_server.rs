@@ -28,7 +28,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         g: &sunrise_sim::lan::guest::Guest,
     ) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return true;
         };
         g.menu.as_ref().is_none_or(|m| {
@@ -60,7 +60,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let spectator = if acting {
             self.spectator()
         } else {
-            let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            let Some(guest) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
                 return;
             };
             guest.spectator()
@@ -70,7 +70,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let state = self.world.block(pos.0, pos.1, pos.2);
         let name = &self.res.facts().get(state).name;
-        let shulker = super::super::storage::is_shulker_box(name);
+        let shulker = sunrise_gameplay_common::chests::is_shulker_box(name);
         // Resolve the sound before the game event; its listener can replace the block.
         let sound = self.resolve_container_sound(pos, name, open);
         // ContainerOpenersCounter calls onOpen/onClose before the game event;
@@ -112,7 +112,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         kind: &str,
         pos: Option<[i32; 3]>,
     ) -> Option<bool> {
-        let guest = self.lan.as_ref()?.hub.guest(conn)?;
+        let guest = self.side.lan.as_ref()?.hub.guest(conn)?;
         if !guest.participates_in_player_simulation() {
             return None;
         }
@@ -133,7 +133,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (a container or vehicle, a trade, the crafting table, a station, a
     /// lectern, a mount's inventory). True when none is open.
     pub(in crate::game::server_side) fn guest_menu_still_valid(&self, conn: u32) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return true;
         };
         let Some(g) = host.hub.guest(conn) else {
@@ -175,7 +175,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// once its block is removed or out of reach. Death removes every kind
     /// of open menu through the same cleanup and synchronous close boundary.
     pub(in crate::game) fn lan_containers_tick(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let far: Vec<_> = host

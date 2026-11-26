@@ -10,6 +10,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         fatal: Option<&FatalSource>,
     ) -> bool {
         if self
+            .side
             .lan
             .as_ref()
             .is_some_and(|host| host.hub.guests[gi].death_canceled)
@@ -21,7 +22,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         else {
             return false;
         };
-        let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guests.get(gi)) else {
+        let Some(guest) = self
+            .side
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guests.get(gi))
+        else {
             return false;
         };
         let entity = guest.entity_id as u32;
@@ -45,7 +51,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 None
             };
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 host.hub.guests.update(gi, |guest| {
                     guest.death_canceled = acting_health.unwrap_or(guest.health) <= 0.0;
                     if !guest.death_canceled {
@@ -67,7 +73,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
     ) -> FatalSource {
         let (damage_type, causing) = self.guest_damage_source(conn);
-        let guest = self.lan.as_ref().and_then(|host| host.hub.guests.get(gi));
+        let guest = self
+            .side
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guests.get(gi));
         let body = if self.side.lan_acting == Some(conn) {
             self.player.as_ref()
         } else {

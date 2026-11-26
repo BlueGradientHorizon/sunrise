@@ -76,7 +76,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         player.brand = "sunrise".into();
                         player.sender = PlayerSender::new(tx, Arc::default());
                         player.sender.menu_extra_rev = menu_extra::LIVE_DATA_REVISION;
-                        game.lan.as_mut().unwrap().hub.guests.push(player);
+                        game.side.lan.as_mut().unwrap().hub.guests.push(player);
                         register_test_menu(game, MENU);
                         rx.try_iter().for_each(drop);
                         game.world
@@ -106,7 +106,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                             game.lan_open_container(1, pos),
                             crate::game::lan_actions::MenuOpen::Opened
                         );
-                        let hub = &game.lan.as_ref().unwrap().hub;
+                        let hub = &game.side.lan.as_ref().unwrap().hub;
                         let menu = hub.guest(1).unwrap().menu.as_ref().unwrap();
                         assert_eq!((&*menu.registry_id, menu.slot_count()), (MENU, 41));
                         let packets: Vec<_> = rx
@@ -138,7 +138,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                     |game| {
                         let (client, _server) = Pipe::pair();
                         game.connect_local(client, "Hopper layout").unwrap();
-                        let remote = game.remote.as_mut().unwrap();
+                        let remote = game.side.remote.as_mut().unwrap();
                         remote.builtin = Arc::new(builtin);
                         Arc::make_mut(&mut remote.registries).menu_extra_revision =
                             menu_extra::LIVE_DATA_REVISION;
@@ -563,7 +563,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
             with_listener(|game, seen| {
                 let (pipe, _server) = Pipe::pair();
                 game.connect_local(pipe, "Slotless").unwrap();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 Arc::make_mut(&mut remote.registries).menu_extra_revision = LIVE_DATA_REVISION;
                 Arc::make_mut(&mut remote.builtin).registries.insert(
                     "minecraft:menu".into(),
@@ -624,10 +624,11 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 receive(game, 2, 2, 9);
                 receive(game, 2, 0, i32::MAX);
                 draw(game);
-                let first = game.remote.as_ref().unwrap().menu.generation;
+                let first = game.side.remote.as_ref().unwrap().menu.generation;
                 // Even before the old state is dropped, another generation
                 // of the same window cannot see it or write to it.
-                game.remote
+                game.side
+                    .remote
                     .as_mut()
                     .unwrap()
                     .menu
@@ -635,7 +636,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 assert!(game.shown_native_screen().is_none());
                 assert!(!game.native_screen_data(2, 0, 8));
                 open(game, 2, 1); // Same id, new opening.
-                assert_ne!(game.remote.as_ref().unwrap().menu.generation, first);
+                assert_ne!(game.side.remote.as_ref().unwrap().menu.generation, first);
                 receive(game, 3, 0, 8);
                 draw(game);
                 receive(game, 2, 0, -17);
@@ -652,7 +653,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                     game.side.mod_screen.0.is_none(),
                     "a veto drops the staged screen"
                 );
-                assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
+                assert!(game.side.remote.as_ref().unwrap().menu.as_ref().is_none());
                 assert_eq!(
                     seen.lock().unwrap().data,
                     [

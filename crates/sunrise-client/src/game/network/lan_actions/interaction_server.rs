@@ -22,7 +22,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if stacks.is_empty() {
             return;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(g) = host.hub.guests.get(gi) else {
@@ -66,7 +66,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         id: i32,
     ) -> Option<([f64; 3], [f64; 3], [f64; 3])> {
-        use crate::game::server_side::lan_vehicles::corners;
+        use crate::game::lan_common::corners;
         let at = |v: Vec3| [v.x, v.y, v.z];
         let centre = |p: [i32; 3]| p.map(|v| f64::from(v) + 0.5);
         let id = u32::try_from(id).ok()?;
@@ -143,7 +143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         gi: usize,
         id: i32,
     ) -> Result<bool, ActionRefused> {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Err(ActionRefused::Stale);
         };
         if host.hub.guests[gi].spectator() {
@@ -166,7 +166,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Native mods, where Player.attack starts: the global `attack_entity`,
         // then the held item's `on_left_click_entity` Part. A canceled blow
         // does nothing (game/native_hooks.rs).
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Err(ActionRefused::Stale);
         };
         let aimed = if let Some(g) = host
@@ -217,12 +217,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A ghast's fireball or a wind charge: turned along the guest's own
         // view (ServerGamePacketListenerImpl.handleInteract, then
         // Player.attack's AIM_DEFLECT).
-        if let Some(i) = self
-            .creatures
-            .projectiles
-            .iter()
-            .position(|p| p.id != 0 && p.id as i32 == id && crate::game::deflect::attackable(p))
-        {
+        if let Some(i) = self.creatures.projectiles.iter().position(|p| {
+            p.id != 0 && p.id as i32 == id && crate::game::deflect_common::attackable(p)
+        }) {
             return Ok(self.as_guest_at(gi, conn, |g| {
                 if !g.within_interaction_range(i) {
                     return false;
@@ -244,7 +241,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .position(|m| m.id as i32 == id && m.alive())
             .filter(|_| self.dragon.as_ref().is_none_or(|d| d.id as i32 != id))
         {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return Err(ActionRefused::Stale);
             };
             if host.hub.guests[gi].vehicle == Some(self.mobs[index].id) {
@@ -269,14 +266,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.send_guest_motion(conn, sent);
             // The mob now answers to this guest (game/network/lan_mobs.rs).
             if let Ok(id) = u32::try_from(id)
-                && let Some(host) = self.lan.as_mut()
+                && let Some(host) = self.side.lan.as_mut()
                 && host.hub.guests[gi].participates_in_player_simulation()
             {
                 host.mob_players.insert(id, conn);
             }
             return Ok(true);
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Err(ActionRefused::Stale);
         };
         let (old_yaw, old_pitch) = (host.hub.guests[gi].yaw, host.hub.guests[gi].pitch);
@@ -340,7 +337,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(false);
         }
         // The mob now answers to this guest (game/network/lan_mobs.rs).
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return Err(ActionRefused::Stale);
         };
         if host.hub.guests[gi].participates_in_player_simulation()
@@ -394,7 +391,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.lan_swing_back(conn, used.map(|u| u.0));
             return Ok(used.is_some_and(|u| u.1));
         }
-        let host = self.lan.as_ref().ok_or(ActionRefused::Stale)?;
+        let host = self.side.lan.as_ref().ok_or(ActionRefused::Stale)?;
         let before = host.hub.guests[gi].vehicle;
         // Packet interactions aim the server's ray at the clicked entity. A fake already
         // supplies its own viewpoint; its explicit target must not change that rotation.
@@ -423,7 +420,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the guest's main hand jabs once its charge allows it (with five ticks
     /// of tolerance). The guest's client is sent the dash Lunge gave them.
     pub(in crate::game::server_side) fn guest_jab(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(g) = host.hub.guest(conn) else {
@@ -451,7 +448,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
     pub(in crate::game) fn guest_target_box(&self, gi: usize, id: i32) -> Option<Aabb> {
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let conn = host.hub.guests[gi].conn;
         if let Some(g) = host
             .hub
@@ -489,7 +486,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(|p| p.bounds())
     }
     pub(in crate::game::server_side) fn guest_tick_death(&mut self, gi: usize) {
-        let removed = self.lan.as_mut().and_then(|host| {
+        let removed = self.side.lan.as_mut().and_then(|host| {
             host.hub.guests.update(gi, |guest| {
                 if !guest.tick_death() || guest.death_time != 20 {
                     return None;
@@ -522,7 +519,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         hand: Hand,
         rotation: Option<(f32, f32)>,
     ) -> Result<bool, ActionRefused> {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Err(ActionRefused::Stale);
         };
         let g = &host.hub.guests[gi];
@@ -545,7 +542,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             use sunrise_sim::lan::hub::wrap_degrees;
             let (yaw, pitch) = (wrap_degrees(yaw), wrap_degrees(pitch));
             if yaw != g.yaw || pitch != g.pitch {
-                self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                self.side.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
                     // Entity.setYRot/setXRot discard non-finite values independently.
                     if yaw.is_finite() {
                         g.yaw = yaw;
@@ -613,12 +610,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         use super::super::cauldron_prediction::{UseOnOutcome, use_result};
 
         let reply = |game: &Self, outcome| {
-            if let (Some(receipt), Some(host)) = (receipt, &game.lan) {
+            if let (Some(receipt), Some(host)) = (receipt, &game.side.lan) {
                 host.hub.send_to(conn, &use_result(receipt, outcome));
             }
         };
         let (mut consumed, mut block_fell_through) = (false, false);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return Err(ActionRefused::Stale);
         };
         // handleUseItemOn: within reach, then the hit point within
@@ -644,6 +641,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(ActionRefused::OutOfReach);
         }
         let spectator = self
+            .side
             .lan
             .as_ref()
             .is_some_and(|host| host.hub.guests[gi].spectator());
@@ -747,7 +745,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
         }
         // The client predicted a result: correct it with what really is.
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return refused.map_or(Ok(consumed), Err);
         };
         for pos in [hit.pos, hit.beside()] {
@@ -784,7 +782,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         location: Option<[f64; 3]>,
     ) -> Option<([f64; 3], [f64; 3])> {
         let eye = {
-            let g = &self.lan.as_ref()?.hub.guests[gi];
+            let g = &self.side.lan.as_ref()?.hub.guests[gi];
             [g.position[0], g.position[1] + g.eye_height(), g.position[2]]
         };
         let object = || {
@@ -833,7 +831,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let d = [centre[0] - eye[0], centre[1] - eye[1], centre[2] - eye[2]];
         let horizontal = (d[0] * d[0] + d[2] * d[2]).sqrt();
-        self.lan.as_mut()?.hub.guests.update(gi, |g| {
+        self.side.lan.as_mut()?.hub.guests.update(gi, |g| {
             g.yaw = (-d[0].atan2(d[2])).to_degrees() as f32;
             g.pitch = (-d[1].atan2(horizontal)).to_degrees() as f32;
         });

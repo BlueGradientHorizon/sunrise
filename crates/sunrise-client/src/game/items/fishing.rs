@@ -2,6 +2,11 @@
 //! bobbing, lure and bite timers, open water, hooking mobs, retrieving the
 //! `gameplay/fishing` loot) and `FishingHookRenderer` (bobber and line).
 use super::{Game, creatures::ProjectileHitter, lan_mobs::guest_bounds};
+#[cfg(test)]
+use crate::game::fishing_common::inside_medium;
+use crate::game::fishing_common::{
+    Hook, HookLerp, HookMedium, SIZE, State, bite_impulse, bounds, rebound, synchronized_random,
+};
 use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
@@ -66,72 +71,9 @@ pub(in crate::game::server_side) fn fishing_loot(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::game) enum State {
-    Flying,
-    Bobbing,
-    Hooked(u32),
-}
-#[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::game) enum EntityCollision {
     Hooked,
     Deflected { first: bool, rot: f32 },
-}
-pub(in crate::game) struct Hook {
-    pub(in crate::game) uuid: [i32; 4],
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
-    pub(in crate::game) caster: Option<u32>,
-    pub(in crate::game) caster_generation: sunrise_sim::join_seq::JoinSeq,
-    /// Its entity id, which a server's players track it under.
-    pub(in crate::game) id: u32,
-    pub(in crate::game) position: Vec3,
-    pub(in crate::game) previous: Vec3,
-    pub(in crate::game) velocity: Vec3,
-    pub(in crate::game) state: State,
-    /// `FishingHook.hookedIn`: set in `onHitEntity`, transitioned to `State::Hooked` on the next tick.
-    pub(in crate::game) hooked_in: Option<u32>,
-    /// `Projectile.leftOwner`: until true, caster's root-vehicle tree is excluded from hits.
-    pub(in crate::game) left_owner: bool,
-    /// `Entity.yRot` updated on `Projectile.updateRotation` and `ProjectileDeflection.REVERSE`.
-    pub(in crate::game) yaw: f32,
-    /// `Entity.xRot` updated on `Projectile.updateRotation`.
-    pub(in crate::game) pitch: f32,
-    pub(in crate::game) last_deflected_by: Option<u32>,
-    pub(in crate::game) needs_sync: bool,
-    pub(in crate::game) tick_count: i32,
-    pub(in crate::game) life: i32,
-    pub(in crate::game) ground: sunrise_world::ground_support::GroundState,
-    pub(in crate::game) nibble: i32,
-    pub(in crate::game) time_until_lured: i32,
-    pub(in crate::game) time_until_hooked: i32,
-    pub(in crate::game) fish_angle: f32,
-    pub(in crate::game) out_of_water: i32,
-    pub(in crate::game) open_water: bool,
-    pub(in crate::game) luck: i32,
-    pub(in crate::game) lure: i32,
-    /// The fishing medium it last floated in outside water (`native_fishing_medium`): the
-    /// table its catch rolls and the wait it draws. None in water.
-    pub(in crate::game) medium: Option<HookMedium>,
-    /// The position a server's update put it heading for.
-    pub(in crate::game) lerp: HookLerp,
-    pub(in crate::game) random: LegacyRandom,
-}
-/// What a hook keeps of the mod's fishing medium it floats in, on the server.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(in crate::game) struct HookMedium {
-    /// The mod that answered.
-    pub(in crate::game) mod_id: &'static str,
-    /// The table the mod answered, as it answered it.
-    pub(in crate::game) answered: Option<String>,
-    /// The table a catch rolls: the answer's, once checked; None rolls vanilla's.
-    pub(in crate::game) loot_table: Option<String>,
-    pub(in crate::game) lure_ticks: Option<[i32; 2]>,
-}
-/// The medium a mod answered, when the hook is in it: in the block of its
-/// surface or below, as a hook is in water anywhere in a water block. A
-/// surface that is not finite is no medium.
-pub(in crate::game) fn inside_medium(position: Vec3, medium: &mod_api::FishingMedium) -> bool {
-    medium.surface.is_finite() && position.y < medium.surface.floor() + 1.0
 }
 /// `catchingFish`'s wait for a fish: vanilla's 100 to 600 ticks, or a medium's
 /// own `[min, max]` with `min` at least 1 and `max` at least `min`, less the
@@ -160,14 +102,6 @@ pub(in crate::game) static WARNED_TABLES: std::sync::Mutex<Vec<(&'static str, St
 pub(in crate::game) struct HookTarget {
     pub(in crate::game) id: u32,
     pub(in crate::game) bounds: Aabb,
-}
-pub(in crate::game) const SIZE: f64 = 0.25;
-pub(in crate::game) fn bounds(p: Vec3) -> Aabb {
-    let h = SIZE / 2.0;
-    Aabb::new(
-        Vec3::new(p.x - h, p.y, p.z - h),
-        Vec3::new(p.x + h, p.y + SIZE, p.z + h),
-    )
 }
 #[cfg(test)]
 pub(in crate::game::server_side) fn segment_entry(
@@ -266,67 +200,6 @@ pub(in crate::game::server_side) fn minecart_hook_targets<'a>(
         .filter(move |c| Some(c.id) != own_vehicle)
         .map(|c| (c.id, c.bounds()))
 }
-sunrise_mod_runtime::impl_attachment_lifetime!(Hook);
-
-impl sunrise_sim::join_seq::Joined for Hook {
-    fn join_seq(&self) -> sunrise_sim::join_seq::JoinSeq {
-        self.join
-    }
-    fn set_join_seq(&mut self, join: sunrise_sim::join_seq::JoinSeq) {
-        self.join = join;
-    }
-}
-impl Hook {
-    pub(in crate::game::server_side) fn hit_entity(
-        &mut self,
-        id: u32,
-        deflects: bool,
-    ) -> EntityCollision {
-        if deflects {
-            let first = self.last_deflected_by != Some(id);
-            let mut rot = 0.0;
-            if first {
-                rot = 170.0 + self.random.next_float() * 20.0;
-                self.yaw += rot;
-                self.velocity = self.velocity.scale(-0.5);
-                self.last_deflected_by = Some(id);
-                self.needs_sync = true;
-            }
-            return EntityCollision::Deflected { first, rot };
-        }
-        // FishingHook.onHitEntity sets hookedIn only; state flips to HOOKED_IN_ENTITY next tick.
-        self.hooked_in = Some(id);
-        EntityCollision::Hooked
-    }
-
-    pub(in crate::game) fn bounds(&self) -> Aabb {
-        bounds(self.position)
-    }
-    /// `FishingHook.tick` returns before `applyEffectsFromBlocks` while it
-    /// holds an entity.
-    pub(in crate::game) fn applies_block_effects(&self) -> bool {
-        !matches!(self.state, State::Hooked(_))
-    }
-    /// `FishingHook.catchingFish`: the nibble timer, and DATA_BITING's plunge
-    /// (`onSyncedDataUpdated` runs on the server too).
-    pub(in crate::game::server_side) fn trigger_bite(&mut self, game_time: i64) {
-        self.nibble = 20 + self.random.next_int_bound(21).unwrap_or(0);
-        self.velocity.y = bite_impulse(&mut synchronized_random(self.uuid, game_time));
-    }
-}
-/// `FishingHook.syncronizedRandom`, reseeded every tick from the hook's UUID and the game
-/// time so the server and its clients draw alike. Kept off the level's random,
-/// whose draws must stay in vanilla's order.
-pub(in crate::game) fn synchronized_random(uuid: [i32; 4], game_time: i64) -> LegacyRandom {
-    let least = (i64::from(uuid[2]) << 32) | i64::from(uuid[3] as u32);
-    LegacyRandom::new(least ^ game_time)
-}
-/// `FishingHook.onSyncedDataUpdated` on DATA_BITING: the downward plunge,
-/// `-0.4F * Mth.nextFloat(syncronizedRandom, 0.6F, 1.0F)`, in float as vanilla.
-pub(in crate::game) fn bite_impulse(r: &mut impl RandomSource) -> f64 {
-    // Mth.nextFloat(random, min, max): `random.nextFloat() * (max - min) + min`.
-    f64::from(-0.4f32 * (r.next_float() * (1.0f32 - 0.6f32) + 0.6f32))
-}
 
 /// `FishingHook`'s constructor and `Projectile.updateRotation` read the current velocity.
 pub(in crate::game::server_side) fn hook_rotation(v: Vec3) -> [f32; 2] {
@@ -348,12 +221,6 @@ pub(in crate::game::server_side) fn cast_velocity(
         v.y * (0.6 / len + random.triangle(0.5, 0.0103365)),
         v.z * (0.6 / len + random.triangle(0.5, 0.0103365)),
     )
-}
-/// `FishingHook.onHitBlock`: `getDeltaMovement().normalize().scale(hit.distanceTo(this))`,
-/// where `HitResult.distanceTo` is the *squared* distance to the hook: the bobber
-/// springs back a little off a wall instead of stopping dead.
-pub(in crate::game) fn rebound(velocity: Vec3, hit: Vec3, at: Vec3) -> Vec3 {
-    velocity.normalize().scale(hit.distance_squared(at))
 }
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Run real `catchingFish` states for the vanilla differential harness.
@@ -686,9 +553,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if let Some(pl) = self.player.as_mut() {
                     pl.velocity = pulled(pl.velocity);
                 }
-            } else if self.creatures.hook_targets.iter().any(|t| t.id == id) {
+            } else if self.side.hook_targets.iter().any(|t| t.id == id) {
                 // A player: the hub moves them when the tick ends.
-                self.creatures
+                self.side
                     .hook_pulls
                     .push((id, Vec3::new(d.x * 0.1, d.y * 0.1, d.z * 0.1)));
             }
@@ -973,7 +840,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 for kind in [ParticleType::Bubble, ParticleType::Fishing] {
                     self.send_particles(kind, at, spread, f64::from(0.2f32), count);
                 }
-                h.trigger_bite(self.world.game_time);
+                trigger_bite(h, self.world.game_time);
             }
         } else if h.time_until_lured > 0 {
             h.time_until_lured -= speed;
@@ -1173,7 +1040,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // A veto skips only hit handling; Entity.move below still
                 // stops a flying bobber against solid collision shapes.
                 if let Some((id, at)) = hit.filter(|_| !canceled) {
-                    if id >= super::dragon::SPECIAL {
+                    if id >= crate::game::dragon_common::SPECIAL {
                         // Vanilla onSyncedDataUpdated resolves level.getEntity(part.id) == null, clearing hookedIn.
                         self.projectile_landed_event(
                             h.id,
@@ -1199,7 +1066,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 None,
                             );
                         }
-                        match h.hit_entity(id, breeze.is_some()) {
+                        match hit_entity(&mut h, id, breeze.is_some()) {
                             EntityCollision::Deflected { first, rot } => {
                                 if first {
                                     old_yaw += rot;
@@ -1255,17 +1122,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .find(|m| m.id == id && m.alive())
                     .map(|m| (m.position, f64::from(m.height())))
                     .or_else(|| {
-                        self.creatures
-                            .hook_targets
-                            .iter()
-                            .find(|t| t.id == id)
-                            .map(|t| {
-                                let (lo, hi) = (t.bounds.min_position(), t.bounds.max_position());
-                                (
-                                    Vec3::new((lo.x + hi.x) / 2.0, lo.y, (lo.z + hi.z) / 2.0),
-                                    hi.y - lo.y,
-                                )
-                            })
+                        self.side.hook_targets.iter().find(|t| t.id == id).map(|t| {
+                            let (lo, hi) = (t.bounds.min_position(), t.bounds.max_position());
+                            (
+                                Vec3::new((lo.x + hi.x) / 2.0, lo.y, (lo.z + hi.z) / 2.0),
+                                hi.y - lo.y,
+                            )
+                        })
                     })
                     .or_else(|| {
                         self.armor_stands.iter().find(|a| a.id == id).map(|a| {
@@ -1277,7 +1140,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.boats
                             .iter()
                             .find(|b| b.id == id)
-                            .map(|b| (b.position, super::boats::HEIGHT))
+                            .map(|b| (b.position, crate::game::boats_common::HEIGHT))
                     })
                     .or_else(|| {
                         self.carts
@@ -1295,7 +1158,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.tnts
                             .iter()
                             .find(|t| t.id != 0 && t.id == id)
-                            .map(|t| (t.position, super::tnt::PrimedTnt::SIZE))
+                            .map(|t| (t.position, crate::game::tnt_common::PrimedTnt::SIZE))
                     })
                     .or_else(|| {
                         self.item_frames.iter().find(|f| f.id == id).map(|f| {
@@ -1516,7 +1379,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The players a hook can catch: everyone but spectators and the dead
     /// (`Projectile.canHitEntity`), the host and the guests in the level.
     pub(in crate::game::server_side) fn refresh_hook_targets(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let mut targets = Vec::new();
@@ -1528,19 +1391,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 });
             }
         }
-        self.creatures.hook_targets = targets;
+        self.side.hook_targets = targets;
     }
     /// `FishingHook.pullEntity` on the players the hooks reeled in this tick
     /// pulled: their velocity moves, and a guest's reaches their client.
     pub(in crate::game::server_side) fn flush_hook_pulls(&mut self) {
-        let pulls = std::mem::take(&mut self.creatures.hook_pulls);
+        let pulls = std::mem::take(&mut self.side.hook_pulls);
         for (id, delta) in pulls {
             let push = |g: &mut Self| {
                 if let Some(p) = g.player.as_mut() {
                     p.velocity = p.velocity.add_vector(delta);
                 }
             };
-            let conn = self.lan.as_ref().and_then(|host| {
+            let conn = self.side.lan.as_ref().and_then(|host| {
                 host.hub
                     .guests
                     .iter()
@@ -1553,46 +1416,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 }
-/// `FishingHookRenderer.getPlayerHandPos` in first person, from the eye: the camera's
-/// `getNearPlane(fov).getPointOnPlane(invert * 0.525, -0.1)` scaled by 960 / fov, then
-/// `Vec3.yRot(swing * 0.5)` and `xRot(-swing * 0.7)`.
-pub(in crate::game) fn near_plane_hand(
-    plane: sunrise_client::camera::NearPlane,
-    fov: f32,
-    invert: f32,
-    swing: f32,
-) -> glam::DVec3 {
-    let point = glam::DVec3::from_array(plane.point_on_plane(invert * 0.525, -0.1))
-        * (960.0 / f64::from(fov));
-    let (s, c) = (
-        f64::from(trig::sin(f64::from(swing * 0.5))),
-        f64::from(trig::cos(f64::from(swing * 0.5))),
-    );
-    let point = glam::DVec3::new(
-        point.x * c + point.z * s,
-        point.y,
-        point.z * c - point.x * s,
-    );
-    let (s, c) = (
-        f64::from(trig::sin(f64::from(-swing * 0.7))),
-        f64::from(trig::cos(f64::from(-swing * 0.7))),
-    );
-    glam::DVec3::new(
-        point.x,
-        point.y * c + point.z * s,
-        point.z * c - point.y * s,
-    )
-}
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The cast hooks of the level in place and who cast each: the player in
     /// place, then the guests here. A guest displaced by a nested swap holds
     /// someone else's hook for the moment, so theirs is left out.
     pub(in crate::game::server_side) fn fishing_hooks_here(
         &self,
-    ) -> impl Iterator<Item = (&Hook, super::commands::Target)> {
-        use super::commands::Target;
+    ) -> impl Iterator<Item = (&Hook, crate::game::commands_common::Target)> {
+        use crate::game::commands_common::Target;
         let own = self.hook.iter().map(|hook| (hook, Target::Player));
-        let guests = self.lan.iter().flat_map(|host| {
+        let guests = self.side.lan.iter().flat_map(|host| {
             host.hub
                 .guests
                 .iter()
@@ -1630,14 +1463,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
             sunrise_sim::motion::BodyMotion::entity_context(id, at),
         );
         let hook = match caster {
-            super::commands::Target::Guest(conn) if Some(conn) != self.side.lan_acting => self
-                .lan
-                .as_mut()
-                .and_then(|host| host.play.get_mut(&conn))
-                .and_then(|play| play.hook.as_mut()),
-            super::commands::Target::Player | super::commands::Target::Guest(_) => {
-                self.hook.as_mut()
+            crate::game::commands_common::Target::Guest(conn)
+                if Some(conn) != self.side.lan_acting =>
+            {
+                self.side
+                    .lan
+                    .as_mut()
+                    .and_then(|host| host.play.get_mut(&conn))
+                    .and_then(|play| play.hook.as_mut())
             }
+            crate::game::commands_common::Target::Player
+            | crate::game::commands_common::Target::Guest(_) => self.hook.as_mut(),
             _ => None,
         };
         let Some(hook) = hook else {
@@ -1667,18 +1503,20 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if caster == self.side.lan_acting {
             self.hook.discard();
-        } else if let Some(play) = caster.and_then(|conn| self.lan.as_mut()?.play.get_mut(&conn)) {
+        } else if let Some(play) =
+            caster.and_then(|conn| self.side.lan.as_mut()?.play.get_mut(&conn))
+        {
             play.hook.discard();
         }
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The cast hook with an entity id, and who cast it.
     pub(in crate::game) fn fishing_hook_by_id(
         &self,
         id: u32,
-    ) -> Option<(&Hook, super::commands::Target)> {
+    ) -> Option<(&Hook, crate::game::commands_common::Target)> {
         use sunrise_sim::join_seq::residency::{
             Kind, Source,
             table::{EntityLookup, SourceEntity},
@@ -1703,8 +1541,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                     value: (
                         hook,
                         caster.map_or(
-                            super::commands::Target::Player,
-                            super::commands::Target::Guest,
+                            crate::game::commands_common::Target::Player,
+                            crate::game::commands_common::Target::Guest,
                         ),
                     ),
                 })
@@ -1716,224 +1554,24 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 }
 
-/// A hook a server tracks to this client (`FishingHook.recreateFromPacket`)
-/// that another player cast: drawn where the server puts it, its line
-/// running to that player's hand.
-pub(in crate::game) struct RemoteHook {
-    pub(in crate::game) id: u32,
-    pub(in crate::game) uuid: [i32; 4],
-    pub(in crate::game) owner: u32,
-    pub(in crate::game) owner_fishing: bool,
-    pub(in crate::game) position: Vec3,
-    pub(in crate::game) previous: Vec3,
-    pub(in crate::game) velocity: Vec3,
-    pub(in crate::game) state: State,
-    pub(in crate::game) ground: sunrise_world::ground_support::GroundState,
-    pub(in crate::game) lerp: HookLerp,
-    pub(in crate::game) random: LegacyRandom,
-}
-
-pub(in crate::game) fn push_remote_hook(
-    hooks: &mut Vec<RemoteHook>,
-    id: u32,
-    owner: u32,
-    at: Vec3,
-    velocity: Vec3,
-    uuid: [i32; 4],
-) {
-    for h in hooks.iter_mut().filter(|h| h.owner == owner) {
-        h.owner_fishing = false;
-    }
-    hooks.push(RemoteHook {
-        id,
-        uuid,
-        owner,
-        owner_fishing: true,
-        position: at,
-        previous: at,
-        velocity,
-        state: State::Flying,
-        ground: Default::default(),
-        lerp: HookLerp::default(),
-        random: random_source::entity(),
-    });
-}
-
-pub(in crate::game) fn remove_remote_hook_from(hooks: &mut Vec<RemoteHook>, id: u32) {
-    let owner = hooks.iter().find(|h| h.id == id).map(|h| h.owner);
-    hooks.retain(|h| h.id != id);
-    if let Some(owner) = owner {
-        for h in hooks.iter_mut().filter(|h| h.owner == owner) {
-            h.owner_fishing = false;
-        }
-    }
-}
-
-/// The `onGround` of a server's update (`handleMoveEntity`), except that a
-/// hook resting on the ground stays so while the update does not lift it: the
-/// server's tracker can send the flag a tick behind the landing.
-pub(in crate::game::server_side) fn resting(
-    was: bool,
-    at: Vec3,
-    target: [f64; 3],
-    sent: bool,
-) -> bool {
-    sent || (was && target[1] <= at.y + 1.0e-3)
-}
-
-/// `LinearInterpolationHandler`: where a server's update has a hook heading
-/// and the steps left (`DEFAULT_INTERPOLATION_STEPS` 3).
-#[derive(Default)]
-pub(in crate::game) struct HookLerp {
-    pub(in crate::game) target: Vec3,
-    pub(in crate::game) steps: u32,
-}
-impl HookLerp {
-    /// `interpolateTo`: a new target restarts the steps, the same one does not.
-    pub(in crate::game::server_side) fn start(&mut self, target: [f64; 3]) {
-        let target = Vec3::new(target[0], target[1], target[2]);
-        if self.steps == 0 || self.target != target {
-            self.target = target;
-            self.steps = 3;
-        }
-    }
-    /// `doInterpolate`: a step of the way there.
-    pub(in crate::game) fn step(&mut self, at: Vec3) -> Vec3 {
-        if self.steps == 0 {
-            return at;
-        }
-        let n = f64::from(self.steps);
-        self.steps -= 1;
-        Vec3::new(
-            at.x + (self.target.x - at.x) / n,
-            at.y + (self.target.y - at.y) / n,
-            at.z + (self.target.z - at.z) / n,
-        )
-    }
-    /// `applyPredictedMovement`: what the hook moved by itself carries the
-    /// target along while it is heading there.
-    pub(in crate::game) fn moved(&mut self, by: Vec3) {
-        if self.steps > 0 {
-            self.target = Vec3::new(
-                self.target.x + by.x,
-                self.target.y + by.y,
-                self.target.z + by.z,
-            );
-        }
-    }
-}
-
+#[cfg(test)]
 impl Hook {
-    pub(in crate::game) fn id(&self) -> u32 {
-        self.id
-    }
-    /// `FishingHook.getHookedIn`, by entity id.
-    pub(in crate::game::server_side) fn hooked_in(&self) -> Option<u32> {
-        self.hooked_in.or(match self.state {
-            State::Hooked(id) => Some(id),
-            _ => None,
-        })
-    }
-    /// `FishingHook.isOpenWaterFishing`.
-    pub(in crate::game::server_side) fn open_water(&self) -> bool {
-        self.open_water
-    }
     #[cfg(test)]
     pub(in crate::game::server_side) fn set_hooked_in(&mut self, id: u32) {
         self.hooked_in = Some(id);
         self.state = State::Hooked(id);
-    }
-    /// A server's update of this client's own hook (`handleMoveEntity` also
-    /// sets `onGround`).
-    pub(in crate::game) fn move_to(&mut self, target: [f64; 3], on_ground: bool) {
-        self.ground.on_ground = resting(self.ground.on_ground, self.position, target, on_ground);
-        self.lerp.start(target);
-    }
-}
-impl RemoteHook {
-    pub(in crate::game) fn id(&self) -> u32 {
-        self.id
-    }
-    /// A server's update of another player's hook.
-    pub(in crate::game) fn move_to(&mut self, target: [f64; 3], on_ground: bool) {
-        self.ground.on_ground = resting(self.ground.on_ground, self.position, target, on_ground);
-        self.lerp.start(target);
-    }
-}
-
-impl Hook {
-    /// This client's own hook as its server tracks it: drawn, never ticked here.
-    pub(in crate::game) fn remote(id: u32, at: Vec3, uuid: [i32; 4]) -> Self {
-        let mut random = random_source::entity();
-        // Entity initializes a local UUID before recreateFromPacket replaces it.
-        let _local_uuid = sunrise_sim::save::insecure_uuid(&mut random);
-        let _synchronized = random_source::create();
-        Self {
-            uuid,
-            attachment_lifetime: Default::default(),
-            join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
-            caster: None,
-            caster_generation: sunrise_sim::join_seq::JoinSeq::UNJOINED,
-            id,
-            position: at,
-            previous: at,
-            velocity: Vec3::ZERO,
-            state: State::Flying,
-            hooked_in: None,
-            left_owner: false,
-            yaw: 0.0,
-            pitch: 0.0,
-            last_deflected_by: None,
-            needs_sync: false,
-            tick_count: 0,
-            life: 0,
-            ground: Default::default(),
-            nibble: 0,
-            time_until_lured: 0,
-            time_until_hooked: 0,
-            fish_angle: 0.0,
-            out_of_water: 0,
-            open_water: true,
-            luck: 0,
-            lure: 0,
-            medium: None,
-            lerp: HookLerp::default(),
-            random,
-        }
-    }
-    /// `FishingHook`'s entity for the players tracking it: the owner's id in
-    /// its add packet, DATA_HOOKED_ENTITY (the hooked id plus one) and
-    /// DATA_BITING when they differ from their defaults.
-    pub(in crate::game::server_side) fn track(&self, owner: i32, out: &mut States) {
-        let p = self.position;
-        let e = out.add(
-            self.id as i32,
-            sunrise_sim::lan::playerdata::ints_uuid(self.uuid),
-            "minecraft:fishing_bobber",
-        );
-        e.position = [p.x, p.y, p.z];
-        e.velocity = [self.velocity.x, self.velocity.y, self.velocity.z];
-        e.on_ground = self.ground.on_ground;
-        e.needs_sync = self.needs_sync;
-        e.data = owner;
-        if let State::Hooked(id) = self.state {
-            e.meta.push((8, serializer::INT, Value::Int(id as i32 + 1)));
-        }
-        if self.nibble > 0 {
-            e.meta.push((9, serializer::BOOLEAN, Value::Bool(true)));
-        }
     }
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The hooks guests track: each player's in the level.
     pub(in crate::game::server_side) fn lan_hook_states(&self, out: &mut States) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         for g in host.hub.guests.iter().filter(|g| host.hub.here(g)) {
             if let Some(h) = host.play.get(&g.conn).and_then(|p| p.hook.as_ref()) {
-                h.track(g.entity_id, out);
+                track(h, g.entity_id, out);
             }
         }
     }
@@ -1984,6 +1622,54 @@ pub(in crate::game::server_side) fn cast_direction(yaw: f32, pitch: f32) -> (f32
     (y_sin, y_cos, (-(x_sin / x_cos)).clamp(-5.0, 5.0))
 }
 
+fn hit_entity(hook: &mut Hook, id: u32, deflects: bool) -> EntityCollision {
+    if deflects {
+        let first = hook.last_deflected_by != Some(id);
+        let mut rot = 0.0;
+        if first {
+            rot = 170.0 + hook.random.next_float() * 20.0;
+            hook.yaw += rot;
+            hook.velocity = hook.velocity.scale(-0.5);
+            hook.last_deflected_by = Some(id);
+            hook.needs_sync = true;
+        }
+        return EntityCollision::Deflected { first, rot };
+    }
+    // FishingHook.onHitEntity sets hookedIn only; state flips to HOOKED_IN_ENTITY next tick.
+    hook.hooked_in = Some(id);
+    EntityCollision::Hooked
+}
+
+/// `FishingHook.catchingFish`: the nibble timer, and DATA_BITING's plunge
+/// (`onSyncedDataUpdated` runs on the server too).
+fn trigger_bite(hook: &mut Hook, game_time: i64) {
+    hook.nibble = 20 + hook.random.next_int_bound(21).unwrap_or(0);
+    hook.velocity.y = bite_impulse(&mut synchronized_random(hook.uuid, game_time));
+}
+
+/// `FishingHook`'s entity for the players tracking it: the owner's id in
+/// its add packet, DATA_HOOKED_ENTITY (the hooked id plus one) and
+/// DATA_BITING when they differ from their defaults.
+fn track(hook: &Hook, owner: i32, out: &mut States) {
+    let p = hook.position;
+    let e = out.add(
+        hook.id as i32,
+        sunrise_sim::lan::playerdata::ints_uuid(hook.uuid),
+        "minecraft:fishing_bobber",
+    );
+    e.position = [p.x, p.y, p.z];
+    e.velocity = [hook.velocity.x, hook.velocity.y, hook.velocity.z];
+    e.on_ground = hook.ground.on_ground;
+    e.needs_sync = hook.needs_sync;
+    e.data = owner;
+    if let State::Hooked(id) = hook.state {
+        e.meta.push((8, serializer::INT, Value::Int(id as i32 + 1)));
+    }
+    if hook.nibble > 0 {
+        e.meta.push((9, serializer::BOOLEAN, Value::Bool(true)));
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{Hook, cast_direction, entity_hit_margin, first_entity_hit, pull_item, rebound};
@@ -1997,7 +1683,7 @@ pub(in crate::game) mod tests {
         camera.set_rotation(30.0, -90.0);
         let plane = camera.near_plane(70.0, 854.0, 480.0);
         assert_eq!(
-            super::near_plane_hand(plane, 70.0, 1.0, 0.5)
+            crate::game::client_side::fishing_client::near_plane_hand(plane, 70.0, 1.0, 0.5)
                 .to_array()
                 .map(f64::to_bits),
             [
@@ -2155,14 +1841,14 @@ pub(in crate::game) mod tests {
         let mut hook = Hook::remote(1, Vec3::ZERO, [0, 0, 0, 1]);
         hook.velocity = Vec3::new(2.0, -0.4, 1.0);
         assert!(matches!(
-            hook.hit_entity(10, true),
+            super::hit_entity(&mut hook, 10, true),
             EntityCollision::Deflected { first: true, rot } if (170.0..190.0).contains(&rot)
         ));
         assert_eq!(hook.state, State::Flying);
         assert!(hook.needs_sync);
         assert_eq!(hook.velocity, Vec3::new(-1.0, 0.2, -0.5));
         assert_eq!(
-            hook.hit_entity(10, true),
+            super::hit_entity(&mut hook, 10, true),
             EntityCollision::Deflected {
                 first: false,
                 rot: 0.0,
@@ -2170,7 +1856,7 @@ pub(in crate::game) mod tests {
         );
         assert_eq!(hook.velocity, Vec3::new(-1.0, 0.2, -0.5));
         assert!(matches!(
-            hook.hit_entity(11, true),
+            super::hit_entity(&mut hook, 11, true),
             EntityCollision::Deflected { first: true, rot } if (170.0..190.0).contains(&rot)
         ));
         assert_eq!(hook.velocity, Vec3::new(0.5, -0.1, 0.25));
@@ -2181,14 +1867,17 @@ pub(in crate::game) mod tests {
         use super::{EntityCollision, Hook, State};
         let mut hook = Hook::remote(1, Vec3::ZERO, [0, 0, 0, 1]);
         hook.velocity = Vec3::new(2.0, 0.0, 0.0);
-        hook.hit_entity(10, true);
+        super::hit_entity(&mut hook, 10, true);
         let mut states = sunrise_sim::lan::entity::States::default();
-        hook.track(99, &mut states);
+        super::track(&hook, 99, &mut states);
         let state = &states.as_slice()[0];
         assert!(state.needs_sync);
         assert_eq!(state.velocity, [-1.0, -0.0, -0.0]);
         assert!(!state.meta.iter().any(|entry| entry.0 == 8));
-        assert_eq!(hook.hit_entity(20, false), EntityCollision::Hooked);
+        assert_eq!(
+            super::hit_entity(&mut hook, 20, false),
+            EntityCollision::Hooked
+        );
         assert_eq!(hook.hooked_in, Some(20));
         assert_eq!(hook.state, State::Flying);
         assert_eq!(hook.velocity, Vec3::new(-1.0, -0.0, -0.0));
@@ -2218,7 +1907,8 @@ pub(in crate::game) mod tests {
             let mut trace = Vec::new();
             for target in &parts[4..] {
                 hook.needs_sync = false;
-                let response = hook.hit_entity(target.parse::<u32>().unwrap() + 10, true);
+                let response =
+                    super::hit_entity(&mut hook, target.parse::<u32>().unwrap() + 10, true);
                 let sounds = i32::from(matches!(
                     response,
                     EntityCollision::Deflected { first: true, .. }
@@ -2365,7 +2055,7 @@ pub(in crate::game) mod tests {
         for _ in 0..100 {
             let mut hook = Hook::remote(1, Vec3::ZERO, [0, 0, 0, 1]);
             assert_eq!(hook.velocity.y, 0.0);
-            hook.trigger_bite(0);
+            super::trigger_bite(&mut hook, 0);
             assert!(
                 hook.velocity.y < 0.0,
                 "vertical velocity should be negative on bite, got {}",
@@ -2414,13 +2104,34 @@ pub(in crate::game) mod tests {
     #[test]
     fn removing_one_of_two_remote_hooks_clears_owner_fishing() {
         let mut hooks = Vec::new();
-        super::push_remote_hook(&mut hooks, 10, 7, Vec3::ZERO, Vec3::ZERO, [0; 4]);
-        super::push_remote_hook(&mut hooks, 11, 7, Vec3::ZERO, Vec3::ZERO, [0; 4]);
-        super::push_remote_hook(&mut hooks, 20, 12, Vec3::ZERO, Vec3::ZERO, [0; 4]);
+        crate::game::client_side::fishing_client::push_remote_hook(
+            &mut hooks,
+            10,
+            7,
+            Vec3::ZERO,
+            Vec3::ZERO,
+            [0; 4],
+        );
+        crate::game::client_side::fishing_client::push_remote_hook(
+            &mut hooks,
+            11,
+            7,
+            Vec3::ZERO,
+            Vec3::ZERO,
+            [0; 4],
+        );
+        crate::game::client_side::fishing_client::push_remote_hook(
+            &mut hooks,
+            20,
+            12,
+            Vec3::ZERO,
+            Vec3::ZERO,
+            [0; 4],
+        );
         assert!(!hooks[0].owner_fishing);
         assert!(hooks[1].owner_fishing);
         assert!(hooks[2].owner_fishing);
-        super::remove_remote_hook_from(&mut hooks, 10);
+        crate::game::client_side::fishing_client::remove_remote_hook_from(&mut hooks, 10);
         assert_eq!(hooks.len(), 2);
         assert!(!hooks.iter().any(|h| h.owner == 7 && h.owner_fishing));
         assert!(hooks.iter().any(|h| h.owner == 12 && h.owner_fishing));

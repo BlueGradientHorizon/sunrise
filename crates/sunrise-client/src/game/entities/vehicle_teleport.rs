@@ -266,7 +266,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// minecart's clamped (`cart_known_movement`). None for a player, whose
     /// client holds its motion, and an entity no level holds.
     pub(in crate::game::server_side) fn transition_motion(&mut self, t: Target) -> Option<Vec3> {
-        let id = super::native_entities::target_id(t)?;
+        let id = crate::game::commands_common::target_id(t)?;
         let motion = self
             .in_target_level(t, |g| {
                 let h = g.native_walk_entity(id)?;
@@ -286,7 +286,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         t: Target,
         motion: Vec3,
     ) {
-        let Some(id) = super::native_entities::target_id(t) else {
+        let Some(id) = crate::game::commands_common::target_id(t) else {
             return;
         };
         let _ = self.in_target_level(t, |g| {
@@ -301,7 +301,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// and always answers; an entity that changes level alone answers; a
     /// vehicle tree answers only when it moved. `None` leaves the target to
     /// the caller's player path.
-    pub(in crate::game::server_side) fn teleport_target_across(
+    pub(in crate::game) fn teleport_target_across(
         &mut self,
         target: Target,
         destination: super::Dim,
@@ -408,7 +408,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Open the destination before removing the entity.
             game.enter_level(destination)?;
             game.enter_level(source)?;
-            let cooldown = game.portals.entities.get(&id).map_or(0, |s| s.cooldown);
+            let cooldown = game
+                .side
+                .portals
+                .entities
+                .get(&id)
+                .map_or(0, |s| s.cooldown);
             let Some((mut tag, state)) = game.take_lone_traveller(id) else {
                 return Ok(Some(false));
             };
@@ -562,7 +567,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     game.riding.unwrap(),
                 ));
             }
-            if let Some(host) = game.lan.as_ref() {
+            if let Some(host) = game.side.lan.as_ref() {
                 for guest in &host.hub.guests {
                     if Some(guest.conn) != game.side.lan_acting
                         && guest.vehicle.is_some_and(|id| tree.contains(&id))
@@ -813,7 +818,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.pitch = pitch;
             }
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let mut steps = Vec::new();
@@ -878,7 +883,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let delta = self.transition_motion(t).unwrap_or(Vec3::ZERO);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         for &conn in riding {

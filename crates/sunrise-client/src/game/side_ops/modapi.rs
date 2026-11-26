@@ -7,7 +7,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &mut self,
         holder: mod_api::Holder,
         access: AttachmentAccess,
-    ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
+    ) -> std::result::Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
         <__Side as SideOps>::side_attachment_map(self, holder, access)
     }
 
@@ -22,7 +22,7 @@ pub(in crate::game) trait SideOps: Sized {
         game: &'__side_g mut crate::game::Game<'_, Self>,
         holder: mod_api::Holder,
         access: AttachmentAccess,
-    ) -> Result<&'__side_g mut mod_api::Attachments, mod_api::AttachmentError>;
+    ) -> std::result::Result<&'__side_g mut mod_api::Attachments, mod_api::AttachmentError>;
     fn side_entity_residence(
         game: &crate::game::Game<'_, Self>,
         holder: mod_api::EntityRef,
@@ -34,7 +34,7 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &'__side_g mut crate::game::Game<'_, Self>,
         holder: mod_api::Holder,
         access: AttachmentAccess,
-    ) -> Result<&'__side_g mut mod_api::Attachments, mod_api::AttachmentError> {
+    ) -> std::result::Result<&'__side_g mut mod_api::Attachments, mod_api::AttachmentError> {
         game.server_attachment_map(holder, access)
     }
     fn side_entity_residence(
@@ -51,7 +51,7 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &'__side_g mut crate::game::Game<'_, Self>,
         holder: mod_api::Holder,
         access: AttachmentAccess,
-    ) -> Result<&'__side_g mut mod_api::Attachments, mod_api::AttachmentError> {
+    ) -> std::result::Result<&'__side_g mut mod_api::Attachments, mod_api::AttachmentError> {
         game.client_attachment_map(holder, access)
     }
     fn side_entity_residence(

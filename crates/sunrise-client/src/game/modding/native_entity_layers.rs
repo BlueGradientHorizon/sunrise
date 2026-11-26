@@ -227,7 +227,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mob_types = self.res.mob_types();
         let routed = |id: &str| mob_types.contains_key(id);
         let mut registration = LayerRegistration::new(rows, mod_renderers, &routed);
-        crate::game::native_hooks::native_register_entity_layers(
+        crate::game::client_side::native_hooks_client::register_entity_layers::native_register_entity_layers(
             &RegistrationContext::new(),
             &mut registration,
         );
@@ -354,7 +354,7 @@ mod tests {
                 let rows = EntityTypeRows::parse(br#"{"test:golem":{"attributes":{}}}"#);
                 let renderers = BTreeMap::new();
                 let mut registration = LayerRegistration::new(&rows, &renderers, &|_| true);
-                crate::game::native_hooks::native_register_entity_layers(
+                crate::game::client_side::native_hooks_client::register_entity_layers::native_register_entity_layers(
                     &RegistrationContext::new(),
                     &mut registration,
                 );

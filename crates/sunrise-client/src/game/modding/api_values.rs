@@ -467,19 +467,6 @@ fn block_values_keep_frozen_ordinals_when_world_state_ids_reorder() {
     );
 }
 
-/// Prepare callback data before mesh construction; workers never convert engine records.
-pub(in crate::game) fn mod_tint_values(
-    _registry: &sunrise_world::registry::BlockRegistry,
-) -> Result<Option<crate::mesher::ModTintValues>, String> {
-    if !crate::mesher::has_custom_block_tint_sources() && !crate::mesher::has_section_geometry() {
-        return Ok(None);
-    }
-    let metadata =
-        block_metadata_table().map_err(|error| format!("block tint metadata: {error:?}"))?;
-    let states = block_state::snapshot().map_err(|error| format!("block tint state: {error:?}"))?;
-    Ok(Some(crate::mesher::ModTintValues { states, metadata }))
-}
-
 pub(in crate::game) fn block_metadata_table()
 -> Result<&'static sunrise_mod_runtime::block_definitions::Blocks, mod_api::BlockStateError> {
     mod_api::__private::block_definitions().ok_or(mod_api::BlockStateError::Unavailable)
@@ -515,7 +502,7 @@ macro_rules! write_answers {
     )* };
 }
 #[allow(unused_imports)]
-pub(in crate::game) use write_answers;
+pub(crate) use write_answers;
 write_answers!(bool, u32, ());
 
 /// Convert an engine value into an owned API value after resolving registry identities.
@@ -621,7 +608,7 @@ macro_rules! scalar_values {
     )* };
 }
 #[allow(unused_imports)]
-pub(in crate::game) use scalar_values;
+pub(crate) use scalar_values;
 scalar_values!(u32, i32, bool, ());
 
 impl TryIntoApi for String {
@@ -749,7 +736,7 @@ impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, mod_api::Text) {
     }
 }
 
-impl TryIntoApi for super::spill::BlockItemDrop {
+impl TryIntoApi for crate::game::spill_common::BlockItemDrop {
     type Api = mod_api::ItemDrop;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -762,7 +749,7 @@ impl TryIntoApi for super::spill::BlockItemDrop {
     }
 }
 impl TryIntoEngine for mod_api::ItemDrop {
-    type Engine = super::spill::BlockItemDrop;
+    type Engine = crate::game::spill_common::BlockItemDrop;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
         let stack = self.stack.try_into_engine(items)?;
@@ -1700,8 +1687,8 @@ impl super::GameLevel<'_> {
         pos: sunrise_core::position::BlockPos,
         state: sunrise_world::registry::BlockStateId,
         entity: &sunrise_level::containers::ModBlockEntity,
-    ) -> super::spill::RemovalOutputs {
-        let mut outputs = super::spill::RemovalOutputs::default();
+    ) -> crate::game::spill_common::RemovalOutputs {
+        let mut outputs = crate::game::spill_common::RemovalOutputs::default();
         if !mod_api::__private::has_part_hook(mod_api::HookId::PreRemoveSideEffects) {
             return outputs;
         }
@@ -2416,8 +2403,6 @@ pub(in crate::game) mod declaration_snapshot_tests {
     }
 }
 
-#[path = "api_values/gui_draw.rs"]
-pub(in crate::game) mod gui_draw;
 #[path = "api_values/text_boundary.rs"]
 pub(in crate::game) mod text_boundary;
 #[cfg(test)]
@@ -2429,6 +2414,10 @@ pub(in crate::game) mod gui_draw_boundary_tests {
 
     #[test]
     fn gui_commands_keep_every_variant_field_order_and_text_source() {
+        use crate::game::client_side::api_values_client::gui_draw::{
+            gui_draw_to_api, gui_draw_to_engine,
+        };
+
         let text = Text::from(
             json!({"translate":"test.hud", "fallback":"%s", "with":[{"text":"name"}], "bold":false, "test:meta":{"n":1}}),
         );
@@ -2505,8 +2494,13 @@ pub(in crate::game) mod gui_draw_boundary_tests {
             D::Push(vec![PoseOp::Translate(61., 62.), PoseOp::Scale(0.5, 1.5)]),
             D::Pop,
         ];
-        let api = commands.try_into_api().unwrap();
-        let actual: Result<Vec<D>, mod_api::text::TextFormError> = api.try_into_engine(&());
+        let api = commands
+            .iter()
+            .map(gui_draw_to_api)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let actual: Result<Vec<D>, mod_api::text::TextFormError> =
+            api.iter().map(gui_draw_to_engine).collect();
         let actual = actual.unwrap();
         assert_eq!(actual, commands);
         let D::Text { text: actual, .. } = &actual[5] else {
@@ -2891,5 +2885,32 @@ impl TryIntoEngine for (ApiStack, [f64; 3]) {
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
         Ok((self.0.try_into_engine(items)?, self.1))
+    }
+}
+
+impl TryIntoApi for (sunrise_game_data::text::Text, u32) {
+    type Api = (mod_api::Text, u32);
+    type Error = mod_api::text::TextFormError;
+    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
+        Ok((self.0.try_into_api()?, self.1))
+    }
+}
+
+impl TryIntoEngine for mod_api::ItemDisplayContext {
+    type Engine = sunrise_assets::item_model::DisplayContext;
+    type Error = ();
+    fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
+        engine_display_context(*self).ok_or(())
+    }
+}
+
+impl<T: TryIntoApi, E: Clone> TryIntoApi for Result<T, E> {
+    type Api = Result<T::Api, E>;
+    type Error = T::Error;
+    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
+        match self {
+            Ok(value) => value.try_into_api().map(Ok),
+            Err(error) => Ok(Err(error.clone())),
+        }
     }
 }

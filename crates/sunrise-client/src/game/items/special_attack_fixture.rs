@@ -1,10 +1,9 @@
 //! Scoped Player.attack follow-up probe; invoked by the dispenser's headless world.
 use super::{
     Game,
-    boats::Boat,
-    dragon::Dragon,
     minecarts::{CartKind, Minecart},
 };
+use crate::game::{boats_common::Boat, dragon_common::Dragon};
 use serde_json::Value;
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::Result;

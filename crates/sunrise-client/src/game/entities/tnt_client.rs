@@ -1,5 +1,5 @@
 use super::Game;
-use crate::game::server_side::tnt::PrimedTnt;
+use crate::game::tnt_common::PrimedTnt;
 use sunrise_client::mesher::Vertex;
 use sunrise_core::position::BlockPos;
 

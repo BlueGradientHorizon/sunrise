@@ -1,6 +1,6 @@
 //! Mod reads share the fluid capability's resource-rebuilt content table.
 use super::Game;
-use crate::game::machines::cauldron_contents::{self, CauldronContent};
+use sunrise_gameplay_common::cauldron_contents::{self, CauldronContent};
 
 fn export(content: &CauldronContent) -> Option<mod_api::CauldronContent> {
     Some(mod_api::CauldronContent::new(

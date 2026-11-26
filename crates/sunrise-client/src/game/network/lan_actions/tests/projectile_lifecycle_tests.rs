@@ -100,7 +100,7 @@ fn projectile_restore_entries_keep_the_bound_arrow() {
                 }
                 game.creatures.projectiles.push(picked);
                 if path == 1 {
-                    crate::game::entity::taken_pass_tests::assert_projectile_spawn_survives(
+                    crate::game::entity_server::taken_pass_tests::assert_projectile_spawn_survives(
                         game,
                         |game| {
                             game.guest_arrows(0);
@@ -110,7 +110,7 @@ fn projectile_restore_entries_keep_the_bound_arrow() {
                     game.player = Some(
                         PlayerMotion::new(game.motion, Vec3::new(at[0], at[1], at[2])).unwrap(),
                     );
-                    crate::game::entity::taken_pass_tests::assert_projectile_spawn_survives(
+                    crate::game::entity_server::taken_pass_tests::assert_projectile_spawn_survives(
                         game,
                         |game| {
                             game.touch_arrows();

@@ -1,11 +1,18 @@
 use super::Game;
-use crate::game::server_side::machines::Screen;
 use sunrise_items::items::ItemStack;
 
 #[path = "crafter_client.rs"]
 pub(in crate::game) mod crafter;
 #[path = "screen.rs"]
 mod screen;
+
+/// Which machine screen the open container uses.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::game) enum Screen {
+    Hopper,
+    Dispenser,
+    Dropper,
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn machine_layout_selector(&self) -> Option<bool> {
@@ -45,7 +52,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self
             .station
             .as_ref()
-            .is_some_and(|s| s.kind == super::stations::Kind::Beacon)
+            .is_some_and(|s| s.kind == crate::game::stations_common::Kind::Beacon)
         {
             return super::beacon::HEIGHT;
         }

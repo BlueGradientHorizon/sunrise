@@ -8,7 +8,7 @@ use super::{
         decision::{Identity, OwnerStamp},
     },
 };
-use std::collections::HashMap;
+use crate::game::lan_menu_data::{Effect, KeptMerchantGuest, KeptMerchantMob, KeptMerchantWindow};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{advancements::Advancement, menu::Menu};
 
@@ -31,27 +31,6 @@ pub(in crate::game) struct TakePlan {
     pub(in crate::game) offhand: Option<Option<ItemStack>>,
 }
 
-// Keep typed snapshots in closures so no storage's private representation escapes its owner.
-pub(in crate::game) type Restore =
-    Box<dyn FnOnce(&mut Game<'_, crate::game::server_side::ServerState>)>;
-#[derive(Default)]
-pub(in crate::game) struct Journal {
-    pub(in crate::game) guests: HashMap<u32, Restore>,
-    pub(in crate::game) windows: HashMap<u32, Restore>,
-    pub(in crate::game) mobs: HashMap<u32, Restore>,
-    pub(in crate::game) sequences: Option<sunrise_items::random_sequences::RandomSequences>,
-    pub(in crate::game) active: Option<u32>,
-    pub(in crate::game) correct_on_abort: std::collections::BTreeSet<(u32, i32)>,
-    pub(in crate::game) refused_clicks: std::collections::BTreeSet<(u32, i32)>,
-}
-
-pub(in crate::game) enum Effect {
-    Orb([f64; 3], u32),
-    Drops(u32, Vec<sunrise_items::items::ItemStack>),
-    Reward(u128, Advancement),
-    Notice(u128, String, u32),
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Any write to an open merchant menu, including a MerchantRef edit to another guest,
     /// belongs to the transaction that first changed it.
@@ -62,7 +41,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if level.trades.guests.contains_key(&conn) {
             return;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(g) = host.hub.guest(conn) else {
@@ -85,25 +64,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let level = self.transactions.last_mut().expect("the action is open");
         level.trades.guests.insert(
             conn,
-            Box::new(move |game| {
-                if let Some(host) = game.lan.as_mut() {
-                    host.menus
-                        .entry(conn)
-                        .or_default()
-                        .merchant
-                        .restore(Some(merchant));
-                    if let Some(stats) = stats {
-                        host.play.entry(conn).or_default().stats = stats;
-                    }
-                    if let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) {
-                        host.hub.guests.update(gi, |g| {
-                            g.advancements = progress;
-                            g.advancements_changed = changed;
-                            g.recipes_unlocked = unlocked;
-                            g.recipe_book = book;
-                        });
-                    }
-                }
+            Box::new(KeptMerchantGuest {
+                merchant,
+                stats,
+                progress,
+                changed,
+                unlocked,
+                book,
             }),
         );
     }
@@ -115,7 +82,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(menus) = host.menus.get(&conn).filter(|m| m.merchant.is_some()) else {
@@ -128,14 +95,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let window = guest.menu_before_replacement();
             let heard = menus.menu_heard.clone();
             let owned = menus.owned_menu.clone();
-            Box::new(move |game| {
-                if let Some(host) = game.lan.as_mut() {
-                    host.hub.guests.update_connection(conn, window);
-                    let menus = host.menus.entry(conn).or_default();
-                    menus.menu_heard = heard;
-                    menus.owned_menu = owned;
-                }
-            })
+            KeptMerchantWindow {
+                window: Box::new(window),
+                heard,
+                owned,
+            }
         });
         level
             .packets
@@ -162,17 +126,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let level = m.extra.villager_level;
         let variant = m.extra.variant;
         let villager = m.extra.villager.clone();
-        entry.insert(Box::new(move |game| {
-            if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
-                m.random = random;
-                m.ambient_timer = timer;
-                m.extra.trade = trade;
-                m.extra.flag2 = trading;
-                m.extra.profession = profession;
-                m.extra.villager_level = level;
-                m.extra.variant = variant;
-                m.extra.villager = villager;
-            }
+        entry.insert(Box::new(KeptMerchantMob {
+            random,
+            timer,
+            trade,
+            trading,
+            profession,
+            level,
+            variant,
+            villager,
         }));
     }
 
@@ -190,6 +152,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.after_commit(After::Trade(Box::new(Effect::Drops(conn, stacks))));
             }
         } else if let Some(gi) = self
+            .side
             .lan
             .as_ref()
             .and_then(|h| h.hub.guests.iter().position(|g| g.conn == conn))

@@ -34,6 +34,7 @@ impl Hooks for Vision {
 fn add_entity(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str) {
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     let kind = game
+        .side
         .remote
         .as_ref()
         .unwrap()
@@ -65,7 +66,9 @@ fn a_mods_entity_type_puts_its_chain_on_while_spectated() {
 
     let mods: mod_api::Mods = vec![ModEntry::new("vision", Box::new(Vision))].into();
     mod_platform::testing::with_mods(mods, || {
-        super::mods::register_entity_spectator_shaders(ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_entity_spectator_shaders(
+            ExecutionRole::Client,
+        );
         with_client_game(|game| {
             let _server = logged_client(game);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());

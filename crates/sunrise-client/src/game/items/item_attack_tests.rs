@@ -97,12 +97,13 @@ fn with_probe(probe: &Probe, test: impl FnOnce()) {
 
 /// Guest 12's held stack.
 fn held(game: &crate::game::ServerGame<'_>) -> ItemStack {
-    let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+    let guest = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
     guest.inventory[guest.selected].clone().unwrap()
 }
 
 fn hold(game: &mut crate::game::ServerGame<'_>, item: &str) {
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub

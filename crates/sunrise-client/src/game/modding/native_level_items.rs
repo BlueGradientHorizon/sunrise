@@ -5,7 +5,8 @@
 //! the world is simulated, in the level in place: on the server thread, for a
 //! server's players, and in-frame on the window's own level. Clients get the
 //! new entities through the tracker, as any other.
-use super::{Game, spill};
+use super::Game;
+use crate::game::spill_common as spill;
 use mod_api::{EntityRef, LevelRef};
 use sunrise_items::items::ItemStack;
 
@@ -153,11 +154,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 mod tests {
+    use super::spill;
     use mod_api::ServerHost;
     #[test]
     #[ignore = "daily"]
     fn a_level_pops_spawns_and_awards_as_vanilla() {
-        use super::super::spill;
         use mod_api::{LevelRef, WorldEpoch};
         use sunrise_core::random::RandomSource;
         use sunrise_game_data::gamerules::Value as RuleValue;

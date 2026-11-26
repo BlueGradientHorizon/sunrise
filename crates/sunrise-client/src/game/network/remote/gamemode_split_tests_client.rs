@@ -63,7 +63,7 @@ pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_a
                 game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
                     .unwrap();
                 {
-                    let remote = game.remote.as_mut().unwrap();
+                    let remote = game.side.remote.as_mut().unwrap();
                     remote.loaded_sent = true;
                     remote.level_load.finish();
                 }
@@ -81,7 +81,8 @@ pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_a
                 }))
                 .unwrap();
                 assert!(
-                    game.remote
+                    game.side
+                        .remote
                         .as_ref()
                         .unwrap()
                         .own_player_info
@@ -92,7 +93,8 @@ pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_a
                 game.handle_packet(position_packet(3, [0.5, 64.0, 0.5]))
                     .unwrap();
                 assert!(
-                    game.remote
+                    game.side
+                        .remote
                         .as_ref()
                         .unwrap()
                         .own_player_info
@@ -101,7 +103,7 @@ pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_a
                     "PlayerPosition must not eagerly resolve PlayerInfo before first read"
                 );
                 {
-                    let remote = game.remote.as_mut().unwrap();
+                    let remote = game.side.remote.as_mut().unwrap();
                     remote.loaded_sent = true;
                     remote.level_load.finish();
                 }
@@ -154,7 +156,7 @@ pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
                     for info in info_modes {
                         for may_fly in [false, true] {
                             {
-                                let remote = game.remote.as_mut().unwrap();
+                                let remote = game.side.remote.as_mut().unwrap();
                                 remote.profile = SELF_UUID;
                                 remote.profile_name = SELF_NAME.into();
                                 remote.tab_players.clear();
@@ -185,7 +187,7 @@ pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
                             ))
                             .unwrap();
                             {
-                                let remote = game.remote.as_mut().unwrap();
+                                let remote = game.side.remote.as_mut().unwrap();
                                 remote.loaded_sent = true;
                                 remote.level_load.finish();
                             }
@@ -206,7 +208,7 @@ pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
                 for local in modes {
                     for info_name in ["adventure", "spectator"] {
                         {
-                            let remote = game.remote.as_mut().unwrap();
+                            let remote = game.side.remote.as_mut().unwrap();
                             remote.profile = SELF_UUID;
                             remote.profile_name = SELF_NAME.into();
                             remote.tab_players.clear();
@@ -231,7 +233,7 @@ pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
                             .unwrap();
                         game.player.as_mut().unwrap().velocity = Vec3::new(0.0, -0.1, 0.0);
                         {
-                            let remote = game.remote.as_mut().unwrap();
+                            let remote = game.side.remote.as_mut().unwrap();
                             remote.loaded_sent = true;
                             remote.level_load.finish();
                         }
@@ -260,7 +262,7 @@ pub(in crate::game) fn setup_client(
     peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
         .unwrap();
     {
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.profile = SELF_UUID;
         remote.profile_name = SELF_NAME.into();
     }
@@ -269,7 +271,7 @@ pub(in crate::game) fn setup_client(
     install_stone_floor(game);
     game.handle_packet(position_packet(1, pos)).unwrap();
     {
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.loaded_sent = true;
         remote.level_load.finish();
     }

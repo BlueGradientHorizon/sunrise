@@ -1,6 +1,6 @@
 //! The actual player wrappers, damage continuations, effects and explosions reach one listener.
-use super::entity::damage_level_of;
 use super::native_entity_refs::tests::{bind_local_player, with_game};
+use crate::game::server_side::entity_server::damage_level_of;
 use mod_api::{EntityInvulnerabilityCheckEvent, Hooks, LevelSide};
 use std::sync::{Arc, Mutex};
 use sunrise_command::args::GameMode;

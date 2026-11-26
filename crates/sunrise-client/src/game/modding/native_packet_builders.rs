@@ -2,8 +2,8 @@
 use super::Game;
 use mod_api::{ContainerClickRequest, PacketBuildError, ServerboundPlayPacket};
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    pub(super) fn container_click(
+impl Game<'_, crate::game::client_side::ClientState> {
+    pub(in crate::game) fn container_click(
         &self,
         request: &ContainerClickRequest,
     ) -> Result<ServerboundPlayPacket, PacketBuildError> {
@@ -14,6 +14,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             request.changed_slots.len() as u64,
         )?;
         let remote = self
+            .side
             .remote
             .as_ref()
             .ok_or_else(|| PacketBuildError::Unavailable {

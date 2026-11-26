@@ -10,7 +10,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .position(|slot| slot == internal)
     }
     pub(in crate::game::client_side) fn open_menu_name(&self, container: i32) -> String {
-        match self.remote.as_ref().and_then(|r| r.menu.as_ref()) {
+        match self.side.remote.as_ref().and_then(|r| r.menu.as_ref()) {
             Some((id, name)) if *id == container && container != 0 => name.clone(),
             _ => "inventory".into(),
         }
@@ -27,7 +27,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         slot: usize,
         changed: bool,
     ) {
-        let hand = if slot == crate::game::shield::OFFHAND_SLOT {
+        let hand = if slot == crate::game::held_items::OFFHAND_SLOT {
             1
         } else if slot == self.selected {
             0
@@ -35,6 +35,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let answer = self
+            .side
             .remote
             .as_mut()
             .is_some_and(|r| std::mem::take(&mut r.swap_answer[hand]));
@@ -44,7 +45,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The open menu's window id (0: the inventory).
     pub(in crate::game) fn remote_menu_id(&self) -> i32 {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .and_then(|r| r.menu.as_ref())
             .map_or(0, |m| m.0)
@@ -69,7 +71,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         if container == 0
-            && let Some(r) = self.remote.as_mut().filter(|r| r.menu.as_ref().is_some())
+            && let Some(r) = self
+                .side
+                .remote
+                .as_mut()
+                .filter(|r| r.menu.as_ref().is_some())
         {
             match internal {
                 100..=103 => {
@@ -87,7 +93,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // ClientboundContainerSetSlotPacket for the open menu's slot 0: the
             // server's result of its own recipes (a world's data packs' too).
             if container == self.remote_menu().0
-                && let Some(r) = self.remote.as_mut()
+                && let Some(r) = self.side.remote.as_mut()
             {
                 r.craft_result = item;
             }
@@ -99,9 +105,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if internal < 36 {
             self.remote_hand_slot_set(internal, changed);
         } else if internal == 504 {
-            self.remote_hand_slot_set(crate::game::shield::OFFHAND_SLOT, changed);
+            self.remote_hand_slot_set(crate::game::held_items::OFFHAND_SLOT, changed);
         }
-        if internal >= crate::game::stations::INPUT && self.station.is_some() {
+        if internal >= crate::game::stations_common::INPUT && self.station.is_some() {
             self.remote_station_slot_changed(internal);
         }
     }
@@ -113,7 +119,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             self.inventory.get(i).cloned().flatten()
         };
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         if let Some(synced) = r.synced.get_mut(i) {
@@ -132,9 +138,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 (p.position.z.floor() as i32) >> 4,
             )
         });
-        if loaded && self.remote.as_ref().is_some_and(|r| !r.loaded_sent) {
+        if loaded && self.side.remote.as_ref().is_some_and(|r| !r.loaded_sent) {
             self.send(S::PlayerLoaded(Empty));
-            let r = self.remote.as_mut().unwrap();
+            let r = self.side.remote.as_mut().unwrap();
             r.loaded_sent = true;
             r.level_load.finish();
         }

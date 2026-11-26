@@ -98,7 +98,7 @@ pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_rel
                 "reversed" => (40.5, 5_u32, "boat_rev", "w6_rev", Some("a2_rev")),
                 _ => (8.5, 5_u32, "boat_main", "w6_main", Some("a2_main")),
             };
-            game.boats.push(crate::game::boats::Boat::new(
+            game.boats.push(crate::game::boats_common::Boat::new(
                 71,
                 Arc::from("oak"),
                 Vec3::new(4.5, -60.0, z),

@@ -91,10 +91,10 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                 game.options.dedicated = Some(Vec::new());
                 let (tx12, rx12) = mpsc::channel();
                 let (tx13, rx13) = mpsc::channel();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.sender = PlayerSender::new(tx12, Arc::default());
                 });
-                game.lan.as_mut().unwrap().hub.guests.update(1, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(1, |g| {
                     g.sender = PlayerSender::new(tx13, Arc::default());
                 });
                 let player13 = game.player(13).unwrap();
@@ -110,6 +110,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                     player13.uuid(),
                 );
                 let bell_id = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -117,6 +118,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                     .registry_id("minecraft:sound_event", bell)
                     .unwrap();
                 let anvil_id = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -247,10 +249,10 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 game.start_audio_capture();
                 let (tx12, rx12) = mpsc::channel();
                 let (tx13, rx13) = mpsc::channel();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.sender = PlayerSender::new(tx12, Arc::default());
                 });
-                game.lan.as_mut().unwrap().hub.guests.update(1, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(1, |g| {
                     g.sender = PlayerSender::new(tx13, Arc::default());
                 });
                 let player13 = game.player(13).unwrap();
@@ -270,6 +272,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 let bell = "minecraft:block.bell.use";
                 let anvil = "minecraft:block.anvil.use";
                 let burp_id = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -277,6 +280,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     .registry_id("minecraft:sound_event", burp)
                     .unwrap();
                 let bell_id = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -284,6 +288,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     .registry_id("minecraft:sound_event", bell)
                     .unwrap();
                 let anvil_id = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -308,7 +313,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
 
                 // Snapshot both RNG streams (hub sound_seeds and level world.random) so we can verify
                 // that rolled-back transactions and aborted nested savepoints advance neither stream.
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .hub
@@ -691,7 +697,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     game.options.dedicated = Some(Vec::new());
                     assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
                     let (tx12, rx12) = mpsc::channel();
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                         g.sender = PlayerSender::new(tx12, Arc::default());
                     });
                     let level = game.level(game.dim.id()).unwrap();
@@ -704,6 +710,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     let bell = "minecraft:block.bell.use";
                     let anvil = "minecraft:block.anvil.use";
                     let bell_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -711,6 +718,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                         .registry_id("minecraft:sound_event", bell)
                         .unwrap();
                     let anvil_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -962,7 +970,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                 with_guests(|game| {
                     game.options.dedicated = Some(Vec::new());
                     let (tx12, rx12) = mpsc::channel();
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                         g.sender = PlayerSender::new(tx12, Arc::default());
                     });
                     let player12 = game.player(12).unwrap();
@@ -973,6 +981,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                     let anvil = "minecraft:block.anvil.use";
                     let burp = "minecraft:entity.player.burp";
                     let bell_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -980,6 +989,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                         .registry_id("minecraft:sound_event", bell)
                         .unwrap();
                     let anvil_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -987,6 +997,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                         .registry_id("minecraft:sound_event", anvil)
                         .unwrap();
                     let burp_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -994,6 +1005,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                         .registry_id("minecraft:sound_event", burp)
                         .unwrap();
                     let hit_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -1020,7 +1032,8 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
 
                     // 1. Rolled-back outer transaction discards both the listener's committed nested
                     // effects and the outer sound without advancing `hub.sound_seeds`.
-                    game.lan
+                    game.side
+                        .lan
                         .as_ref()
                         .unwrap()
                         .hub
@@ -1310,7 +1323,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                 with_guests(|game| {
                     game.options.dedicated = Some(Vec::new());
                     let (tx12, rx12) = mpsc::channel();
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                         g.sender = PlayerSender::new(tx12, Arc::default());
                     });
                     let level = game.level(game.dim.id()).unwrap();
@@ -1320,6 +1333,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     let anvil = "minecraft:block.anvil.use";
                     let burp = "minecraft:entity.player.burp";
                     let bell_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -1327,6 +1341,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                         .registry_id("minecraft:sound_event", bell)
                         .unwrap();
                     let anvil_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -1334,6 +1349,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                         .registry_id("minecraft:sound_event", anvil)
                         .unwrap();
                     let burp_id = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -2461,6 +2477,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     }
 
                     let ow_conn = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -2471,6 +2488,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                         .unwrap()
                         .conn;
                     let nether_conn = game
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -2482,7 +2500,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                         .conn;
                     assert_ne!(ow_conn, nether_conn);
                     {
-                        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+                        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
                         let ow_i = guests.connection_index(ow_conn).unwrap();
                         guests.update(ow_i, |g| {
                             g.ender_items[0] = Some(ItemStack::new("minecraft:diamond", 1));
@@ -2504,6 +2522,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                          label: &str| {
                             let mark = {
                                 let map = game
+                                    .side
                                     .lan
                                     .as_mut()
                                     .unwrap()
@@ -2519,7 +2538,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                                 Some(expected_health),
                                 "{label}: health"
                             );
-                            let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                            let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
                             let slot = guest.inventory[0].as_ref().expect("slot 0 occupied");
                             assert_eq!(slot.item.as_ref(), expected_item, "{label}: slot 0 item");
                             assert_eq!(slot.count, expected_count, "{label}: slot 0 count");

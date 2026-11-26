@@ -1,9 +1,16 @@
 //! winit's `ApplicationHandler` for the game window: window and device events, shutting down,
 //! and the idle step (`about_to_wait`).
+#[cfg(feature = "client")]
 use super::saving::ClientQuit;
+#[cfg(feature = "client")]
 use super::*;
+#[cfg(feature = "client")]
+use crate::game::client_side::launch_options_client::{is_client_start, time_limit};
+#[cfg(feature = "client")]
 use sunrise_client::window::PointerSample;
+use winit::event::WindowEvent;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A run that a person's stray key, click or mouse move would spoil: a screenshot sequence, a
     /// `SUNRISE_TICK_SCRIPT` scenario or a `record-replay`. While one runs, the keyboard, mouse
@@ -20,6 +27,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// A key, a modifier, a click, the wheel, the pointer or the input method. Resize and close are
 /// not, so a person can still close the window. A modifier change counts: `reconcile` would
 /// release a Shift or Ctrl the run holds.
+#[cfg(feature = "client")]
 fn is_input(event: &WindowEvent) -> bool {
     matches!(
         event,
@@ -34,6 +42,7 @@ fn is_input(event: &WindowEvent) -> bool {
 
 /// A person's input during a scripted run is dropped. What the run itself sends (the control
 /// socket, a replay, the game's own) still plays.
+#[cfg(feature = "client")]
 fn locks_out(origin: input_trace::InputOrigin, scripted: bool, event: &WindowEvent) -> bool {
     scripted && origin == input_trace::InputOrigin::User && is_input(event)
 }
@@ -41,6 +50,7 @@ fn locks_out(origin: input_trace::InputOrigin, scripted: bool, event: &WindowEve
 /// A person clicking into the window or away from it during a scripted run. A replay's look and
 /// clicks act by the focus and the pointer grab, which that would change mid-run: the run keeps
 /// the focus it started with, and the last change applies once it ends (`settle_after_run`).
+#[cfg(feature = "client")]
 fn held_focus(
     origin: input_trace::InputOrigin,
     scripted: bool,
@@ -55,6 +65,7 @@ fn held_focus(
 }
 
 /// What a person's event does at an agent's window no one has clicked yet.
+#[cfg(feature = "client")]
 #[derive(Debug, PartialEq)]
 enum Unclaimed {
     /// A mouse button pressed inside it: the window is theirs from this press on.
@@ -69,6 +80,7 @@ enum Unclaimed {
 /// Only a press claims the window. The focus doesn't: Windows and X11 can hand it to a window
 /// nobody clicked, and the person's keys and mouse would then steer the agent's game (#15449).
 /// The pointer's position still passes, so the press that claims a menu lands where it points.
+#[cfg(feature = "client")]
 fn at_unclaimed(
     origin: input_trace::InputOrigin,
     unclaimed: bool,
@@ -92,6 +104,7 @@ fn at_unclaimed(
 /// The Shift, Ctrl or Alt a person holds at an agent's window no one has clicked yet. The game
 /// doesn't hear of them, but winit tells of modifiers only as they change: the last state is
 /// kept for the claim, where a Ctrl held since before the click would otherwise read as up.
+#[cfg(feature = "client")]
 fn held_modifiers(
     origin: input_trace::InputOrigin,
     unclaimed: bool,
@@ -107,6 +120,7 @@ fn held_modifiers(
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// winit's `window_event`. The control socket and the pad menu call it too, with the
     /// input they make up.
@@ -295,7 +309,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.finish_profile();
         // The client's last moment: its world is left and saved, its options and
         // resources are still held. A dedicated server skips it, as `client_setup` does.
-        if self.options.is_client_start() {
+        if is_client_start(&self.options) {
             self.native_client_stopping();
         }
     }
@@ -375,7 +389,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         sunrise_level::spans::time("pads", || self.poll_pads(event_loop));
         self.settle_after_run(event_loop);
         self.pause_if_inactive();
-        if let Some(limit) = self.options.time_limit()
+        if let Some(limit) = time_limit(&self.options)
             && self.side.started.elapsed() > limit
         {
             self.error = Some(format!("run timed out after {} s", limit.as_secs()).into());
@@ -416,6 +430,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl ApplicationHandler for Game<'_, crate::game::client_side::ClientState> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.side.window.0.is_some() {
@@ -587,9 +602,10 @@ impl ApplicationHandler for Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "client"))]
 mod tests {
     use super::*;
+    use crate::game::client_side::launch_options_client::{is_client_start, time_limit};
     use input_trace::InputOrigin;
     use winit::dpi::{PhysicalPosition, PhysicalSize};
     use winit::event::{Ime, Modifiers, TouchPhase};
@@ -744,5 +760,18 @@ mod tests {
             assert_eq!(held_focus(InputOrigin::User, false, &event), None);
             assert!(!locks_out(InputOrigin::User, true, &event));
         }
+    }
+}
+
+/// Key events carry the scancode's US-layout code, which ignores XKB options like
+/// `caps:swapescape`. For the keys whose meaning the keymap may remap, take the code
+/// from the keysym the keymap resolved instead. This includes function keys on
+/// remapped media rows; ordinary character bindings still use their physical key.
+pub(in crate::game) fn follow_keymap(event: &mut WindowEvent) {
+    if let WindowEvent::KeyboardInput { event, .. } = event {
+        crate::game::client_side::key_codes::follow_named_keymap(
+            &event.logical_key,
+            &mut event.physical_key,
+        );
     }
 }

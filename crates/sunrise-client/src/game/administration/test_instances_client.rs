@@ -1,9 +1,11 @@
 use super::Game;
-use crate::game::server_side::test_instances::HIGHLIGHT_FILL;
 use sunrise_client::{block_entity_render::vertex_light, hud::HudBatch, mesher::Vertex};
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_game_data::{component::name_text, text::Text};
 use sunrise_level::containers::BlockEntity;
+
+/// `GameTestBlockHighlightRenderer.highlightPos`'s colour, 1610678016: ARGB 0x6000FF00.
+const HIGHLIGHT_FILL: u32 = 0x6000_FF00;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleGameTestHighlightPos`:

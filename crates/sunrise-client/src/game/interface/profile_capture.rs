@@ -1,13 +1,11 @@
 //! Captures (docs/perf-platform.md §4.1): `sunrise-ctl profile`, `/profiler` and `SUNRISE_PROFILE`. The window writes its own side; in single player the server thread writes its side into the same file.
 use super::Game;
-use super::integrated::{
-    NO_ANSWER,
-    capture::{Live, Target},
-};
-use super::memory::{MEMORY_EVERY_S, PendingMemory};
-use super::owner_link::OwnerRequest;
-use super::profile_capture_server::{ENV_DIR, reply_text, reports_dir, shown};
-use super::profile_lines::{self as lines, Notice};
+use crate::game::client_side::memory_client;
+use crate::game::client_side::profile_lines::{self as lines, Notice};
+use crate::game::integrated_link::NO_ANSWER;
+use crate::game::memory_common::{MEMORY_EVERY_S, PendingMemory};
+use crate::game::owner_link::OwnerRequest;
+use crate::game::profile_capture_common::{ENV_DIR, Live, Target, reply_text, reports_dir, shown};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -426,7 +424,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let parsed = request::parse(words)?;
         match parsed.request {
             Request::Start(options) => {
-                if parsed.side == Some(ProfileSide::Server) && self.integrated.is_none() {
+                if parsed.side == Some(ProfileSide::Server) && self.side.integrated.is_none() {
                     return self.start_remote_only(&options, reply);
                 }
                 let started = self.start_profile(parsed.side, &options, trigger)?;
@@ -441,7 +439,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                     StopRoute::Remote => self.stop_remote_only(reply)?,
                     StopRoute::ServerOnly => {
-                        let integrated = self.integrated.as_ref().ok_or(NO_CAPTURE)?;
+                        let integrated = self.side.integrated.as_ref().ok_or(NO_CAPTURE)?;
                         let reply = reply.clone();
                         if !integrated.tell(OwnerRequest::StopServerCapture(
                             StopReason::Normal,
@@ -479,7 +477,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Request::Mark(name) => {
                 let (client, server) = self.side.profile.mark(parsed.side, &name);
                 let posted = server.filter(|_| {
-                    self.integrated.as_ref().is_some_and(|integrated| {
+                    self.side.integrated.as_ref().is_some_and(|integrated| {
                         let label = name.clone();
                         integrated.tell(OwnerRequest::MarkServerCapture(label))
                     })
@@ -569,7 +567,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.profile.server_only = None;
         self.side.profile.stopped_after = None;
         let mut start = client_perf::start_message(
-            self.integrated.is_some(),
+            self.side.integrated.is_some(),
             sunrise_client::telemetry::gpu_name().as_deref(),
         );
         start.mods = self.perf_mods();
@@ -619,6 +617,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         trigger: Trigger,
     ) -> Result<Started> {
         let integrated = self
+            .side
             .integrated
             .as_ref()
             .ok_or("profile server: no single-player world is open")?;
@@ -656,7 +655,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !matches!(self.side.profile.link, ServerLink::Pending) {
             return;
         }
-        let (Some(integrated), Some(join)) = (&self.integrated, self.side.profile.perf.join())
+        let (Some(integrated), Some(join)) = (&self.side.integrated, self.side.profile.perf.join())
         else {
             return;
         };
@@ -694,7 +693,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.side.profile.perf.stop_with(t, reason, gpu, bench) {
             return Err("no capture is running".into());
         }
-        if server && let Some(integrated) = &self.integrated {
+        if server && let Some(integrated) = &self.side.integrated {
             integrated.tell(OwnerRequest::StopServerCapture(reason, None));
         }
         self.stop_joined_server();
@@ -990,7 +989,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(_) => return,
         };
         self.side.profile.memory.pending =
-            PendingMemory::start(self, cost).map(|job| (label, now, job));
+            memory_client::start(self, cost).map(|job| (label, now, job));
     }
 
     pub(in crate::game::client_side) fn poll_chat_answer(&mut self) {
@@ -1066,6 +1065,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.profile.perf.gpu_frames(t, cpu_ms, &frames);
         }
         let connection = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.session.counters.lock().unwrap().clone());
@@ -1081,6 +1081,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             detail,
             || WorldCounts {
                 players: self
+                    .side
                     .remote
                     .as_ref()
                     .map_or(0, |r| r.listed_player_count() as u32),
@@ -1154,7 +1155,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.abandon_part();
         // The file is whole only once the server thread's side is, which a closing game's server has no more ticks for.
-        if let Some(integrated) = &self.integrated {
+        if let Some(integrated) = &self.side.integrated {
             integrated.request_stop();
         }
         for saved in self.side.profile.perf.take_saved(true) {
@@ -1315,7 +1316,7 @@ pub(in crate::game) mod tests {
         }
         assert_eq!(parse_trace(&["a", "2", "3"]), Err(TRACE_USAGE));
     }
-    use crate::game::integrated::capture::Phase;
+    use crate::game::profile_capture_common::Phase;
     use std::time::Duration;
 
     fn live(phase: Phase) -> Arc<Live> {

@@ -1,14 +1,11 @@
-//! Prepared cauldron callbacks and their server-side dispatch.
-use super::*;
-#[allow(unused_imports)]
+//! Prepared cauldron callbacks.
 use mod_api::{
-    __private::{
-        RetainedCallback,
-        game::{RegistrationContextNew, discard_registration},
-    },
+    __private::{RetainedCallback, game::discard_registration},
     HookId,
 };
 use std::{cell::RefCell, collections::BTreeSet, sync::Arc};
+use sunrise_game_data::Result;
+use sunrise_items::items::Items;
 use sunrise_sim::cauldron::interactions::Dispatcher;
 
 #[derive(Clone)]
@@ -18,7 +15,7 @@ pub(in crate::game) struct Callback {
     pub(in crate::game) guard: Option<RetainedCallback>,
 }
 impl Callback {
-    pub(in crate::game::server_side) fn new(handler: Arc<dyn mod_api::Interaction>) -> Self {
+    pub(in crate::game) fn new(handler: Arc<dyn mod_api::Interaction>) -> Self {
         let owner = mod_api::__private::cauldron_owner();
         let guard = mod_api::__private::mod_index(owner)
             .map(|index| RetainedCallback::new(owner, index, "cauldron_interaction", ""));
@@ -43,7 +40,7 @@ pub(in crate::game) fn install(table: Arc<Table>) {
     TABLE.with_borrow_mut(|old| *old = table);
 }
 
-pub(in crate::game::server_side) fn discard_callback(callback: Callback) {
+pub(in crate::game) fn discard_callback(callback: Callback) {
     discard_registration(
         (
             HookId::RegisterCauldronInteraction,
@@ -76,7 +73,7 @@ pub(in crate::game) enum Edit {
     },
 }
 impl Edit {
-    pub(in crate::game::server_side) fn into_callback(self) -> Callback {
+    pub(in crate::game) fn into_callback(self) -> Callback {
         match self {
             Self::Item { callback, .. }
             | Self::AllItem { callback, .. }
@@ -92,7 +89,7 @@ pub(in crate::game) struct Registrar<'a> {
     pub(in crate::game) error: Option<mod_api::CauldronRegistrationError>,
 }
 /// A tag as entries keep it: its resource location, without `#`.
-pub(in crate::game::server_side) fn tag_id(tag: &str) -> Option<String> {
+pub(in crate::game) fn tag_id(tag: &str) -> Option<String> {
     let tag = tag.strip_prefix('#').unwrap_or(tag);
     mod_api::Identifier::parse(tag)
         .ok()
@@ -130,7 +127,7 @@ impl<'a> Registrar<'a> {
     }
 
     /// Record an admission error, which fails the whole preparation when it finishes.
-    pub(in crate::game::server_side) fn refuse(
+    pub(in crate::game) fn refuse(
         &mut self,
         error: mod_api::CauldronRegistrationError,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
@@ -279,86 +276,6 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         Ok(())
     }
 }
-impl Game<'_, crate::game::server_side::ServerState> {
-    /// Invoke a mod's authoritative cauldron interaction on the server.
-    pub(in crate::game::server_side) fn use_mod_cauldron(
-        &mut self,
-        pos: [i32; 3],
-        under_water: bool,
-        callback: &Callback,
-    ) -> sunrise_sim::cauldron::Outcome {
-        use crate::game::api_values::TryIntoApi;
-        use mod_api::{CauldronDecision, CauldronUse};
-        use sunrise_sim::cauldron::Outcome;
-        let Some(guard) = callback.guard.as_ref() else {
-            log::warn!(
-                "cauldron interaction for mod {} has no installed owner",
-                callback.owner
-            );
-            return Outcome::Consume;
-        };
-        let input = (|| -> std::result::Result<CauldronUse, String> {
-            let held = self
-                .held()
-                .cloned()
-                .ok_or_else(|| "missing held stack".to_owned())?;
-            let before = self.world.block(pos[0], pos[1], pos[2]);
-            let index = api_values::block_state::current()
-                .map_err(|err| format!("block state index unavailable: {err:?}"))?;
-            let state = index
-                .to_api(before)
-                .map_err(|err| format!("block state {before:?} unavailable: {err:?}"))?;
-            let epoch = self
-                .native_lifecycle
-                .epoch()
-                .ok_or_else(|| "no active world epoch".to_owned())?;
-            let player_id = self.native_acting_id();
-            let player = self.player(player_id).unwrap_or_else(|| {
-                // A fake player can be the acting body without an online-player entry.
-                let actor = mod_api::EntityRef::new(epoch, self.native_acting_entity());
-                mod_api::__private::game::player_ref(actor, player_id)
-            });
-            let level = self.level_ref(epoch, self.dim.key());
-            let held = held
-                .try_into_api()
-                .map_err(|err| format!("held stack projection failed: {err:?}"))?;
-            Ok(CauldronUse {
-                level,
-                pos,
-                state,
-                player,
-                hand: match self.hand {
-                    Hand::Main => mod_api::Hand::Main,
-                    Hand::Off => mod_api::Hand::Off,
-                },
-                held,
-                underwater: under_water,
-                creative: self.creative,
-            })
-        })();
-        let input = match input {
-            Ok(input) => input,
-            Err(why) => {
-                log::warn!(
-                    "cauldron interaction input refused for mod {}: {why}",
-                    callback.owner
-                );
-                return Outcome::Consume;
-            }
-        };
-        let decision = guard.call(|| callback.handler.interact(self, &input));
-        match decision {
-            Ok(CauldronDecision::Success) => Outcome::Success,
-            Ok(CauldronDecision::Consume) => Outcome::Consume,
-            Ok(_) => Outcome::Pass,
-            Err(why) => {
-                log::warn!("cauldron interaction refused: {why:?}");
-                Outcome::Consume
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "cauldron_interactions/tests.rs"]
 pub(in crate::game) mod tests;

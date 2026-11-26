@@ -1,6 +1,11 @@
 use super::*;
 use mod_api::ModBlockEntity;
 
+#[inline(always)]
+pub(in crate::game) fn native_client_resources_reloaded(context: &dyn mod_api::ClientReloadHost) {
+    crate::game::native_hooks::fire::fire_client_resources_reloaded(context);
+}
+
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ParticleEngine.clearParticles`: every particle and emitter goes before the next
@@ -239,7 +244,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Selection/F3+T and server-pack reloads share this point; initial startup does not
     /// (`client_setup` is the once-only moment after the initial load).
     pub(in crate::game) fn native_client_resources_reloaded(&mut self) {
-        crate::game::native_hooks::fire::fire_client_resources_reloaded(self);
+        native_client_resources_reloaded(self);
     }
     /// A command typed or clicked in chat, without its slash, before the
     /// server and Sunrise's commands see it: set `ran` when the mod ran it.

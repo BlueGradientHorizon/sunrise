@@ -9,7 +9,7 @@
 use super::{
     Game,
     commands::Target,
-    journal_level_write::PendingWrite,
+    journal_level_effects::PendingWrite,
     native_hooks::{mod_sound_ok, sound_id},
     transactions::After,
 };
@@ -34,7 +34,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// event; a mod's goes by name.
     pub(in crate::game::server_side) fn native_sound_known(&self, sound: &str) -> bool {
         !sound.starts_with("minecraft:")
-            || self.lan.as_ref().is_none_or(|host| {
+            || self.side.lan.as_ref().is_none_or(|host| {
                 host.hub
                     .registry_id("minecraft:sound_event", sound)
                     .is_some()
@@ -191,11 +191,7 @@ pub(in crate::game) mod tests {
     use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_sim::mobs::Mob;
 
-    pub(in crate::game::server_side) fn guest(
-        conn: u32,
-        uuid: u128,
-        at: [f64; 3],
-    ) -> (Guest, Receiver<Out>) {
+    pub(in crate::game) fn guest(conn: u32, uuid: u128, at: [f64; 3]) -> (Guest, Receiver<Out>) {
         let (tx, rx) = std::sync::mpsc::channel();
         let mut g = Guest::new(
             Joined {
@@ -218,7 +214,7 @@ pub(in crate::game) mod tests {
         (g, rx)
     }
 
-    pub(in crate::game::server_side) fn packets(rx: &Receiver<Out>) -> Vec<Clientbound> {
+    pub(in crate::game) fn packets(rx: &Receiver<Out>) -> Vec<Clientbound> {
         let mut out = Vec::new();
         while let Ok(Out::Packet(body)) = rx.try_recv() {
             let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -264,7 +260,13 @@ pub(in crate::game) mod tests {
             let (a, rx_a) = guest(21, 21, [1.0, 64.0, 2.0]);
             let (b, rx_b) = guest(22, 22, [3.0, 64.0, 2.0]);
             let (far, rx_far) = guest(23, 23, [900.0, 64.0, 2.0]);
-            game.lan.as_mut().unwrap().hub.guests.extend([a, b, far]);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .extend([a, b, far]);
             let pa = game.player(21).unwrap();
             let pb = game.player(22).unwrap();
             let sound = "minecraft:entity.player.burp";
@@ -378,13 +380,19 @@ pub(in crate::game) mod tests {
             game.lan_host(settings, net, config).unwrap();
             let (near, rx_near) = guest(31, 31, [0.5, 64.0, 1.0]);
             let (edge, rx_edge) = guest(32, 32, [0.5, 64.0, 16.0]);
-            game.lan.as_mut().unwrap().hub.guests.extend([near, edge]);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .extend([near, edge]);
 
             let level = game.level("minecraft:overworld").unwrap();
             let sound = "minecraft:entity.player.burp";
             // The sound source's draws bookend the queue's: each queued sound
             // takes one of its own, distinct from every neighbour's.
-            let before = game.lan.as_ref().unwrap().hub.next_sound_seed();
+            let before = game.side.lan.as_ref().unwrap().hub.next_sound_seed();
             let mut level_random = game.world.random.clone();
             for _ in 0..2 {
                 assert!(game.native_queue_sound(
@@ -421,7 +429,7 @@ pub(in crate::game) mod tests {
                     p.seed
                 })
                 .collect();
-            let after = game.lan.as_ref().unwrap().hub.next_sound_seed();
+            let after = game.side.lan.as_ref().unwrap().hub.next_sound_seed();
             assert_ne!(seeds[0], seeds[1], "each play draws its own seed");
             assert!(
                 seeds.iter().all(|seed| *seed != before && *seed != after),

@@ -209,8 +209,8 @@ pub(in crate::game) fn inventory_screen_slot_with_type<'m>(
             _ => None,
         },
         "minecraft:merchant" => match s {
-            0 | 1 => Some(crate::game::stations::INPUT + s),
-            2 => Some(crate::game::stations::RESULT),
+            0 | 1 => Some(crate::game::stations_common::INPUT + s),
+            2 => Some(crate::game::stations_common::RESULT),
             3..=29 => Some(9 + s - 3),
             30..=38 => Some(s - 30),
             _ => None,
@@ -239,9 +239,9 @@ pub(in crate::game) fn inventory_screen_slot_with_type<'m>(
         m if m.starts_with(MOUNT_MENU) => {
             let n = m[MOUNT_MENU.len()..].parse::<usize>().ok()? * 3;
             match s {
-                0 => Some(crate::game::mount_menu::SADDLE),
-                1 => Some(crate::game::mount_menu::ARMOR),
-                _ if s < 2 + n => Some(crate::game::mount_menu::CHEST + s - 2),
+                0 => Some(sunrise_gameplay_common::mount_rules::SADDLE),
+                1 => Some(sunrise_gameplay_common::mount_rules::ARMOR),
+                _ if s < 2 + n => Some(sunrise_gameplay_common::mount_rules::CHEST + s - 2),
                 _ if s < 2 + n + 27 => Some(9 + s - 2 - n),
                 _ if s < 2 + n + 36 => Some(s - 2 - n - 27),
                 _ => None,
@@ -262,8 +262,8 @@ pub(in crate::game) fn inventory_screen_slot_with_type<'m>(
             let inputs = kind.inputs();
             let own = inputs + usize::from(kind.has_result());
             match s {
-                _ if s < inputs => Some(crate::game::stations::INPUT + s),
-                _ if s < own => Some(crate::game::stations::RESULT),
+                _ if s < inputs => Some(crate::game::stations_common::INPUT + s),
+                _ if s < own => Some(crate::game::stations_common::RESULT),
                 _ if s < own + 27 => Some(9 + s - own),
                 _ if s < own + 36 => Some(s - own - 27),
                 _ => None,
@@ -273,8 +273,10 @@ pub(in crate::game) fn inventory_screen_slot_with_type<'m>(
 }
 
 /// The workstation screen of a menu type a server opens.
-pub(in crate::game) fn remote_station_kind(menu: &str) -> Option<crate::game::stations::Kind> {
-    use crate::game::stations::Kind;
+pub(in crate::game) fn remote_station_kind(
+    menu: &str,
+) -> Option<crate::game::stations_common::Kind> {
+    use crate::game::stations_common::Kind;
     Some(match menu {
         "minecraft:loom" => Kind::Loom,
         "minecraft:stonecutter" => Kind::Stonecutter,

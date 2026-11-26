@@ -137,6 +137,7 @@ fn actual_item_interact_mob_fallback_priority_and_filters_isolated() {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.native_lifecycle

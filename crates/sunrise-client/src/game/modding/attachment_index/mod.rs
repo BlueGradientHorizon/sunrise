@@ -2,16 +2,10 @@
 
 use super::{Dim, Game};
 use mod_api::{AttachmentHolder, ChunkRef};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::Arc;
 use sunrise_mod_runtime::attachments::{
-    AttachmentBatch, AttachmentLifetime, Holder, index::AttachmentIndex,
-    observer::IndexedAttachmentObserver,
+    AttachmentLifetime, Holder, observer::IndexedAttachmentObserver,
 };
-
-pub(in crate::game) type Indexes = HashMap<Dim, Arc<Mutex<AttachmentIndex<AttachmentHolder>>>>;
 
 mod players;
 
@@ -100,35 +94,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     ))
                 },
             )));
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    pub(in crate::game) fn attachment_query(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Result<mod_api::AttachmentBatch, mod_api::AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
-        let batch = self
-            .attachment_indexes
-            .get(&self.dim)
-            .map_or_else(AttachmentBatch::empty, |index| {
-                AttachmentBatch::new(index.lock().unwrap().snapshot_named(namespace, name))
-            });
-        Ok(batch
-            .in_scope(&self.transactions.attachment_query_scopes)
-            .into())
-    }
-
-    pub(in crate::game) fn attachment_read_scope(
-        &self,
-    ) -> Result<mod_api::AttachmentReadScope<'_>, mod_api::AttachmentRowError> {
-        Ok(self.attachment_frame_borrow())
-    }
-
-    pub(in crate::game) fn attachment_frame_borrow(&self) -> mod_api::AttachmentReadScope<'_> {
-        mod_api::__private::game::attachment_read_scope(&self.transactions.attachment_query_scopes)
     }
 }
 

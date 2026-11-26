@@ -110,12 +110,12 @@ fn a_cancelled_player_packet_sends_the_guest_a_correction() {
         guest.loaded = true;
         guest.load_timeout = 0;
         guest.dimension = "minecraft:overworld".into();
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         game.sync_tick_chunks();
         game.side.ticked_entities_through = game.side.next_entity;
         // The guest walks two blocks east; the listener cancels every move.
-        let before = game.lan.as_ref().unwrap().hub.guests[0].position;
-        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        let before = game.side.lan.as_ref().unwrap().hub.guests[0].position;
+        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inbox.push_back(InboxItem::Packet(
                 S::MovePlayerPos(sunrise_protocol::packets::play::MovePlayerPos {
                     x: before[0] + 2.0,
@@ -127,7 +127,7 @@ fn a_cancelled_player_packet_sends_the_guest_a_correction() {
             ));
         });
         game.tick_lan_packets();
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         let g = &host.hub.guests[0];
         // The cancelled move left the guest where it was, and the correction
         // (a teleport the client must acknowledge) is pending.
@@ -252,12 +252,12 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
         // client the one that drives the boat.
         (guest.vehicle, guest.vehicle_order) = (Some(boat), 1);
         guest.vehicle_good = Some([start.x, start.y, start.z]);
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         game.sync_tick_chunks();
         game.side.ticked_entities_through = game.side.next_entity;
         // The driver's client sends the boat two blocks east; the listener
         // cancels every move.
-        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inbox.push_back(InboxItem::Packet(
                 S::MoveVehicle(sunrise_protocol::packets::play::MoveVehicleRequest {
                     position: [start.x + 2.0, start.y, start.z],
@@ -283,7 +283,8 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
         // The tick holds what it sends a guest until its end; let the held
         // correction through, as the tick's own flush would.
         sunrise_sim::lan::flush_all(
-            game.lan
+            game.side
+                .lan
                 .as_ref()
                 .unwrap()
                 .hub

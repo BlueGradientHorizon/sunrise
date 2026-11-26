@@ -1,13 +1,17 @@
 //! Pure common block-state, bed, respawn-anchor, and portal-eligibility helpers.
 use super::Game;
-use sunrise_core::geometry::Vec3;
+use sunrise_core::{
+    geometry::{Vec3, VoxelShape},
+    position::BlockPos,
+};
 use sunrise_items::items::ItemStack;
+use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::{
     bed_geometry::{SleepOn, pos_to_bed, shape_top, slept_on},
     motion::PlayerMotion,
     stand_up::bed_forward,
 };
-use sunrise_world::registry::BlockStateId;
+use sunrise_world::{collision_context::CollisionContext, registry::BlockStateId};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn prop(&self, state: BlockStateId, key: &str) -> Option<String> {
@@ -142,5 +146,56 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.player
             .as_ref()
             .is_some_and(|p| self.can_use_portal_of(p, self.riding.is_some(), p.sleeping))
+    }
+}
+
+impl<__Side: crate::game::Side> Game<'_, __Side> {
+    /// `canUsePortal(false)` of a mob: what the mob itself decides
+    /// (`mobs::mob_can_use_portal`), riding nothing, not asleep, and not
+    /// carrying the players this side does.
+    pub(in crate::game) fn mob_portal_eligible(&self, m: &sunrise_sim::mobs::Mob) -> bool {
+        sunrise_sim::mobs::mob_can_use_portal(m)
+            && m.extra.mount.is_none()
+            && self.riding != Some(m.id)
+            && (!self.guest_rides(m.id) || self.carries_riders())
+    }
+
+    /// Whether a vehicle can take the server players riding it through a
+    /// portal: only a server moves players between its levels. Elsewhere a
+    /// ridden vehicle stays, rather than leave its rider behind.
+    pub(in crate::game) fn carries_riders(&self) -> bool {
+        self.options.dedicated.is_some()
+    }
+}
+
+impl<__Side: crate::game::Side> Game<'_, __Side> {
+    /// The level in place (`minecraft:overworld`), for a hook that isn't told
+    /// which it runs in.
+    pub(in crate::game) fn dimension(&self) -> &'static str {
+        self.dim.id()
+    }
+}
+
+impl<__Side: crate::game::Side> Game<'_, __Side> {
+    pub(in crate::game) fn block_collision_shape_in(
+        &self,
+        world: &sunrise_level::world::World,
+        p: [i32; 3],
+    ) -> VoxelShape {
+        let state = world.block(p[0], p[1], p[2]);
+        let binding = self.collision;
+        let mut scene = SceneCollisions {
+            world,
+            binding,
+            subject: None,
+        };
+        binding
+            .collision_shape_with_context(
+                &mut scene,
+                state,
+                BlockPos::new(p[0], p[1], p[2]),
+                &CollisionContext::empty(false),
+            )
+            .unwrap_or_else(|_| VoxelShape::empty())
     }
 }

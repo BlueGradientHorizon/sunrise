@@ -1,4 +1,5 @@
-use crate::game::remote::{PlayerTextures, ServicesKeys, object_skin_changed, skin_entries};
+use crate::game::client_side::remote_client::{PlayerTextures, ServicesKeys, skin_entries};
+use crate::game::remote::object_skin_changed;
 use std::{collections::HashMap, sync::Arc};
 use sunrise_client::skins;
 use sunrise_core::profile::AccountProperty;

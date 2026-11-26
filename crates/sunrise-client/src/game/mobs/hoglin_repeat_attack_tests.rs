@@ -40,9 +40,15 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.native_lifecycle
         .begin_open(super::native_lifecycle::Authority::IntegratedServer);
@@ -403,12 +409,12 @@ fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
                 let mut placed = guest(conn);
                 placed.loaded = true;
                 placed.position = [if conn == 12 { 4.0 } else { 2.0 }, 64.0, 0.0];
-                game.lan.as_mut().unwrap().hub.guests.push(placed);
+                game.side.lan.as_mut().unwrap().hub.guests.push(placed);
             }
             let attacker_id = game.guest_identity(12).unwrap().1;
             let attacker = mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, attacker_id));
             game.mobs[0].extra.ints[0] = 0;
-            game.lan.as_mut().unwrap().mob_players.insert(9001, 13);
+            game.side.lan.as_mut().unwrap().mob_players.insert(9001, 13);
             let broadcast_player = || {
                 vec![MobEvent::HoglinAttackTarget {
                     mob: 9001,
@@ -420,12 +426,12 @@ fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
             game.handle_mob_events(broadcast_player()).unwrap();
             assert_eq!(state.lock().unwrap().2, Some(attacker));
             assert_eq!(game.mobs[0].ai.target, None);
-            assert_eq!(game.lan.as_ref().unwrap().mob_players[&9001], 13);
+            assert_eq!(game.side.lan.as_ref().unwrap().mob_players[&9001], 13);
             state.lock().unwrap().1 = Some(attacker);
             game.handle_mob_events(broadcast_player()).unwrap();
             assert_eq!(state.lock().unwrap().2, Some(attacker));
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
-            assert_eq!(game.lan.as_ref().unwrap().mob_players[&9001], 12);
+            assert_eq!(game.side.lan.as_ref().unwrap().mob_players[&9001], 12);
             // Concrete players must be compared, not the shared Who::Player tag.
             let nearer_mob = mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, 9003));
             state.lock().unwrap().1 = Some(nearer_mob);
@@ -458,11 +464,11 @@ fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
             game.handle_mob_events(broadcast_nearer_player()).unwrap();
             assert_eq!(state.lock().unwrap().0, before + 2);
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
-            assert_eq!(game.lan.as_ref().unwrap().mob_players[&9001], 13);
-            game.lan.as_mut().unwrap().mob_players.insert(9001, 12);
+            assert_eq!(game.side.lan.as_ref().unwrap().mob_players[&9001], 13);
+            game.side.lan.as_mut().unwrap().mob_players.insert(9001, 12);
             game.handle_mob_events(broadcast_nearer_player()).unwrap();
             assert_eq!(state.lock().unwrap().0, before + 3);
-            assert_eq!(game.lan.as_ref().unwrap().mob_players[&9001], 13);
+            assert_eq!(game.side.lan.as_ref().unwrap().mob_players[&9001], 13);
         });
     });
 }
@@ -475,6 +481,7 @@ fn broadcast(
     target: sunrise_sim::mobs::Who,
 ) {
     let player = game
+        .side
         .lan
         .as_ref()
         .and_then(|h| h.mob_players.get(&from).copied());
@@ -604,7 +611,7 @@ fn host_with_guest(game: &mut crate::game::ServerGame<'_>, guest_at: [f64; 3]) {
     );
     guest.placed = true;
     guest.loaded = true;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
 }
 
 /// On LAN, `Who::Player` is each mob's own player (`mob_players`): a hoglin
@@ -623,7 +630,7 @@ fn a_guest_broadcast_is_placed_as_the_guest() {
     let from = mob_id(&mut game, NEAR_HOGLIN);
     let other_pig = mob_id(&mut game, NEAR_PIG);
     let bound = |game: &crate::game::ServerGame<'_>| {
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         host.mob_players.get(&receiver).copied()
     };
     // From a hoglin that sees the host: the host is farther than the pig 15 blocks away.
@@ -637,7 +644,7 @@ fn a_guest_broadcast_is_placed_as_the_guest() {
     assert_eq!(bound(&game), None);
     // From a hoglin bound to the guest: the guest is nearer, and the receiver
     // now sees that guest.
-    game.lan.as_mut().unwrap().mob_players.insert(from, 2);
+    game.side.lan.as_mut().unwrap().mob_players.insert(from, 2);
     broadcast(&mut game, receiver, from, Who::Player);
     assert_eq!(
         target_of(&game, receiver),

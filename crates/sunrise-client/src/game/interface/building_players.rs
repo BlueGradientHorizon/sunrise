@@ -222,6 +222,7 @@ mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         let scratch = std::env::temp_dir().join(format!(
@@ -285,7 +286,7 @@ mod tests {
         guest.dimension = Dim::Nether.id().into();
         guest.placed = true;
         guest.loaded = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         let seen = game.for_player(super::super::commands::Target::Guest(2), |g| {
             assert_eq!(g.dim, Dim::Nether);
             // for_player already switched the level before entering the guest.

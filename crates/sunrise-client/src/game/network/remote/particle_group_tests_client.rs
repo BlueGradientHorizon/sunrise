@@ -1,4 +1,4 @@
-use crate::game::remote::RemoteDimensionEntry;
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use crate::game::{
     native_entity_refs::tests::with_client_game, native_hooks::particle_count_tests::fill,
 };

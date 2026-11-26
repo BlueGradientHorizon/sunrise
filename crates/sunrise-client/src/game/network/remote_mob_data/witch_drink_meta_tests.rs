@@ -3,16 +3,16 @@
 //! own `usingTime` and `DATA_USING_ITEM`. So a host sends her living flags as 0 while she
 //! drinks (a vanilla client would otherwise start a use of her potion), and her drink on her
 //! own flag. A use she really starts is sent as one.
-use super::super::lan;
 use super::pet_pose_meta_tests::meta_hub;
 use super::tests::fixture_mob;
+use crate::game::lan_mob_metadata::mob_meta;
 use sunrise_protocol::entity_data::Value;
 use sunrise_sim::mobs::Mob;
 
 /// What the host sends for `m` at `index`, if anything.
 fn sent_at(m: &Mob, hub: &sunrise_sim::lan::hub::Hub, index: u8) -> Option<Value> {
     let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-    lan::mob_meta(m, hub, None, 0, &mut meta, &mut defaults);
+    mob_meta(m, hub, None, 0, &mut meta, &mut defaults);
     meta.into_iter()
         .find(|(at, _, _)| *at == index)
         .map(|(_, _, value)| value)

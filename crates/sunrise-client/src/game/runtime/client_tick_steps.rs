@@ -32,7 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 sunrise_level::spans::time("tick", || self.tick())?;
                 self.tick_friends();
-                if self.remote.is_some() {
+                if self.side.remote.is_some() {
                     // Cave mood (a shader pack's playerMood) samples on a random
                     // seeded from the clock: under `SUNRISE_STILL` it waits for the
                     // world and draws from its tick.
@@ -136,7 +136,7 @@ mod tests {
     fn client_redraw_without_title_or_remote_fails_loudly() {
         with_client_game(|game| {
             game.side.title.0 = None;
-            assert!(game.remote.is_none());
+            assert!(game.side.remote.is_none());
             let loop_ctl = NoLoop(std::cell::Cell::new(false));
             game.handle_window_event_inner(&loop_ctl, WindowEvent::RedrawRequested, None, None);
             assert!(
@@ -155,7 +155,7 @@ mod tests {
     fn startup_menu_handoff_without_title_opens_title_on_disconnected_client() {
         with_client_game(|game| {
             game.side.title.0 = None;
-            assert!(game.remote.is_none());
+            assert!(game.side.remote.is_none());
             StartupMenu::default().handoff(game);
             assert!(
                 game.side.title.0.is_some(),

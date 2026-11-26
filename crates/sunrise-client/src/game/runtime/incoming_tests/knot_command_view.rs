@@ -38,9 +38,15 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     for x in 0..3 {
@@ -79,7 +85,7 @@ fn pig(game: &mut crate::game::ServerGame<'_>) -> usize {
 fn commands_see_the_knot_a_restored_fence_leash_ties() {
     let mut resources = None;
     let mut game = game(&mut resources);
-    assert!(game.lan.is_none(), "no server tracks the level");
+    assert!(game.side.lan.is_none(), "no server tracks the level");
     // Before restoration: only the pending tag, no knot at the fence; the
     // explicit knot is found.
     let i = pig(&mut game);

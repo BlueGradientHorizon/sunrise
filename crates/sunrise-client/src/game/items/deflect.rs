@@ -10,21 +10,6 @@ use sunrise_sim::{
     projectiles::{Projectile, ProjectileKind, Turn},
 };
 
-/// `AbstractHurtingProjectile.getPickRadius`: the crosshair finds it a block
-/// round its box.
-pub(in crate::game) const PICK_RADIUS: f64 = 1.0;
-
-/// `#minecraft:redirectable_projectile`: a ghast's fireball and both wind charges.
-pub(in crate::game) fn redirectable(p: &Projectile) -> bool {
-    !p.stuck
-        && matches!(
-            p.kind,
-            ProjectileKind::LargeFireball { .. }
-                | ProjectileKind::WindCharge
-                | ProjectileKind::BreezeWindCharge
-        )
-}
-
 /// `Projectile.onRedirectProjectile`: another projectile hit `p`, which turns
 /// with `deflect(AIM_DEFLECT, hitter's owner, hitter's owner, true, 1.0)`.
 /// It flies along the owner's look (`Entity.getLookAngle`; unchanged when the
@@ -45,12 +30,6 @@ pub(in crate::game::server_side) fn aim_deflect(
         (owner, owner_uuid, guest),
         true,
     )
-}
-
-/// A projectile a player's blow reaches under the vanilla default tag: a redirectable
-/// projectile or a shulker bullet (`ShulkerBullet.isPickable` is `true`).
-pub(in crate::game) fn attackable(p: &Projectile) -> bool {
-    redirectable(p) || matches!(p.kind, ProjectileKind::ShulkerBullet { .. })
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -173,7 +152,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<Vec3> {
         let (pitch, yaw) = match (owner?, guest) {
             (Who::Player, Some(conn)) => {
-                let lan = self.lan.as_ref()?;
+                let lan = self.side.lan.as_ref()?;
                 let g = lan.hub.guests.iter().find(|g| g.conn == conn)?;
                 (g.pitch, g.yaw)
             }
@@ -263,6 +242,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use crate::game::deflect_common::{PICK_RADIUS, attackable, redirectable};
     use sunrise_core::geometry::Aabb;
 
     /// `Projectile.getPickRadius`: `isPickable() ? 1.0F : 0.0F` (`ShulkerBullet` inherits this).

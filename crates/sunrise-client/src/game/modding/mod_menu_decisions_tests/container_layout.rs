@@ -132,15 +132,21 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
 
                     let stack = ItemStack::new("minecraft:stone", 10);
                     let untouched = ItemStack::new("minecraft:oak_log", 3);
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.brand = "sunrise".into();
-                        guest.sender.menu_extra_rev =
-                            sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
-                        guest.inventory[0] = Some(stack.clone());
-                        guest.inventory[6] = Some(untouched.clone());
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.brand = "sunrise".into();
+                            guest.sender.menu_extra_rev =
+                                sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
+                            guest.inventory[0] = Some(stack.clone());
+                            guest.inventory[6] = Some(untouched.clone());
+                        });
                     assert_eq!(game.open_block_menu(12, POS), MenuOpen::Opened);
-                    let window = game.lan.as_ref().unwrap().hub.guests[0]
+                    let window = game.side.lan.as_ref().unwrap().hub.guests[0]
                         .menu
                         .as_ref()
                         .unwrap()
@@ -148,7 +154,7 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
                     game.lan_guest_packet(12, container_click(window, 33, 1));
 
                     assert_eq!(CLICK.get(), Some((6, 33)));
-                    let inventory = &game.lan.as_ref().unwrap().hub.guests[0].inventory;
+                    let inventory = &game.side.lan.as_ref().unwrap().hub.guests[0].inventory;
                     assert_eq!(inventory[0], None, "the clicked hotbar slot must empty");
                     assert_eq!(inventory[6].as_ref(), Some(&untouched));
                     let slots = game.world.block_entities.get(&POS).unwrap().slots();

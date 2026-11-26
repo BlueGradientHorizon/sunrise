@@ -21,6 +21,7 @@ fn a_mod_chat_line_shows_locally_and_sends_nothing() {
         mod_api::prelude::NetworkClientHost::chat_line(game, mod_api::Text::literal("local only"))
             .unwrap();
         let history: Vec<_> = game
+            .side
             .remote
             .as_ref()
             .unwrap()

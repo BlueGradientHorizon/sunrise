@@ -1,5 +1,6 @@
 //! Client-side spawner display mobs, spinning geometry, and particles.
-use super::{Game, spawner::Pos};
+use super::Game;
+use std::collections::HashMap;
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_level::containers::BlockEntity;
@@ -8,6 +9,16 @@ use sunrise_sim::mobs::{
     Mob,
     spawner::{SpawnDataExt, SpawnerExt},
 };
+
+type Pos = sunrise_level::block_entities::Pos;
+
+/// What the spawner code keeps between ticks.
+#[derive(Default)]
+pub(in crate::game) struct SpawnerState {
+    /// The mob shown in each spawner and the id it was made for
+    /// (`getOrCreateDisplayEntity`).
+    pub(in crate::game) displays: HashMap<Pos, (String, Mob)>,
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The client ticks of these spawners, then the shown mobs of spawners

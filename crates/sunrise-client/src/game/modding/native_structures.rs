@@ -3,27 +3,15 @@
 //! would place) without placing them: a builder reads a template once, then
 //! places its blocks one at a time.
 use super::{Game, api_values::TryIntoApi};
-use mod_api::Compound;
+use crate::game::native_structure_values::{
+    TemplateBlock, TemplateSnapshot, engine_mirror, engine_rotation, template_id,
+};
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::{LegacyRandom, RandomSource, position_seed};
-use sunrise_level::structure_block::parse_identifier;
-use sunrise_world::registry::BlockStateId;
 use sunrise_world::worldgen::structure::{Mirror, Rotation, StateTransforms, StructureTemplate};
 
 use mod_api::{StructureMirror, StructureRotation, StructureTemplateSnapshot};
 
-/// Game-owned placement result; numeric states never escape to mods.
-#[derive(Debug, PartialEq)]
-pub(in crate::game) struct TemplateSnapshot<'a> {
-    pub size: [i32; 3],
-    pub blocks: Vec<TemplateBlock<'a>>,
-}
-#[derive(Debug, PartialEq)]
-pub(in crate::game) struct TemplateBlock<'a> {
-    pub pos: [i32; 3],
-    pub state: BlockStateId,
-    pub nbt: Option<&'a Compound>,
-}
 // Native mods use this; nothing in Sunrise does.
 impl Game<'_, crate::game::server_side::ServerState> {
     /// For a server mod: structure template `id` (`mymod:hut`, found as
@@ -58,37 +46,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .try_into_api()
             .ok()
     }
-}
-
-/// The engine's rotation for an API one; `None` for one this build doesn't know.
-pub(in crate::game) fn engine_rotation(rotation: StructureRotation) -> Option<Rotation> {
-    Some(match rotation {
-        StructureRotation::None => Rotation::None,
-        StructureRotation::Clockwise90 => Rotation::Clockwise90,
-        StructureRotation::Clockwise180 => Rotation::Clockwise180,
-        StructureRotation::Counterclockwise90 => Rotation::Counterclockwise90,
-        _ => return None,
-    })
-}
-
-/// The engine's mirror for an API one; `None` for one this build doesn't know.
-pub(in crate::game) fn engine_mirror(mirror: StructureMirror) -> Option<Mirror> {
-    Some(match mirror {
-        StructureMirror::None => Mirror::None,
-        StructureMirror::LeftRight => Mirror::LeftRight,
-        StructureMirror::FrontBack => Mirror::FrontBack,
-        _ => return None,
-    })
-}
-
-/// `Identifier.tryParse`, less the paths the world's `generated` folder
-/// refuses (`FileUtil.isPathNormalized`): one with a `.` or `..` part.
-pub(in crate::game) fn template_id(id: &str) -> Option<String> {
-    let id = parse_identifier(id)?;
-    let (_, path) = id.split_once(':')?;
-    path.split('/')
-        .all(|part| part != "." && part != "..")
-        .then_some(id)
 }
 
 /// The blocks `StructureTemplate.placeInWorld` places for `template` at `at`

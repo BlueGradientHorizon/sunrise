@@ -2,6 +2,7 @@
 //! item carrying the `death_protection` component, whatever item it is, and
 //! entity event 35 on the client).
 use super::Game;
+use crate::game::totem_common::TOTEM;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     block_entity_render::vertex_light,
@@ -10,11 +11,6 @@ use sunrise_client::{
 };
 use sunrise_items::items::ItemStack;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
-
-pub(in crate::game) const TOTEM: &str = "minecraft:totem_of_undying";
-
-/// `EntityEvent.TOTEM_OF_UNDYING`.
-pub(in crate::game) const TOTEM_EVENT: i8 = 35;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -112,38 +108,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
-/// The `minecraft:death_protection` component of `item` (of `stack`, when
-/// there is one): the stack's own patch when it sets or removes it, else the
-/// item's default. It runs for both of the player's hands and for every
-/// armed mob each tick, so the usual stack, which leaves the component alone,
-/// costs one map lookup instead of a component map built from its patch.
-pub(in crate::game) fn death_protection_of<'m>(
-    models: &'m sunrise_assets::item_model::ItemModels,
-    item: &str,
-    stack: Option<&ItemStack>,
-) -> Option<std::borrow::Cow<'m, serde_json::Value>> {
-    const KEY: &str = "minecraft:death_protection";
-    if let Some(s) = stack
-        && let Some(data) = s.data()
-        && (data.other(KEY).is_some() || data.other("!minecraft:death_protection").is_some())
-    {
-        return models
-            .components(&sunrise_sim::item_models::stack_view(s))
-            .get(KEY)
-            .cloned()
-            .map(std::borrow::Cow::Owned);
-    }
-    models
-        .prototypes
-        .get(item)?
-        .get(KEY)
-        .map(std::borrow::Cow::Borrowed)
-}
-
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod death_protection_tests {
-    use super::death_protection_of;
+    use crate::game::totem_common::death_protection_of;
     use serde_json::json;
     use sunrise_assets::item_model::ItemModels;
     use sunrise_core::nbt::Tag;

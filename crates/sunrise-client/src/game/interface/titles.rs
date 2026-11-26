@@ -87,6 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.tick_in_bed_chat();
         // `MinecraftServer.isCurrentlySaving` of single player's server.
         let saving = self
+            .side
             .integrated
             .as_ref()
             .map_or(self.autosaving, |server| server.is_saving());

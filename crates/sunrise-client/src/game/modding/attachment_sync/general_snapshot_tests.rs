@@ -124,6 +124,7 @@ fn remote_attachment_sync_ignores_unknown_entity() {
         game.remote_attachment_sync(message());
         assert!(
             !game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -135,7 +136,8 @@ fn remote_attachment_sync_ignores_unknown_entity() {
         game.spawn_entity(77, "minecraft:pig", [0.5, 64.0, 0.5], [0.0; 3]);
         game.remote_attachment_sync(message());
         assert!(
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .attachments
@@ -157,6 +159,7 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
     crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
         let (id, uuid) = (77, 0x1234);
         let player_kind = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -176,7 +179,8 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
             }],
         };
         let mirrored = |game: &crate::game::ClientGame<'_>| {
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .attachments

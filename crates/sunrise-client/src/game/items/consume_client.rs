@@ -1,5 +1,5 @@
 use super::Game;
-use crate::game::server_side::consume::ItemConsumable;
+use crate::game::item_use_common::ItemConsumable;
 use std::convert::Infallible;
 use sunrise_core::random::LegacyRandom;
 use sunrise_items::items::ItemStack;
@@ -47,7 +47,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `LivingEntity.handleEntityEvent(46)` for the entity the packet names:
     /// this player, or a mob the client is drawing.
     pub(in crate::game::client_side) fn entity_teleport_particles(&mut self, id: i32) {
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
+        if self.side.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             self.portal_particles();
             return;
         }

@@ -102,6 +102,7 @@ fn with_pig_and_server(
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let pig = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -125,7 +126,7 @@ fn with_pig_and_server(
             game.refresh_client_pick(1.0);
             assert!(game.mob_hit().is_none(), "the pig starts behind the view");
             // The player is loaded: the tick's keybinds act.
-            game.remote.as_mut().unwrap().loaded_sent = true;
+            game.side.remote.as_mut().unwrap().loaded_sent = true;
             listener.lock().unwrap().calls = 0;
             run(game, &listener, &mut server);
         })
@@ -182,6 +183,7 @@ fn clicks_sent(game: &crate::game::ClientGame<'_>, server: &mut Connection) -> V
 /// A second pig, entity 32, 1.5 blocks east and 1 south of the player.
 fn add_second_pig(game: &mut crate::game::ClientGame<'_>) {
     let pig = game
+        .side
         .remote
         .as_ref()
         .unwrap()
@@ -290,7 +292,10 @@ fn attack_by_id_hits_the_entity_it_turned_to() {
             "attack 31 was refused: {:?}",
             attacked.err()
         );
-        assert_eq!(game.agent.task.as_ref().map(|t| t.name), Some("attack"));
+        assert_eq!(
+            game.side.agent.task.as_ref().map(|t| t.name),
+            Some("attack")
+        );
         assert_eq!(calls(listener), 0, "the command itself picks nothing");
         let health = game.mobs.iter().find(|m| m.id == 31).unwrap().health;
         frame(game);
@@ -347,7 +352,7 @@ fn attack_by_id_reports_the_pick_the_click_was_taken_with() {
             "{reply}"
         );
         assert_eq!(reply["picked"], json!(32), "{reply}");
-        assert!(game.agent.task.is_none());
+        assert!(game.side.agent.task.is_none());
     });
 }
 
@@ -427,7 +432,7 @@ fn attack_by_id_expiry_retires_only_its_queued_click() {
         let (_, replies) = command(game, "attack 31");
         tick_with_player_clicks(game, 1);
 
-        game.agent.task.as_mut().unwrap().deadline = Instant::now();
+        game.side.agent.task.as_mut().unwrap().deadline = Instant::now();
         game.advance_agent();
         assert_eq!(
             reply(&replies)["error"],
@@ -563,7 +568,7 @@ fn attack_by_id_ends_without_a_click_on_death_or_without_ticks() {
         assert_eq!(reply(&replies)["error"], json!("the player died"));
         game.side.screen = Screen::Playing;
         let (_, replies) = command(game, "attack 31");
-        game.agent.task.as_mut().unwrap().deadline = Instant::now();
+        game.side.agent.task.as_mut().unwrap().deadline = Instant::now();
         game.advance_agent();
         assert_eq!(
             reply(&replies)["error"],
@@ -595,7 +600,7 @@ fn attack_by_id_follows_the_listener_decision() {
             reply["error"],
             json!("that entity is out of reach or hidden; get closer")
         );
-        assert!(game.agent.task.is_none());
+        assert!(game.side.agent.task.is_none());
         tick(game);
         assert_eq!(
             clicks_sent(game, server),

@@ -57,9 +57,15 @@ impl<'a> Edits<'a> {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = &*resources.insert(loaded.resources);
-        let mut game =
-            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-                .unwrap();
+        let mut game = crate::game::ServerGame::new(
+            res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
         // A placed sign opens its editor for a live server player, whose
         // handle needs the open world's epoch.
         game.native_lifecycle_open_started();
@@ -125,7 +131,7 @@ impl<'a> Edits<'a> {
             guest.placed = true;
             guest.loaded = true;
             guest.dimension = "minecraft:overworld".into();
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             inbox.push((conn, rx));
         }
         Self {
@@ -136,6 +142,7 @@ impl<'a> Edits<'a> {
     }
     fn host(&mut self) -> &mut LanHost {
         self.game
+            .side
             .lan
             .as_mut()
             .expect("the game hosts the test world")

@@ -1,6 +1,5 @@
 use super::Game;
-use crate::game::server_side::ominous_item_spawner::ROTATION_SPEED;
-use crate::game::server_side::ominous_item_spawner::TICKS_SCALING;
+use crate::game::ominous_item_spawner_common::{ROTATION_SPEED, TICKS_SCALING};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{block_entity_render::vertex_light, item_render, mesher::Vertex};
 use sunrise_core::random::RandomSource;

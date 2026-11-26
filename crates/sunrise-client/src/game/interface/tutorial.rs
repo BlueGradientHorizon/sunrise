@@ -51,10 +51,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
     ) {
         // The server thread's settings are a stale copy of the window's: a
         // guest's tutorial is their own client's to record.
-        if self.options.dedicated.is_some()
-            || self.serving.is_some()
-            || self.side.title.0.is_some()
-            || self.player.is_none()
+        if self.options.dedicated.is_some() || self.side.title.0.is_some() || self.player.is_none()
         {
             return;
         }
@@ -75,10 +72,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
     ) {
         // The server thread's settings are a stale copy of the window's: a
         // guest's tutorial is their own client's to record.
-        if self.options.dedicated.is_some()
-            || self.serving.is_some()
-            || self.side.title.0.is_some()
-            || self.player.is_none()
+        if self.options.dedicated.is_some() || self.side.title.0.is_some() || self.player.is_none()
         {
             return;
         }
@@ -93,10 +87,9 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_tutorial(&mut self) {
         use sunrise_client::actions::Action;
         if self.side.title.0.is_some()
-            || self.remote.is_none()
+            || self.side.remote.is_none()
             || self.player.is_none()
             || self.options.dedicated.is_some()
-            || self.serving.is_some()
         {
             return;
         }

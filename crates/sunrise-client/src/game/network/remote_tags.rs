@@ -17,7 +17,7 @@ pub(in crate::game) const DAMAGE_TYPE: &str = "minecraft:damage_type";
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientboundUpdateTagsPacket` in play.
     pub(in crate::game) fn remote_update_tags(&mut self, tags: &UpdateTags) {
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             Arc::make_mut(&mut r.registries).add_tags(tags);
         }
         self.install_server_items();
@@ -35,7 +35,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn refresh_creative_search_tags(&mut self) {
-        let tags = self.remote.as_ref().and_then(|r| {
+        let tags = self.side.remote.as_ref().and_then(|r| {
             let ids = r.builtin.get("minecraft:item")?;
             let tags = r.registries.tags.get("minecraft:item")?;
             Some(
@@ -60,7 +60,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.resolve_enchant_particles();
             return;
         }
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let damage_types = r.registries.registries.get(DAMAGE_TYPE);
@@ -116,13 +116,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return;
             }
         };
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.tags = Some(items);
         }
         self.bind_parts(parts);
         self.refresh_recipe_property_context();
         self.announce_data_bound(mod_api::TagsUpdateCause::ClientPacketReceived {
-            integrated_server: self.integrated.is_some(),
+            integrated_server: self.side.integrated.is_some(),
         });
         self.resolve_primary_items();
         self.resolve_enchant_particles();
@@ -388,7 +388,7 @@ pub(in crate::game) mod tests {
             with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Steve").unwrap();
-                let builtin = game.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
 
                 use mod_api::LoopContext;
                 use sunrise_level::api_context::LoopReader;
@@ -410,7 +410,7 @@ pub(in crate::game) mod tests {
                 };
 
                 // Configuration's tags wait for the login, which binds the client's blocks.
-                let registries = &mut game.remote.as_mut().unwrap().registries;
+                let registries = &mut game.side.remote.as_mut().unwrap().registries;
                 Arc::make_mut(registries).add_tags(&update(
                     &builtin,
                     &[
@@ -592,7 +592,7 @@ pub(in crate::game) mod tests {
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 place(game, [0, 0, 0], "minecraft:enchanting_table");
                 place(game, [-2, 0, -1], "minecraft:bookshelf");
-                let builtin = game.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
                 let mut send = |providers: &[&str], transmitters: &[&str]| {
                     game.handle_packet(C::UpdateTags(power_update(
                         &builtin,
@@ -679,7 +679,7 @@ pub(in crate::game) mod tests {
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 place(game, [0, 0, 0], "minecraft:enchanting_table");
                 place(game, [-2, 0, -1], "minecraft:glass");
-                let builtin = game.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
                 let mut send = |attached: bool, enabled: bool| {
                     let calls = CALLS.load(Ordering::Relaxed);
                     let notices = NOTICES.load(Ordering::Relaxed);
@@ -807,7 +807,7 @@ pub(in crate::game) mod tests {
             with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Steve").unwrap();
-                let registries = Arc::make_mut(&mut game.remote.as_mut().unwrap().registries);
+                let registries = Arc::make_mut(&mut game.side.remote.as_mut().unwrap().registries);
                 registries.registries.insert(
                     "minecraft:damage_type".into(),
                     TYPES.map(|name| (name.to_owned(), None)).to_vec(),

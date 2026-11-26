@@ -11,6 +11,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         horn: Option<String>,
     ) {
         let Some(player) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -47,7 +48,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         logged: usize,
         heard: usize,
     ) {
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return;
         }
         let changed: Vec<(i32, i32, i32)> = self
@@ -60,6 +61,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // placer's client plays it as its block appears. The place sound is the
         // one the block's parts answered the placement with (`place_sound_type`).
         let placer = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -106,7 +108,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Positional sounds and level events of the tick, for the guests.
     pub(in crate::game) fn lan_broadcast_effects(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         host.broken.clear();
@@ -115,7 +117,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.send_captured_level_sound(sound, None);
         }
         self.send_bound_sounds();
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.finish_captured_sounds();
         }
         // A stop whose removal waited for these sounds follows that removal (#4522).
@@ -124,7 +126,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn lan_broken_block_positions(&self) -> Vec<[f64; 3]> {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Vec::new();
         };
         host.broken
@@ -143,7 +145,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`LivingEntity.startUsingItem`, `stopUsingItem` and `startAutoSpinAttack`
     /// set DATA_LIVING_ENTITY_FLAGS).
     pub(in crate::game) fn lan_living_flags(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         host.hub.guests.update_all(|g| {
@@ -164,7 +166,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.side.audio_capture_active {
             return;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         host.hub
@@ -174,7 +176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// players' bodies, and their counts for the players around
     /// (`DATA_ARROW_COUNT_ID`, `DATA_STINGER_COUNT_ID`).
     pub(in crate::game::server_side) fn lan_stuck(&mut self, paused: bool) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if !paused {
@@ -199,7 +201,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// client that did (a block placed) is still in the first half of its
     /// swing and ignores it (`SwingState.startIfAble`).
     pub(in crate::game::server_side) fn lan_swing_back(&mut self, conn: u32, swung: Option<bool>) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         if swung != Some(true) {
@@ -216,7 +218,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The tick's arm swings for the players around (each guest's to everyone
     /// else), and `LivingEntity.updateSwingTime` for the guests' bodies here.
     pub(in crate::game) fn lan_swings(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let conns: Vec<u32> = host.play.keys().copied().collect();
@@ -259,7 +261,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         sound.volume = heard.volume;
         sound.pitch = heard.pitch;
         sound.event = name;
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.captured_sound(&sound, except);
         }
     }

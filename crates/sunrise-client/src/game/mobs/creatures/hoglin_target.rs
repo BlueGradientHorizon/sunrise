@@ -15,6 +15,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(|m| (m.id, m.position))
             .collect();
         let current_player = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.mob_players.get(&mob).copied());

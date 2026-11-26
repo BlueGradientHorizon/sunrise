@@ -395,8 +395,20 @@ mod tests {
     fn teams_are_written_joined_synced_saved_and_stale_once_removed() {
         with_game(|game| {
             let saved_board = open_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(123, 1));
-            game.lan.as_mut().unwrap().hub.guests.push(guest(456, 2));
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .push(guest(123, 1));
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .push(guest(456, 2));
             let (a, b) = (game.player(123).unwrap(), game.player(456).unwrap());
             let text = mod_api::Text::literal;
 
@@ -531,7 +543,10 @@ mod tests {
             // A guest's tracked board follows the board, teams included.
             game.lan_sync_scoreboard();
             let view = sunrise_sim::lan::scoreboard::View::of(&game.score.board);
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].scoreboard, view);
+            assert_eq!(
+                game.side.lan.as_ref().unwrap().hub.guests[0].scoreboard,
+                view
+            );
 
             // The client's snapshot of the teams reads what the board holds.
             let board_snapshot = game.score.board.clone();

@@ -1,7 +1,50 @@
-use super::{Game, commands::Target, text_displays::Shows};
-use mod_api::EntityRef;
+use crate::game::{
+    Game,
+    client_side::remote_client::{Remote, general::RemoteGeneral},
+    client_side::text_displays::Shows,
+    commands_common::Target,
+};
+use mod_api::{EntityRef, LevelRef};
 
 impl Game<'_, crate::game::client_side::ClientState> {
+    /// The logged-in window and network id for an entity handle in its current world.
+    pub(in crate::game) fn native_client_entity_context(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(&Remote, i32)> {
+        let remote = self.side.remote.as_ref().filter(|r| r.logged_in)?;
+        (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
+        Some((remote, entity.id() as i32))
+    }
+
+    /// An entity tracked by the remote client but absent from local entity lists.
+    pub(in crate::game) fn native_client_tracked(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(&str, [f64; 3])> {
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (kind, position) = remote.tracked_entity(id)?;
+        if Shows::from_kind(kind).is_some() {
+            return Some((kind, self.side_client_display_position(entity)?));
+        }
+        Some((kind, position))
+    }
+
+    /// The client level in place as a handle: the level this window shows and ticks.
+    pub(in crate::game) fn client_level_handle(&self) -> Option<LevelRef> {
+        let epoch = self.native_lifecycle.epoch()?;
+        let remote = self.side.remote.as_ref().filter(|r| r.has_level())?;
+        Some(LevelRef::new(epoch, remote.level_key))
+    }
+
+    pub(in crate::game) fn native_client_general(
+        &self,
+        entity: EntityRef,
+    ) -> Option<&RemoteGeneral> {
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        remote.general.rows.get(&id)
+    }
+
     /// What a handle names on a client: the local player or an entity tracked by the server.
     pub(in crate::game) fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
         let (remote, id) = self.native_client_entity_context(entity)?;
@@ -9,11 +52,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return self.player.as_ref().map(|_| Target::Player);
         }
         // The server tracks the dragon alone; its parts are the client's own copies of it.
-        if self
-            .dragon
-            .as_ref()
-            .is_some_and(|d| crate::game::dragon::dragon_part_index(d.id, entity.id()).is_some())
-        {
+        if self.dragon.as_ref().is_some_and(|d| {
+            crate::game::dragon_common::dragon_part_index(d.id, entity.id()).is_some()
+        }) {
             return Some(Target::DragonPart(entity.id()));
         }
         // General rows are not inserted into `remote.entities`, so check them before `remote.tracked`.

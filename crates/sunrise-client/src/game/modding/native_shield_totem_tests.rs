@@ -1,7 +1,7 @@
 //! `living_shield_block` and `living_use_totem` heard by a trait mod through the game's own
 //! hooks and the hit's level host: when each fires in a hit, and what a mod may change.
-use super::entity::damage_level_of;
 use super::native_entity_refs::tests::with_game;
+use crate::game::server_side::entity_server::damage_level_of;
 use mod_api::{
     self, Hand, HitHost, Hooks, LivingDamagePostEvent, LivingShieldBlockEvent, LivingUseTotemEvent,
 };

@@ -31,12 +31,18 @@ pub(in crate::game) fn stack_attack_bonus_preview(
     base: f32,
 ) -> f32 {
     let mut random = random.clone();
-    let enchanted =
-        super::enchant_effects::stack_enchanted_damage(enchantments, stack, ctx, &mut random, base)
-            - base;
+    let enchanted = crate::game::combat_common::stack_enchanted_damage(
+        enchantments,
+        stack,
+        ctx,
+        &mut random,
+        base,
+    ) - base;
     let (fall, flying) = ctx.direct_motion.unwrap_or_default();
-    let smash = if &*stack.item == "minecraft:mace" && super::mace::can_smash(fall, flying) {
-        super::mace::stack_smash_damage(enchantments, stack, fall, ctx, &mut random)
+    let smash = if &*stack.item == "minecraft:mace"
+        && crate::game::mace_common::can_smash(fall, flying)
+    {
+        crate::game::mace_common::stack_smash_damage(enchantments, stack, fall, ctx, &mut random)
     } else {
         0.0
     };
@@ -424,6 +430,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 }
 
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
+    /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
+    pub(in crate::game) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
+        self.entity_tag_matches(tag, entity_type)
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod equippable_slot_tests {
     use sunrise_items::items::ItemStack;
@@ -802,7 +816,7 @@ pub(in crate::game) mod combat_query_tests {
             }
             // The actual attack still sees the first random draw after all previews.
             assert_eq!(
-                super::super::enchant_effects::stack_enchanted_damage(
+                crate::game::combat_common::stack_enchanted_damage(
                     &enchantments,
                     &stack,
                     &ctx,

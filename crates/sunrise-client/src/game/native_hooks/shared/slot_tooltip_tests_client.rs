@@ -30,7 +30,7 @@ fn filled_slot_tooltip_replaces_lines_but_keeps_item_image_and_visibility() {
             let mut factories =
                 sunrise_client::tooltip_components::TooltipComponentFactories::default();
             {
-                crate::game::native_hooks::native_register_client_tooltip_component_factories(
+                crate::game::client_side::native_hooks_client::register_client_tooltip_component_factories::native_register_client_tooltip_component_factories(
                     &<mod_api::RegistrationContext as mod_api::__private::game::RegistrationContextNew>::new(),
                     &mut factories,
                 );

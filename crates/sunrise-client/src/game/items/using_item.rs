@@ -3,21 +3,6 @@
 //! vibrations a use makes.
 use super::*;
 
-/// Captured item and whether Start or Tick has overridden the remaining duration.
-#[derive(Default)]
-pub(in crate::game) struct UseStart {
-    pub(in crate::game) ticks_set: bool,
-    pub(in crate::game) item: Option<ItemStack>,
-}
-impl UseStart {
-    pub(in crate::game) fn of(item: ItemStack) -> Self {
-        Self {
-            ticks_set: false,
-            item: Some(item),
-        }
-    }
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Consumable.startConsuming` on the server for a held consumable.
     pub(in crate::game) fn server_start_eating(
@@ -40,7 +25,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         // Instant consumables finish at once without starting a use countdown.
-        if item_use::consumes_at_once(consumable.ticks()) {
+        if item_use_common::consumes_at_once(consumable.ticks()) {
             // Cooldown from ItemStack.use's applyAfterUseComponentSideEffects.
             self.apply_use_cooldown(&stack);
             self.finish_consuming(info, &consumable, &stack);
@@ -140,7 +125,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.tick_used_item_effects(slot, ticks, &stack, &info);
         // Re-read the counter after onUseTick: a Part can extend or shorten
         // the use through LivingRef. Never release a bow on this path.
-        if item_use::ticks_left(self.use_duration, ticks.saturating_add(1)) <= 0
+        if item_use_common::ticks_left(self.use_duration, ticks.saturating_add(1)) <= 0
             && self.using == Some((slot, ticks.saturating_add(1)))
             && &*stack.item != "minecraft:crossbow"
         {
@@ -235,7 +220,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// from the 11th on drops a stack. `updateUsingItem` owns completion.
     pub(in crate::game::server_side) fn tick_bundle(&mut self, slot: usize, ticks: u32) {
         const USE_DURATION: i32 = 200;
-        let remaining = item_use::ticks_left(self.use_duration, ticks);
+        let remaining = item_use_common::ticks_left(self.use_duration, ticks);
         if remaining == USE_DURATION || (remaining < USE_DURATION - 10 && remaining % 2 == 0) {
             self.drop_bundle_content(slot);
         }

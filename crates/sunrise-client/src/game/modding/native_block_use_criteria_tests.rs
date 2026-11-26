@@ -64,7 +64,8 @@ fn install(game: &mut crate::game::ServerGame<'_>) {
         });
     }
     game.adv.tree = Arc::new(tree);
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -72,7 +73,8 @@ fn install(game: &mut crate::game::ServerGame<'_>) {
         .update_all(|g| g.advancements_loaded = true);
 }
 fn has(game: &crate::game::ServerGame<'_>, id: &str) -> bool {
-    game.lan
+    game.side
+        .lan
         .as_ref()
         .unwrap()
         .hub
@@ -105,7 +107,8 @@ fn item_block_use_distinguishes_snapshots() {
         let p = g.player(12).unwrap();
         let key = mod_api::__private::item_key("minecraft:stone").unwrap();
         let original = mod_api::ItemStack::new(key, 2).unwrap();
-        g.lan
+        g.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

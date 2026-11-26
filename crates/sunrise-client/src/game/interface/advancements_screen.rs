@@ -6,7 +6,7 @@
 #[path = "advancements/remote_tests.rs"]
 mod remote_tests;
 
-use super::{Game, Screen, advancements::text_of};
+use super::{Game, Screen, advancements_common::text_of};
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
 use sunrise_client::{hud::HudBatch, ui};
 use sunrise_game_data::text::{Style, Text};

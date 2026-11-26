@@ -306,7 +306,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(size) = self.block_container_size(p).filter(|&size| i < size) else {
             return false;
         };
-        self.unpack_loot(crate::game::container_loot::LootTarget::Block(key), None);
+        self.unpack_loot(
+            crate::game::container_loot_level::LootTarget::Block(key),
+            None,
+        );
         let book = stack.as_ref().is_none_or(|s| {
             self.items()
                 .item_tags

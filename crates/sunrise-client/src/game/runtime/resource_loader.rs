@@ -3,19 +3,29 @@
 //! `LoaderMsg`), the world's rest loader and a pending world entry, the ordinary launch
 //! (`run_loading`) and the smoke run's report (`write_report`).
 use super::*;
+use crate::game::integrated_link::{ProfileResolverFactory, RunComponentHarness, Serve};
+use crate::game::{
+    client_side::{
+        armor_stands_client, boats_client, frames_client,
+        resource_tables_client::{ClientPackResources, ClientResources, UiResources},
+    },
+    resource_load::WorldRestLoader,
+};
+use sunrise_gameplay_common::painting_variants::PaintingVariants;
+use sunrise_sim::lan::SessionVerifier;
 
 /// CPU-only startup data, owned by one loader generation. No file reads or
 /// model baking are needed when the event loop installs this bundle.
 pub(in crate::game) struct GameCpuResources {
-    pub(in crate::game) painting_variants: paintings::PaintingVariants,
-    pub(in crate::game) frame_model: frames::FrameModel,
-    pub(in crate::game) glow_frame_model: frames::FrameModel,
-    pub(in crate::game) map_frame_model: frames::FrameModel,
-    pub(in crate::game) glow_map_frame_model: frames::FrameModel,
-    pub(in crate::game) armor_stand_assets: armor_stands::ArmorStandAssets,
+    pub(in crate::game) painting_variants: PaintingVariants,
+    pub(in crate::game) frame_model: frames_client::FrameModel,
+    pub(in crate::game) glow_frame_model: frames_client::FrameModel,
+    pub(in crate::game) map_frame_model: frames_client::FrameModel,
+    pub(in crate::game) glow_map_frame_model: frames_client::FrameModel,
+    pub(in crate::game) armor_stand_assets: armor_stands_client::ArmorStandAssets,
     pub(in crate::game) waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
-    pub(in crate::game) boat_models: boats::BoatModels,
-    pub(in crate::game) cart_models: minecarts::CartModels,
+    pub(in crate::game) boat_models: boats_client::BoatModels,
+    pub(in crate::game) cart_models: crate::game::client_side::minecarts_client::CartModels,
     pub(in crate::game) crystal_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) cushion_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) dragon_model: Option<sunrise_client::mobs::Part>,
@@ -203,18 +213,18 @@ impl GameCpuResources {
             creative_screen,
         ) = std::thread::scope(|scope| {
             let painting_variants = named_scope(scope, "game_cpu.paintings", move || {
-                paintings::PaintingVariants::load(root)
+                PaintingVariants::load(root)
             });
             let frames = named_scope(scope, "game_cpu.frames", move || {
                 if draws {
-                    frames::bake_frames(model_library)
+                    frames_client::bake_frames(model_library)
                 } else {
                     Default::default()
                 }
             });
             let armor_stand_assets = named_scope(scope, "game_cpu.armor_stands", move || {
                 visuals
-                    .map(|source| armor_stands::ArmorStandAssets::load(source, document))
+                    .map(|source| armor_stands_client::ArmorStandAssets::load(source, document))
                     .unwrap_or_default()
             });
             let waypoint_styles = named_scope(scope, "game_cpu.waypoints", move || {
@@ -223,10 +233,10 @@ impl GameCpuResources {
                     .unwrap_or_default()
             });
             let boat_models = named_scope(scope, "game_cpu.boats", move || {
-                boats::BoatModels::load(document)
+                boats_client::BoatModels::load(document)
             });
             let cart_models = named_scope(scope, "game_cpu.carts", move || {
-                minecarts::CartModels::load(document)
+                crate::game::client_side::minecarts_client::CartModels::load(document)
             });
             let creative_screen = named_scope(scope, "game_cpu.creative", move || {
                 let mut creative = Creative::load(root).map_err(|error| error.to_string())?;
@@ -380,27 +390,6 @@ pub(in crate::game) enum PendingWorldEntry {
     StudioReplay(std::path::PathBuf),
 }
 
-pub(in crate::game) struct WorldRestLoader {
-    pub(in crate::game) progress: Progress,
-    pub(in crate::game) handle: JoinHandle<std::result::Result<(), String>>,
-}
-
-impl WorldRestLoader {
-    pub(in crate::game) fn ready(&self) -> Result<bool> {
-        // No time limit: the title stays usable while this loads, and a slow
-        // disk or a debug build can take minutes. A failure ends the thread
-        // and is reported by `finish`.
-        Ok(self.handle.is_finished())
-    }
-
-    pub(in crate::game) fn finish(self) -> Result<()> {
-        self.handle
-            .join()
-            .map_err(|_| "world resource loader panicked")?
-            .map_err(Into::into)
-    }
-}
-
 #[cfg(feature = "client")]
 pub(in crate::game) fn write_report(
     game: &Game<'_, crate::game::client_side::ClientState>,
@@ -429,6 +418,10 @@ pub(in crate::game) fn run_loading(
     vanilla_root: PathBuf,
     pack_error: Option<String>,
     started: Instant,
+    serve_integrated: Serve,
+    run_component_harness: RunComponentHarness,
+    session_verifier: SessionVerifier,
+    profile_resolver: ProfileResolverFactory,
 ) -> Result<()> {
     let progress = Progress::new();
     let menu = startup_menu::StartupMenu::new(&options, pack_error.as_deref())?;
@@ -442,6 +435,10 @@ pub(in crate::game) fn run_loading(
         &progress,
     )?;
     let loading = Loading {
+        serve_integrated,
+        run_component_harness,
+        session_verifier,
+        profile_resolver,
         window: None,
         renderer: None,
         boot: sunrise_client::hud::HudAtlas::boot(),

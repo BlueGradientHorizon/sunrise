@@ -140,7 +140,7 @@ fn screen_extra_data_borrows_only_the_open_windows_bytes() {
             with_listener(|game, seen| {
                 let (pipe, _server) = Pipe::pair();
                 game.connect_local(pipe, "Extra bytes").unwrap();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 Arc::make_mut(&mut remote.registries).menu_extra_revision = LIVE_DATA_REVISION;
                 Arc::make_mut(&mut remote.builtin)
                     .registries

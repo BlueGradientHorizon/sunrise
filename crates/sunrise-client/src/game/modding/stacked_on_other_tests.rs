@@ -159,11 +159,17 @@ pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::ServerGame
 pub(in crate::game) fn reset_local(game: &mut crate::game::ServerGame<'_>) {
     game.inventory = vec![None; game.inventory.len()];
     game.carried = Some(ItemStack::new("minecraft:stone", 3));
-    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-        guest.inventory = vec![None; guest.inventory.len()];
-        guest.carried = Some(ItemStack::new("minecraft:stone", 3));
-        guest.menu = None;
-    });
+    game.side
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .guests
+        .update(0, |guest| {
+            guest.inventory = vec![None; guest.inventory.len()];
+            guest.carried = Some(ItemStack::new("minecraft:stone", 3));
+            guest.menu = None;
+        });
 }
 pub(in crate::game) fn count(stack: &Option<ItemStack>) -> u32 {
     stack.as_ref().map_or(0, |s| s.count)
@@ -183,7 +189,7 @@ pub(in crate::game) fn click(game: &mut crate::game::ServerGame<'_>) -> (u32, u3
             carried: None,
         }),
     );
-    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
     (
         count(&guest.inventory[9]),
         count(&guest.carried),
@@ -199,19 +205,25 @@ pub(in crate::game) fn local_menu_ops(
     let carried = game.carried.clone();
     let game_mode = if game.creative { 1 } else { 0 };
     let container_pos = game.container;
-    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-        let len = guest.inventory.len().min(inv.len());
-        guest.inventory[..len].clone_from_slice(&inv[..len]);
-        guest.carried = carried;
-        guest.game_mode = game_mode;
-        if container_pos.is_none() {
-            guest.menu = None;
-        }
-    });
+    game.side
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .guests
+        .update(0, |guest| {
+            let len = guest.inventory.len().min(inv.len());
+            guest.inventory[..len].clone_from_slice(&inv[..len]);
+            guest.carried = carried;
+            guest.game_mode = game_mode;
+            if container_pos.is_none() {
+                guest.menu = None;
+            }
+        });
     let container = match container_pos {
         Some(pos) => {
             game.open_block_menu(12, pos);
-            game.lan.as_ref().unwrap().hub.guests[0]
+            game.side.lan.as_ref().unwrap().hub.guests[0]
                 .menu
                 .as_ref()
                 .unwrap()
@@ -248,7 +260,7 @@ pub(in crate::game) fn local_menu_ops(
         );
     }
     let (new_inv, new_carried) = {
-        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
         (guest.inventory.clone(), guest.carried.clone())
     };
     let len = game.inventory.len().min(new_inv.len());
@@ -391,7 +403,7 @@ fn an_outer_abort_after_an_applied_click_restores_the_inventory() {
                 assert_eq!(click(game), (3, 0, 0));
                 ((), false)
             });
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!((count(&guest.inventory[9]), count(&guest.carried)), (0, 3));
         });
     });
@@ -430,10 +442,16 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
         with_guests(|game| {
             PLAYER.set(12);
             let click = |game: &mut crate::game::ServerGame<'_>| {
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.inventory = vec![None; guest.inventory.len()];
-                    guest.carried = Some(ItemStack::new("minecraft:stone", 3));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.inventory = vec![None; guest.inventory.len()];
+                        guest.carried = Some(ItemStack::new("minecraft:stone", 3));
+                    });
                 game.lan_guest_packet(
                     12,
                     Serverbound::ContainerClick(ContainerClick {
@@ -446,7 +464,7 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
                         carried: None,
                     }),
                 );
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 (
                     count(&guest.inventory[9]),
                     count(&guest.carried),
@@ -470,7 +488,7 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
                 ..Script::default()
             });
             assert_eq!(click(game), (0, 3, 0));
-            assert!(game.lan.is_some());
+            assert!(game.side.lan.is_some());
             script(Script::default());
             assert_eq!(click(game), (3, 0, 0));
         });
@@ -494,11 +512,8 @@ pub(in crate::game) mod families {
         }
     }
 
-    fn cursor<S: crate::game::Side>(game: &Game<'_, S>) -> Option<(String, u32)>
-    where
-        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
-    {
-        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+    fn cursor(game: &crate::game::ServerGame<'_>) -> Option<(String, u32)> {
+        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
         guest
             .carried
             .as_ref()
@@ -534,9 +549,15 @@ pub(in crate::game) mod families {
                 PLAYER.set(12);
                 open(game);
                 let give = |game: &mut crate::game::ServerGame<'_>| {
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.carried = Some(ItemStack::new("minecraft:stone", 3));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.carried = Some(ItemStack::new("minecraft:stone", 3));
+                        });
                 };
                 give(game);
                 script(dirt_on_the_cursor());
@@ -573,7 +594,7 @@ pub(in crate::game) mod families {
             |game| {
                 block(game, "minecraft:crafting_table", (1, 64, 1));
                 game.lan_open_crafting(12, [1, 64, 1]);
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 window.set(host.menus[&12].crafting.table.as_ref().unwrap().0);
             },
             |game| game.lan_guest_packet(12, packet(window.get(), 1)),
@@ -592,7 +613,7 @@ pub(in crate::game) mod families {
                 );
                 block(game, "minecraft:crafting_table", (1, 64, 1));
                 game.lan_open_crafting(12, [1, 64, 1]);
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 let window = host.menus[&12].crafting.table.as_ref().unwrap().0;
                 host.hub.guests.update(0, |guest| {
                     guest.carried = Some(ItemStack::new("minecraft:stone", 3))
@@ -608,7 +629,7 @@ pub(in crate::game) mod families {
                     });
                     ASKS.set(0);
                     game.lan_guest_packet(12, packet(window, 1));
-                    let host = game.lan.as_ref().unwrap();
+                    let host = game.side.lan.as_ref().unwrap();
                     let menu = &host.menus[&12].crafting.table.as_ref().unwrap().2;
                     if limit == 1 {
                         assert_eq!(menu.slot(1), None);
@@ -645,7 +666,7 @@ pub(in crate::game) mod families {
                     }),
                 );
                 game.open_block_menu(12, (1, 64, 1));
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 window.set(host.hub.guests[0].menu.as_ref().unwrap().window);
             },
             |game| game.lan_guest_packet(12, packet(window.get(), 0)),
@@ -671,7 +692,7 @@ pub(in crate::game) mod families {
             }),
         );
         game.open_block_menu(12, (1, 64, 1));
-        game.lan.as_ref().unwrap().hub.guests[0]
+        game.side.lan.as_ref().unwrap().hub.guests[0]
             .menu
             .as_ref()
             .unwrap()
@@ -704,9 +725,15 @@ pub(in crate::game) mod families {
                 let held = |game: &crate::game::ServerGame<'_>| cursor(game);
                 // Place: stone 3 from the cursor into the input slot.
                 let window = open_furnace(game, [None, None, None]);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = stone(3);
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = stone(3);
+                    });
                 script(Script::default());
                 game.storage_scope(|game, _| {
                     game.lan_guest_packet(12, packet(window, 0));
@@ -725,9 +752,15 @@ pub(in crate::game) mod families {
                     game,
                     [None, None, Some(ItemStack::new("minecraft:iron_ingot", 5))],
                 );
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = None;
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = None;
+                    });
                 script(Script::default());
                 game.storage_scope(|game, _| {
                     game.lan_guest_packet(12, packet(window, 2));
@@ -754,7 +787,7 @@ pub(in crate::game) mod families {
             |game| {
                 block(game, "minecraft:stonecutter", (1, 64, 1));
                 assert!(game.lan_open_station(12, &Station::new(Kind::Stonecutter, [1, 64, 1])));
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 window.set(host.menus[&12].station.as_ref().unwrap().window);
             },
             |game| game.lan_guest_packet(12, packet(window.get(), 0)),
@@ -775,7 +808,7 @@ pub(in crate::game) mod families {
                 horse.extra.tame = true;
                 game.mobs.push(horse);
                 game.lan_open_mount(12, 60);
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 window.set(host.play[&12].mount_window.as_ref().unwrap().window);
             },
             |game| game.lan_guest_packet(12, packet(window.get(), 1)),
@@ -806,7 +839,8 @@ pub(in crate::game) mod families {
         with_mod(|| {
             with_guests(|game| {
                 let (tx, rx) = mpsc::channel();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -852,7 +886,8 @@ pub(in crate::game) mod families {
                     assert_eq!(stack(&content.carried), carried);
                 };
                 let item_id = |name: &str| {
-                    game.lan
+                    game.side
+                        .lan
                         .as_ref()
                         .unwrap()
                         .hub
@@ -877,14 +912,14 @@ pub(in crate::game) mod families {
                 let open = |game: &mut crate::game::ServerGame<'_>, id| {
                     game.lan_open_mount(12, id);
                     let _ = menu_packets();
-                    game.lan.as_ref().unwrap().play[&12]
+                    game.side.lan.as_ref().unwrap().play[&12]
                         .mount_window
                         .as_ref()
                         .unwrap()
                         .window
                 };
                 let guest_items = |game: &crate::game::ServerGame<'_>| {
-                    let g = &game.lan.as_ref().unwrap().hub.guests[0];
+                    let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
                     (g.inventory[9].clone(), g.carried.clone())
                 };
                 let dirt = Some(ItemStack::new("minecraft:dirt", 2));
@@ -895,7 +930,7 @@ pub(in crate::game) mod families {
                 game.mobs.push(donkey);
                 let window = open(game, 60);
                 game.world.modified.clear();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.inventory[9] = None;
                     g.carried = stone.clone();
                 });
@@ -1050,7 +1085,7 @@ pub(in crate::game) mod families {
                     assert_eq!(equipment(game), (Some(saddle.clone()), Some(armor.clone())));
                     assert_eq!(guest_items(game), (None, None));
                     assert!(menu_packets().is_empty());
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                         g.next_window = window - 1;
                     });
                     assert_eq!(open(game, 61), window);
@@ -1072,7 +1107,7 @@ pub(in crate::game) mod families {
     #[ignore = "daily"]
     fn the_trading_menu_decides_the_pickup() {
         use crate::game::native_merchant_refs::tests::{offer, spawn};
-        use crate::game::trading::MerchantState;
+        use crate::game::trading_common::MerchantState;
         use sunrise_sim::merchant::{Session, Trader};
         let window = std::cell::Cell::new(0);
         family(
@@ -1097,7 +1132,7 @@ pub(in crate::game) mod families {
                     },
                 );
                 window.set(
-                    game.lan.as_ref().unwrap().menus[&12]
+                    game.side.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()
@@ -1140,7 +1175,7 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
                 pos,
                 sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
             );
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.open_container(
                 12,
                 "minecraft:generic_9x3",
@@ -1163,13 +1198,19 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
                 })
             };
             let give = |game: &mut crate::game::ServerGame<'_>| {
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.inventory = vec![None; guest.inventory.len()];
-                    guest.carried = Some(ItemStack::new("minecraft:stone", 3));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.inventory = vec![None; guest.inventory.len()];
+                        guest.carried = Some(ItemStack::new("minecraft:stone", 3));
+                    });
             };
             let state = |game: &crate::game::ServerGame<'_>| {
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 (
                     game.world.block_entities.get(&pos).unwrap().slots()[0]
                         .as_ref()
@@ -1629,7 +1670,7 @@ pub(in crate::game) mod item_part_tests {
                     pos,
                     sunrise_level::containers::BlockEntity::Chest(chest.clone()),
                 );
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.hub.open_container(
                     12,
                     "minecraft:generic_9x3",
@@ -1672,7 +1713,11 @@ pub(in crate::game) mod item_part_tests {
                             ("flint", StackedOnOtherDirection::OtherStackedOnMe),
                         ]
                     );
-                    assert!(game.lan.as_ref().unwrap().hub.guests[0].carried.is_none());
+                    assert!(
+                        game.side.lan.as_ref().unwrap().hub.guests[0]
+                            .carried
+                            .is_none()
+                    );
                     assert_eq!(
                         game.world.block_entities.get(&pos).unwrap().slots()[0]
                             .as_ref()
@@ -1682,7 +1727,7 @@ pub(in crate::game) mod item_part_tests {
                     ((), false)
                 });
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
+                    game.side.lan.as_ref().unwrap().hub.guests[0]
                         .carried
                         .as_ref()
                         .map(|s| &*s.item),
@@ -1697,11 +1742,17 @@ pub(in crate::game) mod item_part_tests {
 
                 // Guest inventory menu click also fires ItemPart::item_stacked_on_other.
                 game.guest_close_all(12);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.inventory = vec![None; guest.inventory.len()];
-                    guest.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.inventory = vec![None; guest.inventory.len()];
+                        guest.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -1714,7 +1765,7 @@ pub(in crate::game) mod item_part_tests {
                     trace(),
                     [("stick", StackedOnOtherDirection::CarriedOnOther)]
                 );
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(
                     guest.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:diamond", 2))
@@ -1859,7 +1910,7 @@ pub(in crate::game) mod item_part_tests {
                     pos,
                     sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
                 );
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.hub.open_container(
                     12,
                     "minecraft:generic_9x3",
@@ -1883,9 +1934,15 @@ pub(in crate::game) mod item_part_tests {
                 };
 
                 // LAN hub 1-slot left drag dispatches CarriedOnOther and rolls back on abort.
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -1912,7 +1969,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
+                    game.side.lan.as_ref().unwrap().hub.guests[0]
                         .carried
                         .as_ref()
                         .map(|s| &*s.item),
@@ -1937,7 +1994,7 @@ pub(in crate::game) mod item_part_tests {
                 );
                 assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
+                    game.side.lan.as_ref().unwrap().hub.guests[0]
                         .carried
                         .as_ref()
                         .map(|s| &*s.item),
@@ -1948,10 +2005,16 @@ pub(in crate::game) mod item_part_tests {
                 assert!(trace().is_empty());
 
                 // LAN hub: 2-slot drag and creative middle-button 1-slot drag do NOT dispatch.
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 2));
-                    guest.game_mode = 1;
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 2));
+                        guest.game_mode = 1;
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -1965,9 +2028,15 @@ pub(in crate::game) mod item_part_tests {
                     trace().is_empty(),
                     "hub 2-slot drag must not dispatch Parts"
                 );
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 game.lan_guest_packet(12, pkt(window, -999, 8, 5));
                 game.lan_guest_packet(12, pkt(window, 3, 9, 5));
                 game.lan_guest_packet(12, pkt(window, -999, 10, 5));
@@ -1979,11 +2048,17 @@ pub(in crate::game) mod item_part_tests {
                 // LAN inventory (window 0): 1-slot right drag dispatches; direct PICKUP during
                 // active drag resets drag without dispatching.
                 game.guest_close_all(12);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.game_mode = 0;
-                    guest.inventory = vec![None; guest.inventory.len()];
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.game_mode = 0;
+                        guest.inventory = vec![None; guest.inventory.len()];
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -2000,16 +2075,22 @@ pub(in crate::game) mod item_part_tests {
                 );
                 assert!(!observations()[0].primary);
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0].inventory[9]
+                    game.side.lan.as_ref().unwrap().hub.guests[0].inventory[9]
                         .as_ref()
                         .map(|s| (&*s.item, s.count)),
                     Some(("minecraft:emerald", 2))
                 );
 
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.inventory[10] = None;
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.inventory[10] = None;
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -2022,7 +2103,7 @@ pub(in crate::game) mod item_part_tests {
                     trace().is_empty(),
                     "direct pickup during active inventory drag must only reset drag"
                 );
-                assert!(game.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none());
+                assert!(game.side.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none());
 
                 // 3. LAN merchant (villager trading) menu preserves drag state across packets:
                 //    1-slot left/right drags dispatch ItemPart (and roll back on outer abort),
@@ -2030,7 +2111,7 @@ pub(in crate::game) mod item_part_tests {
                 //    Parts or mutating slots, and a 2-slot drag does not dispatch Parts.
                 {
                     use crate::game::native_merchant_refs::tests::{offer, spawn};
-                    use crate::game::trading::MerchantState;
+                    use crate::game::trading_common::MerchantState;
                     use sunrise_sim::merchant::{Session, Trader};
 
                     spawn(game, 61, "minecraft:villager");
@@ -2053,7 +2134,7 @@ pub(in crate::game) mod item_part_tests {
                             name: None,
                         },
                     );
-                    let mwin = game.lan.as_ref().unwrap().menus[&12]
+                    let mwin = game.side.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()
@@ -2061,9 +2142,15 @@ pub(in crate::game) mod item_part_tests {
 
                     // 1-slot left drag on merchant slot 0 dispatches CarriedOnOther and rolls
                     // back slots, cursor, and drag state on outer abort.
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                        });
                     set_part_script(PartScript {
                         cancel_carried: true,
                         handled: true,
@@ -2083,7 +2170,7 @@ pub(in crate::game) mod item_part_tests {
                         );
                         assert!(observations()[0].primary);
                         assert_eq!(
-                            game.lan.as_ref().unwrap().menus[&12]
+                            game.side.lan.as_ref().unwrap().menus[&12]
                                 .merchant
                                 .as_ref()
                                 .unwrap()
@@ -2095,7 +2182,7 @@ pub(in crate::game) mod item_part_tests {
                         ((), false)
                     });
                     assert!(
-                        game.lan.as_ref().unwrap().menus[&12]
+                        game.side.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2103,7 +2190,7 @@ pub(in crate::game) mod item_part_tests {
                             .is_none()
                     );
                     assert_eq!(
-                        game.lan.as_ref().unwrap().hub.guests[0]
+                        game.side.lan.as_ref().unwrap().hub.guests[0]
                             .carried
                             .as_ref()
                             .map(|s| &*s.item),
@@ -2128,7 +2215,7 @@ pub(in crate::game) mod item_part_tests {
                     );
                     assert!(!observations()[0].primary);
                     assert_eq!(
-                        game.lan.as_ref().unwrap().menus[&12]
+                        game.side.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2140,9 +2227,15 @@ pub(in crate::game) mod item_part_tests {
 
                     // Direct PICKUP interrupting an active drag on the merchant window ONLY resets
                     // the drag: no Part fires, no slots change, and a stray drag-end does nothing.
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                        });
                     set_part_script(PartScript {
                         cancel_carried: true,
                         handled: true,
@@ -2158,7 +2251,7 @@ pub(in crate::game) mod item_part_tests {
                         "direct pickup during active merchant drag must only reset drag"
                     );
                     assert!(
-                        game.lan.as_ref().unwrap().menus[&12]
+                        game.side.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2166,7 +2259,7 @@ pub(in crate::game) mod item_part_tests {
                             .is_none()
                     );
                     assert_eq!(
-                        game.lan.as_ref().unwrap().hub.guests[0]
+                        game.side.lan.as_ref().unwrap().hub.guests[0]
                             .carried
                             .as_ref()
                             .map(|s| &*s.item),
@@ -2179,7 +2272,8 @@ pub(in crate::game) mod item_part_tests {
                     );
 
                     // 2-slot left drag on merchant payment slots 0 & 1 does NOT dispatch Parts.
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .menus
@@ -2189,9 +2283,15 @@ pub(in crate::game) mod item_part_tests {
                         .as_mut()
                         .unwrap()
                         .slots = [None, None, None];
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.carried = Some(ItemStack::new("minecraft:stick", 2));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.carried = Some(ItemStack::new("minecraft:stick", 2));
+                        });
                     set_part_script(PartScript {
                         cancel_carried: true,
                         handled: true,
@@ -2205,7 +2305,7 @@ pub(in crate::game) mod item_part_tests {
                         trace().is_empty(),
                         "LAN merchant 2-slot drag must not dispatch Parts"
                     );
-                    let mslots = &game.lan.as_ref().unwrap().menus[&12]
+                    let mslots = &game.side.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()
@@ -2224,17 +2324,23 @@ pub(in crate::game) mod item_part_tests {
                     horse.extra.tame = true;
                     game.mobs.push(horse);
                     game.lan_open_mount(12, 62);
-                    let mount_win = game.lan.as_ref().unwrap().play[&12]
+                    let mount_win = game.side.lan.as_ref().unwrap().play[&12]
                         .mount_window
                         .as_ref()
                         .unwrap()
                         .window;
 
                     // 1-slot left drag onto player inventory slot 2 of the mount menu dispatches.
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.inventory = vec![None; guest.inventory.len()];
-                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.inventory = vec![None; guest.inventory.len()];
+                            guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                        });
                     set_part_script(PartScript {
                         cancel_carried: true,
                         handled: true,
@@ -2251,17 +2357,23 @@ pub(in crate::game) mod item_part_tests {
                         "LAN mount 1-slot left drag must dispatch ItemPart"
                     );
                     assert_eq!(
-                        game.lan.as_ref().unwrap().hub.guests[0].inventory[9]
+                        game.side.lan.as_ref().unwrap().hub.guests[0].inventory[9]
                             .as_ref()
                             .map(|s| (&*s.item, s.count)),
                         Some(("minecraft:emerald", 2))
                     );
 
                     // Direct PICKUP during active mount drag ONLY resets drag.
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.inventory[10] = None;
-                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.inventory[10] = None;
+                            guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                        });
                     set_part_script(PartScript {
                         cancel_carried: true,
                         handled: true,
@@ -2276,7 +2388,7 @@ pub(in crate::game) mod item_part_tests {
                         trace().is_empty(),
                         "direct pickup during active mount drag must only reset drag"
                     );
-                    assert!(game.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none());
+                    assert!(game.side.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none());
                 }
             });
         });
@@ -2323,7 +2435,7 @@ pub(in crate::game) mod item_part_tests {
                             game.open_block_menu(12, pos),
                             crate::game::lan_actions::MenuOpen::Opened
                         ));
-                        let window = game.lan.as_ref().unwrap().hub.guests[0]
+                        let window = game.side.lan.as_ref().unwrap().hub.guests[0]
                             .menu
                             .as_ref()
                             .unwrap()
@@ -2339,12 +2451,18 @@ pub(in crate::game) mod item_part_tests {
                                 carried: None,
                             })
                         };
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                            guest
-                                .inventory
-                                .fill(Some(ItemStack::new("minecraft:dirt", 64)));
-                            guest.inventory[0] = Some(ItemStack::new(ingot, 62));
-                        });
+                        game.side
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(0, |guest| {
+                                guest
+                                    .inventory
+                                    .fill(Some(ItemStack::new("minecraft:dirt", 64)));
+                                guest.inventory[0] = Some(ItemStack::new(ingot, 62));
+                            });
                         set_part_script(PartScript::default());
                         game.lan_guest_packet(12, click(input::QUICK_MOVE));
                         assert_eq!(
@@ -2352,7 +2470,7 @@ pub(in crate::game) mod item_part_tests {
                             Some(ItemStack::new(ingot, 2))
                         );
                         assert_eq!(
-                            game.lan.as_ref().unwrap().hub.guests[0].inventory[0],
+                            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0],
                             Some(ItemStack::new(ingot, 64))
                         );
                         assert_eq!(
@@ -2364,9 +2482,15 @@ pub(in crate::game) mod item_part_tests {
                         );
                         assert_eq!(extracted_events(), [(ingot.to_owned(), 2)]);
 
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                            guest.inventory[0] = None;
-                        });
+                        game.side
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(0, |guest| {
+                                guest.inventory[0] = None;
+                            });
                         set_part_script(PartScript::default());
                         game.lan_guest_packet(12, click(input::SWAP));
                         assert_eq!(
@@ -2374,7 +2498,7 @@ pub(in crate::game) mod item_part_tests {
                             None
                         );
                         assert_eq!(
-                            game.lan.as_ref().unwrap().hub.guests[0].inventory[0],
+                            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[0],
                             Some(ItemStack::new(ingot, 2))
                         );
                         assert_eq!(smelted_events(), [(Some((ingot.to_owned(), 2)), 0)]);
@@ -2386,9 +2510,15 @@ pub(in crate::game) mod item_part_tests {
                             unreachable!()
                         };
                         furnace.items[2] = Some(ItemStack::new(ingot, 4));
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                            guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                        });
+                        game.side
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(0, |guest| {
+                                guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                            });
                         set_part_script(PartScript {
                             carried_phase_take_clicked: Some(1),
                             cancel_clicked: true,
@@ -2759,7 +2889,7 @@ pub(in crate::game) mod item_part_tests {
                     game.open_block_menu(12, pos),
                     crate::game::lan_actions::MenuOpen::Opened
                 ));
-                let window = game.lan.as_ref().unwrap().hub.guests[0]
+                let window = game.side.lan.as_ref().unwrap().hub.guests[0]
                     .menu
                     .as_ref()
                     .unwrap()
@@ -2777,9 +2907,15 @@ pub(in crate::game) mod item_part_tests {
                 // LAN guest direct clear (`Set(None)`): clears output with NO XP, preserves
                 // `recipes_used`, and fires NO `item_smelted` or `furnace_extract`.
                 game.orbs.clear();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -2794,7 +2930,7 @@ pub(in crate::game) mod item_part_tests {
                 );
                 assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
+                    game.side.lan.as_ref().unwrap().hub.guests[0]
                         .carried
                         .as_ref()
                         .map(|s| (&*s.item, s.count)),
@@ -2824,9 +2960,15 @@ pub(in crate::game) mod item_part_tests {
                 // LAN guest direct count reduction (`Set(Some(iron_ingot x2))`): NO XP, NO hooks.
                 seed_furnace(game);
                 game.orbs.clear();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -2852,9 +2994,15 @@ pub(in crate::game) mod item_part_tests {
                 // LAN guest explicit full take (`Take(4)`).
                 seed_furnace(game);
                 game.orbs.clear();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -2869,7 +3017,7 @@ pub(in crate::game) mod item_part_tests {
                 );
                 assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
+                    game.side.lan.as_ref().unwrap().hub.guests[0]
                         .carried
                         .as_ref()
                         .map(|s| (&*s.item, s.count)),
@@ -2898,9 +3046,15 @@ pub(in crate::game) mod item_part_tests {
                 // LAN guest explicit partial take (`Take(2)`).
                 seed_furnace(game);
                 game.orbs.clear();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -2935,9 +3089,15 @@ pub(in crate::game) mod item_part_tests {
                 // and recipes_used without popping XP orbs or firing post-commit furnace hooks.
                 seed_furnace(game);
                 game.orbs.clear();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -3266,7 +3426,7 @@ pub(in crate::game) mod item_part_tests {
                     pos,
                     sunrise_level::containers::BlockEntity::Chest(chest.clone()),
                 );
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.hub.open_container(
                     12,
                     "minecraft:generic_9x3",
@@ -3288,9 +3448,15 @@ pub(in crate::game) mod item_part_tests {
                 });
 
                 // Non-bundle carrying `bundle_contents` does NOT suppress clicked Part on LAN hub.
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(paper_with_bundle_contents());
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(paper_with_bundle_contents());
+                    });
                 set_part_script(PartScript {
                     cancel_clicked: true,
                     handled: true,
@@ -3315,9 +3481,15 @@ pub(in crate::game) mod item_part_tests {
                 install_default_bundle_contents_non_bundle_items(game);
                 game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
                     Some(stack_with_bundle_contents("minecraft:flint"));
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(stack_with_bundle_contents("minecraft:stick"));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(stack_with_bundle_contents("minecraft:stick"));
+                    });
                 set_part_script(PartScript::default());
                 game.lan_guest_packet(12, click_pkt.clone());
                 assert_eq!(
@@ -3335,7 +3507,7 @@ pub(in crate::game) mod item_part_tests {
                     Some("minecraft:stick")
                 );
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
+                    game.side.lan.as_ref().unwrap().hub.guests[0]
                         .carried
                         .as_ref()
                         .map(|s| &*s.item),
@@ -3346,9 +3518,15 @@ pub(in crate::game) mod item_part_tests {
                 // LAN hub primary click.
                 game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
                     Some(ItemStack::new("minecraft:flint", 1));
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:red_bundle", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:red_bundle", 1));
+                    });
                 set_part_script(PartScript {
                     cancel_clicked: true,
                     handled: true,

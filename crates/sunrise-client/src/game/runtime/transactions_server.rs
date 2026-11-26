@@ -1,5 +1,5 @@
 //! Server-side transaction commit, rollback, and journal handlers.
-use super::{BlockEntity, Game, lan_mount_menu::MountClickWindow};
+use super::{BlockEntity, Game, lan_menu_data::MountClickWindow};
 use crate::game::transactions::{
     After, AttachmentKey, BlockReplay, ClosingPhase, DeferredEffect, JournaledPlayer, Kept,
     KeptAttachments, KeptClick, KeptEquipment, KeptMenus, KeptMobEffects, KeptMobHealth,
@@ -102,7 +102,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // transactions reentered by that commit's listeners.
         let retire = !self.has_level_transaction()
             && !entities::is_committing(&self.transactions.committing, self.dim);
-        let guard = ClosingPhase { game: self, outer };
+        let guard = ClosingPhase::new(self, outer);
         #[cfg(test)]
         guard
             .game
@@ -139,7 +139,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             TransactionLifecycle::Closing
         };
         let outer = self.transactions.closing.replace(closing);
-        let guard = ClosingPhase { game: self, outer };
+        let guard = ClosingPhase::new(self, outer);
         let mut merchant_corrections = std::mem::take(&mut level.trades.refused_clicks);
         merchant_corrections.append(&mut level.trades.correct_on_abort);
         let mount_replies = std::mem::take(&mut level.mount_replies);
@@ -509,7 +509,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
-        let guest = &self.lan.as_ref().expect("resolved guest").hub.guests[index];
+        let guest = &self.side.lan.as_ref().expect("resolved guest").hub.guests[index];
         level.keep_player(
             JournaledPlayer::Guest(guest.conn),
             &guest.ender_items,
@@ -547,7 +547,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 carried: self.carried.clone(),
             },
             PlayerStorageHome::Guest(index) => {
-                let g = &self.lan.as_ref().expect("resolved guest").hub.guests[index];
+                let g = &self.side.lan.as_ref().expect("resolved guest").hub.guests[index];
                 KeptPlayer {
                     inventory: g.inventory.clone(),
                     armor: g.armor.clone(),
@@ -615,7 +615,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
-        let guest = &self.lan.as_ref().expect("resolved guest").hub.guests[index];
+        let guest = &self.side.lan.as_ref().expect("resolved guest").hub.guests[index];
         level
             .player_extra
             .entry(JournaledPlayer::Guest(guest.conn))
@@ -635,7 +635,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let guest = self.side.lan_acting.and_then(|conn| {
-            let guest = self.lan.as_ref()?.hub.guest(conn)?;
+            let guest = self.side.lan.as_ref()?.hub.guest(conn)?;
             Some((conn, guest.death_canceled, guest.death_time))
         });
         entry.insert(KeptPlayerHealth {
@@ -760,7 +760,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(guest) = host.hub.guest(conn) else {
@@ -867,7 +867,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn commit_menu_data(&mut self, journal: MenuDataJournal) {
-        let Some(host) = &mut self.lan else { return };
+        let Some(host) = &mut self.side.lan else {
+            return;
+        };
         for ((conn, generation, index), value) in journal {
             host.hub.update_guest(conn, |guest| {
                 if guest.menu_generation == generation {
@@ -1136,7 +1138,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A crafting grid the transaction changed has its result made again, once for each
         // player however many writes it took (`InventoryMenu.slotsChanged`).
         for (conn, kept) in &level.menus {
-            let mut guests = self.lan.iter().flat_map(|host| host.hub.guests.iter());
+            let mut guests = self.side.lan.iter().flat_map(|host| host.hub.guests.iter());
             let changed =
                 guests.any(|g| g.placed && g.conn == *conn && g.craft_grid != kept.craft_grid);
             if changed {
@@ -1155,7 +1157,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.notify_owned_menu_slot_changed(generation, &before);
             }
             let mut viewed = Vec::new();
-            if let Some(host) = self.lan.as_ref() {
+            if let Some(host) = self.side.lan.as_ref() {
                 let touched = level.block_entities.keys().copied();
                 for pos in touched.chain(level.slots.keys().map(|&(pos, _)| pos)) {
                     if super::slot_changes::block_menu_viewed(&host.hub.guests, pos)
@@ -1248,7 +1250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
 
         for ((x, y, z), tag) in level.saved_pots {
-            super::spill::set_saved_entity(&mut self.world, [x, y, z], tag);
+            crate::game::spill_common::set_saved_entity(&mut self.world, [x, y, z], tag);
         }
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
@@ -1432,7 +1434,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for (window, drag) in level.mount_drags {
             self.restore_mount_drag(window, drag);
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             for ((conn, owner), kept) in level.stations {
                 if let Some(menus) = host.menus.get_mut(&conn)
                     && menus.station.id() == owner
@@ -1542,9 +1544,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Restoration must reach that exact player body even when tentatively set to zero
             // health or when another level holds a fake player sharing the same UUID.
             let target = if self.acting_player_body() == body {
-                Some(super::commands::Target::Player)
+                Some(crate::game::commands_common::Target::Player)
             } else if let PlayerBodyKey::Guest(conn) = body {
-                Some(super::commands::Target::Guest(conn))
+                Some(crate::game::commands_common::Target::Guest(conn))
             } else {
                 None
             };
@@ -1556,7 +1558,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         player.health.dead = kept.dead;
                     }
                     if let Some((conn, canceled, time)) = kept.guest
-                        && let Some(host) = g.lan.as_mut()
+                        && let Some(host) = g.side.lan.as_mut()
                         && let Some(gi) = host.hub.guests.connection_index(conn)
                     {
                         host.hub.guests.update(gi, |guest| {
@@ -1567,8 +1569,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 });
             }
         }
-        level.actions.rollback_in(self);
-        level.trades.rollback(self);
+        crate::game::server_side::decision_engine_server::rollback_in(level.actions, self);
+        crate::game::server_side::lan_trade_decisions_server::rollback_trade_journal(
+            level.trades,
+            self,
+        );
         if let Some(saved) = level.board {
             self.score.board.restore(saved);
             self.sync_score_registries();
@@ -1577,7 +1582,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             match self.player_storage_home(owner) {
                 Some(PlayerStorageHome::Game) => self.side.ender_items = kept,
                 Some(PlayerStorageHome::Guest(index)) => {
-                    let host = self.lan.as_mut().expect("resolved guest");
+                    let host = self.side.lan.as_mut().expect("resolved guest");
                     host.hub.guests.update(index, |g| g.ender_items = kept);
                 }
                 None => {}
@@ -1587,7 +1592,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             match self.player_storage_home(owner) {
                 Some(PlayerStorageHome::Game) => self.level.player_extra = kept,
                 Some(PlayerStorageHome::Guest(index)) => {
-                    let host = self.lan.as_mut().expect("resolved guest");
+                    let host = self.side.lan.as_mut().expect("resolved guest");
                     host.hub.guests.update(index, |g| g.saved = kept);
                 }
                 None => {}
@@ -1603,7 +1608,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.carried = kept.carried;
                 }
                 Some(PlayerStorageHome::Guest(index)) => {
-                    let host = self.lan.as_mut().expect("resolved guest");
+                    let host = self.side.lan.as_mut().expect("resolved guest");
                     host.hub.guests.update(index, |g| {
                         g.inventory = kept.inventory;
                         g.armor = kept.armor;
@@ -1624,6 +1629,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if let Some(uuid) = self.side.lan_acting_uuid
             && let Some(conn) = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.holder_guest(uuid, self.dim.id()))
@@ -1644,7 +1650,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let conn = self
             .cloning_guest(uuid)
             .or_else(|| {
-                let host = self.lan.as_ref()?;
+                let host = self.side.lan.as_ref()?;
                 if self.entity_initialization.active == Some(Holder::Player(uuid)) {
                     host.hub.guests.iter().find(|guest| guest.uuid == uuid)
                 } else {
@@ -1668,7 +1674,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if let PlayerBodyKey::Guest(conn) = body
             && !self.side.lan_guest_swaps.contains(&conn)
         {
-            self.lan
+            self.side
+                .lan
                 .as_mut()
                 .and_then(|host| host.hub.guests.attachments_mut(conn))
         } else {
@@ -1728,7 +1735,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.load_scoreboard();
                 }
                 let board = &self.score.board;
-                if let Some(host) = &mut self.lan {
+                if let Some(host) = &mut self.side.lan {
                     host.hub.update_guest(conn, |guest| {
                         guest.set_personal_sidebar(board, contents.map(|contents| *contents));
                     });
@@ -1825,6 +1832,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             After::GrindstoneEvent(pos) => self.server_level_event_at(1042, pos, 0),
             After::StationContent(conn, owner, window) => {
                 if self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| host.menus.get(&conn))

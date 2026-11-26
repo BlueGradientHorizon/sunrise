@@ -49,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let removed = game.carts.remove(i);
                     game.retain_removed_vehicle(
                         c.id,
-                        super::super::persist::RemovedVehicle::Cart(removed),
+                        crate::game::entity_memory::RemovedVehicle::Cart(removed),
                     );
                 }
             })

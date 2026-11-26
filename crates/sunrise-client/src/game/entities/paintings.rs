@@ -15,11 +15,6 @@ pub(in crate::game) use sunrise_gameplay_common::painting_variants::{
 };
 /// Whether the camera, at the origin of `corners`' space, is on the side of the quad
 /// that `normal` points to.
-pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
-    let centre = (corners[0] + corners[1] + corners[2] + corners[3]) / 4.0;
-    normal.dot(-centre) > 0.0
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `HangingEntityItem.useOn` for a painting against `hit`'s face.
     pub(in crate::game::server_side) fn place_painting(
@@ -329,7 +324,7 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod face_tests {
-    use super::faces_camera;
+    use crate::game::client_side::paintings_client::faces_camera;
     use glam::DVec3;
 
     /// A quad at z = 2 facing -z (towards a camera at the origin) shows; seen from behind

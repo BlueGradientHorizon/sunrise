@@ -13,8 +13,9 @@
 //! list, the kinds whose id comes late too, so an aborted spawn just burns its id. Bolts and
 //! thrown potions have none and are kept by their lists' lengths. A traveller that arrived from
 //! another level inside the transaction is left where it arrived: travel is not journaled.
-use super::super::{Dim, Game, commands::Target};
+use super::super::{Dim, Game};
 use super::Level;
+use crate::game::commands_common::Target;
 use mod_api::EntityRef;
 use std::collections::{HashMap, HashSet};
 use sunrise_sim::join_seq::JoinSeq;
@@ -247,7 +248,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// [`Self::removal_pending`] of the entity in `dimension`, parked or not: the transactions
     /// stay with the game when a level is swapped out.
     pub(in crate::game) fn removal_pending_in(&self, dimension: Dim, target: &Target) -> bool {
-        let id = super::super::native_entities::target_id(*target);
+        let id = crate::game::commands_common::target_id(*target);
         let open = self.transactions.iter().any(|level| {
             level.dimension == Some(dimension)
                 && (level.lifetimes.removals.iter())

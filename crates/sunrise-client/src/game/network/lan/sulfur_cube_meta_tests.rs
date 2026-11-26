@@ -31,7 +31,7 @@ fn a_sulfur_cube_sends_its_fuse_at_19_and_from_bucket_at_20() {
     let hub = super::tests::meta_hub("SulfurCubeMetaTest");
     let meta_of = |m: &Mob| {
         let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-        super::mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
+        crate::game::lan_mob_metadata::mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
         (meta, defaults)
     };
 
@@ -110,7 +110,7 @@ pub(in crate::game::server_side) fn run_a_loaded_sulfur_cube_fuse_matches_the_pi
     let hub = super::tests::meta_hub("SulfurCubeFuseTest");
     let meta_of = |m: &Mob| {
         let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-        super::mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
+        crate::game::lan_mob_metadata::mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
         (meta, defaults)
     };
     let max_fuse = |meta: &[(u8, i32, Value)]| match meta.iter().find(|e| e.0 == 19) {

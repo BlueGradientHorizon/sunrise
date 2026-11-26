@@ -1,10 +1,8 @@
 use super::{
     Game,
     entity::Entity,
-    pick_entity::{
-        aabb_extents,
-        pick_sections::{PickKind, PickMember},
-    },
+    pick_entity::pick_sections::PickMember,
+    pick_entity_common::{PickKind, aabb_extents},
 };
 use core::ops::ControlFlow;
 use mod_api::{EntityRef, LevelReadError, LevelRef};
@@ -88,7 +86,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(dragon) = self.dragon.as_ref().filter(|d| d.id != 0) {
             let mut cursor = None;
             while let Some(id) = self.dragon.next_part(&mut cursor) {
-                if let Some(part) = crate::game::dragon::dragon_part_index(dragon.id, id)
+                if let Some(part) = crate::game::dragon_common::dragon_part_index(dragon.id, id)
                     && bounds.intersects(dragon.part_geometry(part).1)
                 {
                     let entity = EntityRef::new(level.epoch(), id);
@@ -127,7 +125,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             PickKind::LocalPlayer => None,
             _ => {
-                let remote = self.remote.as_ref()?;
+                let remote = self.side.remote.as_ref()?;
                 remote.tracked(member.id as i32)?;
                 let id = member.id;
                 if let Some(dragon) = self.dragon.as_ref().filter(|d| d.id == id) {
@@ -216,12 +214,13 @@ pub(in crate::game) mod tests {
             "client" => with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "DisplayBoxTest").unwrap();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 remote.entity_id = 7;
                 chunks(game);
                 for (id, name, position) in ADMISSIONS {
                     let kind = game
+                        .side
                         .remote
                         .as_ref()
                         .unwrap()
@@ -396,7 +395,7 @@ pub(in crate::game) mod tests {
             let (client, server) = Pipe::pair();
             std::mem::forget(server);
             game.connect_local(client, "CrossingTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             for x in -1..=4 {
@@ -408,6 +407,7 @@ pub(in crate::game) mod tests {
         let add =
             |game: &mut crate::game::ClientGame<'_>, id: i32, name: &str, position: [f64; 3]| {
                 let kind = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()
@@ -471,6 +471,7 @@ pub(in crate::game) mod tests {
                     }
                     "tracked_player" => {
                         let player = game
+                            .side
                             .remote
                             .as_ref()
                             .unwrap()

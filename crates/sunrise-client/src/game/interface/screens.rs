@@ -292,7 +292,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// when the tag is empty: the caller falls back to the server links
     /// button, as vanilla does.
     fn pause_screen_additions(&self) -> Option<(Text, Tag)> {
-        let registries = &self.remote.as_ref()?.registries;
+        let registries = &self.side.remote.as_ref()?.registries;
         let dialogs = registries.registries.get("minecraft:dialog")?;
         let tag = registries.tag("minecraft:dialog", "minecraft:pause_screen_additions")?;
         // addCustomDialogButtons' label: computeExternalTitle falls back to the title.
@@ -320,7 +320,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Singleplayer also has a connection, backed by the integrated server.
     pub(in crate::game::client_side) fn external_server(&self) -> bool {
-        self.remote.is_some() && self.integrated.is_none()
+        self.side.remote.is_some() && self.side.integrated.is_none()
     }
     /// What `PauseScreen.init` reads and this screen can see change while it
     /// is open: the connection, a server's links, the custom-additions dialog

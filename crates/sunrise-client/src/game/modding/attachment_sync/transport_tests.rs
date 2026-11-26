@@ -69,7 +69,8 @@ pub(super) fn store<'a>(
 
 /// The server sets the level's value, committed or rolled back.
 pub(super) fn set_level(game: &crate::game::ClientGame<'_>, value: i32, commit: bool) {
-    game.integrated
+    game.side
+        .integrated
         .as_ref()
         .unwrap()
         .call(move |server| {
@@ -98,10 +99,11 @@ fn window_value(game: &mut crate::game::ClientGame<'_>) -> Option<i32> {
 /// Let the server's hub tick `n` times, so later edits land in a later pass.
 pub(super) fn wait_server_ticks(game: &crate::game::ClientGame<'_>, n: u64) {
     let ticks = |game: &crate::game::ClientGame<'_>| {
-        game.integrated
+        game.side
+            .integrated
             .as_ref()
             .unwrap()
-            .call(|server| server.lan.as_ref().unwrap().hub.ticks)
+            .call(|server| server.side.lan.as_ref().unwrap().hub.ticks)
             .unwrap()
     };
     let start = ticks(game);
@@ -333,6 +335,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -349,6 +352,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             wait_window(game, 10);
 
             let port = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -370,6 +374,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             set_level(game, 12, true);
             assert_eq!(values_until(&mut sunrise, Holder::Level, 12), [12]);
             let authority = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -382,6 +387,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             // Past the network frame limits: refused by name, the peer stays joined and is
             // sent the next value. The memory connection has no frame limit.
             let refused = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -400,6 +406,7 @@ fn attachment_sync_follows_the_negotiated_route() {
                     };
                     let body = attachment_sync::encode(&message).map_err(|e| e.to_string());
                     let peer = server
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()
@@ -430,11 +437,13 @@ fn attachment_sync_follows_the_negotiated_route() {
             // A message prepared against an epoch that ended before the root commit publishes
             // nothing, on the TCP and the memory connection alike.
             let stale = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()
                 .call(|server| {
                     let senders: Vec<_> = server
+                        .side
                         .lan
                         .as_ref()
                         .unwrap()

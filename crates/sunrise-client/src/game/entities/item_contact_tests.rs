@@ -797,10 +797,17 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     game.side.lan_acting_name = Some("boat_step".into());
                     bind_acting_guest(game);
                     game.side.lan_acting = None;
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.vehicle = Some(79);
-                    });
-                    let mut boat = crate::game::boats::Boat::new(79, "oak".into(), seat, 0.0);
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.vehicle = Some(79);
+                        });
+                    let mut boat =
+                        crate::game::boats_common::Boat::new(79, "oak".into(), seat, 0.0);
                     boat.ground.on_ground = true;
                     game.boats.push(boat);
                     game.tick_boats();

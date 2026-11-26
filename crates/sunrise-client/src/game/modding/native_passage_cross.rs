@@ -76,7 +76,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// server is told the passage and where the feet were; a payload a mod cancels moves
     /// nothing. Until the server's position packet, the next crossing waits.
     pub(in crate::game) fn cross_passage(&mut self, passage: PassageId) -> Result<(), Error> {
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return Err(Error::Unavailable);
         }
         if self.player.is_none() {
@@ -110,7 +110,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             data,
         });
         if !self.send_play(payload) {
-            self.native_net.holds.borrow_mut().clear();
+            self.side.packet_holds.borrow_mut().clear();
             return Err(Error::Cancelled);
         }
         // The send hook's listeners only read the host: the player is still there.
@@ -144,7 +144,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         if self.passages.crossing == Some(PassageId::from_raw(id)) {
-            self.native_net.holds.borrow_mut().clear();
+            self.side.packet_holds.borrow_mut().clear();
         }
         self.passages.refused = Some((PassageId::from_raw(id), why));
     }

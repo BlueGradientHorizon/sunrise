@@ -27,7 +27,8 @@ pub(in crate::game) fn in_the_nether(game: &mut crate::game::ServerGame<'_>) -> 
     game.enter_level(Dim::Nether).unwrap();
     game.enter_level(Dim::Overworld).unwrap();
     for conn in [12, 13] {
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -55,7 +56,7 @@ pub(in crate::game::server_side) fn some_diamonds(
 }
 
 pub(in crate::game) fn diamonds(game: &crate::game::ServerGame<'_>, conn: u32) -> u32 {
-    let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+    let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
     let held = guest.inventory.iter().flatten();
     held.filter(|s| &*s.item == "minecraft:diamond")
         .map(|s| s.count)
@@ -98,7 +99,8 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
                 [before[0], before[1] + 2],
                 "{case}: fake pickups"
             );
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -129,7 +131,8 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
             // drop, directly and in a transaction.
             let three = some_diamonds(game, 3);
             for in_transaction in [false, true] {
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -224,7 +227,8 @@ fn a_give_to_a_borrowed_player_drops_in_their_level() {
     }
     with_guests(|game| {
         let diamond = in_the_nether(game);
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -279,7 +283,8 @@ fn a_give_command_in_a_transaction_for_a_borrowed_player_lands_in_their_level() 
         let before = dropped(game);
         // The zero-health case last: the guest stays dead.
         for (commit, dies) in [(true, false), (false, false), (true, true)] {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -327,7 +332,7 @@ fn a_give_command_in_a_transaction_for_a_borrowed_player_lands_in_their_level() 
                 game.enter_level(Dim::Overworld).unwrap();
             } else {
                 assert_eq!(dropped(game), before, "{case}");
-                let guest = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
+                let guest = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
                 assert!(
                     guest
                         .inventory
@@ -392,6 +397,7 @@ fn a_give_to_a_player_in_another_level_keeps_their_open_menu() {
     with_guests(|game| {
         let diamond = in_the_nether(game);
         let window = game
+            .side
             .lan
             .as_mut()
             .unwrap()
@@ -402,7 +408,7 @@ fn a_give_to_a_player_in_another_level_keeps_their_open_menu() {
         let host: &mut dyn ServerHost = game;
         assert_eq!(player.give_stack(host, diamond), Ok(None));
         assert_eq!(diamonds(game, 13), 1);
-        let guest = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
+        let guest = game.side.lan.as_ref().unwrap().hub.guest(13).unwrap();
         assert_eq!(guest.menu.as_ref().map(|m| m.window), Some(window));
     });
 }
@@ -453,7 +459,7 @@ fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() 
         let diamond = in_the_nether(game);
         let before = dropped(game);
         let done = |game: &crate::game::ServerGame<'_>, conn| {
-            let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+            let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
             guest.advancements.has(ID, "d")
         };
         for (conn, in_transaction) in [(13, false), (12, true)] {
@@ -511,7 +517,8 @@ fn give_to_oneself_under_execute_in_another_level_drops_in_the_players_level() {
         game.level.player_uuid = Some(playerdata::uuid_ints(12));
         game.enter_level(Dim::Nether).unwrap();
         game.enter_level(Dim::Overworld).unwrap();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

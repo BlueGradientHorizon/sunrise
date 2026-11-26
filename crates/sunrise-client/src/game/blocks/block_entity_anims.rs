@@ -4,6 +4,7 @@
 //! `BlockEntity.triggerEvent`). The renderer reads the resulting state through
 //! [`Game::block_anim`] and [`Game::chest_lid`].
 use super::Game;
+use crate::game::block_entity_anims_common::PLAYER;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -19,18 +20,6 @@ use sunrise_level::{
     effects::EffectInstance,
 };
 use sunrise_sim::mobs::{Damage, DamageKind};
-
-/// The handle of the local player among a bell's gathered entities.
-pub(in crate::game) const PLAYER: u64 = u64::MAX;
-
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::container_openers::recheck_opener_count;
-
-/// What a client tick of the animated block entities shares between them.
-pub(in crate::game) struct AnimTick {
-    /// The conduits' frame blocks, copied when the first of them ticks.
-    pub(in crate::game) frames: Option<std::collections::HashSet<String>>,
-}
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A player opened (`open`) or closed the container at `key`: the opener
@@ -564,7 +553,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let m = &mut self.mobs[index];
         let at = [m.position.x, m.position.y, m.position.z];
         m.damage(
-            crate::game::entity::damage_level_of!(
+            crate::game::server_side::entity_server::damage_level_of!(
                 self,
                 &sunrise_sim::health::NO_ATTACK,
                 no_push,
@@ -771,9 +760,15 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
-        let mut game =
-            crate::game::ServerGame::new(&res, loaded.pack, options, settings.sim_settings(), None)
-                .unwrap();
+        let mut game = crate::game::ServerGame::new(
+            &res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
         game.options.dedicated = Some(Vec::new());
         game.world.chunks.insert(
             (0, 0),
@@ -866,9 +861,15 @@ pub(in crate::game) mod conduit_target_tests {
         options.resources = root.clone();
         options.execution_role = role;
         let res = resources.insert(loaded.resources);
-        let mut game =
-            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-                .unwrap();
+        let mut game = crate::game::ServerGame::new(
+            res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
         game.build_registries();
         game.set_allow_commands(true);
         game.world

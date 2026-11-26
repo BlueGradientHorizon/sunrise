@@ -15,7 +15,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn creative_damage_source_id(&self, id: i32) -> bool {
         id != 0
             && ((id == self.own_entity_id() && self.creative)
-                || self.lan.as_ref().is_some_and(|host| {
+                || self.side.lan.as_ref().is_some_and(|host| {
                     host.hub
                         .guests
                         .iter()
@@ -30,11 +30,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         source: sunrise_sim::health::HurtSource<'_>,
         vanilla: bool,
     ) -> bool {
-        crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
-            .invulnerability_check(
-                sunrise_sim::health::Hurting::Entity(id as i32, kind, source),
-                vanilla,
-            )
+        crate::game::server_side::entity_server::damage_level_of!(
+            self,
+            self.side.combat.0.attack(),
+            no_push,
+            None
+        )
+        .invulnerability_check(
+            sunrise_sim::health::Hurting::Entity(id as i32, kind, source),
+            vanilla,
+        )
     }
     /// `Entity.isInvulnerableToBase` for lava's `lavaHurt` of a non-living
     /// entity: `vanilla` (its saved invulnerability, which lava does not
@@ -60,7 +65,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<&sunrise_sim::motion::PlayerMotion> {
         match t {
             Target::Player => self.player.as_ref(),
-            Target::Guest(conn) => self.lan.as_ref()?.hub.guest(conn)?.motion.as_deref(),
+            Target::Guest(conn) => self.side.lan.as_ref()?.hub.guest(conn)?.motion.as_deref(),
             _ => None,
         }
     }
@@ -70,7 +75,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<&mut sunrise_sim::motion::PlayerMotion> {
         match t {
             Target::Player => self.player.as_mut(),
-            Target::Guest(conn) => self.lan.as_mut()?.hub.guests.motion_mut(conn),
+            Target::Guest(conn) => self.side.lan.as_mut()?.hub.guests.motion_mut(conn),
             _ => None,
         }
     }
@@ -1042,7 +1047,7 @@ mod tests {
             assert!(game.entity_set_invulnerable_time(victim, 60));
             let before = game.mobs[0].health;
             assert!(!game.mobs[0].damage(
-                crate::game::entity::damage_level_of!(
+                crate::game::server_side::entity_server::damage_level_of!(
                     game,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,
@@ -1053,7 +1058,7 @@ mod tests {
             ));
             assert_eq!(game.mobs[0].health, before, "the window refused it");
             assert!(game.mobs[0].damage(
-                crate::game::entity::damage_level_of!(
+                crate::game::server_side::entity_server::damage_level_of!(
                     game,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,
@@ -1356,7 +1361,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_dragons_saved_flag_refuses_all_but_a_creative_player() {
-        use super::super::dragon::Dragon;
+        use crate::game::dragon_common::Dragon;
         use sunrise_sim::mobs::DamageKind;
         super::super::native_entity_refs::tests::with_game(|game| {
             let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);

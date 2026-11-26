@@ -2,11 +2,12 @@ file	include_arg	scope	reason
 crates/sunrise-client/src/game/administration/functions.rs	"functions/typed_state_range_tests.rs"	server:d=0	role-split included test/helper file
 crates/sunrise-client/src/game/mobs/creatures/mod_server.rs	"mob_query_hooks.rs"	server:d=0	role-split included test/helper file
 crates/sunrise-client/src/game/mobs/dragon.rs	"dragon/fireball_spawn_tests.rs"	server:d=1	role-split included test/helper file
-crates/sunrise-client/src/game/modding/api_values/loot_values.rs	"loot_tags_tests.rs"	server:d=2	role-split included test/helper file
 crates/sunrise-client/src/game/modding/mods/mod_server.rs	"mod_inventory_tests_server.rs"	server:d=2	role-split included test/helper file
 crates/sunrise-client/src/game/modding/native_goal_ticks/mod.rs	concat!(env!("OUT_DIR"),"/mod_api_goal_view_generated.rs")	server:d=1	build-script generated mod API goal view
+crates/sunrise-client/src/game/native_hooks/mod_client.rs	"shared_client.rs"	client:d=0	role-split included test/helper file
 crates/sunrise-client/src/game/network/lan/mod.rs	"advancement_save_tests.rs"	server:d=0	role-split included test/helper file
 crates/sunrise-client/src/game/network/lan/mod.rs	"sulfur_cube_meta_tests.rs"	server:d=1	role-split included test/helper file
+crates/sunrise-client/src/game/network/lan_actions/mod_server.rs	"shared_server.rs"	server:d=0	role-split included test/helper file
 crates/sunrise-client/src/game/network/remote/mod_client.rs	"camera_death_tests_client.rs"	client:d=2	role-split included test/helper file
 crates/sunrise-client/src/game/network/remote/mod_client.rs	"camera_draw_tests_client.rs"	client:d=2	role-split included test/helper file
 crates/sunrise-client/src/game/network/remote/mod_client.rs	"camera_parity_red_tests_client.rs"	client:d=2	role-split included test/helper file

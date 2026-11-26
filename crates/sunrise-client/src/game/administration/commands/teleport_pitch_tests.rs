@@ -28,6 +28,7 @@ fn teleport_and_rotate_resolve_pitch_at_their_own_boundary() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let kind = game

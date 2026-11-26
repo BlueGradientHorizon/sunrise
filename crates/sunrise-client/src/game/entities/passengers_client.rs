@@ -1,6 +1,5 @@
 use super::Game;
-use crate::game::server_side::passengers::Riders;
-use crate::game::server_side::passengers::player_box_top;
+use crate::game::passengers_common::{Riders, player_box_top};
 use std::collections::HashMap;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_sim::mobs::riders;
@@ -11,14 +10,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         id: u32,
         previous: bool,
-    ) -> Option<crate::game::seats::Seat> {
-        let row = self.remote.as_ref()?.general.rows.get(&(id as i32))?;
+    ) -> Option<crate::game::seats_common::Seat> {
+        let row = self.side.remote.as_ref()?.general.rows.get(&(id as i32))?;
         let ([x, y, z], [yaw, _]) = if previous {
             (row.previous, row.previous_rotation)
         } else {
             (row.position, row.rotation)
         };
-        Some(crate::game::seats::Seat::general(
+        Some(crate::game::seats_common::Seat::general(
             row.type_slot,
             Vec3::new(x, y, z),
             yaw,
@@ -29,7 +28,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn client_seat(
         &self,
         id: u32,
-    ) -> Option<crate::game::seats::Seat> {
+    ) -> Option<crate::game::seats_common::Seat> {
         if let Some(seat) = self.client_general_seat(id, false) {
             return Some(seat);
         }
@@ -41,7 +40,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             } else {
                 (f64::from(1.975_f32), 0.5)
             };
-            return Some(crate::game::seats::Seat {
+            return Some(crate::game::seats_common::Seat {
                 position: a.position,
                 height,
                 width,
@@ -54,7 +53,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Client-side passenger order from applied `SetPassengers` seats.
     pub(in crate::game::client_side) fn client_passenger_order(&self, vehicle: u32) -> Vec<u32> {
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return Vec::new();
         };
         let mut seats: Vec<_> = remote.passenger_seats(vehicle).collect();
@@ -105,7 +104,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Some(super::minecarts::cart_general_seat(c.position));
         }
         if let Some(t) = self.tnts.iter().find(|t| t.id == vehicle && t.id != 0) {
-            return Some(super::tnt::tnt_general_seat(t.position));
+            return Some(crate::game::tnt_common::tnt_general_seat(t.position));
         }
         if let Some(v) = self.mobs.iter().find(|m| m.id == vehicle && !m.removed) {
             let (index, count) = self.client_passenger_place(vehicle, rider);
@@ -209,7 +208,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Any other tracked entity sits on its feet; an area effect cloud is
         // 0.5 tall, and ModelEngine parks a model's pivot half a block below
         // its feet for exactly that.
-        let remote = self.remote.as_ref()?;
+        let remote = self.side.remote.as_ref()?;
         let (kind, position) = remote.tracked(vehicle as i32)?;
         let position = if let Some(parent) = remote.passenger_vehicle(vehicle) {
             let at =
@@ -263,7 +262,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     if self.seats_own_riders(v) || self.client_general_seat(v, false).is_some() {
                         continue;
                     }
-                    let me = self.remote.as_ref().map(|r| r.entity_id as u32);
+                    let me = self.side.remote.as_ref().map(|r| r.entity_id as u32);
                     let own_seat = self.player.as_ref().map(|p| {
                         p.position
                             .add_vector(Vec3::new(0.0, f64::from(p.dimensions.height), 0.0))
@@ -355,7 +354,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // General rows riding a mob that was just seated.
         self.position_remote_general_passengers();
-        let me = self.remote.as_ref().map(|r| r.entity_id as u32);
+        let me = self.side.remote.as_ref().map(|r| r.entity_id as u32);
         let own_seat = self.player.as_ref().map(|p| {
             p.position
                 .add_vector(Vec3::new(0.0, f64::from(p.dimensions.height), 0.0))
@@ -387,7 +386,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             for interaction in self.side.interactions.values_mut() {
                 if let Some(at) = interaction.vehicle.and_then(|v| seats.get(&v)) {
-                    interaction.ride_to(*at);
+                    crate::game::client_side::interactions::ride_to(interaction, *at);
                 }
             }
         }
@@ -423,7 +422,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Armor stands riding the local player, on the top of its box.
     pub(in crate::game::client_side) fn seat_own_stands(&mut self) {
         let (Some(me), Some(p)) = (
-            self.remote.as_ref().map(|r| r.entity_id as u32),
+            self.side.remote.as_ref().map(|r| r.entity_id as u32),
             self.player.as_ref(),
         ) else {
             return;

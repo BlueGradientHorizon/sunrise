@@ -12,6 +12,13 @@ use sunrise_sim::lan::abilities::PlayerAbilities;
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
 impl Game<'_, crate::game::client_side::ClientState> {
+    pub(in crate::game) fn player_discovered_recipes(
+        &self,
+        _player: PlayerRef,
+    ) -> Option<Vec<String>> {
+        None
+    }
+
     /// Reads live `Remote::abilities` with predicted `flying` and `flying_speed` from the body.
     pub(in crate::game) fn client_abilities(&self) -> Option<PlayerAbilities> {
         let mut a = *self.remote_abilities()?;
@@ -25,6 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_player(&self, uuid: u128) -> Option<PlayerRef> {
         let epoch = self.native_lifecycle.epoch()?;
         let remote = self
+            .side
             .remote
             .as_ref()
             .filter(|r| r.logged_in && r.profile == uuid)?;
@@ -134,7 +142,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         face: mod_api::BlockFace,
         support: mod_api::SupportType,
     ) -> Option<bool> {
-        crate::game::server_side::native_world_read::block_face_sturdy(
+        crate::game::native_world_read_common::block_face_sturdy(
             self.client_level_view_world(level)?,
             self.res.behaviours(),
             self.res.collision(),
@@ -150,7 +158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         pos: [i32; 3],
     ) -> Option<mod_api::BlockEntityRef> {
         let world = self.client_level_view_world(level)?;
-        crate::game::server_side::native_block_entity_refs::world_block_entity(world, level, pos)
+        crate::game::native_block_entity_read::world_block_entity(world, level, pos)
     }
 
     pub(in crate::game) fn client_signal_block_entity_data(
@@ -158,7 +166,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         entity: mod_api::BlockEntityRef,
     ) -> Option<mod_api::Compound> {
         let world = self.client_level_view_world(entity.fields().level)?;
-        crate::game::server_side::native_block_entity_refs::world_block_entity_data(
+        crate::game::native_block_entity_read::world_block_entity_data(
             world,
             self.pack.assets.registry,
             self.items(),
@@ -183,7 +191,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if rain <= 0.2 {
             return Some(false);
         }
-        Some(crate::game::server_side::native_level_world::rain_at(
+        Some(crate::game::native_rain_read::rain_at(
             world,
             self.res.facts(),
             self.world_biomes

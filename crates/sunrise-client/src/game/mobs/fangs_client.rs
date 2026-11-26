@@ -1,8 +1,24 @@
 use super::Game;
-use crate::game::server_side::fangs::fang_attack_pitch;
-use crate::game::server_side::fangs::fang_crit;
+use crate::game::fangs_common::fang_attack_pitch;
+use sunrise_core::random::RandomSource;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_sim::mobs::anim::Poses;
+
+/// One of the twelve `crit` particles `EvokerFangs.tick` spawns on a client
+/// when `lifeTicks` hits 14. The box is 0.5 wide (`getBbWidth() * 0.5`).
+pub(in crate::game) fn fang_crit(
+    random: &mut impl RandomSource,
+    pos: [f64; 3],
+) -> ([f64; 3], [f64; 3]) {
+    let half = 0.5 * 0.5;
+    let x = pos[0] + (random.next_double() * 2.0 - 1.0) * half;
+    let y = pos[1] + 0.05 + random.next_double();
+    let z = pos[2] + (random.next_double() * 2.0 - 1.0) * half;
+    let xd = (random.next_double() * 2.0 - 1.0) * 0.3;
+    let yd = 0.3 + random.next_double() * 0.3;
+    let zd = (random.next_double() * 2.0 - 1.0) * 0.3;
+    ([x, y + 1.0, z], [xd, yd, zd])
+}
 
 fn p_zrot(p: &mut Poses, part: &str, v: f32) {
     p.zrot(part, v);

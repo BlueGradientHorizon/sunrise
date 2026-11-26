@@ -30,6 +30,7 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(

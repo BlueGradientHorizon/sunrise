@@ -4,6 +4,7 @@
 use super::*;
 use crate::game::game_tests::tests::server_game;
 use sunrise_core::position::BlockPos;
+use sunrise_level::containers::BlockEntity;
 
 /// The result of `/data get block <hopper> TransferCooldown`
 /// (`DataCommands.getData`'s numeric value), or `None` when it failed.

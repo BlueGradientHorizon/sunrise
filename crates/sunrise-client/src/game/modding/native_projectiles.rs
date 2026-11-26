@@ -4,7 +4,7 @@
 //! projectile whose impact a mod canceled flies the tick again from where it was,
 //! through whatever it hit.
 use super::{
-    Game, commands::Target, creatures::TargetQuery, dragon::SPECIAL, lan_pvp::meets_players,
+    Game, commands::Target, creatures::TargetQuery, dragon_common::SPECIAL, lan_pvp::meets_players,
     native_hooks::mob_kind,
 };
 use std::ops::Range;
@@ -175,7 +175,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`native_hears_projectile_impacts`). Without one, the tick keeps no copy
     /// of its projectiles: it costs nothing.
     pub(in crate::game) fn native_hears_impacts(&self) -> bool {
-        if self.serving.is_none() && self.options.dedicated.is_none() {
+        if self.side.serving.is_none() && self.options.dedicated.is_none() {
             return false;
         }
         let mut hears = false;
@@ -869,7 +869,7 @@ mod pearl_hit_tests {
     #[test]
     #[ignore = "daily"]
     fn a_pearl_names_the_dragon_for_a_part_and_the_local_player_by_its_own_id() {
-        use crate::game::dragon::Dragon;
+        use crate::game::dragon_common::Dragon;
         crate::game::native_entity_refs::tests::with_game(|game| {
             let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 225009;
@@ -897,7 +897,7 @@ mod pearl_hit_tests {
     #[test]
     #[ignore = "daily"]
     fn a_listening_mod_hears_the_pearls_hit_and_its_target_comes_back() {
-        use crate::game::dragon::Dragon;
+        use crate::game::dragon_common::Dragon;
         use mod_api::{EnderPearlTeleportEvent, Flow, Hooks, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
         type Heard = Arc<Mutex<Vec<(Option<u32>, [i32; 3])>>>;

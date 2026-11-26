@@ -235,7 +235,9 @@ fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Sc
     );
     let mods = vec![mod_api::ModEntry::new("ruby", Box::new(renderers))].into();
     mod_platform::testing::with_mods(mods, || {
-        super::mods::register_entity_renderers(super::execution_role::ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_entity_renderers(
+            super::execution_role::ExecutionRole::Client,
+        );
         super::native_entity_refs::tests::with_client_game(|game| {
             game.resolve_entity_renderers();
             check(game, &scene);
@@ -282,8 +284,12 @@ fn a_vanilla_boat_is_unchanged_by_a_registration_for_its_type() {
     in_scene(
         "a_vanilla_boat_is_unchanged_by_a_registration_for_its_type",
         |game, scene| {
-            game.boats
-                .push(super::boats::Boat::new(100, "oak".into(), feet(), 0.0));
+            game.boats.push(super::boats_common::Boat::new(
+                100,
+                "oak".into(),
+                feet(),
+                0.0,
+            ));
             let mut boat = Vec::new();
             game.boat_geometry(CAMERA, 1.0, &mut boat, 0..game.boats.len());
             assert!(!boat.is_empty(), "its vanilla model");

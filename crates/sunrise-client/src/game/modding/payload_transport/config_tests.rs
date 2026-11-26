@@ -208,6 +208,7 @@ fn tcp_configuration_reply_precedes_finish() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -218,6 +219,7 @@ fn tcp_configuration_reply_precedes_finish() {
             }
             // Publication belongs to the serving Game, not the window's client Game.
             let port = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()
@@ -346,7 +348,7 @@ fn controlled_peer(port: u16, expected: &[u8], game: &crate::game::ClientGame<'_
     let release = Release(release);
     if network {
         let (entered, ready) = std::sync::mpsc::channel();
-        assert!(game.integrated.as_ref().unwrap().post(move |_| {
+        assert!(game.side.integrated.as_ref().unwrap().post(move |_| {
             entered.send(()).unwrap();
             held.recv_timeout(Duration::from_secs(30)).unwrap();
         }));

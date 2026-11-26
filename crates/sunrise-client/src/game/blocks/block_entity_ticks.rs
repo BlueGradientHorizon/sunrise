@@ -261,7 +261,7 @@ impl<N: LoopMod, T: BlockEntityTickSlot> BlockEntityTickSlot for Attributed<N, T
 
 /// A pass's working state: the item and mob caches and the spawners ticked so far.
 pub(in crate::game) type PassScratch = (
-    Option<crate::game::machines::ItemColumns>,
+    Option<sunrise_gameplay_common::hoppers::ItemColumns>,
     Option<crate::game::potent_sulfur::PassMobs>,
     Vec<Pos>,
     Vec<Pos>,
@@ -564,6 +564,7 @@ pub(in crate::game) mod jukebox_stop_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.world.chunks.insert(

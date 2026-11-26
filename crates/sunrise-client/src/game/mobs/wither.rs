@@ -6,7 +6,7 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::block_pattern::{BlockPattern, PatternMatch, WITHER_FULL};
 use sunrise_sim::{
     mobs::{Damage, DamageKind, Species, Who},
-    projectiles::{Projectile, ProjectileKind},
+    projectiles::Projectile,
 };
 use sunrise_world::registry::BlockStateId;
 
@@ -278,12 +278,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         );
                         // The hit's causing entity, lent to its listeners beside the victim.
                         let causing = self.causer_id(source.attacker);
-                        let decision = crate::game::entity::causer_decision!(self, causing);
+                        let decision = crate::game::entity_server::causer_decision!(self, causing);
                         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-                        let (victim, lend) =
-                            crate::game::entity::victim_and_causer!(self, index, causing, decision);
+                        let (victim, lend) = crate::game::entity_server::victim_and_causer!(
+                            self, index, causing, decision
+                        );
                         let hit = victim.damage(
-                            crate::game::entity::damage_level_of!(
+                            crate::game::entity_server::damage_level_of!(
                                 self,
                                 self.side.combat.0.attack(),
                                 &mut credit,
@@ -454,13 +455,6 @@ pub(in crate::game::server_side) fn skull_source(
             kind: DamageKind::Magic,
             from: None,
         },
-    }
-}
-/// Wither skulls drawn as the skull model, blue when dangerous.
-pub(in crate::game) fn skull_kind(p: &Projectile) -> Option<bool> {
-    match p.kind {
-        ProjectileKind::WitherSkull { dangerous } => Some(dangerous),
-        _ => None,
     }
 }
 #[cfg(test)]

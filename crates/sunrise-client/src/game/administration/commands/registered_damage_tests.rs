@@ -301,7 +301,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
 
 pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
     use crate::game::{
-        combat::PlayerCredit,
+        combat_common::PlayerCredit,
         commands::Target,
         sculk::{TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS},
     };

@@ -5,7 +5,11 @@
 //! (`positionRider`, `clampRotation`) and how they get out.
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
 #[allow(unused_imports)]
-use super::{Game, boats::Boat, commands::Target, lan_mobs::guest_bounds};
+use super::{Game, lan_mobs::guest_bounds};
+use crate::game::{
+    boats_common::{Boat, PLAYER_RIDING_OFFSET, boat_pushes, push_impulse},
+    commands_common::Target,
+};
 use std::cell::{Cell, Ref, RefCell};
 use sunrise_core::geometry::{Aabb, Vec3};
 #[allow(unused_imports)]
@@ -14,16 +18,12 @@ use sunrise_game_data::scoreboard::pushable_by;
 use sunrise_level::fast_hash::FxHashMap;
 #[allow(unused_imports)]
 use sunrise_sim::{
-    join_seq::ListStamp,
+    join_seq::{JoinList, ListStamp},
     mobs::{BoxReach, Mob, Species, Who, riders, seen_grid::SeenGrid},
 };
 
 /// `Entity.boardingCooldown` once a mob leaves its boat.
 pub(in crate::game) const BOARDING_COOLDOWN: i32 = 60;
-/// `Player.DEFAULT_VEHICLE_ATTACHMENT`: how far below the seat a player's
-/// feet are.
-pub(in crate::game) const PLAYER_RIDING_OFFSET: f64 = 0.6;
-
 /// How many box queries the walk over every mob answers, once a write to the mob list has
 /// made the grid stale, before a new grid is built: about what building one costs (with
 /// 25,000 mobs, six to eight walks). It doubles with each grid of a stretch, so vehicles
@@ -73,31 +73,6 @@ fn pushable(m: &Mob) -> bool {
 fn moved_by_push(m: &Mob) -> bool {
     !m.removed && m.pushable() && !carries(m)
 }
-/// `Entity.push(Entity)`: the push `other` gets from `this` (which takes the
-/// opposite one), or None when they stand on nearly the same spot.
-pub(in crate::game) fn push_impulse(this: Vec3, other: Vec3) -> Option<Vec3> {
-    let (mut xa, mut za) = (other.x - this.x, other.z - this.z);
-    let mut dd = xa.abs().max(za.abs());
-    if dd < f64::from(0.01_f32) {
-        return None;
-    }
-    dd = dd.sqrt();
-    xa /= dd;
-    za /= dd;
-    let pow = (1.0 / dd).min(1.0);
-    let k = f64::from(0.05_f32);
-    Some(Vec3::new(xa * pow * k, 0.0, za * pow * k))
-}
-/// `AbstractBoat.push`: another boat is pushed while it is lower than this
-/// boat's top, anything else while its feet are no higher than the boat's.
-pub(in crate::game) fn boat_pushes(boat: Aabb, other: Aabb, other_is_boat: bool) -> bool {
-    if other_is_boat {
-        other.min_position().y < boat.max_position().y
-    } else {
-        other.min_position().y <= boat.min_position().y
-    }
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Starts or ends a stretch of vehicle ticks (`tick_boats`, `tick_carts`): while one runs,
     /// a vehicle's box query ([`Self::mobs_meeting`]) reads the mobs near it from a grid of
@@ -141,10 +116,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The slots, ascending, of the mobs whose box may meet `area` into `out` (a superset: the
     /// caller still tests each box), from a grid of the mobs' boxes that the first query of a
     /// stretch of vehicle ticks builds. False: walk them all. That is outside a stretch or with
-    /// native mods loaded ([`Self::vehicle_mobs_indexed`]), when the grid cannot say, and for
+    /// native mods loaded ([`VehicleMobs::vehicle_mobs_indexed`]), when the grid cannot say, and for
     /// a while after a write to the mob list ([`MobGrid`]).
     fn vehicle_mobs_near(&self, area: Aabb, out: &mut Vec<u32>) -> bool {
-        if !self.vehicle_mobs_indexed() {
+        if !self.side.vehicle_mobs.vehicle_mobs_indexed() {
             return false;
         }
         let stamp = self.mobs.stamp();
@@ -213,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The players in boat `id`: the window's player (or the server player
     /// acting as it) and the server's other players.
     pub(in crate::game) fn boat_players(&self, id: u32) -> usize {
-        let guests = self.lan.as_ref().map_or(0, |h| {
+        let guests = self.side.lan.as_ref().map_or(0, |h| {
             h.hub
                 .guests
                 .iter()
@@ -271,7 +246,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             out.push((p.bounds(), Target::Player, self.own_entity_id() as u32));
         }
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             for g in host.hub.guests.iter().filter(|g| {
                 Some(g.conn) != self.side.lan_acting
                     && host.hub.here(g)
@@ -369,7 +344,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let boards = pick_up
                     && count < max
                     && m.extra.mount.is_none()
-                    && m.width() < super::boats::WIDTH as f32
+                    && m.width() < crate::game::boats_common::WIDTH as f32
                     && !self.items().entity_type_tags.has_bit(
                         m.kind.flags.entity_tag_slot,
                         sunrise_items::items::EntityTypeTags::CANNOT_BE_PUSHED_ONTO_BOATS,
@@ -491,13 +466,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `positionRider` and `clampRotation` for the mobs in boats: each sits
     /// in its seat facing the way the boat does, an animal in a full boat
     /// sideways, its head kept within its reach of its body.
-    pub(in crate::game) fn seat_boat_mobs(&mut self, riding: &super::passengers::Riders) {
+    pub(in crate::game) fn seat_boat_mobs(
+        &mut self,
+        riding: &crate::game::passengers_common::Riders,
+    ) {
         self.seat_boat_mobs_with_order(riding, |game, id| game.passenger_order(id));
     }
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
     /// removal of the same object while its dismount callbacks are running.
-    pub(in crate::game) fn kill_vehicle_object(&mut self, target: super::commands::Target) -> bool {
-        use super::commands::Target;
+    pub(in crate::game) fn kill_vehicle_object(&mut self, target: Target) -> bool {
         let id = match target {
             Target::Boat(id) | Target::Cart(id) => id,
             _ => unreachable!("only boat and cart removals use this helper"),
@@ -513,10 +490,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The physical sweep of an already logically removed boat or cart.
     pub(in crate::game::server_side) fn take_destroyed_vehicle_row(
         &mut self,
-        target: super::commands::Target,
+        target: Target,
         id: u32,
     ) {
-        use super::{commands::Target, persist::RemovedVehicle};
+        use crate::game::entity_memory::RemovedVehicle;
         let vehicle = match target {
             Target::Boat(_) => self
                 .boats
@@ -539,10 +516,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// then releases the lead. Keep the emptied owner in place for the dismount.
     pub(in crate::game::server_side) fn prepare_vehicle_removal(
         &mut self,
-        target: super::commands::Target,
+        target: Target,
         id: u32,
     ) {
-        use super::{commands::Target, container_loot::LootTarget};
+        use crate::game::container_loot_level::LootTarget;
         self.release_vehicle_container(id);
         let loot = match target {
             Target::Boat(_) => LootTarget::Boat(id),
@@ -619,7 +596,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Resident mob riders in slot order, including those whose removal is pending.
     /// During an indexed vehicle pass, all lookups share the same slots until
     /// the mob list is next written.
@@ -627,29 +604,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         &self,
         id: u32,
     ) -> impl Iterator<Item = (usize, &Mob)> {
-        let slots = if self.vehicle_mobs_indexed() {
-            let stamp = self.mobs.stamp();
-            let cache = &crate::game::Side::vehicle_mobs(&self.side)
-                .expect("vehicle_mobs_indexed requires server")
-                .riders;
-            if cache.borrow().as_ref().is_none_or(|(s, _)| *s != stamp) {
-                let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
-                for (slot, mob) in self.mobs.iter().enumerate() {
-                    if let Some(vehicle) = mob.extra.mount {
-                        by_vehicle.entry(vehicle).or_default().push(slot);
-                    }
-                }
-                cache.replace(Some((stamp, by_vehicle)));
-            }
-            Some(Ref::map(cache.borrow(), |index| {
-                index
-                    .as_ref()
-                    .and_then(|(_, by_vehicle)| by_vehicle.get(&id))
-                    .map_or(&[][..], Vec::as_slice)
-            }))
-        } else {
-            None
-        };
+        let slots = <crate::game::server_side::ServerState as crate::game::side_ops::mobs_rest::SideOps>::side_indexed_mob_rider_slots(&self.side, &self.mobs, id);
         let mut at = 0;
         let mut scan = self.mobs.iter().enumerate();
         std::iter::from_fn(move || {
@@ -662,13 +617,41 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             }
         })
     }
+}
 
+impl VehicleMobs {
     /// Whether what a stretch of vehicle ticks reads from the mob list may stand in for a walk
     /// over it: a stretch runs, and no native mod is loaded (a hook can move a mob unseen, as
     /// for the carts' `CartIndex`).
-    fn vehicle_mobs_indexed(&self) -> bool {
-        crate::game::Side::vehicle_mobs(&self.side).is_some_and(|vm| vm.reach.get().is_some())
-            && mod_api::__private::mods().is_empty()
+    pub(in crate::game) fn vehicle_mobs_indexed(&self) -> bool {
+        self.reach.get().is_some() && mod_api::__private::mods().is_empty()
+    }
+
+    pub(in crate::game) fn indexed_mob_rider_slots<'a>(
+        &'a self,
+        mobs: &JoinList<Mob>,
+        id: u32,
+    ) -> Option<Ref<'a, [usize]>> {
+        if !self.vehicle_mobs_indexed() {
+            return None;
+        }
+        let stamp = mobs.stamp();
+        let cache = &self.riders;
+        if cache.borrow().as_ref().is_none_or(|(s, _)| *s != stamp) {
+            let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
+            for (slot, mob) in mobs.iter().enumerate() {
+                if let Some(vehicle) = mob.extra.mount {
+                    by_vehicle.entry(vehicle).or_default().push(slot);
+                }
+            }
+            cache.replace(Some((stamp, by_vehicle)));
+        }
+        Some(Ref::map(cache.borrow(), |index| {
+            index
+                .as_ref()
+                .and_then(|(_, by_vehicle)| by_vehicle.get(&id))
+                .map_or(&[][..], Vec::as_slice)
+        }))
     }
 }
 
@@ -681,7 +664,7 @@ mod tests {
     fn rejected_boat_passengers_fill_actual_capacity_without_becoming_resident() {
         super::super::native_entity_refs::tests::with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.boats.push(super::super::boats::Boat::new(
+            game.boats.push(crate::game::boats_common::Boat::new(
                 71,
                 "oak".into(),
                 Vec3::ZERO,
@@ -692,7 +675,7 @@ mod tests {
                 rider.extra.mount = Some(71);
                 game.persist
                     .off_level
-                    .insert(id, super::super::persist::OffLevel::Mob(rider));
+                    .insert(id, crate::game::entity_memory::OffLevel::Mob(rider));
             }
             assert!(game.boat_mobs(71).is_empty());
             // An ordinary oak boat has two seats; rejected passengers still own both.
@@ -917,7 +900,7 @@ mod off_level_tests {
             game.mobs.push(resident);
             game.persist
                 .off_level
-                .insert(72, crate::game::persist::OffLevel::Mob(ghost));
+                .insert(72, crate::game::entity_memory::OffLevel::Mob(ghost));
             game.position_riders();
             assert_eq!(game.mob_object(73).unwrap().position, expected);
             assert_eq!(game.mob_object(72).unwrap().position, Vec3::ZERO);
@@ -981,7 +964,7 @@ mod boat_callback_review_tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.boats.push(super::super::boats::Boat::new(
+                game.boats.push(crate::game::boats_common::Boat::new(
                     71,
                     "oak".into(),
                     Vec3::ZERO,
@@ -1023,7 +1006,7 @@ mod boat_callback_review_tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.boats.push(super::super::boats::Boat::new(
+                game.boats.push(crate::game::boats_common::Boat::new(
                     71,
                     "oak".into(),
                     Vec3::ZERO,

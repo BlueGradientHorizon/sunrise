@@ -2,7 +2,9 @@
 //! and `/studio replay` commands (chat and `sunrise-ctl`), the replay's clock and its world. This is
 //! platform (docs/layers.md, "Replays"); Studio's editor (`studio.rs`) builds on it.
 
-use super::{Game, PendingWorldEntry, Screen};
+use super::{Game, Screen};
+#[cfg(feature = "client")]
+use crate::game::client_side::resource_loader::PendingWorldEntry;
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
@@ -59,7 +61,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// How far the window's own player model is between two ticks: on the replay's clock while a
     /// replay plays, else the game's.
     pub(in crate::game::client_side) fn own_player_alpha(&self) -> f64 {
-        self.replay
+        self.side
+            .replay
             .player_alpha()
             .unwrap_or_else(|| self.clock.camera_fraction())
     }
@@ -194,7 +197,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
                 Some("pause") => {
-                    if let Some(r) = self.replay.driver.as_mut() {
+                    if let Some(r) = self.side.replay.driver.as_mut() {
                         r.set_paused(true);
                         self.client_system_message(Text::translate(
                             "sunrise.studio.replay.paused",
@@ -208,7 +211,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
                 Some("resume") => {
-                    if let Some(r) = self.replay.driver.as_mut() {
+                    if let Some(r) = self.side.replay.driver.as_mut() {
                         r.set_paused(false);
                         self.client_system_message(Text::translate(
                             "sunrise.studio.replay.resumed",
@@ -230,7 +233,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         return true;
                     };
                     if let Ok(spd) = spd_str.parse::<f64>() {
-                        let new_speed = if let Some(r) = self.replay.driver.as_mut() {
+                        let new_speed = if let Some(r) = self.side.replay.driver.as_mut() {
                             r.set_speed(spd);
                             Some(r.speed())
                         } else {
@@ -264,10 +267,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         return true;
                     };
                     if let Ok(ms) = ms_str.parse::<u32>() {
-                        if self.replay.driver.is_some() {
+                        if self.side.replay.driver.is_some() {
                             match self.seek_studio_replay(ms) {
                                 Ok(()) => {
                                     let actual_ms = self
+                                        .side
                                         .replay
                                         .driver
                                         .as_ref()
@@ -308,7 +312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
                 Some("status") => {
-                    if let Some(r) = self.replay.driver.as_ref() {
+                    if let Some(r) = self.side.replay.driver.as_ref() {
                         let position = r.position_ms().to_string();
                         let duration = r.duration_ms().to_string();
                         let progress = format!("{:.1}", r.progress() * 100.0);
@@ -352,7 +356,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Reset playback tick accumulator and align positions on seek.
     pub(in crate::game::client_side) fn reset_studio_playback_ticks(&mut self) {
-        self.replay.virtual_tick_ms = 0.0;
+        self.side.replay.virtual_tick_ms = 0.0;
         if let Some(player) = &self.player {
             self.previous_position = player.position;
             if let Some(m) = self.side.player_model.as_mut() {
@@ -372,12 +376,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         target_ms: u32,
     ) -> std::io::Result<()> {
         let current_ms = self
+            .side
             .replay
             .driver
             .as_ref()
             .map_or(0, |driver| driver.position_ms());
-        let packets = if self.replay.standalone {
+        let packets = if self.side.replay.standalone {
             let packets = self
+                .side
                 .replay
                 .driver
                 .as_mut()
@@ -393,7 +399,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     "backward seek requires a standalone replay",
                 ));
             }
-            self.replay
+            self.side
+                .replay
                 .driver
                 .as_mut()
                 .expect("replay checked by caller")
@@ -402,13 +409,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
         self.dispatch_studio_replay_packets(packets);
         self.reset_studio_playback_ticks();
-        self.replay.last_tick = Some(std::time::Instant::now());
+        self.side.replay.last_tick = Some(std::time::Instant::now());
         Ok(())
     }
 
     fn dispatch_studio_replay_packets(&mut self, packets: Vec<TimestampedPacket>) {
         for pkt in packets {
-            let names = self.remote.as_ref().map(|remote| SyncedNames {
+            let names = self.side.remote.as_ref().map(|remote| SyncedNames {
                 builtin: &remote.builtin,
                 dynamic: &remote.registries,
             });
@@ -442,19 +449,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Advance active replay playback by elapsed frame time and dispatch ready packets.
     pub(in crate::game::client_side) fn advance_studio_replay(&mut self) -> Result<()> {
-        let Some(driver) = self.replay.driver.as_mut() else {
-            self.replay.last_tick = None;
+        let Some(driver) = self.side.replay.driver.as_mut() else {
+            self.side.replay.last_tick = None;
             return Ok(());
         };
 
         let now = std::time::Instant::now();
-        let delta = match self.replay.last_tick {
+        let delta = match self.side.replay.last_tick {
             Some(last) => now
                 .saturating_duration_since(last)
                 .min(Duration::from_millis(250)),
             None => Duration::from_millis(16),
         };
-        self.replay.last_tick = Some(now);
+        self.side.replay.last_tick = Some(now);
 
         let ready_packets = match driver.advance(delta) {
             Ok(pkts) => pkts,
@@ -466,6 +473,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
         self.dispatch_studio_replay_packets(ready_packets);
         let paused = self
+            .side
             .replay
             .driver
             .as_ref()
@@ -475,14 +483,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if !paused {
             let speed = self
+                .side
                 .replay
                 .driver
                 .as_ref()
                 .map_or(1.0, |r| r.speed() as f32)
                 .max(0.1);
-            self.replay.virtual_tick_ms += delta.as_secs_f32() * 1000.0 * speed;
-            while self.replay.virtual_tick_ms >= 50.0 {
-                self.replay.virtual_tick_ms -= 50.0;
+            self.side.replay.virtual_tick_ms += delta.as_secs_f32() * 1000.0 * speed;
+            while self.side.replay.virtual_tick_ms >= 50.0 {
+                self.side.replay.virtual_tick_ms -= 50.0;
                 if let Some(player) = &self.player {
                     let current_pos = player.position;
                     let (dx, dz) = (
@@ -568,7 +577,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     Ok(Some(res))
                 }
                 Some("pause") => {
-                    if let Some(r) = self.replay.driver.as_mut() {
+                    if let Some(r) = self.side.replay.driver.as_mut() {
                         r.set_paused(true);
                         Ok(Some(json!({ "ok": true, "paused": true })))
                     } else {
@@ -576,7 +585,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
                 Some("resume") => {
-                    if let Some(r) = self.replay.driver.as_mut() {
+                    if let Some(r) = self.side.replay.driver.as_mut() {
                         r.set_paused(false);
                         Ok(Some(json!({ "ok": true, "paused": false })))
                     } else {
@@ -586,7 +595,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Some("speed") => {
                     let spd_str = words.get(3).ok_or("missing speed value")?;
                     let spd: f64 = spd_str.parse().map_err(|_| "invalid speed")?;
-                    if let Some(r) = self.replay.driver.as_mut() {
+                    if let Some(r) = self.side.replay.driver.as_mut() {
                         r.set_speed(spd);
                         Ok(Some(json!({ "ok": true, "speed": r.speed() })))
                     } else {
@@ -596,7 +605,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Some("seek") => {
                     let ms_str = words.get(3).ok_or("missing seek timestamp")?;
                     let ms: u32 = ms_str.parse().map_err(|_| "invalid timestamp")?;
-                    let pos = if let Some(r) = self.replay.driver.as_mut() {
+                    let pos = if let Some(r) = self.side.replay.driver.as_mut() {
                         r.seek(ms).map_err(|e| format!("{e}"))?;
                         Some(r.position_ms())
                     } else {
@@ -610,7 +619,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
                 Some("status") => {
-                    if let Some(r) = self.replay.driver.as_ref() {
+                    if let Some(r) = self.side.replay.driver.as_ref() {
                         Ok(Some(json!({
                             "ok": true,
                             "active": true,
@@ -639,7 +648,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         name: Option<&str>,
     ) -> Result<Value> {
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return Ok(json!({ "ok": false, "error": "no active world session" }));
         };
         if r.session.is_recording() {
@@ -678,7 +687,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn stop_studio_recording(&mut self) -> Result<Value> {
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return Ok(json!({ "ok": false, "error": "no active world session" }));
         };
         match r.session.stop_recording() {
@@ -689,7 +698,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn studio_recording_status(&self) -> Value {
-        if let Some(r) = self.remote.as_ref()
+        if let Some(r) = self.side.remote.as_ref()
             && let Some(status) = r.session.recorder_status()
         {
             json!({
@@ -712,7 +721,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The recordings browser can be opened while the title screen is
         // available but the slower world tables are still loading. Replay
         // setup builds the normal client registries, which require `rest`.
-        if self.remote.is_none() && self.res.rest.get().is_none() {
+        if self.side.remote.is_none() && self.res.rest.get().is_none() {
             let pending = PendingWorldEntry::StudioReplay(PathBuf::from(path));
             if self.defer_world_entry(pending)? {
                 return Ok(json!({ "ok": true, "pending": true }));
@@ -730,8 +739,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         };
 
-        let standalone = self.replay.driver.is_none() && self.remote.is_none();
-        if self.remote.is_none()
+        let standalone = self.side.replay.driver.is_none() && self.side.remote.is_none();
+        if self.side.remote.is_none()
             && let Err(error) = self.init_remote_for_replay()
         {
             log::error!("Failed to initialize studio replay session: {error}");
@@ -741,11 +750,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let duration_ms = driver.duration_ms();
         let packets = driver.packet_count();
         self.studio_replay_opened(&driver);
-        if self.replay.driver.is_none() {
-            self.replay.previous_camera_type = Some(self.side.camera_type);
-            self.replay.standalone = standalone;
+        if self.side.replay.driver.is_none() {
+            self.side.replay.previous_camera_type = Some(self.side.camera_type);
+            self.side.replay.standalone = standalone;
         }
-        self.replay.driver = Some(Box::new(driver));
+        self.side.replay.driver = Some(Box::new(driver));
         self.side.camera_type = sunrise_level::camera_math::CameraType::FirstPerson;
         self.side.title.0 = None;
         self.side.screen = Screen::Playing;
@@ -764,7 +773,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn close_studio_replay(&mut self) -> bool {
         self.studio_replay_closing();
-        let closed = self.replay.driver.take().is_some();
+        let closed = self.side.replay.driver.take().is_some();
         if !closed {
             return false;
         }
@@ -772,22 +781,23 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // A standalone replay owns a synthetic Remote connection. Treat that
         // connection as replay state even if the saved origin flag was lost;
         // sending it through leave_server() opens the Multiplayer screen.
-        let standalone = self.replay.standalone
+        let standalone = self.side.replay.standalone
             || self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|remote| remote.brand == "sunrise-studio");
-        self.replay.standalone = false;
-        if let Some(camera_type) = self.replay.previous_camera_type.take() {
+        self.side.replay.standalone = false;
+        if let Some(camera_type) = self.side.replay.previous_camera_type.take() {
             self.side.camera_type = camera_type;
         }
-        self.replay.last_tick = None;
+        self.side.replay.last_tick = None;
         self.studio_replay_closed();
-        self.replay.virtual_tick_ms = 0.0;
+        self.side.replay.virtual_tick_ms = 0.0;
         self.capture(false);
         if standalone {
             self.reset_client_item_use();
-            if let Some(mut remote) = self.remote.take() {
+            if let Some(mut remote) = self.side.remote.take() {
                 remote.session.disconnect();
             }
             self.using = None;
@@ -801,7 +811,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let Some(title) = self.side.title.0.as_mut() {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }
-        } else if self.integrated.is_none() && self.lan.is_none() {
+        } else if self.side.integrated.is_none() {
             if let Err(error) = self.close_world() {
                 log::error!("Failed to close Studio replay world cleanly: {error}");
             }
@@ -817,7 +827,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         recorder: &sunrise_client::studio::StudioRecorder,
     ) {
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return;
         };
         let record_cb = |pkt: sunrise_protocol::packets::play::Clientbound| {

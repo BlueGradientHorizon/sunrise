@@ -1,14 +1,84 @@
 use super::{Game, entity_culling::at, view_vector};
-use crate::game::server_side::boats::Boat;
-use crate::game::server_side::boats::HEIGHT;
-use crate::game::server_side::boats::Status;
-use crate::game::server_side::boats::WIDTH;
+use crate::game::boats_common::{Boat, HEIGHT, PLAYER_RIDING_OFFSET, Status, WIDTH};
+use std::collections::HashMap;
 use std::{f32::consts::PI, sync::Arc};
 use sunrise_client::mesher::Vertex;
+use sunrise_client::mobs::Part;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_sim::mobs::anim::Poses;
 
+#[cfg_attr(test, derive(Clone))]
+pub(in crate::game) struct BoatModels {
+    pub models: HashMap<String, Part>,
+    pub chest_models: HashMap<String, Part>,
+    /// `ModelLayers.BOAT_WATER_PATCH`, shared by every boat (not rafts).
+    pub water_patch: Option<Part>,
+}
+impl BoatModels {
+    /// Whether this remote boat has a layer to draw.
+    pub fn has(&self, wood: &str, chest: bool) -> bool {
+        if chest {
+            self.chest_models.contains_key(wood)
+        } else {
+            self.models.contains_key(wood)
+        }
+    }
+    pub fn load(document: Option<&sunrise_client::mobs::EntityModelDocument>) -> Self {
+        let mut models = HashMap::new();
+        let mut chest_models = HashMap::new();
+        if let Some(document) = document {
+            for key in document.keys() {
+                if let Some(wood) = key
+                    .strip_prefix("minecraft:boat/")
+                    .and_then(|k| k.strip_suffix("#main"))
+                    && let Some(part) = document.model(key)
+                {
+                    models.insert(wood.to_owned(), part);
+                }
+                if let Some(wood) = key
+                    .strip_prefix("minecraft:chest_boat/")
+                    .and_then(|k| k.strip_suffix("#main"))
+                    && let Some(part) = document.model(key)
+                {
+                    chest_models.insert(wood.to_owned(), part);
+                }
+            }
+        }
+        Self {
+            models,
+            chest_models,
+            water_patch: document.and_then(|d| d.model("minecraft:boat#water_patch")),
+        }
+    }
+}
 impl Game<'_, crate::game::client_side::ClientState> {
+    pub(in crate::game) fn record_boat_lid_movement(&mut self, i: usize, delta: Vec3) {
+        if self.record_driven_boat_lid_movement(i, delta) {
+            return;
+        }
+        let boat = &self.boats[i];
+        if let Some(lerp) = self
+            .side
+            .remote
+            .as_ref()
+            .and_then(|r| r.lerps.get(&(boat.id as i32)))
+            && lerp.steps > 0
+        {
+            let [x, y, z] = lerp.target;
+            let to = Vec3::new(x, y, z).add_vector(delta);
+            if self.boat_lerp_target_fits(boat, to) {
+                self.side
+                    .remote
+                    .as_mut()
+                    .unwrap()
+                    .lerps
+                    .get_mut(&(boat.id as i32))
+                    .unwrap()
+                    .target = to.components();
+            }
+        }
+    }
+
     /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
     pub(in crate::game::client_side) fn tick_boat_paddles(b: &mut Boat, audio: &mut super::Audio) {
         // Paddle sounds at the top of each stroke.
@@ -267,7 +337,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if b.under_water() {
             return false;
         }
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return usize::from(self.riding == Some(b.id)) < b.max_passengers();
         };
         let local_id = remote.entity_id as u32;
@@ -288,7 +358,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side `player_boat_seat` from `Remote::passenger_seats` + local rider.
     pub(in crate::game) fn client_player_boat_seat(&self, i: usize) -> Vec3 {
         let b = &self.boats[i];
-        let (index, count) = if let Some(remote) = self.remote.as_ref() {
+        let (index, count) = if let Some(remote) = self.side.remote.as_ref() {
             let local_id = remote.entity_id as u32;
             let mut seats: Vec<_> = remote.passenger_seats(b.id).collect();
             seats.sort_unstable_by_key(|&(_, idx)| idx);
@@ -300,13 +370,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             (0, 1)
         };
-        b.seat(
-            index,
-            count,
-            false,
-            super::boat_passengers::PLAYER_RIDING_OFFSET,
-            false,
-        )
+        b.seat(index, count, false, PLAYER_RIDING_OFFSET, false)
     }
 
     pub(in crate::game) fn run_boat_authority_fixture(
@@ -355,7 +419,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if has_attacks {
             let attacks = Arc::new(Mutex::new(Vec::new()));
             self.run_component_harness(
-                crate::game::integrated::ComponentHarness::BoatAuthorityAttacks(
+                crate::game::integrated_link::ComponentHarness::BoatAuthorityAttacks(
                     directory.to_path_buf(),
                     attacks.clone(),
                 ),

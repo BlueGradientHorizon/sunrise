@@ -7,7 +7,8 @@
 //! published rows.
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
-use std::collections::HashMap;
+use crate::game::server_side::persist::ChunkKey;
+use std::collections::{HashMap, HashSet};
 
 /// Declares the fixture's two types: `mymod:robot`, which saves, and
 /// `mymod:ghost`, which never does.
@@ -881,7 +882,7 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
     with_types(|game| {
         crate::game::bossbars::audience_tests::add_real_and_fake(game);
         let ids = general_chain(game, &[([0.0, 64.0, 0.0], [0.0, 0.0])], 6);
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         let i = host.hub.guests.iter().position(|g| g.uuid == 1).unwrap();
         host.hub.guests.update(i, |g| {
             g.vehicle = Some(ids[0]);
@@ -895,7 +896,7 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
             [false; 3],
             true,
         );
-        let guest = &game.lan.as_ref().unwrap().hub.guests[i];
+        let guest = &game.side.lan.as_ref().unwrap().hub.guests[i];
         assert_eq!(guest.position, [10.5, 70.5, -3.75]);
         assert_eq!(guest.yaw, 120.0);
         assert_eq!(guest.vehicle, Some(ids[0]));
@@ -918,7 +919,7 @@ fn seat_guest_on_general_root(
 ) -> (u32, std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) {
     let ids = general_chain(game, &[([0.0, 64.0, 0.0], [0.0, 0.0])], 7);
     let (tx, rx) = std::sync::mpsc::channel();
-    let hub = &mut game.lan.as_mut().unwrap().hub;
+    let hub = &mut game.side.lan.as_mut().unwrap().hub;
     hub.update_guest(13, |g| {
         g.vehicle = Some(ids[0]);
         g.yaw = 30.0;
@@ -938,7 +939,7 @@ fn guest_teleport_packets(
 ) {
     use sunrise_protocol::packets::play::Clientbound as C;
     let (mut own, mut vehicle) = (Vec::new(), Vec::new());
-    for packet in crate::game::native_sound_refs::tests::packets(rx) {
+    for packet in crate::game::server_side::native_sound_refs::tests::packets(rx) {
         match packet {
             C::PlayerPosition(p) => own.push(p),
             C::TeleportEntity(p) => vehicle.push(p),
@@ -954,7 +955,15 @@ fn a_seated_guest_hears_the_general_vehicles_real_pose_and_its_own_teleport_once
     with_types_and_guests(|game| {
         let (root, rx) = seat_guest_on_general_root(game);
         let _ = guest_teleport_packets(&rx);
-        let before = game.lan.as_ref().unwrap().hub.guest(13).unwrap().position;
+        let before = game
+            .side
+            .lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .guest(13)
+            .unwrap()
+            .position;
         game.teleport_to_in_level(
             Target::General(root),
             [10.0, 70.0, -4.0],
@@ -1077,7 +1086,8 @@ impl mod_api::Hooks for ObserveDismounts {
 #[test]
 #[ignore = "daily"]
 fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order() {
-    use crate::game::minecarts::{CartHit, CartKind, Minecart};
+    use crate::game::minecarts::{CartKind, Minecart};
+    use crate::game::server_side::minecarts_server::CartHit;
     use sunrise_sim::mobs::Mob;
 
     let dismounts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -1100,7 +1110,7 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
         .zip(71..)
         {
             match case {
-                "boat damage" => game.boats.push(crate::game::boats::Boat::new(
+                "boat damage" => game.boats.push(crate::game::boats_common::Boat::new(
                     vehicle,
                     "oak".into(),
                     at,
@@ -1590,7 +1600,7 @@ fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
 #[test]
 #[ignore = "daily"]
 fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
-    use crate::game::boats::Boat;
+    use crate::game::boats_common::Boat;
     use sunrise_sim::mobs::Mob;
 
     with_types(|game| {

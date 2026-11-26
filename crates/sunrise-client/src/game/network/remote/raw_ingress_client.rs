@@ -1,8 +1,8 @@
+use super::ingress_state::ListenerTurn;
+pub(in crate::game::client_side) use super::ingress_state::PacketError;
+use super::ingress_state::local_transfer_notice;
+use super::ingress_state::packet_error_notice;
 use super::*;
-use crate::game::remote::raw_ingress::ListenerTurn;
-pub(in crate::game::client_side) use crate::game::remote::raw_ingress::PacketError;
-use crate::game::remote::raw_ingress::local_transfer_notice;
-use crate::game::remote::raw_ingress::packet_error_notice;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -12,6 +12,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         p: play::PostEffects,
     ) -> Result<()> {
         if !self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.logged_in && r.reconfiguring.is_none())
@@ -53,6 +54,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             if needs_open
                 && !self
+                    .side
                     .remote
                     .as_ref()
                     .is_some_and(|r| r.session.accepts_packets())
@@ -80,7 +82,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Received::Chunk(format, credit) => {
                     // A column still decoding waits for the next frame, with
                     // what came after it, overdue or not.
-                    let Some(next) = self.remote.as_ref().map(|r| {
+                    let Some(next) = self.side.remote.as_ref().map(|r| {
                         if before_tick {
                             r.decoder.wait_next(TICK_DECODE_WAIT)
                         } else {
@@ -101,6 +103,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         }
                     };
                     if !self
+                        .side
                         .remote
                         .as_ref()
                         .is_some_and(|r| r.session.accepts_packets())
@@ -123,6 +126,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // published tail before dropping any older receipt, then keep
                 // the old listener installed for its eligible common tasks.
                 let tail = self
+                    .side
                     .remote
                     .as_ref()
                     .map(|old| old.session.poll())
@@ -145,7 +149,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return Ok(());
             }
             *chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
-            if self.remote.is_none() {
+            if self.side.remote.is_none() {
                 break;
             }
         }
@@ -153,10 +157,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.finish_remote_disconnect(end)?;
             return Ok(());
         }
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             sunrise_level::spans::time("pr_forget", || self.forget_remote_packets(&mut forgotten));
         }
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.backlog_since = if events.is_empty() {
                 None
             } else {
@@ -178,7 +182,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             unreachable!("listener only retains the disconnect notice");
         };
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             remote.session.shutdown_and_wait();
         }
         self.reset_book_view();
@@ -214,14 +218,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// the chunk decoder/frame quota cannot split a bundle at a column packet.
     pub(in crate::game) fn handle_play_bundle(
         &mut self,
-        bundle: sunrise_client::net::CompletedBundle,
+        bundle: sunrise_client_lib::net::CompletedBundle,
         turn: &mut ListenerTurn,
     ) -> Result<()> {
-        use sunrise_client::net::{BundleMember, BundleStep};
+        use sunrise_client_lib::net::{BundleMember, BundleStep};
         use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
         use sunrise_sim::raw_payloads::{Classified, Incoming, dispatch_bundle};
-        let sunrise_client::net::CompletedBundle { packets, io } = bundle;
-        let Some(remote) = self.remote.as_ref() else {
+        let sunrise_client_lib::net::CompletedBundle { packets, io } = bundle;
+        let Some(remote) = self.side.remote.as_ref() else {
             return Ok(());
         };
         if !io.accepts_bundle() {
@@ -268,7 +272,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         self.record_packet_error(turn, || io.packet_error());
                         break;
                     }
-                    if self.remote.is_none() || turn.packet_error {
+                    if self.side.remote.is_none() || turn.packet_error {
                         break;
                     }
                 }
@@ -293,7 +297,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         Ok(Classified::Skipped | Classified::Raw(_)) => {}
                         Err(error) => {
                             log::warn!("Sunrise: bundle payload refused: {error}");
-                            if let Some(remote) = &self.remote {
+                            if let Some(remote) = &self.side.remote {
                                 remote.session.close_after_pending();
                             }
                             turn.end
@@ -303,7 +307,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 BundleStep::Transfer(packet) => self.handle_listener_transfer(packet, turn)?,
                 BundleStep::Close(notice) => {
-                    if let Some(remote) = &self.remote {
+                    if let Some(remote) = &self.side.remote {
                         remote.session.close_after_pending();
                     }
                     // Discard the old listener only after its remaining handlers run.
@@ -321,7 +325,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Result<()> {
         match event {
             Event::Status(s) => {
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.status = s;
                 }
             }
@@ -333,7 +337,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.set_registries(registries);
                 self.connection_joined();
                 self.close_dialogs();
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.joined = true;
                     r.profile = uuid;
                     r.profile_name = name.clone();
@@ -345,27 +349,27 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.begin_book_negotiation();
             }
             Event::Features(features) => {
-                if let Some(remote) = &mut self.remote {
+                if let Some(remote) = &mut self.side.remote {
                     remote.features = features.into();
                 }
             }
             Event::Brand(brand) => {
-                if let Some(remote) = &mut self.remote {
+                if let Some(remote) = &mut self.side.remote {
                     remote.brand = brand;
                 }
             }
             Event::QuietCommands => {
-                if let Some(remote) = &mut self.remote {
+                if let Some(remote) = &mut self.side.remote {
                     remote.quiet_commands = true;
                 }
             }
             Event::CustomBooks => {
-                if let Some(remote) = &mut self.remote {
+                if let Some(remote) = &mut self.side.remote {
                     remote.custom_books = true;
                 }
             }
             Event::FarTerrain(offer) => {
-                if let Some(remote) = &mut self.remote {
+                if let Some(remote) = &mut self.side.remote {
                     remote.far_terrain = Some(offer);
                 }
             }
@@ -386,7 +390,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // The server configuring us now (a proxy's next one)
                 // offers its own far terrain, or none, and announces its
                 // own features again.
-                if let Some(remote) = &mut self.remote {
+                if let Some(remote) = &mut self.side.remote {
                     remote.has_logical_player = false;
                     remote.viewed.clear();
                     remote.far_terrain = None;
@@ -396,12 +400,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     remote.pending_cauldrons.get_mut().clear();
                 }
                 self.clear_lod();
-                if let Some(remote) = &self.remote {
+                if let Some(remote) = &self.side.remote {
                     remote.session.reset_far_terrain();
                 }
                 self.remove_local_player_body();
                 self.side.post_effects.clear();
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.camera = None;
                 }
                 self.clear_spectated_entity_post_effect();
@@ -411,7 +415,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // unload comes before the configuration screen, not
                 // after the next login's load.
                 self.forget_all_remote_columns();
-                if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
+                if let Some(old) = self.side.remote.as_mut().and_then(|r| r.heard_level.take()) {
                     self.native_client_level_unload(&old);
                 }
                 // Minecraft.clearClientLevel -> updateLevelInEngines(null) stops
@@ -420,8 +424,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.native_lifecycle.begin_close();
                 self.native_lifecycle_world_closed();
                 let ticks = self.ticks;
-                if let Some(r) = self.remote.as_mut() {
-                    self.native_net.holds.borrow_mut().clear();
+                if let Some(r) = self.side.remote.as_mut() {
+                    self.side.packet_holds.borrow_mut().clear();
                     r.reconfiguring = Some(ticks);
                     r.logged_in = false;
                     r.chat_tree_received = false;
@@ -439,7 +443,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.hud_disconnected();
                 self.score.board = Default::default();
                 self.clear_waypoints();
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.clear_attachments();
                     r.players.clear();
                     r.tab_players.clear();
@@ -462,7 +466,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Event::PackPush(p) => self.handle_pack_push(p),
             Event::PackPop(id) => self.handle_pack_pop(id),
             Event::ServerLinks(links) => {
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.server_links = crate::game::server_links::trusted(links);
                 }
             }
@@ -472,7 +476,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Event::ClearDialog => self.clear_dialog(),
             Event::CodeOfConduct(text) => self.handle_code_of_conduct(text),
             Event::DecodeError(e) => {
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.decode_errors += 1;
                     if r.decode_errors <= 20 {
                         log::warn!("Sunrise: skipped undecodable packet {e}");
@@ -484,7 +488,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Event::Bundle(bundle) => self.handle_play_bundle(*bundle, turn)?,
             Event::RawPayload(incoming) => {
-                if let Some(remote) = self.remote.as_ref() {
+                if let Some(remote) = self.side.remote.as_ref() {
                     self.run_payload(remote.session.payload_endpoint(), *incoming);
                 }
             }
@@ -518,7 +522,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .pending_client_tasks
                 .0
                 .append(&mut self.side.client_tasks.0.take_turn());
-            let Some(remote) = self.remote.as_mut() else {
+            let Some(remote) = self.side.remote.as_mut() else {
                 break;
             };
             let mut events = std::mem::take(&mut remote.backlog);
@@ -534,6 +538,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .is_some_and(|since| since.elapsed() >= BACKLOG_LIMIT);
             self.dispatch_packet_turn(events, overdue, before_tick, &mut chunks)?;
             if self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|remote| !remote.backlog.is_empty())
@@ -557,7 +562,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         turn: &mut ListenerTurn,
         notice: impl FnOnce() -> Event,
     ) {
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             remote.session.close_after_pending();
         }
         turn.end.get_or_insert_with(notice);
@@ -608,7 +613,7 @@ pub(in crate::game) mod tests {
         with_client_game(|game| {
             let (_reader, _writer) = connect_play_test(game, |_, _| {});
             spawn_menu_test(game);
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             let format = remote.chunk_format.clone();
             let publish = remote.session.received_event_probe();
             publish(Event::Status(String::new()));
@@ -644,7 +649,7 @@ pub(in crate::game) mod tests {
 
             // Retire the synthetic chunk slot without relying on worker timing.
             assert!(matches!(
-                game.remote.as_mut().unwrap().backlog.pop_front(),
+                game.side.remote.as_mut().unwrap().backlog.pop_front(),
                 Some(Received::Chunk(..))
             ));
             game.poll_remote_before_tick().unwrap();

@@ -1,6 +1,6 @@
 use super::Game;
-use crate::game::server_side::lan_particles::decode_mod_particle;
-use crate::game::server_side::lan_particles::particle_position_source;
+use crate::game::lan_particle_data::decode_mod_particle;
+use crate::game::lan_particle_data::particle_position_source;
 use sunrise_client::particles::ExplosionParticle;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
@@ -125,7 +125,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.pvp_hides_particle(options.ty) {
             return;
         }
-        let Some(remote) = &mut self.remote else {
+        let Some(remote) = &mut self.side.remote else {
             return;
         };
         self.side.particles.0.handle_level_particles(
@@ -146,6 +146,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return decode_mod_particle(name, options);
         }
         let name = self
+            .side
             .remote
             .as_ref()?
             .builtin
@@ -156,7 +157,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         Some(match &p.data {
             None => ParticleOptions::simple(ty),
             Some(ParticleData::Item(stack)) => {
-                let remote = self.remote.as_ref()?;
+                let remote = self.side.remote.as_ref()?;
                 let stack = sunrise_sim::item_sync::from_network(
                     stack,
                     &remote.builtin,
@@ -258,6 +259,7 @@ mod tests {
                         ParticleType::BlockMarker,
                     ];
                     let registry = game
+                        .side
                         .remote
                         .as_ref()
                         .unwrap()

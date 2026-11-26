@@ -69,7 +69,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let additional = self
                     .discover_mod_packs(mod_api::PackType::ServerData)
                     .into_iter()
-                    .filter_map(|pack| pack.selection)
+                    .filter_map(|pack| {
+                        crate::game::client_side::pack_discovery_client::selection_with_icon(
+                            &pack.meta,
+                        )
+                    })
                     .collect();
                 self.side
                     .chat_ui
@@ -98,7 +102,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return Ok(());
         }
-        world_loading::world_data_used();
+        crate::game::world_preload::world_data_used();
         if self.defer_world_entry(PendingWorldEntry::Local {
             folder: folder.to_owned(),
             name: name.map(str::to_owned),
@@ -226,13 +230,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Native application termination can bypass the close request, so make the same
         // client-side worker abort explicit before the game-owned streaming state is dropped.
         self.side.streaming.abort_generation();
-        if let Some(server) = self.integrated.take() {
+        if let Some(server) = self.side.integrated.take() {
             // The server thread saves the world.
             server.stop()?;
             self.side.saved_for_exit = true;
             return Ok(());
         }
-        if let Some(mut remote) = self.remote.take() {
+        if let Some(mut remote) = self.side.remote.take() {
             // Minecraft.disconnect closes the connection, so the host sees a clean leave.
             remote.session.disconnect();
             self.side.saved_for_exit = true;
@@ -248,7 +252,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Pause-menu and death-screen exits use the normal world-close action.
         // A standalone replay owns a synthetic remote session, so it must go
         // through replay cleanup instead of being treated like a server.
-        if self.replay.playing() {
+        if self.side.replay.playing() {
             self.close_studio_replay();
             return Ok(());
         }

@@ -97,7 +97,8 @@ mod tests {
                         conn,
                         main: Option<ItemStack>,
                         off: Option<ItemStack>| {
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -149,7 +150,8 @@ mod tests {
             };
             let player = game.player(12).unwrap();
             let level = player.level(&*game).unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -215,7 +217,7 @@ mod tests {
                 ]
                 .map(|(uuid, name, item, expected)| {
                     let player = game.fake_player(level, uuid, name).unwrap();
-                    let hub = &mut game.lan.as_mut().unwrap().hub;
+                    let hub = &mut game.side.lan.as_mut().unwrap().hub;
                     let index = hub
                         .guests
                         .identity_index(uuid, player.entity().id())
@@ -311,7 +313,8 @@ mod tests {
                 let stone = (game as &dyn mod_api::Host)
                     .block_state_id("minecraft:stone")
                     .unwrap();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub

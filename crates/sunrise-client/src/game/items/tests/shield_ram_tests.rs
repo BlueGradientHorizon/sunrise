@@ -28,9 +28,15 @@ fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> crate::game::ServerGam
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     // Facing the goat, which stands to the south.
     game.yaw = 0.0;

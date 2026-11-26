@@ -1,7 +1,12 @@
 use super::Game;
-use super::block_entity_anims::AnimTick;
 use sunrise_client::{block_entity_anim::Ticker, block_entity_render::BlockAnim};
 use sunrise_core::nbt::Tag;
+
+/// What a client tick of the animated block entities shares between them.
+pub(in crate::game) struct AnimTick {
+    /// The conduits' frame blocks, copied when the first of them ticks.
+    pub(in crate::game) frames: Option<std::collections::HashSet<String>>,
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Start a tick of animated block entities, dropping stale owners and removed pots.

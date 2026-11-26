@@ -30,6 +30,7 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.start_audio_capture();

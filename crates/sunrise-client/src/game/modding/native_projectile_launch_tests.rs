@@ -166,7 +166,8 @@ fn owner_launch_reports_explicit_guest_to_launch_listeners() {
                 *observed.lock().unwrap(),
                 [(Some(12), "guest12".to_owned(), Some(12))]
             );
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

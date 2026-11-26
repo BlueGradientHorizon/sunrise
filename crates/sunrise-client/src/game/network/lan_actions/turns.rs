@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::stats::Stats;
+use sunrise_gameplay_common::stats::Stats;
 use sunrise_sim::lan::guest::Guest;
 
 /// The player that was in place before this guest's turn. Stats stay with the

@@ -65,7 +65,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !listened {
             return;
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let mut changes = Vec::new();

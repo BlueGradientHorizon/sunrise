@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_items::creative_catalog::{item_group_key, mod_item_group_key};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn click_creative(&mut self, right: bool) -> bool {
@@ -64,7 +65,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.equipment = Default::default();
                     self.craft_grid[..4].fill(None);
                     self.apply_equipment();
-                    if self.remote.is_some() {
+                    if self.side.remote.is_some() {
                         self.send_creative_slots();
                     }
                 } else {
@@ -171,14 +172,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 name.clone()
             };
         }
-        match sunrise_client::creative::item_group_key(&tab.id) {
+        match item_group_key(&tab.id) {
             Some(key) => self.translate_with_fallback(key, &tab.title),
             None => {
                 let own = self.translate_with_fallback(&tab.title, &tab.title);
-                self.translate_with_fallback(
-                    &sunrise_client::creative::mod_item_group_key(&tab.id),
-                    &own,
-                )
+                self.translate_with_fallback(&mod_item_group_key(&tab.id), &own)
             }
         }
     }

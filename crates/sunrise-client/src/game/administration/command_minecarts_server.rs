@@ -1,18 +1,7 @@
 //! Server-side `MinecartCommandBlock` execution, synced output, and edit packet handling.
-use super::{Game, commands::execute::Source, commands_common::Target, minecarts::Minecart};
+use super::{Game, commands::execute::Source, commands_common::Target};
 use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play;
-
-impl Minecart {
-    /// Snapshot the component codec used for saved output and failure-text admission checks.
-    pub(in crate::game) fn sync_command_output(&mut self) {
-        self.synced_output = self
-            .command
-            .last_output
-            .as_ref()
-            .map(|text| sunrise_game_data::scoreboard::component_tag(&text.component_view()));
-    }
-}
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `MinecartCommandBase.onUpdated`: copy command and last output into synched data.
@@ -120,7 +109,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: play::SetCommandMinecart,
     ) {
-        let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;

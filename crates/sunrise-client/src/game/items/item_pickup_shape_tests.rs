@@ -126,7 +126,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                 }
                 let joins: Vec<_> = game.dropped.iter().map(|item| item.join_seq()).collect();
                 let mut registrations =
-                    crate::game::entity::taken_pass_tests::SlotIdentities::default();
+                    crate::game::server_side::entity_server::taken_pass_tests::SlotIdentities::default();
                 for item in &mut game.dropped {
                     let id = item.id;
                     registrations.observe_one(item, level.epoch(), id);

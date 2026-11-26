@@ -66,7 +66,7 @@ pub(in crate::game) mod connected_advancement_save_tests {
         })));
         game.set_allow_commands(true);
         let _rx = super::world_spawn_sync_tests::host_for(&mut game);
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         host.hub.guests.update(0, |g| g.name = "Bob".into());
         host.owner = None;
         host.hub
@@ -92,18 +92,18 @@ pub(in crate::game) mod connected_advancement_save_tests {
             );
         }
         assert!(
-            !game.lan.as_ref().unwrap().hub.guests[0]
+            !game.side.lan.as_ref().unwrap().hub.guests[0]
                 .advancements
                 .has("minecraft:story/root", "crafting_table")
         );
         assert!(
-            !game.lan.as_ref().unwrap().hub.guests[0]
+            !game.side.lan.as_ref().unwrap().hub.guests[0]
                 .advancements
                 .has("minecraft:story/mine_stone", "get_stone")
         );
         command(&mut game, "advancement grant Bob only minecraft:story/root");
         let path = stats::player_json(&dir, "advancements", [0, 0, 0, 1]);
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         assert!(
             host.hub.guests[0]
                 .advancements
@@ -132,7 +132,7 @@ pub(in crate::game) mod connected_advancement_save_tests {
                     "advancement revoke Bob only minecraft:story/root",
                 );
             }
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert!(host.owner.is_none());
             assert_eq!(host.hub.guests.len(), 1);
             let guest = &host.hub.guests[0];
@@ -156,7 +156,7 @@ pub(in crate::game) mod connected_advancement_save_tests {
                     .any(|m| m.translation_key() == Some("commands.save.success")),
                 "actual save-success receipt"
             );
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].uuid, 1);
+            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].uuid, 1);
             assert_eq!(game.world.game_time, start_clock);
             let raw = fs::read_to_string(&path).unwrap();
             println!("phase={phase} connected_uuid=1 command={save} file={raw}");
@@ -236,7 +236,7 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
         })));
         game.set_allow_commands(true);
         let _rx = super::world_spawn_sync_tests::host_for(&mut game);
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         host.hub.guests.update(0, |g| g.name = "Bob".into());
         host.owner = None;
         host.hub
@@ -271,7 +271,7 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
             ("advancement revoke Bob everything", "save-all flush", true),
         ] {
             command(&mut game, action);
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert!(
                 !g.advancements_loaded,
                 "real new-player state stays unloaded"
@@ -297,10 +297,11 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
             } else {
                 assert_eq!(saved["minecraft:story/root"]["done"], true);
             }
-            assert!(!game.lan.as_ref().unwrap().hub.guests[0].advancements_loaded);
+            assert!(!game.side.lan.as_ref().unwrap().hub.guests[0].advancements_loaded);
         }
         // A valid loaded-empty value is saved too, independently of missing play.
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -310,15 +311,15 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
         assert_eq!(read().as_object().unwrap().len(), 1);
         command(&mut game, "advancement grant Bob only minecraft:story/root");
         let before = fs::read(&path).unwrap();
-        let play = game.lan.as_mut().unwrap().play.remove(&1).unwrap();
+        let play = game.side.lan.as_mut().unwrap().play.remove(&1).unwrap();
         command(&mut game, "save-all flush");
         assert_eq!(
             fs::read(&path).unwrap(),
             before,
             "missing play is not invented or serialized"
         );
-        assert!(!game.lan.as_ref().unwrap().play.contains_key(&1));
-        game.lan.as_mut().unwrap().play.insert(1, play);
+        assert!(!game.side.lan.as_ref().unwrap().play.contains_key(&1));
+        game.side.lan.as_mut().unwrap().play.insert(1, play);
         for excluded in ["unplaced", "released", "fake"] {
             let original = if excluded == "fake" {
                 let motion = sunrise_sim::motion::PlayerMotion::new(
@@ -326,7 +327,7 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
                     sunrise_core::geometry::Vec3::ZERO,
                 )
                 .unwrap();
-                let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+                let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
                 let g = &guests[0];
                 let fake = sunrise_sim::lan::guest::Guest::connectionless(
                     g.conn,
@@ -338,7 +339,8 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
                 );
                 Some(guests.replace(0, fake))
             } else {
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -356,15 +358,21 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
                 "{excluded}: connected advancement unchanged"
             );
             if let Some(original) = original {
-                game.lan.as_mut().unwrap().hub.guests.replace(0, original);
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .replace(0, original);
             } else {
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.placed = true;
                     g.released = false;
                 });
             }
         }
-        let mut host = game.lan.take().unwrap();
+        let mut host = game.side.lan.take().unwrap();
         host.play
             .get_mut(&1)
             .unwrap()
@@ -382,7 +390,7 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
                 .to_json(&game.adv.tree, sunrise_world::DATA_VERSION),
             read()
         );
-        game.lan = Some(host);
+        game.side.lan = Some(host);
 
         // Launch configuration cannot grant dedicated-only commands to another role.
         game.options.dedicated = Some(Vec::new());

@@ -3,6 +3,22 @@ use sunrise_client::particles::TrackingBody;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
+    /// `recreateFromPacket`: yRot and xRot from the packet, the body and head
+    /// both at its head yaw (LivingEntity).
+    #[allow(dead_code)]
+    pub(in crate::game) fn client_attachment_entity_exists(&self, holder: Holder) -> bool {
+        self.side
+            .remote
+            .as_ref()
+            .is_some_and(|remote| match holder {
+                Holder::Entity(id) => remote.entities.contains_key(&(id as i32)),
+                Holder::Player(uuid) => {
+                    remote.profile == uuid || remote.level_players.values().any(|p| *p == uuid)
+                }
+                _ => false,
+            })
+    }
+
     pub(in crate::game::client_side) fn detach_remote_tracking_entity(&mut self, id: i32) {
         let target = TrackingTarget::Entity(id);
         if self.side.particles.0.has_tracking_target(target) {
@@ -19,10 +35,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         id: i32,
     ) -> Option<TrackingBody> {
-        let remote = self.remote.as_ref()?;
+        let remote = self.side.remote.as_ref()?;
         if let Some(row) = remote.general.rows.get(&id) {
             let (width, height) =
-                super::super::general::general_type_catalog().dimensions(row.type_slot);
+                crate::game::general::general_type_catalog().dimensions(row.type_slot);
             return Some(TrackingBody {
                 feet: row.position,
                 width,
@@ -55,7 +71,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             "minecraft:armor_stand" => {
                 let stand = self.armor_stands.iter().find(|stand| stand.id == eid)?;
-                (width, height) = super::super::entity::armor_stand_size(stand);
+                (width, height) = crate::game::entity::armor_stand_size(stand);
                 let Vec3 { x, y, z } = stand.position;
                 [x, y, z]
             }
@@ -101,7 +117,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         id: i32,
     ) -> Option<[f64; 3]> {
-        if let Some(row) = self.remote.as_ref().and_then(|r| r.general.rows.get(&id)) {
+        if let Some(row) = self
+            .side
+            .remote
+            .as_ref()
+            .and_then(|r| r.general.rows.get(&id))
+        {
             return Some(row.position);
         }
         if let Some(entity) = self.side.interactions.get(&id) {
@@ -115,7 +136,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if dragon.id == eid {
                 return Some([dragon.position.x, dragon.position.y, dragon.position.z]);
             }
-            if let Some(part) = crate::game::dragon::dragon_part_index(dragon.id, eid) {
+            if let Some(part) = crate::game::dragon_common::dragon_part_index(dragon.id, eid) {
                 let p = dragon.parts[part].0;
                 return Some([p.x, p.y, p.z]);
             }
@@ -216,7 +237,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let [yaw, pitch, head] = rotation;
         let at = Vec3::new(position[0], position[1], position[2]);
         let mob_type = if kind == "minecraft:player" {
-            self.remote.as_ref().and_then(|r| r.player_type.clone())
+            self.side
+                .remote
+                .as_ref()
+                .and_then(|r| r.player_type.clone())
         } else {
             self.res.mob_types().get(kind).cloned()
         };
@@ -235,7 +259,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let mut mob = Mob::new_remote(id as u32, t, at, head);
             super::super::remote_mob_data::client_defaults(&mut mob);
             if kind == "minecraft:player"
-                && let Some(r) = self.remote.as_ref()
+                && let Some(r) = self.side.remote.as_ref()
             {
                 mob.extra.spectator = r.remote_player_info_game_mode(id) == Some(SPECTATOR);
             }
@@ -245,7 +269,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.mobs.retain(|m| m.id != id as u32);
             self.mobs.push(mob);
         }
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             // A new entity has a new interpolation handler (a mob's or an
             // armor stand's), even under an id the server used before.
             r.stepped.remove(&id);

@@ -118,7 +118,7 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             }
 
             // Stage block updates in the same adapter the fire-odds Part reads.
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             let campfire = [4, 65, 8];
             let at = BlockPos::new(campfire[0], campfire[1], campfire[2]);
             let campfire_state = registry.default_state("minecraft:campfire").unwrap();
@@ -177,7 +177,7 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             assert_eq!(game.world.block(at.x, at.y, at.z), campfire_state);
             assert_eq!(game.block_entity(client_level, campfire), Some(entity));
 
-            super::growth::install_live_features(
+            crate::game::growth_features::install_live_features(
                 &game.res,
                 &game.pack,
                 &game.options,

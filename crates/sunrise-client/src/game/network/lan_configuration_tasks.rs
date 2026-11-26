@@ -55,7 +55,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if request.session.closed() {
                 continue;
             }
-            self.lan
+            self.side
+                .lan
                 .as_mut()?
                 .hub
                 .lan
@@ -75,7 +76,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .map_or(Ok(None), |error| Err(error.to_owned()))
                 })
             {
-                self.lan
+                self.side
+                    .lan
                     .as_mut()?
                     .hub
                     .lan
@@ -85,6 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let mut after = None;
         while let Some((connection, session)) = self
+            .side
             .lan
             .as_ref()?
             .hub
@@ -95,6 +98,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             after = Some(connection);
             if session.closed() {
                 let retired = self
+                    .side
                     .lan
                     .as_mut()?
                     .hub
@@ -108,6 +112,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let (completed, turn) = session.turn();
                 if let Some(ordinal) = completed {
                     let retired = self
+                        .side
                         .lan
                         .as_mut()?
                         .hub
@@ -118,6 +123,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 let Some(turn) = turn else { break };
                 let Some(mut task) = self
+                    .side
                     .lan
                     .as_mut()?
                     .hub
@@ -155,12 +161,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 });
                 let mut task = Some(task);
                 if commit {
-                    self.lan.as_mut()?.hub.lan.configuration_tasks.restore_task(
-                        connection,
-                        &session,
-                        turn.ordinal,
-                        &mut task,
-                    );
+                    self.side
+                        .lan
+                        .as_mut()?
+                        .hub
+                        .lan
+                        .configuration_tasks
+                        .restore_task(connection, &session, turn.ordinal, &mut task);
                 }
                 drop(task);
                 // Only a committed start can immediately open the next turn.
@@ -223,7 +230,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     fn tick_prepare_spawn(&mut self, task: SpawnTask) -> Result<SpawnTask, String> {
         let task = match task {
             SpawnTask::Start(player) => {
-                let host = self.lan.as_ref().ok_or("Server closed")?;
+                let host = self.side.lan.as_ref().ok_or("Server closed")?;
                 let shapes = host.hub.config.levels;
                 let owner = host
                     .owner
@@ -358,7 +365,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         connection: ConfigurationConnection,
     ) -> Option<&Arc<Session>> {
-        self.lan
+        self.side
+            .lan
             .as_ref()?
             .hub
             .lan

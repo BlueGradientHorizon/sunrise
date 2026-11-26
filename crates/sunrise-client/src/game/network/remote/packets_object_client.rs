@@ -5,6 +5,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::AddEntity`: admit the entity before replacing an old ID.
     pub(in crate::game::client_side) fn apply_add_entity_packet(&mut self, p: play::AddEntity) {
         let kind = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| {
@@ -17,6 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // `createEntityFromPacket`: an unlisted PlayerInfo still supplies its profile.
         if kind == "minecraft:player"
             && !self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.tab_players.contains_key(&p.uuid))
@@ -33,13 +35,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let rotation = [p.yaw, p.pitch, p.head_yaw].map(sunrise_protocol::buf::unpack_degrees);
         // ClientLevel.addEntity discards the old entity before inserting the new one.
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.general.rows.contains_key(&p.id))
         {
             self.apply_remove_entities_packet(play::RemoveEntities { ids: vec![p.id] });
         }
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             // ClientLevel.addEntity: an id it holds already is removed
             // and added again, after the player.
             r.ticked_before_player.remove(&(p.id as u32));
@@ -87,7 +90,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.initialize_entity(holder, &kind);
         let replace = self.tracks_remote_entity(p.id);
         self.spawn_entity(p.id, &kind, p.position, rotation);
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.cart_lerps.remove(&p.id);
             r.lerps.remove(&p.id);
         }
@@ -98,7 +101,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.remote_motion(p.id, p.velocity);
         if self.minecart_improvements()
             && self.carts.iter().any(|c| c.id == p.id as u32)
-            && let Some(r) = self.remote.as_mut()
+            && let Some(r) = self.side.remote.as_mut()
         {
             r.cart_lerps.insert(p.id, CartLerp::new());
         }
@@ -118,14 +121,24 @@ impl Game<'_, crate::game::client_side::ClientState> {
             play::PositionPath::Stepped(steps) => Path::Stepped(steps),
         };
         // handleEntityPositionSync: the position codec's base is set.
-        if let Some(t) = self.remote.as_mut().and_then(|r| r.entities.get_mut(&p.id)) {
+        if let Some(t) = self
+            .side
+            .remote
+            .as_mut()
+            .and_then(|r| r.entities.get_mut(&p.id))
+        {
             t.codec_base = path.end();
         }
         self.remote_position_sync_and_file(p.id, path, p.yaw, p.pitch, p.on_ground);
     }
     /// `C::HurtAnimation`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_hurt_animation_packet(&mut self, p: play::HurtAnimation) {
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+        if self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == p.id)
+        {
             // Player.animateHurt: the tilt turns around the yaw.
             if let Some(pl) = self.player.as_mut() {
                 pl.health.animate_hurt_dir(p.yaw);
@@ -168,7 +181,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for &id in &p.ids {
             self.forget_remote_entity_construction(id);
             self.forget_client_collider(id);
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 if let Some(uuid) = r.level_players.remove(&id) {
                     r.attachments.remove(&Holder::Player(uuid));
                 }
@@ -184,7 +197,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::RotateHead`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_rotate_head_packet(&mut self, p: play::RotateHead) {
         // ClientPacketListener.handleRotateMob: lerpHeadTo(yHeadRot, 3).
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             let yaw = sunrise_protocol::buf::unpack_degrees(p.head_yaw);
             r.head_lerps.insert(p.id, (yaw, 3));
         }
@@ -197,7 +210,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // ClientPacketListener.handleEntityLinkPacket: who holds a mob's
         // lead (this player, another player, a mob or a fence knot), for
         // the rope.
-        let me = self.remote.as_ref().map(|r| r.entity_id);
+        let me = self.side.remote.as_ref().map(|r| r.entity_id);
         use sunrise_sim::mobs::leash::Holder;
         let holder = match p.dest {
             0 => None,
@@ -225,7 +238,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         p: play::SetEntityMotion,
     ) -> Result<()> {
         // ClientPacketListener.handleSetEntityMotion: knockback on this player.
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+        if self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == p.id)
+        {
             if let Some(pl) = self.player.as_mut() {
                 pl.velocity = Vec3::new(p.velocity[0], p.velocity[1], p.velocity[2]);
             }
@@ -244,7 +262,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             kind: p.kind.clamp(0, 255) as u8,
             duration: p.duration,
         };
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+        if self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == p.id)
+        {
             self.swing_hand(hand, animation);
         } else if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
             m.swing_hand_modified(hand == Hand::Off, animation);
@@ -281,6 +304,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (None, Some(s)) => Some([s.x, s.y, s.z]),
             (None, None)
                 if self
+                    .side
                     .remote
                     .as_ref()
                     .is_some_and(|r| r.entity_id == p.player) =>
@@ -310,6 +334,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // ItemPickupParticle toward the collector (this player, another one or a mob).
         let collector = if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.entity_id == p.player)
@@ -392,7 +417,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             );
             // The tracked endpoint stays the server's latest, for the relative
             // teleports that come once nobody here drives it.
-            if let Some(t) = self.remote.as_mut().and_then(|r| r.entities.get_mut(&p.id)) {
+            if let Some(t) = self
+                .side
+                .remote
+                .as_mut()
+                .and_then(|r| r.entities.get_mut(&p.id))
+            {
                 t.position = position;
             }
             self.teleport_driven_vehicle(position, rotation, delta, p.on_ground);
@@ -406,6 +436,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (base, now_yaw, now_pitch, old_pos, old_yaw, old_pitch, now_vel) =
             if let Some(m) = self.mob_index.get(&self.mobs, p.id as u32) {
                 let at = self
+                    .side
                     .remote
                     .as_ref()
                     .and_then(|r| r.stepped.get(&p.id))
@@ -436,6 +467,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     pitch: a.pitch,
                 };
                 let at = self
+                    .side
                     .remote
                     .as_ref()
                     .and_then(|r| r.stepped.get(&p.id))
@@ -469,7 +501,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     c.previous_pitch,
                     [c.velocity.x, c.velocity.y, c.velocity.z],
                 )
-            } else if let Some(t) = self.remote.as_ref().and_then(|r| r.entities.get(&p.id)) {
+            } else if let Some(t) = self
+                .side
+                .remote
+                .as_ref()
+                .and_then(|r| r.entities.get(&p.id))
+            {
                 (
                     t.position,
                     t.yaw,

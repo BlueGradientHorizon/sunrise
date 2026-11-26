@@ -20,7 +20,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// What the players' viewed areas ask of level `dim`: None for nothing, else whether one of
     /// them ticks.
     pub(in crate::game::server_side) fn viewed_level(&self, dim: Dim) -> Option<bool> {
-        self.lan.as_ref()?.hub.viewed_level(dim.id())
+        self.side.lan.as_ref()?.hub.viewed_level(dim.id())
     }
 
     /// Whether level `dim` needs a view pass when it is not ticked: areas name it, or a client
@@ -28,6 +28,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn needs_view_pass(&self, dim: Dim) -> bool {
         self.viewed_level(dim).is_some()
             || self
+                .side
                 .lan
                 .as_ref()
                 .is_some_and(|h| h.hub.viewed_open(dim.id()))
@@ -72,7 +73,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let spawn = self.world_spawn_position();
         let clock_rate = self.network_clock_rate();
         let sea_level = self.end.locator().map_or(63, |terrain| terrain.sea_level());
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let mut ctx = TickCtx {
@@ -100,16 +101,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// level, so no player rides one.
     fn view_pass_states(&mut self) -> sunrise_sim::lan::entity::States {
         let mut states = sunrise_sim::lan::entity::States::default();
-        if !self.lan.as_ref().is_some_and(|h| h.hub.viewed_here()) {
+        if !self.side.lan.as_ref().is_some_and(|h| h.hub.viewed_here()) {
             return states;
         }
         self.lan_assign_ids();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return states;
         };
         let mut riding = std::mem::take(&mut host.hub.riding);
         self.lan_riding(&[], &mut riding);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.riding = riding;
         }
         self.lan_entities(&mut states, true, 0, None);
@@ -163,6 +164,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -251,7 +253,7 @@ pub(in crate::game) mod tests {
         guest.loaded = true;
         guest.dimension = Dim::Overworld.id().into();
         guest.max_unacknowledged = 1000;
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         // Its client was told at Login the levels the server has now.
         guest.viewed.logged_in_with(hub.level_keys());
         hub.guests.push(guest);
@@ -361,7 +363,7 @@ pub(in crate::game) mod tests {
             radius: 1,
             mode,
         };
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         hub.set_viewed_areas(2, "test:portal", vec![area]).unwrap();
         let mut all = Sent::default();
         let deadline = Instant::now() + Duration::from_secs(120);
@@ -426,7 +428,7 @@ pub(in crate::game) mod tests {
         let mut resources = None;
         let (mut game, rx, all) = stream_the_nether(&mut resources, "view-pass-withdraw");
         assert_eq!(all.chunks, square());
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         hub.set_viewed_areas(2, "test:portal", Vec::new()).unwrap();
         let nether = Dim::Nether.id();
         assert!(hub.viewed_tickets(nether).is_empty() && hub.viewed_extra(nether).is_empty());
@@ -434,7 +436,7 @@ pub(in crate::game) mod tests {
         assert!(game.needs_view_pass(Dim::Nether), "its view is still open");
         // The first pass after the withdrawal starts the linger at this hub tick.
         game.tick_server(false).unwrap();
-        let start = game.lan.as_ref().unwrap().hub.ticks;
+        let start = game.side.lan.as_ref().unwrap().hub.ticks;
         assert!(sent(&rx).forgotten.is_empty());
         let mut forgot_at = None;
         let mut last = Sent::default();
@@ -442,7 +444,7 @@ pub(in crate::game) mod tests {
             game.tick_server(false).unwrap();
             let s = sent(&rx);
             if !s.forgotten.is_empty() {
-                forgot_at = Some(game.lan.as_ref().unwrap().hub.ticks - start);
+                forgot_at = Some(game.side.lan.as_ref().unwrap().hub.ticks - start);
                 last = s;
                 break;
             }
@@ -455,7 +457,7 @@ pub(in crate::game) mod tests {
         last.forgotten.sort_unstable();
         assert_eq!(last.forgotten, square());
         assert!(last.closed, "closed once nothing of it is left");
-        let hub = &game.lan.as_ref().unwrap().hub;
+        let hub = &game.side.lan.as_ref().unwrap().hub;
         let viewer = hub.guests.iter().find(|g| g.uuid == 2).unwrap();
         assert!(viewer.viewed.view(nether).is_none());
         assert!(!hub.viewed.active());
@@ -544,6 +546,7 @@ pub(in crate::game) mod tests {
         assert!(t.events.contains(&3), "its death, wrapped: {:?}", t.events);
         assert!(t.removed, "removed, wrapped");
         let viewer = game
+            .side
             .lan
             .as_ref()
             .unwrap()
@@ -728,7 +731,8 @@ pub(in crate::game) mod tests {
             let out = host_with_viewer(&mut game, || {
                 PlayerSender::payload_executor_test_sender(transport)
             });
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -848,7 +852,7 @@ pub(in crate::game) mod tests {
 
     /// The viewer, a server player.
     fn viewer<'h>(game: &'h crate::game::ServerGame<'_>) -> &'h sunrise_sim::lan::guest::Guest {
-        let hub = &game.lan.as_ref().unwrap().hub;
+        let hub = &game.side.lan.as_ref().unwrap().hub;
         hub.guests.iter().find(|g| g.uuid == 2).unwrap()
     }
 
@@ -891,7 +895,7 @@ pub(in crate::game) mod tests {
         let overworld: Vec<(i32, i32)> = (-1..=1)
             .flat_map(|x| (-1..=1).map(move |z| (x, z)))
             .collect();
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         let i = hub.guests.iter().position(|g| g.uuid == 2).unwrap();
         hub.guests
             .update(i, |g| g.sent_chunks = overworld.iter().copied().collect());

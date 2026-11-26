@@ -53,7 +53,7 @@ pub(in crate::game) fn install_dedicated_holders(
         levels: game.side.level_shapes,
         level_seeds: game.side.levels.0.runtime.seeds(),
     };
-    game.lan = Some(LanHost::for_test(Hub::new(
+    game.side.lan = Some(LanHost::for_test(Hub::new(
         lan,
         sync,
         encoder,

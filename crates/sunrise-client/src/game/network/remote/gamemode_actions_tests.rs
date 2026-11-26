@@ -15,6 +15,7 @@ pub(in crate::game) fn add_entity(
     position: [f64; 3],
 ) {
     let kind = game
+        .side
         .remote
         .as_ref()
         .unwrap()

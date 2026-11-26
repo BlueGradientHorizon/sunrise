@@ -1,7 +1,7 @@
 //! `living_knockback` heard by a trait mod through the game's own bridge: who the hook names
 //! as the attacker, what the attacker holds, what a mod may cancel, and thorns' wearer.
-use super::entity::damage_level_of;
 use super::native_entity_refs::tests::with_game;
+use crate::game::server_side::entity_server::damage_level_of;
 use mod_api::{
     self, HitHost, Hooks, HurtSource, LevelRandomHost, LivingIncomingDamageEvent,
     LivingKnockbackEvent,
@@ -414,7 +414,8 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         super::native_guest_turn_tests::with_guests(|game| {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -427,7 +428,8 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
                 sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
                     .unwrap();
             victim.entity_id = 13;
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

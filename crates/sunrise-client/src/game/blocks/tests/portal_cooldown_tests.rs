@@ -42,6 +42,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();
@@ -100,7 +101,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     game.handle_entity_portals();
     game.handle_portals(false, true);
     for id in &ids {
-        assert_eq!(game.portals.entities.get(id).unwrap().cooldown, 5);
+        assert_eq!(game.side.portals.entities.get(id).unwrap().cooldown, 5);
     }
     game.side
         .tickets
@@ -125,7 +126,8 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
         runtime.push(
             ids.iter()
                 .map(|id| {
-                    game.portals
+                    game.side
+                        .portals
                         .entities
                         .get(id)
                         .map_or(0, |state| state.cooldown)
@@ -142,19 +144,23 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
         .unwrap();
     game.world.set(entry.x, entry.y, entry.z, end).unwrap();
     for id in &ids {
-        game.portals.entities.insert(*id, PortalState::default());
+        game.side
+            .portals
+            .entities
+            .insert(*id, PortalState::default());
     }
     game.find_entity_portals();
     game.handle_vehicle_portals();
     game.handle_entity_portals();
     assert_eq!(
-        game.portals.arrivals.len(),
+        game.side.portals.arrivals.len(),
         4,
         "all four production travellers departed"
     );
     let mut handoff = Vec::new();
     for kind in kinds {
         let arrival = game
+            .side
             .portals
             .arrivals
             .iter()
@@ -165,7 +171,11 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
         game.load_listed(kind, None, None, restored.tag).unwrap();
         let id = game.side.next_entity;
         assert_eq!(
-            game.portals.entities.get(&id).map_or(0, |s| s.cooldown),
+            game.side
+                .portals
+                .entities
+                .get(&id)
+                .map_or(0, |s| s.cooldown),
             counter
         );
         handoff.push(counter);

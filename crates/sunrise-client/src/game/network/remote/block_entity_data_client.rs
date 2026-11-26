@@ -15,6 +15,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let key = (pos[0], pos[1], pos[2]);
         let Some(name) = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.builtin.get("minecraft:block_entity_type")?.name(kind))
@@ -31,7 +32,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 for (k, v) in ["x", "y", "z"].into_iter().zip(pos) {
                     full.insert(k.into(), Tag::Int(v));
                 }
-                crate::game::spill::put_saved_entity(&mut self.world, pos, Tag::Compound(full));
+                crate::game::spill_common::put_saved_entity(
+                    &mut self.world,
+                    pos,
+                    Tag::Compound(full),
+                );
                 // The section is drawn again with the pot's sherds.
                 let state = self.world.block(pos[0], pos[1], pos[2]);
                 let _ = self.world.set(pos[0], pos[1], pos[2], state);

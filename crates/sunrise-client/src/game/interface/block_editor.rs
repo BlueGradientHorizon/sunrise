@@ -283,7 +283,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match outcome {
             Outcome::Stay => {}
             Outcome::Send(packet) => {
-                if self.remote.is_some() {
+                if self.side.remote.is_some() {
                     self.send(packet);
                 } else {
                     log::warn!("Sunrise: ignoring block editor submit without a server connection");

@@ -32,6 +32,7 @@ fn client_menu_close_and_button_click_reach_the_server() {
         assert!(!inventory.close(game));
         assert!(!inventory.click_button(game, 0));
         let loom = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -68,7 +69,7 @@ fn client_menu_close_and_button_click_reach_the_server() {
             panic!("expected the close");
         };
         assert_eq!(close.container, 5);
-        assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
+        assert!(game.side.remote.as_ref().unwrap().menu.as_ref().is_none());
         // Closed: the handle is stale and nothing more is sent.
         assert!(!menu.close(game));
         assert!(!menu.click_button(game, 3));
@@ -95,8 +96,8 @@ fn client_menu_close_and_button_click_reach_the_server() {
 #[ignore = "daily"]
 fn client_menu_reads_follow_packets_and_lifetimes() {
     use crate::game::Screen;
+    use crate::game::client_side::remote_client::RemoteDimensionEntry;
     use crate::game::native_entity_refs::tests::with_client_game;
-    use crate::game::remote::RemoteDimensionEntry;
     use sunrise_client::level_loading::Reason;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
@@ -158,7 +159,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         game.side.screen = Screen::Creative;
         assert!(!menu.click(game, &[pickup(36)]));
         game.side.screen = screen;
-        game.remote.as_mut().unwrap().state_id = 17;
+        game.side.remote.as_mut().unwrap().state_id = 17;
 
         // MapPostProcessing.SCALE has a stream codec but no persistent codec to hash.
         let mut unhashable = Stack::new(game.item_id("minecraft:filled_map"), 1);
@@ -285,6 +286,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         .unwrap();
         assert_eq!(game.menu_carried(menu).unwrap().unwrap().count, 3);
         let crafting_id = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -344,6 +346,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
             .unwrap();
         assert_ne!(inventory, menu);
         let chest_id = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -423,7 +426,8 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
             .set_read_timeout(Some(std::time::Duration::from_millis(20)))
             .unwrap();
         assert!(reader.recv().unwrap_err().is_timed_out());
-        game.remote
+        game.side
+            .remote
             .as_mut()
             .unwrap()
             .menu
@@ -435,7 +439,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         );
         assert_eq!(game.menu_slot_count(inventory), None);
         assert_eq!(game.menu_slot_count(chest), None);
-        game.remote.as_mut().unwrap().menu.set(None);
+        game.side.remote.as_mut().unwrap().menu.set(None);
         let before_replacement = game
             .local_player()
             .and_then(|player| game.player_container_menu(player))
@@ -460,7 +464,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "MenuReadTest").unwrap();
         game.enter_remote_dimension(&other, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         remote.profile = 42;

@@ -8,7 +8,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !matches!(self.side.screen, Screen::Inventory | Screen::Creative) {
             return None;
         }
-        self.remote.as_ref().filter(|remote| remote.has_level())?;
+        self.side
+            .remote
+            .as_ref()
+            .filter(|remote| remote.has_level())?;
         let name = self.native_client_menu_name(menu)?;
         let content = mod_menu_type(name);
         let count = match content {
@@ -29,7 +32,7 @@ fn layout_kinds(
 ) -> Vec<MenuSlotKind> {
     use MenuSlotKind::*;
     let mut kinds = vec![Other; count];
-    if content.is_none() && crate::game::remote_station_kind(name).is_some() {
+    if content.is_none() && crate::game::remote::inventory::remote_station_kind(name).is_some() {
         return kinds;
     }
     for (slot, kind) in kinds.iter_mut().enumerate() {
@@ -296,7 +299,7 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "SlotKindsTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -322,7 +325,8 @@ mod tests {
                 ("sunrise:mount1", 41),
                 ("minecraft:anvil", 39),
             ] {
-                game.remote
+                game.side
+                    .remote
                     .as_mut()
                     .unwrap()
                     .menu
@@ -335,16 +339,17 @@ mod tests {
                     assert_eq!(kinds, vec![Other; 39]);
                 }
             }
-            game.remote
+            game.side
+                .remote
                 .as_mut()
                 .unwrap()
                 .menu
                 .set(Some((4, "test:missing".into())));
-            let remote = game.remote.as_ref().unwrap();
+            let remote = game.side.remote.as_ref().unwrap();
             let missing = mod_api::__private::game::menu_ref(player, 4, remote.menu.generation);
             assert_eq!(game.menu_slot_kinds(missing), None);
             assert_eq!(game.menu_slot_count(missing), None);
-            game.remote = None;
+            game.side.remote = None;
             assert_eq!(game.menu_slot_kinds(menu), None);
         });
     }

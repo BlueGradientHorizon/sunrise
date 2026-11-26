@@ -396,7 +396,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return context_from_menu(live, menu.uuid, menu.pos());
         }
         let layout = menu.layout;
-        let guest = self.lan.as_ref().and_then(|host| host.hub.guest(menu.conn));
+        let guest = self
+            .side
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(menu.conn));
         let mut full_items = resized_items(items, layout.slots);
         if let Some(l) = layout.links
             && let Some(links) = guest
@@ -414,7 +418,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut lifted = Menu::new(sunrise_sim::menu::Kind::Mod(layout));
         let mut env = self.menu_env();
         env.loop_context = &self.loop_context;
-        if let Some(host) = self.lan.as_ref()
+        if let Some(host) = self.side.lan.as_ref()
             && let Some(guest) = guest
         {
             env.player = Some(guest.uuid);
@@ -521,7 +525,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if let Some(player) = self.player(menu.uuid) {
                     self.journal_menus(player);
                 }
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 let Some(gi) = host.hub.guests.connection_index(menu.conn) else {
@@ -588,6 +592,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match menu.backing {
             SlotChangedBacking::Owned { generation } => {
                 let Some(seen) = self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.guest(menu.conn))
@@ -617,7 +622,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.transactions.is_empty() {
             self.journal_menu_click(conn);
         }
-        if let Some(host) = self.lan.as_mut()
+        if let Some(host) = self.side.lan.as_mut()
             && let Some(gi) = host.hub.guests.connection_index(conn)
             && host.hub.guests[gi].menu_generation == generation
         {
@@ -631,6 +636,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     fn record_block_slot_changed_seen(&mut self, pos: Pos, items: &[Option<ItemStack>]) {
         let viewers: Vec<(u32, usize)> = self
+            .side
             .lan
             .as_ref()
             .map(|host| {
@@ -653,7 +659,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.journal_menu_click(conn);
             }
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         for (conn, slots) in viewers {
@@ -680,7 +686,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Vec<Option<ItemStack>>,
         Vec<Option<ItemStack>>,
     )> {
-        let guest = self.lan.as_ref()?.hub.guest(conn)?;
+        let guest = self.side.lan.as_ref()?.hub.guest(conn)?;
         let open = guest.menu.as_ref()?;
         let layout = open.mod_type?;
         if !mod_api::__private::menu_listens(mod_api::HookId::MenuSlotChanged, layout.id) {
@@ -756,7 +762,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return;
         }
-        let found = self.lan.as_ref().and_then(|host| {
+        let found = self.side.lan.as_ref().and_then(|host| {
             let g = host
                 .hub
                 .guests
@@ -806,7 +812,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return;
         }
-        let viewers = self.lan.as_ref().map_or_else(Vec::new, |host| {
+        let viewers = self.side.lan.as_ref().map_or_else(Vec::new, |host| {
             listening_block_menu_viewers(&host.hub.guests, |g| host.hub.here(g), pos)
         });
         let Some(rep) = viewers

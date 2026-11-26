@@ -185,13 +185,19 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                     .recipes
                     .contains("recipe_probe:literal")
             );
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.game_mode = 0;
-                guest.carried = None;
-                guest.inventory = vec![Some(ItemStack::new("minecraft:stone", 64)); 36];
-                guest.craft_grid = Default::default();
-                guest.craft_grid[0] = Some(ItemStack::new("minecraft:stick", 2));
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.game_mode = 0;
+                    guest.carried = None;
+                    guest.inventory = vec![Some(ItemStack::new("minecraft:stone", 64)); 36];
+                    guest.craft_grid = Default::default();
+                    guest.craft_grid[0] = Some(ItemStack::new("minecraft:stick", 2));
+                });
             game.lan_guest_packet(
                 12,
                 sunrise_protocol::packets::play::Serverbound::ContainerClick(
@@ -206,7 +212,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                     },
                 ),
             );
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 guest.carried.as_ref().map(|s| (&*s.item, s.count)),
                 Some(("minecraft:diamond", 3))

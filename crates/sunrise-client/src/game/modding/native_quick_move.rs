@@ -2,9 +2,9 @@
 //! (`native_menu_quick_move`, `AbstractContainerMenu.quickMoveStack`) before
 //! the game's own routing.
 use super::api_values::{TryIntoApi, TryIntoEngine};
-use super::native_hooks::ResidentBlockEntityAccess;
 use super::slot_changes::{SlotChangedBacking, SlotChangedMenu, SlotSnapshots};
 use super::{BlockStateId, Game, transactions::After};
+use crate::game::server_side::native_hooks_server::block_entity_tick::ResidentBlockEntityAccess;
 use mod_api::{BlockEntityRef, BlockEntityScope, BlockEntityTypeKey};
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
@@ -85,13 +85,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         p: &play::ContainerClick,
         live: Option<&Menu>,
     ) -> Option<bool> {
-        use super::lan_menus::ClickReply;
+        use crate::game::lan_menu_data::ClickReply;
         if p.input != QUICK_MOVE
             || !mod_api::__private::has_part_hook(mod_api::HookId::MenuQuickMove)
         {
             return None;
         }
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let g = host.hub.guest(conn)?;
         let menu = g.menu.as_ref().filter(|m| {
             p.container != 0
@@ -154,6 +154,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             game.run_mod_quick_move(&admitted, menu_type, kind, (subject, state), quick_move)
         });
         if !self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -175,7 +176,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         // The mod menu type's engine starts over from the block entity next click.
-        if let Some(play) = self.lan.as_mut().and_then(|host| host.menus.get_mut(&conn))
+        if let Some(play) = self
+            .side
+            .lan
+            .as_mut()
+            .and_then(|host| host.menus.get_mut(&conn))
             && play
                 .crafting
                 .machine
@@ -358,6 +363,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if let Some(layout) = changed_menu
                     && let Some(before) = before
                     && let Some(uuid) = game
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
@@ -449,7 +455,7 @@ impl Admitted {
         size: usize,
         window: i32,
     ) -> Option<Self> {
-        let guest = game.lan.as_ref()?.hub.guest(conn)?;
+        let guest = game.side.lan.as_ref()?.hub.guest(conn)?;
         guest.menu.as_ref()?;
         Some(Self {
             conn,
@@ -467,7 +473,12 @@ impl Admitted {
         &self,
         game: &Game<'_, crate::game::server_side::ServerState>,
     ) -> bool {
-        let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(self.conn)) else {
+        let Some(guest) = game
+            .side
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(self.conn))
+        else {
             return false;
         };
         guest.menu_generation == self.menu_generation

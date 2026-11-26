@@ -1,13 +1,14 @@
 //! The creaking heart block entity in the game: `mobs::creaking_heart`
 //! ticks each heart (spawning, letting go of and bleeding for its creaking)
 //! and this applies what it reports to the world, the mobs and the speakers.
-use super::{Game, creatures::seen, persist::EntityUuids};
+use super::{Game, creatures::seen};
 use std::sync::Arc;
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_gameplay_common::entity_uuids::EntityUuids;
 use sunrise_world::registry::BlockStateId;
 use {
     sunrise_game_data::Result, sunrise_level::chunk_map::ChunkMap,
@@ -18,17 +19,6 @@ use {
 };
 
 pub(in crate::game) type Pos = (i32, i32, i32);
-
-/// Comparator input of a heart (`getAnalogOutputSignal`).
-pub(in crate::game) fn heart_signal(
-    world: &sunrise_level::world::World,
-    pos: BlockPos,
-) -> Option<i32> {
-    match world.block_entities.get(&(pos.x, pos.y, pos.z))? {
-        BlockEntity::CreakingHeart(h) => Some(h.output_signal),
-        _ => None,
-    }
-}
 
 /// The game's mobs as a heart sees them, taken out of the game for the tick.
 pub(in crate::game) struct Host<'a> {
@@ -123,7 +113,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Result<()> {
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut uuids = std::mem::take(&mut self.persist.uuids);
         let mut next_entity = self.side.next_entity;
         let mut random = self.world.random.clone();
@@ -589,10 +579,12 @@ pub(in crate::game) mod tests {
 #[cfg(test)]
 pub(in crate::game) mod nested_spawn_tests {
     use super::*;
+    use crate::game::server_side::entity_server::taken_pass_tests;
+
     #[test]
     #[ignore = "daily"]
     fn lifted_heart_callback_keeps_nested_spawns_until_the_next_pass() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
+        taken_pass_tests::in_both_dimensions(|game, balance| {
             let mut heart = CreakingHeart::default();
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs
@@ -609,30 +601,21 @@ pub(in crate::game) mod nested_spawn_tests {
                 .unwrap();
             for others in [false, true] {
                 let at = [4 + i32::from(others), 80, 4];
-                crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
-                    game,
-                    balance,
-                    |game| {
-                        game.with_heart(
-                            (0, 80, 0),
-                            &mut heart,
-                            others,
-                            |_, world, _, _, events| {
-                                assert_eq!(world.is_some(), others);
-                                assert_eq!(
-                                    world.map_or_else(Vec::new, |world| world
-                                        .others
-                                        .iter()
-                                        .map(|mob| mob.id)
-                                        .collect::<Vec<_>>()),
-                                    if others { vec![70] } else { vec![] }
-                                );
-                                events.push(HeartEvent::SetBlock(at, stone));
-                            },
-                        )
-                        .unwrap();
-                    },
-                );
+                taken_pass_tests::assert_mob_spawn_survives(game, balance, |game| {
+                    game.with_heart((0, 80, 0), &mut heart, others, |_, world, _, _, events| {
+                        assert_eq!(world.is_some(), others);
+                        assert_eq!(
+                            world.map_or_else(Vec::new, |world| world
+                                .others
+                                .iter()
+                                .map(|mob| mob.id)
+                                .collect::<Vec<_>>()),
+                            if others { vec![70] } else { vec![] }
+                        );
+                        events.push(HeartEvent::SetBlock(at, stone));
+                    })
+                    .unwrap();
+                });
                 assert_eq!(
                     game.world.block(at[0], at[1], at[2]),
                     stone,

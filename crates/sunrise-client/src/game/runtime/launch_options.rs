@@ -101,43 +101,8 @@ impl Options {
         if o.pregen {
             sunrise_command::vanilla::set_sunrise_commands(true);
         }
-        // The launcher's account: online-mode servers need it. A bad file
-        // only leaves the game offline.
         #[cfg(feature = "client")]
-        if !o.execution_role.is_dedicated_server() {
-            let session = if o.developer_single_player {
-                Ok(None)
-            } else if o.session_stdin {
-                let mut text = String::new();
-                std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
-                    .map_err(|e| e.to_string())
-                    .and_then(|_| sunrise_client::auth::AuthSession::parse(&text))
-                    .map(Some)
-            } else {
-                o.session_file
-                    .take()
-                    .filter(|p| !p.is_empty())
-                    .map(|path| sunrise_client::auth::AuthSession::load(path.as_ref()))
-                    .transpose()
-            };
-            match session {
-                Ok(Some(session)) => {
-                    o.player_name = Some(session.name.clone());
-                    sunrise_client::auth::set_current(session);
-                    // The chat key pair, ready before the first join.
-                    sunrise_client::auth::prepare_chat_keys(true);
-                }
-                Ok(None) => {
-                    o.offline_reason = std::env::var("SUNRISE_OFFLINE_REASON")
-                        .ok()
-                        .filter(|reason| !reason.is_empty());
-                }
-                Err(e) => {
-                    eprintln!("Sunrise: not signed in: {e}");
-                    o.offline_reason = Some(e);
-                }
-            }
-        }
+        crate::game::client_side::launch_options_client::read_client_auth(&mut o);
         if let Some(dir) = o.game_dir.take() {
             std::fs::create_dir_all(&dir)
                 .and_then(|()| std::env::set_current_dir(&dir))
@@ -284,7 +249,7 @@ impl Options {
                             "--render-distance" | "--radius" => {
                                 o.distance = value.parse()?;
                                 o.distance_override = Some(o.distance);
-                                let max = sunrise_client::options_file::MAX_RENDER_DISTANCE;
+                                let max = sunrise_level::sim_settings::MAX_RENDER_DISTANCE;
                                 if !(2..=max).contains(&o.distance) {
                                     return Err(format!("render distance must be 2..{max}").into());
                                 }
@@ -329,12 +294,11 @@ impl Options {
                             "--player-dir" => {}
 
                             "--benchmark" => {
-                                sunrise_client::benchmark::Scenario::parse(&value)?;
+                                sunrise_sim::benchmark::Scenario::parse(&value)?;
                                 o.benchmark = Some(value);
                             }
                             "--benchmark-set" => {
-                                o.benchmark_set =
-                                    Some(sunrise_client::benchmark::parse_set(&value)?)
+                                o.benchmark_set = Some(sunrise_sim::benchmark::parse_set(&value)?)
                             }
                             "--server" | "--quickPlayMultiplayer" => o.server = Some(value),
                             "--name" => o.player_name = Some(value),
@@ -382,10 +346,11 @@ pub(in crate::game) mod tests {
     use super::*;
 
     fn limit(args: &[&str]) -> Option<Duration> {
-        Options::parse(args.iter().map(|arg| arg.to_string()))
-            .unwrap()
-            .unwrap()
-            .time_limit()
+        crate::game::client_side::launch_options_client::time_limit(
+            &Options::parse(args.iter().map(|arg| arg.to_string()))
+                .unwrap()
+                .unwrap(),
+        )
     }
 
     /// Upstream's regression: a control-socket run must not outlive its explicit deadline.

@@ -133,7 +133,7 @@ fn singleton_late_dragon_id_reserves_all_eight_parts_once() {
 #[test]
 #[ignore = "daily"]
 fn singleton_lifecycle_commands_unload_and_parked_owners() {
-    crate::game::entity::taken_pass_tests::LifecycleFixture {
+    crate::game::server_side::entity_server::taken_pass_tests::LifecycleFixture {
         seed: |game, entries| {
             game.discard_resident_dragon();
             for &(id, at) in entries {

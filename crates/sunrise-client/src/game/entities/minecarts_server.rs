@@ -1,6 +1,6 @@
 use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
+use crate::game::commands_common::Target;
 use crate::game::minecarts::CART_KEY_Y;
-use crate::game::minecarts::CartIndex;
 use crate::game::minecarts::CartKind;
 use crate::game::minecarts::Minecart;
 use crate::game::minecarts::Rail;
@@ -12,13 +12,16 @@ use crate::game::minecarts::cart_push_from;
 use crate::game::minecarts::container_keep;
 use crate::game::minecarts::furnace_fuel_after;
 use crate::game::minecarts::furnace_speed;
-use crate::game::minecarts::hit::CartHit;
 use crate::game::minecarts::java_degrees;
 use crate::game::minecarts::offered_pickup;
 use crate::game::minecarts::pickup_instead_of_push;
 use crate::game::minecarts::push_along;
 use crate::game::minecarts::takes_push_from_cart;
 use crate::game::minecarts::tnt_ignites_by_collision;
+use crate::game::{
+    api_values::TryIntoApi, cart_rails::dispatch_cart_rail_direction,
+    native_level_signals::ReadLevel,
+};
 #[allow(unused_imports)]
 use std::sync::Arc;
 use sunrise_core::{
@@ -27,22 +30,95 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_game_data::scoreboard::pushable_by;
-use sunrise_gameplay::minecart_cells::CartCells;
-use sunrise_items::items::{ItemStack, Items};
+use sunrise_gameplay_common::minecart_cells::CartCells;
+use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::entity_rules::EntityRules;
-use sunrise_sim::join_seq::JoinList;
+use sunrise_sim::join_seq::{JoinList, ListStamp};
 use sunrise_sim::mobs::{Mob, seen_grid::SeenGrid};
 use sunrise_sim::mobs::{Species, Who};
+use sunrise_world::registry::BlockStateId;
 
 #[path = "minecarts/save_lending_server.rs"]
 pub(in crate::game) mod save_lending;
 
+#[cfg(test)]
 #[path = "minecarts/hit_server.rs"]
 pub(in crate::game) mod hit;
 
 #[path = "minecarts/section_steps.rs"]
 pub(in crate::game) mod section_steps;
+
+/// The carts' and mobs' boxes for one tick's cart pushes (`push_from_cart`,
+/// `pickup_from_cart`), so a cart reads its neighbours instead of every cart and
+/// every mob of the level. Both answer in slot order, as the scans did.
+///
+/// The cart grid follows each ticked cart ([`CartIndex::moved`]); it is
+/// rebuilt once the list's length changed (a cart gone or added), and dropped
+/// after a command, which can move or replace any cart
+/// ([`CartIndex::forget_carts`]). The mob grid holds until the mob
+/// list's next write ([`ListStamp`]). A native mod's hook can move either kind
+/// unseen, so with mods loaded both scans stay.
+#[derive(Default)]
+pub(in crate::game) struct CartIndex {
+    pub(in crate::game) carts: Option<(SeenGrid, Vec<u32>)>,
+    pub(in crate::game) mobs: Option<(ListStamp, SeenGrid)>,
+    pub(in crate::game) near: Vec<u32>,
+}
+
+/// The `DamageSource` a cart took. `VehicleEntity.hurtServer` attributes its
+/// `ENTITY_DAMAGE` to `source.getEntity()`, and `chestVehicleDestroyed` angers
+/// piglins only when `source.getDirectEntity()` is the player.
+#[derive(Clone, Copy, Default)]
+pub(in crate::game) struct CartHit {
+    pub(in crate::game) by: Option<Target>,
+    pub(in crate::game) by_player: bool,
+}
+
+impl CartHit {
+    /// `/damage`'s `DamageSource`: `by` is its direct entity, `causing` the
+    /// causing entity `getEntity()` names.
+    pub(in crate::game) fn command(by: Option<Target>, causing: Option<Target>) -> Self {
+        Self {
+            by: causing,
+            by_player: matches!(by, Some(Target::Player)),
+        }
+    }
+    /// A hit whose causing entity is `by` and whose direct entity is no player:
+    /// a thrown trident, or a blast's indirect source.
+    pub(in crate::game) fn attributed(by: Option<Target>) -> Self {
+        Self {
+            by,
+            by_player: false,
+        }
+    }
+    /// The acting player's own hit (`Player.attack`'s `playerAttack`): its
+    /// direct entity is the player in place (the host, or the guest whose turn
+    /// it is), whose state `anger_piglins` reads.
+    pub(in crate::game) fn player() -> Self {
+        Self {
+            by: Some(Target::Player),
+            by_player: true,
+        }
+    }
+    /// A projectile's hit: `getEntity()` is its owner, `getDirectEntity()` the
+    /// projectile itself, so it angers no piglin.
+    pub(in crate::game) fn projectile(owner: Option<Who>, guest: Option<u32>) -> Self {
+        let by = match owner {
+            Some(Who::Player) => Some(guest.map_or(Target::Player, Target::Guest)),
+            Some(Who::Mob(id)) => Some(Target::Mob(id)),
+            None => None,
+        };
+        Self {
+            by,
+            by_player: false,
+        }
+    }
+}
+
+fn horizontal(c: &Minecart) -> f64 {
+    sunrise_core::geometry::length(c.velocity.x, c.velocity.z)
+}
 
 impl CartIndex {
     /// The slots of the carts whose box may meet `area`, for the cart in slot
@@ -117,6 +193,43 @@ impl CartIndex {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
+    pub(in crate::game) fn server_cart_rail_direction(
+        &self,
+        cart: Option<u32>,
+        state: BlockStateId,
+        pos: sunrise_core::position::BlockPos,
+        text: &str,
+        vanilla: Shape,
+    ) -> Shape {
+        let (Some(level), Some(epoch), Ok(api_state)) = (
+            self.level(self.dim.id()),
+            self.native_lifecycle.epoch(),
+            state.try_into_api(),
+        ) else {
+            return vanilla;
+        };
+        let read = ReadLevel { game: self, level };
+        let read = ReadLevel { game: self, level };
+        let side = mod_api::LevelSide::Server(&read);
+        let cart = cart.map(|id| mod_api::EntityRef::new(epoch, id));
+        dispatch_cart_rail_direction(side, self.dim.level(), api_state, pos, cart, text)
+    }
+
+    /// Closing the cart's container open under `key` copies the items back.
+    pub(in crate::game) fn close_cart_container(&mut self, key: (i32, i32, i32)) {
+        if key.1 != CART_KEY_Y {
+            return;
+        }
+        self.store_cart_items(key);
+        let guest_viewers =
+            self.side.lan.as_ref().is_some_and(|host| {
+                Self::vehicle_has_other_viewers(None, &host.hub.guests, None, key)
+            });
+        if !guest_viewers {
+            self.world.block_entities.remove(&key);
+        }
+    }
+
     /// `activateMinecart` on an activator rail.
     pub(in crate::game) fn activate_cart(&mut self, c: &mut Minecart, powered: bool) {
         match c.kind {
@@ -427,7 +540,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`Entity.interact` passes), so nothing here lights it.
     pub(in crate::game) fn interact_cart(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((i, d)) = (match target {
-            Some(t) => Self::named_entity(&self.carts, t.id, |c| c.id).map(|i| (i, 0.0)),
+            Some(t) => crate::game::item_actions::named_entity(&self.carts, t.id, |c| c.id)
+                .map(|i| (i, 0.0)),
             None => self.cart_hit(),
         }) else {
             return false;
@@ -553,7 +667,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             xd = -xd;
             zd = -zd;
         }
-        let pow = c.horizontal().min(2.0);
+        let pow = horizontal(c).min(2.0);
         c.velocity = Vec3::new(pow * xd / length, c.velocity.y, pow * zd / length);
         if ridden
             && (intent[0] != 0.0 || intent[1] != 0.0)
@@ -564,7 +678,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             halt = false;
         }
         if halt {
-            if c.horizontal() < 0.03 {
+            if horizontal(c) < 0.03 {
                 c.velocity = Vec3::ZERO;
             } else {
                 c.velocity = Vec3::new(c.velocity.x * 0.5, 0.0, c.velocity.z * 0.5);
@@ -613,7 +727,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             old,
         ) {
             let speed = (old[1] - new[1]) * 0.05;
-            let h = c.horizontal();
+            let h = horizontal(c);
             if h > 0.0 {
                 c.velocity.x *= (h + speed) / h;
                 c.velocity.z *= (h + speed) / h;
@@ -622,7 +736,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let (xn, zn) = (c.position.x.floor() as i32, c.position.z.floor() as i32);
         if xn != pos[0] || zn != pos[2] {
-            let h = c.horizontal();
+            let h = horizontal(c);
             c.velocity = Vec3::new(
                 h * f64::from(xn - pos[0]),
                 c.velocity.y,
@@ -630,7 +744,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
         }
         if power {
-            let h = c.horizontal();
+            let h = horizontal(c);
             if h > 0.01 {
                 c.velocity.x += c.velocity.x / h * 0.06;
                 c.velocity.z += c.velocity.z / h * 0.06;
@@ -1027,7 +1141,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             }
             let other = self.mobs[j].position;
-            let Some(v) = super::boat_passengers::push_impulse(pos, other) else {
+            let Some(v) = crate::game::boats_common::push_impulse(pos, other) else {
                 continue;
             };
             if !occupied {
@@ -1067,7 +1181,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.carts.push(cart);
         let id = self.side.next_entity;
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), stack, true);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.side.serving.is_some() || self.options.dedicated.is_some() {
             let cart = self.carts.last().unwrap();
             self.native_vehicle_create(
                 cart.kind.id(),
@@ -1108,7 +1222,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             pushers.push((p.position, p.bounds()));
         }
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             for g in host.hub.guests.iter().filter(|g| {
                 host.hub.here(g) && g.loaded && !g.dead && !g.spectator() && g.vehicle.is_none()
             }) {
@@ -1573,26 +1687,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game::server_side) fn unpack_cart_loot(&mut self, i: usize) {
         self.unpack_loot(
-            super::container_loot::LootTarget::Cart(self.carts[i].id),
+            crate::game::container_loot_level::LootTarget::Cart(self.carts[i].id),
             self.native_acting_player(),
         );
-    }
-}
-
-impl Minecart {
-    /// `AbstractContainerMenu.getRedstoneSignalFromContainer` of `slots`.
-    pub(in crate::game) fn container_signal(slots: &[Option<ItemStack>], items: &Items) -> i32 {
-        let mut total = 0.0f32;
-        for s in slots.iter().flatten() {
-            let max = items.get(&s.item).map_or(64, |i| i.max_stack).min(64);
-            total += s.count as f32 / max as f32;
-        }
-        total /= slots.len().max(1) as f32;
-        // Mth.lerpDiscrete(total, 0, 15)
-        (total * 14.0).floor() as i32 + i32::from(total > 0.0)
-    }
-    pub(in crate::game::server_side) fn horizontal(&self) -> f64 {
-        sunrise_core::geometry::length(self.velocity.x, self.velocity.z)
     }
 }
 

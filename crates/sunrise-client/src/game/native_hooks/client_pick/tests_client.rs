@@ -44,6 +44,7 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let kind = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -229,6 +230,7 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
         mod_platform::testing::with_mods(mods.into(), || {
             with_pick_game("minecraft:pig", 1.5, |game, _| {
                 let kind = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()
@@ -331,6 +333,7 @@ pub(in crate::game) fn with_pick_game(
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let kind = game
+            .side
             .remote
             .as_ref()
             .unwrap()

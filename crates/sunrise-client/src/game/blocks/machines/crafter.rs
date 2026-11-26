@@ -3,6 +3,7 @@
 //! the result and remainders into the container in front or as items, the
 //! crafting animation ticks, and the menu with its toggleable slots.
 use super::*;
+use crate::game::machine_containers::{Kind, View};
 use serde_json::Value;
 #[allow(unused_imports)]
 use sunrise_level::containers::Crafter;
@@ -14,7 +15,6 @@ use sunrise_sim::{
 
 /// `CrafterBlock`'s crafting animation length.
 pub(in crate::game) const CRAFTING_TICKS: i32 = 6;
-pub(in crate::game) const RESULT_SLOT: usize = 309;
 
 pub(in crate::game::server_side) fn center(pos: Pos) -> [f64; 3] {
     [
@@ -347,7 +347,7 @@ pub(in crate::game) mod tests {
             opening_item: None,
             slot_changed_seen: None,
         });
-        game.lan.as_mut().unwrap().hub.guests.push(player);
+        game.side.lan.as_mut().unwrap().hub.guests.push(player);
         game.world.modified.clear();
 
         game.lan_crafter_slot_state(1, 1, 3, true);
@@ -400,9 +400,10 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_crafter_fills_the_cart_in_front_of_it() {
-        use crate::game::boats::Boat;
+        use crate::game::boats_common::Boat;
         use crate::game::game_tests::tests::server_game;
         use crate::game::minecarts::{CartKind, Minecart};
+        use std::sync::Arc;
         use sunrise_core::geometry::Vec3;
         // One game for the three vehicles: loading the resources is the slow part.
         let mut resources = None;

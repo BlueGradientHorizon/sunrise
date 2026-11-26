@@ -1,17 +1,18 @@
 use super::Game;
-use crate::game::server_side::lan::LanSettings;
+use crate::game::lan_common::LanSettings;
 use sunrise_game_data::{Result, text::Text};
 use sunrise_sim::lan::{self};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_lan_open(&mut self, settings: LanSettings) -> Result<()> {
         let server = self
+            .side
             .integrated
             .as_ref()
             .ok_or("no world of this game to open")?;
         let port = server
-            .ask(|reply| super::owner_link::OwnerRequest::Publish(settings, reply))
-            .ok_or(super::integrated::NO_ANSWER)??;
+            .ask(|reply| crate::game::owner_link::OwnerRequest::Publish(settings, reply))
+            .ok_or(crate::game::integrated_link::NO_ANSWER)??;
         self.client_system_message(Text::translate(
             "menu.multiplayerOptions.publish.started.lan",
             &[Text::literal(port.to_string())],
@@ -20,12 +21,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game) fn client_lan_close(&mut self, announce: bool) {
-        let Some(server) = &self.integrated else {
+        let Some(server) = &self.side.integrated else {
             self.friends_lan_closed();
             return;
         };
         let closed = server
-            .ask(super::owner_link::OwnerRequest::Unpublish)
+            .ask(crate::game::owner_link::OwnerRequest::Unpublish)
             .unwrap_or(false);
         if closed {
             self.friends_lan_closed();
@@ -47,13 +48,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if words[0] != "lan" {
             return Ok(None);
         }
-        if let Some(server) = &self.integrated
+        if let Some(server) = &self.side.integrated
             && words.get(1) == Some(&"status")
         {
             // The hub is the server thread's.
             let status = server
-                .ask(super::owner_link::OwnerRequest::LanStatus)
-                .ok_or(super::integrated::NO_ANSWER)?;
+                .ask(crate::game::owner_link::OwnerRequest::LanStatus)
+                .ok_or(crate::game::integrated_link::NO_ANSWER)?;
             return Ok(Some(status));
         }
         match words.get(1).copied() {
@@ -82,7 +83,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     pub(in crate::game) fn lan_port(&self) -> Option<u16> {
-        self.integrated
+        self.side
+            .integrated
             .as_ref()
             .and_then(|server| server.published())
     }

@@ -1,15 +1,5 @@
 use super::*;
 
-/// Helpers for native mods, kept as stable as the hook points.
-// Native mods use these; nothing in Sunrise does.
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    /// Fluid `fluid`'s name as the lang names it (`fluid_type.<mod>.<name>`, vanilla's by its block),
-    /// else its path in words.
-    pub(in crate::game) fn fluid_name(&self, fluid: &str) -> String {
-        sunrise_client::fluid_tooltip::fluid_name(fluid)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,22 +1,8 @@
 //! Private custom-book connection state and client network services.
 use super::Game;
 #[path = "native_net/packet_hold.rs"]
-mod packet_hold;
+pub(in crate::game) mod packet_hold;
 use mod_api::{SendPacketError, ServerboundPlayPacket};
-use std::collections::HashMap;
-#[derive(Default)]
-pub(in crate::game) struct NativeNet {
-    pub(in crate::game) holds: std::cell::RefCell<packet_hold::Holds>,
-    pub(in crate::game) placement: super::native_book_placement::State,
-    pub(in crate::game) book_connections:
-        HashMap<u32, sunrise_sim::recipe_book::settings_connection::Connection>,
-    pub(in crate::game) book_view: sunrise_sim::recipe_book::settings_sync::ClientView,
-    pub(in crate::game) book_request: u64,
-    pub(in crate::game) book_ready: bool,
-    pub(in crate::game) book_retry_at: Option<std::time::Instant>,
-    /// A mod's `disconnect` (its reason, if any), carried out at the end of the frame.
-    pub(in crate::game) leave: Option<super::native_disconnect::LeaveRequest>,
-}
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -27,7 +13,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// server's play state or the Chat option blocks the message. API
     /// 404.
     pub(in crate::game) fn send_chat(&mut self, message: &str) -> Result<(), String> {
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return Err("not connected to a server".into());
         };
         // A server that reconfigures the player has them out of the play state.
@@ -70,7 +56,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         packet: ServerboundPlayPacket,
     ) -> Result<(), SendPacketError> {
-        let remote = self.remote.as_ref().ok_or(SendPacketError::NotConnected)?;
+        let remote = self
+            .side
+            .remote
+            .as_ref()
+            .ok_or(SendPacketError::NotConnected)?;
         if !remote.joined || remote.reconfiguring.is_some() {
             return Err(SendPacketError::NotInPlay);
         }
@@ -121,7 +111,7 @@ mod tests {
             assert_eq!(game.send_packet(packet()), Err(SendPacketError::NotInPlay));
             // Deliberately inconsistent actor state: no handshake has installed
             // a writer. Acceptance must still require the physical provider.
-            game.remote.as_mut().unwrap().joined = true;
+            game.side.remote.as_mut().unwrap().joined = true;
             assert_eq!(
                 game.send_packet(packet()),
                 Err(SendPacketError::NotConnected)

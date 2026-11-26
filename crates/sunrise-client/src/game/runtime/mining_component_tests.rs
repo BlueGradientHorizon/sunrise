@@ -31,6 +31,7 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -166,6 +167,7 @@ fn with_survival_game(f: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());

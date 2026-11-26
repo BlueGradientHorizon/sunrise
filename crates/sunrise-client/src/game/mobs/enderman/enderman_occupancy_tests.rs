@@ -33,6 +33,7 @@ fn a_carried_block_is_not_placed_into_an_entity() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

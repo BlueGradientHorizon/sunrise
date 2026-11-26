@@ -3,7 +3,9 @@
 //! data packs and mods' files as a mod's own data maps are, and installed on
 //! the world's behaviours for fire spread, weathering, scraping and waxing.
 use super::Game;
-use super::native_data_maps::{DataMapType, MapRegistries, WorldRegistries, load_maps};
+use crate::game::native_data_maps_common::{
+    DataMapType, MapRegistries, WorldRegistries, load_maps,
+};
 use serde_json::Value;
 use std::sync::Arc;
 use sunrise_core::identifier::Identifier;

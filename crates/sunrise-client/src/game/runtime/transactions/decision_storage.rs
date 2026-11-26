@@ -7,7 +7,7 @@ use sunrise_sim::join_seq::visibility::PassLease;
 /// admission gate checks passes_settled(), including this lease. In particular
 /// commands.save.failed is still produced by the existing save-all command.
 pub(in crate::game) struct ActiveAction {
-    pub(super) menu: MenuId,
+    pub(in crate::game) menu: MenuId,
     _save_gate: PassLease,
 }
 
@@ -28,7 +28,7 @@ struct KeptMenu {
 #[derive(Default)]
 pub(in crate::game) struct Journal {
     menus: HashMap<MenuId, KeptMenu>,
-    pub(super) owners: HashMap<MenuId, engine::KeptOwner>,
+    pub(in crate::game) owners: HashMap<MenuId, engine::KeptOwner>,
     // The harness has no Game::After queue. Production uses that existing queue
     // directly through GameHost::defer, preserving listener/apply effect order.
     #[cfg(test)]
@@ -72,14 +72,8 @@ impl Journal {
         }
     }
 
-    pub(in crate::game) fn rollback_in<__Side: crate::game::Side>(
-        mut self,
-        game: &mut crate::game::Game<'_, __Side>,
-    ) {
-        for kept in std::mem::take(&mut self.owners).into_values() {
-            kept.rollback(game);
-        }
-        self.rollback();
+    pub(in crate::game) fn take_owners(&mut self) -> impl Iterator<Item = engine::KeptOwner> {
+        std::mem::take(&mut self.owners).into_values()
     }
 
     /// Only the root commit owner may take the queued effects.
@@ -113,6 +107,13 @@ pub(in crate::game) trait ActionHost {
 pub(in crate::game) struct GameHost<'a, 'g, S: crate::game::Side> {
     pub game: &'a mut crate::game::Game<'g, S>,
     pub identity: Identity,
+}
+
+impl<'a, 'g, S: crate::game::Side> GameHost<'a, 'g, S> {
+    #[inline(always)]
+    pub(in crate::game) fn new(game: &'a mut crate::game::Game<'g, S>, identity: Identity) -> Self {
+        Self { game, identity }
+    }
 }
 
 impl<S: crate::game::Side> ActionHost for GameHost<'_, '_, S> {

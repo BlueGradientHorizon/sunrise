@@ -22,7 +22,7 @@ use sunrise_game_data::text::{ClickEvent, Style, Text};
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
 /// game's own, plus the commands native mods own (`chat_tree_for`).
 pub(in crate::game::client_side) fn chat_tree(
-    remote: &Option<super::remote::Remote>,
+    remote: &Option<crate::game::client_side::remote_client::Remote>,
 ) -> &sunrise_command::Dispatcher {
     match remote.as_ref() {
         Some(server) => &server.chat_tree,
@@ -427,6 +427,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // ClientPacketListener.levels(): the level keys of the login packet,
         // data-pack and mod dimensions included.
         if let Some(levels) = self
+            .side
             .remote
             .as_ref()
             .map(|r| r.levels.clone())
@@ -439,6 +440,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // level is `registries.permission`. A server completion sets it from the guest asking
         // (`guest_suggestions`); the console has none.
         self.ui.registries.sender = self
+            .side
             .remote
             .as_ref()
             .filter(|remote| remote.logged_in && remote.profile != 0)
@@ -485,7 +487,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: chat_tree(&self.remote),
+            dispatcher: chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         let mut screen = ChatScreen::new(
@@ -644,7 +646,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientChatReceivedEvent` from `ChatListener` for the lines the server
     /// sent, so this path does not tell `client_chat_received`.
     pub(in crate::game) fn chat_line(&mut self, text: Text) {
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.add_chat_line(text, ChatSource::Client);
         } else {
             self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Client);
@@ -656,7 +658,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             !self.is_logical_server(),
             "client_system_message called on server role"
         );
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.add_chat_line(text, ChatSource::Server);
         } else {
             self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Server);
@@ -692,7 +694,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(shortcut) = shortcut {
             let m = Measure(&self.side.gui.atlas.font);
             let c = Commands {
-                dispatcher: chat_tree(&self.remote),
+                dispatcher: chat_tree(&self.side.remote),
                 registries: &self.ui.registries,
             };
             if let Some(screen) = self.side.chat_ui.chat_screen.as_mut() {
@@ -749,7 +751,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: chat_tree(&self.remote),
+            dispatcher: chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         let (handled, action) =
@@ -817,7 +819,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: chat_tree(&self.remote),
+            dispatcher: chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         if let Some(screen) = self.side.chat_ui.chat_screen.as_mut() {
@@ -828,7 +830,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn chat_type(&mut self, text: &str) {
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: chat_tree(&self.remote),
+            dispatcher: chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         if let Some(screen) = self.side.chat_ui.chat_screen.as_mut() {
@@ -847,7 +849,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.side.chat_ui.chat.add_recent(&message);
         if let Some(args) =
-            sunrise_profiler_args(&message, self.remote.as_ref().map(|r| &r.chat_tree))
+            sunrise_profiler_args(&message, self.side.remote.as_ref().map(|r| &r.chat_tree))
         {
             self.profiler_chat(args);
             return;
@@ -859,7 +861,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return;
         }
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.send_chat_from_screen(&message);
             return;
         }
@@ -906,7 +908,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: chat_tree(&self.remote),
+            dispatcher: chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         if self.side.chat_ui.in_bed_chat && self.sleeping.is_some() {
@@ -1033,7 +1035,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 true
             }
             Some(ClickEvent::Custom { id, payload }) => {
-                if let Some(remote) = &self.remote {
+                if let Some(remote) = &self.side.remote {
                     remote
                         .session
                         .send_custom_click(&id, payload.map(std::sync::Arc::unwrap_or_clone));
@@ -1143,7 +1145,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.client_mod_command(command) {
             return;
         }
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.send_unattended_command(command);
         }
     }
@@ -1165,7 +1167,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.pvp.chat_search = !self.side.pvp.chat_search;
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: chat_tree(&self.remote),
+            dispatcher: chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         if let Some(screen) = self.side.chat_ui.chat_screen.as_mut() {

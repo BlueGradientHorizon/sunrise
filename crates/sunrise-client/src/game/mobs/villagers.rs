@@ -27,7 +27,7 @@ impl villager_brain::TradingPlayers for Game<'_, crate::game::server_side::Serve
                 paying: station.inputs.iter().any(Option::is_some),
             });
         }
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let (conn, screen) = self.lan_trade_screen(villager)?;
         let guest = host.hub.guest(conn)?;
         Some(villager_brain::TradingPlayer {
@@ -464,7 +464,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None => return self.level.player_uuid,
             // While that guest acts its own UUID is swapped in.
             Some(conn) if self.side.lan_acting == Some(conn) => self.side.lan_acting_uuid?,
-            Some(conn) => self.lan.as_ref()?.hub.guest(conn)?.uuid,
+            Some(conn) => self.side.lan.as_ref()?.hub.guest(conn)?.uuid,
         };
         Some(sunrise_sim::lan::playerdata::uuid_ints(uuid))
     }
@@ -491,13 +491,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 TradeFeedback::AtHurt(player.trade_pitch),
             );
             if player.angry
-                && let Some(host) = &self.lan
+                && let Some(host) = &self.side.lan
             {
                 host.hub.entity_event(id as i32, 13);
             }
         }
         if let Some((source, cause)) = damage
-            && let Some(host) = &self.lan
+            && let Some(host) = &self.side.lan
         {
             let direct = cause.filter(|_| super::combat::melee(source.kind));
             let kind = super::creatures::source_damage_type(source);
@@ -505,7 +505,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         for villager::HurtSound(name, at, volume, pitch) in sounds.into_iter().flatten() {
             let name = full_id(name);
-            self.play_immediate_level_sound(super::level_sounds::LevelSound::new(
+            self.play_immediate_level_sound(super::level_sounds_common::LevelSound::new(
                 &name, at, volume, pitch,
             ));
         }
@@ -757,7 +757,7 @@ pub(in crate::game) mod off_level_tests {
             let ghost = Mob::new(72, kind, Vec3::ZERO, 0.0);
             game.persist
                 .off_level
-                .insert(72, crate::game::persist::OffLevel::Mob(ghost));
+                .insert(72, crate::game::entity_memory::OffLevel::Mob(ghost));
             game.tick_creature_entities().unwrap();
             assert!(
                 villager_brain::take_item_scan(game.mob_object_mut(73).unwrap()),

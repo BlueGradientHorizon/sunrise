@@ -565,7 +565,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let status = self.pack_player_status();
         let (end_flash, end_flash_direction) = self.end_flash_for_pack(partial);
         let info = biome.map(|b| world_biomes!(self).get(b));
-        let dimension = self.remote.as_ref().map(|r| &r.dimension);
+        let dimension = self.side.remote.as_ref().map(|r| &r.dimension);
         PackInputs {
             // `Level.getDefaultClockTime`: 0 in a dimension type with no default clock (the
             // Nether's has none), as Iris 1.11.7 reads `worldTime` there (probe pack).
@@ -719,7 +719,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .remote_glowing(id)
             .unwrap_or_else(|| self.potions.effects.get("glowing").is_some());
         // `Entity.isVehicle`: the server's passenger list, else the passengers here.
-        let ridden = self.remote.as_ref().is_some_and(|r| r.has_passengers(id));
+        let ridden = self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.has_passengers(id));
         // `Entity.isInWaterOrRain`: `isInWater`, else `isInRain`.
         let wet = self.player.as_ref().is_some_and(|p| {
             let bp = sunrise_core::position::BlockPos::new(
@@ -813,7 +817,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(ids) = &self.side.pack_ids else {
             return ([0; 2], [0; 2]);
         };
-        let hands = [self.selected, super::shield::OFFHAND_SLOT].map(|slot| {
+        let hands = [self.selected, crate::game::held_items::OFFHAND_SLOT].map(|slot| {
             let item = self.stack_in(slot).map(|s| &*s.item);
             let id = item.and_then(|i| ids.items.get(i).copied());
             (
@@ -1199,7 +1203,7 @@ pub(in crate::game) mod block_id_tests {
 /// y is 1 for the fluid sprites, 0 otherwise (`fluid_pairs`).
 pub(in crate::game::client_side) fn block_id_table(
     pack: &super::PackResources,
-    client_pack: &super::ClientPackResources,
+    client_pack: &crate::game::client_side::resource_tables_client::ClientPackResources,
     ids: &BlockIds,
 ) -> Vec<i32> {
     let layers = client_pack
@@ -1653,7 +1657,7 @@ pub(in crate::game) mod player_status_tests {
         };
         with_client_game(|game| {
             let _server = logged_client(game);
-            let own = game.remote.as_ref().unwrap().entity_id;
+            let own = game.side.remote.as_ref().unwrap().entity_id;
             stand_player(game);
             let flags = |game: &mut crate::game::ClientGame<'_>, flags: i8| {
                 game.handle_packet(C::SetEntityData(play::SetEntityData {
@@ -1679,7 +1683,7 @@ pub(in crate::game) mod player_status_tests {
             assert!(!game.pack_player_status().glowing, "flag 6 cleared");
 
             let kind = |game: &crate::game::ClientGame<'_>, name: &str| {
-                let remote = game.remote.as_ref().unwrap();
+                let remote = game.side.remote.as_ref().unwrap();
                 let types = remote.builtin.get("minecraft:entity_type").unwrap();
                 types.id(name).unwrap()
             };

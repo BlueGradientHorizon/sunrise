@@ -1,7 +1,10 @@
 //! Commands from the control socket (`sunrise-ctl`), run on the game thread.
 use super::event_loop::EventLoopCtl;
-use super::owner_link::{ControlRequest, OwnerRequest};
 use super::{Game, Screen};
+use crate::game::{
+    integrated_link::NO_ANSWER,
+    owner_link::{ControlRequest, OwnerRequest},
+};
 use serde_json::{Value, json};
 use std::{
     sync::mpsc::Sender,
@@ -137,6 +140,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Move the camera along the running flight; reply when it ends.
     pub(in crate::game::client_side) fn advance_flight(&mut self) {
         let tick_ms = self
+            .side
             .integrated
             .as_ref()
             .map_or(0.0, |s| s.smoothed_tick_ms());
@@ -561,10 +565,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .iter()
                 .chain(super::station_control::HELP)
                 .chain(super::blockctl::HELP)
-                .chain(super::lan::HELP)
+                .chain(crate::game::lan_common::HELP)
                 .chain(super::friends::HELP)
                 .chain(super::render_control::HELP)
-                .chain(super::sculk_server::HELP)
+                .chain(crate::game::sculk_control_common::HELP)
                 .chain(super::agent::HELP)
                 .chain(super::ui_control::HELP)
                 .chain(super::options::CONTROL_HELP)
@@ -732,13 +736,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             "sculk" => {
                 let server = self
+                    .side
                     .integrated
                     .as_ref()
                     .ok_or("sculk requires a single-player world")?;
                 let words = words.iter().map(|w| (*w).to_owned()).collect();
                 let value = server
                     .ask(|reply| OwnerRequest::Control(ControlRequest::Sculk { words, reply }))
-                    .ok_or(super::integrated::NO_ANSWER)??;
+                    .ok_or(NO_ANSWER)??;
                 Ok(Some(value))
             }
             "hello" => Ok(Some(hello())),
@@ -767,20 +772,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     if volume > 32768 {
                         return Err(format!("{volume} blocks; at most 32768 per request").into());
                     }
-                    return Ok(Some(if let Some(server) = &self.integrated {
+                    return Ok(Some(if let Some(server) = &self.side.integrated {
                         server
                             .ask(|reply| {
                                 OwnerRequest::Control(ControlRequest::Blocks { lo, hi, reply })
                             })
-                            .ok_or(super::integrated::NO_ANSWER)?
+                            .ok_or(NO_ANSWER)?
                     } else {
                         self.blocks_json(lo, hi)
                     }));
                 }
-                let value = if let Some(server) = &self.integrated {
+                let value = if let Some(server) = &self.side.integrated {
                     server
                         .ask(|reply| OwnerRequest::Control(ControlRequest::Simulation(reply)))
-                        .ok_or(super::integrated::NO_ANSWER)?
+                        .ok_or(NO_ANSWER)?
                 } else {
                     json!({ "game_time": self.world.game_time, "projectiles": self.client_projectiles_status() })
                 };
@@ -793,16 +798,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     "off" => false,
                     _ => return Err("server-hold on|off".into()),
                 };
-                if let Some(server) = &self.integrated {
+                if let Some(server) = &self.side.integrated {
                     server
                         .ask(|done| {
                             OwnerRequest::Control(ControlRequest::HoldServer { held, done })
                         })
-                        .ok_or(super::integrated::NO_ANSWER)?;
-                } else if self.remote.is_some() {
+                        .ok_or(NO_ANSWER)?;
+                } else if self.side.remote.is_some() {
                     return Err("server-hold requires the world's host".into());
                 } else {
-                    self.agent.hold_server = held;
+                    self.side.agent.hold_server = held;
                 }
                 ok()
             }
@@ -1031,13 +1036,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .ok_or_else(|| format!("unknown item {item}"))?;
                 let count: u32 = words.get(2).map_or(Ok(1), |c| c.parse())?;
                 // Single player's inventory is its server thread's player's.
-                if let Some(server) = &self.integrated {
+                if let Some(server) = &self.side.integrated {
                     let command = format!("give @s {item} {count}");
                     server
                         .ask(|reply| {
                             OwnerRequest::Control(ControlRequest::ConsoleCommand { command, reply })
                         })
-                        .ok_or(super::integrated::NO_ANSWER)?;
+                        .ok_or(NO_ANSWER)?;
                     return Ok(Some(json!({ "ok": true, "given": count })));
                 }
                 let max = info.max_stack;
@@ -1062,7 +1067,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             "render-distance" => {
                 let n: i32 = arg(1)?.parse()?;
-                let max = sunrise_client::options_file::MAX_RENDER_DISTANCE;
+                let max = sunrise_level::sim_settings::MAX_RENDER_DISTANCE;
                 if !(2..=max).contains(&n) {
                     return Err(format!("render distance must be 2..{max}").into());
                 }
@@ -1087,12 +1092,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let time: i64 = arg(1)?.parse()?;
                 self.world.day_time = time;
                 // Single player's clock is its server thread's.
-                if let Some(server) = &self.integrated {
+                if let Some(server) = &self.side.integrated {
                     server
                         .ask(|done| {
                             OwnerRequest::Control(ControlRequest::SetDayTime { time, done })
                         })
-                        .ok_or(super::integrated::NO_ANSWER)?;
+                        .ok_or(NO_ANSWER)?;
                 }
                 ok()
             }
@@ -1104,7 +1109,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let kind = arg(1)?.to_owned();
                 // Single player on its server thread: spawn in the owner's level
                 // so the mob enters the server tick loop and is tracked to clients.
-                if let Some(server) = &self.integrated {
+                if let Some(server) = &self.side.integrated {
                     let at = match at {
                         Some(a) => a,
                         None => self.default_summon_position()?,
@@ -1118,7 +1123,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 reply,
                             })
                         })
-                        .ok_or(super::integrated::NO_ANSWER)??;
+                        .ok_or(NO_ANSWER)??;
                     return Ok(Some(json!({ "ok": true, "id": id })));
                 }
                 Err("summon requires an integrated server".into())
@@ -1126,7 +1131,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "mobs" => {
                 self.require_world()?;
                 let radius: f64 = words.get(1).map_or(Ok(64.0), |r| r.parse())?;
-                if let Some(server) = &self.integrated {
+                if let Some(server) = &self.side.integrated {
                     let center = self.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
                     let value = server
                         .ask(|reply| {
@@ -1136,17 +1141,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 reply,
                             })
                         })
-                        .ok_or(super::integrated::NO_ANSWER)?;
+                        .ok_or(NO_ANSWER)?;
                     return Ok(Some(value));
                 }
                 Ok(Some(self.control_mobs(radius)))
             }
             "hurtlog" => {
                 self.require_world()?;
-                if let Some(server) = &self.integrated {
+                if let Some(server) = &self.side.integrated {
                     let value = server
                         .ask(|reply| OwnerRequest::Control(ControlRequest::HurtLog(reply)))
-                        .ok_or(super::integrated::NO_ANSWER)?;
+                        .ok_or(NO_ANSWER)?;
                     return Ok(Some(value));
                 }
                 Ok(Some(self.client_control_hurt_log()))
@@ -1176,7 +1181,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             "chat" => {
                 let text = line.trim_start().strip_prefix("chat").unwrap_or("").trim();
-                if self.remote.is_some() {
+                if self.side.remote.is_some() {
                     // As typed into the chat screen: history, then the client chat event.
                     self.handle_chat_input(text);
                     return ok();
@@ -1399,14 +1404,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 ok()
             }
             "respawn" => {
-                if self.remote.is_none() || self.side.screen != Screen::Dead {
+                if self.side.remote.is_none() || self.side.screen != Screen::Dead {
                     return Err("respawn needs the death screen on a server".into());
                 }
                 self.remote_respawn();
                 ok()
             }
             "disconnect" => {
-                if self.remote.is_none() {
+                if self.side.remote.is_none() {
                     return Err("not connected to a server".into());
                 }
                 self.leave_server(None)?;
@@ -1419,10 +1424,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // them with vanilla's files).
                 let all = words[0] == "save-all";
                 // Single player's world is its server thread's.
-                if let Some(server) = &self.integrated {
+                if let Some(server) = &self.side.integrated {
                     server
                         .ask(|reply| OwnerRequest::Control(ControlRequest::Save { all, reply }))
-                        .ok_or(super::integrated::NO_ANSWER)??;
+                        .ok_or(NO_ANSWER)??;
                 } else {
                     return Err("save requires a single-player world".into());
                 }
@@ -1432,6 +1437,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // Test hook: damage the dragon's head as the player would.
                 let amount: f32 = arg(1)?.parse()?;
                 let server = self
+                    .side
                     .integrated
                     .as_ref()
                     .ok_or("dragon-hurt requires a single-player world")?;
@@ -1439,7 +1445,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .ask(|reply| {
                         OwnerRequest::Control(ControlRequest::DragonHurt { amount, reply })
                     })
-                    .ok_or(super::integrated::NO_ANSWER)??;
+                    .ok_or(NO_ANSWER)??;
                 ok()
             }
             "quit" => {
@@ -1631,7 +1637,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "distance": self.side.settings.sunrise.lod_distance,
             "effective_distance": self.lod_distance(),
             "terrain_distance": self.terrain_distance(),
-            "source": if self.side.lod.0.is_none() { "none" } else if self.integrated.is_some() { "integrated" } else if self.server_far_terrain().is_some() { "server" } else if self.remote.is_some() { "server-terrain" } else { "local" },
+            "source": if self.side.lod.0.is_none() { "none" } else if self.side.integrated.is_some() { "integrated" } else if self.server_far_terrain().is_some() { "server" } else if self.side.remote.is_some() { "server-terrain" } else { "local" },
             "source_attempted": self.side.lod_source_attempted,
             "active_tiles": self.side.lod.0.as_ref().map_or(0, |lod| lod.stats().0),
             "cached_tiles": self.side.lod.0.as_ref().map_or(0, |lod| lod.stats().1),
@@ -1707,6 +1713,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .map(|e| self.shown_name_tags(glam::DVec3::from_array(e))),
         });
         let (fishing, fight) = self
+            .side
             .integrated
             .as_ref()
             .and_then(|server| {

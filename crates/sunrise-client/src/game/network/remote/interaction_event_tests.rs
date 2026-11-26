@@ -30,9 +30,10 @@ use {
     sunrise_sim::first_person_sim::Hand, sunrise_sim::motion::PlayerMotion,
 };
 
-impl<S: crate::game::Side> Game<'_, S> {
+#[cfg(feature = "client")]
+impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn set_sent_sneak_for_test(&mut self) {
-        self.remote.as_mut().unwrap().last_input |= super::SHIFT_INPUT;
+        self.side.remote.as_mut().unwrap().last_input |= super::SHIFT_INPUT;
     }
 }
 
@@ -292,7 +293,7 @@ pub(in crate::game) fn with_interaction_client_game_at(
         |game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "InteractionTest").unwrap();
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
             game.set_local_mode(sunrise_command::args::GameMode::Creative);
             game.world

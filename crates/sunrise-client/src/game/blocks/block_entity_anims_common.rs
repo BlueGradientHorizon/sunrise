@@ -5,6 +5,9 @@ use sunrise_level::block_entity_ticks::EndGateway;
 use sunrise_level::{block_entities::Pos, containers::BlockEntity};
 use sunrise_sim::save::number;
 
+/// The handle of the local player among a bell's gathered entities.
+pub(in crate::game) const PLAYER: u64 = u64::MAX;
+
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// End gateway at `pos`: live `Age`, saved update tag, or a fresh gateway.
     pub(in crate::game) fn gateway_loaded(&self, pos: [i32; 3]) -> EndGateway {

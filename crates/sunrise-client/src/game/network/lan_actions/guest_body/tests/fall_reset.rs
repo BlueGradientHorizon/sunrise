@@ -15,7 +15,7 @@ pub(in crate::game) fn drain_moves(
     g: &mut crate::game::ServerGame<'_>,
     reports: impl IntoIterator<Item = (f64, u8)>,
 ) {
-    g.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+    g.side.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest
             .inbox
             .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
@@ -44,7 +44,7 @@ pub(in crate::game) fn tick_with_moves(
     before_level: (f64, Option<[f64; 3]>, [bool; 3]),
 ) {
     drain_moves(g, heights.iter().map(|&y| (y, 0)));
-    let guest = &g.lan.as_ref().unwrap().hub.guests[0];
+    let guest = &g.side.lan.as_ref().unwrap().hub.guests[0];
     assert_eq!(guest.moves.len(), heights.len(), "every move is accepted");
     assert_eq!(guest.position[1], *heights.last().unwrap());
     assert_eq!(fall(g), before_level, "state before the level tick");
@@ -53,7 +53,7 @@ pub(in crate::game) fn tick_with_moves(
 
 /// The guest's fall distance, where its tracked fall began, and which criteria it has.
 pub(in crate::game) fn fall(g: &crate::game::ServerGame<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
-    let host = g.lan.as_ref().unwrap();
+    let host = g.side.lan.as_ref().unwrap();
     let guest = &host.hub.guests[0];
     let done = CRITERIA.map(|name| {
         let i = g.adv.tree.find_id(&format!("fall:{name}")).unwrap();
@@ -83,7 +83,7 @@ fn fall_distance_handle_reads_the_guests_fall_and_landing() {
             assert_eq!(entity.fall_distance(&game), Some(2.0));
             game.tick_lan(false);
             drain_moves(&mut game, [(100.0, 1)]);
-            let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert_eq!(guest.position, [12.5, 100.0, 12.5]);
             assert!(guest.on_ground);
             assert_eq!(entity.fall_distance(&game), Some(0.0));
@@ -129,7 +129,7 @@ fn a_guest_move_that_goes_up_ends_its_fall() {
             // half a heart left, and a block at its head to suffocate in once it has moved.
             assert!(g.run_command(&format!("advancement revoke {NAME} only fall:any")));
             assert!(g.run_command("gamerule natural_health_regeneration false"));
-            let health = g.lan.as_ref().unwrap().hub.guests[0].health;
+            let health = g.side.lan.as_ref().unwrap().hub.guests[0].health;
             assert!(g.run_command(&format!("damage {NAME} {} minecraft:generic", health - 0.5)));
             // The damage clock runs out, so the next damage counts.
             for _ in 0..20 {
@@ -137,7 +137,7 @@ fn a_guest_move_that_goes_up_ends_its_fall() {
             }
             assert!(g.run_command("setblock 12 105 12 minecraft:stone"));
             tick_with_moves(&mut g, &[104.0], (0.0, None, [true, true, false]));
-            let guest = &g.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &g.side.lan.as_ref().unwrap().hub.guests[0];
             assert!(
                 guest.health <= 0.0,
                 "the guest suffocated: {}",
@@ -164,7 +164,10 @@ fn entering_water_ends_a_tracked_fall_before_the_next_move() {
 
             // Enter airborne water a half block down, then fall below it in the same batch.
             drain_moves(&mut g, [(104.5, 0), (101.5, 0)]);
-            assert_eq!(g.lan.as_ref().unwrap().hub.guests[0].position[1], 101.5);
+            assert_eq!(
+                g.side.lan.as_ref().unwrap().hub.guests[0].position[1],
+                101.5
+            );
             assert_eq!(fall(&g), (0.0, None, [true, true, false]));
         },
     );
@@ -190,7 +193,7 @@ pub(in crate::game) fn lethal_landing(totem: bool) {
 
     // Land, then report stepping up, with no world or connection tick in between.
     drain_moves(&mut g, [(100.0, 1), (100.5, 0)]);
-    let guest = &g.lan.as_ref().unwrap().hub.guests[0];
+    let guest = &g.side.lan.as_ref().unwrap().hub.guests[0];
     if totem {
         assert!(!guest.dead);
         assert_eq!(guest.health, 1.0);

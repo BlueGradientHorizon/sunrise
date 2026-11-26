@@ -31,16 +31,14 @@
 //! health and absorption, and the attribute modifier rows the effects own.
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
-use super::{
-    BlockEntity, BlockStateId, Dim, Game, lan_mount_menu::MountClickWindow, machines::HopperState,
-    maps::MapData,
-};
+use super::{BlockEntity, BlockStateId, Dim, Game, lan_menu_data::MountClickWindow, maps::MapData};
 use mod_api::{
     __private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle,
     TransactionScopeError,
 };
 use std::collections::{BTreeMap, HashMap};
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+use sunrise_gameplay_common::hoppers::HopperState;
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
@@ -74,6 +72,16 @@ pub(in crate::game) struct QuickMoveNotice {
 pub(in crate::game) struct QuickMoveNotices<'a, 'g, S: crate::game::Side> {
     pub(in crate::game) game: &'a mut Game<'g, S>,
     pub(in crate::game) outer: Option<Vec<QuickMoveNotice>>,
+}
+
+impl<'a, 'g, S: crate::game::Side> QuickMoveNotices<'a, 'g, S> {
+    #[inline(always)]
+    pub(in crate::game) fn new(
+        game: &'a mut Game<'g, S>,
+        outer: Option<Vec<QuickMoveNotice>>,
+    ) -> Self {
+        Self { game, outer }
+    }
 }
 
 impl<S: crate::game::Side> Drop for QuickMoveNotices<'_, '_, S> {
@@ -127,7 +135,7 @@ pub(in crate::game) struct OpenTransactions {
     /// Active retained original-player attachment maps during `player_clone` dispatch,
     /// kept in sync with open transaction frames so mutations roll back on abort.
     pub(in crate::game) retained_original_attachments:
-        Vec<std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>>,
+        Vec<std::sync::Arc<std::sync::Mutex<super::player_state::OriginalAttachmentSlot>>>,
     #[cfg(test)]
     pub(in crate::game) trace: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
 }
@@ -145,7 +153,7 @@ impl OpenTransactions {
 
     pub(in crate::game) fn push_retained_original(
         &mut self,
-        slot: std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>,
+        slot: std::sync::Arc<std::sync::Mutex<super::player_state::OriginalAttachmentSlot>>,
     ) {
         self.retained_original_attachments.push(slot);
     }
@@ -300,6 +308,16 @@ pub(in crate::game) struct ClosingPhase<'a, 'g, S: crate::game::Side> {
     pub(in crate::game) outer: Option<TransactionLifecycle>,
 }
 
+impl<'a, 'g, S: crate::game::Side> ClosingPhase<'a, 'g, S> {
+    #[inline(always)]
+    pub(in crate::game) fn new(
+        game: &'a mut Game<'g, S>,
+        outer: Option<TransactionLifecycle>,
+    ) -> Self {
+        Self { game, outer }
+    }
+}
+
 impl<S: crate::game::Side> Drop for ClosingPhase<'_, '_, S> {
     fn drop(&mut self) {
         self.game.transactions.closing = self.outer;
@@ -446,7 +464,7 @@ pub(in crate::game) struct Level {
     pub(in crate::game) orbs: HashMap<(Dim, sunrise_sim::join_seq::JoinSeq), (i32, u32, i32)>,
     /// Each detached station before the first click wrote it, by connection and owner.
     pub(in crate::game) stations:
-        HashMap<(u32, decision::MenuId), super::lan_stations::GuestStation>,
+        HashMap<(u32, decision::MenuId), super::lan_menu_data::GuestStation>,
     /// Each guest's inventory crafting grid before the first write, by connection.
     pub(in crate::game) menus: HashMap<u32, KeptMenus>,
     /// Drag, machine and preview state before a scoped default click.
@@ -483,7 +501,7 @@ pub(in crate::game) struct Level {
     /// Internal decide/fire/apply state for menu actions.
     pub(in crate::game) actions: decision::Journal,
     /// Merchant takes keep their session, mob, statistics and criterion progress together.
-    pub(in crate::game) trades: super::lan_trade_decisions::Journal,
+    pub(in crate::game) trades: super::lan_menu_data::Journal,
     pub(in crate::game) packets: Option<sunrise_sim::lan::conn::transaction_packets::Scope>,
     pub(in crate::game) captured_packets: Vec<sunrise_sim::lan::conn::transaction_packets::Packets>,
     pub(in crate::game) action: Option<decision::ActiveAction>,
@@ -713,7 +731,7 @@ pub(in crate::game) struct KeptClick {
     pub(in crate::game) slot_changed_seen: Option<Vec<Option<ItemStack>>>,
     pub(in crate::game) owned: Option<(u64, Box<sunrise_sim::menu::Menu>)>,
     pub(in crate::game) machine: Option<(i32, Box<sunrise_sim::menu::Menu>)>,
-    pub(in crate::game) places: Option<super::native_menu_places::MenuSlotPlaces>,
+    pub(in crate::game) places: Option<super::native_menu_values::MenuSlotPlaces>,
 }
 
 #[derive(Clone)]
@@ -730,17 +748,17 @@ pub(in crate::game) enum After {
         sunrise_sim::raw_payloads::queued_writer::PreparedPacket,
         mod_api::ServerboundPlayPacket,
     ),
-    Composter(super::composter::Effects),
+    Composter(super::composter_data::Effects),
     /// A mod's world pickup or placement of fluid, its block already set: what is left of it
     /// (`Game::commit_fluid_write`).
-    FluidWrite(Box<super::world_fluids::WrittenFluid>),
+    FluidWrite(Box<super::world_fluid_data::WrittenFluid>),
     /// A bucket's sound and fluid game event (`level_play_fluid_effects`).
-    FluidEffects(Box<super::world_fluids::FluidEffects>),
+    FluidEffects(Box<super::world_fluid_data::FluidEffects>),
     /// A dispenser drop in the source level, with optional overflow click and smoke.
     DispenserDrop {
         pos: Pos,
         facing: sunrise_core::geometry::Direction,
-        spawn: Box<super::spill::Spawn>,
+        spawn: Box<super::spill_common::Spawn>,
         play_events: bool,
     },
     /// Sound and smoke for a mod's accepted dispense reply, after its behaviour's effects.
@@ -758,7 +776,7 @@ pub(in crate::game) enum After {
         holder: BlockEntityIdentity,
         silent: bool,
     },
-    GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
+    GuestMenu(u32, Box<super::lan_menu_data::GuestMenuEffects>),
     /// Publish both the connection-local state and its packets together, never on abort.
     PersonalSidebar(
         u32,
@@ -772,9 +790,9 @@ pub(in crate::game) enum After {
         sound: Option<(String, [f64; 3])>,
         equips: bool,
     },
-    MenuClick(Box<super::lan_menus::MenuClickReply>),
+    MenuClick(Box<super::lan_menu_data::MenuClickReply>),
     MenuPlacesNotice(u32, u128, i32),
-    FurnaceMenu(Box<super::lan_crafting::FurnaceMenuEffects>),
+    FurnaceMenu(Box<super::lan_menu_data::FurnaceMenuEffects>),
     StoreCartItems(Pos),
     BackedMenuClick(u32, u128, mod_api::MenuRef, i32),
     /// A provider's answer changed here (`level_invalidate_capabilities`): the capability
@@ -788,7 +806,7 @@ pub(in crate::game) enum After {
     /// Publish the storage and watched writes of a strict bulk edit, not ordinary updates.
     BulkBlocks(
         sunrise_level::block_edit::BulkPublication,
-        Vec<super::block_edits::Tracked>,
+        Vec<super::block_edits_common::Tracked>,
         Vec<[i32; 3]>,
         StrictBlockSteps,
     ),
@@ -796,14 +814,14 @@ pub(in crate::game) enum After {
     /// the root commit so cross-position cascades (e.g. popping a supported block) clear it.
     ConnectionGroup(Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
-    LevelWrite(Box<super::journal_level_write::PendingWrite>),
+    LevelWrite(Box<super::journal_level_effects::PendingWrite>),
     BlockGameEvent(&'static str, [i32; 3], sunrise_sim::mobs::Who, BlockStateId),
     /// Save, remesh and resend a changed biome column.
     Biome((i32, i32)),
     /// Deferred interaction effects, replayed in the same root-commit order.
     Effect(DeferredEffect),
     /// Effects of a tentative merchant take, published only at the root.
-    Trade(Box<super::lan_trade_decisions::Effect>),
+    Trade(Box<super::lan_menu_data::Effect>),
     /// `Block.popResource`.
     Drop([i32; 3], ItemStack),
     /// `Player.drop(stack, false)` by the player with this UUID: what no longer fits.
@@ -1059,6 +1077,13 @@ impl<S: crate::game::Side> StorageScope<'_, '_, S> {
     }
 }
 
+impl<'a, 'g, S: crate::game::Side> StorageScope<'a, 'g, S> {
+    #[inline(always)]
+    pub(in crate::game) fn new(game: &'a mut Game<'g, S>, frame: Option<TransactionFrame>) -> Self {
+        Self { game, frame }
+    }
+}
+
 impl<S: crate::game::Side> Drop for StorageScope<'_, '_, S> {
     fn drop(&mut self) {
         if let Some(frame) = self.frame.take() {
@@ -1148,7 +1173,7 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
         open: bool,
     ) -> StorageScope<'_, 'g, __Side> {
         let frame = open.then(|| self.open_storage_transaction());
-        StorageScope { game: self, frame }
+        StorageScope::new(self, frame)
     }
 
     /// The trident tick opens a frame at contact, then closes it after applying the
@@ -1176,10 +1201,7 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
         f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
     ) -> (R, StorageSettlement) {
         let frame = self.open_storage_transaction();
-        let guard = StorageScope {
-            game: self,
-            frame: Some(frame),
-        };
+        let guard = StorageScope::new(self, Some(frame));
         let (out, commit) = f(&mut *guard.game, frame);
         let settled = guard.close(commit).unwrap_or(if commit {
             StorageSettlement::Refused
@@ -1352,10 +1374,9 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
     pub(in crate::game) fn journal_saved_pot(&mut self, pos: Pos) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
         if let Some(level) = entities::open_in(&mut self.transactions, self.dim) {
-            level
-                .saved_pots
-                .entry(pos)
-                .or_insert_with(|| super::spill::saved_entity(&self.world, [pos.0, pos.1, pos.2]));
+            level.saved_pots.entry(pos).or_insert_with(|| {
+                super::spill_common::saved_entity(&self.world, [pos.0, pos.1, pos.2])
+            });
             level
                 .save_gate
                 .get_or_insert_with(sunrise_sim::join_seq::visibility::PassLease::enter);
@@ -1649,7 +1670,7 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
         &mut self,
         conn: u32,
         owner: decision::MenuId,
-        station: &super::lan_stations::GuestStation,
+        station: &super::lan_menu_data::GuestStation,
     ) {
         if let Some(level) = self.transactions.last_mut() {
             level
@@ -1690,7 +1711,7 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
         dispatch: impl FnOnce(&mut Self) -> R,
     ) -> (R, Vec<QuickMoveNotice>) {
         let outer = self.transactions.quick_move_notices.replace(Vec::new());
-        let scope = QuickMoveNotices { game: self, outer };
+        let scope = QuickMoveNotices::new(self, outer);
         let result = dispatch(&mut *scope.game);
         let notices = scope
             .game
@@ -2013,7 +2034,7 @@ pub(in crate::game) mod tests {
             })
             .unwrap();
             assert_eq!(
-                game.lan.as_ref().unwrap().play[&12]
+                game.side.lan.as_ref().unwrap().play[&12]
                     .stats
                     .get("custom", "minecraft:fill_cauldron"),
                 0
@@ -2356,6 +2377,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.world
@@ -3002,6 +3024,7 @@ pub(in crate::game) mod mod_capability_tests {
             let level = game.level(game.dim.id()).unwrap();
             let player_ref = game.fake_player(level, guest, "test").unwrap();
             let conn = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -3054,7 +3077,8 @@ pub(in crate::game) mod mod_capability_tests {
             game.side.lan_acting_uuid = Some(guest);
             std::mem::swap(
                 &mut game.player_state.attachments,
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -3066,7 +3090,8 @@ pub(in crate::game) mod mod_capability_tests {
             ENERGY.set(host, player, 70).unwrap();
             std::mem::swap(
                 &mut game.player_state.attachments,
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub

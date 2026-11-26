@@ -408,7 +408,8 @@ fn a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level() {
             game.world.dirty_sections.clear();
         }
         let (tx, rx) = std::sync::mpsc::channel();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -420,6 +421,7 @@ fn a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level() {
             .unwrap();
         let biome = world_biomes!(game).list[usize::from(changed)].name.clone();
         let wire_biome = game
+            .side
             .lan
             .as_ref()
             .unwrap()

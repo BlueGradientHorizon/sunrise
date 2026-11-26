@@ -77,7 +77,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let eye = game.lan.as_ref().unwrap().hub.guests[0].position;
+            let eye = game.side.lan.as_ref().unwrap().hub.guests[0].position;
             // 20 blocks from the guest: past reach + 4, so vanilla closes it.
             let far = (eye[0] as i32, eye[1] as i32, eye[2] as i32 + 20);
             let beside = (far.0 + 1, far.1, far.2);
@@ -93,7 +93,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
                     Slots::Block(k) | Slots::Double(k, _) => k,
                     _ => far,
                 };
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.hub.open_container(
                     12,
                     "minecraft:generic_9x3",
@@ -113,10 +113,10 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
                 });
             };
             let is_open = |game: &crate::game::ServerGame<'_>| {
-                game.lan.as_ref().unwrap().hub.guests[0].menu.is_some()
+                game.side.lan.as_ref().unwrap().hub.guests[0].menu.is_some()
             };
             let click = |game: &mut crate::game::ServerGame<'_>| {
-                let window = game.lan.as_ref().unwrap().hub.guests[0]
+                let window = game.side.lan.as_ref().unwrap().hub.guests[0]
                     .menu
                     .as_ref()
                     .unwrap()
@@ -172,7 +172,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             // Only a button click for the open window asks: a stale window's click leaves the
             // menu be, and the open window's closes it.
             open(game, Slots::Block(far), true);
-            let window = game.lan.as_ref().unwrap().hub.guests[0]
+            let window = game.side.lan.as_ref().unwrap().hub.guests[0]
                 .menu
                 .as_ref()
                 .unwrap()
@@ -197,7 +197,8 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             assert!(asked() > before);
 
             // An always-true part doesn't hold it past death and respawn, or a disconnect.
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -237,7 +238,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             };
             assert!(menu.asks_still_valid);
             let before = asked();
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert!(menu.still_valid(&host.hub.loop_context, &game.world, &host.hub.guests[0]));
             assert_eq!(asked(), before);
         });
@@ -309,7 +310,8 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     // A screen position is not a vehicle key, even at this reserved Y.
                     let pos = Some((0, crate::game::minecarts::CART_KEY_Y, 100));
                     let open = |game: &mut crate::game::ServerGame<'_>| {
-                        game.lan
+                        game.side
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub
@@ -325,7 +327,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                             .unwrap()
                     };
                     let window_of_guest = |game: &crate::game::ServerGame<'_>| {
-                        game.lan.as_ref().unwrap().hub.guests[0]
+                        game.side.lan.as_ref().unwrap().hub.guests[0]
                             .menu
                             .as_ref()
                             .map(|menu| menu.window)
@@ -361,13 +363,14 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     }
 
                     let state_of_guest = |game: &crate::game::ServerGame<'_>| {
-                        game.lan.as_ref().unwrap().hub.guests[0]
+                        game.side.lan.as_ref().unwrap().hub.guests[0]
                             .menu
                             .as_ref()
                             .unwrap()
                             .state
                     };
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -379,7 +382,8 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     assert_eq!(state_of_guest(game), (old_state + 1) & 0x7FFF);
                     assert_eq!(answer.asks.load(Ordering::Relaxed), before);
 
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -389,7 +393,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     assert_eq!(window_of_guest(game), None);
                     assert_eq!(answer.asks.load(Ordering::Relaxed), before + 1);
                     assert!(
-                        game.lan
+                        game.side.lan
                             .as_ref()
                             .unwrap()
                             .hub

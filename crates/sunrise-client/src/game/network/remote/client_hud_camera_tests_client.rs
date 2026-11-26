@@ -1,4 +1,4 @@
-use crate::game::remote::RemoteDimensionEntry;
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use crate::game::remote::tests::client_hud_camera_tests::LOCAL;
 use crate::game::remote::tests::client_hud_camera_tests::MOB;
 use crate::game::remote::tests::client_hud_camera_tests::WATCHED;
@@ -10,7 +10,7 @@ use crate::game::remote::tests::client_hud_camera_tests::mount;
 use crate::game::remote::tests::client_hud_camera_tests::num;
 use crate::game::remote::tests::client_hud_camera_tests::spawn;
 use crate::game::{
-    Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
+    Game, native_entity_refs::tests::with_client_game, native_lifecycle_common::NativeLifecycle,
 };
 use sunrise_client::level_loading::Reason;
 use sunrise_core::geometry::Vec3;
@@ -36,7 +36,7 @@ fn a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat() 
             with_client_game(|game| {
                 let (_reader, _writer) = super::connect_menu_test(game);
                 super::spawn_menu_test(game);
-                game.remote.as_mut().unwrap().level_load.finish();
+                game.side.remote.as_mut().unwrap().level_load.finish();
                 game.side.screen = Screen::Playing;
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 // LivingEntity.getMaxHealth converts to f32 before Hud adds the half point.
@@ -148,7 +148,7 @@ pub(in crate::game) fn set_up(
         sea_level: 63,
     };
     game.enter_remote_dimension(&spawn_info, RemoteDimensionEntry::Login, Reason::Other);
-    let remote = game.remote.as_mut().unwrap();
+    let remote = game.side.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = LOCAL;
     remote.level_load.finish();

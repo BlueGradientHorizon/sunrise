@@ -13,7 +13,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // ItemStack.isSameItem compares the item in the active hand, even when
         // that hand is now holding a different hotbar slot.
-        let offhand = slot == crate::game::shield::OFFHAND_SLOT;
+        let offhand = slot == crate::game::held_items::OFFHAND_SLOT;
         let hand_slot = if offhand { slot } else { self.selected };
         let Some(stack) = self
             .stack_in(hand_slot)

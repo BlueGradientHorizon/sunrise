@@ -538,7 +538,7 @@ fn with_pot_parts(
             game.world
                 .block_entities
                 .insert(POS, BlockEntity::Mod(Box::new(entity)));
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let title = sunrise_core::nbt::Tag::String("pot".into());
             let items = vec![None; slots];
             host.hub
@@ -568,18 +568,24 @@ fn set(
     for (slot, stack) in pot {
         slots[*slot] = stack.clone();
     }
-    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-        guest.inventory.fill(None);
-        for (slot, stack) in inventory {
-            guest.inventory[*slot] = stack.clone();
-        }
-        guest.carried = carried;
-        guest.offhand = None;
-    });
+    game.side
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .guests
+        .update(0, |guest| {
+            guest.inventory.fill(None);
+            for (slot, stack) in inventory {
+                guest.inventory[*slot] = stack.clone();
+            }
+            guest.carried = carried;
+            guest.offhand = None;
+        });
 }
 /// The guest's click (`input` is `ClickType`'s id), claiming nothing.
 fn click(game: &mut crate::game::ServerGame<'_>, slot: i32, button: i8, input: i32) {
-    let menu = game.lan.as_ref().unwrap().hub.guests[0].menu.as_ref();
+    let menu = game.side.lan.as_ref().unwrap().hub.guests[0].menu.as_ref();
     let (container, state) = menu.map(|m| (m.window, m.state)).unwrap();
     game.lan_guest_packet(
         12,
@@ -601,7 +607,7 @@ fn in_pot(game: &crate::game::ServerGame<'_>, slot: usize) -> u32 {
 }
 /// The count in the guest's inventory slot `slot`, and on their cursor.
 fn held(game: &crate::game::ServerGame<'_>, slot: usize) -> (u32, u32) {
-    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
     let count = |stack: &Option<ItemStack>| stack.as_ref().map_or(0, |s| s.count);
     (count(&guest.inventory[slot]), count(&guest.carried))
 }
@@ -671,7 +677,7 @@ fn a_pending_part_cursor_write_does_not_overwrite_a_take_listeners_transfer() {
                 click(game, 0, 0, sunrise_sim::lan::menu::input::PICKUP);
                 assert_eq!(heard(), [took(0, 1, 3)]);
                 assert_eq!(in_pot(game, 0), 4);
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(guest.inventory[8], stick);
                 assert_eq!(guest.carried, stick);
             });
@@ -695,7 +701,7 @@ fn closing_on_the_first_part_take_returns_only_its_owed_cursor() {
                 click(game, 0, 0, sunrise_sim::lan::menu::input::PICKUP);
                 assert_eq!(heard(), [took(0, 1, 3)]);
                 assert!(game.world.block_entities.get(&POS).is_none());
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert!(guest.menu.is_none());
                 assert_eq!(guest.carried, None);
                 let returned: Vec<_> = guest.inventory.iter().flatten().cloned().collect();
@@ -775,7 +781,7 @@ fn pick_all_respects_the_cursor_items_new_capacity_after_a_take() {
         );
         assert_eq!(heard(), [took(0, 3, 0), took_pearls]);
         assert_eq!(in_pot(game, 3), 8);
-        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.carried, item(pearls, 16));
     });
 }
@@ -819,15 +825,21 @@ fn a_shift_click_hears_the_amount_moved_once_per_craft() {
     with_pot(pot_type(10, Some(grid)), |game| {
         let logs = item("minecraft:oak_log", 3);
         set(game, &[(0, logs.clone())], &[], None);
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            let mut shown = vec![None; 9];
-            shown[0] = logs;
-            let result = item("minecraft:oak_planks", 4);
-            guest.menu.as_mut().unwrap().craft = Some(ModCraft {
-                grid: shown,
-                result,
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                let mut shown = vec![None; 9];
+                shown[0] = logs;
+                let result = item("minecraft:oak_planks", 4);
+                guest.menu.as_mut().unwrap().craft = Some(ModCraft {
+                    grid: shown,
+                    result,
+                });
             });
-        });
         click(game, 9, 0, 1);
         let crafts: Vec<_> = heard()
             .into_iter()
@@ -892,7 +904,10 @@ fn invalid_snapshot_or_failed_offhand_swap_rolls_back_without_publishing() {
         click(game, 0, 40, 2);
         assert_eq!(heard(), [took(0, 5, 0)]);
         assert_eq!(in_pot(game, 0), 0);
-        assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].offhand, stone(5));
+        assert_eq!(
+            game.side.lan.as_ref().unwrap().hub.guests[0].offhand,
+            stone(5)
+        );
         assert_eq!(CHANGED.get(), 1);
 
         // A panicking listener aborts the enclosing click transaction without publishing.
@@ -903,7 +918,11 @@ fn invalid_snapshot_or_failed_offhand_swap_rolls_back_without_publishing() {
         assert_eq!(heard(), [took(0, 5, 0)]);
         assert_eq!(in_pot(game, 0), 5);
         assert_eq!(held(game, 8), (0, 0));
-        assert!(game.lan.as_ref().unwrap().hub.guests[0].offhand.is_none());
+        assert!(
+            game.side.lan.as_ref().unwrap().hub.guests[0]
+                .offhand
+                .is_none()
+        );
         assert_eq!(
             CHANGED.get(),
             0,
@@ -935,7 +954,8 @@ fn linked_sources_are_silent_and_linked_writes_abort_with_the_click() {
             );
         };
         put_link(game);
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -988,7 +1008,7 @@ fn a_throw_repeat_sees_the_previous_notice_and_oversized_swap_delivers_after_it(
         assert_eq!(in_pot(game, 0), 1);
         assert_eq!(held(game, 0).0, 63);
         assert_eq!(
-            game.lan.as_ref().unwrap().hub.guests[0].inventory[8],
+            game.side.lan.as_ref().unwrap().hub.guests[0].inventory[8],
             stone(5)
         );
         assert!(game.dropped.is_empty());
@@ -1023,7 +1043,7 @@ fn an_oversized_swap_delivers_the_displaced_stack_even_when_the_holder_is_remove
             )]
         );
         assert!(game.world.block_entities.get(&POS).is_none());
-        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
         assert!(guest.menu.is_none());
         assert_eq!(guest.inventory[0], item(dirt, 63));
         assert_eq!(guest.inventory[8], stone(64));
@@ -1050,7 +1070,7 @@ fn replacing_the_detached_holder_spills_only_the_contents_after_the_take() {
         click(game, 0, 0, 0);
         assert_eq!(heard(), [took(0, 5, 0)]);
         assert!(game.world.block_entities.get(&POS).is_none());
-        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
         assert!(guest.menu.is_none());
         // A live close returns the stack just taken from the cursor to the inventory.
         assert_eq!(guest.carried, None);
@@ -1073,7 +1093,7 @@ const LOG: &str = "minecraft:oak_log";
 
 /// Track only the packets sent after the guest has seen the seeded pot slots.
 fn watch_pot(game: &mut crate::game::ServerGame<'_>) -> (i32, i32, mpsc::Receiver<Out>) {
-    let host = game.lan.as_mut().unwrap();
+    let host = game.side.lan.as_mut().unwrap();
     let (tx, rx) = mpsc::channel();
     host.hub.guests.update(0, |guest| {
         guest.sender = PlayerSender::new(tx, Arc::default())
@@ -1127,7 +1147,7 @@ fn a_click_sends_the_other_slots_written_by_contents_changed() {
                     None,
                 );
                 let (window, state, rx) = watch_pot(game);
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 let net = host.hub.stack(&stone(1)).unwrap();
                 let sync = host.hub.sync_data();
                 let names = sunrise_protocol::registry::SyncedNames {
@@ -1189,7 +1209,7 @@ fn a_damage_only_repair_reaches_the_open_menu_and_inventory() {
                 let repaired = damage(0);
                 set(game, &[(RESULT, Some(damaged.clone()))], &[], None);
                 let (window, _, rx) = watch_pot(game);
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 let old = host.hub.stack(&Some(damaged.clone())).unwrap();
                 let sync = host.hub.sync_data();
                 let (builtin, dynamic) = (sync.builtin.clone(), sync.dynamic.clone());
@@ -1244,7 +1264,7 @@ fn a_damage_only_repair_reaches_the_open_menu_and_inventory() {
                 zero(correction);
                 assert!(replies.next().is_none());
 
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 assert_eq!(host.hub.guests[0].inventory[0], Some(repaired.clone()));
                 host.hub.close_container(12);
                 host.hub
@@ -1278,9 +1298,15 @@ fn a_refilled_grid_crafts_again_and_the_reply_includes_the_listener_only_slot() 
     with_pot(pot_type(11, Some(GRID)), |game| {
         set(game, &[(0, item(LOG, 1))], &[], None);
         let (tx, rx) = mpsc::channel();
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.sender = PlayerSender::new(tx, Arc::default())
-        });
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                guest.sender = PlayerSender::new(tx, Arc::default())
+            });
         SCRIPT.set(TakeScript::RefillGrid);
         click(game, 9, 0, 1);
         let takes = heard();
@@ -1351,7 +1377,7 @@ fn a_partial_mod_craft_keeps_crafting_bookkeeping_but_not_item_crafted() {
                 game.dropped.iter().map(|e| e.stack.count).sum::<u32>(),
                 if success { 2 } else { 0 }
             );
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert_eq!(
                 host.play[&12].stats.get("crafted", PLANKS),
                 if success { 2 } else { 0 }
@@ -1359,7 +1385,7 @@ fn a_partial_mod_craft_keeps_crafting_bookkeeping_but_not_item_crafted() {
             assert_eq!(host.hub.guests[0].advancements.has(ID, CRITERION), success);
             assert_eq!(CRAFTED.get(), 0);
             if success {
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.hub.close_container(12);
                 host.hub.guests.update(0, |guest| {
                     guest.craft_grid[0] = item(LOG, 1);
@@ -1414,7 +1440,7 @@ fn with_owned_processor(test: impl FnOnce(&mut crate::game::ServerGame<'_>, mpsc
             || {
                 with_guests(|game| {
                     let (tx, rx) = mpsc::channel();
-                    let host = game.lan.as_mut().unwrap();
+                    let host = game.side.lan.as_mut().unwrap();
                     host.hub.guests.update(0, |guest| {
                         guest.brand = "sunrise".into();
                         guest.sender = PlayerSender::new(tx, Arc::default());
@@ -1463,7 +1489,9 @@ fn drain_packets(rx: &mpsc::Receiver<Out>) -> Vec<Clientbound> {
 }
 
 fn owned_contents(game: &crate::game::ServerGame<'_>) -> Vec<Option<ItemStack>> {
-    game.lan.as_ref().unwrap().hub.guests[0].native_menu.clone()
+    game.side.lan.as_ref().unwrap().hub.guests[0]
+        .native_menu
+        .clone()
 }
 
 #[test]
@@ -1471,7 +1499,8 @@ fn owned_contents(game: &crate::game::ServerGame<'_>) -> Vec<Option<ItemStack>> 
 fn blockless_owned_take_shrinks_inputs_commits_sound_and_repeats_shift_click() {
     with_owned_processor(|game, rx| {
         // Two inputs through ordinary clicks: the result appears once both are in.
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -1480,7 +1509,8 @@ fn blockless_owned_take_shrinks_inputs_commits_sound_and_repeats_shift_click() {
         click(game, 0, 0, 0);
         assert_eq!(OWNED_CHANGED_CALLS.get(), 1);
         assert_eq!(owned_contents(game)[2], None);
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -1509,7 +1539,10 @@ fn blockless_owned_take_shrinks_inputs_commits_sound_and_repeats_shift_click() {
             )]
         );
         assert_eq!(OWNED_CHANGED_CALLS.get(), 3);
-        assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, stone(1));
+        assert_eq!(
+            game.side.lan.as_ref().unwrap().hub.guests[0].carried,
+            stone(1)
+        );
         assert_eq!(
             owned_contents(game),
             [item(LOG, 1), item("minecraft:stick", 1), stone(1)]
@@ -1522,7 +1555,7 @@ fn blockless_owned_take_shrinks_inputs_commits_sound_and_repeats_shift_click() {
         );
 
         // Inputs of three each: a shift-click on the result crafts three times in one click.
-        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.carried = None;
             g.inventory.fill(None);
             g.native_menu = vec![item(LOG, 3), item("minecraft:stick", 3), stone(1)];
@@ -1532,7 +1565,7 @@ fn blockless_owned_take_shrinks_inputs_commits_sound_and_repeats_shift_click() {
         assert_eq!(heard().len(), 3);
         assert_eq!(OWNED_CHANGED_CALLS.get(), 3);
         assert_eq!(owned_contents(game), [None, None, None]);
-        let total_stone: u32 = game.lan.as_ref().unwrap().hub.guests[0]
+        let total_stone: u32 = game.side.lan.as_ref().unwrap().hub.guests[0]
             .inventory
             .iter()
             .flatten()
@@ -1563,7 +1596,7 @@ fn blockless_owned_take_failure_rolls_back_cursor_inventory_slots_and_effects() 
         (OwnedScript::PanicOnSecondTake, 1, 2),
     ] {
         with_owned_processor(|game, rx| {
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.native_menu = full();
                 g.inventory.fill(None);
                 g.carried = None;
@@ -1572,7 +1605,7 @@ fn blockless_owned_take_failure_rolls_back_cursor_inventory_slots_and_effects() 
             OWNED_SCRIPT.set(script);
             click(game, 2, 0, input);
             assert_eq!(heard().len(), heard_takes);
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.carried, None);
             assert!(guest.inventory.iter().all(Option::is_none));
             assert_eq!(owned_contents(game), full());

@@ -41,7 +41,7 @@ pub(in crate::game) fn reset_player(game: &mut crate::game::ClientGame<'_>, food
     game.player = Some(player);
     game.clear_device_keys();
     game.using = None;
-    let remote = game.remote.as_mut().unwrap();
+    let remote = game.side.remote.as_mut().unwrap();
     remote.health = (20.0, food, 5.0);
     remote.was_sprinting = false;
     remote.last_input = 0;
@@ -94,8 +94,8 @@ fn movement_input_passive_listener_preserves_sprint() {
             tick(game);
             assert!(saw_released_sprint.load(Ordering::Relaxed));
             assert!(game.player.as_ref().unwrap().sprinting, "vanilla latch");
-            assert_eq!(game.remote.as_ref().unwrap().last_input, 1);
-            assert!(game.remote.as_ref().unwrap().was_sprinting);
+            assert_eq!(game.side.remote.as_ref().unwrap().last_input, 1);
+            assert!(game.side.remote.as_ref().unwrap().was_sprinting);
 
             reset_player(game, 20);
             game.insert_device_key(KeyCode::KeyW);
@@ -130,10 +130,10 @@ fn movement_input_sends_auto_jump_with_the_edited_keys() {
             let player = game.player.as_ref().unwrap();
             assert!(player.was_auto_jump);
             assert_eq!(player.move_vector, [-1.0, 0.0]);
-            assert_eq!(game.remote.as_ref().unwrap().last_input, 1 | 8 | 16);
+            assert_eq!(game.side.remote.as_ref().unwrap().last_input, 1 | 8 | 16);
             tick(game);
             assert!(!game.player.as_ref().unwrap().was_auto_jump);
-            assert_eq!(game.remote.as_ref().unwrap().last_input, 1 | 8);
+            assert_eq!(game.side.remote.as_ref().unwrap().last_input, 1 | 8);
             server.shutdown();
         });
     });
@@ -222,11 +222,15 @@ fn the_sneak_key_counts_while_riding() {
         with_client_game(|game| {
             let server = connect(game);
             reset_player(game, 20);
-            let boat =
-                crate::game::boats::Boat::new(5, "oak".into(), Vec3::new(8.0, 64.0, 8.0), 0.0);
+            let boat = crate::game::boats_common::Boat::new(
+                5,
+                "oak".into(),
+                Vec3::new(8.0, 64.0, 8.0),
+                0.0,
+            );
             game.boats.push(boat);
             game.riding = Some(5);
-            game.remote.as_mut().unwrap().first_passenger = false;
+            game.side.remote.as_mut().unwrap().first_passenger = false;
             game.insert_device_key(KeyCode::ShiftLeft);
             tick(game);
             assert_eq!(game.riding, Some(5));

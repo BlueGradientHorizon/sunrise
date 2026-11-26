@@ -1,5 +1,5 @@
+use super::block_entity_client_tick::ClientBlockEntityAccess;
 use super::*;
-use crate::game::native_hooks::block_entity_client_tick::ClientBlockEntityAccess;
 use mod_api::{BlockEntityClientScope, BlockEntitySideScope};
 
 impl Game<'_, crate::game::client_side::ClientState> {

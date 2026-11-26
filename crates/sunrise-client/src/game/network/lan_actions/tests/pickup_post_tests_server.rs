@@ -21,7 +21,8 @@ fn guest_pickup_hooks_name_the_ground_item_entity() {
     with_probe(&probe, || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             clear_ground(game);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

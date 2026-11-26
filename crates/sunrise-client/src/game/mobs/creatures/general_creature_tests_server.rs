@@ -75,6 +75,7 @@ fn ender_pearl_clears_impulse_before_next_fall() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let mut player = PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
@@ -178,7 +179,8 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             game.mobs.push(Mob::new(101, pig_type, Vec3::ZERO, 0.0));
             {
                 let value = false;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -190,7 +192,8 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             assert!(game.resolve_player_credit(credit).is_none());
             {
                 let value = true;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -200,24 +203,31 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             assert_eq!(game.resolve_player_credit(credit), Some(Some(12)));
             let victim = game.mobs[1].clone();
             game.mob_die(&victim);
-            let stats = &game.lan.as_ref().unwrap().play.get(&12).unwrap().stats;
+            let stats = &game.side.lan.as_ref().unwrap().play.get(&12).unwrap().stats;
             assert_eq!(stats.get("custom", "minecraft:mob_kills"), 1);
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                assert!(guest.advancements.has("test:catalyst", "kill"));
-                guest.advancements = Default::default();
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    assert!(guest.advancements.has("test:catalyst", "kill"));
+                    guest.advancements = Default::default();
+                });
             let mut second = victim.clone();
             second.id = 102;
             game.side
                 .last_hurt_by_player
-                .insert(102, super::super::combat::PlayerCredit(12));
+                .insert(102, crate::game::combat_common::PlayerCredit(12));
             game.as_guest(12, |game| game.mob_die(&second)).unwrap();
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert_eq!(host.play[&12].stats.get("custom", "minecraft:mob_kills"), 2);
             assert!(host.hub.guests[0].advancements.has("test:catalyst", "kill"));
             {
                 let value = "minecraft:the_nether".into();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -230,7 +240,7 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             let credit = game.side.last_hurt_by_player.remove(&101).unwrap();
             game.side.last_hurt_by_player.insert(103, credit);
             game.mob_die(&third);
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert_eq!(host.play[&12].stats.get("custom", "minecraft:mob_kills"), 3);
             game.mobs[0].extra.owner = None;
             game.resolve_player_responsible(101, Damage::mob(100, [0.0; 3]));

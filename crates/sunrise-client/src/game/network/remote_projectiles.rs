@@ -67,7 +67,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Whether the client tracks `id` already: asked by `AddEntity` before it tracks the new one.
     pub(in crate::game::client_side) fn tracks_remote_entity(&self, id: i32) -> bool {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .is_some_and(|r| r.tracked_entity(id).is_some())
     }
@@ -167,7 +168,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if let (8, Value::Item(stack)) = (index, value)
                     && let Some(stack) = self.to_stack(stack)
                 {
-                    self.potions.remote_thrown_item(id, stack);
+                    crate::game::client_side::potions::remote_thrown_item(
+                        &mut self.potions,
+                        id,
+                        stack,
+                    );
                 }
             }
             return;
@@ -307,7 +312,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// This client's own player's entity id on the server.
     pub(in crate::game::client_side) fn remote_player_id(&self) -> Option<u32> {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .and_then(|r| u32::try_from(r.entity_id).ok())
     }
@@ -357,7 +363,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(&self.res.motion().blocks),
         );
         let side_server = self.game_side_client();
-        let side = game_side!(self, side_server);
+        let side = client_game_side!(self, side_server);
         let sections = self.side.client_pick.sections.get_mut();
         self.tnts.retain_mut(|t| {
             // A fluid lookup that fails leaves it where its move put it.
@@ -477,7 +483,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         visited.push(t.id);
                     }
                     if ticks {
-                        super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
+                        crate::game::client_side::trident_client::remote_tick(
+                            t,
+                            &world,
+                            self.remote_eye(t.owner),
+                        );
                         self.pick_section_move(t.id, t.position.components());
                     }
                 }
@@ -519,7 +529,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::RemoteRocket);
         for r in &mut rockets {
             let side_server = self.game_side_client();
-            r.remote_step(self.body_motion(&game_side!(self, side_server)));
+            r.remote_step(self.body_motion(&client_game_side!(self, side_server)));
             if let Some(target) = r.attached_to {
                 if me == Some(target) {
                     self.pick_section_move(r.id, r.position.components());
@@ -562,7 +572,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.creatures.projectiles.retain(|p| p.id != id);
         self.tridents.retain(|t| t.id != id);
         self.rockets.retain(|r| r.id != id);
-        self.potions.remove_remote_thrown(id);
+        crate::game::client_side::potions::remove_remote_thrown(&mut self.potions, id);
         self.side.remote_clouds.retain(|c| c.id != id);
         self.end.remove_remote_eye(id);
         self.remove_remote_hook(id);
@@ -601,12 +611,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_remote_projectiles_told(
         &mut self,
         mut projectiles: JoinList<Projectile, false>,
-        mut tridents: JoinList<super::trident::ThrownTrident>,
+        mut tridents: JoinList<sunrise_sim::thrown_trident::ThrownTrident>,
         round: &mut TickRound,
         arrow_events: &mut Vec<(Vec3, sunrise_sim::arrows::ArrowEvent)>,
     ) -> (
         JoinList<Projectile, false>,
-        JoinList<super::trident::ThrownTrident>,
+        JoinList<sunrise_sim::thrown_trident::ThrownTrident>,
     ) {
         let slots: Vec<u32> = projectiles.iter().map(|p| p.id).collect();
         let mut places = None;
@@ -719,7 +729,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     visited.push(t.id);
                 }
                 if ticks {
-                    super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
+                    crate::game::client_side::trident_client::remote_tick(
+                        t,
+                        &world,
+                        self.remote_eye(t.owner),
+                    );
                     self.pick_section_move(t.id, t.position.components());
                 }
             }
@@ -758,7 +772,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 let eye = self.remote_eye(tridents[i].owner);
                 let t = &mut tridents[i];
-                super::trident::remote_tick(t, &world, eye);
+                crate::game::client_side::trident_client::remote_tick(t, &world, eye);
                 self.pick_section_move(t.id, t.position.components());
             }
             let changed;
@@ -780,11 +794,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_projectiles_told(
         &mut self,
         projectiles: JoinList<Projectile, false>,
-        tridents: JoinList<super::trident::ThrownTrident>,
+        tridents: JoinList<sunrise_sim::thrown_trident::ThrownTrident>,
         tell: impl FnOnce(&mut Self),
     ) -> (
         JoinList<Projectile, false>,
-        JoinList<super::trident::ThrownTrident>,
+        JoinList<sunrise_sim::thrown_trident::ThrownTrident>,
         (bool, bool),
     ) {
         self.creatures
@@ -932,7 +946,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (yaw, pitch) = rotation;
         match kind {
             "minecraft:evoker_fangs" => self.insert_fangs(id, position, yaw, 0, 0),
-            "minecraft:tnt" => self.tnts.push(super::tnt::PrimedTnt {
+            "minecraft:tnt" => self.tnts.push(crate::game::tnt_common::PrimedTnt {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0, 0.0],
@@ -980,7 +994,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 saved: None,
             }),
             "minecraft:trident" => {
-                let mut t = super::trident::ThrownTrident::remote(id, at, yaw, pitch);
+                let mut t = sunrise_sim::thrown_trident::ThrownTrident::remote(id, at, yaw, pitch);
                 t.velocity = velocity;
                 // Projectile.getAddEntityPacket: the owner's id is the data.
                 t.owner = data as u32;
@@ -993,7 +1007,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "minecraft:splash_potion"
             | "minecraft:lingering_potion"
             | "minecraft:experience_bottle" => {
-                self.potions.add_remote_thrown(id, kind, at, velocity);
+                crate::game::client_side::potions::add_remote_thrown(
+                    &mut self.potions,
+                    id,
+                    kind,
+                    at,
+                    velocity,
+                );
             }
             "minecraft:area_effect_cloud" => self.side.remote_clouds.push(RemoteCloud {
                 id,
@@ -1023,9 +1043,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let drawn = sunrise_sim::mobs::entity_random(id, at)
                     .next_int_bound(100_000)
                     .unwrap_or(0);
-                let time = super::dragon::Crystal::start_time(at, drawn, self.clock.still());
+                let time =
+                    crate::game::dragon_common::Crystal::start_time(at, drawn, self.clock.still());
                 self.crystals
-                    .push(super::dragon::Crystal::new(id, at, true, time));
+                    .push(crate::game::dragon_common::Crystal::new(id, at, true, time));
             }
             _ => {
                 let Some(k) = projectile_kind(kind) else {
@@ -1388,7 +1409,7 @@ pub(in crate::game) mod nested_spawn_tests {
     }
     fn own_rocket(game: &mut crate::game::ClientGame<'_>, id: u32) {
         rocket(game, id);
-        let me = game.remote.as_ref().unwrap().entity_id as u32;
+        let me = game.side.remote.as_ref().unwrap().entity_id as u32;
         game.rockets.for_each_mut(|r| {
             if r.id == id {
                 r.attached_to = Some(me);
@@ -1496,7 +1517,7 @@ pub(in crate::game) mod nested_spawn_tests {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "NestedRocket").unwrap();
-            game.remote.as_mut().unwrap().entity_id = 99;
+            game.side.remote.as_mut().unwrap().entity_id = 99;
             game.player = Some(
                 sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(20.0, 80.0, 20.0))
                     .unwrap(),
@@ -1542,6 +1563,7 @@ pub(in crate::game) mod entity_tick_tests {
     /// handle for a client entity resolves only for one the server told this client of.
     fn add_arrow(game: &mut crate::game::ClientGame<'_>, id: i32, position: [f64; 3]) {
         let kind = game
+            .side
             .remote
             .as_ref()
             .unwrap()

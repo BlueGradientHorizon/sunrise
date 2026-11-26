@@ -265,7 +265,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let (xd, zd) = self.extra_knockback_direction();
                 let plan = self.prepare_knockback_credit(self.mobs[index].id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-                let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
+                let level = crate::game::server_side::entity_server::damage_level_of!(
+                    self,
+                    &attack,
+                    &mut credit,
+                    None
+                );
                 self.mobs[index].knockback_full(
                     level,
                     f64::from(knockback),

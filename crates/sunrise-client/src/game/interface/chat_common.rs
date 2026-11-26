@@ -499,7 +499,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             reg.entity_types.push("minecraft:player".into());
         }
         reg.entity_types.extend(
-            super::general::general_type_catalog()
+            crate::game::general::general_type_catalog()
                 .keys()
                 .map(str::to_owned),
         );

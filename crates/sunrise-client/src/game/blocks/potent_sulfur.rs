@@ -4,11 +4,12 @@
 //! its next change of state and push the entities an eruption throws up. The
 //! client's draw the gas clouds and the eruption's plume, play its sound and
 //! push the local player, who moves on its own client and not on the server.
-use super::{Game, potions::mob_effect_id};
+use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::potent_sulfur_common::{
     GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE, PassMobs,
 };
+use crate::game::server_side::potions_server::mob_effect_id;
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
 use sunrise_game_data::Result;
 use sunrise_gameplay_common::potent_sulfur::{

@@ -1,12 +1,15 @@
 //! Resource pack selection bound to the game: the pack screen lists, and a
 //! full resource reload after a change, while playing.
 #[cfg(feature = "client")]
-use super::{
-    ClientPackResources, ClientResources, Game, PackResources, Resources, UiResources,
-    build_renderer, prepare_renderer_textures,
+use super::{Game, PackResources, Resources, build_renderer, prepare_renderer_textures};
+#[cfg(feature = "client")]
+use crate::game::client_side::pack_discovery_client::{data_packs_with_icons, into_resource_pack};
+#[cfg(feature = "client")]
+use crate::game::client_side::resource_tables_client::{
+    ClientPackResources, ClientResources, UiResources,
 };
+use crate::game::packs_common::{cache_dir, reload_files};
 use mod_api::__private::game::*;
-use mod_api::{__private::reload::ReloadFiles, FileToIdConverter, Identifier};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -30,12 +33,6 @@ use sunrise_game_data::text::{Style, Text};
 use sunrise_level::assets::Assets;
 use sunrise_level::datapack::DataPack;
 
-/// Where overlay roots are built (beside options.txt).
-pub fn cache_dir() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_default()
-        .join(".sunrise-cache/resourcepacks")
-}
 pub(in crate::game::client_side) fn packs_dir() -> PathBuf {
     std::env::current_dir()
         .unwrap_or_default()
@@ -91,8 +88,9 @@ impl From<ResourceRoot> for PackRoots {
 }
 
 /// The selection and a server's packs (fixed at the top, `Pack.Position.TOP`) are laid over
-/// [`super::mods::content_root`], so required mod resources sit below the player's packs.
+/// [`crate::game::client_side::mods_client::content_root`], so required mod resources sit below the player's packs.
 /// Built-in packs are found in `vanilla`.
+#[cfg(feature = "client")]
 pub(in crate::game) fn startup_root(
     vanilla: &Path,
     selected: &[String],
@@ -100,11 +98,12 @@ pub(in crate::game) fn startup_root(
     mod_sources: &super::mods::ModsState,
 ) -> sunrise_game_data::Result<PackRoots> {
     let mut all = packs::discover(vanilla, &packs_dir());
-    all.extend(super::pack_finders::discover(
-        mod_api::PackType::ClientResources,
-        mod_sources,
-    ));
-    let base = super::mods::content_root(vanilla, mod_sources)?;
+    all.extend(
+        crate::game::pack_discovery::discover(mod_api::PackType::ClientResources, mod_sources)
+            .into_iter()
+            .map(into_resource_pack),
+    );
+    let base = crate::game::client_side::mods_client::content_root(vanilla, mod_sources)?;
     Ok(PackRoots::for_selection(base, &all, selected, server))
 }
 
@@ -287,7 +286,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     pub(in crate::game::client_side) fn resource_pack_infos(&mut self) -> Vec<PackInfo> {
-        let additional = self.discover_mod_packs(mod_api::PackType::ClientResources);
+        let additional: Vec<_> = self
+            .discover_mod_packs(mod_api::PackType::ClientResources)
+            .into_iter()
+            .map(into_resource_pack)
+            .collect();
         pack_infos(
             &self.vanilla_root(),
             &self.side.server_packs.0.active,
@@ -392,7 +395,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn selection_reload_failed(&mut self, error: &str) {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.vanilla_root(), &packs_dir());
-        all.extend(self.discover_mod_packs(mod_api::PackType::ClientResources));
+        all.extend(
+            self.discover_mod_packs(mod_api::PackType::ClientResources)
+                .into_iter()
+                .map(into_resource_pack),
+        );
         if packs::has_optional_pack(&packs::enabled(&all, &self.side.settings.resource_packs)) {
             clear_selection(&mut self.side.settings);
             if self.spawn_pack_reload(ReloadKind::Selection).is_ok() {
@@ -480,7 +487,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // registering mod for crash attribution.
         let client_listeners = self.register_client_reload_listeners();
         let texture_atlases = super::client_reload::collect_texture_atlases();
-        super::mods::register_fluid_models(self.options.execution_role);
+        crate::game::client_side::mods_client::register_fluid_models(self.options.execution_role);
         let stage = move |progress: &crate::game::Progress| {
             let Some(client_res) = client_res_slot.get() else {
                 return Err("client resources not loaded".to_owned());
@@ -676,7 +683,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .apply_resources(armor_stand_assets);
             game.side.armor_stand_assets.0.extensions = item_extensions;
             game.side_clear_random_tick_sections();
-            game.portals.sections.clear();
+            game.portal_sections.clear();
             game.options.resources = root.clone();
             game.side.falling_vertices.get_mut().clear();
             game.pack = pack;
@@ -821,7 +828,7 @@ pub(in crate::game) fn stage_pack(
         || -> sunrise_game_data::Result<_> {
             // The world's models and sprites and the GUI atlas read the same root and nothing of
             // each other: about a second each, side by side.
-            let pool = super::resource_tables::dynamic_texture_pool();
+            let pool = crate::game::client_side::resource_tables_client::dynamic_texture_pool();
             // The sound events and the language are read here too, not in
             // the frame that applies the reload (about 20 ms of it).
             let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
@@ -871,7 +878,7 @@ pub(in crate::game) fn stage_pack(
                 context.chunk.light.clone(),
                 &res.core.item_data,
             )?;
-            pack.additional_data = super::pack_finders::data_packs(mod_sources).into();
+            pack.additional_data = data_packs_with_icons(mod_sources).into();
             let textures = prepare_renderer_textures(&client_pack);
             let cem = Arc::new(sunrise_client::mobs::cem::CemModels::load(
                 &source,
@@ -879,9 +886,13 @@ pub(in crate::game) fn stage_pack(
             ));
             let block_entity_shapes = client_res.block_entity_render().shapes_for(&source);
             let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);
-            let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
-            let frame_models =
-                super::frames::bake_frames(client_pack.render.model_library.as_deref().ok());
+            let armor_stand_assets =
+                crate::game::client_side::armor_stands_client::ArmorStandAssets::load(
+                    &source, None,
+                );
+            let frame_models = crate::game::client_side::frames_client::bake_frames(
+                client_pack.render.model_library.as_deref().ok(),
+            );
             progress.set(3);
             Ok(move |client_applies| StagedPack {
                 root,
@@ -914,8 +925,8 @@ pub(in crate::game) fn stage_pack(
 pub(in crate::game) struct StagedPack {
     pub root: PathBuf,
     pub waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
-    pub armor_stand_assets: super::armor_stands::ArmorStandAssets,
-    pub frame_models: [super::frames::FrameModel; 4],
+    pub armor_stand_assets: crate::game::client_side::armor_stands_client::ArmorStandAssets,
+    pub frame_models: [crate::game::client_side::frames_client::FrameModel; 4],
     /// The mod reload listeners' prepared applies, ordered around publication
     /// of the staged models.
     pub client_applies: Vec<super::client_reload::PreparedClientReload>,
@@ -1031,45 +1042,6 @@ impl PackReload {
             .unwrap_or_else(|_| Err("the pack reload worker panicked".into()));
         Some((self.kind, staged))
     }
-}
-
-/// Reads one converter's directory from `packs`, later packs winning, and
-/// collects the converted files: the shared read-and-log loop of both sides'
-/// reloads. `top` is `"data"` or `"assets"`.
-pub(in crate::game) fn reload_files(
-    top: &str,
-    packs: &[&DataPack],
-    listener: &Identifier,
-    converter: &FileToIdConverter,
-) -> ReloadFiles {
-    let mut selected = std::collections::BTreeMap::new();
-    for pack in packs {
-        for file in pack.list_under(top, &[converter.directory()]) {
-            if let Some(id) = file
-                .strip_prefix(&format!("{top}/"))
-                .and_then(|path| converter.file_to_id(path))
-            {
-                selected.insert(id, (*pack, file));
-            }
-        }
-    }
-    let mut files = std::collections::BTreeMap::new();
-    for (id, (pack, path)) in selected {
-        // A file that vanishes or fails to read between listing and reading is one bad
-        // entry, as vanilla's `scanDirectory` treats a parse failure: log it, skip it.
-        match pack.read(&path) {
-            Some(bytes) => {
-                files.insert(id, bytes);
-            }
-            None => log::error!(
-                "Couldn't read file '{id}' from '{}/{}' for listener {}",
-                pack.id,
-                path,
-                listener
-            ),
-        }
-    }
-    ReloadFiles::new(files)
 }
 
 #[cfg(feature = "client")]

@@ -1,25 +1,30 @@
 //! The playable game loop: streaming world, player simulation at 20 ticks/s,
 //! block interaction, inventory and HUD.
+#[cfg(test)]
+use client_side::window_handler::follow_keymap;
+#[cfg(feature = "client")]
+use client_side::{
+    launch_options_client::is_client_start,
+    resource_load_client::{StartupLoadContext, load_resources_for_mods, load_resources_sync},
+    resource_tables_client::{ClientPackResources, ClientResources},
+};
 #[allow(unused_imports)]
 #[cfg(test)]
 use key_codes::drop_held_behind_dialog;
+#[cfg(any(test, feature = "client"))]
 #[allow(unused_imports)]
-use key_codes::{
-    follow_named_keymap, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
-};
+use key_codes::{gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button};
+#[allow(unused_imports)]
+#[cfg(any(test, feature = "client"))]
+use loading_screen::unclean_start_recovery;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 use loading_screen::{App, Loading, leave_fullscreen_after, run_event_loop};
-#[allow(unused_imports)]
-use loading_screen::{preflight_resources, unclean_start_recovery};
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 use motion_ids::{motion_at, motion_block_entity};
 #[allow(unused_imports)]
-use resource_load::{
-    Progress, StartupLoadContext, launch_world, load_resources_for_mods, load_resources_sync,
-    named_scope, synchronous_startup,
-};
+use resource_load::{Progress, WorldRestLoader, launch_world, named_scope, synchronous_startup};
 #[allow(unused_imports)]
 #[cfg(test)]
 use resource_load::{load_resources, load_resources_skip_lang, load_resources_uncached};
@@ -125,14 +130,10 @@ macro_rules! game_side {
             facts: $s.res.facts(),
             biomes: world_biomes!($s),
             behaviours: $s.res.behaviours(),
-            features: if $s.options.execution_role.is_logical_server() {
-                $s.level.enabled_features.as_arc()
-            } else {
-                match &$s.remote {
-                    Some(remote) => &remote.features,
-                    None => $crate::game::tables::default_client_features(),
-                }
-            },
+            features: $crate::game::side_ops::tables::SideOps::side_level_features(
+                &$s.side,
+                $s.level.enabled_features.as_arc(),
+            ),
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
             player_equipment: acting_equipment!($s),
@@ -144,26 +145,38 @@ macro_rules! game_side {
                 player_attachments: &$s.player_state.attachments,
                 entity_attachments: &*$s.entity_attachments,
             },
-            tag_items: $crate::game::Side::game_side_tag_items(&$s.side, &$s.remote, &$s.res),
+            tag_items: $crate::game::side_ops::tables::SideOps::side_game_tag_items(
+                &$s.side, &$s.res,
+            ),
         }
     };
-    ($s:expr, $server:expr) => {{
+    ($s:expr, $meta:expr) => {{
         let (player_uuid, level, session_lock): (Option<u128>, Option<mod_api::LevelRef>, bool) =
-            $server;
+            $meta;
+        game_side!(
+            $s,
+            (player_uuid, level, session_lock),
+            $crate::game::side_ops::tables::SideOps::side_level_features(
+                &$s.side,
+                $s.level.enabled_features.as_arc()
+            ),
+            if $s.options.execution_role.is_client() {
+                $crate::game::side_ops::tables::SideOps::side_game_tag_items(&$s.side, &$s.res)
+            } else {
+                session_lock.then(|| $s.res.items())
+            }
+        )
+    }};
+    ($s:expr, $meta:expr, $features:expr, $tags:expr) => {{
+        let (player_uuid, level, _session_lock): (Option<u128>, Option<mod_api::LevelRef>, bool) =
+            $meta;
         $crate::game::native_surface::GameSide {
             dim: $s.dim,
             level,
             facts: $s.res.facts(),
             biomes: world_biomes!($s),
             behaviours: $s.res.behaviours(),
-            features: if $s.options.execution_role.is_logical_server() {
-                $s.level.enabled_features.as_arc()
-            } else {
-                match &$s.remote {
-                    Some(remote) => &remote.features,
-                    None => $crate::game::tables::default_client_features(),
-                }
-            },
+            features: $features,
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
             player_equipment: acting_equipment!($s),
@@ -175,13 +188,26 @@ macro_rules! game_side {
                 player_attachments: &$s.player_state.attachments,
                 entity_attachments: &*$s.entity_attachments,
             },
-            tag_items: if $s.options.execution_role.is_client() {
-                $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
-            } else {
-                session_lock.then(|| $s.res.items())
-            },
+            tag_items: $tags,
         }
     }};
+}
+#[cfg(feature = "client")]
+macro_rules! client_game_side {
+    ($s:expr, $meta:expr) => {
+        game_side!(
+            $s,
+            $meta,
+            match &$s.side.remote {
+                Some(remote) => &remote.features,
+                None => $crate::game::tables::default_client_features(),
+            },
+            $s.side
+                .remote
+                .as_ref()
+                .and_then(|remote| remote.tags.as_ref())
+        )
+    };
 }
 /// Server-side `game_side!` using direct field borrows on `self.side` so sibling mutable borrows
 /// of unrelated `ServerState` fields (e.g. `pending_sounds`, `ordered.lava_random`) stay disjoint.
@@ -199,7 +225,12 @@ macro_rules! server_game_side {
         });
         let player_uuid = $s.side.lan_acting_uuid;
         let session_lock = $s.side.session_lock.0.is_some();
-        game_side!($s, (player_uuid, level, session_lock))
+        game_side!(
+            $s,
+            (player_uuid, level, session_lock),
+            $s.level.enabled_features.as_arc(),
+            session_lock.then(|| $s.res.items())
+        )
     }};
 }
 /// The world's packs' content files, as a field-level borrow (see the macros).
@@ -250,8 +281,6 @@ pub(in crate::game) use server_side::api_values_server;
 pub(in crate::game) use server_side::armor_stand_refind_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::armor_stands;
-#[path = "game/interface/atlas_slots.rs"]
-mod atlas_slots;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::attachment_index;
 #[cfg(test)]
@@ -385,8 +414,6 @@ mod cart_rails;
 mod cartography;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::cat_spawner;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::cauldron_interactions;
 #[path = "game/network/cauldron_prediction.rs"]
 mod cauldron_prediction;
 #[cfg(test)]
@@ -630,8 +657,6 @@ pub(in crate::game) use server_side::dragon_fireball_motion_tests;
 mod dropped_by_player_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::dropped_item_setter;
-#[path = "game/items/durability.rs"]
-mod durability;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::dynamic_light_emission;
 #[cfg(test)]
@@ -671,8 +696,6 @@ pub(in crate::game) use server_side::enderman_hurt_teleport_tests;
 mod enderman_placement_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::entity_culling;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::entity;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::entity_die_tests;
@@ -826,8 +849,6 @@ pub(in crate::game) use server_side::functions;
 pub(in crate::game) use server_side::game_mode;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::game_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::general;
 #[path = "game/items/glide_wear.rs"]
 mod glide_wear;
 #[cfg(test)]
@@ -908,10 +929,6 @@ mod host;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::hud_editor;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::hot_paths;
-#[path = "game/interface/hud_render.rs"]
-mod hud_render;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::hud_room;
@@ -924,6 +941,8 @@ pub(in crate::game) use client_side::ime;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::initial_client_models;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::hot_paths;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::infiniburn;
 #[cfg(test)]
@@ -998,8 +1017,6 @@ pub(in crate::game) use client_side::item_model_context;
 #[cfg(test)]
 #[path = "game/items/item_name_tests.rs"]
 mod item_name_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::item_particle_send;
 #[cfg(test)]
 #[path = "game/modding/item_particle_send_tests.rs"]
 mod item_particle_send_tests;
@@ -1028,10 +1045,6 @@ pub(in crate::game) use client_side::jigsaw_edit;
 pub(in crate::game) use client_side::jukebox;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::journal_level_write;
-#[path = "game/interface/key_codes.rs"]
-mod key_codes;
-#[path = "game/interface/key_focus.rs"]
-mod key_focus;
 #[cfg(test)]
 #[path = "game/interface/keymap_tests.rs"]
 mod keymap_tests;
@@ -1048,6 +1061,9 @@ pub(in crate::game) use server_side::knot_residency_tests;
 pub(in crate::game) use server_side::lan;
 #[path = "game/network/lan_actions/mod.rs"]
 mod lan_actions;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::lan_screen;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_attributes;
 #[allow(unused_imports)]
@@ -1071,11 +1087,6 @@ pub(in crate::game) use server_side::lan_menus_tests;
 pub(in crate::game) use server_side::lan_mobs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_mount_menu;
-#[path = "game/administration/lan_op.rs"]
-mod lan_op;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::lan_screen;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_particles;
 #[allow(unused_imports)]
@@ -1172,8 +1183,6 @@ pub(in crate::game) use server_side::machines;
 mod mannequin_save_tests;
 #[path = "game/interface/menu_clicks.rs"]
 pub(in crate::game) mod menu_clicks;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::maps;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::melee;
 #[allow(unused_imports)]
@@ -1789,8 +1798,6 @@ pub(in crate::game) use client_side::native_net;
 #[cfg(test)]
 #[path = "game/modding/native_on_caught_fire_tests.rs"]
 mod native_on_caught_fire_tests;
-#[path = "game/modding/native_packet_builders.rs"]
-mod native_packet_builders;
 #[cfg(test)]
 #[path = "game/modding/native_painting_renderers_tests.rs"]
 mod native_painting_renderers_tests;
@@ -1812,8 +1819,6 @@ mod native_part_tables_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_passage_cross;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::native_passages;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_path_types_tests;
@@ -1919,8 +1924,6 @@ pub(in crate::game) use server_side::native_recipe_sync;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_recipe_sync_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::native_registry_entries;
 #[cfg(test)]
 #[path = "game/modding/native_registry_entries_tests.rs"]
 mod native_registry_entries_tests;
@@ -1946,8 +1949,6 @@ pub(in crate::game) use client_side::native_render_visibility;
 #[path = "game/modding/native_requires_tool_tests.rs"]
 mod native_requires_tool_tests;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_resources;
-#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_ride_player;
 #[path = "game/modding/native_rotate.rs"]
 pub(crate) mod native_rotate;
@@ -1972,8 +1973,6 @@ pub(in crate::game) use server_side::native_scoreboard_teams;
 mod native_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_server_distances;
-#[path = "game/modding/native_server_max_players.rs"]
-mod native_server_max_players;
 #[cfg(test)]
 #[path = "game/modding/native_server_max_players_tests.rs"]
 mod native_server_max_players_tests;
@@ -2054,8 +2053,6 @@ pub(in crate::game) use server_side::native_unspawned_mob;
 mod native_world_columns;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_world_edit;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::native_world_read;
 #[path = "game/modding/native_worldgen.rs"]
 mod native_worldgen;
 #[path = "game/modding/native_worldgen_parts.rs"]
@@ -2123,10 +2120,6 @@ pub(in crate::game) use client_side::pad_menu;
 pub(in crate::game) use server_side::ordered_tick;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::original_player;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::owner_link;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::pack_finders;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::paintings;
 #[allow(unused_imports)]
@@ -2249,8 +2242,6 @@ pub(in crate::game) use server_side::potent_sulfur;
 pub(in crate::game) use server_side::profile_capture_server;
 #[path = "game/items/primary_items.rs"]
 pub(in crate::game) mod primary_items;
-#[path = "game/interface/profile_lines.rs"]
-mod profile_lines;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::projectile_block_impacts;
 #[allow(unused_imports)]
@@ -2287,8 +2278,6 @@ mod random_order_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::random_textures;
-#[path = "game/network/raw_backlog.rs"]
-mod raw_backlog;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::recipe_book;
 #[cfg(feature = "client")]
@@ -2359,6 +2348,7 @@ mod residency_tick;
 mod resident_state;
 #[path = "game/runtime/resource_load.rs"]
 mod resource_load;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::resource_loader;
 #[path = "game/runtime/resource_tables.rs"]
@@ -2405,10 +2395,6 @@ pub(in crate::game) use client_side::screen_build;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::screen_build_fixture;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::scoreboard;
-#[path = "game/interface/screen_info.rs"]
-mod screen_info;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -2433,6 +2419,8 @@ pub(in crate::game) use client_side::server_links;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::server_packs;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::scoreboard;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::sculk_fixture;
 #[allow(unused_imports)]
@@ -2827,8 +2815,6 @@ pub(in crate::game) use client_side::ui_control;
 #[cfg(test)]
 #[path = "game/runtime/ui_core_shader_tests.rs"]
 mod ui_core_shader_tests;
-#[path = "game/interface/upload_pace.rs"]
-mod upload_pace;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -2902,6 +2888,7 @@ mod world_fluid_tests;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::world_name_tag_tests;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::world_rest;
 #[cfg(feature = "client")]
@@ -3002,16 +2989,15 @@ use client_state::ClientState;
 #[allow(unused_imports)]
 use event_loop::EventLoopCtl;
 #[allow(unused_imports)]
-use hand::interact_location;
+use held_items::interact_location;
 pub(crate) use hit::Hit;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 use loading_window::{
     build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
 };
-use resource_loader::{
-    EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry, WorldRestLoader,
-};
+#[cfg(feature = "client")]
+use resource_loader::{EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry};
 #[allow(unused_imports)]
 #[cfg(feature = "client")]
 use resource_loader::{run_loading, write_report};
@@ -3028,10 +3014,10 @@ use sunrise_level::random_source;
 use self::api_values::TryIntoApi;
 pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 pub(crate) use launch_options::Options;
+pub use mod_api::game::DataMapType;
 #[cfg(feature = "client")]
 pub use native_block_entity_draw::BlockEntityDraw;
 pub use native_configs::ConfigFile;
-pub use native_data_maps::DataMapType;
 pub use native_hooks::{PhantomSpawnResult, Shake, SleepProblem};
 #[cfg(feature = "client")]
 pub use native_mob_draw::{MobRender, PlayerRender};
@@ -3305,10 +3291,11 @@ pub(in crate::game) struct GameLevel<'w> {
         >,
     >,
     attachment_query_scopes: &'w sunrise_mod_runtime::attachments::AttachmentQueryScopes,
-    positions: piston_carry_state::PositionState<'w>,
+    positions: piston_carry_common::PositionState<'w>,
     border: &'w sunrise_core::geometry::border::BorderGeometry,
     world: &'w mut World,
-    command_block_transition: Option<command_blocks::CommandBlockTransition>,
+    command_block_transition:
+        Option<sunrise_gameplay_common::command_blocks::CommandBlockTransition>,
     redstone_experiments: bool,
     facts: &'w BlockFacts,
     /// The block-state facts a part reads through `LevelHost::block_states`.
@@ -3341,7 +3328,7 @@ pub(in crate::game) struct GameLevel<'w> {
     /// Every entity on the walk; see `entity::for_each_entity`.
     other_entities: entity::EntityLists<'w>,
     /// End crystals, which aren't on the walk yet.
-    crystals: &'w [dragon::Crystal],
+    crystals: &'w [dragon_common::Crystal],
     /// The fishing hooks here, which aren't on the walk either. None ignores
     /// block triggers, so each counts on a plate or tripwire. The flag says
     /// whether it also reaches `entityInside` (`applyEffectsFromBlocks`): not
@@ -3371,8 +3358,8 @@ pub(in crate::game) struct GameLevel<'w> {
     fire_players: Vec<[f64; 3]>,
     /// Block loot random sequences (`ServerLevel.getRandomSequence`).
     rand_sequences: &'w mut sunrise_items::random_sequences::RandomSequences,
-    pending: &'w mut spill::Pending,
-    spill: &'w mut spill::Spill,
+    pending: &'w mut spill_common::Pending,
+    spill: &'w mut spill_common::Spill,
     /// Where the chunk tickets let blocks tick.
     tickets: sunrise_sim::ticket_levels::Levels,
     random_tick_sections: &'w mut sunrise_sim::random_tick_sections::RandomTickSections,
@@ -3475,7 +3462,7 @@ fn server_only_block_use(
 impl GameLevel<'_> {
     /// `LilyPadBlock.entityInside`: the boxes of the boats that can break a pad.
     fn boat_trigger_boxes(&self) -> impl Iterator<Item = Aabb> + '_ {
-        self.entities().boats.iter().map(boats::Boat::bounds)
+        self.entities().boats.iter().map(boats_common::Boat::bounds)
     }
     /// How many entities in `area` press plates and tripwires, or with
     /// `LIVING` only the living ones; a constant so a list of other kinds
@@ -3520,32 +3507,6 @@ impl GameLevel<'_> {
     }
 }
 
-impl<'w> entity::EntityLists<'w> {
-    /// Non-player, non-mob boxes with `Entity.blocksBuilding`. The block level
-    /// supplies its minecart snapshot; the mob level reads the live cart boxes.
-    fn non_mob_building_blocker_boxes(
-        self,
-        carts: impl Iterator<Item = Aabb> + 'w,
-        crystals: &'w [dragon::Crystal],
-    ) -> impl Iterator<Item = Aabb> + 'w {
-        carts
-            .chain(
-                self.armor_stands
-                    .iter()
-                    .filter(|s| !s.marker)
-                    .map(|s| s.bounds()),
-            )
-            .chain(self.boats.iter().map(boats::Boat::bounds))
-            .chain(crystals.iter().map(dragon::Crystal::bounds))
-            .chain(self.tnts.iter().map(tnt::PrimedTnt::bounds))
-            .chain(
-                self.falling
-                    .iter()
-                    .filter(|f| f.blocks_building)
-                    .map(FallingBlock::bounds),
-            )
-    }
-}
 /// A landing's block game event, emitted after its world write is applied.
 struct LandingVibration {
     event: &'static str,
@@ -3600,6 +3561,19 @@ struct FallingBlock {
     /// the answer while it holds for its vanilla size.
     pub(super) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
+
+sunrise_sim::impl_joined!(FallingBlock);
+
+impl sunrise_sim::entity_rules::EntityRules for FallingBlock {
+    fn is_no_gravity(&self) -> bool {
+        self.no_gravity
+    }
+    /// `FallingBlockEntity.getDefaultGravity`.
+    fn get_default_gravity(&self) -> f64 {
+        0.04
+    }
+}
+
 sunrise_mod_runtime::impl_attachment_lifetime!(FallingBlock);
 
 impl FallingBlock {
@@ -3667,12 +3641,6 @@ struct WorldCore {
     threads: usize,
 }
 
-#[cfg(feature = "client")]
-pub(in crate::game) struct ClientMobTables {
-    pub(in crate::game) models: sunrise_client::mobs_render::ClientMobModels,
-    pub(in crate::game) data: sunrise_client::mobs_render::ClientMobData,
-}
-
 struct WorldRest {
     items: Arc<Items>,
     recipes: Recipes,
@@ -3689,23 +3657,6 @@ struct WorldRest {
     end_environment: Environment,
     behaviours: Arc<Behaviours>,
     stations: sunrise_sim::stations::StationData,
-}
-
-#[cfg(feature = "client")]
-pub(in crate::game) struct ClientResources {
-    pub(in crate::game) block_entity_render: BlockEntityRenderer,
-    pub(in crate::game) animate: sunrise_client::animate_tick::AnimateTables,
-    pub(in crate::game) fog: sunrise_client::fog::FogTables,
-    pub(in crate::game) music: sunrise_client::music::MusicTables,
-    pub(in crate::game) ambient: sunrise_client::ambience::AmbientTables,
-    /// The player model's right and left arms.
-    pub(in crate::game) player_arm: [Option<sunrise_client::mobs::Part>; 2],
-    /// The slim model's right and left arms (3 pixels wide).
-    pub(in crate::game) player_arm_slim: [Option<sunrise_client::mobs::Part>; 2],
-    pub(in crate::game) player_type: Option<Arc<MobType>>,
-    /// `SpinAttackEffectModel` (Riptide's spinning boxes).
-    pub(in crate::game) spin_attack: Option<sunrise_client::mobs::Part>,
-    pub(in crate::game) client_mobs: ClientMobTables,
 }
 
 /// The content tables a world's data packs change, loaded when the world
@@ -3729,7 +3680,7 @@ pub(in crate::game) struct WorldTables {
     pub(in crate::game) stations: sunrise_sim::stations::StationData,
     reload_sources: Option<Arc<sunrise_sim::crafting::ResolvedSources>>,
     /// The values of the data map types native mods registered (`native_data_map_types`).
-    data_maps: native_data_maps::DataMaps,
+    data_maps: native_data_maps_common::DataMaps,
     /// Pack tags used by advancement predicates and built-in data maps
     /// (`TagLoader.loadTagsForExistingRegistries`). Damage tags live in the catalog.
     pack_tags: HashMap<&'static str, HashMap<String, HashSet<String>>>,
@@ -3778,7 +3729,7 @@ pub(super) fn armor_slot(index: usize) -> sunrise_core::equipment_slot::Equipmen
 }
 
 #[cfg(feature = "client")]
-pub use resource_tables::UiResources;
+pub use client_side::resource_tables_client::UiResources;
 
 /// What a resource pack reload replaces (`Minecraft.reloadResourcePacks`):
 /// block models and sprites with their meshing tables, item models,
@@ -3797,34 +3748,6 @@ pub struct PackResources {
     pub(in crate::game) chunk_context: Arc<sunrise_level::chunk_streamer::ChunkWorkerContext>,
     pub(in crate::game) item_models: Arc<sunrise_assets::item_model::ItemModels>,
     pub(in crate::game) item_ids: Arc<HashMap<String, i32>>,
-}
-
-#[cfg(feature = "client")]
-#[derive(Clone)]
-pub(in crate::game) struct ClientPackResources {
-    /// `Blocks.WATER.defaultBlockState()` for screen-effect extraction.
-    pub(in crate::game) water_overlay_state: mod_api::BlockState,
-    pub(in crate::game) render: Arc<RenderAssets>,
-    pub(in crate::game) context: Arc<sunrise_client_render::streaming::WorkerContext>,
-    pub(in crate::game) layer_names: Arc<HashMap<u32, String>>,
-    /// Item definitions, baked item models and special renderers.
-    pub(in crate::game) item_renderer: Arc<sunrise_client::item_render::ItemRenderer>,
-    /// clouds.png: (width, height, filled cells).
-    pub(in crate::game) clouds: Arc<(u32, u32, Vec<bool>)>,
-    /// misc/forcefield.png: (width, height, RGBA) for the world border wall.
-    pub(in crate::game) forcefield: Arc<(u32, u32, Vec<u8>)>,
-    /// Custom sky layers (OptiFine's `optifine/sky`) with their textures; none without them.
-    pub(in crate::game) custom_sky: Arc<dyn sunrise_client::custom_sky::SkyLayers>,
-    /// The overworld's, Nether's and End's attribute stacks with the packs' Polytone biome and
-    /// dimension modifiers (#11486), when a pack has some: what the frame draws.
-    pub(in crate::game) environments: Option<Arc<[Environment; 3]>>,
-    /// The packs' Polytone custom particles and block emitters (#11486), when a pack has some.
-    pub(in crate::game) polytone_particles:
-        Option<Arc<sunrise_client::particles::polytone::Registry>>,
-    /// The packs' Polytone post chains (#11486), when a pack has some.
-    pub(in crate::game) polytone_post: Option<Arc<sunrise_client::polytone_post::PolytonePost>>,
-    /// The packs' Polytone custom colours (`polytone/colors.json`).
-    pub(in crate::game) polytone_colors: Arc<sunrise_client::pack_palette::PackColors>,
 }
 
 /// A quick craft drag as the screen draws it: each dragged slot's count and
@@ -3865,16 +3788,6 @@ fn portal_ticket_can_expire(
     world.chunks.get(&(x, z)).is_some_and(|c| c.lit)
         && (-r..=r).all(|dz| (-r..=r).all(|dx| world.chunks.contains_key(&(x + dx, z + dz))))
 }
-/// Key events carry the scancode's US-layout code, which ignores XKB options like
-/// `caps:swapescape`. For the keys whose meaning the keymap may remap, take the code
-/// from the keysym the keymap resolved instead. This includes function keys on
-/// remapped media rows; ordinary character bindings still use their physical key.
-fn follow_keymap(event: &mut WindowEvent) {
-    if let WindowEvent::KeyboardInput { event, .. } = event {
-        follow_named_keymap(&event.logical_key, &mut event.physical_key);
-    }
-}
-
 fn select_creative_tab(
     creative: &mut Creative,
     clicks: &mut sunrise_client::container_screen::Clicks,
@@ -3957,13 +3870,9 @@ pub(in crate::game) trait Side:
     ) -> &sunrise_level::fast_hash::FxHashMap<[i32; 3], sunrise_level::shulker_box::Shulker>;
     fn auto_jump(&self) -> bool;
     fn main_hand_left(&self) -> bool;
-    fn chat_visibility(&self) -> u8;
     fn operator_items_tab(&self) -> bool;
     fn mods_list(&self) -> &sunrise_mod_package::mod_list::ModList;
     fn mods_list_mut(&mut self) -> &mut sunrise_mod_package::mod_list::ModList;
-    fn is_server() -> bool {
-        Self::IS_SERVER
-    }
     fn host_side<'a, 'g>(game: &'g mut Game<'a, Self>) -> mod_api::HostSide<'g>;
     fn as_host<'a, 'g>(game: &'g Game<'a, Self>) -> &'g dyn mod_api::Host;
     fn as_block_states_backend<'a, 'g>(
@@ -4011,27 +3920,8 @@ pub(in crate::game) trait Side:
     ) -> Option<mod_api::LevelRef> {
         None
     }
-    fn game_side_tag_items<'a>(
-        &self,
-        _remote: &'a Option<remote::Remote>,
-        _res: &'a Resources,
-    ) -> Option<&'a Items> {
-        None
-    }
-    fn levels(&self) -> Option<&levels::Levels> {
-        None
-    }
-    fn others(&self) -> Option<&sunrise_sim::join_seq::ResidentList<commands::OtherEntity>> {
-        None
-    }
     fn held_out(&self) -> &[u32] {
         &[]
-    }
-    fn fns(&self) -> Option<&functions::FnState> {
-        None
-    }
-    fn cmds(&self) -> Option<&commands::extra::CommandExtras> {
-        None
     }
     fn lan_acting(&self) -> Option<u32> {
         None
@@ -4054,20 +3944,10 @@ pub(in crate::game) trait Side:
     fn riding_order(&self) -> i64 {
         0
     }
-    fn vehicle_mobs(&self) -> Option<&crate::game::server_side::boat_passengers::VehicleMobs> {
-        None
-    }
     fn lan_acting_name(&self) -> Option<&str> {
         None
     }
     fn server_tick_deadline(&self) -> Option<Instant> {
-        None
-    }
-    fn locate_resident_owner<'a>(
-        _game: &Game<'a, Self>,
-        _at: sunrise_sim::join_seq::residency::table::Location,
-    ) -> Option<sunrise_sim::join_seq::residency::table::SourceEntity<(commands::Target, bool)>>
-    {
         None
     }
 }
@@ -4076,8 +3956,6 @@ struct Game<'a, S> {
     /// Shared with an integrated server; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
     rest_loader: Option<WorldRestLoader>,
-    /// Single player's server while it loads its world (`Minecraft.doWorldLoad`).
-    integrated_starting: Option<integrated::Starting>,
     collision: &'a BlockCollisionRegistry<'a>,
     motion: &'a MotionResources,
     /// This world's frozen damage definitions and reloadable tag snapshot.
@@ -4108,7 +3986,7 @@ struct Game<'a, S> {
     /// Open workstation menu (enchanting table, anvil, ...).
     station: Option<stations_common::Station>,
     /// Status effects and thrown potions (game/items/potions.rs).
-    potions: potions::PotionState,
+    potions: potions_common::PotionState,
     scratch_slot: Option<ItemStack>,
     mining: Option<Mining>,
     use_delay: u32,
@@ -4142,7 +4020,7 @@ struct Game<'a, S> {
     use_duration: i32,
     /// What that use began with (`useItem`) and whether a mod set its ticks left
     /// (`game/items/item_use.rs`).
-    use_start: using_item::UseStart,
+    use_start: item_use_common::UseStart,
     /// Armor slots: head, chest, legs, feet.
     armor: [Option<ItemStack>; 4],
     /// The off hand (Inventory slot 40, saved as slot 150; menu slot 504 here).
@@ -4177,25 +4055,25 @@ struct Game<'a, S> {
     server_items: Option<Arc<Items>>,
     /// The world is superflat (`ServerLevel.isFlat`, for every dimension).
     world_flat: bool,
-    /// Nether portals: the player's, items' and mobs' (game/blocks/nether_portal.rs).
-    portals: nether_portal::Portals,
-    end: end::EndState,
+    portal_player: sunrise_sim::nether_portal::PortalState,
+    portal_sections: sunrise_sim::portal_sections::PortalSections,
+    end: end_state::EndState,
     block_ticks: Ticks,
     level_events: Vec<LevelEvent>,
     falling: sunrise_sim::join_seq::JoinList<FallingBlock, false>,
     paintings: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Painting>,
-    painting_variants: paintings::PaintingVariants,
+    painting_variants: sunrise_gameplay_common::painting_variants::PaintingVariants,
     item_frames: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ItemFrame>,
     armor_stands: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ArmorStand>,
     /// `Cushion` decoration entities (game/entities/cushions.rs).
     cushions: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Cushion>,
-    boats: sunrise_sim::join_seq::JoinList<boats::Boat, false>,
+    boats: sunrise_sim::join_seq::JoinList<boats_common::Boat, false>,
     carts: sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
-    bolts: sunrise_sim::join_seq::ResidentList<lightning::Bolt>,
+    bolts: sunrise_sim::join_seq::ResidentList<lightning_common::Bolt>,
     maps: maps::Maps,
-    dragon: native_entity_refs::dragon_parts_table::DragonSlot,
-    crystals: sunrise_sim::join_seq::JoinList<dragon::Crystal>,
-    breath_clouds: sunrise_sim::join_seq::ResidentList<dragon::Breath>,
+    dragon: dragon_parts_table::DragonSlot,
+    crystals: sunrise_sim::join_seq::JoinList<dragon_common::Crystal>,
+    breath_clouds: sunrise_sim::join_seq::ResidentList<dragon_common::Breath>,
     /// The boat the player rides.
     riding: Option<u32>,
     /// The mount the last `position_rider` put the player on, to tell the tick
@@ -4203,14 +4081,15 @@ struct Game<'a, S> {
     /// follow it (`positionRider`, interpolated as usual).
     posed_rider: Option<u32>,
     /// Block entity data of broken blocks waiting for their dropped item.
-    pending: spill::Pending,
+    pending: spill_common::Pending,
     /// The player's fishing hook.
-    hook: sunrise_sim::join_seq::ResidentSlot<fishing::Hook>,
-    tridents: sunrise_sim::join_seq::JoinList<trident::ThrownTrident>,
+    hook: sunrise_sim::join_seq::ResidentSlot<fishing_common::Hook>,
+    tridents: sunrise_sim::join_seq::JoinList<sunrise_sim::thrown_trident::ThrownTrident>,
     rockets: sunrise_sim::join_seq::JoinList<fireworks::Rocket>,
     /// Ominous trial spawners' item spawners.
-    ominous_spawners: sunrise_sim::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
-    tnts: sunrise_sim::join_seq::JoinList<tnt::PrimedTnt>,
+    ominous_spawners:
+        sunrise_sim::join_seq::ResidentList<ominous_item_spawner_common::OminousItemSpawner>,
+    tnts: sunrise_sim::join_seq::JoinList<tnt_common::PrimedTnt>,
     /// The open `host.transaction`s, innermost last (`transactions.rs`).
     transactions: transactions::OpenTransactions,
     /// Block-entity positions retained between ticks for client effects.
@@ -4220,49 +4099,29 @@ struct Game<'a, S> {
     loop_states: published_loops::LoopStates,
     item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     creative_contents: native_hooks::CreativeCache,
-    entity_initialization: entity_initialization::EntityInitialization,
+    entity_initialization: entity_initialization_common::EntityInitialization,
     kinetic_feedback: HashMap<i32, i64>,
     control: Option<sunrise_sim::control::Server>,
     /// Sunrise mods (`game/modding/mods/mod.rs`), none running unless turned on.
     mods: mods::ModsState,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
-    recipe_tables: native_recipes::RecipeTables,
+    recipe_tables: native_recipe_tables::RecipeTables,
     /// The native lifecycle bookkeeping.
-    native_lifecycle: native_lifecycle::NativeLifecycle,
+    native_lifecycle: native_lifecycle_common::NativeLifecycle,
     resident_entities: resident_state::ResidentEntities,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     native_configs: native_configs::NativeConfigs,
     /// Private custom-book connection and placement state.
-    native_net: native_net::NativeNet,
-    /// The running agent action from the control socket (game/runtime/agent/mod.rs).
-    agent: agent::Agent,
+    native_net: native_net_common::NativeNet,
     /// What happened, for `events` and `wait-for` (game/runtime/events.rs).
-    events: events::Events,
+    events: events_common::Events,
     /// The overworld's last `sky_darken` and its inputs (time, rain, thunder).
     sky_darken_memo: std::cell::Cell<Option<((Dim, i64, u32, u32), i32)>>,
-    persist: persist::EntityMemory,
-    entity_attachments: native_colliders::EntityMaps,
-    collider_placements: native_colliders::Placements,
-    collider_histories: native_colliders::Histories,
+    persist: entity_memory::EntityMemory,
+    entity_attachments: native_collider_state::EntityMaps,
+    collider_placements: native_collider_state::Placements,
     /// Typed per-level membership follows dimensions, not the temporary world swap.
-    attachment_indexes: attachment_index::Indexes,
-    /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
-    remote: Option<remote::Remote>,
-    /// The current connection came from Realms (retained for reconnect).
-    realm_session: bool,
-    /// The current connection came from the LAN list (`ServerData.isLan`).
-    lan_session: bool,
-    /// Replay playback (game/replay.rs), and Sunrise Studio's editor on it (game/studio.rs).
-    pub(super) replay: replay::Replay,
-    /// This world is open to the network (game/lan.rs).
-    lan: Option<lan::LanHost>,
-    /// Single player's server thread, which `remote` is connected to.
-    integrated: Option<integrated::Integrated>,
-    /// This game is that server thread's (game/world/integrated.rs).
-    serving: Option<integrated::Serving>,
-    /// The open world is shared behind an invite code (game/network/friends.rs).
-    #[cfg(feature = "friends")]
-    friends: Option<friends::Sharing>,
+    attachment_indexes: attachment_indexes::Indexes,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
@@ -4273,14 +4132,14 @@ struct Game<'a, S> {
     entity_reach: f64,
     block_reach: f64,
     /// Live attachments and original snapshots retained during player replacement.
-    player_state: original_player::PlayerState,
+    player_state: player_state::PlayerState,
     ui: chat_common::WorldCommandState,
-    mount: mounts::MountState,
-    stats: stats::Stats,
-    score: scoreboard::ScoreState,
+    mount: mounts_common::MountState,
+    stats: sunrise_gameplay_common::stats::Stats,
+    score: scoreboard_common::ScoreState,
     border: sunrise_level::worldborder::WorldBorder,
-    adv: advancements::AdvState,
-    fangs: fangs::FangState,
+    adv: advancements_common::AdvState,
+    fangs: fangs_common::FangState,
     pub(in crate::game) side: S,
 }
 /// The open world's dimensions past vanilla's three. One per process, as a window
@@ -4297,6 +4156,37 @@ enum Dim {
     Extra(mod_api::DimensionKey),
 }
 impl Dim {
+    /// The level the world has for `level`; None for a `Custom` level it lacks.
+    pub(in crate::game) fn from_level(level: LevelDimension) -> Option<Self> {
+        Some(match level {
+            LevelDimension::Overworld => Self::Overworld,
+            LevelDimension::Nether => Self::Nether,
+            LevelDimension::End => Self::End,
+            LevelDimension::Custom(key) => {
+                Self::exists(key.id()).then(|| Self::from_id(key.id()))?
+            }
+        })
+    }
+
+    /// Drops the dimension `id` that [`Self::add_extra`] added: its level is closed, or a remote
+    /// server's level that its client left.
+    pub(in crate::game) fn remove_extra(id: &str) {
+        EXTRA_DIMS
+            .write()
+            .unwrap()
+            .retain(|key| mod_api::__private::dimension_id(*key) != Some(id));
+    }
+
+    /// The level `level`'s world spawn is in (MinecraftServer.findRespawnDimension), the
+    /// Overworld when the world has no such level. It borrows only the level data, so a
+    /// `TickCtx` can name it beside the world it borrows mutably.
+    pub(in crate::game) fn of_world_spawn(level: &sunrise_sim::save::Level) -> Self {
+        level
+            .world_spawn_dimension
+            .as_deref()
+            .map_or(Self::Overworld, Self::from_id)
+    }
+
     /// The level as block behaviour and the mods name it.
     fn level(self) -> LevelDimension {
         match self {
@@ -4630,15 +4520,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     fn dimension_type(&self) -> &sunrise_world::dimension_type::DimensionFacts {
         // A client of a server has the facts its server sent for the level, which are its own,
         // not the table the server's levels (in this process, for an integrated server) read.
-        if let Some(facts) = self.remote.as_ref().and_then(|r| r.level_facts.as_deref()) {
+        let remote = side_ops::world::SideOps::side_remote_dimension_context(&self.side);
+        if let Some((_, Some(facts))) = remote {
             return facts;
         }
         // Else the level the server named, whether or not the client has the mod that
         // registered it (`self.dim` is then the Overworld).
-        let level = self
-            .remote
-            .as_ref()
-            .map(|r| r.level.as_str())
+        let level = remote
+            .map(|(name, _)| name)
             .filter(|level| !level.is_empty())
             .unwrap_or_else(|| self.dim.id());
         self.dimension_facts_for(
@@ -4651,9 +4540,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         key: sunrise_core::LevelKey,
     ) -> &sunrise_world::dimension_type::DimensionFacts {
         use sunrise_world::dimension_type::DimensionFacts;
-        if let Some(remote) = &self.remote {
-            if sunrise_core::LevelKey::parse(&remote.level).ok() == Some(key)
-                && let Some(facts) = remote.level_facts.as_deref()
+        if let Some((name, facts)) =
+            side_ops::world::SideOps::side_remote_dimension_context(&self.side)
+        {
+            if sunrise_core::LevelKey::parse(name).ok() == Some(key)
+                && let Some(facts) = facts
             {
                 return facts;
             }
@@ -4868,7 +4759,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let item_in_use = self
             .using
             .and_then(|(slot, _)| {
-                if slot == shield::OFFHAND_SLOT {
+                if slot == held_items::OFFHAND_SLOT {
                     self.offhand.as_ref()
                 } else {
                     self.inventory.get(slot)?.as_ref()
@@ -4885,6 +4776,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let nudge = self.closest_space_nudge();
         let fast_lava = self.dimension_type().fast_lava;
         let blind = self.potions.effects.get("blindness").is_some();
+        let server_owns_glide = !side_ops::world::SideOps::side_client_has_integrated(&self.side);
         let Some(player) = self.player.as_mut() else {
             return;
         };
@@ -4901,7 +4793,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         // (`DATA_SHARED_FLAGS_ID`, applied by the SetEntityData handler); the
         // game's own integrated server has no such round trip, so the client
         // keeps predicting the clear a tick after the landing glide.
-        player.server_owns_glide = self.integrated.is_none();
+        player.server_owns_glide = server_owns_glide;
         let _ = player.set_sleeping(sleeping);
         player.leather_boots = leather_boots;
         player.freeze_immune = freeze_immune;
@@ -4919,7 +4811,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> sunrise_world::loot::LootPlace {
         let (block_entity, block_components) = match block_entity {
             Some(saved) => {
-                let source = spill::source_snapshot(saved, None, None);
+                let source = spill_common::source_snapshot(saved, None, None);
                 (Some(source.nbt), Some(source.components))
             }
             None => (None, None),
@@ -5563,7 +5455,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let mapped = self.axe_mapped(&id, block);
         if mod_api::__private::mods().is_empty() {
             if let Some((new, ability)) = mapped {
-                return Some(Self::tool_ability_result(new, ability));
+                return Some(waxing_common::tool_ability_result(new, ability));
             }
             let (new, t) = vanilla?;
             return Some(result(new, t));
@@ -5602,7 +5494,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                     let (_, t) = vanilla?;
                     return Some(result(new, t));
                 }
-                return Some(Self::tool_ability_result(new, ability));
+                return Some(waxing_common::tool_ability_result(new, ability));
             }
         }
         None
@@ -5786,81 +5678,13 @@ pub(super) const MOTION_OWN_PLAYER: u64 = 7 << 32;
 /// winit's events for a window's game, with any loop: a headless client (#4951) has no
 /// winit loop and calls these from its own.
 impl<__Side: crate::game::Side> Game<'_, __Side> {}
-/// misc/forcefield.png for the world border wall (square, power of two).
-#[cfg(feature = "client")]
-fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u32, u32, Vec<u8>) {
-    root.read("assets/minecraft/textures/misc/forcefield.png")
-        .map_err(Into::into)
-        .and_then(|bytes| sunrise_client::hud::decode_bytes(&bytes))
-        .ok()
-        .filter(|(w, h, _)| w == h && w.is_power_of_two())
-        .unwrap_or((1, 1, vec![0; 4]))
-}
-struct ServerConstructPrep {
-    level: Level,
-    save: Arc<SaveDir>,
-    painting_variants: paintings::PaintingVariants,
-    item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
-    creative_catalog: Arc<sunrise_items::creative_catalog::Catalog>,
-    world: World,
-    now: Instant,
-    pack: PackResources,
-    options: Options,
-    settings: sunrise_level::sim_settings::SimSettings,
-    streaming: sunrise_level::chunk_streamer::ChunkStreamer,
-}
-
-#[cfg(feature = "client")]
-struct ClientConstructPrep {
-    level: Level,
-    painting_variants: paintings::PaintingVariants,
-    armor_stand_assets: armor_stands::ArmorStandAssets,
-    item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
-    creative_screen: Creative,
-    client_prepared: Box<client_state::ClientCpuResources>,
-    world: World,
-    tutorial: tutorial::Tutorial,
-    now: Instant,
-    particles: sunrise_client::particles::ParticleEngine,
-    resource_source: sunrise_assets::resource_source::ResourceSource,
-    client_res: Arc<std::sync::OnceLock<ClientResources>>,
-    pack: PackResources,
-    client_pack: ClientPackResources,
-    gui: UiResources,
-    options: Options,
-    settings: Settings,
-    audio: Audio,
-    streaming: sunrise_client_render::streaming::MeshStreamer,
-    standalone_geometry: native_block_entity_draw::StandaloneGeometry,
-}
-
-struct ServerConstructEffects {
-    structure_spawns: sunrise_sim::mobs::spawn_selection::StructureSpawns,
-    clock: FixedStep,
-    tick: sunrise_sim::parallel::TickThread,
-    profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
-    profile: profile_capture_server::ServerProfile,
-    ui: chat_common::WorldCommandState,
-}
-
-#[cfg(feature = "client")]
-struct ClientConstructEffectsBundle {
-    clock: FixedStep,
-    tick: sunrise_sim::parallel::TickThread,
-    skin_downloads: RefCell<sunrise_client::skins::Downloader>,
-    profile: profile_capture::Profile,
-    registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
-    debug_entries: sunrise_client::debug_entries::DebugEntries,
-    ui: chat_common::WorldCommandState,
-    client: Box<client_state::ClientConstructEffects>,
-}
-
 #[cfg(feature = "client")]
 pub(in crate::game) struct ClientSidePrep {
     pub(in crate::game) audio: client_side::ClientShared<Audio>,
     pub(in crate::game) particles:
         client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
-    pub(in crate::game) armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
+    pub(in crate::game) armor_stand_assets:
+        client_side::ClientOnly<client_side::armor_stands_client::ArmorStandAssets>,
     pub(in crate::game) creative_screen: client_side::ClientOnly<Creative>,
     pub(in crate::game) skin_downloads:
         client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
@@ -5904,8 +5728,8 @@ pub(in crate::game) struct WrappedClientInit {
     text_displays:
         client_side::ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
     recipe_ui: client_side::ClientOnly<recipe_book::RecipeUi>,
-    spawners: client_side::ClientOnly<spawner::SpawnerState>,
-    mod_screen: client_side::ClientOnly<Option<native_hooks::OpenNativeScreen>>,
+    spawners: client_side::ClientOnly<client_side::spawner_client::SpawnerState>,
+    mod_screen: client_side::ClientOnly<Option<client_side::native_hooks_client::OpenNativeScreen>>,
     pending_screenshot: client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
     screenshot_sequence: client_side::ClientOnly<Option<screenshot_sequence::Sequence>>,
     pending_render_capture: client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
@@ -5944,15 +5768,16 @@ pub(in crate::game) struct WrappedServerInit {
     tickets: server_side::ServerShared<sunrise_sim::ticket_levels::ChunkTickets>,
     random_tick_sections:
         server_side::ServerOnly<sunrise_sim::random_tick_sections::RandomTickSections>,
-    spill: server_side::ServerOnly<spill::Spill>,
+    spill: server_side::ServerOnly<spill_common::Spill>,
     lent_mobs: server_side::ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
     test_defs: server_side::ServerOnly<
         std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
     >,
     game_tests: server_side::ServerOnly<game_tests::GameTests>,
     native_commands: server_side::ServerOnly<native_server::NativeCommandState>,
-    lan_building_boxes: server_side::ServerOnly<building_players::BuildingPlayers>,
-    lan_displaced_players: server_side::ServerOnly<Vec<lan_actions::DisplacedPlayer>>,
+    lan_building_boxes: server_side::ServerOnly<server_side::building_players::BuildingPlayers>,
+    lan_displaced_players:
+        server_side::ServerOnly<Vec<server_side::lan_actions_server::DisplacedPlayer>>,
     fake_action: server_side::ServerOnly<std::sync::Arc<native_server::FakeAction>>,
     server_lists:
         server_side::ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
@@ -5972,7 +5797,7 @@ pub(in crate::game) struct WrappedRendererInit {
 struct WrappedPrepInit {
     item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     level: Level,
-    painting_variants: paintings::PaintingVariants,
+    painting_variants: sunrise_gameplay_common::painting_variants::PaintingVariants,
     world: World,
     now: Instant,
     pack: PackResources,
@@ -6102,8 +5927,8 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     }
     #[inline(never)]
     fn wrap_server_prep_and_effects(
-        prep: Box<ServerConstructPrep>,
-        effects: Box<ServerConstructEffects>,
+        prep: Box<server_side::ServerConstructPrep>,
+        effects: Box<server_side::ServerConstructEffects>,
     ) -> (Box<WrappedPrepInit>, Box<ServerState>) {
         let ws = Self::build_wrapped_server();
         let server = ServerState::build(
@@ -6136,8 +5961,12 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     #[cfg(feature = "client")]
     #[inline(never)]
     fn wrap_client_prep_and_effects(
-        prep: Box<ClientConstructPrep>,
-        effects: Box<ClientConstructEffectsBundle>,
+        prep: Box<client_side::ClientConstructPrep>,
+        effects: Box<client_side::ClientConstructEffectsBundle>,
+        serve_integrated: integrated_link::Serve,
+        run_component_harness: integrated_link::RunComponentHarness,
+        session_verifier: sunrise_sim::lan::SessionVerifier,
+        profile_resolver: integrated_link::ProfileResolverFactory,
     ) -> (Box<WrappedPrepInit>, Box<ClientState>) {
         let music_toast = prep.settings.file.int("musicToast").clamp(0, 2) as u8;
         let wc = Self::build_wrapped_client();
@@ -6170,6 +5999,10 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             extra,
             wc,
             wr,
+            serve_integrated,
+            run_component_harness,
+            session_verifier,
+            profile_resolver,
         );
         let wp = Box::new(WrappedPrepInit {
             item_features: prep.item_features,
@@ -6204,7 +6037,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             world_biomes_base: None,
             res: res.clone(),
             rest_loader: None,
-            integrated_starting: None,
             collision: res.collision(),
             motion: res.motion(),
             health_resources: res.motion().health.clone(),
@@ -6268,7 +6100,8 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             sleep_timer: 0,
             dim: Dim::Overworld,
             world_flat: false,
-            portals: Default::default(),
+            portal_player: Default::default(),
+            portal_sections: Default::default(),
             end: Default::default(),
             block_ticks: Ticks::new(0),
             level_events: Vec::new(),
@@ -6303,7 +6136,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             kinetic_feedback: HashMap::new(),
             control: None,
             events: Default::default(),
-            agent: agent::Agent::default(),
             mods: mod_sources,
             recipe_tables: Default::default(),
             native_lifecycle: Default::default(),
@@ -6314,17 +6146,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             persist: Default::default(),
             entity_attachments: Default::default(),
             collider_placements: Default::default(),
-            collider_histories: Default::default(),
             attachment_indexes: Default::default(),
-            remote: None,
-            realm_session: false,
-            lan_session: false,
-            replay: Default::default(),
-            lan: None,
-            integrated: None,
-            serving: None,
-            #[cfg(feature = "friends")]
-            friends: None,
             passages: Default::default(),
             previous_mode: None,
             entity_reach: 3.0,
@@ -6343,435 +6165,131 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     }
 }
 
-impl<'a> ServerGame<'a> {
-    /// A logical server game (dedicated server or integrated server thread).
-    pub(in crate::game) fn new(
-        res: &'a Arc<Resources>,
-        pack: PackResources,
-        options: Options,
-        settings: sunrise_level::sim_settings::SimSettings,
-        prepared: Option<GameCpuResources>,
-    ) -> Result<Self> {
-        debug_assert!(options.execution_role.is_logical_server());
-        let prep = Self::prepare_construct(res, pack, options, settings, prepared)?;
-        let effects = Self::prepare_effects(&prep);
-        Ok(Self::finish_construct(res, prep, effects))
-    }
-
-    #[inline(never)]
-    fn prepare_construct(
-        res: &'a Arc<Resources>,
-        pack: PackResources,
-        options: Options,
-        settings: sunrise_level::sim_settings::SimSettings,
-        prepared: Option<GameCpuResources>,
-    ) -> Result<Box<ServerConstructPrep>> {
-        #[cfg(test)]
-        Self::initialize_mod_runtime_for_tests();
-        // A scoped hook on this thread asks this game's parts.
-        mod_api::__private::mark_game_thread();
-        let root = options.resources.clone();
-        let registry = pack.assets.registry;
-        let level = Level::default();
-        let save = Arc::new(SaveDir::new(
-            std::env::current_dir()?
-                .join("saves")
-                .join(".sunrise-title"),
-            sunrise_sim::save::LevelShape::OVERWORLD,
-            None,
-        ));
-        let prepared = prepared.map(Ok).unwrap_or_else(|| {
-            GameCpuResources::load(
-                &sunrise_assets::resource_source::ResourceRoot::new(
-                    root.clone(),
-                    packs::cache_dir(),
-                    pack.source.clone(),
-                ),
-                None,
-                None,
-                false,
-            )
-        })?;
-        let world = crate::game::authoritative_world_for_mods(res, 0);
-        let now = Instant::now();
-        // Until a world is opened the streamer is idle.
-        let mut streaming = sunrise_level::chunk_streamer::ChunkStreamer::new(
-            Arc::new(TestTerrain::new(registry, res.biomes())?),
-            pack.chunk_context.clone(),
-            1,
-        );
-        streaming.paused = true;
-        let painting_variants = prepared.painting_variants;
-        let item_features = prepared.item_features;
-        let creative_catalog = prepared.creative_screen.catalog().clone();
-        Ok(Box::new(ServerConstructPrep {
-            level,
-            save,
-            painting_variants,
-            item_features,
-            creative_catalog,
-            world,
-            now,
-            pack,
-            options,
-            settings,
-            streaming,
-        }))
-    }
-
-    #[inline(never)]
-    fn prepare_effects(prep: &ServerConstructPrep) -> Box<ServerConstructEffects> {
-        #[cfg(not(test))]
-        let structure_spawns =
-            sunrise_sim::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
-        #[cfg(test)]
-        let structure_spawns = resource_load::cached_structure_spawns(&prep.options.resources);
-        let clock = FixedStep::default();
-        let tick = sunrise_sim::parallel::TickThread::mint();
-        let profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver> =
-            Box::new(sunrise_server_profiles_http::CachedProfileResolver::new());
-        let profile = profile_capture_server::ServerProfile::default();
-        let ui = chat_common::WorldCommandState::default();
-        Box::new(ServerConstructEffects {
-            structure_spawns,
-            clock,
-            tick,
-            profile_resolver,
-            profile,
-            ui,
-        })
-    }
-
-    #[inline(never)]
-    fn finish_construct(
-        res: &'a Arc<Resources>,
-        prep: Box<ServerConstructPrep>,
-        effects: Box<ServerConstructEffects>,
-    ) -> Self {
-        let (wp, server) = ConstructInit::<true>::wrap_server_prep_and_effects(prep, effects);
-        let mut game = ConstructInit::<true>::assemble_game(res, wp, server);
-        game.reset_entity_residency();
-        game
-    }
-}
-
-#[cfg(feature = "client")]
-impl<'a> ClientGame<'a> {
-    /// A client game with no world open, over the loaded resources.
-    #[allow(dead_code)]
-    pub(in crate::game) fn new(
-        res: &'a Arc<Resources>,
-        client_res: Arc<std::sync::OnceLock<ClientResources>>,
-        pack: PackResources,
-        client_pack: ClientPackResources,
-        gui: UiResources,
-        options: Options,
-        settings: Settings,
-        audio: Audio,
-        prepared: Option<GameCpuResources>,
-    ) -> Result<Self> {
-        Self::construct(
-            res,
-            client_res,
-            pack,
-            client_pack,
-            gui,
-            options,
-            settings,
-            audio,
-            prepared,
-            None,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn construct(
-        res: &'a Arc<Resources>,
-        client_res: Arc<std::sync::OnceLock<ClientResources>>,
-        pack: PackResources,
-        client_pack: ClientPackResources,
-        gui: UiResources,
-        options: Options,
-        settings: Settings,
-        audio: Audio,
-        prepared: Option<GameCpuResources>,
-        initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
-    ) -> Result<Self> {
-        debug_assert!(!options.execution_role.is_logical_server());
-        // Preparation, effectful init, and struct assembly live in separate out-of-line frames to keep unoptimised stack small.
-        let prep = Self::prepare_construct(
-            res,
-            client_res,
-            pack,
-            client_pack,
-            gui,
-            options,
-            settings,
-            audio,
-            prepared,
-            initial,
-        )?;
-        let effects = Self::prepare_effects(&prep);
-        Ok(Self::finish_construct(res, prep, effects))
-    }
-
-    #[inline(never)]
-    #[allow(clippy::too_many_arguments)]
-    fn prepare_construct(
-        res: &'a Arc<Resources>,
-        client_res: Arc<std::sync::OnceLock<ClientResources>>,
-        pack: PackResources,
-        client_pack: ClientPackResources,
-        gui: UiResources,
-        options: Options,
-        settings: Settings,
-        audio: Audio,
-        prepared: Option<GameCpuResources>,
-        initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
-    ) -> Result<Box<ClientConstructPrep>> {
-        #[cfg(test)]
-        Self::initialize_mod_runtime_for_tests();
-        // A scoped hook on this thread asks this game's parts.
-        mod_api::__private::mark_game_thread();
-        let root = options.resources.clone();
-        let registry = pack.assets.registry;
-        let level = Level::default();
-        let prepared = prepared.map(Ok).unwrap_or_else(|| {
-            GameCpuResources::load(
-                &sunrise_assets::resource_source::ResourceRoot::new(
-                    root.clone(),
-                    packs::cache_dir(),
-                    pack.source.clone(),
-                ),
-                None,
-                client_pack.render.model_library.as_deref().ok(),
-                true,
-            )
-        })?;
-        let world = crate::game::world_for_mods(res.facts().air, 0);
-        let tutorial = tutorial::Tutorial::new(tutorial::Step::from_option(
-            settings.file.int("tutorialStep"),
-        ));
-        let now = Instant::now();
-        let mut particles = sunrise_client::particles::ParticleEngine::new(
-            &pack.source,
-            &gui.atlas.sprites,
-            &gui.atlas.translucent,
-        );
-        particles.set_block_state_source(crate::game::particle_block_states);
-        let resource_source = pack.source.clone();
-        let (client_pack, gui) = if let Some(initial) = initial {
-            let mut unpublished = client_pack.clone();
-            unpublished.render = Arc::new(RenderAssets::unpublished());
-            let context = &client_pack.context;
-            unpublished.context = Arc::new(sunrise_client_render::streaming::WorkerContext {
-                chunk: context.chunk.clone(),
-                mesh: sunrise_client_render::streaming::MeshWorkerContext {
-                    render: unpublished.render.clone(),
-                    ..context.mesh.clone()
-                },
-            });
-            unpublished.layer_names = Default::default();
-            let metrics = UiResources::fonts_only(&pack.source)?;
-            *initial = Some(initial_client_models::InitialModelGeneration {
-                pack: pack.clone(),
-                client_pack,
-                gui,
-            });
-            (unpublished, metrics)
-        } else {
-            (client_pack, gui)
-        };
-        // Until a world is opened the streamer is idle.
-        let mut streaming = sunrise_client_render::streaming::MeshStreamer::new(
-            Arc::new(TestTerrain::new(registry, res.biomes())?),
-            client_pack.context.clone(),
-            1,
-        );
-        streaming.paused = true;
-        let standalone_geometry =
-            native_block_entity_draw::StandaloneGeometry::new(&pack, &client_pack, &gui);
-        let GameCpuResources {
-            painting_variants,
-            frame_model,
-            glow_frame_model,
-            map_frame_model,
-            glow_map_frame_model,
-            armor_stand_assets,
-            waypoint_styles,
-            boat_models,
-            cart_models,
-            crystal_model,
-            cushion_model,
-            dragon_model,
-            arrow_model,
-            bee_stinger_model,
-            trident_model,
-            entity_models,
-            item_features,
-            creative_screen,
-        } = prepared;
-        let client_prepared = Box::new(client_state::ClientCpuResources {
-            frame_model,
-            glow_frame_model,
-            map_frame_model,
-            glow_map_frame_model,
-            waypoint_styles,
-            boat_models,
-            cart_models,
-            crystal_model,
-            cushion_model,
-            dragon_model,
-            arrow_model,
-            bee_stinger_model,
-            trident_model,
-            entity_models,
-        });
-        Ok(Box::new(ClientConstructPrep {
-            level,
-            painting_variants,
-            armor_stand_assets,
-            item_features,
-            creative_screen,
-            client_prepared,
-            world,
-            tutorial,
-            now,
-            particles,
-            resource_source,
-            client_res,
-            pack,
-            client_pack,
-            gui,
-            options,
-            settings,
-            audio,
-            streaming,
-            standalone_geometry,
-        }))
-    }
-
-    // Evaluates all effectful literal initialisers in their original base order before tail assembly.
-    #[inline(never)]
-    fn prepare_effects(prep: &ClientConstructPrep) -> Box<ClientConstructEffectsBundle> {
-        let slow_frame_ms = prep
-            .options
-            .spikes
-            .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
-        let fog = sunrise_client::fog::FogState::default();
-        let clock = FixedStep::default();
-        let vanilla_mappings = sunrise_client::keymapping::VanillaMappings::default();
-        let health_hud = hud_layout::HealthHud::default();
-        let tick = sunrise_sim::parallel::TickThread::mint();
-        let music = {
-            // The manager starts with the saved option (MusicManager's constructor).
-            let mut music = sunrise_client::music::MusicManager::default();
-            music.frequency = sunrise_client::music::MusicFrequency::parse(
-                &prep.settings.file.name("musicFrequency"),
-            );
-            music
-        };
-        let ambience = sunrise_client::ambience::Ambience::default();
-        let frame_clock = sunrise_client::window::SystemClock::default();
-        let narration = sunrise_client::screen_narrator::ScreenNarrator::default();
-        let skin_downloads = RefCell::new({
-            let mut downloads = sunrise_client::skins::Downloader::new(
-                std::env::current_dir()
-                    .unwrap_or_default()
-                    .join("assets/skins"),
-            );
-            downloads.set_resource_root(prep.resource_source.clone());
-            downloads
-        });
-        let skin_profiles = RefCell::new(sunrise_client::skins::Resolver::new());
-        let profile = profile_capture::Profile::new(slow_frame_ms);
-        let tick_script = tick_script::TickScript::from_env();
-        let social = social::Social::default();
-        let registered_debug_entries = sunrise_client::debug_entries::registered();
-        let debug_entries = sunrise_client::debug_entries::DebugEntries::load(
-            &std::env::current_dir().unwrap_or_default(),
-        );
-        let ui = chat_common::WorldCommandState::default();
-        let chat_ui = chat::ChatUiState::new();
-        let client = Box::new(client_state::ClientConstructEffects {
-            fog,
-            vanilla_mappings,
-            health_hud,
-            music,
-            ambience,
-            frame_clock,
-            narration,
-            tick_script,
-            social,
-            skin_profiles,
-            chat_ui,
-        });
-        Box::new(ClientConstructEffectsBundle {
-            clock,
-            tick,
-            skin_downloads,
-            profile,
-            registered_debug_entries,
-            debug_entries,
-            ui,
-            client,
-        })
-    }
-
-    #[inline(never)]
-    fn finish_construct(
-        res: &'a Arc<Resources>,
-        prep: Box<ClientConstructPrep>,
-        effects: Box<ClientConstructEffectsBundle>,
-    ) -> Self {
-        let (wp, client) = ConstructInit::<true>::wrap_client_prep_and_effects(prep, effects);
-        ConstructInit::<true>::assemble_game(res, wp, client)
-    }
-}
-
-/// `key.hotbar.1` to `key.hotbar.9` in a menu.
-const HOTBAR_DIGITS: [KeyCode; 9] = [
-    KeyCode::Digit1,
-    KeyCode::Digit2,
-    KeyCode::Digit3,
-    KeyCode::Digit4,
-    KeyCode::Digit5,
-    KeyCode::Digit6,
-    KeyCode::Digit7,
-    KeyCode::Digit8,
-    KeyCode::Digit9,
-];
-/// The other keys `InputConstants.Key.getNumericKeyValue` gives a digit.
-const NUMERIC_KEYS: [KeyCode; 11] = [
-    KeyCode::Digit0,
-    KeyCode::Numpad0,
-    KeyCode::Numpad1,
-    KeyCode::Numpad2,
-    KeyCode::Numpad3,
-    KeyCode::Numpad4,
-    KeyCode::Numpad5,
-    KeyCode::Numpad6,
-    KeyCode::Numpad7,
-    KeyCode::Numpad8,
-    KeyCode::Numpad9,
-];
-
-/// A title-shaped frame: black clear and panorama, only the HUD is drawn.
-/// The window's `HWND`, for the boot screen's GDI paint (`sunrise_threads`):
-/// the raw handle read is safe, the paint is not.
-#[cfg(target_os = "windows")]
-fn hwnd(window: &Window) -> Option<isize> {
-    use winit::raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
-    match window.window_handle() {
-        Ok(raw) => match raw.as_raw() {
-            RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
-            _ => None,
-        },
-        Err(_) => None,
-    }
-}
-
 pub use launch_api::{UsageError, exit_code};
+
+/// Every launch reads the prepared game files (`sunrise-prepare`'s output, whose
+/// manifest is `sunrise-resources.json`): without them, say where they were
+/// looked for and how to get them, before a window or a loader starts. `get` is
+/// the page a hook sends the player to (`sunrise_hooks::engine::get_the_game`).
+pub(in crate::game) fn preflight_resources(
+    root: &std::path::Path,
+    get: Option<sunrise_hooks::GetTheGame>,
+    dedicated: bool,
+) -> std::result::Result<sunrise_core::prepared_profile::Profile, String> {
+    use sunrise_core::{
+        prepared_profile::{MANIFEST, Manifest, Profile},
+        version::VERSION_ID,
+    };
+
+    if !root.join(MANIFEST).is_file() {
+        let launcher = get.filter(|_| !dedicated).map_or(String::new(), |get| {
+            format!(
+                "Sunrise is started from its launcher: download it at {} (Download). It needs \
+                 your own Minecraft: Java Edition; the launcher signs you in and prepares the \
+                 game files.\nDevelopers: ",
+                get.address
+            )
+        });
+        let shown = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
+        let profile = if dedicated {
+            Profile::Server
+        } else {
+            Profile::Full
+        };
+        return Err(format!(
+            "Sunrise's prepared game files are missing: no {MANIFEST} in {}\n\
+             {launcher}{}, or pass --resources <folder>",
+            shown.display(),
+            profile.repair(root),
+        ));
+    }
+    let manifest = Manifest::read(root).map_err(|problem| {
+        format!(
+            "Sunrise's prepared game files at {} are damaged: {problem}",
+            root.display(),
+        )
+    })?;
+    let profile = manifest.profile();
+    if profile == Profile::Server && !dedicated {
+        return Err(format!(
+            "{} contains server-only game files, not a full client preparation. Run \
+             `sunrise-prepare --prepare --server-jar PATH --output FULL_DIR` with your own \
+             client files, then pass --resources FULL_DIR.",
+            root.display(),
+        ));
+    }
+    let mut problems = manifest.version_problems(root, VERSION_ID);
+    if profile == Profile::Server {
+        problems.extend(manifest.server_inventory_problems(root));
+    }
+    // An empty JSON file left by an interrupted export fails with a generic
+    // parse error later. Name the file now, before starting a loader or a window.
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension() == Some(std::ffi::OsStr::new("json"))
+                && std::fs::metadata(&path).is_ok_and(|meta| meta.is_file() && meta.len() == 0)
+            {
+                problems.push(format!("{} is empty", entry.file_name().to_string_lossy()));
+            }
+        }
+    }
+    if problems.is_empty() {
+        Ok(profile)
+    } else {
+        Err(format!(
+            "Sunrise's prepared game files in {} are stale or damaged:\n  {}\n\
+             Prepare them again with `{}`.",
+            root.display(),
+            problems.join("\n  "),
+            profile.repair(root),
+        ))
+    }
+}
+
+fn profile_resolver() -> Box<dyn sunrise_level::profile_lookup::ProfileResolver> {
+    Box::new(sunrise_server_profiles_http::CachedProfileResolver::new())
+}
+
+fn session_verifier() -> sunrise_sim::lan::SessionVerifier {
+    Arc::new(|name, digest, ip| {
+        sunrise_server_profiles_http::has_joined(name, digest, ip)
+            .map(|opt| {
+                opt.map(|p| sunrise_sim::lan::VerifiedSession {
+                    uuid: p.uuid,
+                    properties: p.properties,
+                })
+            })
+            .map_err(|_| sunrise_sim::lan::SessionVerifyError::Unavailable)
+    })
+}
+
+fn dedicated_services() -> dedicated::Services {
+    dedicated::Services {
+        find_name: |name| {
+            sunrise_server_profiles_http::find_by_name(
+                &sunrise_server_files::profiles::discovery_url(),
+                name,
+            )
+        },
+        find_id: |id| {
+            sunrise_server_profiles_http::find_by_id(
+                &sunrise_server_files::profiles::discovery_url(),
+                id,
+            )
+        },
+        profile_keys: || {
+            let discovery = sunrise_server_files::profiles::discovery_url();
+            sunrise_server_profiles_http::fetch_profile_key_keys(&discovery)
+                .map(|keys| keys.player_certificate_keys)
+                .unwrap_or_else(|e| {
+                    ::log::error!("{e}");
+                    Vec::new()
+                })
+        },
+        verify_session: session_verifier(),
+    }
+}
 
 pub(crate) fn run_with(
     options: Options,
@@ -6779,6 +6297,11 @@ pub(crate) fn run_with(
 ) -> Result<()> {
     let mut options = Options::read(options)?;
     options.mods.native = Arc::new(native);
+    #[cfg(feature = "client")]
+    if options.mods.installation_side != sunrise_mod_package::manifest::Side::Server {
+        options.mods.content_materializer =
+            Some(sunrise_client::mod_content_client::resolved_resources);
+    }
     if options.execution_role == execution_role::ExecutionRole::DedicatedServer
         && !dedicated::preflight(&mut options)?
     {
@@ -6809,7 +6332,7 @@ pub(crate) fn run_with(
     {
         options.spikes = Some(dedicated::SLOW_TICK_MS);
     }
-    tick_profile::want_spans(tick_profile::SPANS_SPIKES, options.spikes.is_some());
+    server_side::loading_server::configure_launch_spans(options.spikes.is_some());
     // A player who allows performance statistics also says what their slow frames spent their
     // time in: this thread, which draws the frames, times its steps (wall time only).
     if options.execution_role.is_client()
@@ -6904,23 +6427,42 @@ pub(crate) fn run_with(
         native_biome_source::install();
         mods::register_components(&vanilla_root)?;
         sunrise_sim::item_sync::install_consume_effect_codecs()?;
-        mods::register_standalone_models(options.execution_role);
-        mods::register_layer_definitions(options.execution_role, &vanilla_root)?;
-        mods::register_debug_entries(options.execution_role);
-        mods::register_gui_layers(options.execution_role);
-        mods::register_client_tooltip_component_factories(options.execution_role);
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_standalone_models(options.execution_role);
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_layer_definitions(
+            options.execution_role,
+            &vanilla_root,
+        )?;
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_debug_entries(options.execution_role);
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_gui_layers(options.execution_role);
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_client_tooltip_component_factories(
+            options.execution_role,
+        );
         mods::register_map_decoration_types();
-        mods::register_range_select_item_model_properties(options.execution_role);
-        mods::register_select_item_model_properties(options.execution_role);
-        mods::register_resource_sources(options.execution_role);
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_range_select_item_model_properties(
+            options.execution_role,
+        );
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_select_item_model_properties(options.execution_role);
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_resource_sources(options.execution_role);
         mods::register_enchantment_damage_effects();
-        mods::register_client_presentations(options.execution_role)?;
-        mods::register_meshing(options.execution_role);
-        mods::register_particles(options.execution_role)?;
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_client_presentations(options.execution_role)?;
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_meshing(options.execution_role);
+        #[cfg(feature = "client")]
+        client_side::mods_client::register_particles(options.execution_role)?;
         mods::freeze_declarations();
     }
     // Minecraft.<init>: read the last start's flag, then mark this one as not
     // finished until onGameLoadFinished. A dedicated server has no options.txt.
+    #[cfg(feature = "client")]
     if options.execution_role.is_client() {
         if unclean_start_recovery(&mut early_settings) {
             log::warn!(
@@ -6955,58 +6497,56 @@ pub(crate) fn run_with(
     Behaviours::set_cache_dir(std::env::current_dir()?.join(".sunrise-cache"));
     #[cfg(feature = "client")]
     if !synchronous_startup(&options) {
-        return run_loading(options, early_settings, vanilla_root, None, started);
+        return run_loading(
+            options,
+            early_settings,
+            vanilla_root,
+            None,
+            started,
+            server_side::integrated::serve,
+            server_side::integrated::run_component_harness_on_server,
+            session_verifier(),
+            profile_resolver,
+        );
     }
     #[cfg(not(feature = "client"))]
     if !options.execution_role.is_dedicated_server() {
         return Err("this binary was built without the `client` feature; pass --dedicated".into());
     }
-    let roots = if options.execution_role.is_dedicated_server() {
-        // Dedicated startup sees enabled mod assets but no client's resource packs.
+    if options.execution_role.is_dedicated_server() {
         let base = mods::content_root(&vanilla_root, &options.mods)?;
-        match preparation {
+        let root = match preparation {
             sunrise_core::prepared_profile::Profile::Full => base,
             sunrise_core::prepared_profile::Profile::Server => base.with_server_profile(),
-        }
-        .into()
-    } else {
-        packs::startup_root(
+        };
+        let prepared_root = root.prepared().to_path_buf();
+        let settings = early_settings.sim_settings();
+        let (resources, pack) = server_side::resource_load_server::load_resources_server(
+            root,
+            pack_discovery::data_packs(&options.mods),
             &vanilla_root,
-            &early_settings.resource_packs,
-            &[],
-            &options.mods,
-        )?
-    };
-    #[cfg_attr(not(feature = "client"), allow(unused_mut))]
-    let mut loaded = load_resources_sync(
-        roots,
-        pack_finders::data_packs(&options.mods),
-        StartupLoadContext {
-            vanilla_root: &vanilla_root,
-            launch_world: launch_world(&options),
+            &settings,
+            early_settings.sunrise.worker_threads(),
             started,
-        },
-        &mut early_settings,
-        mods::LoadRole::startup(options.execution_role),
-        &Progress::new(),
-        &options.mods,
-    )?;
-    options.resources = loaded.root.clone();
-    let resources = loaded.resources;
-    if options.execution_role.is_dedicated_server() {
+            &options.mods,
+            &Progress::new(),
+            cfg!(feature = "client"),
+        )?;
+        options.resources = prepared_root;
         return start_dedicated_game(
             &resources,
-            loaded.pack,
+            pack,
             options,
-            early_settings.sim_settings(),
+            settings,
             started,
             None,
+            dedicated_services(),
+            profile_resolver,
         );
     }
     #[cfg(not(feature = "client"))]
     {
         let _ = (
-            resources,
             options,
             early_settings.sim_settings(),
             vanilla_root,
@@ -7016,6 +6556,27 @@ pub(crate) fn run_with(
     }
     #[cfg(feature = "client")]
     {
+        let roots = packs::startup_root(
+            &vanilla_root,
+            &early_settings.resource_packs,
+            &[],
+            &options.mods,
+        )?;
+        let mut loaded = load_resources_sync(
+            roots,
+            pack_discovery::data_packs(&options.mods),
+            StartupLoadContext {
+                vanilla_root: &vanilla_root,
+                launch_world: launch_world(&options),
+                started,
+            },
+            &mut early_settings,
+            mods::LoadRole::startup(options.execution_role),
+            &Progress::new(),
+            &options.mods,
+        )?;
+        options.resources = loaded.root.clone();
+        let resources = loaded.resources;
         let audio = if !options.execution_role.is_client() || options.headless {
             Audio::silent(&loaded.pack.source)
         } else {
@@ -7038,10 +6599,14 @@ pub(crate) fn run_with(
             std::mem::take(&mut loaded.client_applies),
             loaded.entity_models,
             None,
+            server_side::integrated::serve,
+            server_side::integrated::run_component_harness_on_server,
+            session_verifier(),
+            profile_resolver,
         )?;
         if let Some(mut game) = game {
             // Minecraft.onGameLoadFinished: a start that made it this far is clean.
-            if game.options.is_client_start() && game.options.headless {
+            if is_client_start(&game.options) && game.options.headless {
                 game.side.settings.file.set(
                     "startedCleanly",
                     sunrise_client::options_file::V::Bool(true),
@@ -7052,20 +6617,6 @@ pub(crate) fn run_with(
         }
         Ok(())
     }
-}
-
-/// The right and left arms of a player model layer (`PlayerModel.rightArm`
-/// and `leftArm`, with their sleeves), each keeping the layer.
-fn player_arms(
-    root: &std::path::Path,
-    key: &str,
-    document: Option<&sunrise_client::mobs::EntityModelDocument>,
-) -> [Option<sunrise_client::mobs::Part>; 2] {
-    let model = match document {
-        Some(document) => document.model(key),
-        None => sunrise_client::mobs::load_model(root, key),
-    };
-    ["right_arm", "left_arm"].map(|name| model.as_ref().and_then(|m| m.detached_child(name)))
 }
 
 /// The most `Player.sleepCounter` reaches: 100 asleep, then up to here over the
@@ -7159,11 +6710,6 @@ fn clip_start_source(
         .then_some(([0, 1, 0], point))
 }
 
-fn reset_world_progress(adv: &mut advancements::AdvState, stats: &mut stats::Stats) {
-    *adv = Default::default();
-    *stats = Default::default();
-}
-
 pub(crate) use closest_space::closest_space_nudge;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
@@ -7173,11 +6719,9 @@ use inventory_input::drop_whole_stack;
 #[allow(unused_imports)]
 use subtitles::{Subtitles, in_game_ui, subtitles};
 
-#[allow(unused_imports)]
 #[cfg(test)]
-use hud_render::block_outline_drawn;
-#[allow(unused_imports)]
-use hud_render::{debug_crosshair_drawn, is_game_master_block};
+use sunrise_client_gameplay::hud_gates::{block_outline_drawn, debug_crosshair_drawn};
+use sunrise_gameplay_common::game_master_blocks::is_game_master_block;
 #[cfg(test)]
 mod test_neighbourhood {
     //! Shared fixture step for tests that tick entities on prepared data.
@@ -7259,30 +6803,6 @@ pub(crate) fn in_own_process(name: &str, body: impl FnOnce()) {
     );
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    fn presence_status(&self) -> sunrise_client::social::PresenceStatus {
-        use sunrise_client::social::PresenceStatus;
-        if self.integrated.is_some() {
-            // `getSingleplayerServer().getMultiplayerScope()`: LAN while the world is
-            // opened to LAN (a pause-menu Open to LAN or an invite code).
-            if self.lan.is_some() {
-                PresenceStatus::PlayingHostedServer
-            } else {
-                PresenceStatus::PlayingOffline
-            }
-        } else if self.remote.is_some() {
-            // `getCurrentServer().isRealm()`: the connection came from Realms.
-            if self.realm_session {
-                PresenceStatus::PlayingRealms
-            } else {
-                PresenceStatus::PlayingServer
-            }
-        } else {
-            PresenceStatus::Online
-        }
-    }
-}
-
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -7308,9 +6828,330 @@ pub(in crate::game) use {
         another_mods, authoritative_world_for_mods, mod_data_root, native_config_dir,
         startup_math_profile, startup_setting, world_for_mods,
     },
-    options::{game_dir, options_path},
+    option_paths::{game_dir, options_path},
     remote::{inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind},
     stacked_on_other::{
         stacked_listened, stacked_listened_for_side, stacked_listens_for, stacked_listens_for_side,
     },
 };
+
+#[cfg(feature = "client")]
+use client_side::raw_backlog;
+
+#[cfg(feature = "client")]
+use client_side::atlas_slots;
+
+#[cfg(feature = "client")]
+use client_side::profile_lines;
+
+#[cfg(feature = "client")]
+use client_side::screen_info;
+
+#[cfg(feature = "client")]
+use client_side::upload_pace;
+
+#[cfg(any(test, feature = "client"))]
+use client_side::key_codes;
+
+#[cfg(feature = "client")]
+use client_side::key_focus;
+
+pub(in crate::game) use server_side::durability;
+
+#[path = "game/world/container_loot_level.rs"]
+pub(in crate::game) mod container_loot_level;
+
+#[path = "game/world/end_state.rs"]
+pub(in crate::game) mod end_state;
+
+#[path = "game/world/entity_memory.rs"]
+pub(in crate::game) mod entity_memory;
+
+#[path = "game/world/world_preload.rs"]
+pub(in crate::game) mod world_preload;
+
+#[path = "game/world/packs_common.rs"]
+pub(in crate::game) mod packs_common;
+
+#[path = "game/world/integrated_link.rs"]
+pub(in crate::game) mod integrated_link;
+
+#[path = "game/world/owner_link.rs"]
+pub(in crate::game) mod owner_link;
+
+#[path = "game/runtime/events_common.rs"]
+pub(in crate::game) mod events_common;
+
+#[path = "game/runtime/resource_cpu_common.rs"]
+pub(in crate::game) mod resource_cpu_common;
+
+#[path = "game/world/world_rest_common.rs"]
+pub(in crate::game) mod world_rest_common;
+
+#[path = "game/blocks/maps/data.rs"]
+pub(in crate::game) mod maps;
+
+#[path = "game/entities/entity_types.rs"]
+pub(in crate::game) mod entity;
+
+#[path = "game/entities/general.rs"]
+pub(in crate::game) mod general;
+
+#[path = "game/modding/pack_finders/mod.rs"]
+pub(in crate::game) mod pack_discovery;
+
+#[path = "game/interface/scoreboard/common.rs"]
+pub(in crate::game) mod scoreboard_common;
+
+#[path = "game/interface/advancements/common.rs"]
+pub(in crate::game) mod advancements_common;
+
+#[path = "game/administration/function_pack_stack.rs"]
+pub(in crate::game) mod function_pack_stack;
+
+#[path = "game/network/lan_common.rs"]
+pub(in crate::game) mod lan_common;
+
+#[path = "game/network/lan_menu_data.rs"]
+pub(in crate::game) mod lan_menu_data;
+
+#[path = "game/network/lan_mob_metadata.rs"]
+pub(in crate::game) mod lan_mob_metadata;
+
+#[path = "game/network/lan_particle_data.rs"]
+pub(in crate::game) mod lan_particle_data;
+
+#[path = "game/network/lan_station_data.rs"]
+pub(in crate::game) mod lan_station_data;
+
+#[path = "game/network/untrusted_uri.rs"]
+pub(in crate::game) mod untrusted_uri;
+
+#[path = "game/network/villager_metadata.rs"]
+pub(in crate::game) mod villager_metadata;
+
+#[path = "game/blocks/machine_containers.rs"]
+pub(in crate::game) mod machine_containers;
+
+#[path = "game/blocks/piston_carry_common.rs"]
+pub(in crate::game) mod piston_carry_common;
+
+#[path = "game/blocks/spill_common.rs"]
+pub(in crate::game) mod spill_common;
+
+#[path = "game/blocks/sculk_control_common.rs"]
+pub(in crate::game) mod sculk_control_common;
+
+#[path = "game/blocks/waxing_common.rs"]
+pub(in crate::game) mod waxing_common;
+
+#[path = "game/blocks/cauldron_interactions.rs"]
+pub(in crate::game) mod cauldron_interactions;
+
+#[path = "game/blocks/composter_data.rs"]
+pub(in crate::game) mod composter_data;
+
+#[path = "game/blocks/world_fluid_data.rs"]
+pub(in crate::game) mod world_fluid_data;
+
+#[path = "game/blocks/growth_features.rs"]
+pub(in crate::game) mod growth_features;
+
+#[path = "game/items/item_use_common.rs"]
+pub(in crate::game) mod item_use_common;
+
+#[path = "game/items/crossbow_common.rs"]
+pub(in crate::game) mod crossbow_common;
+
+#[path = "game/items/deflect_common.rs"]
+pub(in crate::game) mod deflect_common;
+
+#[path = "game/items/mace_common.rs"]
+pub(in crate::game) mod mace_common;
+
+#[path = "game/items/fishing_common.rs"]
+pub(in crate::game) mod fishing_common;
+
+#[path = "game/items/potions_common.rs"]
+pub(in crate::game) mod potions_common;
+
+#[path = "game/items/totem_common.rs"]
+pub(in crate::game) mod totem_common;
+
+#[path = "game/items/combat_common.rs"]
+pub(in crate::game) mod combat_common;
+
+#[path = "game/items/interactions_common.rs"]
+pub(in crate::game) mod interactions_common;
+
+#[path = "game/items/trading_common.rs"]
+pub(in crate::game) mod trading_common;
+
+#[path = "game/modding/journal_level_effects.rs"]
+pub(in crate::game) mod journal_level_effects;
+
+#[path = "game/modding/native_menu_values.rs"]
+pub(in crate::game) mod native_menu_values;
+
+#[path = "game/modding/native_menu_ids.rs"]
+pub(in crate::game) mod native_menu_ids;
+
+#[path = "game/modding/native_menu_data.rs"]
+pub(in crate::game) mod native_menu_data;
+
+#[path = "game/modding/player_state.rs"]
+pub(in crate::game) mod player_state;
+
+#[path = "game/modding/native_data_maps_common.rs"]
+pub(in crate::game) mod native_data_maps_common;
+
+#[path = "game/modding/item_particle_send.rs"]
+pub(in crate::game) mod item_particle_send;
+
+#[path = "game/modding/native_world_read.rs"]
+pub(in crate::game) mod native_world_read_common;
+
+#[path = "game/modding/native_block_entity_read.rs"]
+pub(in crate::game) mod native_block_entity_read;
+
+#[path = "game/modding/native_rain_read.rs"]
+pub(in crate::game) mod native_rain_read;
+
+#[path = "game/modding/native_equipment_read.rs"]
+pub(in crate::game) mod native_equipment_read;
+
+#[path = "game/modding/native_structure_values.rs"]
+pub(in crate::game) mod native_structure_values;
+
+#[path = "game/modding/native_entity_motion_values.rs"]
+pub(in crate::game) mod native_entity_motion_values;
+
+#[path = "game/modding/native_collider_state.rs"]
+pub(in crate::game) mod native_collider_state;
+
+#[path = "game/modding/native_recipe_tables.rs"]
+pub(in crate::game) mod native_recipe_tables;
+
+#[path = "game/modding/native_net_common.rs"]
+pub(in crate::game) mod native_net_common;
+
+#[path = "game/modding/dragon_parts_table.rs"]
+pub(in crate::game) mod dragon_parts_table;
+
+#[path = "game/modding/attachment_indexes.rs"]
+pub(in crate::game) mod attachment_indexes;
+
+#[path = "game/modding/native_level_refs_common.rs"]
+pub(in crate::game) mod native_level_refs_common;
+
+#[path = "game/modding/native_entity_state_common.rs"]
+pub(in crate::game) mod native_entity_state_common;
+
+#[path = "game/modding/native_config_file_services.rs"]
+pub(in crate::game) mod native_config_file_services;
+
+#[path = "game/modding/entity_part_state_common.rs"]
+pub(in crate::game) mod entity_part_state_common;
+
+#[path = "game/modding/native_passages.rs"]
+pub(in crate::game) mod native_passages;
+
+#[path = "game/modding/native_registry_entries.rs"]
+pub(in crate::game) mod native_registry_entries;
+
+#[path = "game/modding/native_resources.rs"]
+pub(in crate::game) mod native_resources;
+
+#[path = "game/entities/collider_rays.rs"]
+pub(in crate::game) mod collider_rays;
+
+#[path = "game/entities/armor_stands_common.rs"]
+pub(in crate::game) mod armor_stands_common;
+
+#[path = "game/entities/cushions_common.rs"]
+pub(in crate::game) mod cushions_common;
+
+#[path = "game/entities/entity_sounds_common.rs"]
+pub(in crate::game) mod entity_sounds_common;
+
+#[path = "game/entities/frames_common.rs"]
+pub(in crate::game) mod frames_common;
+
+#[path = "game/entities/lightning_common.rs"]
+pub(in crate::game) mod lightning_common;
+
+#[path = "game/entities/seats_common.rs"]
+pub(in crate::game) mod seats_common;
+
+#[path = "game/entities/tnt_common.rs"]
+pub(in crate::game) mod tnt_common;
+
+#[path = "game/mobs/creaking_common.rs"]
+pub(in crate::game) mod creaking_common;
+
+#[path = "game/mobs/wither_common.rs"]
+pub(in crate::game) mod wither_common;
+
+#[path = "game/interface/profile_capture_common.rs"]
+pub(in crate::game) mod profile_capture_common;
+
+#[path = "game/interface/level_sounds_common.rs"]
+pub(in crate::game) mod level_sounds_common;
+
+#[path = "game/interface/ray_shapes.rs"]
+pub(in crate::game) mod ray_shapes;
+
+#[path = "game/interface/streaming_radius.rs"]
+pub(in crate::game) mod streaming_radius;
+
+#[path = "game/interface/weather_height.rs"]
+pub(in crate::game) mod weather_height;
+
+#[path = "game/interface/name_component.rs"]
+pub(in crate::game) mod name_component;
+
+#[path = "game/interface/option_paths.rs"]
+pub(in crate::game) mod option_paths;
+
+#[cfg(feature = "client")]
+pub(in crate::game) use client_side::{armor_stands_client, frames_client, minecarts_client};
+pub(in crate::game) use server_side::{entity_server, lan_op, minecarts_server};
+
+impl<__Side: crate::game::Side> Game<'_, __Side> {
+    /// Whether `target` counts as removed in the level in place: a mod removed it, or an open
+    /// transaction did and its root commit has not run the removal yet.
+    pub(in crate::game) fn target_removed(&self, target: &commands_common::Target) -> bool {
+        self.persist.removals.contains(target)
+            || self.persist.destroying_vehicles.contains(target)
+            || self.removal_pending(target)
+    }
+
+    pub(in crate::game) fn resident_source_target_visible(
+        &self,
+        dimension: mod_api::DimensionKey,
+        target: commands_common::Target,
+    ) -> bool {
+        let player = match target {
+            commands_common::Target::Guest(conn) => Some(conn),
+            commands_common::Target::Player => crate::game::Side::lan_acting(&self.side),
+            _ => None,
+        };
+        if player
+            .and_then(|conn| self.command_guest(conn))
+            .is_some_and(|guest| !guest.body_present())
+        {
+            return false;
+        }
+        if dimension == self.dim.key() {
+            return !self.target_removed(&target);
+        }
+        let dim = match dimension {
+            mod_api::DimensionKey::OVERWORLD => Dim::Overworld,
+            mod_api::DimensionKey::NETHER => Dim::Nether,
+            mod_api::DimensionKey::END => Dim::End,
+            key => Dim::Extra(key),
+        };
+        side_ops::world::SideOps::side_parked_target_visible(&self.side, dim, &target)
+            .is_none_or(|visible| visible && !self.removal_pending_in(dim, &target))
+    }
+}

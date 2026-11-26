@@ -28,7 +28,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // `LivingEntity.playBlockFallSound` returns early for a silent entity; the
         // server syncs the local player's Silent flag (entity data index 4).
-        if self.remote.as_ref().is_some_and(|r| r.local_entity_silent) {
+        if self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.local_entity_silent)
+        {
             return;
         }
         let sound = self.own_sound_type(

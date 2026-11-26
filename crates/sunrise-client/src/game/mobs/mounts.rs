@@ -3,6 +3,7 @@
 //! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting, and the
 //! mount's health and jump bar on the HUD.
 use super::Game;
+use crate::game::mounts_common::steering_item;
 use sunrise_core::{
     geometry::{Aabb, Vec3, VoxelShape},
     random::RandomSource,
@@ -16,33 +17,6 @@ use {
     sunrise_sim::pose::Dimensions, sunrise_sim::pose::Pose, sunrise_sim::sprint::Keys,
 };
 
-pub(in crate::game) fn steering_item(
-    species: Species,
-    main: Option<&str>,
-    offhand: Option<&str>,
-) -> bool {
-    let item = match species {
-        Species::Pig => "minecraft:carrot_on_a_stick",
-        Species::Strider => "minecraft:warped_fungus_on_a_stick",
-        _ => return false,
-    };
-    main == Some(item) || offhand == Some(item)
-}
-
-#[derive(Default)]
-pub(in crate::game) struct MountState {
-    /// `jumpRidingTicks`: -10 cooling down after a jump, >= 0 charging.
-    pub(in crate::game) jump_ticks: i32,
-    /// `jumpRidingScale` (0..1).
-    pub(in crate::game) jump_scale: f32,
-    pub(in crate::game) was_jumping: bool,
-}
-impl MountState {
-    pub(in crate::game) fn reset_jump(&mut self) {
-        self.jump_ticks = 0;
-        self.jump_scale = 0.0;
-    }
-}
 /// `AbstractHorse.isFood` and `handleEating`: what a mount eats, and what that
 /// mouthful does — `(heal, age up seconds, temper, falls in love)`. The temper
 /// increment is kept separate from its signed saved counter.
@@ -99,24 +73,6 @@ pub(in crate::game::server_side) fn dismounts_underwater(
     tags.has_bit(
         mount.kind.flags.entity_tag_slot,
         EntityTypeTags::DISMOUNTS_UNDERWATER,
-    )
-}
-
-/// `EntityAttachments.transformPoint`: `Vec3.yRot(-yRot * (float) (Math.PI / 180.0))`,
-/// an attachment point turned with the vehicle.
-pub(in crate::game) fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
-    Vec3::new(a[0], a[1], a[2]).rotate_y(-yaw * (std::f64::consts::PI / 180.0) as f32)
-}
-
-/// `Entity.getPassengerRidingPosition` for a player on `m`: the vehicle's
-/// attachment point, turned with it, less the player's own vehicle attachment
-/// (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`, a `Vec3(0.0, 0.6, 0.0)` of doubles).
-pub(in crate::game) fn seat_of(m: &sunrise_sim::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
-    let at = turned(attachment, m.yaw);
-    Vec3::new(
-        m.position.x + at.x,
-        m.position.y + at.y - 0.6,
-        m.position.z + at.z,
     )
 }
 
@@ -769,7 +725,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match *e {
             MobEvent::Tamed { mob } => {
                 // tameWithName(player): the rider, a server's player in its turn.
-                let rider = self.lan.as_ref().and_then(|h| {
+                let rider = self.side.lan.as_ref().and_then(|h| {
                     h.hub
                         .guests
                         .iter()
@@ -788,7 +744,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 } else {
                     // ejectPassengers: a server's player gets off too
                     // (the put-back at the end of `guest_turn` tells their client).
-                    let rider = self.lan.as_ref().and_then(|h| {
+                    let rider = self.side.lan.as_ref().and_then(|h| {
                         h.hub
                             .guests
                             .iter()
@@ -814,7 +770,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if self.riding == Some(mob) {
                     self.stop_riding();
                 }
-                let guests: Vec<u32> = self.lan.as_ref().map_or_else(Vec::new, |h| {
+                let guests: Vec<u32> = self.side.lan.as_ref().map_or_else(Vec::new, |h| {
                     h.hub
                         .guests
                         .iter()
@@ -867,7 +823,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .is_some_and(|p| p.entity_id as u32 == id)
                 {
                     self.rider_fall_damage(distance, modifier);
-                } else if let Some(conn) = self.lan.as_ref().and_then(|host| {
+                } else if let Some(conn) = self.side.lan.as_ref().and_then(|host| {
                     host.hub
                         .guests
                         .iter()
@@ -893,7 +849,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 {
                     break;
                 }
-                let level = crate::game::entity::damage_level_of!(
+                let level = crate::game::entity_server::damage_level_of!(
                     self,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,
@@ -1659,9 +1615,15 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game =
-            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-                .ok()?;
+        let mut game = crate::game::ServerGame::new(
+            res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .ok()?;
         game.reset_entity_residency();
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);
@@ -2112,7 +2074,7 @@ pub(in crate::game) mod off_level_tests {
             let ghost = sunrise_sim::mobs::Mob::new(72, pig, Vec3::ZERO, 0.0);
             game.persist
                 .off_level
-                .insert(72, crate::game::persist::OffLevel::Mob(ghost));
+                .insert(72, crate::game::entity_memory::OffLevel::Mob(ghost));
             game.dismount_underwater_mob_riders();
             assert_eq!(game.mob_object(74).unwrap().extra.mount, Some(73));
             assert_eq!(game.mob_object(76).unwrap().extra.mount, None);

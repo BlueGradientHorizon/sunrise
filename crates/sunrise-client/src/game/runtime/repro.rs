@@ -17,8 +17,8 @@
 //! ```
 use super::event_loop::EventLoopCtl;
 use super::input_trace::{InputOrigin, TraceEvent, TraceKind};
-use super::owner_link::{ControlRequest, OwnerRequest};
 use super::{Game, Screen};
+use crate::game::owner_link::{ControlRequest, OwnerRequest};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -542,9 +542,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Single player is a client of its own integrated server too: that is
         // still a local world with a folder to copy. The deprecated in-frame
         // mode is not one (CLAUDE.md: never use it).
-        let mode = if self.integrated.is_some() {
+        let mode = if self.side.integrated.is_some() {
             "local"
-        } else if self.remote.is_some() {
+        } else if self.side.remote.is_some() {
             "remote"
         } else if self.side.title.0.is_some() {
             return Err("open a world first".into());
@@ -559,7 +559,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Single player's world belongs to the integrated server thread: its
         // save folder is the one to copy, not the client's title-screen save.
         let world_root = if mode == "local" {
-            match self.integrated.as_ref() {
+            match self.side.integrated.as_ref() {
                 Some(server) => {
                     server.ask(|reply| OwnerRequest::Control(ControlRequest::WorldRoot(reply)))
                 }
@@ -593,7 +593,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // ticking and autosaving otherwise, and a region file would tear.
         if include_world {
             let root = world_root.as_ref().expect("a local world's save folder");
-            if let Some(server) = self.integrated.as_ref() {
+            if let Some(server) = self.side.integrated.as_ref() {
                 // The server thread saves, then waits there for the copy: pausing it instead
                 // runs its pause save (which renames files into place) during the copy.
                 let (saved_tx, saved) = mpsc::channel();
@@ -981,8 +981,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if stop {
             let stopped = self.stop_replay();
             if stopped {
-                self.events
-                    .note(self.ticks, json!({ "event": "replay", "state": "stopped" }));
+                super::events::note(
+                    &mut self.events,
+                    self.ticks,
+                    json!({ "event": "replay", "state": "stopped" }),
+                );
             }
             return Ok(Some(Some(json!({ "ok": true, "stopped": stopped }))));
         }
@@ -1157,7 +1160,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             world_folder: (!pending.in_place).then_some(pending.folder),
             keep_world: pending.keep_world,
         });
-        self.events.note(
+        super::events::note(
+            &mut self.events,
             self.ticks,
             json!({ "event": "replay", "state": "started", "name": name }),
         );
@@ -1226,7 +1230,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     "total": replay.events.len(),
                 });
                 self.side.repro.0.note_event(self.ticks, &value);
-                self.events.note(self.ticks, value);
+                super::events::note(&mut self.events, self.ticks, value);
                 if let Some(replay) = self.side.repro.0.replay.as_mut() {
                     replay.last_progress = replay.sent;
                 }
@@ -1374,7 +1378,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "skipped": replay.skipped,
             "total": replay.events.len(),
         });
-        self.events.note(self.ticks, value.clone());
+        super::events::note(&mut self.events, self.ticks, value.clone());
         log::info!(
             "Sunrise: replay {}: {} of {} events{}",
             replay.name,

@@ -31,7 +31,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if active
             && grabbed
             && mod_api::__private::listened(mod_api::HookId::CalculatePlayerTurn)
-            && let Some(remote) = &self.remote
+            && let Some(remote) = &self.side.remote
         {
             self.native_calculate_player_turn(
                 self.own_entity_id(),
@@ -96,7 +96,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .is_some_and(|t| t.elapsed() > Duration::from_millis(500))
             && self.control.is_none()
             && self.side.screen == Screen::Playing
-            && !studio_suppresses_focus_pause(self.replay.playing(), self.side.studio.flying())
+            && !studio_suppresses_focus_pause(self.side.replay.playing(), self.side.studio.flying())
             && self.player.is_some()
             && !self.options.no_pause
             && self.side.settings.file.bool("pauseOnLostFocus")
@@ -460,6 +460,10 @@ mod tests {
             settings,
             Audio::silent(&ResourceSource::directory(root)),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
 

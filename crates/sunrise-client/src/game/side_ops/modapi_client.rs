@@ -8,18 +8,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         holder: mod_api::Holder,
         _access: AttachmentAccess,
-    ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        let Some(remote) = self.remote.as_mut() else {
+    ) -> std::result::Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
+        let Some(remote) = self.side.remote.as_mut() else {
             return Err(mod_api::AttachmentError::MissingHolder);
         };
         remote.attachments.entry(holder).or_default();
         self.bind_remote_attachment(holder);
-        let remote = self.remote.as_mut().unwrap();
+        let remote = self.side.remote.as_mut().unwrap();
         Ok(remote.attachments.get_mut(&holder).unwrap())
     }
 
     pub(in crate::game) fn client_entity_residence(&self, holder: mod_api::EntityRef) -> Residence {
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return Residence::Missing;
         };
         if self.native_lifecycle.epoch() != Some(holder.epoch()) {
@@ -30,8 +30,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         if (id == remote.entity_id && self.player.is_some())
             || self.dragon.as_ref().is_some_and(|dragon| {
-                crate::game::server_side::dragon::dragon_part_index(dragon.id, holder.id())
-                    .is_some()
+                crate::game::dragon_common::dragon_part_index(dragon.id, holder.id()).is_some()
             })
             || remote.tracked(id).is_some()
         {

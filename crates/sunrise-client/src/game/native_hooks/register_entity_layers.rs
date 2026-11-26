@@ -1,6 +1,4 @@
-use super::*;
-#[cfg(feature = "client")]
-use crate::game::native_entity_layers::LayerRegistration;
+use crate::game::client_side::native_entity_layers::LayerRegistration;
 
 /// The layers a mod adds to living entity renderers (NeoForge's
 /// `EntityRenderersEvent.AddLayers`): `add(target, layer)`, and every living entity of the

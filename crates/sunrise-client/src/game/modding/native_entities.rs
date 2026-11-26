@@ -8,59 +8,9 @@ use super::{
     Game,
     commands::{Target, place_summoned, strip_finalize_tree},
 };
+use crate::game::commands_common::target_id;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::{Compound, Tag};
-
-impl super::commands::OtherEntity {
-    /// Physical query bounds, not display rendering/culling dimensions.
-    pub(in crate::game::server_side) fn display_marker_or_interaction_bounds(
-        &self,
-    ) -> Option<sunrise_core::geometry::Aabb> {
-        let dimensions = self.vanilla_dimensions()?;
-        let vanilla = if let Some(settings) = self.interaction {
-            let mut interaction = super::interactions::RemoteInteraction::new([
-                self.position.x,
-                self.position.y,
-                self.position.z,
-            ]);
-            interaction.width = settings.width;
-            interaction.height = settings.height;
-            interaction.response = settings.response;
-            interaction.bounds()
-        } else {
-            // Display and Marker have zero-sized physical dimensions.
-            sunrise_core::geometry::Aabb::new(self.position, self.position)
-        };
-        Some(sunrise_sim::pose::SizeAnswer::sized_box(
-            self.size_answer,
-            dimensions,
-            self.position,
-            vanilla,
-        ))
-    }
-
-    /// `Entity.getDimensions(pose)` of a display, a marker or an interaction this list holds,
-    /// the kinds whose box follows their size here: an interaction's
-    /// `EntityDimensions.scalable(width, height)`, none for a display or a marker. None for
-    /// every other kind the list keeps without simulating it (a leash knot, an eye of ender),
-    /// which isn't asked.
-    pub(in crate::game::server_side) fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
-        if !matches!(
-            self.kind.as_str(),
-            "minecraft:block_display"
-                | "minecraft:item_display"
-                | "minecraft:text_display"
-                | "minecraft:marker"
-                | "minecraft:interaction"
-        ) {
-            return None;
-        }
-        Some(match self.interaction {
-            Some(settings) => [settings.width, settings.height, settings.height * 0.85],
-            None => [0.0; 3],
-        })
-    }
-}
 
 /// Whether a position is one `/summon` takes.
 fn position_ok(pos: [f64; 3]) -> bool {
@@ -80,42 +30,11 @@ fn root_id(target: Option<Target>, first: u32, live: impl Fn(u32) -> bool) -> Op
     }
 }
 
-/// The entity id a summoned stack's root is known by.
-pub(in crate::game) fn target_id(t: Target) -> Option<u32> {
-    match t {
-        Target::Mob(id)
-        | Target::Item(id)
-        | Target::Orb(id)
-        | Target::Projectile(id)
-        | Target::Stand(id)
-        | Target::Frame(id)
-        | Target::Painting(id)
-        | Target::Boat(id)
-        | Target::Cart(id)
-        | Target::Other(id)
-        | Target::Fangs(id)
-        | Target::Crystal(id)
-        | Target::Dragon(id)
-        | Target::DragonPart(id)
-        | Target::Tnt(id)
-        | Target::Cushion(id)
-        | Target::Falling(id)
-        | Target::Rocket(id)
-        | Target::Trident(id)
-        | Target::Spawner(id)
-        | Target::Cloud(id)
-        | Target::Bolt(id)
-        | Target::Hook(id)
-        | Target::Knot(id)
-        | Target::General(id) => Some(id),
-        Target::Player | Target::Guest(_) => None,
-    }
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether this game simulates the level `dimension`.
     fn native_simulates_level(&self, dimension: &str) -> bool {
-        (self.serving.is_some() || self.options.dedicated.is_some()) && dimension == self.dim.id()
+        (self.side.serving.is_some() || self.options.dedicated.is_some())
+            && dimension == self.dim.id()
     }
     /// Spawns an entity of `kind` (`minecraft:item_display`) at `pos` in the
     /// level in place, `dimension`, from `nbt` (its compound, as `/summon
@@ -520,9 +439,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Entity `id` has left the level: told once, if mods were told it joined.
     pub(in crate::game::server_side) fn native_entity_left(&mut self, id: u32) {
-        if self.remote.is_some()
-            || self.hold_announcement(super::transactions::Announcement::Left(id))
-        {
+        if self.hold_announcement(super::transactions::Announcement::Left(id)) {
             return;
         }
         self.entity_left_now(id);
@@ -545,7 +462,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_leaves_flush(&mut self) {
         self.native_removals_flush();
         if self.persist.live.is_empty()
-            || self.remote.is_some()
             || self.hold_announcement(super::transactions::Announcement::Leaves)
         {
             return;
@@ -768,7 +684,9 @@ mod tests {
                 game.rockets[0].id,
             ];
             assert_eq!(ids, [base + 1, base + 2, base + 3, base + 4, base + 5]);
-            let mut identities = super::super::entity::taken_pass_tests::SlotIdentities::default();
+            let mut identities =
+                crate::game::server_side::entity_server::taken_pass_tests::SlotIdentities::default(
+                );
             identities.observe(
                 &mut game.falling,
                 game.native_lifecycle.epoch().unwrap(),
@@ -1042,7 +960,7 @@ mod tests {
                     Some(&(base + 3, "minecraft:sheep".into(), true))
                 );
 
-                game.crystals.push(super::super::dragon::Crystal::new(
+                game.crystals.push(crate::game::dragon_common::Crystal::new(
                     base + 4,
                     Vec3::ZERO,
                     true,
@@ -1089,7 +1007,7 @@ mod tests {
                     check_interval: 0,
                     ticks: 0,
                 });
-                let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+                let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
                 dragon.id = base + 8;
                 dragon.join = sunrise_sim::join_seq::JoinSeq::next();
                 game.dragon.replace(dragon);
@@ -1108,7 +1026,7 @@ mod tests {
                     ]
                 );
                 drop(seen);
-                game.tnts.push(super::super::tnt::PrimedTnt {
+                game.tnts.push(crate::game::tnt_common::PrimedTnt {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     rotation: [0.0, 0.0],

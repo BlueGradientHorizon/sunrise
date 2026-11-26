@@ -12,22 +12,21 @@ pub(in crate::game) mod save_lending;
 
 #[allow(unused_imports)]
 use super::{Game, InteractTarget, Keys};
-use std::{collections::HashMap, sync::Arc};
-use sunrise_client::{mesher::Vertex, mobs::Part};
+use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::LegacyRandom,
 };
-use sunrise_items::{blocks::Fluid, items::ItemStack};
+use sunrise_items::{
+    blocks::Fluid,
+    items::{ItemStack, Items},
+};
 use sunrise_level::{containers::BlockEntity, random_source};
-use sunrise_sim::join_seq::ListStamp;
-use sunrise_sim::mobs::seen_grid::SeenGrid;
 use sunrise_sim::mobs::{Species, riders};
 use sunrise_world::registry::BlockStateId;
+#[cfg(test)]
 #[path = "minecarts/hit.rs"]
 pub(in crate::game) mod hit;
-#[allow(unused_imports)]
-pub(in crate::game) use hit::CartHit;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay_common::minecart_cells::CartCells;
 use sunrise_gameplay_common::minecart_seat::*;
@@ -46,6 +45,20 @@ pub(in crate::game) enum CartKind {
     Spawner,
 }
 impl CartKind {
+    /// Whether this cart's `interact` passes on the client, so that
+    /// `Minecraft.startUseItem` uses the held item instead: `MinecartTNT` has
+    /// none of its own (`Entity.interact`), `MinecartCommandBlock.interact`
+    /// needs a game master, and `Minecart.interact` a player not sneaking at
+    /// an empty cart.
+    pub fn interact_passes(self, sneaking: bool, ridden: bool, game_master: bool) -> bool {
+        match self {
+            Self::Tnt | Self::Spawner => true,
+            Self::CommandBlock => !game_master,
+            Self::Rideable => sneaking || ridden,
+            Self::Chest | Self::Hopper | Self::Furnace => false,
+        }
+    }
+
     pub fn from_id(id: &str) -> Option<Self> {
         Some(match id.strip_prefix("minecraft:")? {
             "minecart" => Self::Rideable,
@@ -235,22 +248,6 @@ pub(in crate::game) fn forget_unreadable_display(
     }
 }
 
-/// The carts' and mobs' boxes for one tick's cart pushes (`push_from_cart`,
-/// `pickup_from_cart`), so a cart reads its neighbours instead of every cart and
-/// every mob of the level. Both answer in slot order, as the scans did.
-///
-/// The cart grid follows each ticked cart ([`CartIndex::moved`]); it is
-/// rebuilt once the list's length changed (a cart gone or added), and dropped
-/// after a command, which can move or replace any cart
-/// ([`CartIndex::forget_carts`]). The mob grid holds until the mob
-/// list's next write ([`ListStamp`]). A native mod's hook can move either kind
-/// unseen, so with mods loaded both scans stay.
-#[derive(Default)]
-pub(in crate::game) struct CartIndex {
-    pub(in crate::game) carts: Option<(SeenGrid, Vec<u32>)>,
-    pub(in crate::game) mobs: Option<(ListStamp, SeenGrid)>,
-    pub(in crate::game) near: Vec<u32>,
-}
 /// Where the cart `id` is in `carts`: at `hint` (where it was a moment ago,
 /// the usual case while carts tick in order) or found by a scan. A world
 /// with hundreds of mineshaft chest carts asked this of every cart several
@@ -387,6 +384,26 @@ pub(in crate::game) struct Rail {
     pub(in crate::game) powered: bool,
 }
 impl Minecart {
+    /// `AbstractContainerMenu.getRedstoneSignalFromContainer` of `slots`.
+    pub(in crate::game) fn container_signal(slots: &[Option<ItemStack>], items: &Items) -> i32 {
+        let mut total = 0.0f32;
+        for s in slots.iter().flatten() {
+            let max = items.get(&s.item).map_or(64, |i| i.max_stack).min(64);
+            total += s.count as f32 / max as f32;
+        }
+        total /= slots.len().max(1) as f32;
+        // Mth.lerpDiscrete(total, 0, 15)
+        (total * 14.0).floor() as i32 + i32::from(total > 0.0)
+    }
+
+    /// Snapshot the component codec used for saved output and failure-text admission checks.
+    pub(in crate::game) fn sync_command_output(&mut self) {
+        self.synced_output = self
+            .command
+            .last_output
+            .as_ref()
+            .map(|text| sunrise_game_data::scoreboard::component_tag(&text.component_view()));
+    }
     /// `Entity.onGround`.
     pub(in crate::game) fn on_ground(&self) -> bool {
         self.ground.on_ground
@@ -471,28 +488,6 @@ pub(in crate::game) fn container_keep(signal: i32, loot_pending: bool, in_water:
     }
     f64::from(keep)
 }
-#[cfg_attr(test, derive(Clone))]
-pub(in crate::game) struct CartModels {
-    pub models: HashMap<CartKind, Part>,
-}
-impl CartModels {
-    pub fn load(document: Option<&sunrise_client::mobs::EntityModelDocument>) -> Self {
-        let kinds = [
-            CartKind::Rideable,
-            CartKind::Chest,
-            CartKind::Hopper,
-            CartKind::Furnace,
-            CartKind::Tnt,
-            CartKind::CommandBlock,
-            CartKind::Spawner,
-        ];
-        let models = kinds
-            .into_iter()
-            .filter_map(|k| document?.model(&format!("{}#main", k.id())).map(|m| (k, m)))
-            .collect();
-        Self { models }
-    }
-}
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `getCurrentBlockPosOrRailBelow`.
     pub(in crate::game) fn rail_block(&self, p: Vec3, improved: bool) -> [i32; 3] {
@@ -552,7 +547,10 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
     /// `positionRider` for the mobs in minecarts: each sits on the cart's
     /// passenger attachment, less its own vehicle attachment.
-    pub(in crate::game) fn seat_cart_mobs(&mut self, riding: &super::passengers::Riders) {
+    pub(in crate::game) fn seat_cart_mobs(
+        &mut self,
+        riding: &crate::game::passengers_common::Riders,
+    ) {
         for i in 0..self.carts.len() {
             let id = self.carts[i].id;
             let Some(js) = riding.get(&id) else {
@@ -587,7 +585,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         !self
             .persist
             .removals
-            .contains(&super::commands::Target::Cart(cart.id))
+            .contains(&crate::game::commands_common::Target::Cart(cart.id))
             && self.carts.store_back(index, cart)
     }
 
@@ -623,20 +621,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         let top = c.bounds().max_position().y;
         target.unwrap_or(Vec3::new(c.position.x, top, c.position.z))
-    }
-    /// Closing the cart's container open under `key` copies the items back.
-    pub(in crate::game) fn close_cart_container(&mut self, key: (i32, i32, i32)) {
-        if key.1 != CART_KEY_Y {
-            return;
-        }
-        self.store_cart_items(key);
-        let guest_viewers = self
-            .lan
-            .as_ref()
-            .is_some_and(|host| Self::vehicle_has_other_viewers(None, &host.hub.guests, None, key));
-        if !guest_viewers {
-            self.world.block_entities.remove(&key);
-        }
     }
     /// A chest or hopper minecart or a chest boat is about to be removed
     /// (`Containers.dropContents` / `AbstractChestBoat.remove`): what an open
@@ -727,7 +711,7 @@ impl Minecart {
             map.remove(&JavaString::from("DisplayState"));
             map.remove(&JavaString::from("explosion_power"));
             map.remove(&JavaString::from("explosion_speed_factor"));
-            super::boats::put_ticks_frozen(map, self.ticks_frozen);
+            crate::game::boats_common::put_ticks_frozen(map, self.ticks_frozen);
             let mut put = |k: &str, v: Tag| {
                 map.insert(JavaString::from(k), v);
             };
@@ -847,7 +831,7 @@ impl Minecart {
         };
         // Entity.load: OnGround and fall_distance, as saved.
         (c.ground.on_ground, c.fall_distance) = sunrise_sim::entity_nbt::ground_from_nbt(tag);
-        c.ticks_frozen = super::boats::saved_ticks_frozen(tag);
+        c.ticks_frozen = crate::game::boats_common::saved_ticks_frozen(tag);
         c.flipped = flag("FlippedRotation", false);
         c.first_tick = flag("HasTicked", false);
         if kind.slots() > 0 {
@@ -946,123 +930,6 @@ pub(in crate::game) fn furnace_speed(c: &Minecart, base: f64) -> f64 {
     }
 }
 
-/// Local geometry with atlas coordinates resolved for both CPU and GPU consumers.
-#[derive(Clone, Copy)]
-pub(in crate::game) struct PreparedModelFace {
-    pub(in crate::game) positions: [[f32; 3]; 4],
-    pub(in crate::game) uv: [[f32; 2]; 4],
-    pub(in crate::game) facing: sunrise_assets::model::Direction,
-    pub(in crate::game) tint_index: i32,
-    /// The side that hides this face when a neighbour covers it (`ModelQuad::cull`).
-    pub(in crate::game) cull: Option<sunrise_assets::model::Direction>,
-    pub(in crate::game) light_emission: u8,
-}
-
-impl PreparedModelFace {
-    pub(in crate::game) fn new(
-        quad: &sunrise_assets::bake::ModelQuad,
-        sprite: sunrise_client::hud::Rect,
-    ) -> Self {
-        Self {
-            positions: quad.positions,
-            uv: quad.uv.map(|uv| {
-                [
-                    sprite.u0 + uv[0] * (sprite.u1 - sprite.u0),
-                    sprite.v0 + uv[1] * (sprite.v1 - sprite.v0),
-                ]
-            }),
-            facing: quad.facing,
-            tint_index: quad.tint_index,
-            cull: quad.cull,
-            light_emission: quad.light_emission,
-        }
-    }
-
-    pub(in crate::game) fn positions(&self) -> [[f32; 3]; 4] {
-        self.positions
-    }
-}
-
-/// Shared transform, shading and light path for block-state and prepared standalone faces.
-pub(in crate::game) fn emit_model_faces(
-    faces: impl IntoIterator<Item = (PreparedModelFace, u32)>,
-    m: glam::Mat4,
-    diffuse: bool,
-    tint: impl Fn(i32) -> Option<u32>,
-    out: &mut Vec<Vertex>,
-) {
-    use sunrise_assets::model::Direction as D;
-    let mut normals = sunrise_client::item_render::FaceNormals::new(m);
-    for (quad, light) in faces {
-        let shade: u32 = match quad.facing {
-            D::Up => 255,
-            D::Down => 127,
-            D::North | D::South => 204,
-            D::West | D::East => 153,
-        };
-        let mut color = if diffuse {
-            u32::MAX
-        } else {
-            0xFF00_0000 | shade << 16 | shade << 8 | shade
-        };
-        if let Some(t) = tint(quad.tint_index) {
-            color =
-                sunrise_client::hud_layout::multiply(color, sunrise_client::mobs::render::abgr(t));
-        }
-        let normal = if diffuse {
-            let n = normals
-                .face(quad.facing)
-                .to_array()
-                .map(|v| (v.clamp(-1.0, 1.0) * 127.0) as i8);
-            [n[0], n[1], n[2], 127]
-        } else {
-            [0; 4]
-        };
-        let light = if diffuse {
-            let emission = u32::from(quad.light_emission) * 16;
-            (light & 0xFF) | (light >> 8 & 0xFF).max(emission) << 8
-        } else {
-            light
-        };
-        for k in 0..4 {
-            let uv = quad.uv[k];
-            out.push(Vertex {
-                normal,
-                pos: m
-                    .transform_point3(glam::Vec3::from_array(quad.positions[k]))
-                    .to_array(),
-                uv,
-                layer: 0,
-                color,
-                light,
-                glint_uv: [0.0, 0.0],
-            });
-        }
-    }
-}
-
-/// Vanilla multiplies tint, alpha included, only when `tintIndex != -1`.
-pub(in crate::game) fn scale_tint_alpha<'f>(
-    vertices: &mut [Vertex],
-    faces: impl IntoIterator<Item = &'f PreparedModelFace>,
-    tint: u32,
-) {
-    let alpha = tint >> 24;
-    if alpha == 255 {
-        return;
-    }
-    let (quads, _) = vertices.as_chunks_mut::<4>();
-    for (face, quad) in faces.into_iter().zip(quads) {
-        if face.tint_index < 0 {
-            continue;
-        }
-        for vertex in quad {
-            let scaled = (vertex.color >> 24) * alpha / 255;
-            vertex.color = vertex.color & 0x00FF_FFFF | scaled << 24;
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "minecarts/tests.rs"]
 pub(in crate::game) mod tests;
@@ -1109,7 +976,12 @@ pub(in crate::game) mod tnt_impact_tests {
             let mut cart = Minecart::new(1, CartKind::Tnt, at);
             cart.velocity = velocity;
             for _ in 0..40 {
-                if !game.tick_cart(&mut cart, [0.0; 2], 0, &mut super::CartIndex::default()) {
+                if !game.tick_cart(
+                    &mut cart,
+                    [0.0; 2],
+                    0,
+                    &mut crate::game::server_side::minecarts_server::CartIndex::default(),
+                ) {
                     result = true;
                     break;
                 }
@@ -1197,7 +1069,12 @@ pub(in crate::game) mod tnt_impact_tests {
         let mut cart = Minecart::new(1, CartKind::Rideable, Vec3::new(5.5, 64.5, 8.5));
         cart.velocity = Vec3::new(0.4, 0.0, 0.0);
         game.carts.push(cart.clone());
-        assert!(game.tick_cart(&mut cart, [0.0; 2], 0, &mut super::CartIndex::default()));
+        assert!(game.tick_cart(
+            &mut cart,
+            [0.0; 2],
+            0,
+            &mut crate::game::server_side::minecarts_server::CartIndex::default()
+        ));
         let powered = registry
             .state(game.world.block(6, 65, 8))
             .unwrap()
@@ -1383,7 +1260,7 @@ pub(in crate::game) mod cart_push_tests {
         ) -> Vec3 {
             game.carts.update(target, |cart| cart.velocity = Vec3::ZERO);
             game.carts.update(pusher, |cart| cart.velocity = velocity);
-            let mut index = super::CartIndex::default();
+            let mut index = crate::game::server_side::minecarts_server::CartIndex::default();
             game.push_from_cart(pusher, &mut index);
             game.carts[target].velocity
         }
@@ -1458,7 +1335,7 @@ pub(in crate::game) mod cart_push_tests {
         game.carts.push(cart);
         let at = Vec3::new(8.5, 64.0, 8.5);
         game.mobs.push(Mob::new(7, kind, at, 0.0));
-        let mut index = super::CartIndex::default();
+        let mut index = crate::game::server_side::minecarts_server::CartIndex::default();
         game.push_from_cart(0, &mut index);
         assert_eq!(
             game.mobs[0].extra.mount,
@@ -1473,7 +1350,7 @@ pub(in crate::game) mod cart_push_tests {
         game.score.board.add_to_team(&name, "cart-2");
         game.carts
             .update(0, |cart| cart.velocity = Vec3::new(0.2, 0.0, 0.0));
-        let mut index = super::CartIndex::default();
+        let mut index = crate::game::server_side::minecarts_server::CartIndex::default();
         game.push_from_cart(0, &mut index);
         assert_eq!(
             game.mobs[0].extra.mount, None,
@@ -1489,8 +1366,9 @@ pub(in crate::game) mod cart_push_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod container_drop_tests {
-    use super::super::boats::Boat;
-    use super::{CartHit, CartKind, Minecart};
+    use super::{CartKind, Minecart};
+    use crate::game::boats_common::Boat;
+    use crate::game::server_side::minecarts_server::CartHit;
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::random::{LegacyRandom, RandomSource};
@@ -1622,7 +1500,10 @@ pub(in crate::game) mod rejected_passenger_tests {
             assert!(!game.start_riding_target(Target::Mob(candidate), Target::Cart(cart), false));
             game.carts
                 .update(0, |c| c.velocity = Vec3::new(0.2, 0.0, 0.0));
-            game.pickup_from_cart(0, &mut CartIndex::default());
+            game.pickup_from_cart(
+                0,
+                &mut crate::game::server_side::minecarts_server::CartIndex::default(),
+            );
             assert_eq!(game.mob_object(candidate).unwrap().extra.mount, None);
             assert!(!game.interact_cart(Some(InteractTarget {
                 id: cart as i32,
@@ -1836,10 +1717,10 @@ pub(in crate::game) mod hook_mutation_regressions {
                             5.0,
                             false,
                             false,
-                            crate::game::minecarts::CartHit::default(),
+                            crate::game::server_side::minecarts_server::CartHit::default(),
                         );
                     } else {
-                        game.boats.push(super::super::boats::Boat::new(
+                        game.boats.push(crate::game::boats_common::Boat::new(
                             71,
                             "oak".into(),
                             Vec3::ZERO,
@@ -2033,3 +1914,13 @@ pub(in crate::game) mod cart_cost_bench {
 #[cfg(test)]
 #[path = "minecarts/minecart_riders_tests.rs"]
 pub(in crate::game) mod minecart_riders_tests;
+
+impl sunrise_sim::entity_rules::EntityRules for Minecart {
+    fn is_no_gravity(&self) -> bool {
+        self.no_gravity
+    }
+    /// `AbstractMinecart.getDefaultGravity`.
+    fn get_default_gravity(&self) -> f64 {
+        if self.in_water { 0.005 } else { 0.04 }
+    }
+}

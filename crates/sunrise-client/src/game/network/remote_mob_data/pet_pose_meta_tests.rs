@@ -2,8 +2,8 @@
 //! bit `SitWhenOrderedToGoal` writes: what the host's cat goal sets is what
 //! the other players' clients draw, and the order they never learn stays
 //! behind on the host.
-use super::super::lan;
 use super::apply;
+use crate::game::lan_mob_metadata::mob_meta;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::entity_data::Value;
 use sunrise_protocol::registry::Builtin;
@@ -71,7 +71,7 @@ pub(super) fn meta_hub() -> sunrise_sim::lan::hub::Hub {
 /// What the host sends for `m`, and the flags byte among it.
 fn sent(m: &Mob, hub: &sunrise_sim::lan::hub::Hub) -> (Vec<(u8, i32, Value)>, Option<i8>) {
     let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-    lan::mob_meta(m, hub, None, 0, &mut meta, &mut defaults);
+    mob_meta(m, hub, None, 0, &mut meta, &mut defaults);
     let flags = meta
         .iter()
         .find(|(index, _, _)| *index == 18)

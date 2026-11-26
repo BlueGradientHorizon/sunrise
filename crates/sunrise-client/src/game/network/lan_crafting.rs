@@ -9,6 +9,7 @@ use super::{
     lan_actions::RECIPE_CHECK_COST,
     transactions::{After, decision::MenuOwner},
 };
+use crate::game::lan_menu_data::{FurnaceMenuEffects, GuestMenuEffects};
 use sunrise_items::items::{ItemStack, Items};
 use sunrise_level::containers::{BlockEntity, ModMenuType};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -144,50 +145,6 @@ fn place_back(menu: &mut Menu, items: &Items, stacks: impl IntoIterator<Item = I
     }
 }
 
-/// The non-storage effects from one guest menu action.
-#[derive(Default)]
-pub(in crate::game) struct GuestMenuEffects {
-    dropped: Vec<ItemStack>,
-    equipped: Vec<(&'static str, Option<ItemStack>)>,
-    brewed: Vec<ItemStack>,
-    brewed_potion_takes: Vec<ItemStack>,
-    crafted: Vec<(String, Vec<Option<ItemStack>>)>,
-    item_crafted: Vec<(String, ItemStack, Vec<Option<ItemStack>>)>,
-    crafted_counts: Vec<(std::sync::Arc<str>, i32)>,
-}
-
-pub(in crate::game) struct FurnaceMenuEffects {
-    uuid: u128,
-    entity_id: i32,
-    pos: (i32, i32, i32),
-    at: [f64; 3],
-    smelted: Vec<(Option<ItemStack>, u32)>,
-    extracted: Option<(ItemStack, u32)>,
-}
-
-impl GuestMenuEffects {
-    pub(in crate::game::server_side) fn dropped(dropped: Vec<ItemStack>) -> Self {
-        Self {
-            dropped,
-            ..Self::default()
-        }
-    }
-
-    pub(in crate::game) fn take(menu: &mut Menu) -> Self {
-        let dropped = std::mem::take(&mut menu.dropped);
-        menu.drops.clear();
-        Self {
-            dropped,
-            equipped: std::mem::take(&mut menu.equipped),
-            brewed: std::mem::take(&mut menu.brewed),
-            brewed_potion_takes: std::mem::take(&mut menu.brewed_potion_takes),
-            crafted: std::mem::take(&mut menu.crafted),
-            item_crafted: std::mem::take(&mut menu.item_crafted),
-            crafted_counts: std::mem::take(&mut menu.crafted_counts),
-        }
-    }
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Runs `op` on the guest's menu with their inventory copied in and back.
     pub(in crate::game) fn guest_menu_op<R>(
@@ -208,7 +165,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
         let result = self.guest_menu_edit(gi, menu, stacked, op)?;
-        let conn = self.lan.as_ref()?.hub.guests[gi].conn;
+        let conn = self.side.lan.as_ref()?.hub.guests[gi].conn;
         self.publish_guest_menu_effects(conn, GuestMenuEffects::take(menu));
         Some(result)
     }
@@ -222,14 +179,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stacked: Option<&sunrise_sim::menu::StackedOutcome>,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
-        self.lan.as_ref()?;
+        self.side.lan.as_ref()?;
         // Crafting and cartography read and derive this level's saved maps.
         let maps = matches!(
             menu.kind(),
             Kind::Cartography | Kind::Crafting | Kind::Inventory
         )
         .then(|| {
-            let g = &self.lan.as_ref().unwrap().hub.guests[gi];
+            let g = &self.side.lan.as_ref().unwrap().hub.guests[gi];
             (0..menu.slot_count())
                 .filter_map(|s| menu.slot(s).cloned())
                 .chain(g.inventory.iter().flatten().cloned())
@@ -244,7 +201,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .any(|id| self.map(id).is_some())
         })
         .map(|held| self.level_maps(&held));
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         // `ArmorSlot.mayPlace` asks the parts with the game as `Host`: the menu is the guest's own.
         let parts = self.menu_can_equip();
         let env = Env {
@@ -259,7 +216,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(maps) = maps {
             self.register_made_maps(maps);
         }
-        self.lan
+        self.side
+            .lan
             .as_mut()?
             .hub
             .guests
@@ -281,7 +239,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if let Some((stack, taken)) = extracted {
             if mod_api::__private::listened(mod_api::HookId::FurnaceExtract)
-                && let Some(name) = self.lan.as_ref().and_then(|host| {
+                && let Some(name) = self.side.lan.as_ref().and_then(|host| {
                     host.hub
                         .guests
                         .iter()
@@ -331,7 +289,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(gi) = self.guest_index(conn) else {
             return;
         };
-        let guest = &self.lan.as_ref().unwrap().hub.guests[gi];
+        let guest = &self.side.lan.as_ref().unwrap().hub.guests[gi];
         let (uuid, entity_id) = (guest.uuid, guest.entity_id);
         let GuestMenuEffects {
             dropped,
@@ -394,6 +352,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// client hears it with the tick's inventory sync.
     pub(in crate::game::server_side) fn guest_craft_result(&mut self, conn: u32) {
         let Some(g) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn).filter(|g| g.placed))
@@ -409,7 +368,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let name = g.name.clone();
             self.native_prepare_item_craft(uuid, &name, None, &mut result);
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if host
@@ -425,7 +384,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .and_then(|p| p.crafting.inventory.take());
         if let Some(mut menu) = menu {
             menu.set_slot(&self.menu_env(), 0, result);
-            if let Some(play) = self.lan.as_mut().and_then(|host| host.menus.get_mut(&conn)) {
+            if let Some(play) = self
+                .side
+                .lan
+                .as_mut()
+                .and_then(|host| host.menus.get_mut(&conn))
+            {
                 *play.crafting.inventory = Some(menu);
             }
         }
@@ -441,7 +405,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if p.container != 0 {
             return false;
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return true;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -464,7 +428,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }) else {
             return true;
         };
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return true;
         };
         let guest = &host.hub.guests[gi];
@@ -473,7 +437,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.native_prepare_item_craft(uuid, &name, None, &mut result);
         let env = self.menu_env();
         menu.set_slot(&env, 0, result);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return true;
         };
         host.hub.guests.update(gi, |g| {
@@ -497,9 +461,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: &play::ContainerClick,
     ) -> Option<bool> {
-        use super::lan_menus::ClickReply;
         use super::slot_changes::{SlotChangedBacking, SlotChangedMenu, SlotSnapshots};
-        let host = self.lan.as_mut()?;
+        use crate::game::lan_menu_data::ClickReply;
+        let host = self.side.lan.as_mut()?;
         let gi = host.hub.guests.connection_index(conn)?;
         let guest = &host.hub.guests[gi];
         let layout = guest.menu.as_ref().and_then(|m| {
@@ -522,7 +486,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     backing: SlotChangedBacking::Owned { generation },
                 });
         self.journal_menu_click(conn);
-        let host = self.lan.as_mut()?;
+        let host = self.side.lan.as_mut()?;
         let mut menu = host
             .menus
             .entry(conn)
@@ -540,7 +504,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let snapshot = menu.snapshot();
         // A take listener edits the transient slots through the Host: the menu reads them back.
         let refresh = |game: &Game<'_, crate::game::server_side::ServerState>, menu: &mut Menu| {
-            let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            let Some(guest) = game.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
                 return false;
             };
             if !live(guest) {
@@ -571,7 +535,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Some(&prepare),
                 |game, menu, stacked| {
                     let gi = game.guest_index(conn)?;
-                    game.lan.as_ref()?.hub.guest(conn).filter(|g| live(g))?;
+                    game.side
+                        .lan
+                        .as_ref()?
+                        .hub
+                        .guest(conn)
+                        .filter(|g| live(g))?;
                     let (mut previous, rest) =
                         game.guest_menu_edit(gi, menu, stacked, |menu, env| {
                             prepare(menu, env);
@@ -583,7 +552,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     loop {
                         let gi = game.guest_index(conn)?;
                         let after = menu.container_items();
-                        game.lan.as_mut()?.hub.guests.update(gi, |g| {
+                        game.side.lan.as_mut()?.hub.guests.update(gi, |g| {
                             g.native_menu = after.clone();
                         });
                         if let Some(target) = &slot_changed {
@@ -620,7 +589,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 live_now
                             }
                         } else {
-                            game.lan
+                            game.side
+                                .lan
                                 .as_ref()
                                 .and_then(|host| host.hub.guest(conn))
                                 .is_some_and(live)
@@ -657,7 +627,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !applied {
             menu.restore(snapshot);
         }
-        if let Some(host) = self.lan.as_mut()
+        if let Some(host) = self.side.lan.as_mut()
             && let Some(gi) = host.hub.guests.connection_index(conn)
         {
             let guest = &host.hub.guests[gi];
@@ -692,8 +662,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: &play::ContainerClick,
     ) -> Option<bool> {
-        use super::lan_menus::ClickReply;
-        let host = self.lan.as_mut()?;
+        use crate::game::lan_menu_data::ClickReply;
+        let host = self.side.lan.as_mut()?;
         let gi = host.hub.guests.connection_index(conn)?;
         let (pos, mod_type, menu_id) = host.hub.guests[gi]
             .menu
@@ -768,7 +738,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .is_some_and(|open| open.window == p.container)
         };
         self.journal_menu_click(conn);
-        let host = self.lan.as_mut()?;
+        let host = self.side.lan.as_mut()?;
         let mut menu = host
             .menus
             .entry(conn)
@@ -782,7 +752,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut refreshed_result = None;
         if matches!(kind, Kind::Mod(_)) {
             menu.reset_mod_visibility(unlinked.into_iter().flatten());
-            let host = self.lan.as_ref().unwrap();
+            let host = self.side.lan.as_ref().unwrap();
             let shown = Self::lan_mod_craft_shown(host, gi, &items);
             let env = self.load_guest_menu(&mut menu, host, gi);
             // Use the shown result without assembling again. If the grid is stale,
@@ -797,6 +767,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let refresh = |game: &Game<'_, crate::game::server_side::ServerState>, menu: &mut Menu| {
             if generation != game.world.block_entities.generation(&pos)
                 || !game
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.guest(conn))
@@ -817,7 +788,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .mod_crafting()
                 .filter(|c| c.grid_slots().all(|k| old[k] == actual[k]))
                 .map(|c| menu.slot(c.result).cloned());
-            let Some(host) = game.lan.as_ref() else {
+            let Some(host) = game.side.lan.as_ref() else {
                 return false;
             };
             let Some(gi) = host.hub.guests.connection_index(conn) else {
@@ -846,10 +817,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && let Ok(slot) = usize::try_from(click.0)
             && slot < menu.slot_count()
         {
-            let env = self.load_guest_menu(&mut menu, self.lan.as_ref().unwrap(), gi);
+            let env = self.load_guest_menu(&mut menu, self.side.lan.as_ref().unwrap(), gi);
             if !menu.may_pickup(&env, slot) {
                 // The source refused before quickMoveStack. Correct the client's prediction.
-                if let Some(host) = self.lan.as_mut()
+                if let Some(host) = self.side.lan.as_mut()
                     && host.hub.guest(conn).is_some_and(live)
                 {
                     *host.menus.entry(conn).or_default().crafting.machine =
@@ -864,7 +835,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             if let Some(applied) = self.lan_mod_quick_move(conn, p, Some(&menu)) {
                 if !applied
-                    && let Some(host) = self.lan.as_mut()
+                    && let Some(host) = self.side.lan.as_mut()
                     && host.hub.guest(conn).is_some_and(live)
                 {
                     *host.menus.entry(conn).or_default().crafting.machine =
@@ -949,7 +920,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 None
             };
             if (!smelted.is_empty() || extracted.is_some())
-                && let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                && let Some(guest) = game.side.lan.as_ref().and_then(|host| host.hub.guest(conn))
             {
                 let effects = FurnaceMenuEffects {
                     uuid: guest.uuid,
@@ -975,7 +946,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         };
         if heard {
-            let host = self.lan.as_ref().unwrap();
+            let host = self.side.lan.as_ref().unwrap();
             let before: Vec<_> = (0..menu.slot_count())
                 .map(|s| host.hub.view_slot(gi, &self.world, s))
                 .collect();
@@ -1066,6 +1037,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     // or the menu.
                                     generation == game.world.block_entities.generation(&pos)
                                         && game
+                                            .side
                                             .lan
                                             .as_ref()
                                             .and_then(|host| host.hub.guest(conn))
@@ -1086,7 +1058,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     };
                                     // Losing the block queues a close, so the admitted cursor is
                                     // still live here. Never settle this write on a different window.
-                                    game.lan.as_ref()?.hub.guest(conn).filter(|g| live(g))?;
+                                    game.side
+                                        .lan
+                                        .as_ref()?
+                                        .hub
+                                        .guest(conn)
+                                        .filter(|g| live(g))?;
                                     owed
                                 };
                                 let next =
@@ -1116,7 +1093,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if !applied {
                 menu.restore(original);
             }
-            if let Some(host) = self.lan.as_mut()
+            if let Some(host) = self.side.lan.as_mut()
                 && let Some(guest) = host.hub.guest(conn)
             {
                 let offhand = guest.offhand != offhand_before
@@ -1184,6 +1161,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let applied = changed.is_some();
         let changed = if let Some(mut changed) = changed {
             if self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
@@ -1204,7 +1182,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             menu.restore(original);
             None
         };
-        if let Some(host) = self.lan.as_mut()
+        if let Some(host) = self.side.lan.as_mut()
             && host.hub.guest(conn).is_some_and(live)
         {
             *host.menus.entry(conn).or_default().crafting.machine = Some((p.container, menu));
@@ -1227,7 +1205,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         slot: i32,
         enabled: bool,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(pos) = host
@@ -1261,7 +1239,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: &sunrise_protocol::packets::recipes::PlaceRecipe,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -1297,7 +1275,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 menu.place_recipe(env, &id, p.use_max, creative, None)
             });
             if placed == Some(PostPlace::Ghost) {
-                self.lan
+                self.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1307,7 +1286,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // AbstractFurnaceMenu.handlePlacement: the current furnace's slots,
         // rather than the separate crafting-table menu, own cooking inputs.
-        let furnace = self.lan.as_ref().unwrap().hub.guests[gi]
+        let furnace = self.side.lan.as_ref().unwrap().hub.guests[gi]
             .menu
             .as_ref()
             .filter(|m| p.container != 0 && m.window == p.container)
@@ -1329,6 +1308,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let placed = if let Some((pos, kind, items)) = furnace {
             // Opening need not have created the click/drag cache yet.
             let mut menu = self
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1357,6 +1337,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.container_changed(pos);
             }
             *self
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1373,7 +1354,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
         };
         if placed == Some(PostPlace::Ghost)
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             host.hub.send_ghost_recipe(conn, p.container, &id);
         }
@@ -1394,7 +1375,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuTransfer) {
             return None;
         }
-        let g = &self.lan.as_ref()?.hub.guests[gi];
+        let g = &self.side.lan.as_ref()?.hub.guests[gi];
         let menu = g
             .menu
             .as_ref()
@@ -1409,7 +1390,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game::server_side) fn guest_recipe_transfer(&mut self, conn: u32, data: &[u8]) {
         use sunrise_core::vanilla_bytes::Writer;
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -1439,7 +1420,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut reply = Writer::new();
         reply.varint(container);
         reply.u8(recipes::result_byte(recipes::transfer_result(result)));
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.guests[gi].send(&C::CustomPayload(
                 sunrise_protocol::packets::configuration::CustomPayload {
                     channel: recipes::TRANSFER_CHANNEL.into(),
@@ -1457,7 +1438,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// check per server tick (twenty per second at 20 TPS); more go unanswered.
     pub(in crate::game::server_side) fn guest_recipe_check(&mut self, conn: u32, data: &[u8]) {
         use sunrise_protocol::buf::Reader;
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -1505,7 +1486,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 craftable_cells: Vec::new(),
             }
         });
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.guests[gi].send(&C::CustomPayload(
                 sunrise_protocol::packets::configuration::CustomPayload {
                     channel: recipes::CHECK_CHANNEL.into(),
@@ -1521,7 +1502,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// entity with its recipe sources. None when that window is none of them
     /// (the window must be the one the guest has open, as for a transfer).
     fn lan_check_recipe(&mut self, gi: usize, container: i32, id: &str) -> Option<TransferCheck> {
-        let conn = self.lan.as_ref()?.hub.guests[gi].conn;
+        let conn = self.side.lan.as_ref()?.hub.guests[gi].conn;
         let menu = if let Some((pos, t)) = self.lan_mod_crafting_window(gi, container) {
             let Some(BlockEntity::Mod(m)) = self.world.block_entities.get(&pos) else {
                 return None;
@@ -1529,7 +1510,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let mut items = m.items.clone();
             items.resize(t.slots, None);
             let sources = self.lan_recipe_sources(gi, t, pos);
-            let host = self.lan.as_ref()?;
+            let host = self.side.lan.as_ref()?;
             let shown = Self::lan_mod_craft_shown(host, gi, &items);
             let limits = (host.hub.guests[gi].menu.as_ref())
                 .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
@@ -1542,7 +1523,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             menu.load_container(&env, &items, shown);
             menu
         } else if container == 0 {
-            let host = self.lan.as_ref()?;
+            let host = self.side.lan.as_ref()?;
             let env = self.menu_env();
             let mut menu = Menu::new(Kind::Inventory);
             load_player(&mut menu, &host.hub.guests[gi]);
@@ -1551,14 +1532,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             menu
         } else {
-            let host = self.lan.as_ref()?;
+            let host = self.side.lan.as_ref()?;
             let (_, _, table, _) = (host.menus.get(&conn)?.crafting.table.as_ref())
                 .filter(|(window, ..)| *window == container)?;
             let mut menu = Menu::clone(table);
             load_player(&mut menu, &host.hub.guests[gi]);
             menu
         };
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let env = Env {
             player: Some(host.hub.guests[gi].uuid),
             player_entity_id: Some(host.hub.guests[gi].entity_id),
@@ -1580,8 +1561,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.lan_mod_crafting_window(gi, container).is_some() {
             return self.lan_mod_craft_apply(gi, container, apply);
         }
-        let conn = self.lan.as_ref()?.hub.guests[gi].conn;
-        let host = self.lan.as_mut()?;
+        let conn = self.side.lan.as_ref()?.hub.guests[gi].conn;
+        let host = self.side.lan.as_mut()?;
         let placed = if container == 0 {
             let crafting = host.menus.entry(conn).or_default();
             let mut menu = crafting
@@ -1596,7 +1577,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 apply(menu, env)
             })?;
-            let host = self.lan.as_mut()?;
+            let host = self.side.lan.as_mut()?;
             host.hub.guests.update(gi, |g| {
                 for k in 0..4 {
                     g.craft_grid[k] = menu.slot(1 + k).cloned();
@@ -1612,7 +1593,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .get_mut(&conn)
                 .and_then(|play| play.crafting.table.take_if(|(w, ..)| *w == container))?;
             let placed = self.guest_menu_op(gi, &mut menu, apply)?;
-            let host = self.lan.as_mut()?;
+            let host = self.side.lan.as_mut()?;
             *host.menus.entry(conn).or_default().crafting.table = Some((window, state, menu, pos));
             self.lan_send_table_content(conn);
             placed
@@ -1627,7 +1608,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // ServerPlayer.openMenu closes the menu that was open.
         self.guest_close_all(conn);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let title = sunrise_protocol::text::translatable("container.crafting", &[]);
@@ -1647,7 +1628,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: &play::ContainerClick,
     ) -> bool {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return false;
         };
         let Some(play) = host.menus.get_mut(&conn) else {
@@ -1665,7 +1646,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut full = true;
         // A table that is no longer valid takes no clicks (handleContainerClick).
         let gi = host.hub.guests.iter().position(|g| g.conn == conn);
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         if let Some(gi) = gi
@@ -1686,7 +1667,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             else {
                 // A refused click keeps its menu open. Don't put it back if the
                 // listener closed or replaced the owner while the table was lifted.
-                if let Some(play) = self.lan.as_mut().and_then(|host| host.menus.get_mut(&conn))
+                if let Some(play) = self
+                    .side
+                    .lan
+                    .as_mut()
+                    .and_then(|host| host.menus.get_mut(&conn))
                     && play.crafting.table.stamp() == owner
                 {
                     play.crafting
@@ -1696,7 +1681,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 return true;
             };
-            let Some(guest) = self.lan.as_ref().map(|host| &host.hub.guests[gi]) else {
+            let Some(guest) = self.side.lan.as_ref().map(|host| &host.hub.guests[gi]) else {
                 return true;
             };
             let (uuid, name) = (guest.uuid, guest.name.clone());
@@ -1708,7 +1693,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             let env = self.menu_env();
             menu.set_slot(&env, 0, result);
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return true;
             };
             full = p.state != state;
@@ -1735,7 +1720,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 });
             }
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return true;
         };
         *host.menus.entry(conn).or_default().crafting.table = Some((window, state, menu, pos));
@@ -1763,7 +1748,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         gi: usize,
         container: i32,
     ) -> Option<((i32, i32, i32), &'static ModMenuType)> {
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let m = host.hub.guests[gi]
             .menu
             .as_ref()
@@ -1795,7 +1780,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let mut items = m.items.clone();
         items.resize(t.slots, None);
-        let host = self.lan.as_mut()?;
+        let host = self.side.lan.as_mut()?;
         let conn = host.hub.guests[gi].conn;
         let kind = Kind::Mod(t);
         let mut menu = host
@@ -1807,7 +1792,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .take()
             .filter(|(window, m)| *window == container && m.kind() == kind)
             .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
-        let shown = Self::lan_mod_craft_shown(self.lan.as_ref()?, gi, &items);
+        let shown = Self::lan_mod_craft_shown(self.side.lan.as_ref()?, gi, &items);
         let sources = self.lan_recipe_sources(gi, t, pos);
         menu.sources = sources.iter().map(|(_, items)| items.clone()).collect();
         let out = self.guest_menu_op(gi, &mut menu, |menu, env| {
@@ -1843,6 +1828,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.lan_mod_craft_settle(gi, pos, &mut menu);
         *self
+            .side
             .lan
             .as_mut()?
             .menus
@@ -1863,7 +1849,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: (i32, i32, i32),
     ) -> Vec<((i32, i32, i32), Vec<Option<ItemStack>>)> {
         let mut asked = Vec::new();
-        let Some(uuid) = self.lan.as_ref().map(|host| host.hub.guests[gi].uuid) else {
+        let Some(uuid) = self.side.lan.as_ref().map(|host| host.hub.guests[gi].uuid) else {
             return Vec::new();
         };
         self.native_recipe_sources(uuid, t.id, [pos.0, pos.1, pos.2], &mut asked);
@@ -1906,11 +1892,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !mod_api::__private::listened(mod_api::HookId::MenuLinks) {
             return;
         }
-        let Some(count) = self.lan.as_ref().map(|host| host.hub.guests.len()) else {
+        let Some(count) = self.side.lan.as_ref().map(|host| host.hub.guests.len()) else {
             return;
         };
         for gi in 0..count {
-            let host = self.lan.as_ref().unwrap();
+            let host = self.side.lan.as_ref().unwrap();
             let g = &host.hub.guests[gi];
             let Some((t, pos)) = g
                 .menu
@@ -1935,7 +1921,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     links.push(at);
                 }
             }
-            self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+            self.side.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
                 if let Some(m) = g.menu.as_mut() {
                     m.links = links;
                 }
@@ -1967,7 +1953,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         menu: &mut Menu,
     ) -> Option<usize> {
         let c = menu.mod_crafting()?;
-        let guest = &self.lan.as_ref()?.hub.guests[gi];
+        let guest = &self.side.lan.as_ref()?.hub.guests[gi];
         let open = guest.menu.as_ref()?;
         let grid = c.grid_slots().map(|k| menu.slot(k));
         let shown = menu.slot(c.result);
@@ -2001,10 +1987,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         window: i32,
         craft: ModCraft,
     ) {
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             self.journal_menu_click(host.hub.guests[gi].conn);
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.guests.update(gi, |guest| {
                 if let Some(open) = guest.menu.as_mut().filter(|open| open.window == window) {
                     open.craft = Some(craft);
@@ -2018,11 +2004,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// player, a hopper or the mod may have changed, made again only when
     /// the grid changed.
     pub(in crate::game) fn lan_mod_crafting_tick(&mut self) {
-        let Some(count) = self.lan.as_ref().map(|host| host.hub.guests.len()) else {
+        let Some(count) = self.side.lan.as_ref().map(|host| host.hub.guests.len()) else {
             return;
         };
         for gi in 0..count {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let g = &host.hub.guests[gi];
@@ -2056,7 +2042,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.tick`'s `stillValid`: a guest's crafting table closes
     /// once it is gone or out of reach, giving its grid back.
     pub(in crate::game::server_side) fn lan_tables_tick(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let invalid: Vec<(u32, i32)> = host
@@ -2078,7 +2064,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .collect();
         for (conn, window) in invalid {
             self.lan_crafting_closed(conn, Some(window));
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             host.hub.send_to(
@@ -2090,7 +2076,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// The whole crafting table menu for the client (`sendAllDataToRemote`).
     fn lan_send_table_content(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -2123,6 +2109,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
     ) -> Option<usize> {
         let (_, _, menu, _) = self
+            .side
             .lan
             .as_ref()?
             .menus
@@ -2160,7 +2147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         window: Option<i32>,
         removal: MenuRemoval,
     ) -> bool {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return false;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -2229,7 +2216,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn lan_crafting_left(&mut self, g: &mut Guest) {
         // The guest's play state stays: their statistics are awarded and saved
         // after this (`HostEvent::Left`), which removes it.
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         // If the leaving level could not be opened for normal removal, put
@@ -2348,7 +2335,7 @@ mod machine_recipe_placement_tests {
             guest.loaded = true;
             guest.selected = 1;
             guest.permission = 2;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let clock = game.world.game_time;
             let planks = game
                 .stations()
@@ -2387,7 +2374,8 @@ mod machine_recipe_placement_tests {
                     }),
                 );
                 assert!(
-                    game.lan
+                    game.side
+                        .lan
                         .as_ref()
                         .unwrap()
                         .hub
@@ -2397,7 +2385,8 @@ mod machine_recipe_placement_tests {
                         .get()
                         >= 234
                 );
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .menus
@@ -2405,7 +2394,8 @@ mod machine_recipe_placement_tests {
                     .and_then(|p| p.crafting.table.as_ref())
                     .map(|(window, ..)| *window)
                     .or_else(|| {
-                        game.lan
+                        game.side
+                            .lan
                             .as_ref()
                             .unwrap()
                             .hub
@@ -2420,7 +2410,8 @@ mod machine_recipe_placement_tests {
             command(game, "recipe give @s minecraft:oak_planks");
             command(game, "recipe give @s minecraft:charcoal");
             assert!(
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .hub
@@ -2432,11 +2423,19 @@ mod machine_recipe_placement_tests {
             command(game, "item replace entity @s hotbar.0 with oak_log 3");
             place(game, 0, planks);
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guest(2).unwrap().craft_grid[0],
+                game.side
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(2)
+                    .unwrap()
+                    .craft_grid[0],
                 Some(ItemStack::new("minecraft:oak_log", 1))
             );
             assert_eq!(
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .hub
@@ -2446,7 +2445,14 @@ mod machine_recipe_placement_tests {
                 Some(ItemStack::new("minecraft:oak_planks", 4))
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guest(2).unwrap().inventory[0]
+                game.side
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(2)
+                    .unwrap()
+                    .inventory[0]
                     .as_ref()
                     .unwrap()
                     .count,
@@ -2456,7 +2462,7 @@ mod machine_recipe_placement_tests {
             assert!(game.run_command("setblock 10 200 8 crafting_table"));
             let window = open(game, [10, 200, 8]);
             place(game, window, planks);
-            let (_, _, table, _) = game.lan.as_ref().unwrap().menus[&2]
+            let (_, _, table, _) = game.side.lan.as_ref().unwrap().menus[&2]
                 .crafting
                 .table
                 .as_ref()
@@ -2491,7 +2497,8 @@ mod machine_recipe_placement_tests {
                     command(game, "recipe take @s minecraft:charcoal");
                 }
                 assert_eq!(
-                    game.lan
+                    game.side
+                        .lan
                         .as_ref()
                         .unwrap()
                         .hub
@@ -2502,6 +2509,7 @@ mod machine_recipe_placement_tests {
                     known
                 );
                 let before = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -2531,12 +2539,22 @@ mod machine_recipe_placement_tests {
                     None
                 };
                 if f.items[0] != input
-                    || game.lan.as_ref().unwrap().hub.guest(2).unwrap().inventory != expected
+                    || game
+                        .side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(2)
+                        .unwrap()
+                        .inventory
+                        != expected
                 {
                     failures.push((
                         label,
                         f.items.clone(),
-                        game.lan
+                        game.side
+                            .lan
                             .as_ref()
                             .unwrap()
                             .hub
@@ -2546,13 +2564,23 @@ mod machine_recipe_placement_tests {
                             .clone(),
                     ));
                 }
-                assert_eq!(game.lan.as_ref().unwrap().hub.guest(2).unwrap().uuid, 234);
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
+                    game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().uuid,
+                    234
+                );
+                assert_eq!(
+                    game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
                     20.0
                 );
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guest(2).unwrap().position,
+                    game.side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(2)
+                        .unwrap()
+                        .position,
                     [8.5, 200.0, 8.5]
                 );
                 assert_eq!(game.world.game_time, clock);
@@ -2587,7 +2615,7 @@ mod recipe_check_tests {
             .world
             .modified
             .remove(&(STATION.0 >> 4, STATION.2 >> 4));
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         let g = &host.hub.guests[0];
         format!(
             "{:?} {:?} {:?} {:?} {:?} {:?} {:?}",
@@ -2754,7 +2782,7 @@ mod recipe_check_tests {
                 opening_item: None,
                 slot_changed_seen: None,
             });
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             sent(&rx);
             game.world.modified.clear();
             let before = state(game);
@@ -2801,7 +2829,7 @@ mod recipe_check_tests {
     fn checks_past_the_limit_go_unanswered() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             let (tx, rx) = mpsc::channel();
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.guests.update(0, |g| {
                 g.brand = "sunrise".into();
                 g.sender = PlayerSender::new(tx, Arc::default());
@@ -3034,7 +3062,7 @@ mod empty_ingredient_placement_tests {
                     guest
                         .recipe_book
                         .add_recipes(index, &["empty_fixture:b_neighbor".to_owned()]);
-                    let sync = game.lan.as_ref().unwrap().hub.sync_data();
+                    let sync = game.side.lan.as_ref().unwrap().hub.sync_data();
                     assert!(sync.advancements.recipes_added(&ids, sync).is_none());
                     let display = index.first_display("empty_fixture:b_neighbor").unwrap();
                     assert_eq!(
@@ -3065,7 +3093,7 @@ mod empty_ingredient_placement_tests {
                                 .any(|recipe| &recipe.id == id)
                         );
                     }
-                    game.lan.as_mut().unwrap().hub.guests.push(guest);
+                    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
                     for display in [-1, i32::MAX] {
                         game.lan_guest_packet(
                             2,
@@ -3075,7 +3103,7 @@ mod empty_ingredient_placement_tests {
                                 use_max: true,
                             }),
                         );
-                        let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
+                        let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
                         assert_eq!(
                             guest.inventory[0],
                             Some(ItemStack::new("minecraft:stone", 16))
@@ -3099,7 +3127,7 @@ mod empty_ingredient_placement_tests {
                             use_max: false,
                         }),
                     );
-                    let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
+                    let guest = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
                     assert_eq!(guest.inventory[0].as_ref().unwrap().count, 15);
                     assert_eq!(
                         guest.craft_grid[0],

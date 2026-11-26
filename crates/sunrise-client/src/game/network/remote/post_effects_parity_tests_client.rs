@@ -1,9 +1,9 @@
+use crate::game::client_side::remote_client::ingress_state::post_effects_parity_tests::json_strings;
+use crate::game::client_side::remote_client::ingress_state::post_effects_parity_tests::login_packet;
+use crate::game::client_side::remote_client::ingress_state::post_effects_parity_tests::overworld_spawn;
+use crate::game::client_side::remote_client::ingress_state::post_effects_parity_tests::post_effects_witness;
+use crate::game::client_side::remote_client::ingress_state::post_effects_parity_tests::wait_for_pong;
 use crate::game::native_entity_refs::tests::with_client_game;
-use crate::game::remote::raw_ingress::post_effects_parity_tests::json_strings;
-use crate::game::remote::raw_ingress::post_effects_parity_tests::login_packet;
-use crate::game::remote::raw_ingress::post_effects_parity_tests::overworld_spawn;
-use crate::game::remote::raw_ingress::post_effects_parity_tests::post_effects_witness;
-use crate::game::remote::raw_ingress::post_effects_parity_tests::wait_for_pong;
 use std::time::{Duration, Instant};
 use sunrise_client::{multiplayer, net::Session, title::Mode};
 use sunrise_level::camera_math::CameraType;
@@ -32,7 +32,7 @@ pub(in crate::game) fn post_effects_before_login_disconnects_case(case_name: &st
         game.connect_local(client, "PostEffectsBeforeLogin")
             .unwrap();
         let (session, mut peer) = Session::play_loop_probe();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.session = session;
         remote.joined = true;
         remote.logged_in = false;
@@ -46,7 +46,7 @@ pub(in crate::game) fn post_effects_before_login_disconnects_case(case_name: &st
 
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut saw_pong = false;
-        while game.remote.is_some() && !saw_pong && Instant::now() < deadline {
+        while game.side.remote.is_some() && !saw_pong && Instant::now() < deadline {
             game.poll_remote().unwrap();
             while let Ok((id, body)) = peer.recv() {
                 if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 77) {
@@ -57,7 +57,7 @@ pub(in crate::game) fn post_effects_before_login_disconnects_case(case_name: &st
             std::thread::yield_now();
         }
         assert!(
-            game.remote.is_none(),
+            game.side.remote.is_none(),
             "play_before_login ({case_name}): post_effects before Login did not disconnect"
         );
         assert!(
@@ -85,7 +85,7 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "PostEffectsLifecycle").unwrap();
         let (session, mut peer) = Session::play_loop_probe();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.session = session;
         remote.joined = true;
         remote.logged_in = false;
@@ -137,6 +137,7 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         }
         let (creeper_kind, enderman_kind, spider_kind) = {
             let entity_types = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()

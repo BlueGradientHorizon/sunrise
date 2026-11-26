@@ -155,7 +155,8 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut crate::game
             let expected_pitch = 0.8 + attacker_random.next_float() * 0.4;
             let mut seeds = LegacyRandom::new(0x5eed);
             let expected_seeds = [seeds.next_long(), seeds.next_long()];
-            game.lan
+            game.side
+                .lan
                 .as_ref()
                 .unwrap()
                 .hub

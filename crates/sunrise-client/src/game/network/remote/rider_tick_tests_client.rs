@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::boats::Boat;
+use crate::game::boats_common::Boat;
 use crate::game::native_entity_refs::tests::with_client_game;
 use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
@@ -10,7 +10,7 @@ fn a_boat_clamps_the_riders_yaw_without_changing_the_previous_yaw() {
     with_client_game(|game| {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "boat-clamp").unwrap();
-        game.remote.as_mut().unwrap().first_passenger = false;
+        game.side.remote.as_mut().unwrap().first_passenger = false;
         game.boats
             .push(Boat::new(71, "oak".into(), Vec3::new(2.5, 64.0, 2.5), 0.0));
         game.riding = Some(71);
@@ -31,7 +31,7 @@ fn a_riders_move_takes_the_look_of_the_tick_and_leaves_it_off_the_ground() {
         with_client_game(|game| {
             let (client, server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "rider-tick").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.loaded_sent = true;
             remote.joined = true;
@@ -103,7 +103,7 @@ fn mounted_local_spectator_forces_flight_and_sends_abilities() {
                 .unwrap();
             let uuid = 0x1122_3344_5566_7788_99aa_bbcc_ddee_ff00_u128;
             {
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 remote.loaded_sent = true;
                 remote.joined = true;
@@ -152,7 +152,7 @@ fn mounted_local_spectator_forces_flight_and_sends_abilities() {
 
             assert!(game.player.as_ref().unwrap().flying);
             assert!(game.remote_abilities().unwrap().flying);
-            assert!(!game.remote.as_ref().unwrap().first_passenger);
+            assert!(!game.side.remote.as_ref().unwrap().first_passenger);
 
             game.send(S::ClientTickEnd(Empty));
             let mut sent_flying = Vec::new();

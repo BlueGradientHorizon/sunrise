@@ -5,7 +5,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether entity `id` of the client level rides another (`Entity.vehicle`): its tick is a
     /// ride visit, counted whatever its Pre answers.
     pub(in crate::game) fn client_passenger(&self, id: u32) -> bool {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .and_then(|r| r.entities.get(&(id as i32)))
             .is_some_and(|t| t.vehicle.is_some())
@@ -15,6 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// its ride visit whatever that Pre answered (`tickPassenger`).
     pub(in crate::game) fn count_client_tick(&mut self, id: u32) {
         if let Some(t) = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.entities.get_mut(&(id as i32)))
@@ -37,7 +39,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         running: bool,
         frozen_ticking: &[i32],
     ) {
-        let Some(mut r) = self.remote.take() else {
+        let Some(mut r) = self.side.remote.take() else {
             return;
         };
         let flying: sunrise_level::fast_hash::FxHashSet<u32> = self
@@ -68,7 +70,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
         }
-        self.remote = Some(r);
+        self.side.remote = Some(r);
     }
     #[inline(always)]
     pub(in crate::game::client_side) fn game_side_client(
@@ -85,7 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// passed since its last tick, at its rate. A game time the server sets
     /// forward (its sync every second) moves the clock with it.
     pub(in crate::game::client_side) fn remote_clock_tick(&mut self) {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let delta = self.world.game_time - r.clock_game_time;
@@ -106,6 +108,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         if !self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.level_load.is_active())
@@ -151,7 +154,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let now = client_millis();
         // LevelLoadingScreen.tick.
         self.tick_load_progress();
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         if r.level_load.wants_player_section() {
@@ -208,6 +211,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // The LevelLoadingScreen takes the input until the level is ready.
         let loading = self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.level_load.is_active());
@@ -222,7 +226,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // (`KeyboardInput.tick`: 8 directions, full speed). The server only hears those keys
         // (`ServerboundPlayerInputPacket`), and an anticheat that predicts from them pulls back
         // a player moving at the stick's own angle and speed.
-        if self.integrated.is_none() && self.server_address().is_some() {
+        if self.side.integrated.is_none() && self.server_address().is_some() {
             keys.analog = None;
         }
         let mut packet_keys = self.update_movement_input(keys);
@@ -269,7 +273,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         player.fluids.boat = boat;
         player.is_passenger = riding;
-        if !riding && !self.replay.playing() {
+        if !riding && !self.side.replay.playing() {
             self.previous_position = player.position;
         }
         let before = (
@@ -324,7 +328,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // shape is unavailable here; only the server decides when to wake.
         if sleeping.is_some() {
             // Entity.baseTick still samples fluids while sleeping, before LocalPlayer.aiStep.
-            let side = game_side!(self, side_server);
+            let side = client_game_side!(self, side_server);
             player.client_side = true;
             motion_world!(side, player).fluid_base_tick()?;
             if let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) {
@@ -335,7 +339,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.tick_local_water_vision();
             }
         } else if walks {
-            let side = game_side!(self, side_server);
+            let side = client_game_side!(self, side_server);
             player.client_side = true;
             // LivingEntity.checkAutoSpinAttack: a Riptide spin that touches a
             // mob ends and bounces back; the server deals the hit.
@@ -357,7 +361,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let answer = self.ask_swim_entry(decision);
             let side_server = self.game_side_client();
-            let side = game_side!(self, side_server);
+            let side = client_game_side!(self, side_server);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
             };
@@ -372,7 +376,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`, before `super.aiStep()`.
             self.tick_local_water_vision();
             let side_server = self.game_side_client();
-            let side = game_side!(self, side_server);
+            let side = client_game_side!(self, side_server);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
             };
@@ -386,7 +390,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // player too (controlled_simulation_tick does it otherwise): left
             // at 10, the hurt tilt restarted every frame and shook the camera.
             player.health.advance_clock();
-            let side = game_side!(self, side_server);
+            let side = client_game_side!(self, side_server);
             player.client_side = true;
             let mut passenger = motion_world!(side, player);
             if riding && !dead {
@@ -403,7 +407,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 let answer = self.ask_swim_entry(decision);
                 let side_server = self.game_side_client();
-                let side = game_side!(self, side_server);
+                let side = client_game_side!(self, side_server);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
                 };
@@ -414,7 +418,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 self.tick_local_water_vision();
                 let side_server = self.game_side_client();
-                let side = game_side!(self, side_server);
+                let side = client_game_side!(self, side_server);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
                 };
@@ -453,7 +457,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !player.mod_fire_immune {
             player.fire_ticks = hold_server_fire(
                 player.fire_ticks,
-                self.remote.as_ref().is_some_and(|r| r.own_on_fire),
+                self.side.remote.as_ref().is_some_and(|r| r.own_on_fire),
             );
         }
         // LocalPlayer.onUpdateAbilities: flight turned on or off (a double
@@ -549,6 +553,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Other players on this player (possibly through a plugin seat) follow this tick too;
         // the full pass only when something rides this player.
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.has_passengers(r.entity_id as u32))
@@ -564,14 +569,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.snap_player_model_pitch();
         }
         // The player's own model (third person, the inventory's preview).
-        if !self.replay.playing() {
+        if !self.side.replay.playing() {
             self.tick_player_model();
         }
         if !dead {
             self.remote_tick_using();
         }
         if flying != was_flying {
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 r.abilities.flying = flying;
             }
             self.send(S::PlayerAbilities(play::PlayerAbilitiesRequest {
@@ -579,7 +584,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }));
         }
         if started_gliding {
-            let id = self.remote.as_ref().map_or(0, |r| r.entity_id);
+            let id = self.side.remote.as_ref().map_or(0, |r| r.entity_id);
             self.send(S::PlayerCommand(play::PlayerCommand {
                 id,
                 action: 6,
@@ -614,12 +619,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.tick_own_rockets();
         self.tick_book_snapshot_retry();
         // Far tiles the samplers asked for (`lod_net`).
-        if let Some(r) = &self.remote {
+        if let Some(r) = &self.side.remote {
             r.session.send_far_terrain();
         }
         // Minecraft.tick sends this even when the player cannot tick yet,
         // including while waiting for chunks. Keep it outside early returns.
-        if self.remote.as_ref().is_some_and(Remote::has_level) {
+        if self.side.remote.as_ref().is_some_and(Remote::has_level) {
             self.send(S::ClientTickEnd(Empty));
         }
         Ok(())
@@ -690,7 +695,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let frozen_ticking: Vec<i32> = if running {
             Vec::new()
         } else {
-            self.remote
+            self.side
+                .remote
                 .as_ref()
                 .map(|r| {
                     r.entities
@@ -710,7 +716,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.tick_text_displays(running);
         if running {
             // Entity.commonTick's setOldPosAndRot for each entity the level ticks.
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 for t in r.entities.values_mut() {
                     t.previous = t.position;
                     t.previous_yaw = t.yaw;
@@ -718,12 +724,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
             for i in self.side.interactions.values_mut() {
-                i.snapshot_previous();
+                crate::game::client_side::interactions::snapshot_previous(i);
             }
             self.tick_remote_ominous_item_spawners();
         } else {
             // ClientLevel.tickPassenger: non-players in a player-bearing passenger tree still tick.
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 for &id in &frozen_ticking {
                     if let Some(t) = r.entities.get_mut(&id) {
                         t.previous = t.position;
@@ -734,7 +740,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             for &id in &frozen_ticking {
                 if let Some(i) = self.side.interactions.get_mut(&id) {
-                    i.snapshot_previous();
+                    crate::game::client_side::interactions::snapshot_previous(i);
                 }
             }
         }
@@ -748,12 +754,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let alone_player = round.alone_kind(PLAYER);
         let mut alone_any = false;
         if round.listening() {
-            let players = self.remote.as_ref().map(|r| &r.level_players);
+            let players = self.side.remote.as_ref().map(|r| &r.level_players);
             for m in self.mobs.iter() {
                 let player = players.is_some_and(|p| p.contains_key(&(m.id as i32)));
                 let ticks = running
                     || player
                     || self
+                        .side
                         .remote
                         .as_ref()
                         .is_some_and(|r| self.entity_ticks_while_frozen(r, m.id));
@@ -781,6 +788,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Entity.isInRain for the wolves, which dry off by their own `Wolf.tick`.
         let (mut fluids, mut rain, mut standings, mut water_fx) = {
             let r = self
+                .side
                 .remote
                 .as_mut()
                 .expect("remote entity tick without remote state");
@@ -794,12 +802,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let thundering = {
             let side = self.client_mob_side();
             let w = self.client_mob_world_base(&[], &side);
-            let players = self.remote.as_ref().map(|r| &r.level_players);
+            let players = self.side.remote.as_ref().map(|r| &r.level_players);
             fluids.clear();
             fluids.extend(self.mobs.iter().map(|m| {
                 (running
                     || players.is_some_and(|p| p.contains_key(&(m.id as i32)))
                     || self
+                        .side
                         .remote
                         .as_ref()
                         .is_some_and(|r| self.entity_ticks_while_frozen(r, m.id)))
@@ -827,12 +836,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             w.thundering
         };
         // The window's own player already splashes from its motion tick.
-        let own = self.remote.as_ref().map(|r| r.entity_id);
+        let own = self.side.remote.as_ref().map(|r| r.entity_id);
         for i in 0..self.mobs.len() {
             let mob = &self.mobs[i];
             let id = mob.id;
             let told_alone = alone_any
                 && if self
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()
@@ -866,6 +876,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .any(|m| m.species() == sunrise_sim::mobs::Species::Wither)
         {
             let own = self
+                .side
                 .remote
                 .as_ref()
                 .zip(self.eye_position())
@@ -896,7 +907,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let eye = f64::from(p.dimensions.eye_height);
                     (feet, [feet[0], feet[1] + eye / 2.0, feet[2]])
                 });
-            let others = self.remote.as_ref().into_iter().flat_map(|r| {
+            let others = self.side.remote.as_ref().into_iter().flat_map(|r| {
                 self.mobs
                     .iter()
                     .filter(move |m| m.alive() && r.level_players.contains_key(&(m.id as i32)))
@@ -914,6 +925,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Cat.handleLieDown: the sleeping players (another's, drawn lying in
         // a bed, and this client's own) a lying cat can lie on top of.
         let sleepers: Vec<sunrise_core::geometry::Aabb> = self
+            .side
             .remote
             .as_ref()
             .map(|r| {
@@ -943,7 +955,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .collect()
             })
             .unwrap_or_default();
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return;
         }
         let mut using = Vec::new();
@@ -964,6 +976,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let id = self.mobs[i].id;
             let player = self
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -972,6 +985,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let ticks_frozen = !running
                 && (player
                     || self
+                        .side
                         .remote
                         .as_ref()
                         .is_some_and(|r| self.entity_ticks_while_frozen(r, id)));
@@ -1037,7 +1051,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let player_ref = tick_listened
                 .then(|| {
-                    self.remote.as_ref().and_then(|r| {
+                    self.side.remote.as_ref().and_then(|r| {
                         let uuid = *r.level_players.get(&(id as i32))?;
                         Some(mod_api::__private::game::player_ref(
                             mod_api::EntityRef::new(self.native_lifecycle.epoch()?, id),
@@ -1046,12 +1060,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     })
                 })
                 .flatten();
-            let spectator_player = player
-                && self
-                    .remote
-                    .as_ref()
-                    .is_some_and(|r| r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR));
-            let r = self.remote.as_mut().unwrap();
+            let spectator_player =
+                player
+                    && self.side.remote.as_ref().is_some_and(|r| {
+                        r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR)
+                    });
+            let r = self.side.remote.as_mut().unwrap();
             let stepped = &mut r.stepped;
             let m = &mut self.mobs[i];
             let section_from = m.position;
@@ -1147,7 +1161,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let Some(player) = player_ref {
                 self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
             }
-            let head_lerps = &mut self.remote.as_mut().unwrap().head_lerps;
+            let head_lerps = &mut self.side.remote.as_mut().unwrap().head_lerps;
             let m = &mut self.mobs[i];
             // LivingEntity.baseTick's tickEffects, inside this tick (after its Pre, and a
             // player's tick Pre): its effects count down and fade.
@@ -1335,6 +1349,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // from the old position.
                 let old = o.position;
                 if let Some(l) = self
+                    .side
                     .remote
                     .as_mut()
                     .and_then(|r| r.lerps.get_mut(&(o.id as i32)))
@@ -1350,7 +1365,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     sections.move_id(o.id, o.position.components());
                 }
                 let before = o.position;
-                let side = game_side!(self, side_server);
+                let side = client_game_side!(self, side_server);
                 let kept = o.tick(
                     world,
                     facts,
@@ -1372,6 +1387,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // own move carries the target along (vanilla also checks the
                 // moved target for collisions; that check is left out here).
                 if let Some(l) = self
+                    .side
                     .remote
                     .as_mut()
                     .and_then(|r| r.lerps.get_mut(&(o.id as i32)))
@@ -1393,7 +1409,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // friction move the item between the server's updates (every 20
         // ticks). Ordinary removal remains server-authoritative. Mods can opt
         // into predicting consumption at block contact.
-        self.remote
+        self.side
+            .remote
             .as_mut()
             .unwrap()
             .head_lerps
@@ -1409,7 +1426,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.apply_item_splash(splash);
         }
         let _ = self.handle_mob_events_reusable(&mut mob_fx);
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.tick_fluids = fluids;
             r.tick_rain = rain;
             r.tick_standings = standings;
@@ -1422,7 +1439,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.flash = self.flash.saturating_sub(1);
         // A shulker's lid in mob_fx can move an observing boat and shift
         // its interpolation target. Lend the targets only after that push.
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let mut lerps = std::mem::take(&mut r.lerps);
@@ -1445,12 +1462,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.pick_section_move(dragon.id, dragon.position.components());
             }
             // A mod's general rows: the non-living interpolation, and no mod code.
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 general::tick_remote_general(&mut r.general.rows, &mut lerps);
             }
             // Armor stands: ClientLevel.tickNonPassenger's setOldPosAndRot,
             // then their SteppedInterpolationHandler's step, as the mobs'.
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 for a in &mut self.armor_stands {
                     let step = r
                         .stepped
@@ -1512,7 +1529,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if !frozen_ticking.is_empty() {
             let ticking_set: sunrise_level::fast_hash::FxHashSet<u32> =
                 frozen_ticking.iter().map(|&id| id as u32).collect();
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 for a in &mut self.armor_stands {
                     if !ticking_set.contains(&a.id) {
                         continue;
@@ -1539,7 +1556,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         lerps.retain(|_, l| l.steps > 0);
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             for (id, l) in lerps {
                 r.lerps.entry(id).or_insert(l);
             }
@@ -1593,6 +1610,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // ClientLevel.tickNonPassenger's Entity.commonTick, before LocalPlayer.tick: the admitted
         // player counts this tick whether it has its body yet, has loaded, sleeps or rides.
         if let Some(r) = self
+            .side
             .remote
             .as_mut()
             .filter(|r| r.has_logical_player && !removed)
@@ -1605,7 +1623,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // LocalPlayer.tick and sendChanges run once the client has loaded (hasClientLoaded),
         // wherever the player is: a chunk that hasn't come yet has no blocks here, as vanilla's
         // empty chunk has none, so the player falls through it until the chunk comes.
-        if !self.remote.as_ref().is_some_and(|r| r.loaded_sent) {
+        if !self.side.remote.as_ref().is_some_and(|r| r.loaded_sent) {
             return Ok(None);
         }
         self.side.drop_spam_throttler.tick();

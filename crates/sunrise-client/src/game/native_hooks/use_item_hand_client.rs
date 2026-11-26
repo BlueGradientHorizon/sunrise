@@ -15,4 +15,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
             answer => Some(self.with_hand(hand, |g| g.interaction_consumed(answer))),
         }
     }
+
+    pub(in crate::game) fn client_item_interaction(
+        &mut self,
+        hand: Hand,
+        stack: &ItemStack,
+    ) -> Option<bool> {
+        if let Some(answer) = self.right_click_item(hand, stack) {
+            if answer == mod_api::InteractionResult::Success {
+                self.with_hand(hand, Game::swing_arm);
+            }
+            return Some(answer.consumes_action());
+        }
+        self.with_hand(hand, |g| g.use_item_in_hand(stack))
+    }
 }

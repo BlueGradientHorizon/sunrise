@@ -1,10 +1,10 @@
 //! Client synchronization notices for mod block entities.
-use super::block_entity_client_tick::ResidentReadBlockEntity;
-use super::{BlockEntity, BlockEntityRef, Game};
+use super::{BlockEntity, Game};
 use crate::game::api_values::TryIntoApi;
+use crate::game::native_hooks::block_entity_read::ResidentReadBlockEntity;
 use mod_api::{
     BlockEntityClientReadAccess, BlockEntityClientReadScope, BlockEntityDataSource,
-    BlockEntityReadView, ClientHost,
+    BlockEntityReadView, BlockEntityRef, ClientHost,
 };
 
 struct ClientDataReadAccess<'g, 'w> {
@@ -87,11 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game: self,
             subject,
         };
-        crate::game::native_hooks::native_block_entity_data_received(
-            BlockEntityClientReadScope::new(&access),
-            source,
-            tag,
-        );
+        native_block_entity_data_received(BlockEntityClientReadScope::new(&access), source, tag);
     }
 }
 

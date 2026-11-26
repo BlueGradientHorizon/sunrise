@@ -67,8 +67,6 @@ pub(in crate::game) mod campfire;
 pub(in crate::game) mod carrier_transfers;
 #[path = "mobs/cat_spawner.rs"]
 pub(in crate::game) mod cat_spawner;
-#[path = "blocks/cauldron_interactions.rs"]
-pub(in crate::game) mod cauldron_interactions;
 #[cfg(test)]
 #[path = "blocks/cauldron_underwater_tests.rs"]
 pub(in crate::game) mod cauldron_underwater_tests;
@@ -149,8 +147,6 @@ pub(in crate::game) mod end;
 #[cfg(test)]
 #[path = "mobs/enderman_hurt_teleport_tests.rs"]
 pub(in crate::game) mod enderman_hurt_teleport_tests;
-#[path = "entities/entity.rs"]
-pub(in crate::game) mod entity;
 #[cfg(test)]
 #[path = "entities/entity_die_tests.rs"]
 pub(in crate::game) mod entity_die_tests;
@@ -203,8 +199,6 @@ pub(in crate::game) mod game_mode;
 pub(in crate::game) mod game_server;
 #[path = "administration/game_tests.rs"]
 pub(in crate::game) mod game_tests;
-#[path = "entities/general.rs"]
-pub(in crate::game) mod general;
 #[cfg(test)]
 #[path = "mobs/golem_defense_tests.rs"]
 pub(in crate::game) mod golem_defense_tests;
@@ -256,8 +250,6 @@ pub(in crate::game) mod item_durability;
 pub(in crate::game) mod item_entities;
 #[path = "entities/item_hurt.rs"]
 pub(in crate::game) mod item_hurt;
-#[path = "modding/item_particle_send.rs"]
-pub(in crate::game) mod item_particle_send;
 #[cfg(test)]
 #[path = "items/item_pickup_shape_tests.rs"]
 pub(in crate::game) mod item_pickup_shape_tests;
@@ -339,8 +331,6 @@ pub(in crate::game) mod loot_rolls;
 pub(in crate::game) mod mace;
 #[path = "blocks/machines/mod.rs"]
 pub(in crate::game) mod machines;
-#[path = "blocks/maps/mod.rs"]
-pub(in crate::game) mod maps;
 #[path = "entities/melee.rs"]
 pub(in crate::game) mod melee;
 #[path = "runtime/memory.rs"]
@@ -593,8 +583,6 @@ pub(in crate::game) mod native_mounts;
 #[cfg(test)]
 #[path = "modding/native_move_by_tests.rs"]
 pub(in crate::game) mod native_move_by_tests;
-#[path = "modding/native_passages.rs"]
-pub(in crate::game) mod native_passages;
 #[cfg(test)]
 #[path = "modding/native_path_types_tests.rs"]
 pub(in crate::game) mod native_path_types_tests;
@@ -661,19 +649,17 @@ pub(in crate::game) mod native_raid_refs;
 #[cfg(test)]
 #[path = "modding/native_recipe_sync_tests.rs"]
 pub(in crate::game) mod native_recipe_sync_tests;
-#[path = "modding/native_registry_entries.rs"]
-pub(in crate::game) mod native_registry_entries;
 #[cfg(test)]
 #[path = "modding/native_registry_ids_tests.rs"]
 pub(in crate::game) mod native_registry_ids_tests;
-#[path = "modding/native_resources.rs"]
-pub(in crate::game) mod native_resources;
 #[path = "modding/native_ride_player.rs"]
 pub(in crate::game) mod native_ride_player;
 #[path = "modding/native_scoreboard.rs"]
 pub(in crate::game) mod native_scoreboard;
 #[path = "modding/native_server_distances.rs"]
 pub(in crate::game) mod native_server_distances;
+#[path = "modding/native_server_max_players.rs"]
+pub(in crate::game) mod native_server_max_players;
 #[cfg(test)]
 #[path = "modding/native_shield_totem_tests.rs"]
 pub(in crate::game) mod native_shield_totem_tests;
@@ -697,8 +683,6 @@ pub(in crate::game) mod native_tick_time;
 pub(in crate::game) mod native_unspawned_mob;
 #[path = "modding/native_world_edit.rs"]
 pub(in crate::game) mod native_world_edit;
-#[path = "modding/native_world_read.rs"]
-pub(in crate::game) mod native_world_read;
 #[path = "mobs/natural_spawning.rs"]
 pub(in crate::game) mod natural_spawning;
 #[path = "modding/neoforge_block_maps.rs"]
@@ -716,10 +700,6 @@ pub(in crate::game) mod orb_data_tests;
 pub(in crate::game) mod ordered_tick;
 #[path = "modding/original_player.rs"]
 pub(in crate::game) mod original_player;
-#[path = "world/owner_link.rs"]
-pub(in crate::game) mod owner_link;
-#[path = "modding/pack_finders/mod.rs"]
-pub(in crate::game) mod pack_finders;
 #[path = "entities/paintings.rs"]
 pub(in crate::game) mod paintings;
 #[path = "mobs/pandas.rs"]
@@ -1080,8 +1060,6 @@ pub(in crate::game) mod lan_trade_decisions;
 pub(in crate::game) mod lan_trade_decisions_server;
 #[path = "runtime/loading_server.rs"]
 pub(in crate::game) mod loading_server;
-#[path = "runtime/memory_common_server.rs"]
-pub(in crate::game) mod memory_common_server;
 #[path = "entities/minecart_moves.rs"]
 pub(in crate::game) mod minecart_moves;
 #[path = "entities/minecart_moves_server.rs"]
@@ -1094,8 +1072,6 @@ pub(in crate::game) mod minecarts_server;
 pub(in crate::game) mod mods_server;
 #[path = "interface/names_server.rs"]
 pub(in crate::game) mod names_server;
-#[path = "modding/native_book_placement_server.rs"]
-pub(in crate::game) mod native_book_placement_server;
 #[path = "modding/native_chat_recipients.rs"]
 pub(in crate::game) mod native_chat_recipients;
 #[path = "modding/native_chunk_queries.rs"]
@@ -1186,14 +1162,8 @@ pub(in crate::game) mod remote_server;
 pub(in crate::game) mod remote_tags_server;
 #[path = "runtime/repro_server.rs"]
 pub(in crate::game) mod repro_server;
-#[path = "entities/resident_state_server.rs"]
-pub(in crate::game) mod resident_state_server;
 #[path = "world/saving_server.rs"]
 pub(in crate::game) mod saving_server;
-#[path = "modding/scheduled_tasks_server.rs"]
-pub(in crate::game) mod scheduled_tasks_server;
-#[path = "interface/screen_widgets_server.rs"]
-pub(in crate::game) mod screen_widgets_server;
 #[path = "interface/shader_packs_server.rs"]
 pub(in crate::game) mod shader_packs_server;
 #[path = "mobs/sheep_dye_server.rs"]
@@ -1202,8 +1172,6 @@ pub(in crate::game) mod sheep_dye_server;
 pub(in crate::game) mod shelf_server;
 #[path = "mobs/sniffers_server.rs"]
 pub(in crate::game) mod sniffers_server;
-#[path = "network/social_server.rs"]
-pub(in crate::game) mod social_server;
 #[path = "items/spear_server.rs"]
 pub(in crate::game) mod spear_server;
 #[cfg(test)]
@@ -1236,6 +1204,39 @@ pub(in crate::game) mod world_fluids_tests;
 pub(in crate::game) mod world_ops_server;
 
 pub(in crate::game) struct ServerState {
+    /// Wind bursts from a guest's turn, waiting for it to end (game/interface/wind.rs).
+    pub(in crate::game::server_side) wind_bursts: Vec<crate::game::wind::Burst>,
+    /// The wind charge whose burst is being handled, by entity id: which
+    /// entities have already ticked in vanilla's spawn-ordered tick list
+    /// (game/interface/wind.rs).
+    pub(in crate::game::server_side) wind_source: Option<sunrise_sim::join_seq::JoinSeq>,
+    /// Wind pushes held until the entity's own tick has run, by entity id
+    /// (game/interface/wind.rs `apply_late_wind_pushes`).
+    pub(in crate::game::server_side) late_wind_pushes: Vec<(u32, crate::game::Vec3)>,
+    /// The players a fishing hook can catch, taken as the hooks tick, and
+    /// the pulls on them waiting for the hub (game/items/fishing.rs).
+    pub(in crate::game::server_side) hook_targets: Vec<crate::game::fishing::HookTarget>,
+    pub(in crate::game::server_side) hook_pulls: Vec<(u32, sunrise_core::geometry::Vec3)>,
+    /// Mace smash knockback on the other players from a guest's turn, waiting
+    /// for it to end (game/items/mace.rs).
+    pub(in crate::game::server_side) smash_pushes: Vec<crate::game::mace::SmashPush>,
+    /// Sweep attacks from a guest's turn, waiting for it to end
+    /// (game/network/lan_pvp.rs).
+    pub(in crate::game::server_side) sweeps: Vec<crate::game::lan_pvp::Sweep>,
+    /// The wandering trader spawner's clock.
+    pub(in crate::game::server_side) trader: sunrise_gameplay::wandering_trader::Spawner,
+    /// The cat spawner (`CatSpawner`): its countdown.
+    pub(in crate::game::server_side) cat: sunrise_gameplay::cat_spawner::CatSpawner,
+    /// Nether portals: the player's, items' and mobs' (game/blocks/nether_portal.rs).
+    pub(in crate::game) portals: nether_portal::Portals,
+    pub(in crate::game) book_placement_session: Option<native_book_grid::Session>,
+    pub(in crate::game::server_side) hold_server: bool,
+    pub(in crate::game::server_side) collider_histories: native_colliders::Histories,
+    /// This world is open to the network (game/lan.rs).
+    pub(in crate::game) lan: Option<lan::LanHost>,
+    /// This game is that server thread's (game/world/integrated.rs).
+    pub(in crate::game) serving: Option<integrated::Serving>,
+    pub(in crate::game::server_side) dedicated_services: Option<dedicated::Services>,
     pub(in crate::game) streaming: sunrise_level::chunk_streamer::ChunkStreamer,
     pub(in crate::game) be_anims: sunrise_level::block_entity_ticks::BlockEntityTicks,
     pub(in crate::game) settings: sunrise_level::sim_settings::SimSettings,
@@ -1289,7 +1290,7 @@ pub(in crate::game) struct ServerState {
     /// (attribute swapping).
     pub(in crate::game::server_side) attack_item: Option<Arc<str>>,
     /// Mobs a player hurt (`LivingEntity.lastHurtByPlayer`), by player UUID.
-    pub(in crate::game) last_hurt_by_player: HashMap<u32, combat::PlayerCredit>,
+    pub(in crate::game) last_hurt_by_player: HashMap<u32, combat_common::PlayerCredit>,
     /// Leashed mobs a player killed, with the killer's UUID: the lead drops
     /// on the corpse's next tick (`Leashable.tickLeash`), for the mods. With
     /// the corpse's dimension: each level's tick prunes only its own.
@@ -1299,7 +1300,7 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) love_cause: HashMap<u32, Option<u32>>,
     /// Mobs whose death (`LivingEntity.die`) has been handled.
     /// Looked up per mob each tick: a fast hasher (never iterated).
-    pub(in crate::game::server_side) died: sunrise_level::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) died: sunrise_level::fast_hash::FxHashSet<u32>,
     /// The crossbow charge's start and middle loading sounds played (`game/items/crossbow.rs`):
     /// each charge plays each once, however far a mod's tick moved the charge at a time.
     pub(in crate::game::server_side) crossbow_sounds: [bool; 2],
@@ -1379,7 +1380,8 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) creaking: creaking::CreakingState,
     /// Reused candidate buffers for natural spawning.
     pub(in crate::game::server_side) spawn_scratch: natural_spawning::SpawnScratch,
-    pub(in crate::game::server_side) hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
+    pub(in crate::game::server_side) hoppers:
+        HashMap<(i32, i32, i32), sunrise_gameplay_common::hoppers::HopperState>,
     /// The source of the running dispenser behaviour, including across mod callbacks.
     pub(in crate::game::server_side) dispense_source: Option<dispenser::DispenseSource>,
     /// Open mod menus whose `menu_slot_changed` dispatch is currently on the call stack.
@@ -1390,24 +1392,25 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) mod_container_viewers:
         HashMap<(&'static str, (i32, i32, i32)), mod_container_openers::ModContainerOpeners>,
     /// Where item entities are, while the block entities tick (hoppers).
-    pub(in crate::game) item_columns: Option<machines::ItemColumns>,
+    pub(in crate::game) item_columns: Option<sunrise_gameplay_common::hoppers::ItemColumns>,
     /// The item columns for one pass of the players' pickups
     /// (`tick_guests`), rebuilt after any write to the items (a pickup, a
     /// command, an explosion): see `item_columns`.
-    pub(in crate::game::server_side) pickup_columns: Option<machines::StampedItemColumns>,
+    pub(in crate::game::server_side) pickup_columns:
+        Option<sunrise_gameplay_common::hoppers::StampedItemColumns>,
     /// Where the mobs are, while the block entities tick (potent sulfur gas).
     pub(in crate::game) pass_mobs: Option<potent_sulfur::PassMobs>,
     /// Entities whose copies are held out of storage; their handles refuse until stored back.
     pub(in crate::game::server_side) held_out: Vec<u32>,
     /// What the boats' and minecarts' ticks know about the mobs: their box reach
     /// (`vehicle_mob_reach`) and a grid of their boxes (`mobs_meeting`).
-    pub(in crate::game::server_side) vehicle_mobs: boat_passengers::VehicleMobs,
+    pub(in crate::game) vehicle_mobs: boat_passengers::VehicleMobs,
     /// Missing profession IDs already reported for this world session.
     pub(in crate::game::server_side) missing_professions: HashSet<String>,
     /// What changed in entities' colliders this tick, for the players who track them.
     pub(in crate::game::server_side) collider_changes: Vec<native_colliders::ColliderChange>,
     /// The shapes of the open world's levels, from its dimension types.
-    pub(in crate::game::server_side) level_shapes: sunrise_level::chunk::LevelShapes,
+    pub(in crate::game) level_shapes: sunrise_level::chunk::LevelShapes,
     /// `IntegratedServer`'s single-player profile, fixed when the server thread is created,
     /// before its startup hooks (game/modding/native_singleplayer_owner.rs). None elsewhere.
     pub(in crate::game::server_side) singleplayer_profile:
@@ -1571,8 +1574,7 @@ pub(in crate::game) struct ServerState {
     /// Must precede session_lock: dropping the writer drains writes while the world is locked.
     pub(in crate::game::server_side) player_autosaves:
         ServerOnly<sunrise_sim::lan::playerdata::Autosaves>,
-    pub(in crate::game::server_side) session_lock:
-        ServerShared<Option<sunrise_sim::save::SessionLock>>,
+    pub(in crate::game) session_lock: ServerShared<Option<sunrise_sim::save::SessionLock>>,
     pub(in crate::game::server_side) paused_mob_hurt:
         ServerOnly<Option<Box<sunrise_sim::mobs::PausedMobHurt>>>,
     pub(in crate::game::server_side) raiding: ServerOnly<raids::Raiding>,
@@ -1583,17 +1585,16 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) server_loot:
         ServerOnly<sunrise_sim::structure_blocks::LootSnapshot>,
     /// A server's levels other than the one in place (game/world/levels.rs).
-    pub(in crate::game::server_side) levels: ServerOnly<levels::Levels>,
-    pub(in crate::game::server_side) tickets:
-        ServerShared<sunrise_sim::ticket_levels::ChunkTickets>,
+    pub(in crate::game) levels: ServerOnly<levels::Levels>,
+    pub(in crate::game) tickets: ServerShared<sunrise_sim::ticket_levels::ChunkTickets>,
     pub(in crate::game::server_side) random_tick_sections:
         ServerOnly<sunrise_sim::random_tick_sections::RandomTickSections>,
     /// Entities of types Sunrise does not simulate.
-    pub(in crate::game::server_side) others:
+    pub(in crate::game) others:
         ServerShared<sunrise_sim::join_seq::ResidentList<commands::OtherEntity>>,
     /// Item entities spawned and block entities removed while the block
     /// behaviour ran (spilled contents, popped resources).
-    pub(in crate::game::server_side) spill: ServerOnly<spill::Spill>,
+    pub(in crate::game::server_side) spill: ServerOnly<spill_common::Spill>,
     pub(in crate::game::server_side) creative_catalog:
         ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
     /// The mobs lent to the hook calls running now, before they join a level
@@ -1612,7 +1613,7 @@ pub(in crate::game) struct ServerState {
         ServerOnly<building_players::BuildingPlayers>,
     /// Bodies and their statistics displaced by guest turns, outer first.
     pub(in crate::game::server_side) lan_displaced_players:
-        ServerOnly<Vec<lan_actions::DisplacedPlayer>>,
+        ServerOnly<Vec<lan_actions_server::DisplacedPlayer>>,
     /// A fake player's `perform_action` in progress, and what it refused.
     pub(in crate::game::server_side) fake_action:
         ServerOnly<std::sync::Arc<native_server::FakeAction>>,
@@ -1621,14 +1622,14 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) server_lists:
         ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
     /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
-    pub(in crate::game::server_side) cmds: ServerOnly<commands::extra::CommandExtras>,
+    pub(in crate::game) cmds: ServerOnly<commands::extra::CommandExtras>,
     /// The retained server reload listeners of the last successful reload.
     pub(in crate::game::server_side) reload_resources: ServerOnly<mod_api::RetainedListeners>,
     pub(in crate::game::server_side) combat: ServerOnly<combat::CombatTracker>,
     /// Each guest's own `CombatTracker`, out of `combat` between turns.
     pub(in crate::game::server_side) guest_combat:
         ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
-    pub(in crate::game::server_side) fns: ServerOnly<functions::FnState>,
+    pub(in crate::game) fns: ServerOnly<functions::FnState>,
     pub(in crate::game::server_side) exec: ServerOnly<commands::execute::ExecState>,
     pub(in crate::game::server_side) profile_resolver:
         Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
@@ -1651,6 +1652,22 @@ impl ServerState {
         ws: Box<super::WrappedServerInit>,
     ) -> Box<Self> {
         Box::new(Self {
+            wind_bursts: Default::default(),
+            wind_source: Default::default(),
+            late_wind_pushes: Default::default(),
+            hook_targets: Default::default(),
+            hook_pulls: Default::default(),
+            smash_pushes: Default::default(),
+            sweeps: Default::default(),
+            trader: Default::default(),
+            cat: Default::default(),
+            portals: Default::default(),
+            book_placement_session: None,
+            hold_server: false,
+            collider_histories: Default::default(),
+            lan: None,
+            serving: None,
+            dedicated_services: None,
             streaming,
             be_anims,
             settings,
@@ -1827,7 +1844,7 @@ impl ServerState {
 
 #[allow(dead_code)]
 #[repr(transparent)]
-pub(in crate::game) struct ServerOnly<T>(pub(in crate::game::server_side) T);
+pub(in crate::game) struct ServerOnly<T>(pub(in crate::game) T);
 
 #[allow(dead_code)]
 impl<T> ServerOnly<T> {
@@ -1870,11 +1887,6 @@ impl crate::game::Side for ServerState {
     #[inline(always)]
     fn main_hand_left(&self) -> bool {
         self.settings.main_hand_left
-    }
-
-    #[inline(always)]
-    fn chat_visibility(&self) -> u8 {
-        self.settings.chat_visibility
     }
 
     #[inline(always)]
@@ -1956,29 +1968,8 @@ impl crate::game::Side for ServerState {
             ))
         })
     }
-    fn game_side_tag_items<'a>(
-        &self,
-        _remote: &'a Option<crate::game::remote::Remote>,
-        res: &'a crate::game::Resources,
-    ) -> Option<&'a sunrise_items::items::Items> {
-        self.session_lock.0.is_some().then(|| res.items())
-    }
-    fn levels(&self) -> Option<&crate::game::levels::Levels> {
-        Some(&self.levels.0)
-    }
-    fn others(
-        &self,
-    ) -> Option<&sunrise_sim::join_seq::ResidentList<crate::game::commands::OtherEntity>> {
-        Some(&self.others.0)
-    }
     fn held_out(&self) -> &[u32] {
         &self.held_out
-    }
-    fn fns(&self) -> Option<&crate::game::functions::FnState> {
-        Some(&self.fns.0)
-    }
-    fn cmds(&self) -> Option<&crate::game::commands::extra::CommandExtras> {
-        Some(&self.cmds.0)
     }
     fn lan_acting(&self) -> Option<u32> {
         self.lan_acting
@@ -2001,24 +1992,182 @@ impl crate::game::Side for ServerState {
     fn riding_order(&self) -> i64 {
         self.riding_order
     }
-    fn vehicle_mobs(&self) -> Option<&crate::game::server_side::boat_passengers::VehicleMobs> {
-        Some(&self.vehicle_mobs)
-    }
     fn lan_acting_name(&self) -> Option<&str> {
         self.lan_acting_name.as_deref()
     }
     fn server_tick_deadline(&self) -> Option<std::time::Instant> {
         self.server_tick_deadline
     }
-    fn locate_resident_owner<'a>(
-        game: &crate::game::Game<'a, Self>,
-        at: sunrise_sim::join_seq::residency::table::Location,
-    ) -> Option<
-        sunrise_sim::join_seq::residency::table::SourceEntity<(
-            crate::game::commands::Target,
-            bool,
-        )>,
-    > {
-        game.locate_resident_owner(at)
+}
+
+#[path = "world/owner_link_server.rs"]
+pub(in crate::game) mod owner_link_server;
+
+#[path = "runtime/resource_load_server.rs"]
+pub(in crate::game) mod resource_load_server;
+
+#[path = "runtime/transactions/decision_engine_server.rs"]
+pub(in crate::game) mod decision_engine_server;
+
+#[path = "blocks/maps/mod.rs"]
+pub(in crate::game) mod maps_server;
+
+#[path = "blocks/cauldron_interactions_server.rs"]
+pub(in crate::game) mod cauldron_interactions_server;
+
+#[path = "entities/entity.rs"]
+pub(in crate::game) mod entity_server;
+
+#[path = "entities/general_server.rs"]
+pub(in crate::game) mod general_server;
+
+#[path = "modding/native_world_read_server.rs"]
+pub(in crate::game) mod native_world_read_server;
+
+#[path = "modding/native_passages_server.rs"]
+pub(in crate::game) mod native_passages_server;
+
+#[path = "modding/native_registry_entries_server.rs"]
+pub(in crate::game) mod native_registry_entries_server;
+
+#[path = "administration/lan_op.rs"]
+pub(in crate::game) mod lan_op;
+
+#[path = "items/durability.rs"]
+pub(in crate::game) mod durability;
+
+pub(in crate::game) struct ServerConstructPrep {
+    pub(in crate::game) level: Level,
+    pub(in crate::game) save: Arc<SaveDir>,
+    pub(in crate::game) painting_variants:
+        sunrise_gameplay_common::painting_variants::PaintingVariants,
+    pub(in crate::game) item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
+    pub(in crate::game) creative_catalog: Arc<sunrise_items::creative_catalog::Catalog>,
+    pub(in crate::game) world: World,
+    pub(in crate::game) now: Instant,
+    pub(in crate::game) pack: PackResources,
+    pub(in crate::game) options: Options,
+    pub(in crate::game) settings: sunrise_level::sim_settings::SimSettings,
+    pub(in crate::game) streaming: sunrise_level::chunk_streamer::ChunkStreamer,
+}
+
+pub(in crate::game) struct ServerConstructEffects {
+    pub(in crate::game) structure_spawns: sunrise_sim::mobs::spawn_selection::StructureSpawns,
+    pub(in crate::game) clock: FixedStep,
+    pub(in crate::game) tick: sunrise_sim::parallel::TickThread,
+    pub(in crate::game) profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
+    pub(in crate::game) profile: profile_capture_server::ServerProfile,
+    pub(in crate::game) ui: chat_common::WorldCommandState,
+}
+
+impl<'a> ServerGame<'a> {
+    /// A logical server game (dedicated server or integrated server thread).
+    pub(in crate::game) fn new(
+        res: &'a Arc<Resources>,
+        pack: PackResources,
+        options: Options,
+        settings: sunrise_level::sim_settings::SimSettings,
+        prepared: Option<resource_cpu_common::ServerCpuResources>,
+        profile_resolver: integrated_link::ProfileResolverFactory,
+    ) -> Result<Self> {
+        debug_assert!(options.execution_role.is_logical_server());
+        let prep = Self::prepare_construct(res, pack, options, settings, prepared)?;
+        let effects = Self::prepare_effects(&prep, profile_resolver);
+        Ok(Self::finish_construct(res, prep, effects))
+    }
+
+    #[inline(never)]
+    fn prepare_construct(
+        res: &'a Arc<Resources>,
+        pack: PackResources,
+        options: Options,
+        settings: sunrise_level::sim_settings::SimSettings,
+        prepared: Option<resource_cpu_common::ServerCpuResources>,
+    ) -> Result<Box<ServerConstructPrep>> {
+        #[cfg(test)]
+        Self::initialize_mod_runtime_for_tests();
+        // A scoped hook on this thread asks this game's parts.
+        mod_api::__private::mark_game_thread();
+        let root = options.resources.clone();
+        let registry = pack.assets.registry;
+        let level = Level::default();
+        let save = Arc::new(SaveDir::new(
+            std::env::current_dir()?
+                .join("saves")
+                .join(".sunrise-title"),
+            sunrise_sim::save::LevelShape::OVERWORLD,
+            None,
+        ));
+        let prepared = prepared.map(Ok).unwrap_or_else(|| {
+            resource_cpu_common::ServerCpuResources::load(
+                &sunrise_assets::resource_source::ResourceRoot::new(
+                    root.clone(),
+                    packs_common::cache_dir(),
+                    pack.source.clone(),
+                ),
+            )
+        })?;
+        let world = crate::game::authoritative_world_for_mods(res, 0);
+        let now = Instant::now();
+        // Until a world is opened the streamer is idle.
+        let mut streaming = sunrise_level::chunk_streamer::ChunkStreamer::new(
+            Arc::new(TestTerrain::new(registry, res.biomes())?),
+            pack.chunk_context.clone(),
+            1,
+        );
+        streaming.paused = true;
+        let painting_variants = prepared.painting_variants;
+        let item_features = prepared.item_features;
+        let creative_catalog = prepared.creative_catalog;
+        Ok(Box::new(ServerConstructPrep {
+            level,
+            save,
+            painting_variants,
+            item_features,
+            creative_catalog,
+            world,
+            now,
+            pack,
+            options,
+            settings,
+            streaming,
+        }))
+    }
+
+    #[inline(never)]
+    fn prepare_effects(
+        prep: &ServerConstructPrep,
+        profile_resolver: integrated_link::ProfileResolverFactory,
+    ) -> Box<ServerConstructEffects> {
+        #[cfg(not(test))]
+        let structure_spawns =
+            sunrise_sim::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
+        #[cfg(test)]
+        let structure_spawns = resource_load::cached_structure_spawns(&prep.options.resources);
+        let clock = FixedStep::default();
+        let tick = sunrise_sim::parallel::TickThread::mint();
+        let profile_resolver = profile_resolver();
+        let profile = profile_capture_server::ServerProfile::default();
+        let ui = chat_common::WorldCommandState::default();
+        Box::new(ServerConstructEffects {
+            structure_spawns,
+            clock,
+            tick,
+            profile_resolver,
+            profile,
+            ui,
+        })
+    }
+
+    #[inline(never)]
+    fn finish_construct(
+        res: &'a Arc<Resources>,
+        prep: Box<ServerConstructPrep>,
+        effects: Box<ServerConstructEffects>,
+    ) -> Self {
+        let (wp, server) = ConstructInit::<true>::wrap_server_prep_and_effects(prep, effects);
+        let mut game = ConstructInit::<true>::assemble_game(res, wp, server);
+        game.reset_entity_residency();
+        game
     }
 }

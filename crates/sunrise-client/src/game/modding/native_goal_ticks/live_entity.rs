@@ -3,9 +3,8 @@
 //! These use the mob in hand or the disjoint live loan; a snapshot does not
 //! carry these fields and must not be mistaken for a live entity.
 use super::super::{
-    native_entity_moves::facing,
-    native_entity_sounds::hostile_species,
-    native_entity_state::{POSES, max_air},
+    native_entity_moves::facing, native_entity_sounds::hostile_species, native_entity_state::POSES,
+    native_entity_state_common::max_air,
 };
 use super::{GoalCx, Resolved};
 use mod_api::{EntityRef, EntityTags, MobCategory};

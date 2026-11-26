@@ -102,6 +102,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn begin_book_negotiation(&mut self) {
         self.reset_book_view();
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.custom_books && r.joined)
@@ -116,6 +117,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn remote_book_settings(&mut self, data: &[u8]) {
         if !self
+            .side
             .remote
             .as_ref()
             .is_some_and(|remote| remote.custom_books && remote.joined)

@@ -74,7 +74,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return false;
         }
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.remote_menu_type().is_none_or(tweak_menu)
         } else {
             matches!(self.container_kind(), None | Some(BlockEntity::Chest(_)))

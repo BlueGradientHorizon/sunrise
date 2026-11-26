@@ -23,10 +23,17 @@ fn leftover_sleep_countdown_waits_at_the_unloaded_edge_then_resumes() {
             loaded.sleep_timer = 105;
             edge.sleep_timer = 105;
             assert!(loaded.bed.is_none() && edge.bed.is_none());
-            game.lan.as_mut().unwrap().hub.guests.extend([loaded, edge]);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .extend([loaded, edge]);
             game.tick_guests();
             let timers = |game: &crate::game::ServerGame<'_>| -> Vec<u32> {
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .hub
@@ -95,8 +102,9 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
                         ("Silent", sunrise_core::nbt::Tag::Byte(1)),
                     ]),
                 )]));
-                game.lan.as_mut().unwrap().hub.guests.push(watcher);
-                game.lan
+                game.side.lan.as_mut().unwrap().hub.guests.push(watcher);
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .play
@@ -105,7 +113,7 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
                     .cooldowns
                     .add("minecraft:ender_pearl".into(), 5);
                 game.tick_guests();
-                let watcher = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let watcher = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 assert_eq!(watcher.position, [15.5, 64.0, 8.5]);
                 assert!(
                     !game.guest_body_ticks(watcher),
@@ -123,7 +131,7 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
                         .is_none()
                 );
                 game.tick_guests();
-                let watcher = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let watcher = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 assert_eq!(luck_left(game), [99]);
                 assert_eq!(pearl_left(game), [4]);
                 assert_eq!(watcher.motion.as_ref().unwrap().health.food.exhaustion, 1.0);

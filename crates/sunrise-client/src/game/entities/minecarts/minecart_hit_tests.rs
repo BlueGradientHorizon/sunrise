@@ -2,8 +2,8 @@
 //! posts, the `CustomName` `destroy` puts on the drop, and
 //! `chestVehicleDestroyed`'s angry piglins. Prepared resources only.
 use super::super::{CartKind, Minecart};
-use super::CartHit;
 use crate::game::game_tests::tests::server_game;
+use crate::game::server_side::minecarts_server::CartHit;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::{Species, Who};
 

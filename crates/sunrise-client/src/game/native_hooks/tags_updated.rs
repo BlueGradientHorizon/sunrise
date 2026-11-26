@@ -1,11 +1,16 @@
 use super::*;
 
+#[inline(always)]
+pub(in crate::game) fn native_tags_updated(
+    context: &dyn mod_api::ReloadContext,
+    cause: mod_api::TagsUpdateCause,
+) {
+    crate::game::native_hooks::fire::fire_tags_updated(context, cause);
+}
+
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Tags changed on this side (NeoForge's `TagsUpdatedEvent`), after they are readable.
     pub(in crate::game) fn native_tags_updated(&mut self, cause: mod_api::TagsUpdateCause) {
-        crate::game::native_hooks::fire::fire_tags_updated(
-            crate::game::Side::as_reload_context(self),
-            cause,
-        );
+        native_tags_updated(crate::game::Side::as_reload_context(self), cause);
     }
 }

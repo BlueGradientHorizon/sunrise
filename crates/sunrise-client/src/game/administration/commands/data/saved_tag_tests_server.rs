@@ -62,6 +62,7 @@ pub(in crate::game) fn with_command_game(
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(

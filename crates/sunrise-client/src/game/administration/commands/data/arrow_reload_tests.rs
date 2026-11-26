@@ -42,6 +42,7 @@ fn a_merge_reloads_an_arrows_own_save_data() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

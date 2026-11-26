@@ -1,6 +1,9 @@
 //! ServerPlayer.tick precedes the connection phase, including across levels.
 use super::*;
-use crate::game::levels::{ServerTickPhase, server_tick_phases};
+use crate::game::{
+    Dim,
+    levels::{ServerTickPhase, server_tick_phases},
+};
 use mod_api::{HostSide, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_world::registry::BlockRegistry;

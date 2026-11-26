@@ -22,6 +22,7 @@ pub trait Hooks {
     /// the reload. A panicking registration callback contributes no listeners or
     /// dependencies; unrelated callbacks still run.
     #[hook(
+        target = "sunrise_client::game::native_hooks::add_client_reload_listeners::native_add_client_reload_listeners",
         receiver = "associated",
         context = "client_reload_listener",
         dispatch = "flat",

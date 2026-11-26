@@ -217,7 +217,7 @@ impl RuntimeTable {
     }
 
     /// The own seed of each level in the table, by id: what the hub tells a joining client.
-    pub(in crate::game::server_side) fn seeds(&self) -> BTreeMap<String, i64> {
+    pub(in crate::game) fn seeds(&self) -> BTreeMap<String, i64> {
         self.entries
             .iter()
             .map(|(id, entry)| (id.clone(), entry.level.seed))
@@ -562,17 +562,6 @@ impl Generate {
     }
 }
 
-impl Dim {
-    /// Drops the dimension `id` that [`Self::add_extra`] added: its level is closed, or a remote
-    /// server's level that its client left.
-    pub(in crate::game) fn remove_extra(id: &str) {
-        super::EXTRA_DIMS
-            .write()
-            .unwrap()
-            .retain(|key| mod_api::__private::dimension_id(*key) != Some(id));
-    }
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The cap on open runtime levels `server.properties` sets (`sunrise-max-runtime-levels`,
     /// docs/hosting.md): the default, 64, for a missing or unreadable value.
@@ -742,7 +731,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a player, or an arrival on its way, is in the level `dim`.
     fn level_has_players(&self, dim: Dim) -> bool {
         let id = dim.id();
-        self.lan
+        self.side
+            .lan
             .as_ref()
             .is_some_and(|host| host.hub.guests.as_slice().iter().any(|g| g.dimension == id))
             || !self.arrival_chunks(dim).is_empty()
@@ -812,7 +802,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             shape,
         });
         self.side.level_shapes.extra = leaked_table(extras);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.config.levels = self.side.level_shapes;
             host.hub.config.level_seeds = self.side.levels.0.runtime.seeds();
         }
@@ -922,7 +912,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter(|level| level.id != id)
             .collect();
         self.side.level_shapes.extra = leaked_table(extras);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.config.levels = self.side.level_shapes;
             host.hub.config.level_seeds = self.side.levels.0.runtime.seeds();
             host.hub.close_views_of(id);
@@ -940,15 +930,5 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<(Generate, i64)> {
         let level = self.side.levels.0.runtime.level_of(dim.id())?;
         Some((Generate::of(level)?, level.seed))
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// Whether `level` names the level now open under its id: the world open it was made in, and
-    /// for a runtime level the open it was given. A handle of an earlier open reads as stale.
-    pub(in crate::game) fn level_handle_current(&self, level: LevelRef) -> bool {
-        self.native_lifecycle.epoch() == Some(level.epoch())
-            && level.generation()
-                == crate::game::Side::levels_generation(&self.side, level.dimension_id())
     }
 }

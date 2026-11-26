@@ -77,7 +77,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             CameraPlayer::Own => self.riding?,
             CameraPlayer::Other(i) => {
                 let rider = self.mobs[i].id as i32;
-                self.remote
+                self.side
+                    .remote
                     .as_ref()
                     .and_then(|r| r.entities.get(&rider)?.vehicle)
                     .or(self.mobs[i].extra.mount)?
@@ -86,6 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Another player can ride the local player, whose attributes and health
         // are kept on PlayerMotion rather than in the tracked entity table.
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.entity_id as u32 == id)
@@ -96,7 +98,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let (default_max, health) =
             if let Some(dragon) = self.dragon.as_ref().filter(|d| d.id == id) {
-                (super::dragon::MAX_HEALTH, dragon.health)
+                (crate::game::dragon_common::MAX_HEALTH, dragon.health)
             } else if let Some(m) = self.mob_index.get(&self.mobs, id) {
                 (m.attrs.max_health, m.health)
             } else {

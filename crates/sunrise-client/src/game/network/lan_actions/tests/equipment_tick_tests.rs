@@ -21,7 +21,7 @@ fn a_new_slot_takes_its_items_attributes_at_the_guests_tick() {
         g.inventory[0] = Some(ItemStack::new("minecraft:diamond_sword", 1));
         g.inventory[1] = Some(ItemStack::new("minecraft:iron_spear", 1));
         g.selected = 0;
-        game.lan.as_mut().unwrap().hub.guests.extend([g]);
+        game.side.lan.as_mut().unwrap().hub.guests.extend([g]);
         game.tick_guests();
         let damage = |game: &mut crate::game::ServerGame<'_>| {
             game.as_guest(1, |g| g.attack_damage()).unwrap()
@@ -55,7 +55,7 @@ fn gear_swapped_and_swapped_back_before_the_tick_keeps_its_modifiers() {
         g.inventory[1] = Some(ItemStack::new("minecraft:iron_helmet", 1));
         g.armor[0] = Some(ItemStack::new("minecraft:diamond_helmet", 1));
         g.selected = 0;
-        game.lan.as_mut().unwrap().hub.guests.extend([g]);
+        game.side.lan.as_mut().unwrap().hub.guests.extend([g]);
         game.tick_guests();
         let damage = |game: &mut crate::game::ServerGame<'_>| {
             game.as_guest(1, |g| g.attack_damage()).unwrap()

@@ -188,7 +188,7 @@ fn a_still_guardian_spikes_the_player_who_hit_it() {
             guest.placed = true;
             guest.loaded = true;
             guest.load_timeout = 0;
-            g.lan.as_mut().unwrap().hub.guests.push(guest);
+            g.side.lan.as_mut().unwrap().hub.guests.push(guest);
         }
         g.mobs.clear();
         let kind = g.res.mob_types().get("minecraft:guardian").unwrap().clone();
@@ -198,7 +198,7 @@ fn a_still_guardian_spikes_the_player_who_hit_it() {
         g.mobs.push(guardian);
         let before: Vec<_> = [11, 22]
             .into_iter()
-            .map(|conn| g.lan.as_ref().unwrap().hub.guest(conn).unwrap().health)
+            .map(|conn| g.side.lan.as_ref().unwrap().hub.guest(conn).unwrap().health)
             .collect();
         g.as_guest(11, |g| {
             g.player.as_mut().unwrap().health.advance_clock();
@@ -223,7 +223,7 @@ fn a_still_guardian_spikes_the_player_who_hit_it() {
         .unwrap();
         for (conn, expected) in [(11, before[0] - 2.0), (22, before[1])] {
             assert_eq!(
-                g.lan.as_ref().unwrap().hub.guest(conn).unwrap().health,
+                g.side.lan.as_ref().unwrap().hub.guest(conn).unwrap().health,
                 expected,
                 "only the original attacking guest takes thorns: connection {conn}"
             );

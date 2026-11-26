@@ -90,7 +90,8 @@ mod tests {
             let body =
                 sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
                     .unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -217,7 +218,7 @@ mod tests {
             );
             guest.placed = true;
             guest.dimension = "minecraft:the_nether".to_owned();
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             game.reset_entity_residency();
             let nether = game.entity(777).unwrap();
             assert_eq!(reach(game, nether, EntityReach::Interact), None);
@@ -347,7 +348,7 @@ mod tests {
                 ),
                 None
             );
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             let host = &*game as &dyn mod_api::ClientHost;
             assert_eq!(me.eye_height(host), None);
             assert_eq!(me.eye_position(host), None);

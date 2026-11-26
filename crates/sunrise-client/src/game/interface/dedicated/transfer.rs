@@ -26,7 +26,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .next()
             .and_then(arrivals::parse_uuid)
             .and_then(|uuid| {
-                self.lan
+                self.side
+                    .lan
                     .as_ref()?
                     .hub
                     .guests
@@ -45,7 +46,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// in is refused from then on, and the ways out stay open (`arrivals::Transfers::stopping`).
     pub(super) fn note_stopping(&mut self, stop: bool) {
         let stopping = stop || sunrise_threads::stop_requests() > 0;
-        if let Some(transfers) = self.lan.as_mut().and_then(|h| h.hub.transfers.as_mut()) {
+        if let Some(transfers) = self
+            .side
+            .lan
+            .as_mut()
+            .and_then(|h| h.hub.transfers.as_mut())
+        {
             transfers.stopping |= stopping;
         }
     }
@@ -57,7 +63,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn stop_now(&mut self, state: &super::ServerState) -> bool {
         let asked = std::mem::take(&mut state.lists.lock().unwrap().stop);
         let stop = asked || sunrise_threads::stop_requests() > 0;
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return stop;
         };
         let waiting = host
@@ -114,32 +120,32 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`arrivals::status_request`). A proxy asks it every few seconds, so it writes nothing to
     /// the log.
     pub(super) fn transfer_status(&self) -> Value {
-        match self.lan.as_ref() {
+        match self.side.lan.as_ref() {
             Some(host) => arrivals::status_request(&host.hub, Instant::now()),
             None => json!({ "error": "the server is not open to players" }),
         }
     }
 
     fn run_player_request(&mut self, verb: &str, args: &str) -> Value {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return json!({ "error": "the server is not open to players" });
         };
         if host.hub.transfers.is_none() {
             return json!({ "error": arrivals::OFF });
         }
         match verb {
-            "player-expect" => match self.lan.as_mut() {
+            "player-expect" => match self.side.lan.as_mut() {
                 Some(host) => arrivals::expect_request(&mut host.hub, args, Instant::now()),
                 None => json!({ "error": "the server is not open to players" }),
             },
-            "player-drop" => match self.lan.as_mut() {
+            "player-drop" => match self.side.lan.as_mut() {
                 Some(host) => arrivals::drop_request(&mut host.hub, args),
                 None => json!({ "error": "the server is not open to players" }),
             },
             "player-export" => self.player_export(args),
             "player-import" => self.player_import(args),
             "player-confirm" => self.player_confirm(args),
-            "player-release" => match self.lan.as_mut() {
+            "player-release" => match self.side.lan.as_mut() {
                 Some(host) => arrivals::release_request(&mut host.hub, args),
                 None => json!({ "error": "the server is not open to players" }),
             },
@@ -182,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Ok(v) => v,
             Err(e) => return json!({ "error": format!("the request is not JSON: {e}") }),
         };
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return json!({ "error": "the server is not open to players" });
         };
         // A retry after the commit, whose reply was lost: the player is placed from this
@@ -237,7 +243,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// .applyFrom` drops those this server lacks) and the statistics.
     fn take_arrival_records(&mut self, uuid: u128, done: &sunrise_sim::lan::import::Imported) {
         let tree = self.advancement_tree();
-        let host = self.lan.as_mut().expect("server host is present");
+        let host = self.side.lan.as_mut().expect("server host is present");
         let Some(index) = host.hub.guests.iter().position(|g| g.uuid == uuid) else {
             return;
         };
@@ -261,7 +267,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `player-confirm <uuid> <hand-over>`: places a held player whose record of that hand-over was
     /// imported without placing it.
     fn player_confirm(&mut self, args: &str) -> Value {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return json!({ "error": "the server is not open to players" });
         };
         match arrivals::confirm_args(&host.hub, args) {
@@ -278,6 +284,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Ok((uuid, id)) => match self.place_arrival(uuid, id) {
                 Ok(_) => {
                     let announced = self
+                        .side
                         .lan
                         .as_ref()
                         .expect("server host is present")
@@ -300,7 +307,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the player is on disk here. When the file cannot be written the player stays held and
     /// imported: the proxy can confirm again or drop it.
     fn place_arrival(&mut self, uuid: u128, id: u128) -> Result<bool, String> {
-        self.lan
+        self.side
+            .lan
             .as_ref()
             .expect("server host is present")
             .hub
@@ -308,19 +316,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // An autosave of this player still in flight must not land after this write.
         // Its completion fires save hooks, so the Host must still see the server.
         let _ = self.finish_player_autosaves(true);
-        let host = self.lan.as_mut().expect("server host is present");
+        let host = self.side.lan.as_mut().expect("server host is present");
         let i = host.hub.imported_arrival(uuid, id)?;
         let g = host.hub.guests.take_for_save(i);
         let written =
             sunrise_sim::lan::playerdata::save_now(&g, &self.side.world_root, self.res.items())
                 .and_then(|()| {
                     self.write_arrival_records(
-                        self.lan.as_ref().expect("server host is present"),
+                        self.side.lan.as_ref().expect("server host is present"),
                         &g,
                     )
                 });
         let name = g.name.clone();
-        let host = self.lan.as_mut().expect("server host is present");
+        let host = self.side.lan.as_mut().expect("server host is present");
         host.hub.guests.insert(i, g);
         written?;
         let announced = host.hub.confirm_arrival(uuid, id)?;
@@ -342,7 +350,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     fn export_from(&mut self, uuid: u128, freeze: bool) -> Value {
-        let host = self.lan.as_ref().expect("server host is present");
+        let host = self.side.lan.as_ref().expect("server host is present");
         let i = match arrivals::check_exportable(&host.hub, uuid) {
             Ok(i) => i,
             Err(why) => return json!({ "error": why }),
@@ -370,7 +378,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());
         }
-        let host = self.lan.as_mut().expect("server host is present");
+        let host = self.side.lan.as_mut().expect("server host is present");
         let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
             return json!({ "error": "that player is not connected to this server" });
         };

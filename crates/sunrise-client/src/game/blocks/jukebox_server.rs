@@ -361,6 +361,7 @@ pub(in crate::game) mod jukebox_play_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.world.chunks.insert(
@@ -664,6 +665,7 @@ pub(in crate::game) mod block_change_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.world

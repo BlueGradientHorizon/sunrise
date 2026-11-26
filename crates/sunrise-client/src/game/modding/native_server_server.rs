@@ -53,7 +53,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(conn) = self.side.lan_acting else {
             return true;
         };
-        self.lan
+        self.side
+            .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
             .is_none_or(|g| g.dimension == self.dim.id())
@@ -78,7 +79,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.native_lifecycle.epoch() != Some(player.fields().entity.epoch()) {
             return Err(ActionRefused::Stale);
         }
-        let found = self.lan.as_ref().and_then(|host| {
+        let found = self.side.lan.as_ref().and_then(|host| {
             let index = host
                 .hub
                 .guests
@@ -149,7 +150,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return None;
         }
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         if host
             .hub
             .guests
@@ -176,13 +177,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
             sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),
         )
         .ok()?;
-        let host = self.lan.as_mut()?;
+        let host = self.side.lan.as_mut()?;
         let conn = host.hub.lan.shared.next_id()?;
         let mut guest = Guest::connectionless(conn, uuid, name.into(), entity_id, [0.0; 3], motion);
         guest.dimension = level.dimension_id().to_owned();
         host.hub.guests.push(guest);
-        host.play
-            .insert(conn, super::lan_actions::GuestPlay::default());
+        host.play.insert(
+            conn,
+            crate::game::server_side::lan_actions_server::GuestPlay::default(),
+        );
         self.side.next_entity = id;
         Some(mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(epoch, id),
@@ -322,7 +325,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// which sends the trees without what the mods took out: for `only`, or
     /// for every placed player.
     pub(in crate::game) fn native_filter_commands(&mut self, only: Option<u32>) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let players: Vec<(u32, u128, String)> = host
@@ -333,7 +336,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(|g| (g.conn, g.uuid, g.name.clone()))
             .collect();
         for (conn, uuid, name) in players {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let names = host.hub.command_names(conn);
@@ -349,7 +352,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     g.native_player_commands_sent(uuid, &name, &mut kept);
                 });
             }
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 let _ = host.hub.update_guest(conn, |g| {
                     g.hidden_commands = names.into_iter().filter(|n| !kept.contains(n)).collect();
                 });
@@ -398,7 +401,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.side.guest_packets.extend(packets);
             return true;
         }
-        let Some(host) = &self.lan else {
+        let Some(host) = &self.side.lan else {
             return false;
         };
         let Some(g) = host.hub.online_players().find(|g| g.uuid == uuid) else {
@@ -415,7 +418,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(epoch) = self.native_lifecycle.epoch() else {
             return Vec::new();
         };
-        let Some(host) = &self.lan else {
+        let Some(host) = &self.side.lan else {
             return Vec::new();
         };
         // Construct from the online records, not the live-body resolver: outer
@@ -482,7 +485,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         line: &str,
         quiet: bool,
     ) -> Option<bool> {
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         if self.side.native_commands.0.level(line)? > permission {
             return None;
         }
@@ -504,7 +507,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         line: &str,
     ) -> bool {
-        if self.lan.is_none() || self.side.native_commands.0.level(line).is_none() {
+        if self.side.lan.is_none() || self.side.native_commands.0.level(line).is_none() {
             return false;
         }
         self.as_console_in_spawn_level(|game| {
@@ -570,7 +573,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// own rule). None for a stale or unavailable player.
     pub(in crate::game) fn player_counts_for_sleep(&self, player: PlayerRef) -> Option<bool> {
         let ignored = |game: &Self| {
-            game.lan
+            game.side
+                .lan
                 .as_ref()
                 .is_some_and(|host| host.sleep_ignored.contains(&player.uuid()))
         };
@@ -606,7 +610,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(guest) = self.online_player_record(player) {
             return Some(Dim::from_id(&guest.dimension).key());
         }
-        if self.serving.is_some()
+        if self.side.serving.is_some()
             && self.server_player(player.uuid()) == Some(player)
             && self
                 .level
@@ -650,7 +654,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let full_attack_charge = setup.full_attack_charge;
         let mut state = ScopedPlayerState::new(self.motion, self.items(), setup)?;
-        let host = self.lan.as_mut().expect("validated fake's host");
+        let host = self.side.lan.as_mut().expect("validated fake's host");
         host.hub.guests.update(gi, |guest| state.swap(guest));
         let play = host.play.insert(conn, Default::default());
         let menus = host.menus.insert(conn, Default::default());
@@ -667,7 +671,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             Err(ActionRefused::Busy)
         };
-        let host = self.lan.as_mut().expect("guest turns retain the host");
+        let host = self.side.lan.as_mut().expect("guest turns retain the host");
         let (held, other, position) = host.hub.guests.update(gi, |guest| {
             let held = guest
                 .inventory
@@ -722,7 +726,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return false;
         }
-        let Some(mut host) = self.lan.take() else {
+        let Some(mut host) = self.side.lan.take() else {
             return false;
         };
         let index = host.hub.guests.iter().position(|g| {
@@ -741,7 +745,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             false
         };
-        self.lan = Some(host);
+        self.side.lan = Some(host);
         removed
     }
     /// `ServerPlayer.getRespawnConfig`: the player's respawn point as the
@@ -825,7 +829,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let conn = match self.player_handle_read(player) {
             Some(PlayerRead::Guest(guest)) => Some(guest.conn),
             Some(PlayerRead::Acting { .. }) => self.side.lan_acting_uuid.and_then(|uuid| {
-                self.lan
+                self.side
+                    .lan
                     .as_ref()?
                     .hub
                     .guests
@@ -848,7 +853,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }) {
             return false;
         }
-        if let (Some(conn), Some(host)) = (conn, self.lan.as_ref()) {
+        if let (Some(conn), Some(host)) = (conn, self.side.lan.as_ref()) {
             host.hub.send_to(
                 conn,
                 &C::SetHeldSlot(play::SetHeldSlot { slot: slot as i32 }),
@@ -858,7 +863,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Drop the fake players belonging to a level as it closes.
     pub(in crate::game::server_side) fn remove_level_fake_players(&mut self, dimension: &str) {
-        let Some(mut host) = self.lan.take() else {
+        let Some(mut host) = self.side.lan.take() else {
             return;
         };
         let mut i = 0;
@@ -871,7 +876,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 i += 1;
             }
         }
-        self.lan = Some(host);
+        self.side.lan = Some(host);
     }
     /// The level changes the level in place's tickets made since the last
     /// call (`ChunkTickets::take_changes`), told to the mods in order as
@@ -902,7 +907,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// after a disconnect still names them. Nothing while the log is empty.
     pub(in crate::game) fn run_chunk_watches(&mut self) {
         use sunrise_sim::lan::chunk_watch::ChunkWatchKind;
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if host.hub.chunk_watches.is_empty() {
@@ -947,7 +952,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         line: &str,
         capture: bool,
     ) -> (bool, Vec<sunrise_game_data::text::Text>) {
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return (false, Vec::new());
         }
         let base = self.server_source();
@@ -1075,6 +1080,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_player_by_name(&self, name: &str) -> Option<PlayerRef> {
         let epoch = self.native_lifecycle.epoch()?;
         let player = self
+            .side
             .lan
             .as_ref()?
             .hub
@@ -1088,7 +1094,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn online_player_record(&self, player: PlayerRef) -> Option<&Guest> {
         (self.native_lifecycle.epoch()? == player.entity().epoch()).then_some(())?;
-        let guests = &self.lan.as_ref()?.hub.guests;
+        let guests = &self.side.lan.as_ref()?.hub.guests;
         let guest = guests.get(guests.identity_index(player.uuid(), player.entity().id())?)?;
         (guest.joined() && guest.participates_online()).then_some(guest)
     }
@@ -1200,7 +1206,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(uuid) = self.sleep_list_uuid(player) else {
             return false;
         };
-        let Some(host) = &mut self.lan else {
+        let Some(host) = &mut self.side.lan else {
             return false;
         };
         if ignored {
@@ -1213,7 +1219,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn sleep_list_uuid(&self, player: PlayerRef) -> Option<u128> {
         let uuid = self.message_player_uuid(player)?;
-        self.lan
+        self.side
+            .lan
             .as_ref()?
             .hub
             .online_players()
@@ -1223,7 +1230,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn player_sleep_ignored(&self, player: PlayerRef) -> Option<bool> {
         let uuid = self.sleep_list_uuid(player)?;
-        Some(self.lan.as_ref()?.sleep_ignored.contains(&uuid))
+        Some(self.side.lan.as_ref()?.sleep_ignored.contains(&uuid))
     }
 
     pub(in crate::game) fn player_sleep_timer(&self, player: PlayerRef) -> Option<u32> {
@@ -1347,7 +1354,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.is_logical_server() {
             return Err(Refusal::Client);
         }
-        let hub = &self.lan.as_ref().ok_or(Refusal::Stale)?.hub;
+        let hub = &self.side.lan.as_ref().ok_or(Refusal::Stale)?.hub;
         if self.native_lifecycle.epoch() != Some(player.entity().epoch()) {
             return Err(Refusal::Stale);
         }
@@ -1363,7 +1370,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(Refusal::Client);
         }
         let uuid = self.message_player_uuid(player).ok_or(Refusal::Stale)?;
-        let hub = &self.lan.as_ref().ok_or(Refusal::Stale)?.hub;
+        let hub = &self.side.lan.as_ref().ok_or(Refusal::Stale)?.hub;
         if !hub.online_players().any(|g| g.uuid == uuid) {
             return Err(Refusal::Stale);
         }
@@ -1375,7 +1382,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         let uuid = player.uuid();
-        let Some(host) = &mut self.lan else {
+        let Some(host) = &mut self.side.lan else {
             return false;
         };
         match level {
@@ -1393,7 +1400,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(uuid) = self.message_player_uuid(player) else {
             return false;
         };
-        let Some(host) = &mut self.lan else {
+        let Some(host) = &mut self.side.lan else {
             return false;
         };
         if !host.hub.online_players().any(|g| g.uuid == uuid) {
@@ -1415,7 +1422,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             log::info!("{plain}");
         }
-        let Some(host) = &self.lan else {
+        let Some(host) = &self.side.lan else {
             return;
         };
         let packet = system_chat(&line);
@@ -1450,7 +1457,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some((min, max)) = ordered_box(min, max) else {
             return Vec::new();
         };
-        if (self.serving.is_none() && self.options.dedicated.is_none())
+        if (self.side.serving.is_none() && self.options.dedicated.is_none())
             || dimension != self.dim.id()
         {
             return Vec::new();
@@ -1476,11 +1483,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         count: Option<u32>,
         age: Option<u32>,
     ) -> bool {
-        if (self.serving.is_none() && self.options.dedicated.is_none())
+        if (self.side.serving.is_none() && self.options.dedicated.is_none())
             || dimension != self.dim.id()
             || count == Some(0)
-            || count.is_some_and(|c| c > crate::orb_limits::MAX_COUNT)
-            || value.is_some_and(|v| !crate::orb_limits::value_fits(v))
+            || count.is_some_and(|c| c > sunrise_sim::orb_limits::MAX_COUNT)
+            || value.is_some_and(|v| !sunrise_sim::orb_limits::value_fits(v))
         {
             return false;
         }
@@ -1497,8 +1504,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn native_player_holder(&self, uuid: u128) -> Option<&Guest> {
-        self.cloning_guest(uuid)
-            .or_else(|| self.lan.as_ref()?.hub.holder_guest(uuid, self.dim.id()))
+        self.cloning_guest(uuid).or_else(|| {
+            self.side
+                .lan
+                .as_ref()?
+                .hub
+                .holder_guest(uuid, self.dim.id())
+        })
     }
 
     pub(in crate::game) fn native_live_acting_body(&self) -> Option<&PlayerMotion> {
@@ -1518,12 +1530,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn resend_commands_filtered(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         host.hub.refresh_permissions();
         self.native_filter_commands(None);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.resend_commands();
         }
     }
@@ -1549,7 +1561,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(player) = self.native_command_player_target(target) {
             return Some(player.entity());
         }
-        let id = super::native_entities::target_id(target)?;
+        let id = crate::game::commands_common::target_id(target)?;
         self.in_target_level(target, |game| game.entity(id))
             .flatten()
     }
@@ -1665,7 +1677,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn dedicated_lan(&self) -> Option<&sunrise_sim::lan::Lan> {
         self.options.dedicated.as_ref()?;
-        Some(&self.lan.as_ref()?.hub.lan)
+        Some(&self.side.lan.as_ref()?.hub.lan)
     }
 
     pub(in crate::game) fn server_crafting_remainder_hook(
@@ -1748,7 +1760,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
         let &(_, conn, _) = self
             .player_state
@@ -1778,7 +1790,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         {
             return Some(read);
         }
-        let guests = &self.lan.as_ref()?.hub.guests;
+        let guests = &self.side.lan.as_ref()?.hub.guests;
         let guest = guests
             .get(guests.identity_index(player.fields().uuid, player.fields().entity.id())?)?;
         if !guest.placed
@@ -1805,7 +1817,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             ));
         }
         if let Some(guest) = self.cloning_guest(uuid).or_else(|| {
-            self.lan.as_ref().and_then(|host| {
+            self.side.lan.as_ref().and_then(|host| {
                 host.hub.guests.simulation_iter().find(|guest| {
                     host.hub.online(guest)
                         && guest.uuid == uuid
@@ -1816,7 +1828,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             return Some((PlayerRead::Guest(guest), guest.entity_id as u32));
         }
         if crate::game::Side::lan_acting_uuid(&self.side).is_none()
-            && self.serving.is_some()
+            && self.side.serving.is_some()
             && self
                 .level
                 .player_uuid
@@ -2014,7 +2026,8 @@ pub(in crate::game) mod tests {
                             game.reload_datapacks(false, &game.level.enabled_features.clone())
                                 .unwrap();
                             let (sent, received) = std::sync::mpsc::channel();
-                            game.lan
+                            game.side
+                                .lan
                                 .as_mut()
                                 .unwrap()
                                 .hub
@@ -2426,13 +2439,15 @@ pub(in crate::game) mod tests {
                                 Some(&Value::Vec3([1.5, 64.25, -2.0]))
                             );
                             drop(heard);
-                            game.lan
+                            game.side
+                                .lan
                                 .as_mut()
                                 .unwrap()
                                 .hub
                                 .update_guest(12, |g| g.permission = 4)
                                 .unwrap();
                             let inventory = game
+                                .side
                                 .lan
                                 .as_ref()
                                 .unwrap()
@@ -2455,7 +2470,14 @@ pub(in crate::game) mod tests {
                             assert_eq!(heard[13].1.literals, ["typed", "opt"]);
                             assert_eq!(heard[13].1.argument("value"), Some(&Value::Integer(17)));
                             assert_eq!(
-                                game.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory,
+                                game.side
+                                    .lan
+                                    .as_ref()
+                                    .unwrap()
+                                    .hub
+                                    .guest(12)
+                                    .unwrap()
+                                    .inventory,
                                 inventory
                             );
                         });
@@ -2644,13 +2666,14 @@ pub(in crate::game) mod fake_action_tests {
                 let (player, fake_conn, _) = fake(game, None, 0);
                 // A placed fake participates in actions, not online-player tracking.
                 // The packet attack gate must still reach the hook and damage below.
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 let guest = host.hub.guest(fake_conn).unwrap();
                 assert!(guest.is_fake());
                 assert!(guest.placed);
                 assert_eq!(guest.dimension, host.hub.config.dimension);
                 assert!(!guest.participates_online());
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -2686,7 +2709,8 @@ pub(in crate::game) mod fake_action_tests {
             // the hit nor the reset has run yet.
             with_game(|game| {
                 let (player, fake_conn, _) = fake(game, None, 0);
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -2765,7 +2789,8 @@ pub(in crate::game) mod fake_action_tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 let (player, fake_conn, _) = fake(game, None, 0);
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -3053,7 +3078,7 @@ pub(in crate::game) mod fake_action_tests {
             );
             drop(acting);
             assert_eq!(held(game, 2), Some(ItemStack::new("minecraft:diamond", 1)));
-            let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+            let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
             assert_eq!(guest.game_mode, 1);
             assert_eq!(guest.position, [0.5, 64.0, 0.5]);
         });

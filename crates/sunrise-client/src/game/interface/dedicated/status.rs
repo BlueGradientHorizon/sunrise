@@ -153,7 +153,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let i = ((samples.len() as f64 * q) as usize).min(samples.len().saturating_sub(1));
             samples.get(i).copied().map_or(0.0, millis)
         };
-        let (players, max_players) = self.lan.as_ref().map_or((Vec::new(), 0), |h| {
+        let (players, max_players) = self.side.lan.as_ref().map_or((Vec::new(), 0), |h| {
             let players = h
                 .hub
                 .guests

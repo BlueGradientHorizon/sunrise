@@ -125,12 +125,18 @@ pub(in crate::game) mod tests {
                 add_guest(game);
                 let at = Vec3::new(0.5, 65.0, 0.5);
                 let mut body = PlayerMotion::new(game.motion, at).unwrap();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.position = at.components();
-                    guest.load_timeout = 0;
-                    body.entity_id = guest.entity_id;
-                    guest.motion = Some(Box::new(body));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.position = at.components();
+                        guest.load_timeout = 0;
+                        body.entity_id = guest.entity_id;
+                        guest.motion = Some(Box::new(body));
+                    });
                 game.reset_entity_residency();
                 assert_eq!(
                     game.guest_interact(1, 0, id, Hand::Main, [0.0, 1.65, -0.25]),

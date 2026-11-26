@@ -24,6 +24,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             PlayerRead::Acting { .. } => return self.attack_strength_scale_at(partial),
             PlayerRead::Guest(guest) => {
                 let (ticks, item) = self
+                    .side
                     .lan
                     .as_ref()?
                     .play

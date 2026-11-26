@@ -627,7 +627,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
     with_client_game(|game| {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "water-overlay").unwrap();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.loaded_sent = true;
         remote.joined = true;

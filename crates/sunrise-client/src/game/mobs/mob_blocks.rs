@@ -326,7 +326,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(item) = mob.extra.body_id() else {
             return;
         };
-        if super::armor_stands::skull_kind(item).is_some() {
+        if crate::game::armor_stands_common::skull_kind(item).is_some() {
             return;
         }
         let Some(state) = self.items().get(item).and_then(|item| item.block) else {
@@ -498,7 +498,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .is_some_and(|p| p.id == mob.id && p.kind.id == mob.kind.id);
             let mut stack = if local_player {
                 let Some(stack) = self.stack_in(if off_hand {
-                    super::shield::OFFHAND_SLOT
+                    crate::game::held_items::OFFHAND_SLOT
                 } else {
                     self.selected
                 }) else {
@@ -640,7 +640,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(head) = render::part_transform(mob, alpha as f32, camera, self, "head") else {
             return;
         };
-        if let Some(kind) = super::armor_stands::skull_kind(&stack.item) {
+        if let Some(kind) = crate::game::armor_stands_common::skull_kind(&stack.item) {
             // Only the renderers that add a `CustomHeadLayer` draw a skull:
             // the humanoid mobs, the illagers, the villagers, the copper golem
             // and the avatars.

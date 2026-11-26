@@ -1,6 +1,5 @@
 use super::*;
-use crate::game::lan_actions::turns::CombatPlayer;
-use crate::game::lan_actions::turns::DisplacedPlayer;
+use crate::game::server_side::potions_server::swap_player;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `as_guest`, with the system messages the guest's action earns (the
@@ -19,7 +18,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let lines = std::mem::replace(&mut game.side.chat_capture, outer).unwrap_or_default();
             (result, lines)
         })?;
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             for line in lines {
                 host.hub.send_to(
                     conn,
@@ -31,7 +30,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         match result {
-            Ok(result) => self.lan.is_some().then_some(result),
+            Ok(result) => self.side.lan.is_some().then_some(result),
             Err(payload) => {
                 // `f`'s panic was caught inside the turn, which ended cleanly: record it here.
                 self.record_interrupted_turn(conn);
@@ -64,7 +63,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return Some(CombatPlayer::Displaced(depth, body));
         }
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         host.hub
             .guests
             .iter()
@@ -80,7 +79,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.player.is_some() && !self.side.lan_acting_fake {
             f(self);
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let conns: Vec<u32> = host
@@ -103,7 +102,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         outer_dimension: Dim,
         run: &mut dyn FnMut(&mut Self),
     ) -> Result<(), TurnRefused> {
-        let spawn_protection = self.lan.as_ref().and_then(|host| {
+        let spawn_protection = self.side.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
                 .get(i)
@@ -122,7 +121,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             borrowed: true,
         };
         let input_sneak = self.server_acting_sneak();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return Err(TurnRefused::Gone);
         };
         if host.hub.guests.get(i).is_none_or(|g| g.conn != conn) {
@@ -184,7 +183,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let host_combat = std::mem::replace(&mut self.side.combat.0, guest_combat);
         host.hub.guests.update(i, |g| {
-            self.potions.swap_player(&mut g.effects, &mut play.potions)
+            swap_player(&mut self.potions, &mut g.effects, &mut play.potions)
         });
         let g = &host.hub.guests[i];
         motion.position = Vec3::new(g.position[0], g.position[1], g.position[2]);
@@ -253,7 +252,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &mut self.previous_mode,
             guest_previous.map(crate::game::game_mode::mode_from_id),
         );
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
         let g = &host.hub.guests[i];
@@ -299,7 +298,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let swing = std::mem::replace(&mut self.swing, play.swing);
         std::mem::swap(&mut self.mount, &mut play.mount);
         // `Entity.portalCooldown` and `portalProcess` are the player's own.
-        std::mem::swap(&mut self.portals.player, &mut play.portal);
+        std::mem::swap(&mut self.portal_player, &mut play.portal);
         let outer_input = self.server_replace_acting_input(
             crate::game::server_side::acting_state::ServerActingInput {
                 sneak: sneaking,
@@ -319,7 +318,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Entity.collide: the guest's body collides with the level's world
         // border too, as it is this turn (it moves with /worldborder).
         self.player_border();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
         let g = &host.hub.guests[i];
@@ -341,7 +340,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // into the host's while the guest acts.
         let host_ender = self.side.ender_open;
         self.close_ender_chest();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
         let simulated = host.hub.guests.update(i, |g| {
@@ -352,7 +351,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if simulated {
             self.advancement_tree();
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
         host.hub.guests.update(i, |g| {
@@ -429,7 +428,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         run(self);
 
         // Commit the guest's changes and put the outer player back.
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
         debug_assert_eq!(host.hub.guests.get(i).map(|g| g.conn), Some(conn));
@@ -457,6 +456,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // reaches the guest.
             let now = self.player.as_ref().map(|p| p.health.food.food);
             let food = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.get(i))
@@ -520,7 +520,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 _ => None,
             };
             if let Some(item) = item {
-                let Some(host) = self.lan.as_ref() else {
+                let Some(host) = self.side.lan.as_ref() else {
                     unreachable!("LanHost dropped inside a guest turn; closes are deferred");
                 };
                 let guest = &host.hub.guests[i];
@@ -547,7 +547,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.send_level_sound(sound, Some(conn));
         }
         let outgoing = std::mem::replace(&mut self.side.guest_packets, packets);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
         if host.hub.guests[i].participates_online() {
@@ -637,7 +637,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         play.attack_item = std::mem::replace(&mut self.side.attack_item, attack_item);
         play.swing = std::mem::replace(&mut self.swing, swing);
         std::mem::swap(&mut self.mount, &mut play.mount);
-        std::mem::swap(&mut self.portals.player, &mut play.portal);
+        std::mem::swap(&mut self.portal_player, &mut play.portal);
         self.container = container;
         let crate::game::server_side::acting_state::ServerPendingGuestUi {
             sign_editor: guest_sign,
@@ -649,7 +649,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let new_mode = self.mode_id();
         let turn_previous = std::mem::replace(&mut self.previous_mode, outer_previous);
         let turn_abilities = std::mem::replace(&mut self.side.acting_abilities, outer_abilities);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
         enum TurnTeleport {
@@ -692,7 +692,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             play.marks = std::mem::replace(&mut self.adv.marks, marks);
             let stat_events = std::mem::take(&mut play.stats.events);
             let name = g.name.clone();
-            self.potions.swap_player(&mut g.effects, &mut play.potions);
+            swap_player(&mut self.potions, &mut g.effects, &mut play.potions);
             if let Some(key) = host_ender {
                 self.world
                     .block_entities
@@ -873,11 +873,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.open_turn_ender_menus(conn);
         // The turn's teleports are in the hub now: the mods hear them.
         self.flush_teleport_notes();
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             refresh_building_player(host, conn);
         }
         // An inner turn can move, kill, or change the mode of a hub-owned body.
-        if let (Some(actor), Some(host)) = (self.side.lan_acting, self.lan.as_ref()) {
+        if let (Some(actor), Some(host)) = (self.side.lan_acting, self.side.lan.as_ref()) {
             self.side.lan_building_boxes.0 =
                 self.side
                     .lan_building_boxes
@@ -938,7 +938,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             Some(CombatPlayer::Parked(guest)) => {
                 let conn = guest.conn;
-                if let Some(host) = self.lan.as_mut() {
+                if let Some(host) = self.side.lan.as_mut() {
                     host.hub.update_guest(conn, |guest| {
                         if let Some(body) = guest.motion.as_mut() {
                             body.health.last_hurt_mob =
@@ -961,7 +961,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         gi: usize,
         f: impl FnOnce(&mut LanHost, &sunrise_items::items::Items) -> Option<R>,
     ) -> Option<R> {
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let conn = host.hub.guests[gi].conn;
         let swap = match self.side.lan_guest_swaps.iter().position(|&c| c == conn) {
             Some(loan) => match self.side.lan_guest_swaps.get(loan + 1) {
@@ -971,7 +971,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None => None,
         };
         let swap_inventory = |game: &mut Self| {
-            let host = game.lan.as_mut().expect("the guest turn owns the LAN host");
+            let host = game
+                .side
+                .lan
+                .as_mut()
+                .expect("the guest turn owns the LAN host");
             match swap {
                 Some(Some(inner)) => host.hub.guests.swap_loaned_inventory(gi, inner),
                 Some(None) => host.hub.guests.update(gi, |g| {
@@ -987,7 +991,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         };
         swap_inventory(self);
-        let result = f(self.lan.as_mut()?, world_items!(self));
+        let result = f(self.side.lan.as_mut()?, server_world_items!(self));
         swap_inventory(self);
         result
     }
@@ -1014,7 +1018,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Result<R, TurnRefused> {
         let result = self.with_guest_swap_at(gi, conn, self.dim, |game| {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let dimension = (game.serving.is_some() || game.options.dedicated.is_some())
+                let dimension = (game.side.serving.is_some() || game.options.dedicated.is_some())
                     .then_some(game.dim.id());
                 let result = sunrise_sim::block_contact::in_level(game.tick, dimension, || f(game));
                 game.drain_entity_inside();
@@ -1036,7 +1040,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Where guest `conn` is in the hub's list.
     pub(in crate::game) fn guest_index(&self, conn: u32) -> Option<usize> {
-        self.lan.as_ref()?.hub.guests.connection_index(conn)
+        self.side.lan.as_ref()?.hub.guests.connection_index(conn)
     }
 
     /// Run a command or fixture with the guest's player state in place, without the
@@ -1073,7 +1077,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         source: sunrise_world::damage_source::DamageTypeId,
     ) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(g) = host.hub.guest(conn) else {
@@ -1099,6 +1103,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// from `handleDamageEvent` (#4149).
     pub(in crate::game) fn guest_hurt_sound(&mut self, conn: u32, sound: &str) {
         let Some(at) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))

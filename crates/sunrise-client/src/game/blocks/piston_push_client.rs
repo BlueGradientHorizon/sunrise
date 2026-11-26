@@ -1,16 +1,13 @@
 //! Client-side local player movement, piston prediction (local player + driven boats),
 //! shulker/shulker-box lid prediction (local player + all intersecting boats), and
 //! moving-collider carry/shove prediction for the local player.
-use super::{
-    Game,
-    entity::{Entity, EntityHandle},
-    move_gate::MoveWho,
-    remote_vehicles::passenger_root,
-};
+use super::{Game, move_gate::MoveWho};
 use crate::game::collision_source::Mover;
+use crate::game::entity::{Entity, EntityHandle};
 use crate::game::piston_push::{
     Body, Lid, Push, PushTarget, ShulkerPush, carrying::support_of, pushed_movement, shulker_lid,
 };
+use crate::game::remote::passengers::passenger_root;
 use sunrise_core::geometry::{
     Aabb, Axis, COLLISION_EPSILON, Direction, Vec3, entity_collision_bounds,
 };
@@ -44,7 +41,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(player) = self.player.as_mut() else {
             return Ok(None);
         };
-        let side = game_side!(self, side_server);
+        let side = client_game_side!(self, side_server);
         let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
         let tag_items = self
             .server_items
@@ -283,7 +280,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     fn client_resolve_boat(&self, selected: PushTarget) -> Option<usize> {
-        let matches = |b: &crate::game::boats::Boat| {
+        let matches = |b: &crate::game::boats_common::Boat| {
             !b.is_removed() && b.id == selected.id && Some(b.join_seq()) == selected.join
         };
         if let MoveWho::Entity(EntityHandle::Boat(i)) = selected.hint
@@ -447,20 +444,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let boat = &self.boats[i];
         let (id, feet, kind) = (boat.id, boat.position, boat.shared_type_name());
         let effect = self
-            .body_motion(&game_side!(self, side_server))
+            .body_motion(&client_game_side!(self, side_server))
             .legacy_contact(feet, &boat.ground);
-        let response = self.body_motion(&game_side!(self, side_server)).restitute(
-            (id, &kind),
-            BodyMove {
-                wanted,
-                moved,
-                effect,
-            },
-            boat.get_gravity(),
-            1.0_f32,
-            boat.velocity,
-            boat.fall_distance,
-        );
+        let response = self
+            .body_motion(&client_game_side!(self, side_server))
+            .restitute(
+                (id, &kind),
+                BodyMove {
+                    wanted,
+                    moved,
+                    effect,
+                },
+                boat.get_gravity(),
+                1.0_f32,
+                boat.velocity,
+                boat.fall_distance,
+            );
         let velocity = self.client_finish_body_restitution((id, &kind), feet, response);
         if let Some(i) = self.client_resolve_boat(selected) {
             self.boats.update(i, |b| b.velocity = velocity);
@@ -471,7 +470,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// plus `mob.extra.mount` fallback for offline client fixtures).
     fn client_vehicle_root(&self, mut id: u32) -> u32 {
         for _ in 0..16 {
-            if let Some(remote) = self.remote.as_ref()
+            if let Some(remote) = self.side.remote.as_ref()
                 && remote.passenger_vehicle(id).is_some()
             {
                 match passenger_root(&remote.passenger_vehicles, id) {
@@ -656,6 +655,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let boat = &self.boats[i];
         if authoritative
             && self
+                .side
                 .remote
                 .as_ref()
                 .is_none_or(|r| r.passenger_vehicle(boat.id).is_none())
@@ -673,20 +673,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let boat = &self.boats[i];
             let (id, feet, kind) = (boat.id, boat.position, boat.shared_type_name());
             let effect = self
-                .body_motion(&game_side!(self, side_server))
+                .body_motion(&client_game_side!(self, side_server))
                 .legacy_contact(feet, &boat.ground);
-            let response = self.body_motion(&game_side!(self, side_server)).restitute(
-                (id, &kind),
-                BodyMove {
-                    wanted: movement,
-                    moved,
-                    effect,
-                },
-                boat.get_gravity(),
-                1.0_f32,
-                boat.velocity,
-                boat.fall_distance,
-            );
+            let response = self
+                .body_motion(&client_game_side!(self, side_server))
+                .restitute(
+                    (id, &kind),
+                    BodyMove {
+                        wanted: movement,
+                        moved,
+                        effect,
+                    },
+                    boat.get_gravity(),
+                    1.0_f32,
+                    boat.velocity,
+                    boat.fall_distance,
+                );
             let velocity = self.client_finish_body_restitution((id, &kind), feet, response);
             if let Some(i) = self.client_resolve_boat(selected) {
                 self.boats.update(i, |b| b.velocity = velocity);
@@ -715,7 +717,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             })
             .flatten()
             .and_then(|id| Some((id, self.client_collider_now_frame(id)?)));
-        if let Some(remote) = self.remote.as_mut() {
+        if let Some(remote) = self.side.remote.as_mut() {
             remote.carry_age.observe(carrier);
         }
     }
@@ -724,6 +726,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// player using client collider frames and the previous tick's shove snapshot.
     pub(in crate::game) fn client_carry_pass(&mut self, start: &Prepared) {
         let last = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.collider_shove_start.take())
@@ -785,12 +788,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| !r.colliders.is_empty())
         {
             let now = self.client_placed_moving_colliders();
-            if let Some(remote) = self.remote.as_mut() {
+            if let Some(remote) = self.side.remote.as_mut() {
                 remote.collider_shove_start = Some((self.dim, now));
             }
         }
@@ -868,7 +872,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 mod client_lid_tests {
     use super::*;
-    use crate::game::boats::Boat;
+    use crate::game::boats_common::Boat;
     use crate::game::native_entity_refs::tests::with_client_game;
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;

@@ -1,5 +1,5 @@
 use super::Game;
-use crate::game::server_side::lan_vehicles::corners;
+use crate::game::lan_common::corners;
 use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -61,7 +61,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return None;
         }
         let row = self.resident_entities.general.row(id)?;
-        let (lo, hi) = corners(super::entity::Entity::bounds(row));
+        let (lo, hi) = corners(crate::game::entity::Entity::bounds(row));
         Some((lo, hi, at(row.position)))
     }
 }

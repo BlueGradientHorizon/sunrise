@@ -3,7 +3,6 @@ use super::Game;
 use crate::game::client_side::remote_client::RemoteInputWorld;
 #[cfg(test)]
 use crate::game::client_side::remote_client::RemoteUseWorld;
-use crate::game::remote::Remote;
 use std::sync::Arc;
 #[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
@@ -34,9 +33,6 @@ pub(in crate::game) mod inventory;
 
 #[path = "session_server.rs"]
 pub(in crate::game) mod session;
-
-#[path = "sync_server.rs"]
-pub(in crate::game) mod sync;
 
 #[cfg(test)]
 #[path = "interaction_event_tests_server.rs"]

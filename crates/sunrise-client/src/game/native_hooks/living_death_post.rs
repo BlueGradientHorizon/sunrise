@@ -232,12 +232,18 @@ pub(in crate::game) use crate::game::server_side::native_hooks_server::living_de
             with_game(|game| {
                 game.load_server_loot();
                 add_guest(game);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.health = 0.0;
-                    guest.inventory[0] =
-                        Some(sunrise_items::items::ItemStack::new("minecraft:stone", 1));
-                });
-                let id = game.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.health = 0.0;
+                        guest.inventory[0] =
+                            Some(sunrise_items::items::ItemStack::new("minecraft:stone", 1));
+                    });
+                let id = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
 
                 game.guest_die(0, 1);
 

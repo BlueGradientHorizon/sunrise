@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::game::server_side::crossbow::ARROW;
+use crate::game::crossbow_common::ARROW;
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 
@@ -68,9 +68,15 @@ pub(in crate::game) mod tests {
         options.resources = root.to_path_buf();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game =
-            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-                .unwrap();
+        let mut game = crate::game::ServerGame::new(
+            res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
         game.creative = true;
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(

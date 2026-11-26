@@ -1,6 +1,16 @@
 //! The window's first renderer and frames: the renderer built from the prepared textures, the
 //! boot screen's frame, and `start_game`, which turns the loaded resources into a `Game`.
 use super::*;
+use crate::game::integrated_link::{ProfileResolverFactory, RunComponentHarness, Serve};
+use crate::game::{
+    client_side::{
+        launch_options_client::is_client_start,
+        resource_tables_client::{ClientPackResources, ClientResources, UiResources},
+    },
+    integrated_link::ComponentHarness,
+    resource_load::WorldRestLoader,
+};
+use sunrise_sim::lan::SessionVerifier;
 
 /// CPU mip chains for the block sprites and world border.
 pub(in crate::game) fn prepare_renderer_textures(
@@ -304,6 +314,10 @@ pub(in crate::game) fn start_client_game<'a>(
     client_applies: Vec<client_reload::PreparedClientReload>,
     entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
     window: Option<(Arc<Window>, Renderer)>,
+    serve_integrated: Serve,
+    run_component_harness: RunComponentHarness,
+    session_verifier: SessionVerifier,
+    profile_resolver: ProfileResolverFactory,
 ) -> Result<Option<super::ClientGame<'a>>> {
     let handoff = prepared.is_some();
     if let Some(d) = options.distance_override {
@@ -316,7 +330,7 @@ pub(in crate::game) fn start_client_game<'a>(
         None => Some(GameCpuResources::load(
             &sunrise_assets::resource_source::ResourceRoot::new(
                 options.resources.clone(),
-                packs::cache_dir(),
+                crate::game::packs_common::cache_dir(),
                 pack.source.clone(),
             ),
             entity_models.as_deref(),
@@ -325,7 +339,7 @@ pub(in crate::game) fn start_client_game<'a>(
         )?),
     };
     let mut initial = None;
-    let stage = options.is_client_start().then_some(&mut initial);
+    let stage = is_client_start(&options).then_some(&mut initial);
     let mut game: super::ClientGame<'a> = super::ClientGame::construct(
         res,
         client_res,
@@ -337,6 +351,10 @@ pub(in crate::game) fn start_client_game<'a>(
         audio,
         prepared,
         stage,
+        serve_integrated,
+        run_component_harness,
+        session_verifier,
+        profile_resolver,
     )?;
     // `new DebugRenderer()` refreshes its list.
     game.refresh_debug_renderers();
@@ -430,14 +448,22 @@ pub(in crate::game) fn start_client_game<'a>(
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Pump the client connection without movement prediction until the harness server stops.
     pub(in crate::game::client_side) fn wait_command_harness(&mut self) -> Result<()> {
-        let server = self.integrated.take().ok_or("command harness: no server")?;
+        let server = self
+            .side
+            .integrated
+            .take()
+            .ok_or("command harness: no server")?;
         let client_config = std::env::var_os("SUNRISE_HARNESS_CLIENT_CONFIG");
         let mut wrote_config = false;
         while !server.stopped() {
             self.poll_stationary_client()?;
             if !wrote_config
                 && let Some(path) = &client_config
-                && let Some(remote) = self.remote.as_ref().filter(|r| r.logged_in && r.joined)
+                && let Some(remote) = self
+                    .side
+                    .remote
+                    .as_ref()
+                    .filter(|r| r.logged_in && r.joined)
             {
                 std::fs::write(
                     path,
@@ -486,15 +512,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Ok(false);
         }
         if let Ok(spec) = std::env::var("SUNRISE_DISPENSE_FIXTURE") {
-            game.run_component_harness(integrated::ComponentHarness::Dispenser(spec))?;
+            game.run_component_harness(ComponentHarness::Dispenser(spec))?;
             return Ok(false);
         }
         if let Ok(spec) = std::env::var("SUNRISE_SCULK_FIXTURE") {
-            game.run_component_harness(integrated::ComponentHarness::Sculk(spec))?;
+            game.run_component_harness(ComponentHarness::Sculk(spec))?;
             return Ok(false);
         }
         if let Ok(output) = std::env::var("SUNRISE_HOT_PATHS") {
-            game.run_component_harness(integrated::ComponentHarness::HotPaths(output))?;
+            game.run_component_harness(ComponentHarness::HotPaths(output))?;
             return Ok(false);
         }
         // Finish Setup -> Config -> World before any screen, connection, input or tick hooks.

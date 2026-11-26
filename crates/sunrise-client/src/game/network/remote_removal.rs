@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 vehicles.insert(id);
             }
         };
-        if let Some(r) = &self.remote {
+        if let Some(r) = &self.side.remote {
             for seat in r.passenger_vehicles.values() {
                 include(seat.vehicle);
             }
@@ -70,7 +70,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.remove_remote_object(id as u32);
             self.remove_remote_small_projectiles(id as u32);
             self.persist.uuids.remove(&(id as u32));
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 Self::forget_remote_general(r, id);
                 if let Some(old_uuid) = r.level_entity_uuids.remove(&id)
                     && r.level_uuids.get(&old_uuid) == Some(&id)
@@ -100,7 +100,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.dropped.retain(|d| keep(d.id));
         self.falling.retain(|f| keep(f.id));
         self.tnts.retain(|t| keep(t.id));
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.passenger_vehicles.retain(|_, seat| keep(seat.vehicle));
         }
     }
@@ -145,6 +145,10 @@ mod tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -159,6 +163,7 @@ mod tests {
             (46, "falling_block"),
         ] {
             let kind = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -188,7 +193,7 @@ mod tests {
             ids: vec![44, 40, 46],
         }))
         .unwrap();
-        let r = game.remote.as_ref().unwrap();
+        let r = game.side.remote.as_ref().unwrap();
         assert_eq!(r.entities[&42].vehicle, None);
         assert_eq!(game.armor_stands[0].vehicle, None);
         assert_eq!(r.entities[&43].vehicle, Some(41));
@@ -237,11 +242,16 @@ mod tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "SpawnTest").unwrap();
         let kind = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -329,6 +339,10 @@ mod tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();

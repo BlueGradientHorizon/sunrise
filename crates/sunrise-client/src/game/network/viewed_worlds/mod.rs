@@ -105,6 +105,10 @@ pub(in crate::game) mod tests {
                 root,
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (pipe, server) = Pipe::pair();
@@ -140,7 +144,7 @@ pub(in crate::game) mod tests {
                 .map(|name| (name.to_owned(), None))
                 .to_vec(),
         );
-        game.remote.as_mut().unwrap().registries = Arc::new(registries);
+        game.side.remote.as_mut().unwrap().registries = Arc::new(registries);
         EPOCHS.with(|epochs| *epochs.borrow_mut() = Default::default());
         (game, server)
     }
@@ -254,7 +258,7 @@ pub(in crate::game) mod tests {
         game: &'a crate::game::ClientGame<'_>,
         level: i32,
     ) -> Option<&'a sunrise_level::world::World> {
-        Some(&game.remote.as_ref()?.viewed.get(level)?.world)
+        Some(&game.side.remote.as_ref()?.viewed.get(level)?.world)
     }
 
     /// A wrapped `BlockUpdate` changes the viewed level's block, and the player's level keeps
@@ -285,7 +289,7 @@ pub(in crate::game) mod tests {
         let mut resources = None;
         let mut game = client(&mut resources);
         game.handle_packet(open(0, "minecraft:the_end")).unwrap();
-        let world = game.remote.as_ref().unwrap().viewed.get(0).unwrap();
+        let world = game.side.remote.as_ref().unwrap().viewed.get(0).unwrap();
         assert_eq!(world.level, "minecraft:the_end");
         assert_eq!(world.world.chunks.len(), 0);
         game.handle_packet(run(0, &[column(4, -2), column(5, -2)]))
@@ -319,9 +323,9 @@ pub(in crate::game) mod tests {
         game.handle_packet(run(1, &[column(0, 0)])).unwrap();
         game.handle_packet(open(1, "minecraft:the_end")).unwrap();
         assert_eq!(viewed(&game, 1).unwrap().chunks.len(), 0, "afresh");
-        assert!(game.remote.is_some());
+        assert!(game.side.remote.is_some());
         game.handle_packet(open(2, "test:void")).unwrap();
-        assert!(game.remote.is_none());
+        assert!(game.side.remote.is_none());
     }
 
     /// Each `open` refusal has a fixed reason that shows none of the server's text: a dimension
@@ -399,7 +403,7 @@ pub(in crate::game) mod tests {
         let mut game = client(&mut resources);
         game.handle_packet(open(1, "test:instance/1")).unwrap();
         game.handle_packet(run(1, &[column(2, 3)])).unwrap();
-        let world = game.remote.as_ref().unwrap().viewed.get(1).unwrap();
+        let world = game.side.remote.as_ref().unwrap().viewed.get(1).unwrap();
         assert_eq!(world.level, "test:instance/1");
         assert_eq!(viewed(&game, 1).unwrap().chunks.len(), 1);
     }
@@ -429,7 +433,7 @@ pub(in crate::game) mod tests {
         });
         game.handle_packet(run_at(old, &[column(9, 9), pig]))
             .unwrap();
-        let end = game.remote.as_ref().unwrap().viewed.get(0).unwrap();
+        let end = game.side.remote.as_ref().unwrap().viewed.get(0).unwrap();
         assert_eq!(end.level, "minecraft:the_end");
         assert!(end.world.chunks.is_empty(), "the Nether's late column");
         assert!(end.entities.get(40).is_none(), "the Nether's late entity");
@@ -489,7 +493,10 @@ pub(in crate::game) mod tests {
         assert_eq!(game.world.game_time, game_time);
         assert_eq!(game.world.day_time, day_time);
         assert!(!game.world.weather.raining);
-        assert_eq!(game.remote.as_ref().unwrap().level, "minecraft:overworld");
+        assert_eq!(
+            game.side.remote.as_ref().unwrap().level,
+            "minecraft:overworld"
+        );
     }
 
     /// A wrapped `AddEntity` and its move put the entity in the viewed world, where it moves; the
@@ -519,6 +526,7 @@ pub(in crate::game) mod tests {
         }));
         game.handle_packet(run(1, &[add, step])).unwrap();
         let nether = &game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -531,12 +539,13 @@ pub(in crate::game) mod tests {
         assert_eq!(pig.position, [9.5, 70.0, 8.0]);
         assert_eq!(pig.rotation.0, 90.0);
         assert!(pig.on_ground);
-        let r = game.remote.as_ref().unwrap();
+        let r = game.side.remote.as_ref().unwrap();
         assert!(r.tracked_entity(50).is_none(), "not in the player's world");
         assert!(game.mobs.iter().all(|m| m.id != 50));
         let gone = C::RemoveEntities(play::RemoveEntities { ids: vec![50] });
         game.handle_packet(run(1, &[gone])).unwrap();
         let nether = &game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -560,7 +569,7 @@ pub(in crate::game) mod tests {
             keep: 0,
         }))
         .unwrap();
-        assert_eq!(game.remote.as_ref().unwrap().viewed.len(), 0);
+        assert_eq!(game.side.remote.as_ref().unwrap().viewed.len(), 0);
     }
 
     /// A sound of `name` at fixed-point `pos` (eighths of a block), in the blocks' source.

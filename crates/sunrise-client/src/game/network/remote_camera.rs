@@ -13,7 +13,8 @@ pub(in crate::game) mod camera_mount_tests;
 #[path = "tests/remote_camera_tests.rs"]
 pub(in crate::game) mod camera_tests;
 
-use super::{Game, remote::Remote};
+use super::Game;
+use crate::game::client_side::remote_client::{Remote, Tracked};
 #[cfg(test)]
 use std::collections::HashMap;
 use sunrise_client::{
@@ -233,7 +234,9 @@ pub(in crate::game::client_side) fn stand_camera_entity_with(
 /// `Camera.alignWithEntity`'s view of a boat, which is not living (no
 /// `getScale`, no camera distance): its interpolated position and `Entity`'s
 /// view rotation, with `EntityType.BOAT`'s `eyeHeight(0.5625F)`.
-pub(in crate::game::client_side) fn boat_camera_entity(b: &super::boats::Boat) -> CameraEntity {
+pub(in crate::game::client_side) fn boat_camera_entity(
+    b: &crate::game::boats_common::Boat,
+) -> CameraEntity {
     CameraEntity {
         position: [b.position.x, b.position.y, b.position.z],
         previous: [b.previous.x, b.previous.y, b.previous.z],
@@ -301,7 +304,9 @@ pub(in crate::game::client_side) fn painting_camera_entity(p: &Painting) -> Came
 /// `Camera.alignWithEntity`'s view of primed TNT: its interpolated position
 /// and `Entity`'s view rotation (priming never changes it), with
 /// `EntityType.TNT`'s `eyeHeight(0.15F)`.
-pub(in crate::game::client_side) fn tnt_camera_entity(t: &super::tnt::PrimedTnt) -> CameraEntity {
+pub(in crate::game::client_side) fn tnt_camera_entity(
+    t: &crate::game::tnt_common::PrimedTnt,
+) -> CameraEntity {
     CameraEntity {
         position: [t.position.x, t.position.y, t.position.z],
         previous: [t.previous.x, t.previous.y, t.previous.z],
@@ -317,7 +322,7 @@ pub(in crate::game::client_side) fn tnt_camera_entity(t: &super::tnt::PrimedTnt)
 
 /// `Camera.alignWithEntity`'s view of an `Interaction`: non-living, scalable dimensions.
 pub(in crate::game::client_side) fn interaction_camera_entity(
-    i: &super::interactions::RemoteInteraction,
+    i: &crate::game::interactions_common::RemoteInteraction,
 ) -> CameraEntity {
     CameraEntity {
         position: [i.position.x, i.position.y, i.position.z],
@@ -334,7 +339,7 @@ pub(in crate::game::client_side) fn interaction_camera_entity(
 
 /// Fallback view for any other tracked level entity (`Level.getEntity`).
 #[cfg(test)]
-fn tracked_camera_entity(t: &super::remote::Tracked) -> CameraEntity {
+fn tracked_camera_entity(t: &Tracked) -> CameraEntity {
     CameraEntity {
         position: t.position,
         previous: t.previous,
@@ -353,13 +358,13 @@ fn tracked_camera_entity(t: &super::remote::Tracked) -> CameraEntity {
 pub(in crate::game) struct CameraEntities<'a> {
     pub mobs: &'a [Mob],
     pub stands: &'a [ArmorStand],
-    pub boats: &'a [super::boats::Boat],
+    pub boats: &'a [crate::game::boats_common::Boat],
     pub frames: &'a [ItemFrame],
-    pub tnts: &'a [super::tnt::PrimedTnt],
+    pub tnts: &'a [crate::game::tnt_common::PrimedTnt],
     pub displays: &'a indexmap::IndexMap<i32, super::text_displays::RemoteTextDisplay>,
-    pub interactions: &'a HashMap<i32, super::interactions::RemoteInteraction>,
-    pub tracked: Option<&'a HashMap<i32, super::remote::Tracked>>,
-    pub vehicles: &'a HashMap<u32, super::remote_vehicles::PassengerSeat>,
+    pub interactions: &'a HashMap<i32, crate::game::interactions_common::RemoteInteraction>,
+    pub tracked: Option<&'a HashMap<i32, Tracked>>,
+    pub vehicles: &'a HashMap<u32, crate::game::remote::passengers::PassengerSeat>,
     pub player: Option<(u32, &'a PlayerMotion)>,
     pub living: Box<dyn Fn(&Mob) -> (f32, f64) + 'a>,
     pub stand_living: Box<dyn Fn(&ArmorStand) -> (f32, f64) + 'a>,
@@ -468,16 +473,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleSetCamera`.
     pub(in crate::game) fn remote_set_camera(&mut self, camera_id: i32) {
         let id = camera_id as u32;
-        let in_level = self.remote.as_ref().is_some_and(|r| {
+        let in_level = self.side.remote.as_ref().is_some_and(|r| {
             self.holds_camera_entity(id)
                 || r.general.rows.contains_key(&camera_id)
                 || r.tracked_entity(camera_id).is_some()
         });
         let player = self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.entity_id == camera_id);
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             let next = camera_after_packet(r.camera, r.entity_id, camera_id, in_level);
             if in_level || player {
                 r.camera = next;
@@ -514,12 +520,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The entity a server attached the view to, when it is not the player (live or detached).
     pub(in crate::game) fn remote_camera_id(&self) -> Option<u32> {
-        self.remote.as_ref()?.camera.map(|id| id as u32)
+        self.side.remote.as_ref()?.camera.map(|id| id as u32)
     }
 
     /// The live entity id currently acting as the remote camera (`None` once removed or replaced).
     pub(in crate::game) fn live_remote_camera_id(&self) -> Option<u32> {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .filter(|r| r.detached_camera.is_none())
             .and_then(|r| r.camera)
@@ -543,7 +550,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Snapshot of a detached watched player's HUD state, if the detached camera was a player.
     pub(in crate::game::client_side) fn detached_camera_hud(&self) -> Option<&DetachedPlayerHud> {
-        self.remote
+        self.side
+            .remote
             .as_ref()?
             .detached_camera
             .as_deref()?
@@ -557,6 +565,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         matches: impl FnOnce(i32) -> bool,
     ) {
         let Some(cam_id) = self
+            .side
             .remote
             .as_ref()
             .filter(|r| r.detached_camera.is_none())
@@ -577,7 +586,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if detached.is_player {
             detached.detached_hud = self.snapshot_remote_player_hud(detached.entity_id);
         }
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.detached_camera = Some(Box::new(detached));
         }
     }
@@ -626,7 +635,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn camera_identity_and_position(
         &self,
     ) -> Option<(Option<u128>, [f64; 3])> {
-        if let Some(r) = self.remote.as_ref()
+        if let Some(r) = self.side.remote.as_ref()
             && let Some(id) = r.camera
         {
             if let Some(detached) = r
@@ -649,7 +658,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// `Minecraft.getCameraEntity`: local player, live tracked entity, or detached snapshot.
     pub(in crate::game) fn camera_subject(&self) -> Option<ResolvedCameraEntity> {
-        if let Some(r) = self.remote.as_ref()
+        if let Some(r) = self.side.remote.as_ref()
             && let Some(id) = r.camera
         {
             if let Some(detached) = r
@@ -702,7 +711,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(cam) = self.camera_subject().filter(|c| c.is_player) else {
             return false;
         };
-        if !super::hud_render::block_outline_drawn(
+        if !sunrise_client_gameplay::hud_gates::block_outline_drawn(
             self.side.chat_ui.hide_gui,
             false,
             true,
@@ -742,7 +751,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn visual_camera_position(&self) -> Option<[f64; 3]> {
         if self.side.view.initialized {
             Some(self.side.view.position)
-        } else if self.remote.is_some() {
+        } else if self.side.remote.is_some() {
             self.camera_eye_position()
         } else {
             self.camera_entity_position()
@@ -1489,6 +1498,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return CameraPlayer::Own;
         };
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| id == r.entity_id as u32)
@@ -1496,6 +1506,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return CameraPlayer::Own;
         }
         if let Some(detached) = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.detached_camera.as_deref())

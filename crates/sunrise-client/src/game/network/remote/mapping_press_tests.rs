@@ -74,7 +74,7 @@ fn holding_use_draws_a_bow_once_and_letting_go_releases_it() {
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:bow", 1));
         let use_mapping = game.vanilla_key_mapping("key.use").unwrap();
         game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 64));
-        let sequence = game.remote.as_ref().unwrap().sequence;
+        let sequence = game.side.remote.as_ref().unwrap().sequence;
         assert_eq!(use_mapping.set_down(game, true), Ok(()));
         assert!(game.mapped_key_down("key.use"));
         assert_eq!(
@@ -84,7 +84,7 @@ fn holding_use_draws_a_bow_once_and_letting_go_releases_it() {
         );
         game.remote_handle_input();
         assert_eq!(sent(packets), ["minecraft:use_item"]);
-        assert_eq!(game.remote.as_ref().unwrap().sequence - sequence, 1);
+        assert_eq!(game.side.remote.as_ref().unwrap().sequence - sequence, 1);
         assert!(game.using.is_some());
         assert_eq!(*triggered.lock().unwrap(), [Hand::Main]);
         for _ in 0..5 {
@@ -114,7 +114,7 @@ fn clicking_attack_on_a_block_starts_the_break_and_punches() {
     with_pressing_game(|game, packets, triggered| {
         let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
         stone_under_the_crosshair(game);
-        let sequence = game.remote.as_ref().unwrap().sequence;
+        let sequence = game.side.remote.as_ref().unwrap().sequence;
         assert_eq!(attack_mapping.click(game), Ok(()));
         game.remote_handle_input();
         assert_eq!(
@@ -125,10 +125,10 @@ fn clicking_attack_on_a_block_starts_the_break_and_punches() {
                 "minecraft:player_action"
             ]
         );
-        assert_eq!(game.remote.as_ref().unwrap().sequence - sequence, 1);
+        assert_eq!(game.side.remote.as_ref().unwrap().sequence - sequence, 1);
         assert_eq!(*triggered.lock().unwrap(), [Hand::Main]);
 
-        let sequence = game.remote.as_ref().unwrap().sequence;
+        let sequence = game.side.remote.as_ref().unwrap().sequence;
         assert_eq!(attack_mapping.set_down(game, true), Ok(()));
         assert_eq!(attack_mapping.click(game), Ok(()));
         game.remote_handle_input();
@@ -141,7 +141,7 @@ fn clicking_attack_on_a_block_starts_the_break_and_punches() {
                 "minecraft:punch"
             ]
         );
-        assert_eq!(game.remote.as_ref().unwrap().sequence - sequence, 1);
+        assert_eq!(game.side.remote.as_ref().unwrap().sequence - sequence, 1);
         game.remote_handle_input();
         assert_eq!(sent(packets), ["minecraft:punch"], "the held key digs on");
         assert_eq!(attack_mapping.set_down(game, false), Ok(()));

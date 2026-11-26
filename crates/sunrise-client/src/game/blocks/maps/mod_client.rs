@@ -1,13 +1,8 @@
 use super::Game;
-use crate::game::server_side::maps::Decoration;
-use crate::game::server_side::maps::Key;
-use crate::game::server_side::maps::MapData;
-use crate::game::server_side::maps::decoration_pose;
-use crate::game::server_side::maps::decoration_pose_at;
-use crate::game::server_side::maps::map_id;
-use crate::game::server_side::maps::packed_rgba;
-use crate::game::server_side::maps::shown_on_frame;
-use crate::game::server_side::maps::*;
+use crate::game::maps::{
+    Decoration, Key, MapData, decoration_pose, decoration_pose_at, decoration_sprite, map_id,
+    packed_rgba, shown_on_frame,
+};
 use sunrise_client::{
     hud::{HudBatch, Rect, map_slot_sprite},
     mesher::Vertex,
@@ -67,6 +62,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let decorations = p.decorations.as_ref().map(|list| {
             let types = self
+                .side
                 .remote
                 .as_ref()
                 .and_then(|r| r.builtin.get("minecraft:map_decoration_type"));

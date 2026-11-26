@@ -11,7 +11,7 @@ pub(in crate::game) use texture_atlases::{collect_texture_atlases, stage_texture
 #[path = "client_reload_tests.rs"]
 mod tests;
 use super::Game;
-use super::packs::reload_files;
+use crate::game::packs_common::reload_files;
 use mod_api::{
     __private::reload::{PreparedStep, ReloadStageError, prepare_listeners},
     ClientReloadContext, ClientReloadHost, ClientReloadListener, ClientReloadListenerContext,

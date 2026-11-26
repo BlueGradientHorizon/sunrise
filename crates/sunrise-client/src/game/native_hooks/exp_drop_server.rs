@@ -1,6 +1,5 @@
 use super::*;
-use crate::game::native_hooks::exp_drop::LiveBlockEntity;
-use crate::game::spill::{BlockDropEntity, BlockDrops};
+use crate::game::spill_common::{BlockDropEntity, BlockDrops};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn entity_block_dropped(
@@ -50,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         at: ([i32; 3], BlockStateId),
         who: (Option<u128>, Option<&ItemStack>, Option<&Compound>),
         loot: (Vec<ItemStack>, Option<u32>),
-    ) -> crate::game::spill::BlockDrops {
+    ) -> crate::game::spill_common::BlockDrops {
         let ([x, y, z], state) = at;
         let (breaker, tool, block_entity_data) = who;
         let block_entity = match block_entity_data {
@@ -109,12 +108,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl GameLevel<'_> {
-    /// Capture the resident block entity's generation at `pos`, if one currently exists.
-    pub(in crate::game) fn resident_block_entity(
-        &self,
-        pos: BlockPos,
-    ) -> crate::game::spill::BlockDropEntity<'static> {
-        BlockDropEntity::at(self.world, (pos.x, pos.y, pos.z), None)
-    }
-}
+/// A player's break, before the removal: the block entity (for what the drops copy from it),
+/// and for the `block_drops` event its saved data with the `CustomName`, which the removal
+/// clears from the level.
+pub(in crate::game) type LiveBlockEntity =
+    (sunrise_level::containers::BlockEntity, Option<Compound>);

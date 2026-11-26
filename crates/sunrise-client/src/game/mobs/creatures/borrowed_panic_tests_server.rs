@@ -238,7 +238,7 @@ pub(in crate::game) fn run_fixture(family: Family, output: Output, dim: Dim) {
             let guests = matches!(output, Output::Guest | Output::Mixed);
             if guests {
                 game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 for i in 0..host.hub.guests.len() {
                     host.hub.guests.update(i, |g| {
                         g.dimension = dim.id().to_owned();
@@ -293,7 +293,7 @@ pub(in crate::game) fn run_fixture(family: Family, output: Output, dim: Dim) {
             }
             game.side
                 .last_hurt_by_player
-                .insert(71, super::super::combat::PlayerCredit(99));
+                .insert(71, crate::game::combat_common::PlayerCredit(99));
             let rows: Vec<_> = game.mobs.iter().map(|m| (m.id, m.join)).collect();
             VALUE
                 .set(&mut game.world.attachments, Holder::Level, 42)

@@ -1,14 +1,15 @@
 //! `ClientPacketListener.handleUpdateAttributes` for entity attributes that
 //! affect the client-side nameplate.
-use super::{Game, snapshot_value};
+use super::Game;
+use crate::game::remote::snapshot_value;
 use sunrise_protocol::packets::play;
 use sunrise_sim::entities::nameplate::NameplateDistances;
 use sunrise_world::attributes::entity::AttributeId;
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Returns a tracked remote entity's synced attribute or its vanilla type default.
     pub(in crate::game) fn remote_attribute(&self, id: i32, attribute: AttributeId) -> Option<f64> {
-        let remote = self.remote.as_ref()?;
+        let remote = self.side.remote.as_ref()?;
         let tracked = remote.entities.get(&id)?;
         if let Some(&value) = remote
             .synced_attributes
@@ -72,6 +73,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         values: &[play::AttributeSnapshot],
     ) {
         if let Some(kind) = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.entities.get(&id))
@@ -90,7 +92,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 }
             }
             if !updates.is_empty()
-                && let Some(r) = self.remote.as_mut()
+                && let Some(r) = self.side.remote.as_mut()
             {
                 let entry = r.synced_attributes.entry(id).or_default();
                 for (attr, value) in updates {

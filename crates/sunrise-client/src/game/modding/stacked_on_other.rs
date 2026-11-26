@@ -181,7 +181,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         };
         // The action's savepoint needs a transaction to nest in: the open one, or this one.
         let (outcome, ran) = self.storage_scope(|game, _| {
-            let mut host = GameHost { game, identity };
+            let mut host = GameHost::new(game, identity);
             let fired = shared.clone();
             let outcome = decision::run(
                 &mut host,

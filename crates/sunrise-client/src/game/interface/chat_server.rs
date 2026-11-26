@@ -21,11 +21,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.sync_pack_tag_ids();
     }
     pub(in crate::game) fn server_sync_hub_clocks(&mut self) {
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return;
         }
         let snap = self.hub_clock_snapshot();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         for (name, total, rate) in snap.others {
@@ -256,6 +256,7 @@ pub(in crate::game) mod enchantment_snapshot_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -417,6 +418,7 @@ pub(in crate::game) mod damage_type_registry_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
 

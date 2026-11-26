@@ -90,3 +90,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         VanillaMappingSlot::from_index(index).ok_or(MappingError::Stale)
     }
 }
+
+/// Helpers for native mods, kept as stable as the hook points.
+// Native mods use these; nothing in Sunrise does.
+impl Game<'_, crate::game::client_side::ClientState> {
+    /// Milliseconds on the game's own clock (`Util.getMillis`), counting from the game's start:
+    /// the clock the HUD's scrolling labels and the screens' text fields read too.
+    pub(in crate::game) fn millis(&self) -> u64 {
+        sunrise_client::hud_overlays::now_ms().max(0) as u64
+    }
+}

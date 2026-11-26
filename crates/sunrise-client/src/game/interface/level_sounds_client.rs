@@ -1,8 +1,6 @@
 use super::Game;
 use super::native_hooks::level_sound_playable;
-use crate::game::server_side::level_sounds::HeardSound;
-use crate::game::server_side::level_sounds::LevelSound;
-use crate::game::server_side::level_sounds::*;
+use crate::game::level_sounds_common::{HeardSound, LevelSound, listened};
 use mod_api::{Identifier, SoundSource};
 use std::borrow::Cow;
 
@@ -172,7 +170,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let at = [player.position.x, player.position.y, player.position.z];
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return;
         };
         let mut sound = LevelSound::new(name, at, volume, pitch).in_source(SoundSource::Players);

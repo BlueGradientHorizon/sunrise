@@ -2,7 +2,7 @@ use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn advance_guest_entity_clock(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let advanced = host.hub.update_guest(conn, |guest| {
@@ -43,7 +43,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let identity = if !mod_api::__private::listened(mod_api::HookId::PlayerJump) {
             None
         } else {
-            self.lan
+            self.side
+                .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
                 .map(|g| (g.uuid, g.name.clone()))
@@ -91,7 +92,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !mod_api::__private::listened(hook) {
             return;
         }
-        let (Some(epoch), Some(host)) = (self.native_lifecycle.epoch(), self.lan.as_ref()) else {
+        let (Some(epoch), Some(host)) = (self.native_lifecycle.epoch(), self.side.lan.as_ref())
+        else {
             return;
         };
         let guest = &host.hub.guests[gi];
@@ -136,6 +138,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Like the rest of doTick outside Player.tick, LOCATION also runs
             // for unloaded spectators and canceled entity ticks.
             let tick_count = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn).filter(|g| host.hub.here(g)))
@@ -162,6 +165,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.guest_vehicle_movement_baseline(conn);
         }
         if self
+            .side
             .lan
             .as_ref()
             .is_some_and(|host| !host.hub.native_advancement_grants.is_empty())
@@ -170,7 +174,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
     pub(in crate::game::server_side) fn tick_guest_connection_body(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         // ServerGamePacketListenerImpl.tick: the chat and command throttlers
@@ -186,7 +190,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // where NeoForge posts PlayerTickEvent.Pre/Post) unless the player
         // is a spectator touching an unloaded chunk. Decided once, before
         // the body, as vanilla's `if` is.
-        let Some((gi, body)) = self.lan.as_ref().and_then(|host| {
+        let Some((gi, body)) = self.side.lan.as_ref().and_then(|host| {
             let gi = host.hub.guests.connection_index(conn)?;
             let guest = &host.hub.guests[gi];
             host.hub
@@ -201,7 +205,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
         }
         self.guest_sleep_tick(gi, body);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if host.hub.guests[gi].dead
@@ -211,7 +215,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if body {
                 self.guest_tick_death(gi);
             }
-            if let Some(host) = self.lan.as_ref() {
+            if let Some(host) = self.side.lan.as_ref() {
                 refresh_building_player(host, conn);
             }
             if body {
@@ -233,7 +237,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // has loaded around the player or not: its respawn request
             // is taken as soon as it comes.
             self.guest_die(gi, conn);
-            if let Some(host) = self.lan.as_ref() {
+            if let Some(host) = self.side.lan.as_ref() {
                 refresh_building_player(host, conn);
             }
             if body {
@@ -250,7 +254,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             return;
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let play = host.play.entry(conn).or_default();
@@ -284,7 +288,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // LivingEntity.tick's use: an entry a finished use starts has 20
             // ticks left when the next tick's packets are handled, as the
             // guest's own client counts.
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             let play = host.play.entry(conn).or_default();
@@ -314,7 +318,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // item use above and before aiStep's travel and updatePlayerPose, so a new
         // scale modifier rebuilds the box this tick.
         if body
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
             && {
                 let g = &host.hub.guests[gi];
                 let held = g.inventory.get(g.selected).and_then(Option::as_ref);
@@ -325,7 +329,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let _ = self.as_guest_at(gi, conn, |g| g.put_equipment_modifiers());
         }
         self.guest_server_tick(conn, body);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let sleeping = host.hub.guests[gi].sleeping;
@@ -345,12 +349,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             g.record_player_scores(&mut recorded);
         });
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.play.entry(conn).or_default().score_recorded = recorded;
         }
         self.lan_map_updates(conn);
         // A hand-over freezes this player's inventory until its record is released.
         if self
+            .side
             .lan
             .as_ref()
             .is_some_and(|host| host.hub.guests[gi].handover.is_none())
@@ -360,7 +365,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.guest_orbs(gi);
         }
         self.guest_die(gi, conn);
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             refresh_building_player(host, conn);
         }
         if body {
@@ -376,7 +381,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         across_levels: bool,
     ) -> sunrise_game_data::Result<()> {
-        building_cache(self.lan.as_ref());
+        building_cache(self.side.lan.as_ref());
         let result = self.tick_guest_connections_inner(across_levels);
         building_cache(None);
         self.side.pickup_columns = None;
@@ -386,7 +391,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         across_levels: bool,
     ) -> sunrise_game_data::Result<()> {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Ok(());
         };
         let conns: Vec<_> = host
@@ -407,6 +412,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut collision = None;
         for conn in conns {
             let Some(dim) = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
@@ -432,6 +438,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Most players aren't in any of the columns items reach.
                 self.side.pickup_columns = Some(Default::default());
                 if self
+                    .side
                     .lan
                     .as_ref()
                     .is_some_and(|h| h.play.values().any(|p| p.hook.is_some()))
@@ -446,7 +453,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     });
                 });
                 self.drain_entity_inside();
-                if let Some(host) = self.lan.as_mut() {
+                if let Some(host) = self.side.lan.as_mut() {
                     host.hub.sync_guest_after_tick(conn);
                 }
             } else {
@@ -467,14 +474,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The level path: `ServerLevel.tick` calls `ServerPlayer.tick` before the
     /// server starts its connection ticks.
     pub(in crate::game) fn tick_level_guests(&mut self) {
-        building_cache(self.lan.as_ref());
+        building_cache(self.side.lan.as_ref());
         self.tick_level_guests_inner();
         building_cache(None);
     }
     pub(in crate::game) fn tick_level_guests_inner(&mut self) {
         // `EntityEvent.Size` for the poses the guests' moves set since the last tick.
         self.native_guest_sizes();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         host.hub.sync_initial_health_data();
@@ -492,7 +499,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self.on_server_trip(conn) {
                 continue;
             }
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             host.play.entry(conn).or_default().level_up_sound.tick();
@@ -522,7 +529,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for &(conn, _) in &turns {
             self.native_player_tick_post_alone(&round, &mut told);
             let canceled = self.player_tick_canceled(conn);
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 break;
             };
             let Some(gi) = host
@@ -540,7 +547,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if canceled || self.on_server_trip(conn) {
                 continue;
             }
-            let host = self.lan.as_mut().unwrap();
+            let host = self.side.lan.as_mut().unwrap();
             if let Some((pos, _)) = host.play.get(&conn).and_then(|play| play.digging)
                 && self
                     .res
@@ -573,7 +580,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Instant STARTs complete without a STOP; do not break a later
                 // block planted in the same position again.
                 if digging.is_some()
-                    && let Some(host) = self.lan.as_mut()
+                    && let Some(host) = self.side.lan.as_mut()
                     && let Some(play) = host.play.get_mut(&conn)
                     && (host.hub.guest(conn).is_some_and(|g| g.creative()) || play.mining.is_none())
                 {
@@ -591,13 +598,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 g.tick_level_advancements();
                 g.update_player_attributes();
             });
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 host.hub.flush_progress(conn);
                 if !host.hub.native_advancement_grants.is_empty() {
                     self.run_native_advancement_grants();
                 }
             }
-            if let Some(host) = self.lan.as_mut()
+            if let Some(host) = self.side.lan.as_mut()
                 && let Some(gi) = host.hub.guests.connection_index(conn)
                 && host.hub.here(&host.hub.guests[gi])
                 && host.hub.guests[gi].post_effects_dirty

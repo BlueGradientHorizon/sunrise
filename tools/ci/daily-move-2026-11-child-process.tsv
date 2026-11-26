@@ -5,11 +5,11 @@ sunrise-bench	lib	hardware::tests::detects_this_machine	crates/sunrise-bench/src
 sunrise-bench	lib	tests::round_trip_and_upload_strips_local_fields	crates/sunrise-bench/src/lib.rs:421	child-process
 sunrise-bench	lib	tests::rejects_other_formats_and_newer_versions	crates/sunrise-bench/src/lib.rs:449	child-process
 sunrise-bench	lib	tests::writes_into_a_folder	crates/sunrise-bench/src/lib.rs:458	child-process
-sunrise-client-lib	lib	benchmark::tests::a_refused_command_ends_the_trip_with_the_games_reason	crates/sunrise-client/src/benchmark.rs:1100	child-process
-sunrise-client-lib	lib	benchmark::tests::the_blocks_run_b_a_a_b_and_each_arm_is_timed_by_pass	crates/sunrise-client/src/benchmark.rs:1213	child-process
-sunrise-client-lib	lib	benchmark::tests::a_setting_that_was_on_is_on_again_after_the_run	crates/sunrise-client/src/benchmark.rs:1266	child-process
-sunrise-client-lib	lib	benchmark::tests::the_setting_is_put_back_when_the_run_fails_midway	crates/sunrise-client/src/benchmark.rs:1285	child-process
-sunrise-client-lib	lib	benchmark::tests::a_refused_switch_ends_the_run_with_the_games_reason_and_changes_nothing	crates/sunrise-client/src/benchmark.rs:1310	child-process
+sunrise-sim	lib	benchmark::tests::a_refused_command_ends_the_trip_with_the_games_reason	crates/sunrise-sim/src/benchmark.rs:1104	child-process
+sunrise-sim	lib	benchmark::tests::the_blocks_run_b_a_a_b_and_each_arm_is_timed_by_pass	crates/sunrise-sim/src/benchmark.rs:1218	child-process
+sunrise-sim	lib	benchmark::tests::a_setting_that_was_on_is_on_again_after_the_run	crates/sunrise-sim/src/benchmark.rs:1272	child-process
+sunrise-sim	lib	benchmark::tests::the_setting_is_put_back_when_the_run_fails_midway	crates/sunrise-sim/src/benchmark.rs:1292	child-process
+sunrise-sim	lib	benchmark::tests::a_refused_switch_ends_the_run_with_the_games_reason_and_changes_nothing	crates/sunrise-sim/src/benchmark.rs:1318	child-process
 sunrise-client-lib	bin:sunrise-ctl	launch::tests::launch_refuses_a_socket_path_too_long	crates/sunrise-client/src/bin/sunrise-ctl/launch.rs:268	child-process
 sunrise-sim	lib	block_entity_item::tests::a_mod_block_entity_rides_its_item	crates/sunrise-sim/src/block_entity_item.rs:621	child-process
 sunrise-client	lib	game::server_side::commands::modprofile::tests::modprofile_state_and_report_side_effects	crates/sunrise-client/src/game/administration/commands/modprofile_tests.rs:14	child-process

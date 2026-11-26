@@ -6,29 +6,10 @@ use super::{
     Game,
     commands::{Target, compute::ComputeContext},
 };
+use crate::game::composter_data::{Effects, is_composter};
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::villager;
-use sunrise_world::registry::BlockStateId;
-
-/// Whether a block type provides the composter's state-backed container ports.
-pub(in crate::game) fn is_composter(kind: &str) -> bool {
-    kind == "minecraft:composter"
-}
-
-/// State-backed container feedback, published only by the outermost successful transaction.
-pub(in crate::game) enum Effects {
-    Insert {
-        pos: [i32; 3],
-        before: BlockStateId,
-        after: BlockStateId,
-    },
-    Empty {
-        pos: [i32; 3],
-        after: BlockStateId,
-    },
-}
-
 /// Temporarily lends the provider the composter's random owner. Even unwinding restores
 /// Level.random before the transaction guard rolls the local owner back.
 struct ScopedRandom<'a, 'w> {

@@ -86,12 +86,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !round.told.listening {
             return round;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return round;
         };
         if round.alone_kind(PLAYER) {
             for gi in 0..host.hub.guests.len() {
-                let Some((conn, id)) = self.lan.as_ref().and_then(|host| {
+                let Some((conn, id)) = self.side.lan.as_ref().and_then(|host| {
                     let g = host.hub.guests.get(gi).filter(|g| host.hub.here(g))?;
                     Some((g.conn, g.entity_id as u32))
                 }) else {
@@ -106,7 +106,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 round.add(g.entity_id as u32, TickKind::Fixed(PLAYER));
             }
             self.native_tick_pre_batch(&mut round);
-            if let Some(host) = self.lan.as_ref() {
+            if let Some(host) = self.side.lan.as_ref() {
                 let canceled = &mut self.creatures.canceled_players;
                 canceled.extend(
                     host.hub

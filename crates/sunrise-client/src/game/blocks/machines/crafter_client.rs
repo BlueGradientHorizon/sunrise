@@ -1,7 +1,8 @@
 use super::*;
-use crate::game::server_side::machines::crafter::RESULT_SLOT;
 use sunrise_client::hud::{HudBatch, rgba};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
+
+pub(in crate::game) const RESULT_SLOT: usize = 309;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The grid's current recipe result (`CrafterMenu.refreshRecipeResult`).
@@ -133,7 +134,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             menu.set_slot_state(i, enabled);
             Some(true)
         });
-        if let Some((container, _)) = self.remote.as_ref().and_then(|r| r.menu.as_ref().cloned()) {
+        if let Some((container, _)) = self
+            .side
+            .remote
+            .as_ref()
+            .and_then(|r| r.menu.as_ref().cloned())
+        {
             self.send(S::ContainerSlotStateChanged(
                 play::ContainerSlotStateChanged {
                     slot: i as i32,

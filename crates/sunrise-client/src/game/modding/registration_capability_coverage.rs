@@ -2,11 +2,12 @@
 //!
 //! These queries share the factories/catalogs used by the runtime defaults, not a
 //! second inventory of vanilla types. They never need a world, position or stack.
-use super::{
-    armor_stands, boats, composter::is_composter, decorated_pot::DECORATED_POT,
-    machines::cauldron_contents, minecarts::CartKind,
+use crate::game::{
+    armor_stands_common, boats_common, composter_data::is_composter, decorated_pot::DECORATED_POT,
+    minecarts::CartKind,
 };
 use mod_api::ProvidedBy;
+use sunrise_gameplay_common::cauldron_contents;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::mobs::species;
 
@@ -42,7 +43,7 @@ pub(super) fn builtin(by: ProvidedBy, capability: &str, kind: &str) -> bool {
                 // living equipment (the MobTypes catalog and armor stands), and the
                 // container vehicles. Chested mounts already belong to the mob catalog.
                 mod_api::__private::parts_installation::builtin_player_inventory_type(kind)
-                    || kind == armor_stands::TYPE_ID
+                    || kind == armor_stands_common::TYPE_ID
                     || kind.strip_prefix("minecraft:").is_some_and(|name| {
                         species::ALL
                             .iter()
@@ -76,7 +77,7 @@ pub(super) fn block_entity(kind: &str, block: &str) -> bool {
 
 fn automation_container(kind: &str) -> bool {
     CartKind::from_id(kind).is_some_and(|cart| cart.slots() > 0)
-        || boats::any_boat_wood(kind).is_some_and(|(_, chest)| chest)
+        || boats_common::any_boat_wood(kind).is_some_and(|(_, chest)| chest)
 }
 
 #[cfg(test)]

@@ -29,7 +29,7 @@ fn check_signs(game: &mut crate::game::ClientGame<'_>) {
     const SUBJECT: i32 = 31;
     let (client, _server) = Pipe::pair();
     game.connect_local(client, "SignOutline").unwrap();
-    let player_id = game.remote.as_ref().unwrap().entity_id;
+    let player_id = game.side.remote.as_ref().unwrap().entity_id;
     let motion = game.motion;
     let player = || PlayerMotion::new(motion, Vec3::new(FAR.x, FAR.y, FAR.z)).unwrap();
     let mut chunk = Chunk::empty(0, 0);
@@ -230,6 +230,7 @@ fn check_signs(game: &mut crate::game::ClientGame<'_>) {
         game.side.camera_type = CameraType::FirstPerson;
         game.player = Some(player());
         let cart_kind = game
+            .side
             .remote
             .as_ref()
             .unwrap()

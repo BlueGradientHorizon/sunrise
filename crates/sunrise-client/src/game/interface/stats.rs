@@ -85,7 +85,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         registry: &str,
         id: &Identifier,
     ) -> bool {
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             return Identifier::parse_namespaced(registry)
                 .is_some_and(|registry| host.hub.synced_id(&registry, id).is_some());
         }
@@ -117,7 +117,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerStatsCounter.save`.
     pub(in crate::game::server_side) fn save_stats(&self) {
         if !self.stats.loaded
-            || self.remote.is_some()
             || self.no_player_here()
             || self.side.crash_save.holds_interrupted(self.side.lan_acting)
         {
@@ -188,7 +187,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         key: &str,
         n: i32,
     ) {
-        use super::lan_actions::CombatPlayer;
+        use crate::game::server_side::lan_actions_server::CombatPlayer;
         match self.combat_player(player) {
             Some(CombatPlayer::InPlace) => self.award_custom_stat(key, n),
             Some(CombatPlayer::Displaced(depth, _)) => self.award_displaced_stat(depth, key, n),
@@ -397,7 +396,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 identity: None,
             });
         }
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             let level = self.dim.id();
             for g in host.hub.guests.iter().filter(|g| {
                 g.placed
@@ -508,12 +507,12 @@ mod tests {
             super::super::bossbars::audience_tests::add_real_and_fake(game);
             game.player = None;
             game.world.day_time = 18000;
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let guests = &mut host.hub.guests;
             let index = guests.iter().position(|g| g.uuid == 2).unwrap();
             guests.update(index, |g| g.position = [1000.0, 100.0, 0.0]);
             for guest in &host.hub.guests {
-                let mut play = super::super::lan_actions::GuestPlay::default();
+                let mut play = crate::game::server_side::lan_actions_server::GuestPlay::default();
                 play.stats.custom("time_since_rest", 200_000);
                 host.play.insert(guest.conn, play);
             }
@@ -531,7 +530,8 @@ mod tests {
                 sunrise_core::random::LegacyRandom::new(12345),
             );
             game.stats.set_phantom_tick(0);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -578,13 +578,15 @@ mod tests {
                 std::fs::write(file, "last saved").unwrap();
                 std::fs::create_dir(beside(file)).unwrap();
             }
-            let host = game.lan.as_mut().unwrap();
-            host.play
-                .insert(12, super::super::lan_actions::GuestPlay::default());
+            let host = game.side.lan.as_mut().unwrap();
+            host.play.insert(
+                12,
+                crate::game::server_side::lan_actions_server::GuestPlay::default(),
+            );
             let save = |game: &crate::game::ServerGame<'_>| {
                 game.save_stats();
                 game.save_advancements();
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 let guest = host.hub.guests.iter().find(|g| g.conn == 12).unwrap();
                 game.save_guest_records(host, guest);
             };

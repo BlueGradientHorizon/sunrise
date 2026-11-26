@@ -27,11 +27,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.side.title.0.is_some() {
             return Activity::Menus;
         }
-        let Some(remote) = &self.remote else {
+        let Some(remote) = &self.side.remote else {
             return Activity::Menus;
         };
         let max = sunrise_sim::lan::MAX_PLAYERS;
-        let play = if let Some(server) = &self.integrated {
+        let play = if let Some(server) = &self.side.integrated {
             match server.published() {
                 Some(_) => Play::Hosting {
                     players: remote.listed_player_count(),

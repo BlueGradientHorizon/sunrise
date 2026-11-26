@@ -1,7 +1,7 @@
 //! The `friction` Part method (`IBlockExtension.getFriction`). The client library asks through
 //! `native_client_hooks`; only a state whose block has a subscribing part is converted.
 use super::api_values::{TryIntoApi, TryIntoEngine, block_state};
-use super::{Dim, Game, boats::Boat};
+use super::{Dim, Game, boats_common::Boat};
 use mod_api::{
     __private::game::Fields, BlockEntityRef, BlockKey, BlockState, Compound, FeatureFlags,
     FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
@@ -52,7 +52,7 @@ pub(crate) struct HitBorrows<'a> {
 impl sunrise_sim::motion::SideLevel for GameSide<'_> {
     fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
         world.is_loaded_at(pos.x, pos.y, pos.z)
-            && super::native_level_world::rain_at(
+            && crate::game::native_rain_read::rain_at(
                 world,
                 self.facts,
                 self.biomes,
@@ -93,7 +93,7 @@ impl sunrise_sim::motion::SideLevel for GameSide<'_> {
     }
 
     fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
-        super::native_block_entity_refs::world_block_entity(
+        crate::game::native_block_entity_read::world_block_entity(
             world,
             self.level?,
             [pos.x, pos.y, pos.z],
@@ -109,7 +109,7 @@ impl sunrise_sim::motion::SideLevel for GameSide<'_> {
         if self.level != Some(entity.fields().level) {
             return None;
         }
-        super::native_block_entity_refs::world_block_entity_data(
+        crate::game::native_block_entity_read::world_block_entity_data(
             world, registry, self.items, entity,
         )
     }
@@ -204,7 +204,9 @@ pub(crate) struct FrictionView<'a>(pub(in crate::game) FrictionLevel<'a>);
 impl FrictionView<'_> {
     fn state_fluid(&self, state: BlockStateId) -> Option<FluidState> {
         let state = self.0.registry.state(state)?;
-        super::native_world_read::api_fluid_state(EngineFluidState::from_block(state).ok()?)
+        crate::game::native_world_read_common::api_fluid_state(
+            EngineFluidState::from_block(state).ok()?,
+        )
     }
 }
 
@@ -268,7 +270,7 @@ impl LevelHost for FrictionView<'_> {
 
     fn block_in_tag(&self, block: BlockKey, tag: &str) -> Option<bool> {
         self.0.side.tag_items()?;
-        super::native_world_read::block_in_tag(block, tag)
+        crate::game::native_world_read_common::block_in_tag(block, tag)
     }
 
     fn block_entity(&self, [x, y, z]: [i32; 3]) -> Option<BlockEntityRef> {
@@ -299,7 +301,7 @@ impl LevelHost for FrictionView<'_> {
     }
 
     fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        Some(super::native_world_read::fluid_in_tag(
+        Some(crate::game::native_world_read_common::fluid_in_tag(
             self.0.side.tag_items()?,
             fluid,
             tag,
@@ -318,11 +320,14 @@ impl LevelHost for FrictionView<'_> {
     }
 
     fn can_see_sky(&self, pos: [i32; 3]) -> Option<bool> {
-        Some(super::native_world_read::can_see_sky(self.0.world, pos))
+        Some(crate::game::native_world_read_common::can_see_sky(
+            self.0.world,
+            pos,
+        ))
     }
 
     fn brightness(&self, layer: LightLayer, pos: [i32; 3]) -> i32 {
-        super::native_level_refs::world_brightness(self.0.world, layer, pos)
+        crate::game::native_world_read_common::world_brightness(self.0.world, layer, pos)
     }
 
     fn raw_brightness(&self, pos: [i32; 3], sky_darken: i32) -> i32 {
@@ -990,7 +995,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_travel_and_both_leash_sites_use_the_parts_answer_once() {
-        use super::super::boats::Boat;
+        use super::super::boats_common::Boat;
         use sunrise_sim::mobs::{Mob, leash};
         let calls = mod_platform::__private::part_tests::friction_game_thread();
         crate::entry::install_client_hooks();

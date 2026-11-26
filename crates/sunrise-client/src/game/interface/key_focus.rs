@@ -20,7 +20,7 @@ use winit::keyboard::KeyCode;
 
 /// A navigation key, as `Screen.keyPressed` and the widgets read it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Nav {
+pub(in crate::game) enum Nav {
     /// Tab (forward) or Shift+Tab (`FocusNavigationEvent.TabNavigation`).
     Tab { forward: bool },
     /// An arrow (`ArrowNavigation`), as the D-pad direction it steps.
@@ -30,7 +30,7 @@ pub(super) enum Nav {
 }
 
 /// The navigation a key press is, if any.
-pub(super) fn nav_of(key: KeyCode, shift: bool) -> Option<Nav> {
+pub(in crate::game) fn nav_of(key: KeyCode, shift: bool) -> Option<Nav> {
     Some(match key {
         KeyCode::Tab => Nav::Tab { forward: !shift },
         KeyCode::ArrowUp => Nav::Arrow(Button::DPadUp),
@@ -44,7 +44,7 @@ pub(super) fn nav_of(key: KeyCode, shift: bool) -> Option<Nav> {
 
 /// What a navigation key does on the screen as it is.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Act {
+pub(in crate::game) enum Act {
     /// The screen takes the key itself: a text field's caret, Enter on a
     /// list whose screen joins its selected row, nothing focused.
     Pass,
@@ -62,7 +62,7 @@ pub(super) enum Act {
 
 /// Where the screen is: what `act` reads besides the focus.
 #[derive(Clone, Copy, Debug, Default)]
-pub(super) struct Context {
+pub(in crate::game) struct Context {
     /// The focused slider's arrows change its value (`canChangeValue`).
     pub slider_edit: bool,
     /// A text field has the keyboard (a click focused it): with nothing
@@ -82,11 +82,16 @@ fn horizontal(button: Button) -> bool {
 
 /// What `nav` does, `focus` being the focused target (the one a click
 /// focused counts) among `targets`.
-pub(super) fn act(nav: Nav, focus: Option<Target>, targets: &[Target], ctx: Context) -> Act {
+pub(in crate::game) fn act(
+    nav: Nav,
+    focus: Option<Target>,
+    targets: &[Target],
+    ctx: Context,
+) -> Act {
     act_with_tab_groups(nav, focus, targets, ctx, |_| 0)
 }
 
-pub(super) fn act_with_tab_groups(
+pub(in crate::game) fn act_with_tab_groups(
     nav: Nav,
     focus: Option<Target>,
     targets: &[Target],
@@ -147,18 +152,22 @@ fn edge((w, h): (f32, f32), button: Button) -> Rect {
 }
 
 /// `Screen.keyPressed` changes focus on Tab or an arrow but returns false.
-pub(super) fn moves_focus(act: Act) -> bool {
+pub(in crate::game) fn moves_focus(act: Act) -> bool {
     matches!(act, Act::Focus(_) | Act::Step(_))
 }
 
 /// `AbstractSliderButton.setFocused`: the arrows change a slider's value
 /// when the focus came from the mouse or Tab, not from an arrow.
-pub(super) fn slider_edit_on_focus(nav: Nav) -> bool {
+pub(in crate::game) fn slider_edit_on_focus(nav: Nav) -> bool {
     matches!(nav, Nav::Tab { .. })
 }
 
 /// Tab or Shift+Tab through children of the default group, in insertion order.
-pub(super) fn tab_step(targets: &[Target], from: Option<Target>, forward: bool) -> Option<usize> {
+pub(in crate::game) fn tab_step(
+    targets: &[Target],
+    from: Option<Target>,
+    forward: bool,
+) -> Option<usize> {
     grouped_tab_step(targets, from, forward, |_| 0)
 }
 
@@ -205,7 +214,7 @@ fn grouped_tab_step(
 
 /// What the last drawn frame's screen can focus: its enabled buttons and
 /// every target it registered (sliders, fields, rows, slots...).
-pub(super) fn drawn_targets() -> Vec<Target> {
+pub(in crate::game) fn drawn_targets() -> Vec<Target> {
     let mut targets: Vec<Target> = widgets::last()
         .iter()
         .filter(|w| w.enabled && !matches!(w.kind, Kind::Mounted { .. }))
@@ -229,7 +238,7 @@ pub(super) fn drawn_targets() -> Vec<Target> {
 }
 
 /// The targets inside the GUI (`gui`: its size in GUI pixels).
-pub(super) fn on_screen(mut targets: Vec<Target>, (w, h): (f32, f32)) -> Vec<Target> {
+pub(in crate::game) fn on_screen(mut targets: Vec<Target>, (w, h): (f32, f32)) -> Vec<Target> {
     let (w, h) = (w + 0.5, h + 0.5);
     targets.retain(|t| {
         let [x, y, tw, th] = t.rect;
@@ -241,7 +250,7 @@ pub(super) fn on_screen(mut targets: Vec<Target>, (w, h): (f32, f32)) -> Vec<Tar
 /// Which targets the keyboard reaches: vanilla focuses widgets only, never
 /// an inventory's slots, and the creative and recipe-book tabs aren't the
 /// screen's widgets either (`inventory`).
-pub(super) fn keyboard_targets(targets: Vec<Target>, inventory: bool) -> Vec<Target> {
+pub(in crate::game) fn keyboard_targets(targets: Vec<Target>, inventory: bool) -> Vec<Target> {
     targets
         .into_iter()
         .filter(|t| match t.kind {
@@ -255,7 +264,7 @@ pub(super) fn keyboard_targets(targets: Vec<Target>, inventory: bool) -> Vec<Tar
 /// The focus in a newly drawn frame: the same widget, or one the screen
 /// moved a little (a list scrolled); else the screen changed and the focus
 /// starts again on the first widget (`Screen.setInitialFocus` after a key).
-pub(super) fn follow(focus: Target, targets: &[Target]) -> Option<Target> {
+pub(in crate::game) fn follow(focus: Target, targets: &[Target]) -> Option<Target> {
     let rects: Vec<Rect> = targets.iter().map(|t| t.rect).collect();
     gamepad::refind(focus.rect, &rects, 12.0)
         .or_else(|| tab_step(targets, None, true))
@@ -265,7 +274,7 @@ pub(super) fn follow(focus: Target, targets: &[Target]) -> Option<Target> {
 /// Where a click focuses a text field with its caret at the end of the
 /// text, as Tab leaves it (`EditBox.setFocused` keeps the cursor, which
 /// `setValue` put at the end): the box's right end.
-pub(super) fn field_click(rect: Rect) -> (f32, f32) {
+pub(in crate::game) fn field_click(rect: Rect) -> (f32, f32) {
     let [x, y, w, h] = rect;
     (x + w - 2.0, y + h / 2.0)
 }
@@ -274,13 +283,17 @@ pub(super) fn field_click(rect: Rect) -> (f32, f32) {
 /// one-pixel outline of a focused list's selection
 /// (`AbstractSelectionList`) and of a focused `EditBox`. Buttons, sliders
 /// and tabs show their highlighted sprite, drawn under the hidden pointer.
-pub(super) fn draw_outline(atlas: &HudAtlas, batch: &mut HudBatch, focus: Target) {
+pub(in crate::game) fn draw_outline(atlas: &HudAtlas, batch: &mut HudBatch, focus: Target) {
     if matches!(focus.kind, Kind::Row | Kind::Field) {
         draw_white_outline(atlas, batch, focus.rect);
     }
 }
 
-pub(super) fn draw_white_outline(atlas: &HudAtlas, batch: &mut HudBatch, [x, y, w, h]: Rect) {
+pub(in crate::game) fn draw_white_outline(
+    atlas: &HudAtlas,
+    batch: &mut HudBatch,
+    [x, y, w, h]: Rect,
+) {
     let white = rgba(255, 255, 255, 255);
     batch.fill(atlas, x, y, w, 1.0, white);
     batch.fill(atlas, x, y + h - 1.0, w, 1.0, white);

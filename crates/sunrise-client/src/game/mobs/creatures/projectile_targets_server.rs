@@ -1,6 +1,4 @@
-use super::super::{
-    Game, commands::Target, entity::Entity as _, lan_mobs::guest_bounds, minecarts::CartHit,
-};
+use super::super::{Game, commands::Target, entity::Entity as _, lan_mobs::guest_bounds};
 use super::ProjWorld;
 use crate::game::creatures::projectile_targets::NonMobHit;
 use crate::game::creatures::projectile_targets::ProjectileHitInfo;
@@ -8,6 +6,8 @@ use crate::game::creatures::projectile_targets::TargetQuery;
 use crate::game::creatures::projectile_targets::extents;
 use crate::game::creatures::projectile_targets::is_pickable_projectile;
 use crate::game::creatures::projectile_targets::knot_bounds;
+use crate::game::deflect_common::redirectable;
+use crate::game::server_side::minecarts_server::CartHit;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -120,7 +120,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
 
     /// Resolve a LAN guest connection id from their entity id.
     pub(in crate::game) fn lan_guest_conn_by_id(&self, id: u32) -> Option<u32> {
-        self.lan.as_ref().and_then(|host| {
+        self.side.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
                 .iter()
@@ -165,6 +165,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         match who {
             Who::Player => self.riding.map(Who::Mob),
             Who::Mob(id) => self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|h| h.hub.guests.iter().find(|g| g.entity_id as u32 == id))
@@ -240,7 +241,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
                 {
                     return Some(m.bounds());
                 }
-                if let Some(host) = self.lan.as_ref()
+                if let Some(host) = self.side.lan.as_ref()
                     && let Some(g) = host.hub.guests.iter().find(|g| {
                         g.entity_id as u32 == id
                             && host.hub.here(g)
@@ -254,8 +255,8 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
                 if let Some(c) = self.crystals.iter().find(|c| c.id == id) {
                     return Some(c.bounds());
                 }
-                if id >= crate::game::dragon::SPECIAL {
-                    let part = (id - crate::game::dragon::SPECIAL) as usize;
+                if id >= crate::game::dragon_common::SPECIAL {
+                    let part = (id - crate::game::dragon_common::SPECIAL) as usize;
                     return self
                         .dragon_part_boxes()
                         .and_then(|boxes| boxes.get(part).copied());
@@ -287,7 +288,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
             .creatures
             .projectiles
             .iter()
-            .position(|q| q.id == target_id && crate::game::deflect::redirectable(q))
+            .position(|q| q.id == target_id && redirectable(q))
         else {
             return;
         };
@@ -314,7 +315,8 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
     ) -> bool {
         // A player by entity id with their team; none when `who` is no player.
         let guest = |conn: u32| {
-            self.lan
+            self.side
+                .lan
                 .as_ref()
                 .and_then(|h| h.hub.guest(conn))
                 .map(|g| (g.entity_id, self.score.board.players_team(&g.name)))
@@ -347,7 +349,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         match who {
             Who::Player => Some("minecraft:player".to_owned()),
             Who::Mob(id) => {
-                if id >= super::super::dragon::SPECIAL {
+                if id >= crate::game::dragon_common::SPECIAL {
                     return Some("minecraft:ender_dragon".to_owned());
                 }
                 if self.is_crystal_id(id) {
@@ -419,11 +421,16 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
             position: Some([info.position.x, info.position.y, info.position.z]),
         };
         let vanilla = self.saved_refuses_damage(id, info.damage_type, creative);
-        crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
-            .invulnerability_check(
-                sunrise_sim::health::Hurting::Entity(id as i32, kind, source),
-                vanilla,
-            )
+        crate::game::server_side::entity_server::damage_level_of!(
+            self,
+            self.side.combat.0.attack(),
+            no_push,
+            None
+        )
+        .invulnerability_check(
+            sunrise_sim::health::Hurting::Entity(id as i32, kind, source),
+            vanilla,
+        )
     }
     /// All non-mob pickable entities (`Entity::can_be_hit_by_projectile` plus `BlockAttachedEntity`).
     #[cfg(test)]
@@ -657,7 +664,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
                 let _ = self.destroy_shulker_bullet(i);
                 return NonMobHit::Hurt;
             }
-            if super::super::deflect::redirectable(&self.creatures.projectiles[i]) {
+            if redirectable(&self.creatures.projectiles[i]) {
                 return NonMobHit::Refused;
             }
         }
@@ -825,7 +832,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
             });
         }
         if query.include_guests
-            && let Some(host) = self.lan.as_ref()
+            && let Some(host) = self.side.lan.as_ref()
         {
             for g in &host.hub.guests {
                 if host.hub.here(g) && g.loaded && !g.dead && !g.spectator() {
@@ -1028,7 +1035,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
                 let c = bounds.center();
                 let pos = Vec3::new(c.x, bounds.min_position().y, c.z);
                 visit(TargetCandidate {
-                    who: Who::Mob(super::super::dragon::SPECIAL + i as u32),
+                    who: Who::Mob(crate::game::dragon_common::SPECIAL + i as u32),
                     bounds,
                     position: pos,
                     order: TargetOrder::dragon_part(i as u32),

@@ -113,6 +113,7 @@ fn published_tcp_attributes_players_and_orders_actions() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -122,6 +123,7 @@ fn published_tcp_attributes_players_and_orders_actions() {
                 std::thread::yield_now();
             }
             let port = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()

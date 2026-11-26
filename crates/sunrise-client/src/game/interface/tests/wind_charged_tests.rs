@@ -38,9 +38,15 @@ pub(in crate::game) fn with_game<R>(
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let mut resources = None;
     let res = &*resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.options.dedicated = Some(Vec::new());
     game.side.audio_capture_active = true;
     game.build_registries();

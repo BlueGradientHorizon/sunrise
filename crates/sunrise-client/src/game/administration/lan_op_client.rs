@@ -1,5 +1,6 @@
 use super::Game;
-use super::owner_link::{ControlRequest, OwnerRequest};
+use crate::game::integrated_link::NO_ANSWER;
+use crate::game::owner_link::{ControlRequest, OwnerRequest};
 use sunrise_game_data::Result;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -23,11 +24,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Err(usage.into());
         };
         let name = (*name).to_owned();
-        let found = match &self.integrated {
+        let found = match &self.side.integrated {
             Some(server) => server
                 .ask(|reply| OwnerRequest::Control(ControlRequest::SetOp { name, level, reply }))
-                .ok_or(super::integrated::NO_ANSWER)?,
-            None => self.lan_set_op(&name, level),
+                .ok_or(NO_ANSWER)?,
+            None => false,
         };
         if found {
             Ok(Some(json!({ "ok": true })))

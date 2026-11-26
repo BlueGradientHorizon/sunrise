@@ -1,6 +1,6 @@
 use super::entity::{Entity as _, EntityHandle, with_entity};
-use super::{Game, commands::Target};
-use crate::game::server_side::native_entity_motion::*;
+use crate::game::native_entity_motion_values::corners;
+use crate::game::{Game, commands_common::Target};
 use mod_api::EntityRef;
 use sunrise_core::geometry::Vec3;
 
@@ -72,7 +72,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Some(corners(row.bounds()));
         }
         let t = self.native_client_entity_target(entity)?;
-        if t == Target::Player && self.remote.is_some() {
+        if t == Target::Player && self.side.remote.is_some() {
             return Some(corners(self.player.as_ref()?.bounds()));
         }
         if let Some(h) = self.client_walk_entity(entity.id()) {
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Target::DragonPart(id) => {
                 let dragon = self.dragon.as_ref()?;
-                let part = crate::game::server_side::dragon::dragon_part_index(dragon.id, id)?;
+                let part = crate::game::dragon_common::dragon_part_index(dragon.id, id)?;
                 return Some(corners(dragon.part_geometry(part).1));
             }
             Target::Crystal(id) => {

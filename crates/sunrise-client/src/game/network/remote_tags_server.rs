@@ -238,7 +238,7 @@ pub(in crate::game) mod tests {
                 with_client_game(|game| {
                     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(pipe, "Steve").unwrap();
-                    let remote = game.remote.as_mut().unwrap();
+                    let remote = game.side.remote.as_mut().unwrap();
                     remote.registries = Arc::new(snapshots[0].dynamic.clone());
                     Arc::make_mut(&mut remote.registries).add_tags(&snapshots[0].tags);
                     game.handle_packet(login()).unwrap();
@@ -247,7 +247,8 @@ pub(in crate::game) mod tests {
                         .1
                         .map(|id| snapshots[0].id("minecraft:damage_type", id).unwrap());
                     assert_eq!(
-                        game.remote
+                        game.side
+                            .remote
                             .as_ref()
                             .unwrap()
                             .registries
@@ -258,7 +259,8 @@ pub(in crate::game) mod tests {
                         .unwrap();
                     check_host(game, 0);
                     assert_eq!(
-                        game.remote
+                        game.side
+                            .remote
                             .as_ref()
                             .unwrap()
                             .registries

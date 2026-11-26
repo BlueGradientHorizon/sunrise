@@ -31,6 +31,7 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

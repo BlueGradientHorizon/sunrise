@@ -320,6 +320,7 @@ name = "containers"
 about = "menus, inventories, crafting, the recipe book, workstations"
 paths = [
   "crates/sunrise-sim/src/menu.rs", "crates/sunrise-client/src/container_screen.rs", "crates/sunrise-client/src/creative.rs",
+  "crates/sunrise-items/src/creative_catalog.rs",
   "crates/sunrise-sim/src/crafting.rs", "crates/sunrise-client/src/recipe_book*", "crates/sunrise-sim/src/stations.rs",
   "crates/sunrise-level/src/containers.rs", "crates/sunrise-world/src/simple_container.rs",
   "crates/sunrise-client/src/game/interface/container_*",

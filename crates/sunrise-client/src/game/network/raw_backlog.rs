@@ -1,2 +1,2 @@
 //! Transport-owned credit for ordered remote backlog slots.
-pub(super) use sunrise_client_gameplay::remote::chunks::Received;
+pub(in crate::game) use sunrise_client_gameplay::remote::chunks::Received;

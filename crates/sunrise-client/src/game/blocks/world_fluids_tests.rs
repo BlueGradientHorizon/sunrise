@@ -897,7 +897,7 @@ fn live_structure_restores_fluid_directly_and_retries_with_a_neighbour_source() 
     use sunrise_core::{nbt::parse_snbt, position::BlockPos};
     use sunrise_world::worldgen::structure::{Mirror, Rotation, StructureTemplate};
     with_liquid_part(|game, _, calls| {
-        crate::game::growth::install_live_features(
+        crate::game::growth_features::install_live_features(
             &game.res,
             &game.pack,
             &game.options,

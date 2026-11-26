@@ -11,7 +11,7 @@
 use super::{Game, commands::Target};
 use mod_api::{Identifier, LivingRef};
 use sunrise_sim::lan::waypoints::Icon;
-use sunrise_sim::mobs::{spear_use, stuck::Stuck};
+use sunrise_sim::mobs::stuck::Stuck;
 use {sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation};
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -166,8 +166,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// and the dragon.
     pub(in crate::game) fn living_item_use_remaining(&self, living: LivingRef) -> Option<i32> {
         match self.native_living_target(living)? {
-            Target::Player => Some(super::item_use::remaining_of(self.using, self.use_duration)),
-            Target::Guest(conn) => Some(self.lan.as_ref()?.play.get(&conn)?.use_remaining()),
+            Target::Player => Some(crate::game::item_use_common::remaining_of(
+                self.using,
+                self.use_duration,
+            )),
+            Target::Guest(conn) => Some(self.side.lan.as_ref()?.play.get(&conn)?.use_remaining()),
             Target::Mob(id) => self.mob_item_use_remaining(id),
             _ => None,
         }
@@ -191,10 +194,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) => self.mob_set_item_use_remaining(id, ticks),
-            Some(Target::Player) => {
-                super::item_use::set_remaining(self.using, &mut self.use_duration, ticks)
-            }
+            Some(Target::Player) => crate::game::item_use_common::set_remaining(
+                self.using,
+                &mut self.use_duration,
+                ticks,
+            ),
             Some(Target::Guest(conn)) => self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|h| h.play.get_mut(&conn))
@@ -312,27 +318,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.native_edit_waypoint_icon(living, |icon| {
             icon.color = rgb.map(|rgb| (rgb & 0xFF_FFFF) as i32);
         })
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// `LivingEntity.getUsedItemHand` while `isUsingItem`: the hand of the item
-    /// a player or a mob uses, None when it uses none. On a client, the local
-    /// player's only.
-    pub(in crate::game) fn living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
-        match self.native_living_read_target(living)? {
-            Target::Player => self.used_hand(),
-            Target::Guest(conn) => self.lan.as_ref()?.play.get(&conn)?.used_hand(),
-            Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
-                spear_use::is_using_item(mob).then_some(if mob.extra.using_off_hand {
-                    Hand::Off
-                } else {
-                    Hand::Main
-                })
-            }
-            _ => None,
-        }
     }
 }
 
@@ -1015,7 +1000,7 @@ pub(in crate::game) mod tests {
             guest_server(game, false, true);
             let (spinner, _rx) = guest(game, 12);
             let (_, observer) = guest(game, 13);
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             for conn in [12, 13] {
                 host.hub.update_guest(conn, |g| g.ticks = 5).unwrap();
             }
@@ -1160,7 +1145,7 @@ pub(in crate::game) mod tests {
                 10,
             );
             guest.placed = true;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             // A first turn starts a fresh combat record: take it first.
             game.as_guest(12, |_| {}).unwrap();
             let player = game.living(game.entity(12).unwrap()).unwrap();
@@ -1277,7 +1262,7 @@ pub(in crate::game) mod tests {
                 10,
             );
             guest.placed = true;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let kind = game
                 .res
                 .mob_types()

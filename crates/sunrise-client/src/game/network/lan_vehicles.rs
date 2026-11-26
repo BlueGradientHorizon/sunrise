@@ -10,7 +10,7 @@
 //! Sneaking gets out (`Player.rideTick`: `wantsToStopRiding`), and the client
 //! is teleported where the player lands (`ServerPlayer.dismountTo`).
 use super::{Dim, Game, Keys, lan::LanHost, minecarts::SEAT};
-use sunrise_core::geometry::{Aabb, Axis, Vec3};
+use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
@@ -32,11 +32,6 @@ pub(in crate::game::server_side) fn input_keys(flags: u8) -> Keys {
         sprint: flags & 64 != 0,
         ..Keys::default()
     }
-}
-
-pub(in crate::game) fn corners(b: Aabb) -> ([f64; 3], [f64; 3]) {
-    let (lo, hi) = (b.min_position(), b.max_position());
-    ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z])
 }
 
 /// A boat or minecart a server player rode, followed for
@@ -74,7 +69,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `VehicleMoveEvent` for the boats and minecarts server players ride
     /// (and left less than ten seconds ago): once a tick, after they moved.
     pub(in crate::game::server_side) fn tick_vehicle_watch(&mut self) {
-        let riders: Vec<(u32, u32, u128)> = self.lan.as_ref().map_or_else(Vec::new, |h| {
+        let riders: Vec<(u32, u32, u128)> = self.side.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
                 .iter()
@@ -151,7 +146,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The vehicles the server's players ride: they move with their riders,
     /// not in `tick_boats` and `tick_carts`.
     pub(in crate::game) fn guest_vehicles(&self) -> Vec<u32> {
-        self.lan.as_ref().map_or_else(Vec::new, |h| {
+        self.side.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub.guests.iter().filter_map(|g| g.vehicle).collect()
         })
     }
@@ -159,7 +154,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a server player other than the one acting rides `vehicle`
     /// (`Entity.canAddPassenger`: a boat or minecart seats one player here).
     pub(in crate::game) fn ridden_by_guest(&self, vehicle: u32) -> bool {
-        self.lan.as_ref().is_some_and(|h| {
+        self.side.lan.as_ref().is_some_and(|h| {
             h.hub
                 .guests
                 .iter()
@@ -170,7 +165,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.rideTick` for a server player, before its moves this tick:
     /// it stays in its seat, steers its minecart, or gets out.
     pub(in crate::game::server_side) fn guest_vehicle_tick(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(gi) = host.hub.guests.connection_index(conn) else {
@@ -192,7 +187,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mount = self.mobs.iter().any(|m| m.id == vehicle);
         let cushion = self.cushions.iter().any(|c| c.id == vehicle);
         let seat = self.seat(vehicle).is_some();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         // The vehicle is gone (broken, in another level) or the rider died:
@@ -249,7 +244,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some([p.x, p.y, p.z])
         });
         if let Some(Some(at)) = seat
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             host.hub.guests.update(gi, |g| {
                 g.previous_position = g.position;
@@ -262,7 +257,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// position after doTick, so movement by the server is not held against the
     /// rider's next packet.
     pub(in crate::game::server_side) fn guest_vehicle_movement_baseline(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(gi) = host.hub.guests.connection_index(conn) else {
@@ -292,8 +287,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// After an interaction: a player that got into a vehicle sits in it,
     /// and its last good vehicle position is where the vehicle is.
-    pub(in crate::game::server_side) fn guest_boarded(&mut self, conn: u32, before: Option<u32>) {
-        let Some(host) = self.lan.as_mut() else {
+    pub(in crate::game) fn guest_boarded(&mut self, conn: u32, before: Option<u32>) {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -332,7 +327,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .or_else(|| self.seat(vehicle).map(|s| (s.position, s.player_seat())));
         if let Some((p, seat)) = at {
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             host.hub.guests.update(gi, |g| {
@@ -351,7 +346,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|p| [p.position.x, p.position.y, p.position.z])
         });
         if let Some(Some(at)) = seat
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             host.hub.guests.update(gi, |g| {
                 g.previous_position = g.position;
@@ -370,7 +365,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: &play::MoveVehicleRequest,
     ) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -449,7 +444,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if let Some(c) = vehicle.and_then(|v| self.carts.iter().find(|c| c.id == v))
                 && c.position.distance_squared(Vec3::new(x, y, z)) > 1.0
             {
-                back(self.lan.as_mut().unwrap(), c.position, c.yaw);
+                back(self.side.lan.as_mut().unwrap(), c.position, c.yaw);
             }
             return;
         };
@@ -463,7 +458,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let moved = target.distance_squared(old) - velocity.length_squared();
         if moved > 100.0 && !owner {
             log::warn!("vehicle {id} moved too quickly! {moved}");
-            back(self.lan.as_mut().unwrap(), old, yaw);
+            back(self.side.lan.as_mut().unwrap(), old, yaw);
             return;
         }
         // A living mount on a climbable has no fall, before its move: a move
@@ -531,7 +526,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // like the hub's unobstructed-start check.
         if overridden || (free_before && (wrongly || !free_after)) {
             log::warn!("vehicle {id} moved wrongly");
-            back(self.lan.as_mut().unwrap(), old, yaw);
+            back(self.side.lan.as_mut().unwrap(), old, yaw);
             return;
         }
         // clientVehicleIsFloating: the move didn't go down a step, the vehicle hadn't come down onto
@@ -552,9 +547,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &self.world,
             corner(false),
             corner(true),
-            &self.lan.as_ref().unwrap().hub.encoder,
+            &self.side.lan.as_ref().unwrap().hub.encoder,
         );
-        self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+        self.side.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
             // `ServerChunkCache.move` after `absSnapTo` of the accepted move.
             g.release_tickets();
             g.vehicle_good = Some([target.x, target.y, target.z]);
@@ -589,7 +584,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         Some(&self.pack.block_registries),
                         &self.damage_hooks,
                     )
-                    .with_reads(crate::game::entity::hit_reads_of!(self))
+                    .with_reads(crate::game::entity_server::hit_reads_of!(self))
                     .with_mob_hurt_handoff(&mut paused_hurt);
                     if let Some(pause) = resume.take() {
                         m.resume_client_moved_fall(&w, &mut level, &mut events, pause)
@@ -674,7 +669,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         self.boats.update(i, |b| b.fall_distance = fall);
         let seat = self.player_boat_seat(i);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         host.hub.guests.update(gi, |g| {
@@ -692,7 +687,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         vehicle: u32,
     ) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         if self.riding == Some(vehicle) {
@@ -714,7 +709,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         paddles: [bool; 2],
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let vehicle = host
@@ -732,17 +727,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 b.paddle_controller = true;
             });
         }
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// Whether a server player rides `vehicle` (`Entity.isPassenger`: a
-    /// passenger does not use a portal on its own, the vehicle carries it
-    /// across, `Entity.teleportCrossDimension`).
-    pub(in crate::game) fn guest_rides(&self, vehicle: u32) -> bool {
-        self.lan
-            .as_ref()
-            .is_some_and(|h| h.hub.guests.iter().any(|g| g.vehicle == Some(vehicle)))
     }
 }
 
@@ -822,6 +806,7 @@ pub(in crate::game) mod controller_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -874,7 +859,7 @@ pub(in crate::game) mod controller_tests {
             },
         )
         .unwrap();
-        let mut host = game.lan.take().unwrap();
+        let mut host = game.side.lan.take().unwrap();
         // The second seat's player joined the server first; the driver got
         // into the boat first.
         let (mut passenger, mut driver) = (guest(2, 21), guest(3, 22));
@@ -908,7 +893,7 @@ pub(in crate::game) mod controller_tests {
             pitch: 0.0,
             on_ground: true,
         };
-        game.lan = Some(host);
+        game.side.lan = Some(host);
         game.guest_move_vehicle(2, &move_to(start.x + 0.3));
         assert_eq!(
             game.boats[0].position, start,
@@ -1039,7 +1024,7 @@ pub(in crate::game) mod controller_tests {
 
         let (mut rider, packets) = guest_with_packets(2, 21);
         (rider.vehicle, rider.vehicle_order) = (Some(horse), 1);
-        game.lan.as_mut().unwrap().hub.guests.push(rider);
+        game.side.lan.as_mut().unwrap().hub.guests.push(rider);
         (horse, packets)
     }
 
@@ -1078,6 +1063,7 @@ pub(in crate::game) mod controller_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (_, packets) = guest_horse_at_start_of_fall(&mut game);
@@ -1118,7 +1104,7 @@ pub(in crate::game) mod controller_tests {
         // propagateFallToPassengers: the rider's own causeFallDamage of the fall,
         // ceil((10 - 3) * 1) = 7.
         assert_eq!(
-            game.lan.as_mut().unwrap().hub.guests[0].health,
+            game.side.lan.as_mut().unwrap().hub.guests[0].health,
             13.0,
             "the rider takes the fall too"
         );

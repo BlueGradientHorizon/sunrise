@@ -195,13 +195,17 @@ fn placement_read_leaves_queued_spill_untouched() {
         let pos = [8.5, 70.5, 8.5];
         let motion = Some([0.0, 0.25, 0.0]);
         let delay = 10;
-        game.side.spill.0.spawns.push(crate::game::spill::Spawn {
-            random: None,
-            stack: stack.clone(),
-            pos,
-            motion,
-            delay,
-        });
+        game.side
+            .spill
+            .0
+            .spawns
+            .push(crate::game::spill_common::Spawn {
+                random: None,
+                stack: stack.clone(),
+                pos,
+                motion,
+                delay,
+            });
         let dropped = game.dropped.len();
         assert!(matches!(
             level.state_for_placement(game, block, &context),

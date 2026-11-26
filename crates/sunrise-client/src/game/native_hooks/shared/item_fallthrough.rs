@@ -18,7 +18,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let (player, player_entity_id) = self.native_clicker();
         let snapshot = stack.try_into_api().ok()?;
         let click = ItemClick::from(mod_api::__private::built::ItemClick {
-            side: if self.remote.is_some() {
+            side: if self.side_has_remote() {
                 LogicalSide::Client
             } else {
                 LogicalSide::Server

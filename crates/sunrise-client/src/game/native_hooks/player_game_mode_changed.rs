@@ -60,7 +60,14 @@ mod player_game_mode_changed_tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_guest_turn_tests::with_guests(|game| {
                 let mode = |game: &crate::game::ServerGame<'_>| {
-                    game.lan.as_ref().unwrap().hub.guest(13).unwrap().game_mode
+                    game.side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(13)
+                        .unwrap()
+                        .game_mode
                 };
                 game.as_guest(13, |g| {
                     g.set_game_mode(GameMode::Survival);
@@ -82,7 +89,8 @@ mod player_game_mode_changed_tests {
     /// to it since the last call.
     fn watch_modes(game: &mut crate::game::ServerGame<'_>) -> impl Fn() -> Vec<f32> + use<> {
         let (tx, rx) = std::sync::mpsc::channel();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

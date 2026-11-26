@@ -48,7 +48,7 @@ fn a_window_crosses_and_keeps_its_velocity_through_the_acceptance() {
         );
 
         // Digging a block, with predictions up to sequence 7, when the acceptance comes.
-        let r = game.remote.as_mut().unwrap();
+        let r = game.side.remote.as_mut().unwrap();
         r.is_destroying = true;
         r.destroying = Some(([3, 64, 3], 1, 0.5));
         r.sequence = 7;
@@ -75,7 +75,7 @@ fn a_window_crosses_and_keeps_its_velocity_through_the_acceptance() {
         assert_eq!(player.position, Vec3::new(24.75, 65.0, 8.5));
         assert_eq!(player.velocity, Vec3::new(-0.25, -0.0784, 0.0));
         assert_eq!((game.yaw, game.pitch), (90.0, 0.0));
-        let r = game.remote.as_ref().unwrap();
+        let r = game.side.remote.as_ref().unwrap();
         assert!(!r.is_destroying);
         assert_eq!(r.destroying, Some(([3, 64, 3], 1, 0.0)));
         assert_eq!(r.last_teleport_sequence, 7);

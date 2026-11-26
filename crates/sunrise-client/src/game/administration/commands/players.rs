@@ -6,14 +6,6 @@
 //! swapped in (`for_player`), as their own turn, what it tells them going to
 //! their chat.
 use super::{Game, Target};
-use sunrise_sim::lan::guest::Guest;
-
-impl Target {
-    /// A player, in place or not (`instanceof ServerPlayer`).
-    pub(in crate::game) fn is_player(self) -> bool {
-        matches!(self, Target::Player | Target::Guest(_))
-    }
-}
 
 /// GameType.getName for a guest's game mode id.
 pub(in crate::game) fn mode_name(id: i32) -> &'static str {
@@ -40,7 +32,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn player_nicknamed(&self, name: &str) -> Option<Target> {
         let bare = |s: &str| s.strip_prefix('~').unwrap_or(s).to_ascii_lowercase();
         let wanted = bare(name);
-        let hub = &self.lan.as_ref()?.hub;
+        let hub = &self.side.lan.as_ref()?.hub;
         let uuid = hub
             .nicknames
             .iter()
@@ -53,12 +45,5 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn guest_level_and_mode(&self, conn: u32) -> Option<(i32, &'static str)> {
         self.command_guest(conn)
             .map(|g| (g.xp_level, mode_name(g.game_mode)))
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The guest `conn`, while the hub is in `self.lan`.
-    pub(in crate::game) fn command_guest(&self, conn: u32) -> Option<&Guest> {
-        self.lan.as_ref()?.hub.guest(conn)
     }
 }

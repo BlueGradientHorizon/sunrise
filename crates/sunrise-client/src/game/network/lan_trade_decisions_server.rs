@@ -8,8 +8,9 @@ use super::{
         decision::{Identity, Reply, Side},
     },
 };
-use crate::game::lan_trade_decisions::Effect;
-use crate::game::lan_trade_decisions::Journal;
+use crate::game::lan_menu_data::{
+    Effect, Journal, KeptMerchantGuest, KeptMerchantMob, KeptMerchantWindow,
+};
 use crate::game::lan_trade_decisions::TakePlan;
 use crate::game::lan_trade_decisions::TakeReads;
 use std::cell::RefCell;
@@ -45,7 +46,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(mob),
             sunrise_sim::merchant::TradeFeedback::Current,
         );
-        let host = self.lan.as_mut().expect("validated merchant host");
+        let host = self.side.lan.as_mut().expect("validated merchant host");
         let gi = host
             .hub
             .guests
@@ -85,6 +86,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Effect::Orb(at, value) => self.add_orb(at, value),
             Effect::Drops(conn, stacks) => {
                 if let Some(gi) = self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|h| h.hub.guests.iter().position(|g| g.conn == conn))
@@ -124,7 +126,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
             return self.lan_merchant_click_plain(conn, p);
         }
-        let Some(mob) = self.lan.as_ref().and_then(|host| {
+        let Some(mob) = self.side.lan.as_ref().and_then(|host| {
             let gm = host.menus.get(&conn)?.merchant.as_ref()?;
             // A non-quick-craft click while a drag is active only resets the drag (`doClick`).
             (gm.window == p.container && !gm.drag.active())
@@ -153,6 +155,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             target: mod_api::EntityRef::new(actor.epoch(), mob),
         };
         let route = self
+            .side
             .lan
             .as_mut()
             .unwrap()
@@ -214,7 +217,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 },
             );
             if let Some(frozen) = seen.filter(crate::game::stacked_listens_for) {
-                let host = self.lan.as_ref().unwrap();
+                let host = self.side.lan.as_ref().unwrap();
                 let stamp = host.menus[&conn].merchant.stamp();
                 let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;
                 // The shared pickup decision checks its journal epoch as well as these stacks.
@@ -223,7 +226,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     route,
                     frozen,
                     |game| {
-                        let host = game.lan.as_ref()?;
+                        let host = game.side.lan.as_ref()?;
                         let guest = host.hub.guest(conn)?;
                         let gm = host.menus.get(&conn)?.merchant.as_ref()?;
                         (game.guest_actor(conn) == Some(identity.actor)
@@ -268,7 +271,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut traded = false;
         let mut refresh = false;
         loop {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return false;
             };
             let Some(guest) = host.hub.guest(conn) else {
@@ -404,7 +407,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             previous = moved;
         }
-        if traded && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+        if traded && let Some(guest) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn))
+        {
             self.after_commit(After::Trade(Box::new(Effect::Notice(
                 guest.uuid,
                 guest.name.clone(),
@@ -420,7 +424,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         window: i32,
         offers: bool,
     ) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(open) = host.menus.get_mut(&conn).map(|p| &mut p.merchant) else {
@@ -434,7 +438,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.lan_send_offers(conn, &mut gm);
         }
         self.lan_send_merchant_content(conn, &mut gm);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.menus
                 .entry(conn)
                 .or_default()
@@ -444,38 +448,75 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl Journal {
-    pub(in crate::game) fn merge(&mut self, child: Self) {
-        for (conn, kept) in child.guests {
-            self.guests.entry(conn).or_insert(kept);
+pub(in crate::game) fn rollback_trade_journal(
+    journal: Journal,
+    game: &mut Game<'_, crate::game::server_side::ServerState>,
+) {
+    for (conn, kept) in journal.guests {
+        let KeptMerchantGuest {
+            merchant,
+            stats,
+            progress,
+            changed,
+            unlocked,
+            book,
+        } = *kept;
+        if let Some(host) = game.side.lan.as_mut() {
+            host.menus
+                .entry(conn)
+                .or_default()
+                .merchant
+                .restore(Some(merchant));
+            if let Some(stats) = stats {
+                host.play.entry(conn).or_default().stats = stats;
+            }
+            if let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) {
+                host.hub.guests.update(gi, |g| {
+                    g.advancements = progress;
+                    g.advancements_changed = changed;
+                    g.recipes_unlocked = unlocked;
+                    g.recipe_book = book;
+                });
+            }
         }
-        for (conn, kept) in child.windows {
-            self.windows.entry(conn).or_insert(kept);
-        }
-        for (id, kept) in child.mobs {
-            self.mobs.entry(id).or_insert(kept);
-        }
-        if self.sequences.is_none() {
-            self.sequences = child.sequences;
-        }
-        self.correct_on_abort.extend(child.correct_on_abort);
     }
-    pub(in crate::game) fn rollback(
-        self,
-        game: &mut Game<'_, crate::game::server_side::ServerState>,
-    ) {
-        for restore in self.guests.into_values() {
-            restore(game);
+    for (conn, kept) in journal.windows {
+        let KeptMerchantWindow {
+            window,
+            heard,
+            owned,
+        } = kept;
+        if let Some(host) = game.side.lan.as_mut() {
+            host.hub.guests.update_connection(conn, window);
+            let menus = host.menus.entry(conn).or_default();
+            menus.menu_heard = heard;
+            menus.owned_menu = owned;
         }
-        for restore in self.windows.into_values() {
-            restore(game);
+    }
+    for (id, kept) in journal.mobs {
+        let KeptMerchantMob {
+            random,
+            timer,
+            trade,
+            trading,
+            profession,
+            level,
+            variant,
+            villager,
+        } = *kept;
+        if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
+            m.random = random;
+            m.ambient_timer = timer;
+            m.extra.trade = trade;
+            m.extra.flag2 = trading;
+            m.extra.profession = profession;
+            m.extra.villager_level = level;
+            m.extra.variant = variant;
+            m.extra.villager = villager;
         }
-        for restore in self.mobs.into_values() {
-            restore(game);
-        }
-        if let Some(sequences) = self.sequences {
-            game.side.rand_sequences = sequences;
-        }
+    }
+    if let Some(sequences) = journal.sequences {
+        game.side.rand_sequences = sequences;
     }
 }
 
@@ -484,7 +525,7 @@ impl TakeReads {
         &self,
         game: &Game<'_, crate::game::server_side::ServerState>,
     ) -> bool {
-        let Some(host) = game.lan.as_ref() else {
+        let Some(host) = game.side.lan.as_ref() else {
             return false;
         };
         let Some(guest) = host.hub.guest(self.conn) else {

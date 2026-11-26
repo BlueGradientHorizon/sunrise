@@ -104,8 +104,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let CrosshairDecision::Entity(hit) = self.server_pick_ray_decision() else {
             return None;
         };
-        let is_synthetic_dragon_part =
-            (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&hit.id);
+        let is_synthetic_dragon_part = (crate::game::dragon_common::SPECIAL
+            ..crate::game::dragon_common::SPECIAL + 8)
+            .contains(&hit.id);
         let id = hit.id as i32;
         let pickable = !is_synthetic_dragon_part
             && crate::game::pick_entity_common::has_pick_result(self.level_entity(id));
@@ -148,7 +149,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 pub(in crate::game) mod tests {
     use crate::game::commands::Target;
     use crate::game::creatures::SpawnSite;
-    use crate::game::dragon::dragon_part_id;
+    use crate::game::dragon_common::dragon_part_id;
     use crate::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
     use sunrise_items::items::ItemStack;
@@ -217,7 +218,7 @@ pub(in crate::game) mod tests {
                         g.inventory[0] = None;
                         g.selected = 0;
                     });
-                    game.lan = Some(crate::game::lan::LanHost::for_test(hub));
+                    game.side.lan = Some(crate::game::lan::LanHost::for_test(hub));
 
                     for (id, expected) in [
                         (far_knot as i32, None),
@@ -225,7 +226,7 @@ pub(in crate::game) mod tests {
                         (explicit_knot as i32, Some("minecraft:lead")),
                         (body_part_id, Some("minecraft:ender_dragon_spawn_egg")),
                     ] {
-                        game.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                        game.side.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
                             g.inventory[0] = None;
                             g.selected = 0;
                         });
@@ -238,7 +239,7 @@ pub(in crate::game) mod tests {
                                 },
                             ),
                         );
-                        let held = game.lan.as_ref().unwrap().hub.guests[gi].inventory[0]
+                        let held = game.side.lan.as_ref().unwrap().hub.guests[gi].inventory[0]
                             .as_ref()
                             .map(|s| &*s.item);
                         assert_eq!(held, expected, "PickItemFromEntity({id})");

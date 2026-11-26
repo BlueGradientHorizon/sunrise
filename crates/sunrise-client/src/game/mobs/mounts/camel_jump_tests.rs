@@ -40,9 +40,15 @@ pub(in crate::game::server_side) fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.native_lifecycle
         .begin_open(mod_api::Authority::IntegratedServer);
     game.build_registries();
@@ -107,7 +113,7 @@ pub(in crate::game::server_side) fn game<'a>(
     guest.loaded = true;
     // Its view, as the client sent it: straight down.
     guest.pitch = 90.0;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     // This fixture installs the guest without the normal login allocator.
     // Reserve its entity ID before commands allocate the camel and sensor mob.
     game.side.next_entity = game.side.next_entity.max(2);

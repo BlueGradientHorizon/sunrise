@@ -2,7 +2,8 @@
 //! breezes shoot, and the burst they make (`ServerExplosion` with
 //! `TRIGGER_BLOCK`: no damage, only knockback and the blocks that react).
 use super::Game;
-use super::entity::{Blast, Entity as _, for_each_entity_mut};
+use super::entity::{Blast, Entity as _};
+use crate::game::server_side::entity_server::for_each_entity_mut;
 use std::collections::BTreeSet;
 use sunrise_core::{
     geometry::{Direction, Vec3},
@@ -304,7 +305,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             source: Some(p.id),
             owner,
         };
-        self.creatures.wind_source = Some(p.join_seq());
+        self.side.wind_source = Some(p.join_seq());
         let silent = self.entity_silent(p.id);
         let burst = self.wind_burst(
             center,
@@ -315,7 +316,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ..Source::charge(breeze, silent)
             },
         );
-        self.creatures.wind_source = None;
+        self.side.wind_source = None;
         // Projectile.onHit posts PROJECTILE_LAND after onHitEntity/onHitBlock (not above top).
         match hit {
             Hit::Entity { at, .. } => {
@@ -389,8 +390,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // An ender dragon part takes the point of damage too; a crystal is
             // not hit (`AbstractWindCharge.canHitEntity`).
-            Who::Mob(id) if id >= super::dragon::SPECIAL => {
-                if id < super::dragon::SPECIAL + 8 {
+            Who::Mob(id) if id >= crate::game::dragon_common::SPECIAL => {
+                if id < crate::game::dragon_common::SPECIAL + 8 {
                     let owner = self.resolved_projectile_owner(p.owner, p.guest);
                     self.hit_special_full(
                         id,
@@ -440,12 +441,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 );
                 // The hit's causing entity, lent to its listeners beside the victim.
                 let causing = self.causer_id(source.attacker);
-                let decision = crate::game::entity::causer_decision!(self, causing);
+                let decision =
+                    crate::game::server_side::entity_server::causer_decision!(self, causing);
                 let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-                let (victim, lend) =
-                    crate::game::entity::victim_and_causer!(self, index, causing, decision);
+                let (victim, lend) = crate::game::server_side::entity_server::victim_and_causer!(
+                    self, index, causing, decision
+                );
                 let hurt = victim.damage(
-                    crate::game::entity::damage_level_of!(
+                    crate::game::server_side::entity_server::damage_level_of!(
                         self,
                         self.side.combat.0.attack(),
                         &mut credit,
@@ -573,7 +576,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // burst) the player is that guest.
         let own = self.wind_push_player(center, radius, multiplier, src, blocks);
         let mut pushed: Vec<_> = self.side.lan_acting.zip(own).into_iter().collect();
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             let guests: Vec<u32> = host
                 .hub
                 .guests
@@ -604,7 +607,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             items_ignore: !blocklike,
             spared: None,
         };
-        let source = self.creatures.wind_source;
+        let source = self.side.wind_source;
         let (done, announced) = (self.side.ordered.done, self.side.ordered.announced);
         let mut late = Vec::new();
         let mut entities = self.take_entities();
@@ -644,13 +647,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         });
         self.restore_entities(entities);
-        self.creatures.late_wind_pushes.extend(late);
+        self.side.late_wind_pushes.extend(late);
         pushed
     }
     /// The pushes `wind_knockback` held for entities that tick after the
     /// projectiles, applied once those entities have ticked.
     pub(in crate::game::server_side) fn apply_late_wind_pushes(&mut self) {
-        let late = std::mem::take(&mut self.creatures.late_wind_pushes);
+        let late = std::mem::take(&mut self.side.late_wind_pushes);
         if late.is_empty() {
             return;
         }
@@ -753,8 +756,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // In a guest's turn (their charge landing, their mace's burst) the
         // host holds the other players (`as_guest`): the burst waits for the
         // turn to end so that it reaches every player, the guest too.
-        if self.side.lan_acting.is_some() && self.lan.is_none() {
-            self.creatures.wind_bursts.push(Burst {
+        if self.side.lan_acting.is_some() && self.side.lan.is_none() {
+            self.side.wind_bursts.push(Burst {
                 center,
                 radius,
                 multiplier,
@@ -763,7 +766,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(());
         }
         let cause = src.cause;
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.side.serving.is_some() || self.options.dedicated.is_some() {
             let start = mod_api::ExplosionStart::from(mod_api::__private::built::ExplosionStart {
                 dimension: self.dim.id(),
                 center,
@@ -822,7 +825,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The bursts guests' turns put off.
     pub(in crate::game) fn flush_wind_bursts(&mut self) -> Result<()> {
         self.flush_smash_pushes();
-        for b in std::mem::take(&mut self.creatures.wind_bursts) {
+        for b in std::mem::take(&mut self.side.wind_bursts) {
             self.wind_burst(b.center, b.radius, b.multiplier, b.src)?;
         }
         Ok(())
@@ -976,7 +979,7 @@ pub(in crate::game) mod tests {
         assert!(!push_waits_for_tick(true, 9, Some(7)), "joined after");
         assert!(!push_waits_for_tick(false, 3, Some(7)), "ticks before it");
         assert!(!push_waits_for_tick(true, 3, None), "not a charge's burst");
-        let tnt = crate::game::tnt::PrimedTnt {
+        let tnt = crate::game::tnt_common::PrimedTnt {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],

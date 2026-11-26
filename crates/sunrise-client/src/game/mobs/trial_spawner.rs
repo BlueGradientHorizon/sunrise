@@ -339,7 +339,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|p| [p.position.x, p.position.y, p.position.z])
         } else {
             let acting = self.side.lan_acting;
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             let Some(index) = host.hub.guests.iter().position(|g| {
@@ -429,7 +429,13 @@ mod omen_tests {
                 player.loaded = true;
                 player.dimension = game.dim.id().to_owned();
             }
-            game.lan.as_mut().unwrap().hub.guests.extend([left, right]);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .extend([left, right]);
 
             let ids = (32..45)
                 .map(|id| format!("[I;0,0,0,{id}]"))

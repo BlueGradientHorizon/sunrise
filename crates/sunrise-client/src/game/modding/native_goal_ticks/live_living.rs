@@ -1,6 +1,6 @@
 //! Reads from the actual mob loaned to the active goal, or a disjoint live mob.
-use super::super::native_living_refs::{hand_slot, lend_equipment};
 use super::{GoalCx, Resolved};
+use crate::game::native_equipment_read::{hand_slot, lend_equipment};
 use mod_api::{ActiveEffect, EffectKey, EquipmentSlot, Hand, ItemStackView, LivingRef, Pose};
 use sunrise_items::items::EntityTypeTags;
 use sunrise_sim::mobs::Mob;
@@ -27,7 +27,7 @@ impl GoalCx<'_, '_> {
             .effects
             .iter()
             .find(|e| e.registry_index == Some(index))?;
-        Some(super::super::native_living_effects::mob_effect(mob, e))
+        Some(crate::game::native_living_body::mob_effect(mob, e))
     }
 
     pub(super) fn r_living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
@@ -36,7 +36,7 @@ impl GoalCx<'_, '_> {
             mob.extra
                 .effects
                 .iter()
-                .map(|e| super::super::native_living_effects::mob_effect(mob, e))
+                .map(|e| crate::game::native_living_body::mob_effect(mob, e))
                 .collect(),
         )
     }

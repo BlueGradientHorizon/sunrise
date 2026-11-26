@@ -1,8 +1,10 @@
-use crate::game::remote::raw_ingress::bundle_parity_tests::bundle_witness;
-use crate::game::remote::raw_ingress::bundle_parity_tests::hex_bytes;
-use crate::game::remote::raw_ingress::bundle_parity_tests::wait_pong_in_game;
-use crate::game::remote::raw_ingress::bundle_parity_tests::witness_json;
-use crate::game::{native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry};
+use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::bundle_witness;
+use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::hex_bytes;
+use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::wait_pong_in_game;
+use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::witness_json;
+use crate::game::{
+    client_side::remote_client::RemoteDimensionEntry, native_entity_refs::tests::with_client_game,
+};
 use std::time::{Duration, Instant};
 use sunrise_client::{level_loading::Reason, multiplayer, net::Session, title::Mode};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -47,7 +49,7 @@ pub(in crate::game) fn dependent_entity_bundle_body() {
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         let (session, mut peer) = Session::play_loop_probe();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.session = session;
         remote.joined = true;
         remote.logged_in = true;
@@ -211,7 +213,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "MetadataBeforeLogin").unwrap();
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = false;
@@ -227,12 +229,12 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 )
                 .unwrap();
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.remote.is_some() && Instant::now() < deadline {
+                while game.side.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     std::thread::yield_now();
                 }
                 assert!(
-                    game.remote.is_none(),
+                    game.side.remote.is_none(),
                     "SetEntityData before Login must disconnect"
                 );
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
@@ -266,7 +268,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 };
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = true;
@@ -292,8 +294,8 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 )
                 .unwrap();
                 wait_pong_in_game(game, &mut peer, 1);
-                assert!(game.remote.is_some());
-                assert!(!game.remote.as_ref().unwrap().glowing.contains(&77_777));
+                assert!(game.side.remote.is_some());
+                assert!(!game.side.remote.as_ref().unwrap().glowing.contains(&77_777));
 
                 // Spawn an Interaction and a Painting.
                 peer.send(
@@ -361,7 +363,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 .unwrap();
                 wait_pong_in_game(game, &mut peer, 2);
                 assert_eq!(
-                    game.remote.as_ref().unwrap().glowing.contains(&1001),
+                    game.side.remote.as_ref().unwrap().glowing.contains(&1001),
                     assignment["repeated_flags_last_wins"]["glowing_after"]
                         .as_bool()
                         .unwrap()
@@ -385,12 +387,12 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                     .unwrap_err();
                 assert!(err.is::<super::PacketError>());
                 assert_eq!(
-                    game.remote.as_ref().unwrap().glowing.contains(&1001),
+                    game.side.remote.as_ref().unwrap().glowing.contains(&1001),
                     assignment["out_of_range_preserves_prefix"]["glowing_after"]
                         .as_bool()
                         .unwrap()
                 );
-                game.remote.as_mut().unwrap().glowing.remove(&1001);
+                game.side.remote.as_mut().unwrap().glowing.remove(&1001);
 
                 // Mismatched serializer preserves valid prefix and raises PacketError.
                 let err = game
@@ -404,7 +406,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                     .unwrap_err();
                 assert!(err.is::<super::PacketError>());
                 assert_eq!(
-                    game.remote.as_ref().unwrap().glowing.contains(&1001),
+                    game.side.remote.as_ref().unwrap().glowing.contains(&1001),
                     assignment["mismatched_serializer_preserves_prefix"]["glowing_after"]
                         .as_bool()
                         .unwrap()
@@ -427,7 +429,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 }
                 let mut saw_pong = false;
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.remote.is_some() && Instant::now() < deadline {
+                while game.side.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     while let Ok((id, body)) = peer.recv() {
                         if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 55) {
@@ -437,7 +439,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                     std::thread::yield_now();
                 }
                 assert!(
-                    game.remote.is_none(),
+                    game.side.remote.is_none(),
                     "invalid SetEntityData in bundle must disconnect"
                 );
                 assert!(!saw_pong, "bundle must stop before trailing Ping(55)");
@@ -492,7 +494,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
                 let (session, mut peer) =
                     Session::play_loop_probe_with_registries(registries.clone());
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = true;
@@ -551,7 +553,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 );
 
                 // Default spawn variant (index 0) also prefers synced data over same-name local variant.
-                game.remote.as_mut().unwrap().registries = registries.clone();
+                game.side.remote.as_mut().unwrap().registries = registries.clone();
                 peer.send(
                     &C::AddEntity(play::AddEntity {
                         id: 2003,
@@ -593,7 +595,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 game.connect_local(client, "PreLoginDisconnectBundle")
                     .unwrap();
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = false;
@@ -615,7 +617,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 }
                 let mut saw_pong = false;
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.remote.is_some() && Instant::now() < deadline {
+                while game.side.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     while let Ok((id, body)) = peer.recv() {
                         if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 88) {
@@ -624,7 +626,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                     }
                     std::thread::yield_now();
                 }
-                assert!(game.remote.is_none());
+                assert!(game.side.remote.is_none());
                 assert!(!saw_pong, "bundle must stop before Ping(88)");
                 assert!(game.side.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
@@ -648,7 +650,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 game.connect_local(client, "PreLoginPostEffectsBundle")
                     .unwrap();
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = false;
@@ -667,7 +669,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 }
                 let mut saw_pong = false;
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.remote.is_some() && Instant::now() < deadline {
+                while game.side.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     while let Ok((id, body)) = peer.recv() {
                         if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 89) {
@@ -676,7 +678,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                     }
                     std::thread::yield_now();
                 }
-                assert!(game.remote.is_none());
+                assert!(game.side.remote.is_none());
                 assert!(!saw_pong, "bundle must stop before Ping(89)");
                 assert!(game.side.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
@@ -736,7 +738,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 game.connect_local(client, "ShutdownOrder").unwrap();
                 game.connection_starts("play.example.test", "ShutdownOrder", false);
                 let (session, mut peer) = Session::play_loop_probe();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.session = session;
                 remote.joined = true;
                 remote.logged_in = true;
@@ -756,11 +758,11 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 *PEER.lock().unwrap() = Some(peer);
 
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while game.remote.is_some() && Instant::now() < deadline {
+                while game.side.remote.is_some() && Instant::now() < deadline {
                     game.poll_remote().unwrap();
                     std::thread::yield_now();
                 }
-                assert!(game.remote.is_none());
+                assert!(game.side.remote.is_none());
             });
             *PEER.lock().unwrap() = None;
             assert_eq!(

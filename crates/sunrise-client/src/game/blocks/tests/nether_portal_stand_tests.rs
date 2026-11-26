@@ -63,6 +63,7 @@ fn armor_stands_in_a_nether_portal_go_through_and_cool_down() {
         "the stand in the portal crossed, the marker and the NoGravity stand did not"
     );
     let arrival = game
+        .side
         .portals
         .arrivals
         .iter()

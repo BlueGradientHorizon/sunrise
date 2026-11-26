@@ -12,13 +12,6 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::attack_strength::HeldStack;
 use sunrise_sim::first_person_sim::{Hand, SwingAnimation, swing_duration};
 
-/// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
-/// - entity.position()`, measured from the entity's feet, as
-/// `MultiPlayerGameMode.interact` computes it.
-pub(in crate::game) fn interact_location(point: Vec3, feet: Vec3) -> [f64; 3] {
-    [point.x - feet.x, point.y - feet.y, point.z - feet.z]
-}
-
 /// The off hand's place in `visible_hands` (the main hand uses its hotbar slot).
 pub(in crate::game) const OFFHAND: usize = usize::MAX;
 
@@ -79,8 +72,6 @@ pub(in crate::game) fn matches_for_swap(a: Option<&ItemStack>, b: Option<&ItemSt
     }
 }
 
-pub(in crate::game) use super::held_items::{BreakSpeedDispatch, HarvestDispatch};
-
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A slot of the inventory (`OFFHAND_SLOT` for the off hand) was set to
@@ -112,6 +103,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         animation: SwingAnimation,
     ) -> bool {
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| !r.interaction_swing[usize::from(hand == Hand::Off)])
@@ -129,7 +121,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let duration = swing_duration(animation, dig_speed, fatigue);
         if self.swing.start_if_able(hand, animation, duration) {
             self.swings_started += 1;
-            if let Some(r) = self.remote.as_ref()
+            if let Some(r) = self.side.remote.as_ref()
                 && r.session.is_recording()
             {
                 let pkt = sunrise_protocol::packets::play::Clientbound::SwingAnimation(

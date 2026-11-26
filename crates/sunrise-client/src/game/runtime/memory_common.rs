@@ -5,11 +5,11 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::{
     Arc,
-    atomic::AtomicBool,
-    mpsc::{Receiver, Sender},
+    atomic::{AtomicBool, Ordering},
+    mpsc::{Receiver, Sender, channel, sync_channel},
 };
-use std::thread::JoinHandle;
-use sunrise_client_render::gfx::RendererMemorySnapshot;
+use std::task::Poll;
+use std::thread::{Builder, JoinHandle};
 use sunrise_level::chunk::{Chunk, ColumnCensus, Section};
 use sunrise_level::fast_hash::FxHashSet;
 use sunrise_sim::server_perf::MemoryCost;
@@ -271,7 +271,6 @@ pub(in crate::game) struct MemoryReport {
 pub(in crate::game) struct MemoryInputs {
     pub(in crate::game) render_distance: i32,
     pub(in crate::game) client: Option<Vec<Arc<Chunk>>>,
-    pub(in crate::game) renderer: Option<RendererMemorySnapshot>,
     pub(in crate::game) far: Option<(FarTiles, usize)>,
 }
 
@@ -280,6 +279,7 @@ impl MemoryInputs {
         self,
         server: Option<ServerSide>,
         active: impl Fn() -> bool,
+        renderer: impl FnOnce() -> Option<(Renderer, usize)>,
     ) -> Option<MemoryReport> {
         let (commit, peak_commit) = sunrise_threads::allocator_commit();
         let live = sunrise_threads::allocator_stats::live_bytes();
@@ -287,34 +287,7 @@ impl MemoryInputs {
         if !active() {
             return None;
         }
-        let renderer = self.renderer.map(|r| {
-            let [arenas, vertices] = r.section_vertex_bytes();
-            let cpu = r.cpu_census();
-            let cpu_bytes: usize = cpu.iter().map(|(_, v)| *v).sum();
-            let gpu = r
-                .gpu_memory_by_label()
-                .map(|(allocated, reserved, labels)| Gpu {
-                    allocated_mb: mb(allocated),
-                    reserved_mb: mb(reserved),
-                    by_label_mb: labels
-                        .into_iter()
-                        .take(40)
-                        .map(|(label, bytes)| (label, mb(bytes)))
-                        .collect(),
-                });
-            (
-                Renderer {
-                    section_arenas_mb: mb(arenas),
-                    section_vertices_mb: mb(vertices),
-                    cpu: cpu
-                        .into_iter()
-                        .map(|(k, v)| (format!("{k}_mb"), mb(v)))
-                        .collect(),
-                    gpu,
-                },
-                cpu_bytes,
-            )
-        });
+        let renderer = renderer();
         if !active() {
             return None;
         }
@@ -471,5 +444,127 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The report as JSON, for a manual control-socket request or a dedicated capture.
     pub(in crate::game) fn memory_value(&self) -> Value {
         serde_json::to_value(self.memory_report()).unwrap_or(Value::Null)
+    }
+}
+
+impl Drop for ServerMemoryRequest {
+    fn drop(&mut self) {
+        // The server may discard the request on shutdown without handling it.
+        if let Some(reply) = self.reply.take() {
+            let _ = reply.send(None);
+        }
+    }
+}
+
+impl Generation {
+    pub(in crate::game) fn of(streaming: &sunrise_level::chunk_streamer::ChunkStreamer) -> Self {
+        let c = streaming.proto_census();
+        let [blocks, lists, heightmaps, other, biomes, records] = c.bytes;
+        let protos: usize = c.bytes.iter().sum();
+        let cached: usize = c.caches.iter().filter_map(|(_, _, bytes)| *bytes).sum();
+        Self {
+            protos: c.protos,
+            protos_mb: mb(protos),
+            proto_blocks_mb: mb(blocks),
+            proto_section_lists_mb: mb(lists),
+            proto_heightmaps_mb: mb(heightmaps),
+            proto_other_terrain_mb: mb(other),
+            proto_biomes_mb: mb(biomes),
+            proto_records_mb: mb(records),
+            proto_sections_by_bits: c.sections_by_bits,
+            light_views: c.light_views,
+            light_views_mb: mb(c.light_view_bytes),
+            caches: c
+                .caches
+                .iter()
+                .map(|(name, n, bytes)| (*name, *n, bytes.map(mb)))
+                .collect(),
+            stages: streaming.stages().to_vec(),
+            bytes: protos + c.light_view_bytes + cached,
+        }
+    }
+}
+
+impl ServerMemoryRequest {
+    pub(in crate::game) fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
+        if self.cancelled.load(Ordering::Acquire) {
+            return;
+        }
+        let snapshot = self.cost.measure(collect);
+        if !self.cancelled.load(Ordering::Acquire) {
+            let _ = self.reply.take().unwrap().send(Some(snapshot));
+        }
+    }
+}
+
+impl MemoryCancellation {
+    pub(in crate::game) fn cancel(&mut self) {
+        self.cancelled.store(true, Ordering::Release);
+        if let Some(wake) = self.wake_worker.take() {
+            let _ = wake.send(None);
+        }
+    }
+}
+
+impl PendingMemory {
+    pub(in crate::game) fn cancel(&mut self) {
+        self.cancel.cancel();
+    }
+    pub(in crate::game) fn poll(&self) -> Poll<Option<MemoryRows>> {
+        // Keep the slot reserved while either the worker or queued request still holds the flag.
+        if !self.worker.is_finished() || Arc::strong_count(&self.cancel.cancelled) != 1 {
+            return Poll::Pending;
+        }
+        if self.cancel.cancelled.load(Ordering::Acquire) {
+            return Poll::Ready(None);
+        }
+        Poll::Ready(self.rows.try_recv().ok())
+    }
+    pub(in crate::game) fn spawn(
+        cost: MemoryCost,
+        from_server: bool,
+        report: impl FnOnce(Option<ServerSide>, &AtomicBool) -> Option<MemoryRows> + Send + 'static,
+    ) -> std::io::Result<(Self, Option<ServerMemoryRequest>)> {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let (reply, snapshot) = channel();
+        let request = from_server.then(|| ServerMemoryRequest {
+            reply: Some(reply.clone()),
+            cancelled: cancelled.clone(),
+            cost: cost.clone(),
+        });
+        let (publish, rows) = sync_channel(1);
+        let worker = Builder::new().name("perf-memory".into()).spawn({
+            let cancelled = cancelled.clone();
+            move || {
+                let server = if from_server {
+                    let Ok(Some(snapshot)) = snapshot.recv() else {
+                        return;
+                    };
+                    Some(snapshot)
+                } else {
+                    None
+                };
+                if cancelled.load(Ordering::Acquire) {
+                    return;
+                }
+                sunrise_sim::server_perf::profiler_thread();
+                let completed = cost.measure(|| report(server, &cancelled));
+                if let Some(rows) = completed.filter(|_| !cancelled.load(Ordering::Acquire)) {
+                    let _ = publish.send(rows);
+                }
+            }
+        })?;
+        let cancel = MemoryCancellation {
+            cancelled,
+            wake_worker: from_server.then_some(reply),
+        };
+        Ok((
+            Self {
+                cancel,
+                worker,
+                rows,
+            },
+            request,
+        ))
     }
 }

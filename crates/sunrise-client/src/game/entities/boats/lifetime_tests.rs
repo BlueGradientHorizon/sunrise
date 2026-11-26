@@ -127,8 +127,8 @@ fn bound_boat_client_case(tick: impl Fn(&mut crate::game::ClientGame<'_>, i32)) 
     super::super::native_entity_refs::tests::with_client_game(|game| {
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "BoatLifetimeTest").unwrap();
-        game.remote.as_mut().unwrap().joined = true;
-        game.remote.as_mut().unwrap().first_passenger = true;
+        game.side.remote.as_mut().unwrap().joined = true;
+        game.side.remote.as_mut().unwrap().first_passenger = true;
         game.boats
             .push(Boat::new(71, "oak".into(), Vec3::new(0.5, 70.0, 0.5), 0.0));
         game.boats.update(0, |boat| boat.hurt_time = 6);

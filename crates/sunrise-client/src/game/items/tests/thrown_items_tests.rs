@@ -140,7 +140,7 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
     with_guests(|game| {
         let at = [3.0, 64.0, 5.0];
         let (listener, rx) = guest(14, 14, at);
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         hub.guests.push(listener);
         let C::Sound(pickup) = hub.sound_packet("minecraft:entity.item.pickup", at, 0.2, 2.0, 7, 0)
         else {

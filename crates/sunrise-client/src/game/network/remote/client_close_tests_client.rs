@@ -120,7 +120,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
                         with_client_game(|game| {
                             let mut reader = logged_in(game);
-                            Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
+                            Arc::make_mut(&mut game.side.remote.as_mut().unwrap().builtin)
                                 .registries
                                 .insert(
                                     "minecraft:menu".into(),
@@ -200,7 +200,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                                 .unwrap()
                                 .set_health(0.0, false)
                                 .unwrap();
-                            game.remote.as_mut().unwrap().show_death_screen = true;
+                            game.side.remote.as_mut().unwrap().show_death_screen = true;
                             let _ = sent(&mut reader);
                             deliver(
                                 game,
@@ -344,7 +344,7 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
                         .unwrap()
                         .set_health(0.0, false)
                         .unwrap();
-                    game.remote.as_mut().unwrap().show_death_screen = true;
+                    game.side.remote.as_mut().unwrap().show_death_screen = true;
                     let paused = Event::Close {
                         id: "paused",
                         menu: None,
@@ -356,7 +356,7 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
                     assert_eq!(game.side.screen, Screen::Dead);
                     assert_eq!(take(), [Event::Open("dead"), paused]);
 
-                    game.remote.as_mut().unwrap().show_death_screen = false;
+                    game.side.remote.as_mut().unwrap().show_death_screen = false;
                     let dead = Event::Close {
                         id: "dead",
                         menu: None,
@@ -374,7 +374,7 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
                     );
 
                     game.set_screen(Screen::Paused);
-                    game.remote.as_mut().unwrap().logged_in = false;
+                    game.side.remote.as_mut().unwrap().logged_in = false;
                     let paused = Event::Close {
                         id: "paused",
                         menu: None,
@@ -503,12 +503,12 @@ fn server_close_runs_sign_and_inventory_removal_without_echo() {
                 game.open_player_inventory();
                 assert_eq!(game.side.screen, Screen::Inventory);
                 assert_eq!(game.remote_menu().0, 0);
-                game.remote.as_mut().unwrap().craft_result =
+                game.side.remote.as_mut().unwrap().craft_result =
                     Some(ItemStack::new("minecraft:stick", 4));
                 game.craft_grid[0] = Some(ItemStack::new("minecraft:oak_planks", 2));
                 close(game);
                 assert_eq!(game.side.screen, Screen::Playing);
-                assert!(game.remote.as_ref().unwrap().craft_result.is_none());
+                assert!(game.side.remote.as_ref().unwrap().craft_result.is_none());
                 let ingredient = game.craft_grid[0].as_ref().unwrap();
                 assert_eq!(ingredient.count, 2);
                 assert!(

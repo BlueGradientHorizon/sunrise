@@ -289,7 +289,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: play::SetCommandBlock,
     ) {
-        let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;
@@ -313,7 +313,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// `ServerPlayer.openCommandBlock`: send BlockEntityData and OPEN_COMMAND_BLOCK_CHANNEL.
     pub(in crate::game::server_side) fn lan_open_command_block(&mut self, conn: u32, pos: Pos) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         if !host

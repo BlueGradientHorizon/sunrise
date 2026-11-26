@@ -28,6 +28,7 @@ fn converted_mobs_keep_command_tags_at_the_new_id_and_on_save() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

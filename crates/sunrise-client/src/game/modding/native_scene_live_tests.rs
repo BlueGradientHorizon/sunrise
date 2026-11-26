@@ -188,8 +188,9 @@ fn draw(
     view: SceneView,
 ) -> (Result<(), SceneError>, usize) {
     let mut batch = sunrise_client::hud::HudBatch::scratch([320, 240]);
-    let result = crate::game::api_values::aggregates::scene_blocks(&scene.blocks)
-        .and_then(|prepared| game.native_draw_scene(&mut batch, RECT, &prepared, scene, view));
+    let result =
+        crate::game::client_side::api_values_client::aggregates::scene_blocks(&scene.blocks)
+            .and_then(|prepared| game.native_draw_scene(&mut batch, RECT, &prepared, scene, view));
     (result, batch.vertices.len())
 }
 

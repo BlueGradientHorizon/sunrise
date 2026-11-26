@@ -3,9 +3,13 @@
 //! `/execute if predicate` evaluate against, built from the level's own
 //! field borrows (the behaviour holds the game's world mutably, so the
 //! game's view cannot be used).
-use super::{advancements::TagSources, end::EndState, structures::structures_reaching_in};
+use crate::game::{advancements_common::TagSources, end_state::EndState};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::{
+    hoppers::{HopperState, Pos, hopper_cooldown_in},
+    structures::structures_reaching_in,
+};
 use sunrise_items::{
     blocks::{BlockFacts, Fluid},
     items::Items,
@@ -30,7 +34,7 @@ pub(in crate::game) struct LevelLocation<'a> {
     pub(in crate::game) biomes: &'a Biomes,
     pub(in crate::game) items: &'a Items,
     pub(in crate::game) collision: &'a BlockCollisionRegistry<'a>,
-    pub(in crate::game) hoppers: &'a HashMap<super::machines::Pos, super::machines::HopperState>,
+    pub(in crate::game) hoppers: &'a HashMap<Pos, HopperState>,
     pub(in crate::game) raining: bool,
     pub(in crate::game) thundering: bool,
     pub(in crate::game) refs: LocationRefs<'a>,
@@ -133,13 +137,13 @@ impl World for LevelLocation<'_> {
             .name
             .clone();
         let entity = self.world.block_entities.get(&key)?;
-        Some(super::commands::data::stored_block_entity_data(
+        Some(crate::game::commands_common::stored_block_entity_data(
             self.world,
             key,
             &name,
             entity,
             self.items,
-            || super::machines::hopper_cooldown_in(self.hoppers, self.world, key),
+            || hopper_cooldown_in(self.hoppers, self.world, key),
         ))
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {

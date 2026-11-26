@@ -542,18 +542,25 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
         let pig = game.load_mob(tag, None).unwrap();
         let pig = game.entity(pig).unwrap();
         assert_eq!(Charge::edit_state(game, pig, |_, n| *n = 5), Ok(()));
-        let conn = game.lan.as_ref().unwrap().hub.guests[0].conn;
+        let conn = game.side.lan.as_ref().unwrap().hub.guests[0].conn;
         assert_eq!(game.player(123), Some(rider));
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.vehicle = Some(pig.id());
-        });
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                guest.vehicle = Some(pig.id());
+            });
         super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
             game,
             sunrise_core::position::ChunkPos::new(0, 0),
         );
         game.side.tickets.0.add_portal((0, 0));
         game.update_chunk_tickets();
-        game.portals
+        game.side
+            .portals
             .entities
             .entry(pig.id())
             .or_default()
@@ -579,7 +586,7 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
         game.enter_level(Dim::Nether).unwrap();
         game.arrive_vehicle(Dim::Overworld, pig.id(), Vec3::new(1.0, 70.0, 3.0), 0.0);
         assert_eq!(
-            game.lan.as_ref().unwrap().hub.guests[0].vehicle,
+            game.side.lan.as_ref().unwrap().hub.guests[0].vehicle,
             Some(pig.id())
         );
         assert_eq!(game.entity(pig.id()), Some(pig));

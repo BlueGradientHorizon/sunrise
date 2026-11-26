@@ -65,6 +65,12 @@ pub(in crate::game) struct ScheduledTasks {
 }
 
 impl ScheduledTasks {
+    /// A server tick starts: "now" moves to it before any hook of the tick runs, so tasks
+    /// scheduled during this tick are measured from it (`delay_ticks == 0` is due in this tick).
+    pub(in crate::game) fn begin_tick(&mut self) {
+        self.now += 1;
+    }
+
     /// A task for `owner` due `delay_ticks` ticks from now (`0` is due in the current tick).
     pub(in crate::game) fn schedule(
         &mut self,

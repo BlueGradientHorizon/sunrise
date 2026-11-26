@@ -7,8 +7,9 @@ use super::Game;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_gameplay::lan::mob_players::guest_view;
 pub(in crate::game) use sunrise_gameplay::lan::mob_players::{
-    GuestViews, Present, acts_on_player, guest_bounds, omen_of, player_for,
+    Present, guest_bounds, omen_of, player_for,
 };
+use sunrise_gameplay_common::lan::mob_players::GuestViews;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{
     mobs::{MobEvent, Who},
@@ -19,7 +20,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// How mobs see each guest in play (`player_view` with the guest swapped
     /// in).
     pub(in crate::game) fn lan_guest_views(&mut self) -> GuestViews {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Vec::new();
         };
         let conns: Vec<(u32, u128, [f64; 3])> = host
@@ -48,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         conn: u32,
     ) -> Option<([i32; 4], u32)> {
-        let guest = self.lan.as_ref()?.hub.guest(conn)?;
+        let guest = self.side.lan.as_ref()?.hub.guest(conn)?;
         if guest.is_fake() {
             return None;
         }
@@ -70,7 +71,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         except: Option<u32>,
         mut f: impl FnMut(&mut Self),
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let conns: Vec<u32> = host
@@ -119,7 +120,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Level.getEntities` see every player in the level, but not spectators
     /// (`Entity.isIgnoringBlockTriggers`).
     pub(in crate::game) fn lan_block_trigger_boxes(&self) -> Vec<([f64; 3], [f64; 3])> {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Vec::new();
         };
         host.hub
@@ -135,7 +136,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// The same guests' cast fishing hooks, for `GameLevel::trigger_projectiles`.
     pub(in crate::game::server_side) fn lan_hook_triggers(&self, out: &mut Vec<(Aabb, bool)>) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         out.extend(
@@ -150,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The same guests' feet and whether they stand on the ground, for the
     /// blocks that also ask that (`BigDripleafBlock.canEntityTilt`).
     pub(in crate::game::server_side) fn lan_guest_feet(&self) -> Vec<([f64; 3], bool)> {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Vec::new();
         };
         host.hub
@@ -169,7 +170,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         id: u32,
         at: Vec3,
     ) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         let conn = host
@@ -244,7 +245,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) {
         if let (Some(v), Some(g)) = (
             velocity,
-            self.lan.as_ref().and_then(|host| host.hub.guest(conn)),
+            self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)),
         ) {
             g.send(&C::SetEntityMotion(play::SetEntityMotion {
                 id: g.entity_id,
@@ -258,6 +259,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Every guest in the world (`ServerLevel.getPlayers` past the host).
     pub fn lan_present(&self) -> Vec<Present> {
         let guests = self
+            .side
             .lan
             .iter()
             .flat_map(|h| h.hub.guests.simulation_iter().filter(|g| h.hub.here(g)));

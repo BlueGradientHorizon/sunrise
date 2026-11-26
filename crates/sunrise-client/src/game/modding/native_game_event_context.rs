@@ -97,7 +97,7 @@ mod tests {
                     open_to_lan(game);
                     let (guest, _receiver) = guest(7, 99, [2.5, 64.0, 1.5]);
                     let id = guest.entity_id as u32;
-                    game.lan.as_mut().unwrap().hub.guests.push(guest);
+                    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
                     let source = game.entity(id).unwrap();
                     let level = game.level(game.dim.id()).unwrap();
                     heard.lock().unwrap().clear();

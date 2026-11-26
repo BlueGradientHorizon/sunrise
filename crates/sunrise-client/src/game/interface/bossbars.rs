@@ -490,7 +490,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.player.is_some() && !self.side.lan_acting_fake {
             out.push((self.acting_uuid(), self.target_name(Target::Player)));
         }
-        if let Some(host) = &self.lan {
+        if let Some(host) = &self.side.lan {
             for g in host
                 .hub
                 .guests
@@ -514,7 +514,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<[i32; 4]> {
         match target {
             Target::Player => Some(self.acting_uuid()),
-            Target::Guest(conn) => self.lan.as_ref().and_then(|h| {
+            Target::Guest(conn) => self.side.lan.as_ref().and_then(|h| {
                 h.hub
                     .guests
                     .iter()
@@ -549,7 +549,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if packets.is_empty() {
             return;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         for (conn, packet) in &packets {
@@ -580,7 +580,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game::server_side) fn boss_viewers(&self) -> Vec<Viewer> {
         let mut out: Vec<Viewer> = Vec::new();
-        if let Some(host) = &self.lan {
+        if let Some(host) = &self.side.lan {
             for g in host
                 .hub
                 .guests
@@ -838,7 +838,7 @@ pub(in crate::game) mod audience_tests {
             config,
         )
         .unwrap();
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         let conn = host.hub.lan.shared.next_id().unwrap();
         let (tx, _rx) = std::sync::mpsc::channel();
         let mut real = Guest::new(
@@ -864,7 +864,7 @@ pub(in crate::game) mod audience_tests {
         game.side.next_entity = game.side.next_entity.max(1);
         let level = game.level(game.dim.id()).unwrap();
         game.fake_player(level, 2, "fake").unwrap();
-        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
         let index = guests.iter().position(|g| g.uuid == 2).unwrap();
         guests.update(index, |g| g.position = [0.0, 100.0, 0.0]);
     }

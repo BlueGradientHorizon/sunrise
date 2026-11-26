@@ -329,7 +329,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         for &key in self.side.tick_chunks.removed() {
             self.side.random_tick_sections.0.remove(&key);
-            self.portals.sections.remove(&key);
+            self.portal_sections.remove(&key);
             self.block_ticks
                 .remove_chunk(sunrise_core::position::ChunkPos::new(key.0, key.1));
             self.block_ticks

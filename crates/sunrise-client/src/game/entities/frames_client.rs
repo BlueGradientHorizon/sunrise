@@ -1,7 +1,90 @@
 use super::Game;
-use crate::game::server_side::frames::FramedItem;
-use crate::game::server_side::frames::frame_owner;
+use crate::game::{frames_common::center, maps::map_id};
+use sunrise_assets::{bake::bake_model, item_model::OwnerState, resolve::ModelLibrary};
 use sunrise_client::mesher::Vertex;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::ItemFrame;
+
+/// A baked frame model: (corners in block units, unit UVs, sprite) per quad.
+pub(in crate::game) type FrameModel = Vec<([[f32; 3]; 4], [[f32; 2]; 4], String)>;
+
+/// Item-frame variants prepared together for one resource generation.
+pub(in crate::game) fn bake_frames(library: Option<&ModelLibrary>) -> [FrameModel; 4] {
+    [
+        "item_frame",
+        "glow_item_frame",
+        "item_frame_map",
+        "glow_item_frame_map",
+    ]
+    .map(|name| library.map_or_else(Vec::new, |library| bake_frame(library, name)))
+}
+
+/// Bake `block/<name>` (item_frame / glow_item_frame) from the resources.
+fn bake_frame(library: &ModelLibrary, name: &str) -> FrameModel {
+    let Ok(resolved) = library.resolve(&format!("minecraft:block/{name}")) else {
+        return Vec::new();
+    };
+    let Ok(quads) = bake_model(&resolved) else {
+        return Vec::new();
+    };
+    let unit = if quads
+        .iter()
+        .flat_map(|q| q.positions)
+        .any(|p| p.iter().any(|v| *v > 1.5))
+    {
+        16.0
+    } else {
+        1.0
+    };
+    quads
+        .into_iter()
+        .map(|q| {
+            (
+                q.positions.map(|p| p.map(|v| v / unit)),
+                q.uv,
+                q.material
+                    .sprite
+                    .trim_start_matches("minecraft:")
+                    .to_owned(),
+            )
+        })
+        .collect()
+}
+/// A frame's item, waiting for its model: the frames' borrow of `self` ends
+/// before `resolve_item` reads the pack.
+pub(in crate::game) struct FramedItem {
+    pub(in crate::game) stack: ItemStack,
+    pub(in crate::game) id: u32,
+    pub(in crate::game) matrix: glam::Mat4,
+    pub(in crate::game) light: u8,
+    pub(in crate::game) cull: bool,
+    pub(in crate::game) kind: &'static str,
+    pub(in crate::game) owner: OwnerState,
+}
+/// `ItemFrameRenderer.extractRenderState`'s `ItemOwner` (`updateForNonLiving`
+/// with the frame entity): `ItemFrame.position` and
+/// `ItemFrame.getVisualRotationYInDegrees`.
+pub(in crate::game) fn frame_owner(f: &ItemFrame) -> OwnerState {
+    super::item_draw::owner_at(center(f), visual_rotation_y_degrees(f), f.kind())
+}
+/// `ItemFrame.getVisualRotationYInDegrees`: the frame's own yaw, as an item
+/// model's owner reads it (a framed compass's needle turns with it).
+fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
+    // `Direction.get2DDataValue` of a wall frame, and the axis direction's
+    // step for the two flat ones.
+    let s = f.step();
+    let (two_d, correction) = match (s[0], s[1], s[2]) {
+        (0, 0, 1) => (0, 0),
+        (-1, 0, 0) => (1, 0),
+        (0, 0, -1) => (2, 0),
+        (1, 0, 0) => (3, 0),
+        (0, y, _) => (-1, 90 * y),
+        _ => (0, 0),
+    };
+    sunrise_level::camera_math::wrap_degrees(
+        180.0 + (two_d * 90) as f32 + f32::from(f.rotation) * 45.0 + correction as f32,
+    )
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// ItemFrameRenderer: the frame model, then the item half size on its face.
@@ -27,7 +110,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             let entity_start = out.len();
             self.mark_entity(entity_start, f.kind());
-            let map = f.item.as_ref().and_then(super::maps::map_id);
+            let map = f.item.as_ref().and_then(map_id);
             // EntityRenderer.shouldRender: its box (a block wide with a map),
             // measured from the box's centre.
             let (lo, hi) = f.bounds();

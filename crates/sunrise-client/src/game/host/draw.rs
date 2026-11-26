@@ -116,7 +116,10 @@ impl DrawContext for GameDrawContext<'_, '_> {
             .native_item_stack(&mut *self.surface, &stack, at, size)
     }
     fn gui_paint(&mut self, draws: &[GuiDraw]) -> Result<(), GuiPaintError> {
-        let draws = draws.try_into_engine(&())?;
+        let draws = draws
+            .iter()
+            .map(crate::game::client_side::api_values_client::gui_draw::gui_draw_to_engine)
+            .collect::<Result<Vec<_>, _>>()?;
         crate::game::gui_pose::report_refused_poses(&draws);
         self.game.native_gui_paint(&mut *self.surface, &draws)
     }
@@ -165,7 +168,8 @@ impl DrawContext for GameDrawContext<'_, '_> {
         scene: &mod_api::Scene,
         view: SceneView,
     ) -> Result<(), mod_api::SceneError> {
-        let blocks = crate::game::api_values::aggregates::scene_blocks(&scene.blocks)?;
+        let blocks =
+            crate::game::client_side::api_values_client::aggregates::scene_blocks(&scene.blocks)?;
         self.game
             .native_draw_scene(&mut *self.surface, rect, &blocks, scene, view)
     }

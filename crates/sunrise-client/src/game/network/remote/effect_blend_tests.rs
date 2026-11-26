@@ -13,7 +13,7 @@ fn with_client(test: impl FnOnce(&mut crate::game::ClientGame<'_>, LivingRef, i3
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "BlendLifecycleTest").unwrap();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         remote.profile = 42;

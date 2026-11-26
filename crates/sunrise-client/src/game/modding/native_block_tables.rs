@@ -43,7 +43,7 @@ impl<'a> BlockTables<'a> {
         let Some(definition) = self.res.behaviours().fluid_definitions().get(id) else {
             return Some(FluidDefinition::TankOnly);
         };
-        let default = super::native_world_read::api_fluid_state(definition.default)?;
+        let default = crate::game::native_world_read_common::api_fluid_state(definition.default)?;
         Some(FluidDefinition::World {
             default,
             properties: StateProperties::of(&definition.properties),
@@ -257,7 +257,7 @@ impl<'a> BlockTables<'a> {
     }
     /// Decode a packed pixel with the same palette and shade arithmetic as map rendering.
     pub(in crate::game) fn block_state_map_color_rgba(&self, packed: u8) -> Option<[u8; 4]> {
-        Some(super::maps::packed_rgba(packed))
+        Some(crate::game::maps::packed_rgba(packed))
     }
     /// `BlockState.getLightEmission()`. None for an unknown state.
     pub(in crate::game) fn block_state_light_emission(&self, state: BlockStateId) -> Option<u8> {

@@ -37,9 +37,15 @@ fn game_with_two_guests<'a>(
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     game.player = Some(
@@ -97,7 +103,7 @@ fn game_with_two_guests<'a>(
         );
         guest.placed = true;
         guest.loaded = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     }
     game
 }

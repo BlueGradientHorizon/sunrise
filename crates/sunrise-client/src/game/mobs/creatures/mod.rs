@@ -36,10 +36,8 @@ pub(in crate::game) mod spectator_view_tests;
 pub(in crate::game) mod world_view;
 #[allow(unused_imports)]
 use super::api_values::TryIntoApi;
-use super::{Dim, Game, InteractTarget, native_projectiles::Impact, view_vector};
+use super::{Dim, Game, InteractTarget, view_vector};
 use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_client::mesher::Vertex;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -228,25 +226,6 @@ pub(in crate::game) struct Creatures {
     /// The guests (by connection) whose `ServerPlayer.tick` a mod's Pre canceled this tick:
     /// every part of it skips them (game/network/lan_actions/tick.rs).
     pub canceled_players: Vec<u32>,
-    /// Wind bursts from a guest's turn, waiting for it to end (game/interface/wind.rs).
-    pub wind_bursts: Vec<super::wind::Burst>,
-    /// The wind charge whose burst is being handled, by entity id: which
-    /// entities have already ticked in vanilla's spawn-ordered tick list
-    /// (game/interface/wind.rs).
-    pub wind_source: Option<sunrise_sim::join_seq::JoinSeq>,
-    /// Wind pushes held until the entity's own tick has run, by entity id
-    /// (game/interface/wind.rs `apply_late_wind_pushes`).
-    pub late_wind_pushes: Vec<(u32, crate::game::Vec3)>,
-    /// The players a fishing hook can catch, taken as the hooks tick, and
-    /// the pulls on them waiting for the hub (game/items/fishing.rs).
-    pub hook_targets: Vec<super::fishing::HookTarget>,
-    pub hook_pulls: Vec<(u32, sunrise_core::geometry::Vec3)>,
-    /// Mace smash knockback on the other players from a guest's turn, waiting
-    /// for it to end (game/items/mace.rs).
-    pub smash_pushes: Vec<super::mace::SmashPush>,
-    /// Sweep attacks from a guest's turn, waiting for it to end
-    /// (game/network/lan_pvp.rs).
-    pub sweeps: Vec<super::lan_pvp::Sweep>,
     /// The snapshot's buffer between ticks, empty: ~400 bytes a mob, so
     /// thousands of mobs would allocate and free megabytes every tick.
     pub(in crate::game) seen_buf: Vec<Seen>,
@@ -269,12 +248,8 @@ pub(in crate::game) struct Creatures {
     /// whose `setLastHurtMob` was applied then. A player's row is delivered after the
     /// attacker's other rows, so an earlier contact never overwrites a later one.
     pub(in crate::game) stab_memory: (i64, sunrise_level::fast_hash::FxHashMap<u32, usize>),
-    /// The wandering trader spawner's clock.
-    pub trader: super::wandering_trader::Spawner,
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
     pub shoulder_time: std::collections::HashMap<[i32; 4], i64>,
-    /// The cat spawner (`CatSpawner`): its countdown.
-    pub cat: super::cat_spawner::CatSpawner,
     /// Each level's custom spawners, built when its first tick asks (game/mobs/custom_spawners.rs).
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// True while `ask_level_sound` is running `play_level_sound_at_*` listeners so sounds emitted
@@ -287,12 +262,13 @@ pub(in crate::game) struct Creatures {
 /// (`Projectile.onHit` then redirects it). `PICKABLE_PROJECTILE_IDS + j` is
 /// `projectiles[j]` during `tick_projectiles`, below the dragon's reserved ids.
 #[cfg(test)]
-pub(in crate::game) const PICKABLE_PROJECTILE_IDS: u32 = super::dragon::SPECIAL - 0x10000;
+pub(in crate::game) const PICKABLE_PROJECTILE_IDS: u32 =
+    crate::game::dragon_common::SPECIAL - 0x10000;
 
 /// The index of the projectile a `pickable_projectile_hitboxes` id stands for.
 #[cfg(test)]
 pub(in crate::game) fn pickable_projectile_hit(id: u32) -> Option<usize> {
-    (PICKABLE_PROJECTILE_IDS..super::dragon::SPECIAL)
+    (PICKABLE_PROJECTILE_IDS..crate::game::dragon_common::SPECIAL)
         .contains(&id)
         .then(|| (id - PICKABLE_PROJECTILE_IDS) as usize)
 }
@@ -309,68 +285,11 @@ pub(in crate::game) fn pickable_projectile_hitboxes_into(
         projectiles
             .iter()
             .enumerate()
-            .filter(|(j, q)| *j != skip && alive[*j] && super::deflect::redirectable(q))
+            .filter(|(j, q)| {
+                *j != skip && alive[*j] && crate::game::deflect_common::redirectable(q)
+            })
             .map(|(j, q)| (Who::Mob(PICKABLE_PROJECTILE_IDS + j as u32), q.aabb())),
     );
-}
-
-/// What the server's projectile loop keeps to hand its list back for a projectile told alone,
-/// made only in a tick where a mod named a projectile type: each slot's projectile by id, the
-/// ids of the list's rows, where those are once a hook changed the list, and the projectile
-/// whose own Post is still to tell.
-pub(in crate::game) struct ProjectileHandBack {
-    pub(in crate::game) slots: Vec<u32>,
-    pub(in crate::game) rows: Vec<u32>,
-    pub(in crate::game) places: Option<sunrise_level::fast_hash::FxHashMap<u32, usize>>,
-    pub(in crate::game) told: Option<(u32, &'static str)>,
-}
-
-impl ProjectileHandBack {
-    pub(in crate::game) fn new(projectiles: &[Projectile]) -> Box<Self> {
-        let slots: Vec<u32> = projectiles.iter().map(|p| p.id).collect();
-        Box::new(Self {
-            rows: slots.clone(),
-            slots,
-            places: None,
-            told: None,
-        })
-    }
-
-    /// Where slot `slot`'s projectile is in the list now, if it is still there.
-    pub(in crate::game) fn place(&self, slot: usize) -> Option<usize> {
-        super::native_ticks::slot_place(&self.places, &self.slots, slot)
-    }
-
-    /// After a hook told with the list handed back changed it (it wrote, added or removed a
-    /// projectile, or the tick's spawns went first on the hand-back): the loop's state of each
-    /// row follows it by id. A new row is kept, and an impact whose projectile a hook took out
-    /// is dropped with it.
-    pub(in crate::game) fn follow(
-        &mut self,
-        projectiles: &[Projectile],
-        keep: &mut Vec<bool>,
-        impacts: &mut [Impact],
-    ) {
-        let places = super::native_ticks::places_of(projectiles.iter().map(|p| p.id));
-        for impact in impacts {
-            impact.index = places.get(&impact.before.id).copied();
-        }
-        let kept: sunrise_level::fast_hash::FxHashMap<u32, bool> = self
-            .rows
-            .iter()
-            .copied()
-            .zip(keep.iter().copied())
-            .collect();
-        self.rows.clear();
-        self.rows.extend(projectiles.iter().map(|p| p.id));
-        keep.clear();
-        keep.extend(
-            self.rows
-                .iter()
-                .map(|id| kept.get(id).copied().unwrap_or(true)),
-        );
-        self.places = Some(places);
-    }
 }
 
 /// Where an arrow an entity turned back goes back among `projectiles`: before
@@ -396,63 +315,6 @@ pub(in crate::game) fn pickable_projectile_hitboxes(
     out
 }
 
-/// `FlameFeatureRenderer`: fire quads stacked up a burning entity's box,
-/// turned to the camera around Y, at full block light. `at` is the entity's
-/// feet relative to the camera.
-pub(in crate::game) fn flame_geometry(
-    atlas: &sunrise_client::hud::HudAtlas,
-    at: glam::Vec3,
-    width: f32,
-    height: f32,
-    camera_yaw: f32,
-    light: u8,
-    out: &mut Vec<Vertex>,
-) {
-    let (Some(fire0), Some(fire1)) = (
-        atlas.sprites.get("block/fire_0").copied(),
-        atlas.sprites.get("block/fire_1").copied(),
-    ) else {
-        return;
-    };
-    let s = width * 1.4;
-    let mut h = height / s;
-    // Mth.rotationAroundAxis(Y, camera.orientation): the camera's turn about Y.
-    let turn = glam::Mat3::from_rotation_y(std::f32::consts::PI - camera_yaw.to_radians());
-    let lift = 0.3 - (h as i32) as f32 * 0.02;
-    let packed = (u32::from(light >> 4) * 16) | ((15 * 16) << 8);
-    let (mut r, mut yo, mut zo, mut ss) = (0.5f32, 0.0f32, 0.0f32, 0);
-    while h > 0.0 {
-        let tex = if ss % 2 == 0 { fire0 } else { fire1 };
-        let (mut u0, v0, mut u1, v1) = (tex.u0, tex.v0, tex.u1, tex.v1);
-        if ss / 2 % 2 == 0 {
-            std::mem::swap(&mut u0, &mut u1);
-        }
-        for (x, y, uv) in [
-            (-r, -yo, [u1, v1]),
-            (r, -yo, [u0, v1]),
-            (r, 1.4 - yo, [u0, v0]),
-            (-r, 1.4 - yo, [u1, v0]),
-        ] {
-            let p = at + turn * glam::Vec3::new(x, y, zo + lift) * s;
-            out.push(Vertex {
-                normal: [0; 4],
-                pos: p.to_array(),
-                uv,
-                // HDR output: the flames shine like fire (entity.wgsl fs_hdr_mark).
-                layer: u32::from(sunrise_client::mesher::INCANDESCENT) << 16,
-                color: 0xFFFF_FFFF,
-                light: packed,
-
-                glint_uv: [0.0, 0.0],
-            });
-        }
-        h -= 0.45;
-        yo -= 0.45;
-        r *= 0.9;
-        zo -= 0.03;
-        ss += 1;
-    }
-}
 pub(in crate::game) fn seen(m: &Mob, player: Option<[i32; 4]>, items: &Items) -> Seen {
     m.seen(player, items)
 }
@@ -832,7 +694,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             // applies (`mob_hit`): a mob in its death animation is not clicked
             // by either path, so naming one in a packet must not reach the
             // feed, shear, leash or name paths either.
-            Some(t) => Self::named_entity(&self.mobs, t.id, |m| m.id)
+            Some(t) => crate::game::item_actions::named_entity(&self.mobs, t.id, |m| m.id)
                 .filter(|&i| {
                     let m = &self.mobs[i];
                     named_mob_pickable(

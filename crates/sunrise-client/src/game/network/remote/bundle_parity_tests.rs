@@ -68,7 +68,7 @@ pub(in crate::game) fn genpvp_ping_rotation_and_keepalive_bundle_body() {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "BundleOrder").unwrap();
         let (session, mut peer) = Session::play_loop_probe();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.session = session;
         remote.joined = true;
         remote.logged_in = true;

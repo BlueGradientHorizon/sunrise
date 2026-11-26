@@ -102,7 +102,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return false;
         }
-        if self.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat()) {
+        if self.side.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat())
+        {
             self.queue_mapping_click("key.inventory");
             return true;
         }
@@ -259,7 +260,13 @@ pub(in crate::game) mod client_screen_tests {
             );
             sent(&mut reader);
             fn menu(game: &crate::game::ClientGame<'_>) -> Option<i32> {
-                game.remote.as_ref().unwrap().menu.as_ref().map(|m| m.0)
+                game.side
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .menu
+                    .as_ref()
+                    .map(|m| m.0)
             }
 
             assert!(game.close_screen(), "the confirmation was open");

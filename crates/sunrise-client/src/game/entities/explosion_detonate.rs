@@ -472,7 +472,7 @@ mod tests {
             mod_platform::testing::with_mods(mods, || {
                 with_game(|game| {
                     zombie(game, 900, 2.0);
-                    let mut boat = crate::game::boats::Boat::new(
+                    let mut boat = crate::game::boats_common::Boat::new(
                         930,
                         "oak".into(),
                         Vec3::new(-2.0, 1.0, 0.0),
@@ -517,7 +517,7 @@ mod tests {
             mod_platform::testing::with_mods(mods, || {
                 with_game(|game| {
                     for (id, x) in [(920, -1.0), (921, 1.0)] {
-                        game.boats.push(crate::game::boats::Boat::new(
+                        game.boats.push(crate::game::boats_common::Boat::new(
                             id,
                             "oak".into(),
                             Vec3::new(x, 1.0, 0.0),
@@ -545,7 +545,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 for (id, x) in [(940, 8.0), (941, 7.99)] {
-                    game.crystals.push(crate::game::dragon::Crystal::new(
+                    game.crystals.push(crate::game::dragon_common::Crystal::new(
                         id,
                         Vec3::new(x, 1.0, 0.0),
                         false,
@@ -597,7 +597,7 @@ mod tests {
                             zombie(game, id, x);
                             continue;
                         }
-                        game.boats.push(crate::game::boats::Boat::new(
+                        game.boats.push(crate::game::boats_common::Boat::new(
                             id,
                             "oak".into(),
                             Vec3::new(x, 1.0, 0.0),
@@ -669,14 +669,14 @@ mod tests {
             check_interval: 0,
             custom_name: None,
         });
-        game.crystals.push(crate::game::dragon::Crystal::new(
+        game.crystals.push(crate::game::dragon_common::Crystal::new(
             954,
             Vec3::new(2.0, 1.0, 0.0),
             false,
             0,
         ));
         zombie(game, 955, -2.0);
-        game.boats.push(crate::game::boats::Boat::new(
+        game.boats.push(crate::game::boats_common::Boat::new(
             960,
             "oak".into(),
             Vec3::new(1.0, 1.0, 0.0),

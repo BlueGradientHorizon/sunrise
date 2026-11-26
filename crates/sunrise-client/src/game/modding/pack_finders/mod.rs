@@ -6,19 +6,23 @@ use mod_api::{
     PackSource, PackType,
 };
 use sunrise_assets::resource_source::{ResourceSource, stays_inside};
-use sunrise_client::{
-    pack_screen::{PackInfo, Source as ScreenSource, load_icon},
-    packs::{self, Pack, Position, Source},
-};
 use sunrise_level::datapack::DataPack;
+use sunrise_level::pack_meta::{
+    PackInfo, PackMeta, PackSource as ScreenSource, Position, Source, pack_meta_from, read_meta,
+};
 
 #[cfg(test)]
 mod tests;
 
+pub(in crate::game) struct DiscoveredPack {
+    pub meta: PackMeta,
+    pub metadata: serde_json::Value,
+}
+
 pub(in crate::game) struct Registry {
     kind: PackType,
     mods: ModsState,
-    pub(in crate::game) packs: Vec<Pack>,
+    pub(in crate::game) packs: Vec<DiscoveredPack>,
 }
 impl Registry {
     pub(in crate::game) fn new(kind: PackType, mods: ModsState) -> Self {
@@ -53,7 +57,7 @@ impl PackFinders for Registry {
                 return Err(PackFinderError::InvalidPath);
             }
             let id = format!("mod/{location}");
-            if self.packs.iter().any(|pack| pack.id == id) {
+            if self.packs.iter().any(|pack| pack.meta.id == id) {
                 return Err(PackFinderError::Duplicate);
             }
             let package = self
@@ -85,8 +89,9 @@ impl PackFinders for Registry {
                 _ => return Err(PackFinderError::InvalidMetadata),
             };
             let title = entry.title.try_into_engine(&())?;
-            let mut pack = packs::pack_for(id, title, Source::Opened(source), format)
-                .ok_or(PackFinderError::InvalidMetadata)?;
+            let source = Source::Opened(source);
+            let metadata = read_meta(&source).ok_or(PackFinderError::InvalidMetadata)?;
+            let mut pack = pack_meta_from(id, title, source, format, &metadata);
             pack.selection = Some(PackInfo {
                 id: pack.id.clone(),
                 title: pack.title.clone(),
@@ -98,7 +103,7 @@ impl PackFinders for Registry {
                     _ => return Err(PackFinderError::InvalidMetadata),
                 },
                 compat: pack.compatibility,
-                icon: pack.icon_png().as_deref().and_then(load_icon),
+                icon: None,
                 required: entry.always_active,
                 position: match entry.position {
                     PackPosition::Top => Position::Top,
@@ -108,7 +113,10 @@ impl PackFinders for Registry {
                 fixed: false,
                 hidden: entry.hidden,
             });
-            self.packs.push(pack);
+            self.packs.push(DiscoveredPack {
+                meta: pack,
+                metadata,
+            });
             Ok(())
         })()
         .inspect_err(|error| {
@@ -156,7 +164,7 @@ impl mod_api::prelude::TextHost for StartupDiscovery {
         Err(mod_api::text::TextFormError::Unavailable)
     }
 }
-pub(in crate::game) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
+pub(in crate::game) fn discover(kind: PackType, mods: &ModsState) -> Vec<DiscoveredPack> {
     if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
         return Vec::new();
     }
@@ -174,17 +182,18 @@ pub(in crate::game) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
 pub(in crate::game) fn data_packs(mods: &ModsState) -> Vec<std::sync::Arc<DataPack>> {
     discover(PackType::ServerData, mods)
         .into_iter()
-        .map(|pack| {
-            let mut data =
-                DataPack::from_source(pack.id, pack.source.open().expect("retained source"));
-            data.selection = pack.selection;
-            std::sync::Arc::new(data)
-        })
+        .map(|pack| data_pack(pack.meta))
         .collect()
 }
 
+pub(in crate::game) fn data_pack(pack: PackMeta) -> std::sync::Arc<DataPack> {
+    let mut data = DataPack::from_source(pack.id, pack.source.open().expect("retained source"));
+    data.selection = pack.selection;
+    std::sync::Arc::new(data)
+}
+
 /// The same repository is used by commands, content loading and world generation.
-pub(in crate::game::server_side) fn data_repository(
+pub(in crate::game) fn data_repository(
     world: &std::path::Path,
     resources: &std::path::Path,
     additional: &[std::sync::Arc<DataPack>],

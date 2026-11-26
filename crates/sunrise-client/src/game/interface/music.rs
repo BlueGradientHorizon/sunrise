@@ -38,6 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && self.player.is_none()
             && self.side.win.is_none()
             && !self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.reconfiguring.is_some());
@@ -238,7 +239,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // reconfiguration clears it again. Use the render camera's probe
         // while the level is present, not the local player's eyes.
         let in_world = self.side.title.0.is_none()
-            && (self.player.is_some() || self.remote.as_ref().is_some_and(|r| r.has_level()));
+            && (self.player.is_some() || self.side.remote.as_ref().is_some_and(|r| r.has_level()));
         let (background, probe_volume) = if in_world {
             let biome = self.biome_at(self.side.view.position);
             self.client_res()

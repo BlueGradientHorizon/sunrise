@@ -152,13 +152,14 @@ fn a_kept_server_player_still_drives_and_sneaks() {
     const SHIFT: u8 = 32;
     with_horse(|game, horse, keep, leaves| {
         let set_input = |game: &mut crate::game::ServerGame<'_>, input: u8| {
-            let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
                 (g.vehicle, g.vehicle_order, g.input) = (Some(horse), 1, input);
             });
         };
-        let vehicle =
-            |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].vehicle;
+        let vehicle = |game: &crate::game::ServerGame<'_>| {
+            game.side.lan.as_ref().unwrap().hub.guests[0].vehicle
+        };
         set_input(game, INPUT);
         game.guest_vehicle_tick(2);
         assert_eq!(leaves.load(Ordering::SeqCst), 1, "the dismount was asked");

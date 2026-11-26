@@ -2,6 +2,69 @@ use super::*;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
+    /// Change the active menu without losing window 0's cursor or state counter.
+    pub(in crate::game) fn remote_set_menu(
+        &mut self,
+        menu: Option<(i32, String)>,
+        title: Option<sunrise_game_data::text::Text>,
+    ) {
+        let Some(r) = self.side.remote.as_mut() else {
+            return;
+        };
+        match (r.menu.as_ref().is_some(), menu.is_some()) {
+            (false, true) => {
+                r.inventory_carried = self.carried.take();
+                r.inventory_state_id = std::mem::take(&mut r.state_id);
+                for (saved, active) in r.inventory_craft_grid.iter_mut().zip(&mut self.craft_grid) {
+                    *saved = active.take();
+                }
+                r.inventory_craft_result = r.craft_result.take();
+            }
+            (true, false) => {
+                self.carried = r.inventory_carried.take();
+                r.state_id = std::mem::take(&mut r.inventory_state_id);
+                self.craft_grid.fill(None);
+                for (saved, active) in r.inventory_craft_grid.iter_mut().zip(&mut self.craft_grid) {
+                    *active = saved.take();
+                }
+                r.craft_result = r.inventory_craft_result.take();
+            }
+            (true, true) => {
+                self.carried = None;
+                r.state_id = 0;
+                self.craft_grid.fill(None);
+                r.craft_result = None;
+            }
+            (false, false) => {}
+        }
+        r.menu.set(menu);
+        r.set_menu_title(title);
+    }
+
+    /// The type of the menu a server opened (`MenuType`'s id).
+    pub(in crate::game) fn remote_menu_type(&self) -> Option<&str> {
+        Some(self.side.remote.as_ref()?.menu.as_ref()?.1.as_str())
+    }
+    /// A server's chest-like menu (`MenuType.GENERIC_9xN`): its rows and title.
+    pub(in crate::game) fn remote_chest_menu(
+        &self,
+    ) -> Option<(usize, sunrise_game_data::text::Text)> {
+        let r = self.side.remote.as_ref()?;
+        let rows = r
+            .menu
+            .as_ref()?
+            .1
+            .strip_prefix("minecraft:generic_9x")?
+            .parse()
+            .ok()?;
+        Some((
+            rows,
+            r.menu_title
+                .clone()
+                .unwrap_or_else(sunrise_game_data::text::Text::empty),
+        ))
+    }
+
     /// `LocalPlayer.closeContainer` as the creative inventory closes: its
     /// `ItemPickerMenu` is window 0, and a server hears the close as it does
     /// any container screen's (`AbstractContainerScreen.onClose`).
@@ -10,7 +73,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn creative_drop_features(&self) -> Option<&Arc<[String]>> {
         // Screen::Inventory covers the non-creative AbstractContainerScreens.
-        (self.creative && self.remote.is_some() && self.side.screen != Screen::Inventory)
+        (self.creative && self.side.remote.is_some() && self.side.screen != Screen::Inventory)
             .then(|| self.enabled_feature_ids())
     }
     /// The creative screen calls `Player.drop` before `handleCreativeModeItemDrop`;
@@ -26,7 +89,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         container: i32,
         clicks: &[Predicted],
     ) -> sunrise_protocol::Result<Vec<play::ContainerClick>> {
-        let state = self.remote.as_ref().map_or(0, |r| r.state_id);
+        let state = self.side.remote.as_ref().map_or(0, |r| r.state_id);
         clicks
             .iter()
             .map(|(slot, button, input, changed, carried)| {
@@ -49,7 +112,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// are resolved when the packet arrives, with the session's language.
     pub(in crate::game) fn refresh_remote_language(&mut self) {
         if let Some(lang) = sunrise_game_data::lang::current()
-            && let Some(r) = self.remote.as_mut()
+            && let Some(r) = self.side.remote.as_mut()
         {
             r.lang = Arc::new(lang.map().clone());
         }
@@ -60,6 +123,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// screen's. False while no such menu is open.
     pub(in crate::game) fn remote_button_click(&self, button: i32) -> bool {
         let Some(container) = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.menu.as_ref())
@@ -106,7 +170,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The server's open menu: its window id and menu type (0, "inventory"
     /// when none is open).
     pub(in crate::game) fn remote_menu(&self) -> (i32, String) {
-        match self.remote.as_ref().and_then(|r| r.menu.as_ref().cloned()) {
+        match self
+            .side
+            .remote
+            .as_ref()
+            .and_then(|r| r.menu.as_ref().cloned())
+        {
             Some((id, name)) => (id, name),
             None => (0, "inventory".to_owned()),
         }
@@ -209,7 +278,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `AbstractContainerMenu.setItem`/`initializeContents`: the state id a
     /// click answers with is the open menu's, not another window's.
     pub(in crate::game) fn remote_menu_state(&mut self, container: i32, state: i32) {
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             let open = r.menu.as_ref().map_or(0, |m| m.0);
             if container == open {
                 r.state_id = state;
@@ -220,7 +289,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The title the server gave the menu it opened.
     pub(in crate::game) fn remote_menu_title(&self) -> Option<sunrise_game_data::text::Text> {
-        self.remote.as_ref()?.menu_title.clone()
+        self.side.remote.as_ref()?.menu_title.clone()
     }
     /// ClientboundMerchantOffersPacket.
     pub(in crate::game) fn remote_merchant_offers(&mut self, p: play::MerchantOffers) {
@@ -285,7 +354,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         p: play::MountScreenOpen,
     ) -> Result<()> {
-        use crate::game::{inventory_slots::MOD_MENU_SLOT_BASE, mount_menu::CHEST};
+        use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
+        use sunrise_gameplay_common::mount_rules::CHEST;
         // `new SimpleContainer(getInventorySize(inventoryColumns))` is built before
         // the entity is looked at, so it throws for any entity: a size that comes
         // out negative, as Java's `int` wraps, ends the connection. `HorseInventoryMenu`
@@ -311,7 +381,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .iter()
             .find(|m| m.id == entity)
             .map(sunrise_sim::mobs::Mob::species)
-            .filter(|&s| crate::game::mount_menu::has_mount_menu(s))
+            .filter(|&s| sunrise_gameplay_common::mount_rules::has_mount_menu(s))
         else {
             return Ok(());
         };
@@ -336,6 +406,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// ClientboundOpenScreenPacket for the menus Sunrise draws.
     pub(in crate::game::client_side) fn remote_open_screen(&mut self, p: play::OpenScreen) {
         let menu = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| {
@@ -346,6 +417,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             })
             .unwrap_or_default();
         let target = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.use_target.take())
@@ -354,6 +426,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // clicked block, is the one the menu is of. Only for this window:
         // any other's is stale.
         let extra = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.menu_extra.take())
@@ -367,7 +440,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             log::warn!("no screen factory for menu {menu}");
             return;
         }
-        if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some()
+        if self
+            .side
+            .remote
+            .as_ref()
+            .and_then(|r| r.menu.as_ref())
+            .is_some()
             || self.side.mod_screen.0.is_some()
         {
             // An in-place open has no intervening ContainerClose packet. Drop
@@ -382,7 +460,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.remote_open_lectern(target.unwrap_or_default());
             return;
         }
-        if let Some(kind) = crate::game::remote_station_kind(&menu) {
+        if let Some(kind) = crate::game::remote::inventory::remote_station_kind(&menu) {
             let title = menu_title(&p.title);
             let pos = target.map_or([0, 0, 0], |t| [t.0, t.1, t.2]);
             self.remote_open_station(p.container, menu, kind, title, pos);
@@ -393,6 +471,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let title = plain(
                 &p.title,
                 &self
+                    .side
                     .remote
                     .as_ref()
                     .map(|r| r.lang.clone())
@@ -630,7 +709,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
 
         let saved_craft_grid = self.craft_grid.clone();
-        let saved_craft_result = self.remote.as_ref().and_then(|r| r.craft_result.clone());
+        let saved_craft_result = self
+            .side
+            .remote
+            .as_ref()
+            .and_then(|r| r.craft_result.clone());
         let tracks_craft_result = matches!(
             self.remote_menu().1.as_str(),
             "inventory" | "minecraft:crafting"
@@ -711,7 +794,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let Some((predicted, dropped)) = step_result else {
                         return (Err(None), false);
                     };
-                    if tracks_craft_result && let Some(r) = game.remote.as_mut() {
+                    if tracks_craft_result && let Some(r) = game.side.remote.as_mut() {
                         for (.., changed, _) in &predicted {
                             if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
                                 r.craft_result = result.clone();
@@ -737,7 +820,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let Some((predicted, dropped)) = step_result.filter(|_| modeled) else {
                         return (Err(None), false);
                     };
-                    if tracks_craft_result && let Some(r) = game.remote.as_mut() {
+                    if tracks_craft_result && let Some(r) = game.side.remote.as_mut() {
                         for (.., changed, _) in &predicted {
                             if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
                                 r.craft_result = result.clone();
@@ -762,7 +845,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Ok(ready) => ready,
             Err(early) => {
                 self.craft_grid = saved_craft_grid;
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.craft_result = saved_craft_result;
                 }
                 return early;
@@ -777,7 +860,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The server's open menu is the inventory or a chest-like container
     /// (chests, barrels, ender chests: `generic_9xN`; shulker boxes).
     pub(in crate::game::client_side) fn remote_storage_open(&self) -> bool {
-        match self.remote.as_ref().and_then(|r| r.menu.as_ref()) {
+        match self.side.remote.as_ref().and_then(|r| r.menu.as_ref()) {
             None => true,
             Some((_, name)) => {
                 name == "inventory"
@@ -796,6 +879,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         use sunrise_sim::menu::Input;
         let container = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.menu.as_ref())
@@ -823,7 +907,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.carried = predicted;
             self.swing_arm();
         }
-        let state = self.remote.as_ref().map_or(0, |r| r.state_id);
+        let state = self.side.remote.as_ref().map_or(0, |r| r.state_id);
         self.send(S::ContainerClick(play::ContainerClick {
             container,
             state,
@@ -868,7 +952,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if matches!(
             self.remote_menu().1.as_str(),
             "inventory" | "minecraft:crafting"
-        ) && let Some(r) = self.remote.as_mut()
+        ) && let Some(r) = self.side.remote.as_mut()
         {
             for (.., changed, _) in &clicks {
                 if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
@@ -887,7 +971,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         container: i32,
         clicks: impl IntoIterator<Item = (i16, i32, Input)>,
     ) {
-        let state = self.remote.as_ref().map_or(0, |r| r.state_id);
+        let state = self.side.remote.as_ref().map_or(0, |r| r.state_id);
         let carried = match self.hashed_stack(&self.carried) {
             Ok(carried) => carried,
             Err(error) => {
@@ -938,6 +1022,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn remote_close_container(&mut self) {
         let id = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.menu.as_ref().map(|m| m.0))

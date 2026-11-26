@@ -6,7 +6,7 @@ use super::{Game, commands_common::Target};
 use mod_api::LootDrops;
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::leash_knot::{
+pub(in crate::game) use sunrise_gameplay_common::leash_knot::{
     Knot, held_by_acting_player, resolve_pending_leash, write_mob_leash_tag,
 };
 use sunrise_items::items::ItemStack;
@@ -18,49 +18,6 @@ use sunrise_sim::mobs::leash::{self, Holder};
 pub(in crate::game) enum LeashInteraction {
     WithItem,
     WithoutItem,
-}
-
-/// `Vec3.yRot(angle)`.
-/// `LocalPlayer.getRopeHoldPosition`'s `Mth.lerp(partialTick * 0.5F, getYRot(),
-/// yRotO)` and the same for the pitch, in radians.
-pub(in crate::game) fn rope_hold_angles(
-    now: (f32, f32),
-    old: (f32, f32),
-    alpha: f32,
-) -> (f64, f64) {
-    let t = alpha * 0.5;
-    let lerp = |a: f32, b: f32| a + t * (b - a);
-    (
-        f64::from(lerp(now.0, old.0) * (std::f32::consts::PI / 180.0)),
-        f64::from(lerp(now.1, old.1) * (std::f32::consts::PI / 180.0)),
-    )
-}
-pub(in crate::game) fn rot_y(v: glam::DVec3, angle: f64) -> glam::DVec3 {
-    let (s, c) = (angle.sin(), angle.cos());
-    glam::DVec3::new(v.x * c + v.z * s, v.y, v.z * c - v.x * s)
-}
-/// `Entity.getRopeHoldPosition` of a boat: 0.7 of its eye height (0.5625) up.
-pub(in crate::game) fn boat_hold() -> glam::DVec3 {
-    glam::DVec3::new(0.0, f64::from(0.5625_f32) * 0.7, 0.0)
-}
-pub(in crate::game) fn pack_light(light: u8) -> u32 {
-    (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8)
-}
-pub(in crate::game) fn abgr(r: f32, g: f32, b: f32) -> u32 {
-    let c = |v: f32| (v * 255.0) as u32 & 255;
-    0xFF00_0000 | c(b) << 16 | c(g) << 8 | c(r)
-}
-/// One leashed entity's rope, as `EntityRenderer.extractRenderState` reads it.
-pub(in crate::game) struct Rope {
-    pub(in crate::game) holder: Holder,
-    /// `getPosition(partialTicks)`.
-    pub(in crate::game) here: glam::DVec3,
-    /// `getPreciseBodyRotation` in radians.
-    pub(in crate::game) body: f64,
-    /// `getLeashOffset`.
-    pub(in crate::game) offset: [f64; 3],
-    /// `getQuadLeashOffsets`, when the entity supports a quad lead.
-    pub(in crate::game) quad: Option<[[f64; 3]; 4]>,
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -548,10 +505,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let player_uuid = self.level.player_uuid.unwrap_or([0, 0, 0, 1]);
         let owner_uuid = self
+            .side
             .serving
             .as_ref()
             .map(|s| s.owner)
-            .or_else(|| self.lan.as_ref().and_then(|h| h.hub.singleplayer_owner))
+            .or_else(|| {
+                self.side
+                    .lan
+                    .as_ref()
+                    .and_then(|h| h.hub.singleplayer_owner)
+            })
             .map(sunrise_sim::lan::playerdata::uuid_ints);
         for i in 0..self.mobs.len() {
             let Some(pending) = self.mobs[i].extra.leash_pending else {
@@ -562,7 +525,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 player_uuid,
                 owner_uuid,
                 |u| {
-                    self.lan.as_ref().is_some_and(|h| {
+                    self.side.lan.as_ref().is_some_and(|h| {
                         h.hub
                             .guests
                             .iter()
@@ -829,9 +792,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod rope_hold_tests {
     use super::{
-        Holder, Tag, held_by_acting_player, leash, resolve_pending_leash, rope_hold_angles,
-        write_mob_leash_tag,
+        Holder, Tag, held_by_acting_player, leash, resolve_pending_leash, write_mob_leash_tag,
     };
+    use crate::game::client_side::leads_client::rope_hold_angles;
     use sunrise_protocol::crypto::offline_uuid;
     use sunrise_sim::lan::playerdata::uuid_ints;
     use sunrise_sim::mobs::leash::Pending;
@@ -1028,9 +991,15 @@ pub(in crate::game) mod attach_tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game =
-            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-                .unwrap();
+        let mut game = crate::game::ServerGame::new(
+            res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
         game.creative = false;
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),

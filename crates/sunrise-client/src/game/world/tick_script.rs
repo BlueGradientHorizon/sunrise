@@ -23,7 +23,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         if !self.side.tick_script.playing() {
             let go = path.with_extension("go");
-            if self.remote.is_none() || !go.exists() {
+            if self.side.remote.is_none() || !go.exists() {
                 return;
             }
             let _ = std::fs::remove_file(&go);

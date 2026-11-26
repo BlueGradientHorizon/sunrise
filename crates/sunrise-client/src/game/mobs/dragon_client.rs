@@ -1,24 +1,78 @@
 use super::Game;
-use super::api_values::TryIntoApi;
-use crate::game::server_side::dragon::Dragon;
-#[cfg(test)]
-use crate::game::server_side::dragon::FightWho;
-use crate::game::server_side::dragon::PART_SIZES;
-use crate::game::server_side::dragon::Phase;
-#[cfg(test)]
-use crate::game::server_side::dragon::SPECIAL;
-use crate::game::server_side::dragon::breath_puffs;
-use crate::game::server_side::dragon::dragon_part_id;
-use crate::game::server_side::dragon::dragon_part_index;
-use crate::game::server_side::dragon::wrap;
+use crate::game::client_side::api_values_client::mod_bar_value;
+use crate::game::dragon_common::{
+    Dragon, PART_SIZES, Phase, dragon_part_id, dragon_part_index, wrap,
+};
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays, mesher::Vertex};
 use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
-    random::RandomSource,
+    random::{LegacyRandom, RandomSource},
 };
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::Value;
+
+/// `DragonLandingPhase.doClientTick` and `DragonSittingFlamingPhase.doClientTick`:
+/// the dragon-breath particles one tick of `doClientTick` spawns at the head, as
+/// (position, velocity) pairs. `look` is `EnderDragon.getHeadLookVector(1)`
+/// normalised, `head` the head part's centre (`getY(0.5)`), `motion` the
+/// dragon's `getDeltaMovement`, and `random` the stream the jitter comes from.
+/// Both phases rotate `look` by a quarter turn and throw the result away, so
+/// every puff of a fan leaves along the same line; a flaming dragon walks down
+/// that line in six steps.
+pub(in crate::game) fn breath_puffs(
+    phase: &Phase,
+    look: [f64; 3],
+    head: [f64; 3],
+    motion: [f64; 3],
+    random: &mut LegacyRandom,
+) -> Vec<([f64; 3], [f64; 3])> {
+    // A puff's start: the head's centre jittered by `nextGaussian() / 2`.
+    let jitter = |random: &mut LegacyRandom| {
+        [
+            head[0] + random.next_gaussian() / 2.0,
+            head[1] + random.next_gaussian() / 2.0,
+            head[2] + random.next_gaussian() / 2.0,
+        ]
+    };
+    match phase {
+        // Eight a tick, along `-look * 0.08F` (0.3 for the vertical part) plus
+        // the dragon's own motion.
+        Phase::Landing { .. } => (0..8)
+            .map(|_| {
+                (
+                    jitter(random),
+                    [
+                        -look[0] * f64::from(0.08_f32) + motion[0],
+                        -look[1] * f64::from(0.3_f32) + motion[1],
+                        -look[2] * f64::from(0.08_f32) + motion[2],
+                    ],
+                )
+            })
+            .collect(),
+        // Every second tick of the first ten: eight starts, each a fan of six
+        // puffs down the look line, the vertical part of the speed once.
+        Phase::Flaming { ticks } if ticks % 2 == 0 && *ticks < 10 => {
+            let mut puffs = Vec::with_capacity(48);
+            for _ in 0..8 {
+                let at = jitter(random);
+                for j in 0..6 {
+                    let j = f64::from(j);
+                    puffs.push((
+                        at,
+                        [
+                            -look[0] * f64::from(0.08_f32) * j,
+                            -look[1] * f64::from(0.6_f32),
+                            -look[2] * f64::from(0.08_f32) * j,
+                        ],
+                    ));
+                }
+            }
+            puffs
+        }
+        _ => Vec::new(),
+    }
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The boss bars' draws on a `w` x `h` GUI.
@@ -35,7 +89,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             else {
                 return true;
             };
-            let Ok(bar) = bar.try_into_api() else {
+            let Ok(bar) = mod_bar_value(&bar) else {
                 return true;
             };
             let mut cancel = false;
@@ -638,7 +692,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(id) = self
             .dragon
             .as_ref()
-            .filter(|dragon| dragon.id != 0 || self.remote.is_some())
+            .filter(|dragon| dragon.id != 0 || self.side.remote.is_some())
             .map(|dragon| dragon.id)
         {
             for part in 0..8 {
@@ -674,7 +728,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         id: i32,
     ) -> Option<&mut Dragon> {
         let uid = id as u32;
-        let remote = self.remote.is_some();
+        let remote = self.side.remote.is_some();
         self.dragon.as_mut().filter(|d| {
             (d.id != 0 || remote) && (d.id == uid || dragon_part_index(d.id, uid).is_some())
         })

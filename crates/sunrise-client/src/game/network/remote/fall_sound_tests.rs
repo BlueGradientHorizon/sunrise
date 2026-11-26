@@ -27,7 +27,7 @@ fn a_loaded_client_falls_where_no_chunk_has_come() {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {
             let _server = logged_client(game);
-            game.remote.as_mut().unwrap().loaded_sent = true;
+            game.side.remote.as_mut().unwrap().loaded_sent = true;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap());
             game.tick_remote().unwrap();
             let player = game.player.as_ref().unwrap();

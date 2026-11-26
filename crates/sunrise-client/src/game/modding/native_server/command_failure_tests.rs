@@ -154,9 +154,14 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
                         // The original component fits on the wire; the red parent
                         // and its `extra` list put the formatted failure over the limit.
                         let (tx, rx) = std::sync::mpsc::channel();
-                        game.lan.as_mut().unwrap().hub.update_guest(12, |guest| {
-                            guest.sender = PlayerSender::new(tx, Arc::default());
-                        });
+                        game.side
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .update_guest(12, |guest| {
+                                guest.sender = PlayerSender::new(tx, Arc::default());
+                            });
                         let (ok, outcome) = game.recording_command_outcome(|game| {
                             game.run_guest_command(command("rejectformatted", false))
                         });

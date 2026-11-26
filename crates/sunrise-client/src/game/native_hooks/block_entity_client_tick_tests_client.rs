@@ -51,7 +51,7 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
         assert!(take_events().is_empty(), "told without a client level");
 
         let (_sent, mut server) = crate::game::remote::tests::connect_menu_test(game);
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         Arc::make_mut(&mut remote.builtin).registries.insert(
             "minecraft:block_entity_type".into(),

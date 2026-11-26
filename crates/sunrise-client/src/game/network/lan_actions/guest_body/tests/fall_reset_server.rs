@@ -80,7 +80,7 @@ pub(in crate::game) fn scene<'a>(
     guest.game_mode = 0;
     guest.on_ground = false;
     guest.load_timeout = 0;
-    g.lan.as_mut().unwrap().hub.guests.push(guest);
+    g.side.lan.as_mut().unwrap().hub.guests.push(guest);
     g.sync_tick_chunks();
     g.side.ticked_entities_through = g.side.next_entity;
     g

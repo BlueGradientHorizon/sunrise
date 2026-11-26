@@ -2428,7 +2428,8 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             game.world
                 .block_entities
                 .insert(pos, BlockEntity::Chest(stacks));
-            game.remote
+            game.side
+                .remote
                 .as_mut()
                 .unwrap()
                 .menu

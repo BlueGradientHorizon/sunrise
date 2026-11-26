@@ -103,20 +103,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let effect = body.legacy_contact(f.position, &f.ground);
         let entity = (f.id, "minecraft:falling_block");
         let side_server = self.game_side_client();
-        let response = self.body_motion(&game_side!(self, side_server)).restitute(
-            entity,
-            sunrise_sim::motion::BodyMove {
-                wanted,
-                moved: movement,
-                effect,
-            },
-            sunrise_sim::entity_rules::EntityRules::get_gravity(f),
-            0.98_f32,
-            f.velocity,
-            f.fall_distance,
-        );
+        let response = self
+            .body_motion(&client_game_side!(self, side_server))
+            .restitute(
+                entity,
+                sunrise_sim::motion::BodyMove {
+                    wanted,
+                    moved: movement,
+                    effect,
+                },
+                sunrise_sim::entity_rules::EntityRules::get_gravity(f),
+                0.98_f32,
+                f.velocity,
+                f.fall_distance,
+            );
         f.velocity = response.velocity;
-        let side = game_side!(self, side_server);
+        let side = client_game_side!(self, side_server);
         let body = self.body_motion(&side);
         body.apply_block_speed(f.position, &mut f.velocity);
         let _ = self.body_step_on(entity, (f.position, f.bounds()), &f.ground, &mut f.velocity);

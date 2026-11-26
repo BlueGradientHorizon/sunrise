@@ -35,7 +35,8 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
     with_client_game(|game| {
         let tree = Tree::load(&fixture().join("data"));
         if case == "local" {
-            use crate::game::server_side::advancements::{Toast, text_of, toast_label};
+            use crate::game::advancements_common::text_of;
+            use crate::game::client_side::advancement_toast::{Toast, toast_label};
             use sunrise_game_data::text::Text;
             game.adv.tree = Arc::new(tree);
             game.adv.loaded = true;
@@ -60,7 +61,7 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
         } else {
             game.init_remote_for_replay().unwrap();
             let mut sync = SyncData::empty();
-            sync.builtin = (*game.remote.as_ref().unwrap().builtin).clone();
+            sync.builtin = (*game.side.remote.as_ref().unwrap().builtin).clone();
             sync.advancements = ServerAdvancements::load(
                 &fixture(),
                 &sunrise_world::loot::PackOverlay::NONE,

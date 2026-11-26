@@ -1,15 +1,12 @@
 //! Server-side piston, shulker lid, block-push-up, and forced entity move passes.
-use super::{
-    Game,
-    entity::{Entity, EntityHandle, with_entity, with_entity_mut},
-    minecarts::CartHit,
-    move_gate::MoveWho,
-};
+use super::{Game, move_gate::MoveWho};
 use crate::game::collision_source::Mover;
+use crate::game::entity::{Entity, EntityHandle, with_entity, with_entity_mut};
 use crate::game::piston_push::{
     Body, Lid, Push, PushTarget, ShulkerPush, StepHeights, first_axis_direction, pushed_movement,
     shulker_lid,
 };
+use crate::game::server_side::minecarts_server::CartHit;
 use sunrise_core::geometry::{
     Aabb, Axis, COLLISION_EPSILON, Direction, ShapeOp, Vec3, entity_collision_bounds,
 };
@@ -631,7 +628,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn stable_push_target(&self, hint: MoveWho) -> Option<PushTarget> {
         let (id, join) = match hint {
             MoveWho::Player => (self.player.as_ref()?.entity_id as u32, None),
-            MoveWho::Guest(conn) => (self.lan.as_ref()?.hub.guest(conn)?.entity_id as u32, None),
+            MoveWho::Guest(conn) => (
+                self.side.lan.as_ref()?.hub.guest(conn)?.entity_id as u32,
+                None,
+            ),
             MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
                 (entity.id(), Some(entity.join_seq()))
             }),
@@ -650,7 +650,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .filter(|p| p.entity_id as u32 == id)
                 .map(|_| hint),
             MoveWho::Guest(conn) => {
-                let hub = &self.lan.as_ref()?.hub;
+                let hub = &self.side.lan.as_ref()?.hub;
                 hub.guest(conn)
                     .filter(|g| g.entity_id as u32 == id && hub.here(g))
                     .map(|_| hint)
@@ -674,7 +674,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .and_then(|p| p.attribute("minecraft:step_height").ok())
             .map_or(0.6, |v| v as f32);
         let mut guests = std::collections::HashMap::new();
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.guests.update_all(|g| {
                 let step = g
                     .motion
@@ -690,7 +690,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The entities a moving block can run into: the local player, LAN guests, then listed entities.
     pub(in crate::game) fn push_targets(&self) -> impl Iterator<Item = MoveWho> + use<> {
         let player = self.player.is_some().then_some(MoveWho::Player);
-        let guests: Vec<MoveWho> = self.lan.as_ref().map_or_else(Vec::new, |host| {
+        let guests: Vec<MoveWho> = self.side.lan.as_ref().map_or_else(Vec::new, |host| {
             host.hub
                 .guests
                 .iter()
@@ -744,7 +744,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 })
             }
             MoveWho::Guest(conn) => {
-                let host = self.lan.as_ref()?;
+                let host = self.side.lan.as_ref()?;
                 let g = host.hub.guests.iter().find(|g| g.conn == conn)?;
                 if g.dead || g.game_mode == 3 {
                     return None;
@@ -919,7 +919,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = |state: &mut PistonMovement| state.limit(movement, || Ok::<i64, ()>(time)).ok();
         match target {
             MoveWho::Guest(conn) => {
-                let host = self.lan.as_mut()?;
+                let host = self.side.lan.as_mut()?;
                 limit(&mut host.hub.guests.motion_mut(conn)?.piston)
             }
             MoveWho::Entity(EntityHandle::Mob(i)) => limit(&mut self.mobs[i].piston),
@@ -947,7 +947,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 u32::try_from(self.own_entity_id()).ok()
             }
-            MoveWho::Guest(conn) => self.lan.as_mut().and_then(|host| {
+            MoveWho::Guest(conn) => self.side.lan.as_mut().and_then(|host| {
                 host.hub.update_guest(conn, |g| {
                     for (slot, delta) in g.position.iter_mut().zip(movement.components()) {
                         *slot += delta;
@@ -981,7 +981,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
             MoveWho::Guest(conn) => {
-                if let Some(host) = self.lan.as_mut()
+                if let Some(host) = self.side.lan.as_mut()
                     && let Some(motion) = host.hub.guests.motion_mut(conn)
                 {
                     motion.velocity = piston_push::bounce_velocity(movement, motion.velocity);
@@ -1016,7 +1016,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let own = (self.riding == Some(mob.id))
                     .then(|| self.riding_player())
                     .flatten();
-                let guests = self.lan.as_ref().into_iter().flat_map(|host| {
+                let guests = self.side.lan.as_ref().into_iter().flat_map(|host| {
                     host.hub
                         .guests
                         .iter()
@@ -1051,7 +1051,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         Some(&self.pack.block_registries),
                         &self.damage_hooks,
                     )
-                    .with_reads(crate::game::entity::hit_reads_of!(self))
+                    .with_reads(crate::game::entity_server::hit_reads_of!(self))
                     .with_mob_hurt_handoff(&mut paused_hurt);
                     mobs[i].update_pushed_support(&world, wanted, moved);
                     if authoritative {
@@ -1148,7 +1148,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             EntityHandle::Tnt(_) => "minecraft:tnt",
             EntityHandle::Rocket(_) => "minecraft:firework_rocket",
             EntityHandle::Trident(_) => "minecraft:trident",
-            EntityHandle::ArmorStand(_) => super::armor_stands::TYPE_ID,
+            EntityHandle::ArmorStand(_) => crate::game::armor_stands_common::TYPE_ID,
             EntityHandle::Mob(_) | EntityHandle::General(_) => {
                 return Some(MoveWho::Entity(handle));
             }
@@ -1294,6 +1294,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                     MoveWho::Guest(conn) if Some(conn) != self.side.lan_acting => {
                         let g = self
+                            .side
                             .lan
                             .as_ref()?
                             .hub
@@ -1324,7 +1325,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let body = match target {
                 MoveWho::Player => self.player.as_ref().unwrap().bounds(),
                 MoveWho::Guest(conn) => {
-                    let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                    let g = self.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
                     let [x, y, z] = g.position;
                     g.dimensions().bounds(Vec3::new(x, y, z))
                 }
@@ -1341,6 +1342,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     (from, None)
                 }
                 MoveWho::Guest(conn) => self
+                    .side
                     .lan
                     .as_mut()
                     .unwrap()
@@ -1389,7 +1391,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             match target {
                 MoveWho::Player => self.player.as_mut().unwrap().position = from,
                 MoveWho::Guest(conn) => {
-                    self.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
+                    self.side.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
                         g.position = from.components();
                         if let (Some(m), Some(y)) = (&mut g.motion, motion_y) {
                             m.position.y = y;
@@ -1579,6 +1581,7 @@ pub(in crate::game) mod order_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1688,6 +1691,7 @@ pub(in crate::game) mod order_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1782,6 +1786,7 @@ pub(in crate::game) mod order_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1865,6 +1870,7 @@ pub(in crate::game) mod order_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1975,6 +1981,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
                 options,
                 settings.sim_settings(),
                 None,
+                crate::game::profile_resolver,
             )
             .unwrap();
             game.native_lifecycle

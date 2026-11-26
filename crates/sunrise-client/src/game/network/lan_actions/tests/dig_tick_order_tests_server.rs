@@ -78,7 +78,7 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
                     player.dimension = game.dim.id().into();
                     player.loaded = true;
                     player.position = [5.5 + f64::from(conn), 64.0, 8.5];
-                    game.lan.as_mut().unwrap().hub.guests.push(player);
+                    game.side.lan.as_mut().unwrap().hub.guests.push(player);
                     game.as_guest(conn, |g| {
                         g.player.as_mut().unwrap().health.tick_count = ticks;
                         g.potions
@@ -89,7 +89,7 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
                 }
                 game.tick_server(false).unwrap();
 
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 assert!(host.hub.guest(1).unwrap().advancements_sent);
                 assert!(!host.hub.guest(4).unwrap().advancements_sent);
                 assert!(host.hub.native_advancement_grants.is_empty());
@@ -146,7 +146,7 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
                     .default_state("minecraft:stone")
                     .unwrap();
                 let start = 20_000;
-                game.lan.as_mut().unwrap().hub.ticks = start;
+                game.side.lan.as_mut().unwrap().hub.ticks = start;
                 for (dim, conns) in [(Dim::Overworld, [1, 3]), (Dim::Nether, [2, 4])] {
                     game.enter_level(dim).unwrap();
                     game.world
@@ -169,7 +169,7 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
                         }
                         let pos = [x, 63, 8];
                         game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
-                        let host = game.lan.as_mut().unwrap();
+                        let host = game.side.lan.as_mut().unwrap();
                         host.hub.guests.push(player);
                         let play = host.play.entry(conn).or_default();
                         if spec {
@@ -193,7 +193,7 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
                 game.enter_level(Dim::Overworld).unwrap();
                 game.tick_server(false).unwrap();
 
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 for (conn, count) in [(1, 11), (2, 11), (3, 11), (4, 10)] {
                     assert_eq!(
                         host.hub

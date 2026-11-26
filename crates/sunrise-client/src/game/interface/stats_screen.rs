@@ -176,7 +176,10 @@ const COLUMNS: [(&str, &str); 6] = [
 /// `ItemStatisticsList`'s rows: items with a positive item column, plus
 /// `Block.asItem` (`block_item`) of blocks with a positive `mined` count,
 /// whose stat is keyed by block; air is dropped.
-fn item_rows(stats: &super::stats::Stats, block_item: impl Fn(&str) -> String) -> Vec<String> {
+fn item_rows(
+    stats: &sunrise_gameplay_common::stats::Stats,
+    block_item: impl Fn(&str) -> String,
+) -> Vec<String> {
     let mut items: Vec<String> = Vec::new();
     for (ty, _) in COLUMNS {
         for (k, v) in stats
@@ -200,7 +203,7 @@ fn item_rows(stats: &super::stats::Stats, block_item: impl Fn(&str) -> String) -
 /// `ItemRow`'s value in column `ty`: `mined` is the count of a `BlockItem`'s
 /// block (`item_block`, `BlockItem.getBlock`), none ("-") for other items.
 fn item_stat(
-    stats: &super::stats::Stats,
+    stats: &sunrise_gameplay_common::stats::Stats,
     ty: &str,
     item: &str,
     item_block: impl Fn(&str) -> Option<String>,
@@ -319,7 +322,7 @@ const FOOTER: f32 = 33.0;
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn open_stats(&mut self) {
         // StatsScreen.init: a server's client asks for its statistics.
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.send(sunrise_protocol::packets::play::Serverbound::ClientCommand(
                 sunrise_protocol::packets::play::ClientCommand { action: 1 },
             ));

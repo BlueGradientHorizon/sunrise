@@ -748,6 +748,7 @@ fn a_client_is_told_each_teleport_and_where_its_entities_really_are() {
             );
             calls.lock().unwrap().clear();
             let pig = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -800,6 +801,7 @@ fn a_refused_player_add_does_not_hide_the_resident_entities_crossing() {
                             id: 20,
                             uuid,
                             kind: game
+                                .side
                                 .remote
                                 .as_ref()
                                 .unwrap()

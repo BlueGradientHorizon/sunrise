@@ -11,6 +11,7 @@
 use super::Game;
 use super::api_values::TryIntoEngine;
 use super::native_menus::native_menu_inventory_slot;
+use crate::game::native_menu_values::MenuSlotPlaces;
 use mod_api::__private::game::*;
 use mod_api::{
     Hand, ItemPlace, ItemResource, MenuContainer, MenuRef, MenuSlotBackRefusal, MenuSlotPlace,
@@ -22,23 +23,6 @@ use sunrise_sim::lan::{
     menu::{NativeMenuEvent, Slots},
 };
 use sunrise_sim::menu::{SlotContext, SlotRules, apply_menu_slot_rules, item_max_stack};
-
-/// The places backing one guest's open mod menu.
-#[derive(Clone)]
-pub(in crate::game) struct MenuSlotPlaces {
-    /// The menu's window id: the places end with that window.
-    window: i32,
-    /// What container slot `n` shows; slots past these stay the mods' own.
-    places: Vec<MenuSlotPlace>,
-    /// The hotbar slot holding a main-hand `HeldItem` place's stack, which takes no click.
-    locked: Option<usize>,
-    /// The stacks the `HeldItem` places were bound to when the slots were backed, by hand (main,
-    /// off): the inventory slot holding it and the stack without its contents
-    /// ([`held_identity`]). Another stack there, or another hotbar slot selected, closes the menu.
-    held: [Option<(usize, ItemStack)>; 2],
-    /// A change notice is queued; further writes queue none until it is taken.
-    noticed: bool,
-}
 
 /// A held container's identity: the stack without the contents its `ITEM_ITEMS` handler
 /// writes (`minecraft:container`, `minecraft:bundle_contents`), so writes through the menu
@@ -101,6 +85,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
         let acting = self.side.lan_acting == Some(conn);
         let (size, slots, owned) = self
+            .side
             .lan
             .as_ref()
             .and_then(|lan| lan.hub.guest(conn)?.menu.as_ref())
@@ -142,7 +127,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.journal_menus(player);
             self.journal_menu_click(conn);
         }
-        let Some(lan) = self.lan.as_mut() else {
+        let Some(lan) = self.side.lan.as_mut() else {
             return Err(MenuSlotBackRefusal::NoPlayerOrWindow);
         };
         let count = places.len();
@@ -187,7 +172,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.refresh_menu_places(conn, uuid, menu);
         }
         if before > count
-            && let Some(lan) = self.lan.as_mut()
+            && let Some(lan) = self.side.lan.as_mut()
         {
             lan.hub.resend_menu(conn, window, &self.world);
         }
@@ -213,14 +198,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     fn active_menu_places(&self, conn: u32) -> Option<&MenuSlotPlaces> {
-        let lan = self.lan.as_ref()?;
+        let lan = self.side.lan.as_ref()?;
         let backed = lan.menus.get(&conn)?.slot_places.as_ref()?;
         let open = lan.hub.guest(conn)?.menu.as_ref()?;
         (open.window == backed.window && open.slots == Slots::Native).then_some(backed)
     }
 
     pub(in crate::game::server_side) fn forget_menu_places(&mut self, conn: u32) {
-        if let Some(menus) = self.lan.as_mut().and_then(|lan| lan.menus.get_mut(&conn)) {
+        if let Some(menus) = self
+            .side
+            .lan
+            .as_mut()
+            .and_then(|lan| lan.menus.get_mut(&conn))
+        {
             menus.slot_places = None;
         }
     }
@@ -229,6 +219,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// inventory slot (the same hotbar slot selected) holding the same stack, its contents aside.
     fn held_places_bound(&self, conn: u32, player: mod_api::PlayerRef) -> bool {
         let Some(backed) = self
+            .side
             .lan
             .as_ref()
             .and_then(|lan| lan.menus.get(&conn)?.slot_places.as_ref())
@@ -276,7 +267,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .with_stack(host, |stack| stack.project())
                 .flatten()
                 .and_then(|stack| stack.try_into_engine(self.items()).ok());
-            let Some(lan) = self.lan.as_mut() else {
+            let Some(lan) = self.side.lan.as_mut() else {
                 return false;
             };
             let guests = &mut lan.hub.guests;
@@ -312,6 +303,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => return,
         };
         if self
+            .side
             .lan
             .as_ref()
             .is_none_or(|lan| lan.menus.values().all(|m| m.slot_places.is_none()))
@@ -330,7 +322,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Queues one look at the places of `conn`'s backed menu (`NativeMenuEvent::PlacesChanged`),
     /// unless one is already waiting to be taken.
     pub(in crate::game) fn queue_menu_places_notice(&mut self, conn: u32, uuid: u128, window: i32) {
-        let Some(lan) = self.lan.as_mut() else {
+        let Some(lan) = self.side.lan.as_mut() else {
             return;
         };
         let Some(backed) = lan
@@ -354,6 +346,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let Some(backed) = self
+            .side
             .lan
             .as_mut()
             .and_then(|lan| lan.menus.get_mut(&conn)?.slot_places.as_mut())
@@ -375,6 +368,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn menu_places_closed(&mut self, uuid: u128, window: i32) {
         if let Some(conn) = self.native_conn(uuid)
             && self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|lan| lan.menus.get(&conn)?.slot_places.as_ref())
@@ -397,10 +391,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         button: i32,
         mode: i32,
     ) -> Option<bool> {
-        use super::lan_menus::ClickReply;
+        use crate::game::lan_menu_data::ClickReply;
         let conn = self.native_conn(uuid)?;
         let (backed_window, count, locked) = self.menu_places_of(conn)?;
-        let (size, total) = self.lan.as_ref().and_then(|lan| {
+        let (size, total) = self.side.lan.as_ref().and_then(|lan| {
             let open = lan.hub.guest(conn)?.menu.as_ref()?;
             Some((open.size, open.slot_count()))
         })?;
@@ -427,7 +421,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
                     return (false, false, 0);
                 }
-                let Some(guest) = game.lan.as_ref().and_then(|lan| lan.hub.guest(conn)) else {
+                let Some(guest) = game.side.lan.as_ref().and_then(|lan| lan.hub.guest(conn)) else {
                     return (false, false, 0);
                 };
                 let Some(open) = guest.menu.as_ref() else {
@@ -488,7 +482,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.menu(uuid, window) == Some(menu)
             && (self.menu_places_of(conn).is_none() || self.refresh_menu_places(conn, uuid, menu))
         {
-            self.reply_menu_click(conn, super::lan_menus::ClickReply::Resend(window));
+            self.reply_menu_click(conn, crate::game::lan_menu_data::ClickReply::Resend(window));
         }
     }
 }
@@ -668,7 +662,7 @@ mod tests {
         player.selected = 0;
         player.inventory[0] = Some(ItemStack::new("minecraft:shulker_box", 1));
         player.inventory[9] = Some(ItemStack::new("minecraft:stone", 64));
-        game.lan.as_mut().unwrap().hub.guests.push(player);
+        game.side.lan.as_mut().unwrap().hub.guests.push(player);
     }
 
     /// A 27-slot mod chest menu opened for guest 1: its window.
@@ -771,7 +765,7 @@ mod tests {
         game: &mut crate::game::ServerGame<'_>,
         edit: impl FnOnce(&mut sunrise_sim::lan::guest::Guest),
     ) {
-        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
         let index = guests.connection_index(1).unwrap();
         guests.update(index, edit);
     }
@@ -930,7 +924,7 @@ mod tests {
             let put = host.transaction(|host, tx| held_slot(4).insert(host, tx, &stone, 5));
             assert_eq!(put, Ok(5));
             let shown = |game: &crate::game::ServerGame<'_>| {
-                let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 guest.native_menu[4].as_ref().map(|s| s.count)
             };
             assert_eq!(shown(game), None, "mirrored after the write, not inside it");
@@ -986,7 +980,7 @@ mod tests {
                 .unwrap();
             assert_eq!(backed, Ok(()));
             let shown = |game: &crate::game::ServerGame<'_>| {
-                let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 guest.native_menu[4].as_ref().map(|s| s.count)
             };
             assert_eq!(shown(game), None, "mirrored after the turn, not inside it");
@@ -1039,6 +1033,7 @@ mod tests {
             game.menu_places_changed(123, old);
             game.notice_menu_place_write(&held_slot(1));
             let windows: Vec<_> = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -1058,7 +1053,7 @@ mod tests {
             game.run_native_menu_events();
             game.notice_menu_place_write(&held_slot(1));
             assert!(matches!(
-                game.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
+                game.side.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
                 [NativeMenuEvent::PlacesChanged { uuid: 123, window }] if *window == new
             ));
         });
@@ -1226,7 +1221,7 @@ mod tests {
         player.sender.menu_extra_rev = 1;
         player.inventory[0] = Some(ItemStack::new("minecraft:shulker_box", 1));
         player.inventory[9] = Some(ItemStack::new("minecraft:stone", 64));
-        game.lan.as_mut().unwrap().hub.guests.push(player);
+        game.side.lan.as_mut().unwrap().hub.guests.push(player);
         let key = super::super::native_guest_turn_tests::register_test_menu(game, SATCHEL_MENU);
         let player = game.player(123).unwrap();
         let window = game

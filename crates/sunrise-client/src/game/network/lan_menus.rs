@@ -3,9 +3,11 @@
 //! runs, so a menu owner kept there is out of reach of anything that runs inside the turn: another
 //! nested turn, a hook, an action that needs to find the menu to admit or undo. These owners stay
 //! in the host, by connection, for as long as the guest is here.
-use super::{
-    lan::LanHost, lan_crafting::GuestCrafting, lan_stations::GuestStation,
-    transactions::decision::MenuOwner,
+use super::{lan::LanHost, lan_crafting::GuestCrafting, transactions::decision::MenuOwner};
+
+use crate::game::{
+    lan_menu_data::{ClickReply, GuestMerchant, GuestStation, MenuClickReply},
+    native_menu_data::HeardMenu,
 };
 
 /// One guest's menu owners: the inventory menu, the crafting table and the furnace or brewing
@@ -20,32 +22,17 @@ pub(in crate::game) struct GuestMenus {
     /// The transient menu engine, kept between clicks for drag state.
     pub(in crate::game) owned_menu: Option<(u64, Box<sunrise_sim::menu::Menu>)>,
     /// The trading window is live even while the guest's player state is on loan.
-    pub(in crate::game) merchant: MenuOwner<Option<super::lan_trading::GuestMerchant>>,
+    pub(in crate::game) merchant: MenuOwner<Option<GuestMerchant>>,
     /// The outer `menu_clicked` decision. Nested default routing can decide a pickup on `hub`.
     pub(in crate::game) click: MenuOwner<()>,
     /// Names the hub's container clicks of this guest, which have no menu value of their own: a
     /// click while another of the guest's is being decided is refused as busy.
     pub(in crate::game) hub: MenuOwner<()>,
     /// The successful open already announced to mods, retained through a loan of `GuestPlay`.
-    pub(in crate::game) menu_heard: Option<super::native_menus::HeardMenu>,
+    pub(in crate::game) menu_heard: Option<HeardMenu>,
     /// The storage a mod backed its open menu's slots with (`player_back_mod_menu_slots`);
     /// None for every menu no mod backed.
-    pub(in crate::game) slot_places: Option<super::native_menu_places::MenuSlotPlaces>,
-}
-
-/// An authoritative click reply, published only once the click's transaction has committed.
-pub(in crate::game) struct MenuClickReply {
-    conn: u32,
-    generation: u64,
-    reply: ClickReply,
-}
-
-pub(in crate::game) enum ClickReply {
-    Predicted(sunrise_protocol::packets::play::ContainerClick, Vec<usize>),
-    Resend(i32),
-    Close(i32),
-    Inventory,
-    Offhand,
+    pub(in crate::game) slot_places: Option<crate::game::native_menu_values::MenuSlotPlaces>,
 }
 
 impl super::Game<'_, crate::game::server_side::ServerState> {
@@ -56,7 +43,7 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
         changed: Vec<usize>,
     ) {
         if self.transactions.is_empty() {
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 host.hub
                     .inventory_clicked(conn, packet, &self.world, &changed);
             }
@@ -66,7 +53,7 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn reply_menu_click(&mut self, conn: u32, reply: ClickReply) {
-        if let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+        if let Some(guest) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
             self.after_commit(super::transactions::After::MenuClick(Box::new(
                 MenuClickReply {
                     conn,
@@ -99,7 +86,7 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
             generation,
             reply,
         } = reply;
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(i) = host.hub.guests.connection_index(conn) else {

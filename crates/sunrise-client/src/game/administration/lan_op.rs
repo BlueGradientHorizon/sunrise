@@ -1,10 +1,10 @@
 //! `sunrise-ctl lan op`: a connected guest's operator level, which remote profiling checks.
 use super::Game;
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `sunrise-ctl lan op`: the connected guest `name` gets operator level `level`; false when none is called that.
     pub(in crate::game) fn lan_set_op(&mut self, name: &str, level: u8) -> bool {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return false;
         };
         let Some(uuid) = host

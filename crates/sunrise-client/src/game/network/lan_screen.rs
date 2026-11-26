@@ -5,7 +5,8 @@
 //! forcing the game mode. Its difficulty lock asks first (PopupScreen), and
 //! Restrictions opens RestrictionsScreen.
 //! Parity reference: https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/WorldOptionsScreen
-use super::{Game, Screen, integrated::ServerOptions};
+use super::{Game, Screen};
+use crate::game::{integrated_link::ServerOptions, owner_link::OwnerRequest};
 use sunrise_client::{
     font::Font,
     game_rules_screen::{Exit, RulesScreen},
@@ -54,7 +55,7 @@ enum View {
     Restrictions,
     GameRules,
 }
-pub(in crate::game) use super::owner_link::Snapshot;
+pub(in crate::game) use crate::game::owner_link::Snapshot;
 
 const MODES: [&str; 4] = ["survival", "creative", "adventure", "spectator"];
 const DIFFICULTIES: [&str; 4] = ["peaceful", "easy", "normal", "hard"];
@@ -625,6 +626,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Vec::new()
         };
         let registry = self
+            .side
             .integrated
             .as_ref()
             .map_or_else(sunrise_game_data::gamerules::rule_registry, |server| {
@@ -642,8 +644,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         port.message = super::screen_info::tr("lanServer.port", &[]);
         port.max_length = 5;
         // The world is the server thread's when there is one.
-        let state = match &self.integrated {
-            Some(server) => match server.ask(super::owner_link::OwnerRequest::ServerOptions) {
+        let state = match &self.side.integrated {
+            Some(server) => match server.ask(OwnerRequest::ServerOptions) {
                 Some(state) => state,
                 None => return,
             },
@@ -759,7 +761,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Exit::Apply(changes) = exit else {
             return;
         };
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             if self.ui.registries.permission >= 2 && !changes.is_empty() {
                 self.send(S::SetGameRule(play::SetGameRule {
                     entries: changes
@@ -1339,7 +1341,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(Button::Lock) => o.locked = !o.locked,
             Some(Button::Restrictions) => o.view = View::Restrictions,
             Some(Button::GameRules) => {
-                if self.remote.is_some() {
+                if self.side.remote.is_some() {
                     o.rules = None;
                     self.send(S::ClientCommand(play::ClientCommand { action: 2 }));
                 } else {
@@ -1636,7 +1638,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         Button::Lock => o.locked = !o.locked,
                         Button::Restrictions => o.view = View::Restrictions,
                         Button::GameRules => {
-                            if self.remote.is_some() {
+                            if self.side.remote.is_some() {
                                 o.rules = None;
                                 self.send(S::ClientCommand(play::ClientCommand { action: 2 }));
                             } else {
@@ -1743,12 +1745,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             return;
         }
-        if let Some(server) = &self.integrated {
+        if let Some(server) = &self.side.integrated {
             // The server applies them; the window tells what came of
             // Open to LAN (ShareToLanScreen's messages).
             let (b, w) = (*before, *wanted);
             if let Some((closed, published_port)) =
-                server.ask(|done| super::owner_link::OwnerRequest::ApplyWorldOptions {
+                server.ask(|done| OwnerRequest::ApplyWorldOptions {
                     before: b,
                     wanted: w,
                     done,

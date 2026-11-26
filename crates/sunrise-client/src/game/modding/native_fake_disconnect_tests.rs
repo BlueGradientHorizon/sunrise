@@ -41,9 +41,14 @@ impl Hooks for Owner {
 
 fn listen(game: &mut crate::game::ServerGame<'_>, conn: u32) -> Receiver<Out> {
     let (tx, rx) = std::sync::mpsc::channel();
-    game.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
-        guest.sender = PlayerSender::new(tx, Arc::default())
-    });
+    game.side
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .update_guest(conn, |guest| {
+            guest.sender = PlayerSender::new(tx, Arc::default())
+        });
     rx
 }
 
@@ -90,6 +95,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                 let fake = game.fake_player(level, 100, "robot").unwrap();
                 *notices.player.lock().unwrap() = Some(fake);
                 let conn = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -121,7 +127,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                         .disconnect(game, Text::literal("Second reason"))
                         .unwrap()
                 );
-                let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
                 assert!(guest.disconnect_pending);
                 assert_eq!(guest.left_reason, "First reason");
                 assert_eq!(game.player_is_fake(fake), Some(true));
@@ -135,7 +141,8 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                 game.tick_lan_packets();
                 // Packet draining holds sends until the full tick's flush boundary.
                 sunrise_sim::lan::flush_all(
-                    game.lan
+                    game.side
+                        .lan
                         .as_ref()
                         .unwrap()
                         .hub
@@ -143,7 +150,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                         .iter()
                         .map(|g| &g.sender),
                 );
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 assert!(host.hub.guest(conn).is_none());
                 assert!(host.hub.guests.iter().all(|guest| guest.uuid != 100));
                 assert!(!host.play.contains_key(&conn));
@@ -165,7 +172,8 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                 game.tick_lan_packets();
                 // Packet draining holds sends until the full tick's flush boundary.
                 sunrise_sim::lan::flush_all(
-                    game.lan
+                    game.side
+                        .lan
                         .as_ref()
                         .unwrap()
                         .hub

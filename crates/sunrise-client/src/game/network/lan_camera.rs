@@ -14,7 +14,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// looks (`absSnapTo`'s arguments): a player, the host or any other
     /// entity of the level, by network id.
     fn camera_state(&self, id: i32) -> Option<([f64; 3], [f32; 2])> {
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         if let Some(g) = host
             .hub
             .guests
@@ -71,7 +71,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// `Entity.isPickable` of the entity with that id.
     fn camera_pickable(&self, id: i32) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         // Player.isPickable: not a spectator.
@@ -109,7 +109,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         gi: usize,
         target: Option<i32>,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let g = &host.hub.guests[gi];
@@ -148,7 +148,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.setCamera`: the view moves to the new camera, which
     /// the client is told, or back to the player (`None`).
     pub(in crate::game) fn guest_set_camera(&mut self, gi: usize, camera: Option<i32>) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let guest = &host.hub.guests[gi];
@@ -188,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         // ServerPlayer.broadcastToPlayer: a spectator with a camera is shown to nobody.
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         {
@@ -200,7 +200,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.as_guest(conn, |game| {
             game.place_player_teleport_in_level(Vec3::new(at[0], at[1], at[2]), None, [false; 3])
         });
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             // setCamera moves the tickets at once: to the camera, or back to the player.
             host.hub.guests.update(gi, |guest| guest.release_tickets());
             host.hub.send_to(
@@ -231,6 +231,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn tick_guest_cameras(&mut self) {
         for (conn, id) in std::mem::take(&mut self.side.cmds.0.camera_requests) {
             if let Some(gi) = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
@@ -247,7 +248,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(|(c, v)| (*c, *v))
             .collect();
         for (conn, camera) in cameras {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -269,7 +270,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.guest_set_camera(gi, None);
             } else if let Some((at, [yaw, pitch])) = state {
                 // absSnapTo; the level's chunk source follows the player.
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.hub.guests.update(gi, |g| {

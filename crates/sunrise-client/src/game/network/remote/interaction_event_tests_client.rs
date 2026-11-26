@@ -25,7 +25,7 @@ impl InteractionSide for crate::game::client_side::ClientState {
     }
     fn interaction_set_sneak(game: &mut Game<'_, Self>, sneak: bool) {
         game.set_mapping_held("key.sneak", sneak);
-        if let Some(remote) = game.remote.as_mut() {
+        if let Some(remote) = game.side.remote.as_mut() {
             if sneak {
                 remote.last_input |= crate::game::remote::SHIFT_INPUT;
             } else {

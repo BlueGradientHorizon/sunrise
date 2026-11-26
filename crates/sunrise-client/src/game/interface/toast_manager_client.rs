@@ -38,7 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `ToastManager.extractRenderState`: F1 hides the draw, not the update.
     pub(in crate::game) fn draw_every_toast(&mut self, batch: &mut HudBatch) {
-        let replay = self.replay.playing();
+        let replay = self.side.replay.playing();
         let hidden = self.side.chat_ui.player_hides_gui || replay;
         let diagnostic_hidden = replay || self.overlay_holds_view();
         self.admit_mod_toasts();

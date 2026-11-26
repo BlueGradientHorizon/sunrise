@@ -118,6 +118,7 @@ fn saddling_a_pig_posts_equip_from_the_pig() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.world
@@ -175,6 +176,7 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.world
@@ -321,6 +323,7 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.world

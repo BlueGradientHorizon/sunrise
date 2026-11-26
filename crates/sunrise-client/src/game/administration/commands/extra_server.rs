@@ -28,6 +28,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         match conn {
             Some(conn) => self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|h| {
@@ -50,12 +51,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let packet = C::ClearDialog(Empty);
         for &t in targets {
             match t {
-                Target::Player if self.side.lan_acting.is_some() || self.lan.is_none() => {
+                Target::Player if self.side.lan_acting.is_some() || self.side.lan.is_none() => {
                     self.side.guest_packets.push(packet.clone());
                 }
                 Target::Player => {}
                 Target::Guest(conn) => {
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = self.side.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
                     }
                 }
@@ -360,12 +361,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         for &t in targets {
             match t {
-                Target::Player if self.side.lan_acting.is_some() || self.lan.is_none() => {
+                Target::Player if self.side.lan_acting.is_some() || self.side.lan.is_none() => {
                     self.side.guest_packets.push(packet.clone());
                 }
                 Target::Player => {}
                 Target::Guest(conn) => {
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = self.side.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
                     }
                 }
@@ -559,7 +560,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `/waypoint modify` re-tracks its waypoint whatever its range.
     pub(in crate::game) fn waypoint_transmitters(&mut self) -> Vec<Target> {
         if self.side.cmds.0.waypoints.is_none() {
-            let tracked = if self.lan.is_none() && self.transmit_range(Target::Player) > 0.0 {
+            let tracked = if self.side.lan.is_none() && self.transmit_range(Target::Player) > 0.0 {
                 vec![self.waypoint_target(Target::Player)]
             } else {
                 Vec::new()

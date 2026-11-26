@@ -8,6 +8,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn announce_login(&mut self, player: u128, name: &str) {
         if mod_api::__private::listened(mod_api::HookId::ClientInformationUpdated)
             && let Some(g) = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().find(|g| g.uuid == player))

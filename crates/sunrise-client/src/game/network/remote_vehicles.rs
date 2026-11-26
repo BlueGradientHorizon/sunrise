@@ -13,42 +13,15 @@
 //! also move on their rider's client when saddled and steered with the right stick.
 //! A minecart
 //! moves on the server with the rider's input, and the rider sits in it.
-use super::{Game, Keys, remote::Remote};
-use std::collections::HashMap;
+use super::{Game, Keys};
+use crate::game::client_side::remote_client::Remote;
+use crate::game::remote::passengers::{PassengerSeat, passenger_chain};
 use sunrise_client::keybinds;
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use sunrise_sim::mobs::{Mob, equine, happy_ghast};
 use sunrise_world::stepped_interpolation::PosRot;
-
-/// One edge of the riding graph sent by `SetPassengers`.
-pub(in crate::game) struct PassengerSeat {
-    pub vehicle: u32,
-    pub index: usize,
-}
-
-fn passenger_chain(
-    vehicles: &HashMap<u32, PassengerSeat>,
-    id: u32,
-) -> impl Iterator<Item = u32> + '_ {
-    std::iter::successors(Some(id), |id| vehicles.get(id).map(|seat| seat.vehicle))
-        .take(vehicles.len() + 2)
-}
-
-/// Walks to the root without allocating. In a cycle, returns the last reached
-/// ID for the collision code's bounded stack walk; there is no actual root.
-pub(in crate::game) fn passenger_root(
-    vehicles: &HashMap<u32, PassengerSeat>,
-    id: u32,
-) -> std::result::Result<u32, u32> {
-    let root = passenger_chain(vehicles, id).last().unwrap_or(id);
-    if vehicles.contains_key(&root) {
-        Err(root)
-    } else {
-        Ok(root)
-    }
-}
 
 impl Remote {
     pub(in crate::game::client_side) fn riding_entity_exists(
@@ -110,6 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Some(origin);
         }
         if let Some(row) = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.general.rows.get(&(id as i32)))
@@ -131,8 +105,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(d) = self
             .dragon
             .as_ref()
-            .filter(|d| d.id != 0 || self.remote.is_some())
-            && let Some(part) = super::dragon::dragon_part_index(d.id, id)
+            .filter(|d| d.id != 0 || self.side.remote.is_some())
+            && let Some(part) = crate::game::dragon_common::dragon_part_index(d.id, id)
         {
             let p = d.parts[part].0;
             return Some([p.x, p.y, p.z]);
@@ -184,7 +158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         vehicle: i32,
         mut passengers: Vec<i32>,
     ) {
-        let Some(remote) = self.remote.as_mut() else {
+        let Some(remote) = self.side.remote.as_mut() else {
             return;
         };
         // The local entity is known from Login, even before its motion body
@@ -197,7 +171,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Forced client startRiding still respects Entity.couldAcceptPassenger.
         if remote
             .tracked(vehicle)
-            .is_some_and(|(kind, _)| !super::seats::could_accept_passenger(kind))
+            .is_some_and(|(kind, _)| !crate::game::seats_common::could_accept_passenger(kind))
         {
             return;
         }
@@ -230,7 +204,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Removing a vehicle ejects its passengers even without a final packet.
     pub(in crate::game::client_side) fn remote_clear_passengers(&mut self, vehicle: i32) {
-        if let Some(remote) = self.remote.as_mut() {
+        if let Some(remote) = self.side.remote.as_mut() {
             remote.forget_passengers(vehicle as u32);
             self.apply_remote_passengers(vehicle, &[]);
         }
@@ -248,7 +222,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.boats.update(i, |b| b.lerp = None);
             }
         }
-        if let Some(remote) = self.remote.as_mut() {
+        if let Some(remote) = self.side.remote.as_mut() {
             let player = remote.entity_id;
             remote.first_passenger = false;
             remote.passenger_index = 0;
@@ -256,7 +230,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let parent = remote.passenger_vehicles.remove(&(player as u32));
             self.remote_clear_passengers(player);
             if let Some(parent) = parent
-                && let Some(remote) = self.remote.as_mut()
+                && let Some(remote) = self.side.remote.as_mut()
             {
                 let mut siblings: Vec<_> = remote.passenger_seats(parent.vehicle).collect();
                 siblings.sort_unstable_by_key(|&(_, index)| index);
@@ -281,13 +255,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Apply the admitted list to the presentation and simulation copies too.
     fn apply_remote_passengers(&mut self, vehicle: i32, passengers: &[i32]) {
-        let Some(me) = self.remote.as_ref().map(|r| r.entity_id) else {
+        let Some(me) = self.side.remote.as_ref().map(|r| r.entity_id) else {
             return;
         };
         let vehicle_id = vehicle as u32;
         self.remote_seat_passengers(vehicle_id, passengers);
         let player_controls = passengers.first().is_some_and(|&id| {
-            self.remote
+            self.side
+                .remote
                 .as_ref()
                 .is_some_and(|r| r.level_player(id).is_some())
         });
@@ -333,7 +308,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         if passengers.contains(&me)
-            && let Some(r) = self.remote.as_mut()
+            && let Some(r) = self.side.remote.as_mut()
         {
             r.first_passenger = passengers.first() == Some(&me);
             r.passenger_index = passengers.iter().position(|&p| p == me).unwrap_or(0);
@@ -381,7 +356,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 m.id == vehicle_id && m.species() == sunrise_sim::mobs::Species::HappyGhast
             }) {
                 m.extra.counter = 10;
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.ghast_dismount = Some(vehicle_id);
                 }
             }
@@ -402,7 +377,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let id = if subject.is_local_player {
             self.riding?
         } else {
-            self.remote
+            self.side
+                .remote
                 .as_ref()
                 .filter(|r| r.detached_camera.is_none())?
                 .passenger_vehicle(subject.entity_id)?
@@ -427,7 +403,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// AbstractBoat.getControllingPassenger: only the first player steers a boat.
     /// A non-remote world retains its existing local movement ownership.
     pub(in crate::game) fn controls_boat(&self, id: u32) -> bool {
-        self.riding == Some(id) && self.remote.as_ref().is_none_or(|r| r.first_passenger)
+        self.riding == Some(id) && self.side.remote.as_ref().is_none_or(|r| r.first_passenger)
     }
 
     /// Tick the local player's vehicle before the player tick:
@@ -504,8 +480,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if self.controls_boat(id) {
                 // A boat taken over while it eased toward the server's position keeps
                 // easing (the handler stays the entity's), and reports where it goes.
-                if let Some((to, rotation, steps)) =
-                    self.remote.as_mut().and_then(|r| r.take_object_lerp(id))
+                if let Some((to, rotation, steps)) = self
+                    .side
+                    .remote
+                    .as_mut()
+                    .and_then(|r| r.take_object_lerp(id))
                 {
                     let rotation = rotation.unwrap_or((b.yaw, b.pitch));
                     b.go_on_easing(Vec3::new(to[0], to[1], to[2]), rotation, steps);
@@ -529,7 +508,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.carts.update(i, |c| {
                     c.passenger_yaw_delta = 0.0;
                     if rotate && c.kind == super::minecarts::CartKind::Rideable {
-                        c.rotate_passenger(&mut self.yaw);
+                        crate::game::client_side::minecarts_client::rotate_passenger(
+                            c,
+                            &mut self.yaw,
+                        );
                     }
                 });
             }
@@ -747,8 +729,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// the boat down or throwing it up (`handleBubbleColumnEffect`, which the
     /// client applies to the boat it drives).
     pub(in crate::game::client_side) fn remote_boat_event(&mut self, id: i32, event: i8) {
-        let drag_down = event == super::boats::BUBBLE_DOWN_EVENT;
-        if !drag_down && event != super::boats::BUBBLE_UP_EVENT {
+        let drag_down = event == crate::game::boats_common::BUBBLE_DOWN_EVENT;
+        if !drag_down && event != crate::game::boats_common::BUBBLE_UP_EVENT {
             return;
         }
         if let Some(i) = self.boats.iter().position(|b| b.id == id as u32) {
@@ -786,7 +768,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
             }
-            self.boats.update(i, super::boats::Boat::tick_bubble_wobble);
+            self.boats
+                .update(i, crate::game::boats_common::Boat::tick_bubble_wobble);
             if !driven {
                 self.boats
                     .update(i, |b| Self::tick_boat_paddles(b, &mut self.side.audio.0));
@@ -801,13 +784,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.riding == Some(m.id)
             && client_moves(
                 m,
-                self.remote.as_ref().is_some_and(|r| r.first_passenger),
+                self.side.remote.as_ref().is_some_and(|r| r.first_passenger),
                 self.steers_mount(m),
             )
     }
 
     fn steers_mount(&self, m: &Mob) -> bool {
-        super::mounts::steering_item(
+        crate::game::mounts_common::steering_item(
             m.species(),
             self.held().map(|s| s.item.as_ref()),
             self.offhand.as_ref().map(|s| s.item.as_ref()),
@@ -892,7 +875,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.mobs.insert(i, mob);
         // LocalPlayer.aiStep, after the vehicle's tick.
         if jump > 0.0
-            && let Some(id) = self.remote.as_ref().map(|r| r.entity_id)
+            && let Some(id) = self.side.remote.as_ref().map(|r| r.entity_id)
         {
             self.send(riding_jump(id, self.mount.jump_scale));
         }
@@ -933,7 +916,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             &self.world,
             self.pack.assets.registry,
             lent,
-            self.remote.as_ref().and_then(|r| r.tags.as_ref()),
+            self.side.remote.as_ref().and_then(|r| r.tags.as_ref()),
             None,
             hooks,
         )
@@ -1049,7 +1032,7 @@ pub(in crate::game) mod tests {
             game.mobs.push(m);
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:carrot_on_a_stick", 1));
             game.riding = Some(7);
-            game.remote.as_mut().unwrap().first_passenger = true;
+            game.side.remote.as_mut().unwrap().first_passenger = true;
             assert!(game.driven_mount().is_some());
             use play::relative as rel;
             game.apply_packet(C::TeleportEntity(play::TeleportEntity {
@@ -1135,11 +1118,15 @@ pub(in crate::game) mod tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "SteeringTest").unwrap();
-        game.remote.as_mut().unwrap().joined = true;
+        game.side.remote.as_mut().unwrap().joined = true;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 300.0, 0.5)).unwrap());
         let types = MobTypes::load(&root).unwrap();
         for row in &rows {
@@ -1169,7 +1156,7 @@ pub(in crate::game) mod tests {
             game.mobs.clear();
             game.mobs.push(m);
             game.riding = Some(7);
-            game.remote.as_mut().unwrap().first_passenger = row["first"].as_bool().unwrap();
+            game.side.remote.as_mut().unwrap().first_passenger = row["first"].as_bool().unwrap();
             let controlled = row["controlled"].as_bool().unwrap();
             assert_eq!(game.driven_mount().is_some(), controlled, "{row}");
             let packets = game.remote_vehicle_packets();
@@ -1219,6 +1206,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         server.player = Some(PlayerMotion::new(server.motion, Vec3::new(0.5, 300.0, 0.5)).unwrap());
@@ -1375,12 +1363,16 @@ pub(in crate::game) mod tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "RiderTest").unwrap();
-        game.remote.as_mut().unwrap().joined = true;
-        game.remote.as_mut().unwrap().first_passenger = true;
+        game.side.remote.as_mut().unwrap().joined = true;
+        game.side.remote.as_mut().unwrap().first_passenger = true;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 300.0, 0.5)).unwrap());
         let types = MobTypes::load(&root).unwrap();
         let t = std::sync::Arc::new(types.types["minecraft:horse"].clone());
@@ -1417,7 +1409,7 @@ pub(in crate::game) mod tests {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(client, "CamelRider").unwrap();
-                    let remote = game.remote.as_mut().unwrap();
+                    let remote = game.side.remote.as_mut().unwrap();
                     remote.joined = true;
                     remote.entity_id = 42;
                     game.world.game_time = 1_000;
@@ -1547,6 +1539,10 @@ mod plugin_seat_tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());

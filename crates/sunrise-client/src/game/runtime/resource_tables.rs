@@ -1,5 +1,5 @@
 //! The game's shared read-only tables: `Resources` (blocks, items, recipes, mob types, biomes),
-//! `UiResources` and `PackResources`.
+//! `PackResources`.
 use super::*;
 use sunrise_level::chunk_streamer::ChunkWorkerContext;
 
@@ -88,37 +88,6 @@ impl Resources {
     }
 }
 
-/// Everything the title and menus draw: the GUI atlas with its font, the
-/// title panorama and the splash pool. Kept apart from the world bundle so the
-/// title can appear before the block sprites, models and gameplay tables are ready.
-#[cfg(feature = "client")]
-pub struct UiResources {
-    /// The GUI, font, particle, map and skin atlas.
-    pub atlas: HudAtlas,
-    /// The title screen's panorama faces.
-    pub panorama: Arc<sunrise_client::gfx::panorama::Faces>,
-    /// The title screen's splashes (`sunrise_client::splashes::pool`).
-    pub splashes: Arc<str>,
-    /// The `Text` of each plain string mods draw (`DrawContext::text`).
-    pub plain_texts: PlainTexts,
-}
-
-/// The `Text` of each plain string a mod draws by `&str` (`DrawContext::text`), kept so drawing
-/// the same string again builds no new `Text`. It holds at most [`PlainTexts::MAX`] strings and
-/// starts over past that, so text that changes every frame can't grow it.
-#[cfg(feature = "client")]
-#[derive(Default)]
-#[rustfmt::skip]
-pub struct PlainTexts(
-    pub(in crate::game)
-        std::cell::RefCell<std::collections::HashMap<Box<str>, sunrise_game_data::text::Text>>,
-);
-
-#[cfg(feature = "client")]
-impl PlainTexts {
-    pub(in crate::game) const MAX: usize = 256;
-}
-
 #[cfg(feature = "client")]
 #[cfg(test)]
 thread_local! {
@@ -142,23 +111,11 @@ pub(in crate::game) fn with_dynamic_texture_pool_override<R>(
     f()
 }
 
-/// Whether the HUD atlas packs the pool of dynamic texture slots: whenever a client mod is
-/// loaded, since any of them can call `ClientHost::create_dynamic_texture`, with
-/// no mixin and no opt-in (#4437). A game with no mod packs no slot and its atlas does not grow.
-/// Read where the atlas is built: at the first load and on a resource reload.
-#[cfg(feature = "client")]
-pub(in crate::game) fn dynamic_texture_pool() -> bool {
-    #[cfg(test)]
-    if let Some(pool) = DYNAMIC_TEXTURE_POOL_OVERRIDE.get() {
-        return pool;
-    }
-    !mod_api::__private::mods().is_empty()
-}
-
 #[cfg(feature = "client")]
 #[cfg(test)]
-impl UiResources {
+impl crate::game::client_side::resource_tables_client::UiResources {
     pub(in crate::game) fn clone_for_tests(&self) -> Self {
+        use crate::game::client_side::resource_tables_client::PlainTexts;
         Self {
             atlas: self.atlas.clone_for_tests(),
             panorama: self.panorama.clone(),
@@ -232,7 +189,7 @@ impl PackResources {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod plain_text_tests {
-    use super::PlainTexts;
+    use crate::game::client_side::resource_tables_client::PlainTexts;
 
     #[test]
     fn a_string_drawn_again_reuses_its_text_and_the_store_stays_bounded() {

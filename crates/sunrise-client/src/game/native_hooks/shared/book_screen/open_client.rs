@@ -26,7 +26,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         backing_slots: usize,
         extra: Option<sunrise_protocol::menu_extra::Message>,
     ) -> bool {
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return false;
         };
         let Some((window, name)) = remote.menu.as_ref() else {

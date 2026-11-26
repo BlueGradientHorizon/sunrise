@@ -44,9 +44,15 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     for x in 0..2 {
@@ -106,7 +112,7 @@ fn game<'a>(
     guest.loaded = true;
     // Its view, as the client sent it: straight down.
     guest.pitch = 90.0;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     (game, rx)
 }
 
@@ -221,10 +227,10 @@ fn control_a_multi_display_recipe_still_has_no_ghost() {
     let mut resources = None;
     let (mut game, rx) = game(&mut resources);
     let _ = ghosts(&rx);
-    let hub = &mut game.lan.as_mut().unwrap().hub;
+    let hub = &mut game.side.lan.as_mut().unwrap().hub;
     hub.send_ghost_recipe(2, 0, "minecraft:map_cloning");
     assert_eq!(ghosts(&rx), 0, "no ghost for eight displays");
-    let hub = &mut game.lan.as_mut().unwrap().hub;
+    let hub = &mut game.side.lan.as_mut().unwrap().hub;
     hub.send_ghost_recipe(2, 0, "minecraft:crafting_table");
     assert_eq!(ghosts(&rx), 1, "the ordinary recipe's ghost");
 }

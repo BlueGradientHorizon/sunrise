@@ -1,4 +1,4 @@
-use super::{Game, commands::Target};
+use super::{Game, commands_common::Target};
 use mod_api::LivingRef;
 
 impl Game<'_, crate::game::client_side::ClientState> {

@@ -60,16 +60,21 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(false);
         }
         if !self.journal_menu_data(key, value) {
-            self.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
-                guest.set_menu_data(index, value);
-            });
+            self.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(conn, |guest| {
+                    guest.set_menu_data(index, value);
+                });
         }
         Ok(true)
     }
 
     pub(in crate::game) fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
         let guest = self.native_menu_player(menu.fields().player)?;
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         (host.hub.holder_guest(guest.uuid, self.dim.id())?.conn == guest.conn).then_some(())?;
         (guest.menu_generation == menu.fields().generation).then_some(())?;
         if let Some(open) = &guest.menu {
@@ -114,7 +119,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let guest = self.native_menu_guest(menu)?;
         match &guest.menu {
             Some(m) => Some(Some(
-                self.lan
+                self.side
+                    .lan
                     .as_ref()?
                     .hub
                     .registry_name("minecraft:menu", m.kind)?
@@ -362,7 +368,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match self.player_handle_read(player)? {
             super::native_server::PlayerRead::Guest(guest) => Some(guest),
             super::native_server::PlayerRead::Acting { .. } => {
-                self.lan.as_ref()?.hub.guest(self.side.lan_acting?)
+                self.side.lan.as_ref()?.hub.guest(self.side.lan_acting?)
             }
         }
     }
@@ -382,6 +388,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(open) => {
                 let world = self.native_level_world(self.level(&guest.dimension)?)?;
                 let name = self
+                    .side
                     .lan
                     .as_ref()?
                     .hub
@@ -469,7 +476,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return self.side.ender_items.get_mut(n);
         }
-        let guests = &mut self.lan.as_mut()?.hub.guests;
+        let guests = &mut self.side.lan.as_mut()?.hub.guests;
         let index = guests.iter().position(|g| {
             g.placed
                 && g.uuid == menu.fields().player.uuid()
@@ -525,7 +532,7 @@ pub(in crate::game) mod tests {
                 config,
             )
             .unwrap();
-            game.lan.as_mut().unwrap().hub.guests.push(guest());
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest());
             let player = game.player(123).unwrap();
 
             // The selected slot: a slot past the hotbar is refused, a real one is held.
@@ -537,11 +544,11 @@ pub(in crate::game) mod tests {
                 "the same slot is no error"
             );
             assert_eq!(player.selected_slot(game), Some(4));
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].selected, 4);
+            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].selected, 4);
 
             // A menu: closing it returns the carried stack and leaves no menu behind.
             let stone = ItemStack::new("minecraft:stone", 4);
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub
                 .open_native_menu(
                     1,
@@ -555,7 +562,8 @@ pub(in crate::game) mod tests {
                 .update(0, |guest| guest.carried = Some(stone.clone()));
             let menu = game.player_container_menu(player).unwrap();
             assert_ne!(menu.container_id(game), Some(0));
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -563,12 +571,12 @@ pub(in crate::game) mod tests {
                 .update(0, |guest| guest.disconnect_pending = true);
             assert!(!menu.close_container(game), "disconnect owns the teardown");
             assert_eq!(game.player_container_menu(player), Some(menu));
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             assert_eq!(hub.guests[0].carried.as_ref(), Some(&stone));
             hub.guests
                 .update(0, |guest| guest.disconnect_pending = false);
             assert!(menu.close_container(game));
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.menu.is_none(), "the menu is gone");
             assert!(guest.carried.is_none(), "the cursor stack went back");
             assert_eq!(
@@ -620,7 +628,7 @@ pub(in crate::game) mod tests {
                 config,
             )
             .unwrap();
-            game.lan.as_mut().unwrap().hub.guests.push(guest());
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest());
             let player = game.player(123).unwrap();
             let inventory = game.player_container_menu(player).unwrap();
             assert_eq!(inventory.container_id(game), Some(0));
@@ -637,7 +645,7 @@ pub(in crate::game) mod tests {
             );
             assert_eq!(inventory.slot(game, 46), None);
             let stone = ItemStack::new("minecraft:stone", 4);
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             {
                 let value = Some(stone.clone());
                 host.hub.guests.update(0, |g| g.inventory[9] = value);
@@ -669,9 +677,15 @@ pub(in crate::game) mod tests {
             // independent of the inventory menu's carried stack.
             assert_eq!(menu.carried(game), Some(None));
             let stick = ItemStack::new("minecraft:stick", 2);
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.carried = Some(stick.clone());
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.carried = Some(stick.clone());
+                });
             assert_eq!(
                 menu.carried(game),
                 Some(Some(stick.try_into_api().unwrap()))
@@ -689,7 +703,7 @@ pub(in crate::game) mod tests {
                 Some(MenuSlotBacking::Player(0))
             );
             assert_eq!(game.menu_slot_backing(menu, 45), None);
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             for _ in 0..100 {
                 host.hub
                     .open_native_menu(1, 1, title.clone(), vec![])
@@ -698,7 +712,7 @@ pub(in crate::game) mod tests {
             assert_eq!(host.hub.guests[0].menu.as_ref().unwrap().window, window);
             assert_eq!(menu.slot_count(game), None);
             let newer = game.player_container_menu(player).unwrap();
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.close_container(1);
             assert_eq!(newer.slot_count(game), None);
             let inventory = game.player_container_menu(player).unwrap();
@@ -706,7 +720,7 @@ pub(in crate::game) mod tests {
                 inventory.carried(game),
                 Some(Some(stone.try_into_api().unwrap()))
             );
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             *host.menus.entry(1).or_default().crafting.table = Some((
                 7,
                 0,
@@ -717,7 +731,7 @@ pub(in crate::game) mod tests {
             ));
             assert_eq!(game.player_container_menu(player), None);
             assert_eq!(inventory.slot_count(game), None);
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.play.clear();
             host.menus.clear();
             host.hub.guests.replace(0, guest());
@@ -734,7 +748,7 @@ pub(in crate::game) mod tests {
             game.world
                 .block_entities
                 .insert(b, BlockEntity::Chest(vec![Some(stone.clone()); 3]));
-            game.lan.as_mut().unwrap().hub.open_container(
+            game.side.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:generic_9x1",
                 title.clone(),
@@ -760,7 +774,7 @@ pub(in crate::game) mod tests {
             game.world
                 .block_entities
                 .insert(vehicle, BlockEntity::Chest(vec![Some(stone.clone())]));
-            game.lan.as_mut().unwrap().hub.open_container(
+            game.side.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:generic_9x1",
                 title,
@@ -789,7 +803,7 @@ pub(in crate::game) mod tests {
                 .block_entities
                 .insert(a, BlockEntity::Chest(vec![Some(gold.clone())]));
             let title = sunrise_core::nbt::Tag::String("dimension".into());
-            game.lan.as_mut().unwrap().hub.open_container(
+            game.side.lan.as_mut().unwrap().hub.open_container(
                 1,
                 "minecraft:generic_9x1",
                 title.clone(),
@@ -812,8 +826,14 @@ pub(in crate::game) mod tests {
             nether_guest.uuid = 456;
             nether_guest.entity_id = 2;
             nether_guest.dimension = "minecraft:the_nether".into();
-            game.lan.as_mut().unwrap().hub.guests.push(nether_guest);
-            game.lan.as_mut().unwrap().hub.open_container(
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .push(nether_guest);
+            game.side.lan.as_mut().unwrap().hub.open_container(
                 2,
                 "minecraft:generic_9x1",
                 title,

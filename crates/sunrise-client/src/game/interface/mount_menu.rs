@@ -15,7 +15,7 @@ use sunrise_sim::mobs::{Mob, Species, llama, nautilus};
 /// `AbstractChestedHorse.INV_CHEST_COUNT`.
 pub(in crate::game) const CHEST_SIZE: usize = 15;
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::mount_rules::{
+pub(in crate::game) use sunrise_gameplay_common::mount_rules::{
     ARMOR, CHEST, SADDLE, body_armor_fits, has_mount_menu, mount_columns, shows_body, shows_saddle,
 };
 
@@ -135,7 +135,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     #[allow(dead_code)]
     pub(in crate::game) fn tick_mount_menu(&mut self) {
         // A server's menu ends when the server closes it.
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             return;
         }
         let Some(open) = self.side.mount_menu.open.as_ref() else {
@@ -261,7 +261,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A click in the mount menu before the generic handling.
     pub(in crate::game::client_side) fn mount_click(&mut self, right: bool) -> bool {
         // A server's menu: the click goes out like any container click.
-        if !self.mount_active() || self.remote.is_some() {
+        if !self.mount_active() || self.side.remote.is_some() {
             return false;
         }
         let Some(r) = self.side.renderer.0.as_ref() else {

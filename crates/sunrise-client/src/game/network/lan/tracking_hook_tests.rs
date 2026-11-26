@@ -146,7 +146,7 @@ pub(in crate::game) fn with_two_items(
                 let (sender, out) = PlayerSender::payload_executor_test_sender(transport.clone());
                 g.sender = sender;
                 readers.push(out);
-                game.lan.as_mut().unwrap().hub.guests.push(g);
+                game.side.lan.as_mut().unwrap().hub.guests.push(g);
             }
             let mut items = [0; 2];
             for (i, x) in [12.5, 4.5].into_iter().enumerate() {
@@ -178,7 +178,7 @@ pub(in crate::game) fn tick_until_heard(
     for _ in 0..20 {
         // The tracker pairs only what the client was sent the chunk of (`isChunkTracked`); this
         // fixture runs no chunk sending, so chunk (0, 0) stands as sent.
-        game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+        game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
             g.sent_chunks.insert((0, 0));
         });
         game.tick_lan(false);
@@ -187,7 +187,7 @@ pub(in crate::game) fn tick_until_heard(
             return told;
         }
     }
-    let host = game.lan.as_ref().unwrap();
+    let host = game.side.lan.as_ref().unwrap();
     let guests: Vec<_> = host
         .hub
         .guests
@@ -261,7 +261,8 @@ fn starts_and_stops_are_heard_at_their_packets() {
         }
 
         // The first guest leaves everyone's range, and the near item leaves the level.
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -303,12 +304,12 @@ fn starts_and_stops_are_heard_at_their_packets() {
 fn a_leaving_player_hears_its_stops_after_logging_out() {
     with_two_items(|game, heard, [first, _], [far, near]| {
         let _ = (tick_until_heard(game, heard), first());
-        let mut host = game.lan.take().unwrap();
+        let mut host = game.side.lan.take().unwrap();
         // The hub takes a leaving guest out of its list, and what it tracked stops
         // (`Hub::remove_guest`, `PlayerList.remove`), before it reports the leave.
         let mut gone = host.hub.guests.remove(0);
         gone.tracker.clear();
-        game.lan = game.lan_process_events(
+        game.side.lan = game.lan_process_events(
             host,
             [HostEvent::Left(Box::new(gone))],
             &[],

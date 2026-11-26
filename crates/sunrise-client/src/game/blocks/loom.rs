@@ -57,7 +57,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             s.inputs[1].clone(),
             s.inputs[2].clone(),
         ];
-        let l = &mut s.loom;
+        let l = &mut self.side.station_loom;
         l.has_max = inputs[0].as_ref().is_some_and(banner::has_max_layers);
         if inputs != l.last_inputs {
             l.display =
@@ -92,8 +92,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(start_row) = self
             .station
             .as_ref()
-            .filter(|s| s.loom.display)
-            .map(|s| s.loom.start_row)
+            .filter(|_| self.side.station_loom.display)
+            .map(|_| self.side.station_loom.start_row)
         else {
             return false;
         };
@@ -106,17 +106,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
         }
-        if inside(local, 119.0, 9.0, 12.0, 56.0)
-            && let Some(s) = self.station.as_mut()
-        {
-            s.loom.scrolling = true;
+        if inside(local, 119.0, 9.0, 12.0, 56.0) && self.station.is_some() {
+            self.side.station_loom.scrolling = true;
             return true;
         }
         false
     }
     /// The pattern buttons a controller can focus (GUI origin relative).
     pub(in crate::game::client_side) fn loom_targets(&self) -> Vec<[f32; 4]> {
-        let Some(loom) = self.station.as_ref().map(|s| &s.loom).filter(|l| l.display) else {
+        let Some(loom) = self
+            .station
+            .as_ref()
+            .map(|_| &self.side.station_loom)
+            .filter(|l| l.display)
+        else {
             return Vec::new();
         };
         (0..16)
@@ -146,9 +149,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (_, oy) =
             self.inventory_origin(&HudBatch::new(size, self.side.settings.gui_scale_inputs()));
         let cursor_y = self.side.cursor.1;
-        let Some(l) = self.station.as_mut().map(|s| &mut s.loom) else {
+        if self.station.is_none() {
             return false;
-        };
+        }
+        let l = &mut self.side.station_loom;
         if l.scrolling && l.display && l.offscreen_rows() > 0 {
             let top = oy + 13.0;
             l.scroll = ((cursor_y - top - 7.5) / (56.0 - 15.0)).clamp(0.0, 1.0);
@@ -158,15 +162,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         false
     }
     pub(in crate::game::client_side) fn loom_release(&mut self) -> bool {
-        self.station
-            .as_mut()
-            .is_some_and(|s| std::mem::take(&mut s.loom.scrolling))
+        self.station.is_some() && std::mem::take(&mut self.side.station_loom.scrolling)
     }
     /// `LoomScreen.mouseScrolled`.
     pub(in crate::game::client_side) fn loom_scroll(&mut self, d: f32) -> bool {
-        let Some(l) = self.station.as_mut().map(|s| &mut s.loom) else {
+        if self.station.is_none() {
             return false;
-        };
+        }
+        let l = &mut self.side.station_loom;
         let offscreen = l.offscreen_rows();
         if l.display && offscreen > 0 {
             l.scroll = (l.scroll - d / offscreen as f32).clamp(0.0, 1.0);
@@ -309,7 +312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         local: (f32, f32),
     ) -> Option<Vec<(sunrise_game_data::text::Text, u32)>> {
         let s = self.station.as_ref()?;
-        let l = &s.loom;
+        let l = &self.side.station_loom;
         let dye = s.inputs[1]
             .as_ref()
             .and_then(|d| self.items().get(&d.item))

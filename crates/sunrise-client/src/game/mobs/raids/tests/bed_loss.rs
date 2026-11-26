@@ -32,6 +32,7 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.side.world_root =

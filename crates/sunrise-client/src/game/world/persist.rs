@@ -3,7 +3,6 @@
 //! scheduled block/fluid ticks (chunk `block_ticks`/`fluid_ticks`).
 #[path = "persist/display.rs"]
 mod display;
-pub(in crate::game) use sunrise_gameplay::entity_uuids::EntityUuids;
 #[path = "persist/loaded_pass.rs"]
 mod loaded_pass;
 #[path = "persist/object_memory.rs"]
@@ -24,6 +23,13 @@ mod hurt_by_refs;
 pub(in crate::game) mod lookup_order_tests;
 
 use super::{FallingBlock, Game};
+use crate::game::{
+    end_state::SummonedEye,
+    entity_memory::{EntityMemory, ItemDisplayTransformation, OffLevel, RemovedVehicle},
+    interactions_common::{InteractionState, is_interaction},
+    piston_nbt::block_entity_pos,
+    server_side::potions_server::potion_cloud_to_nbt,
+};
 
 /// Levels of NBT nesting kept clear under the writer's guard for what surrounds a passenger
 /// chain: the chunk root, its `Entities` list, the root entity and its own data.
@@ -50,91 +56,6 @@ use {
     sunrise_core::nbt::Tag,
     sunrise_world::{level::MovingPiston, registry::BlockStateId},
 };
-
-/// An entity object retained by passenger links but refused level residency.
-/// Queries and tracking never visit this store; internal topology and saving do.
-/// A boat or minecart is only ever a root here: mobs are the only modeled riders.
-pub(in crate::game) enum OffLevel {
-    Mob(Mob),
-    Boat(super::boats::Boat),
-    Cart(super::minecarts::Minecart),
-}
-
-/// Formerly resident vehicles kept solely by surviving passenger edges.
-pub(in crate::game) enum RemovedVehicle {
-    Mob { position: Vec3, kind: String },
-    Boat(super::boats::Boat),
-    Cart(super::minecarts::Minecart),
-}
-
-impl RemovedVehicle {
-    pub(in crate::game) fn position(&self) -> Vec3 {
-        match self {
-            Self::Mob { position, .. } => *position,
-            Self::Boat(boat) => boat.position,
-            Self::Cart(cart) => cart.position,
-        }
-    }
-
-    pub(in crate::game::server_side) fn retire_attachment_registration(&self) {
-        match self {
-            Self::Mob { .. } => {}
-            Self::Boat(boat) => {
-                boat.attachment_lifetime.retire();
-            }
-            Self::Cart(cart) => {
-                cart.attachment_lifetime.retire();
-            }
-        }
-    }
-
-    pub(in crate::game::server_side) fn kind(&self) -> String {
-        match self {
-            Self::Mob { kind, .. } => kind.clone(),
-            Self::Boat(boat) => boat.entity_type(),
-            Self::Cart(cart) => cart.kind.id().into(),
-        }
-    }
-}
-
-impl OffLevel {
-    pub(in crate::game) fn as_mob(&self) -> Option<&Mob> {
-        match self {
-            Self::Mob(mob) => Some(mob),
-            Self::Boat(_) | Self::Cart(_) => None,
-        }
-    }
-
-    fn as_mob_mut(&mut self) -> Option<&mut Mob> {
-        match self {
-            Self::Mob(mob) => Some(mob),
-            Self::Boat(_) | Self::Cart(_) => None,
-        }
-    }
-
-    fn as_boat(&self) -> Option<&super::boats::Boat> {
-        match self {
-            Self::Boat(boat) => Some(boat),
-            Self::Mob(_) | Self::Cart(_) => None,
-        }
-    }
-
-    fn as_cart(&self) -> Option<&super::minecarts::Minecart> {
-        match self {
-            Self::Cart(cart) => Some(cart),
-            Self::Mob(_) | Self::Boat(_) => None,
-        }
-    }
-
-    /// Only a retained mob can be removed while dependents keep it: a boat or
-    /// cart is never selectable, so it leaves only with its passenger graph.
-    pub(in crate::game::server_side) fn is_removed(&self) -> bool {
-        match self {
-            Self::Mob(mob) => mob.removed,
-            Self::Boat(_) | Self::Cart(_) => false,
-        }
-    }
-}
 
 /// The UUID an entity loads with: the saved one, else the one its constructor made.
 /// `Entity.<init>` always draws it from the entity's own random, so the draw is taken
@@ -192,89 +113,6 @@ pub(in crate::game) enum EntitySnapshot {
     Structure,
 }
 
-/// What Sunrise remembers about loaded entities to save them faithfully.
-#[derive(Default)]
-pub struct EntityMemory {
-    /// Runtime-only opt-outs from saving the entity as a root.
-    pub(in crate::game) transient: HashSet<u32>,
-    /// UUIDs of entities by Sunrise entity ID: the one each was loaded with,
-    /// or made up once something needed it (a save, a native mod's attachment).
-    pub(in crate::game) uuids: EntityUuids,
-    /// The compound each mob or item entity was loaded with.
-    pub(in crate::game) raw: HashMap<u32, Tag>,
-    /// Full rejected passenger objects, not resident entities or frozen NBT copies.
-    /// Kept with the level while any live object graph still refers to them.
-    pub(in crate::game) off_level: HashMap<u32, OffLevel>,
-    /// Formerly resident vehicles kept for vetoed dismounts, never for ticking.
-    pub(in crate::game) removed_vehicles: HashMap<u32, RemovedVehicle>,
-    /// Destruction callbacks already consumed for geometry retained after removal.
-    pub(in crate::game) score_destroyed: HashSet<u32>,
-    /// Mount notifications currently on the callback stack, keyed by object IDs.
-    pub(in crate::game) mount_notifications: HashSet<(u32, u32, bool)>,
-    /// Deferred native removals already notified their passenger edges.
-    pub(in crate::game) notified_vehicle_removals: HashSet<u32>,
-    /// Pre-removal effects in progress. The vehicle still resolves during these effects.
-    pub(in crate::game) preparing_vehicle_removals: HashSet<super::commands::Target>,
-    /// Vehicle destruction is logically visible before its passenger callbacks.
-    pub(in crate::game) destroying_vehicles: HashSet<super::commands::Target>,
-    /// Bodies that set `Entity.syncPosition` this tick, cleared after tracking.
-    pub(in crate::game) sync_body_position: HashSet<u32>,
-    /// Synched entity-data entries dirtied by forced writes since the last sync.
-    pub(in crate::game) forced_meta: HashMap<u32, [u64; 4]>,
-    /// `Entity.noPhysics` a native mod wrote for a kind whose own struct keeps
-    /// no field for it (the dragon, an area-effect cloud, an ominous item
-    /// spawner, a shulker bullet): the value replaces the kind's constructor
-    /// default and is never saved.
-    pub(in crate::game) no_physics: HashMap<u32, bool>,
-    /// Passengers that ride a vehicle, in load order: live entity IDs or unspawned tags.
-    /// Entities of types Sunrise does not simulate, kept per chunk and
-    /// written back unchanged.
-    unknown: HashMap<(i32, i32), Vec<Tag>>,
-    /// The compound of orbs, arrows, falling blocks, tridents, crystals and the
-    /// dragon as they were loaded, found again by type and position (one that
-    /// has moved since loading is saved afresh); their UUIDs are in `uuids`.
-    anon: HashMap<(String, [u64; 3]), (Vec3, Tag)>,
-    /// UUIDs of the vehicles `restore_saved_vehicle` brought in from the
-    /// player's file: their chunk copies must not spawn a second one. Cleared
-    /// with the rest when a world closes.
-    restored: HashSet<[i32; 4]>,
-    /// Entities a native mod kept out of the level (`native_entity_join_level`),
-    /// counted so `/summon` can fail as vanilla's refused add does.
-    pub(in crate::game) joins_canceled: u32,
-    /// The latest insertion considered for `native_entity_join_level`.
-    pub(in crate::game) joined_seq: sunrise_sim::join_seq::JoinSeq,
-    /// The entities mods were told of and that have not left since: id (in
-    /// increasing order), type, and whether the last leave sweep saw it.
-    /// Only filled while a mod is loaded.
-    pub(in crate::game) live: Vec<(u32, String, bool)>,
-    /// Entities a native mod removed (`entity_discard`): gone for every
-    /// lookup from the call on, taken out of their lists at the next sweep of
-    /// departed entities. Mobs go at once and never wait here.
-    pub(in crate::game) removals: Vec<super::commands::Target>,
-}
-
-impl EntityMemory {
-    /// Move object-owned save and dirty state, not either level's residency ledger.
-    /// The source still emits its leave and the destination its join.
-    pub(in crate::game::server_side) fn move_object_to(&mut self, id: u32, destination: &mut Self) {
-        if let Some(uuid) = self.uuids.remove(&id) {
-            destination.uuids.insert(id, uuid);
-        }
-        if let Some(raw) = self.raw.remove(&id) {
-            destination.raw.insert(id, raw);
-        }
-        if self.transient.remove(&id) {
-            destination.transient.insert(id);
-        }
-        if let Some(forced) = self.forced_meta.remove(&id) {
-            destination.forced_meta.insert(id, forced);
-        }
-        if self.score_destroyed.remove(&id) {
-            destination.score_destroyed.insert(id);
-        }
-    }
-}
-
 /// Runtime ownership paired with the serialized tree out of band. UUIDs are
 /// admission identities, not keys for matching these distinct object states.
 #[derive(Debug)]
@@ -322,23 +160,6 @@ struct PreparedVehicleTransfer {
 enum MobObject {
     Resident(usize),
     OffLevel(u32),
-}
-
-impl Game<'_, crate::game::server_side::ServerState> {}
-
-impl EntityMemory {
-    pub(in crate::game) fn force_meta(&mut self, id: u32, index: u8) {
-        self.forced_meta.entry(id).or_default()[usize::from(index) / 64] |= 1 << (index % 64);
-    }
-}
-impl EntityMemory {
-    /// The UUID entity `id` was loaded or saved with: what a save writes for a
-    /// field naming that entity (`entity_nbt::mob_to_nbt`'s `uuid_of`). `None`
-    /// for one that has none yet, so no reference is written rather than a
-    /// made-up UUID nothing would answer for.
-    pub(in crate::game) fn uuid_of(&self, id: u32) -> Option<[i32; 4]> {
-        self.uuids.get(&id).copied()
-    }
 }
 
 /// The key that marks a compound queued with the chunk loads as a fresh add
@@ -472,7 +293,7 @@ fn read_attachments(
 pub(in crate::game::server_side) fn write_attachments(
     tag: &mut Tag,
     id: u32,
-    maps: &super::native_colliders::EntityMaps,
+    maps: &crate::game::native_collider_state::EntityMaps,
 ) {
     if let Tag::Compound(root) = tag {
         maps.write_collider(root, id);
@@ -497,10 +318,6 @@ fn painting_center(p: &sunrise_sim::entities::Painting) -> Vec3 {
         (lo[2] + hi[2]) / 2.0,
     )
 }
-pub(in crate::game) fn block_entity_pos(tag: &Tag) -> [i32; 3] {
-    [tag.get("x"), tag.get("y"), tag.get("z")]
-        .map(|v| sunrise_sim::save::number(v).unwrap_or(0) as i32)
-}
 /// `EntitySectionStorage.getExistingSectionsInChunk`: a chunk's sections in
 /// packed `SectionPos` order, whose low 20 bits are the section Y: section 0
 /// upward, then the negative sections. A record without a position goes last.
@@ -512,77 +329,6 @@ fn section_order(tag: &Tag) -> u32 {
 
 fn chunk_of(p: Vec3) -> (i32, i32) {
     ((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::game) struct ItemDisplayTransformation {
-    translation: [f32; 3],
-    left_rotation: [f32; 4],
-    scale: [f32; 3],
-    right_rotation: [f32; 4],
-}
-
-impl From<mod_api::Transformation> for ItemDisplayTransformation {
-    fn from(value: mod_api::Transformation) -> Self {
-        Self {
-            translation: value.translation,
-            left_rotation: value.left_rotation,
-            scale: value.scale,
-            right_rotation: value.right_rotation,
-        }
-    }
-}
-
-impl ItemDisplayTransformation {
-    pub(in crate::game::server_side) fn from_tag(tag: Option<&Tag>) -> Option<Self> {
-        let (translation, left_rotation, scale, right_rotation) = tag
-            .and_then(sunrise_sim::text_display_data::transformation)
-            .unwrap_or((
-                [0.0; 3],
-                [0.0, 0.0, 0.0, 1.0],
-                [1.0; 3],
-                [0.0, 0.0, 0.0, 1.0],
-            ));
-        Some(Self {
-            translation,
-            left_rotation,
-            scale,
-            right_rotation,
-        })
-    }
-
-    pub(in crate::game::server_side) fn to_tag(self) -> Tag {
-        transformation_tag(
-            self.translation,
-            self.left_rotation,
-            self.scale,
-            self.right_rotation,
-        )
-    }
-}
-
-/// The transformation-only portion of Display.addAdditionalSaveData and the native writer.
-fn transformation_tag(
-    translation: [f32; 3],
-    left_rotation: [f32; 4],
-    scale: [f32; 3],
-    right_rotation: [f32; 4],
-) -> Tag {
-    let mut t = sunrise_core::nbt::Compound::new();
-    t.insert(
-        "translation".into(),
-        sunrise_sim::save::floats(&translation),
-    );
-    t.insert(
-        "left_rotation".into(),
-        sunrise_sim::save::floats(&left_rotation),
-    );
-    t.insert("scale".into(), sunrise_sim::save::floats(&scale));
-    t.insert(
-        "right_rotation".into(),
-        sunrise_sim::save::floats(&right_rotation),
-    );
-    Tag::Compound(t)
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -1039,7 +785,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// `PrimedTnt.readAdditionalSaveData`: its numeric short fuse (80 when absent) and motion.
     // Its Passengers ride it (EntityType.loadEntityRecursive forces them on).
-    pub(in crate::game::server_side) fn load_tnt(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
+    pub(in crate::game) fn load_tnt(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
         self.load_tnt_transferred(tag, uuid, None);
     }
 
@@ -1100,7 +846,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // nothing from the level's.
         let seed = random_source::unique_seed();
         if self.dragon.is_none()
-            && let Some(mut d) = super::dragon::Dragon::from_nbt(&tag, seed)
+            && let Some(mut d) = crate::game::dragon_common::Dragon::from_nbt(&tag, seed)
         {
             // EnderDragon's constructor takes its id and its
             // parts' from the entity counter.
@@ -1130,9 +876,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
         // The constructor's draws; the saved UUID replaces the one it drew.
-        let (drawn, _) = super::dragon::Crystal::own_draws();
-        if let Some(mut c) = super::dragon::Crystal::from_nbt(&tag, drawn) {
-            c.time = super::dragon::Crystal::start_time(c.position, drawn, self.clock.still());
+        let (drawn, _) = crate::game::dragon_common::Crystal::own_draws();
+        if let Some(mut c) = crate::game::dragon_common::Crystal::from_nbt(&tag, drawn) {
+            c.time = crate::game::dragon_common::Crystal::start_time(
+                c.position,
+                drawn,
+                self.clock.still(),
+            );
             // EndCrystal's constructor takes an id from the
             // entity counter.
             self.side.next_entity += 1;
@@ -1317,7 +1067,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || (!UNLISTED_KINDS.contains(&kind.as_str())
                 && !self.listed_kind_takes_riders(&kind)
                 && Self::other_takes_passengers(&kind)))
-            && super::seats::could_accept_passenger(&kind)
+            && crate::game::seats_common::could_accept_passenger(&kind)
             && super::seats::saves_with_chunk(&kind);
         if takes_riders {
             self.rider_uuids(tag, &mut uuids);
@@ -1332,7 +1082,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             {
                 uuids.extend(entity_nbt::entity_uuid(p));
                 let p_kind = entity_nbt::kind(p).unwrap_or_default();
-                if super::seats::could_accept_passenger(&p_kind)
+                if crate::game::seats_common::could_accept_passenger(&p_kind)
                     && super::seats::saves_with_chunk(&p_kind)
                 {
                     self.rider_uuids(p, uuids);
@@ -1441,7 +1191,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         tag: &mut Tag,
         id: u32,
         kind: &str,
-    ) -> Option<super::commands::OtherEntity> {
+    ) -> Option<crate::game::commands_common::OtherEntity> {
         let mut position = entity_nbt::position(tag)?;
         let item_transformation = (kind == "minecraft:item_display")
             .then(|| ItemDisplayTransformation::from_tag(tag.get("transformation")))
@@ -1452,10 +1202,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let block = BlockPos::containing(position);
             position = sunrise_sim::mobs::leash::knot_state([block.x, block.y, block.z]).position;
         }
-        let interaction = super::interactions::is_interaction(kind)
-            .then(|| super::interactions::InteractionState::from_tag(tag));
+        let interaction = is_interaction(kind).then(|| InteractionState::from_tag(tag));
         let rotation = entity_nbt::rotation(tag);
-        Some(super::commands::OtherEntity {
+        Some(crate::game::commands_common::OtherEntity {
             size_answer: None,
             attachment_lifetime: Default::default(),
             join: Default::default(),
@@ -1467,7 +1216,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             item_transformation,
             interaction,
             knot_check,
-            eye: (kind == "minecraft:eye_of_ender").then(|| super::end::SummonedEye::load(tag)),
+            eye: (kind == "minecraft:eye_of_ender").then(|| SummonedEye::load(tag)),
         })
     }
 
@@ -1507,7 +1256,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// A kept entity carries passengers in its save when it accepts and saves (quarantined records stay raw).
     pub(in crate::game::server_side) fn other_takes_passengers(kind: &str) -> bool {
-        super::seats::could_accept_passenger(kind)
+        crate::game::seats_common::could_accept_passenger(kind)
             && super::seats::saves_with_chunk(kind)
             && !super::general::quarantined_kind(kind)
     }
@@ -1516,7 +1265,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// position, rotation and UUID.
     pub(in crate::game::server_side) fn other_to_nbt(
         &self,
-        o: &super::commands::OtherEntity,
+        o: &crate::game::commands_common::OtherEntity,
         uuid: [i32; 4],
     ) -> Tag {
         self.other_tag(o, uuid, true)
@@ -1524,7 +1273,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game::server_side) fn other_tag(
         &self,
-        o: &super::commands::OtherEntity,
+        o: &crate::game::commands_common::OtherEntity,
         uuid: [i32; 4],
         include_id: bool,
     ) -> Tag {
@@ -1583,7 +1332,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             o.kind.as_str(),
             "minecraft:text_display" | "minecraft:block_display" | "minecraft:item_display"
         );
-        if display || super::interactions::is_interaction(&o.kind) {
+        if display || is_interaction(&o.kind) {
             write_static_entity_fields(&mut tag);
         }
         if display {
@@ -1646,8 +1395,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Some(self.mob_object_tree_nbt(object, transferring));
         }
         if self.boats.iter().any(|b| b.id == root)
-            && self
-                .resident_source_target_visible(self.dim.key(), super::commands::Target::Boat(root))
+            && self.resident_source_target_visible(
+                self.dim.key(),
+                crate::game::commands_common::Target::Boat(root),
+            )
         {
             let uuid = self.uuid_for(root);
             let b = self.boat_object(root)?;
@@ -1661,9 +1412,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let uuid = self.uuid_for(root);
         let mut tag = if self.carts.iter().any(|c| c.id == root)
-            && self
-                .resident_source_target_visible(self.dim.key(), super::commands::Target::Cart(root))
-        {
+            && self.resident_source_target_visible(
+                self.dim.key(),
+                crate::game::commands_common::Target::Cart(root),
+            ) {
             self.cart_object(root)?
                 .to_nbt(uuid, self.persist.raw.get(&root), self.res.items())
         } else if let Some(stand) = self.armor_stands.iter().find(|a| a.id == root) {
@@ -1757,19 +1509,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .retain(|r| !gone.contains(&r.id));
     }
     /// The vehicle with this UUID, among the ones in the world.
-    pub(in crate::game::server_side) fn vehicle_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
+    pub(in crate::game) fn vehicle_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
         self.persist.uuids.iter().find_map(|(&id, &found)| {
             (found == uuid
                 && (self.mobs.iter().any(|mob| mob.id == id && !mob.removed)
                     || (self.boats.iter().any(|boat| boat.id == id)
                         && self.resident_source_target_visible(
                             self.dim.key(),
-                            super::commands::Target::Boat(id),
+                            crate::game::commands_common::Target::Boat(id),
                         ))
                     || (self.carts.iter().any(|cart| cart.id == id)
                         && self.resident_source_target_visible(
                             self.dim.key(),
-                            super::commands::Target::Cart(id),
+                            crate::game::commands_common::Target::Cart(id),
                         ))
                     || self.seat(id).is_some()))
             .then_some(id)
@@ -1797,7 +1549,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let root_uuid = entity_nbt::uuid(&tag)?;
         let kind = entity_nbt::kind(&tag)?;
         if !self.res.mob_types().contains_key(&kind)
-            && super::boats::any_boat_wood(&kind).is_none()
+            && crate::game::boats_common::any_boat_wood(&kind).is_none()
             && super::minecarts::CartKind::from_id(&kind).is_none()
             && super::general::general_type_catalog().slot(&kind).is_none()
             && kind != "minecraft:armor_stand"
@@ -1821,7 +1573,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.loadAndSpawnParentVehicle`: the ride the player's file
     /// names, once the vehicle is in the world.
     pub(in crate::game::server_side) fn restore_root_vehicle(&mut self) {
-        if self.serving.is_some()
+        if self.side.serving.is_some()
             || self.options.dedicated.is_some()
             || self.riding.is_some()
             || self.player.is_none()
@@ -1895,7 +1647,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game::server_side) fn crystal_nbt(
         &self,
-        crystal: &super::dragon::Crystal,
+        crystal: &crate::game::dragon_common::Crystal,
     ) -> Tag {
         let uuid = saved_uuid(&self.persist, crystal.id);
         let raw = self
@@ -2034,7 +1786,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         entity: mod_api::EntityRef,
         persistent: bool,
     ) -> std::result::Result<bool, mod_api::LevelWriteError> {
-        use super::commands::Target;
+        use crate::game::commands_common::Target;
         let id = entity.id();
         match self.native_entity_target(entity) {
             None | Some(Target::Player | Target::Guest(_) | Target::DragonPart(_)) => {
@@ -2233,7 +1985,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .get(&c.id)
                 .copied()
                 .unwrap_or_else(random_uuid);
-            let mut tag = super::potions::potion_cloud_to_nbt(c, uuid, self.persist.raw.get(&c.id));
+            let mut tag = potion_cloud_to_nbt(c, uuid, self.persist.raw.get(&c.id));
             write_attachments(&mut tag, c.id, &self.entity_attachments);
             roots
                 .entry(chunk_of(at))
@@ -2437,7 +2189,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(uuid) = p.owner_uuid else {
             return;
         };
-        let guest = self.lan.as_ref().and_then(|host| {
+        let guest = self.side.lan.as_ref().and_then(|host| {
             let ints = sunrise_sim::lan::playerdata::uuid_ints;
             host.hub
                 .guests
@@ -2450,7 +2202,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if p.owner.is_none() {
             p.owner = self.mob_by_uuid(uuid).map(Who::Mob);
         }
-        use super::commands::Target;
+        use crate::game::commands_common::Target;
         p.owner_vehicle = match self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid)) {
             Some(Target::Boat(id) | Target::Cart(id)) => Some(id),
             _ => None,
@@ -2477,12 +2229,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The compound an entity was loaded with (and commands have edited).
-    pub(in crate::game) fn persist_raw(&self, id: u32) -> Option<&Tag> {
-        self.persist.raw.get(&id)
-    }
-}
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity::save_nbt` for a mob: a rider is saved inside its root vehicle,
     /// in the root's chunk; a boat's or cart's passengers inside the vehicle.
@@ -2843,7 +2589,7 @@ pub(in crate::game::server_side) fn vehicle_tree(
 /// `leash`, so a summoned or loaded tag must not be kept and saved.
 fn drop_unleashable_leash(tag: &mut Tag, kind: &str, is_mob: bool) {
     if !is_mob
-        && super::boats::any_boat_wood(kind).is_none()
+        && crate::game::boats_common::any_boat_wood(kind).is_none()
         && let Tag::Compound(c) = tag
     {
         c.remove(&"leash".into());
@@ -2869,7 +2615,7 @@ pub(in crate::game) mod tests;
 #[cfg(test)]
 mod interaction_saved_defaults_tests {
     use super::*;
-    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands_common::Target, load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -2899,6 +2645,7 @@ mod interaction_saved_defaults_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3029,7 +2776,7 @@ mod interaction_saved_defaults_tests {
 #[cfg(test)]
 mod loaded_tag_tests {
     use super::*;
-    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands_common::Target, load_resources};
     use sunrise_sim::mobs::Species;
 
     fn check(
@@ -3113,6 +2860,7 @@ mod loaded_tag_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3276,7 +3024,7 @@ mod loaded_tag_tests {
 #[cfg(test)]
 mod item_display_saved_transform_tests {
     use super::*;
-    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands_common::Target, load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
@@ -3309,6 +3057,7 @@ mod item_display_saved_transform_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.native_lifecycle
@@ -3853,7 +3602,7 @@ mod baby_modifier_mutation_tests {
 #[cfg(test)]
 mod attribute_instance_save_tests {
     use super::*;
-    use crate::game::commands::Target;
+    use crate::game::commands_common::Target;
     use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -4041,7 +3790,7 @@ mod attribute_instance_save_tests {
 #[cfg(test)]
 mod mob_inventory_merge_tests {
     use super::*;
-    use crate::game::commands::Target;
+    use crate::game::commands_common::Target;
     use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -4223,7 +3972,7 @@ mod mob_inventory_merge_tests {
 #[cfg(test)]
 mod invalid_passenger_tests {
     use super::*;
-    use crate::game::commands::Target;
+    use crate::game::commands_common::Target;
     use sunrise_sim::motion::PlayerMotion;
 
     const PIG: &str = "NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Silent:1b";
@@ -4490,6 +4239,7 @@ mod h262_enderman_absolute_anger_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -4725,6 +4475,7 @@ mod sulfur_body_attribute_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -4973,7 +4724,7 @@ mod sulfur_body_attribute_tests {
 #[cfg(test)]
 mod summoned_knot_tests {
     use super::*;
-    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands_common::Target, load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
@@ -5006,6 +4757,7 @@ mod summoned_knot_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -5309,6 +5061,7 @@ mod camel_pose_saved_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -5730,6 +5483,7 @@ mod trader_llama_discard_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

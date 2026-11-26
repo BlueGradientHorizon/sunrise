@@ -36,7 +36,7 @@ fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
         game.side.world_root = game.side.save.0.root.clone();
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
-        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
         VALUE
             .set(guests.attachments_mut(12).unwrap(), Holder::Level, 31)
             .unwrap();
@@ -48,22 +48,23 @@ fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
         assert_eq!(before.len(), 1);
         assert_eq!(before[0].entry.read(&VALUE), Ok(&31));
         assert!(
-            !game.lan.as_ref().unwrap().hub.guests[1]
+            !game.side.lan.as_ref().unwrap().hub.guests[1]
                 .attachments
                 .has_index_binding()
         );
-        let first = game.lan.as_ref().unwrap().hub.guests[0]
+        let first = game.side.lan.as_ref().unwrap().hub.guests[0]
             .attachments
             .registration()
             .unwrap();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
             .guests
             .update(0, |g| g.dead = true);
         game.guest_respawn(12);
-        let current = game.lan.as_ref().unwrap().hub.guests[0]
+        let current = game.side.lan.as_ref().unwrap().hub.guests[0]
             .attachments
             .registration()
             .unwrap();
@@ -73,15 +74,15 @@ fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
             snapshot(game, Dim::Overworld)[0].entry.read(&VALUE),
             Ok(&31)
         );
-        let mut removed = game.lan.as_mut().unwrap().hub.guests.remove(0);
+        let mut removed = game.side.lan.as_mut().unwrap().hub.guests.remove(0);
         assert!(snapshot(game, Dim::Overworld).is_empty());
         // Reuse the UUID, with a new connection and runtime identity, while the old record survives.
-        let mut replacement = game.lan.as_mut().unwrap().hub.guests.remove(0);
+        let mut replacement = game.side.lan.as_mut().unwrap().hub.guests.remove(0);
         replacement.uuid = removed.uuid;
         replacement.conn = 99;
         replacement.entity_id = 199;
         replacement.placed = false;
-        game.lan.as_mut().unwrap().hub.guests.push(replacement);
+        game.side.lan.as_mut().unwrap().hub.guests.push(replacement);
         game.lan_guest_joined(99, &[], [0.5, 64.0, 0.5], None);
         removed.attachments.retire();
         assert!(!current.unregister());
@@ -104,7 +105,7 @@ fn first_stores_bind_once_and_guest_turns_preserve_the_registration() {
         game.native_level_opened(Dim::Overworld);
         let host: &mut dyn ServerHost = game;
         VALUE.set(host, Holder::Player(12), 7).unwrap();
-        let first = game.lan.as_ref().unwrap().hub.guests[0]
+        let first = game.side.lan.as_ref().unwrap().hub.guests[0]
             .attachments
             .registration()
             .unwrap();
@@ -126,7 +127,7 @@ fn first_stores_bind_once_and_guest_turns_preserve_the_registration() {
             VALUE.set(host, Holder::Player(13), 9).unwrap();
         })
         .unwrap();
-        let current = game.lan.as_ref().unwrap().hub.guests[0]
+        let current = game.side.lan.as_ref().unwrap().hub.guests[0]
             .attachments
             .registration()
             .unwrap();
@@ -145,7 +146,7 @@ fn travel_moves_rows_before_guest_callbacks_and_keeps_captured_values() {
         let host: &mut dyn ServerHost = game;
         VALUE.set(host, Holder::Player(12), 17).unwrap();
         let before = snapshot(game, Dim::Overworld);
-        let first = game.lan.as_ref().unwrap().hub.guests[0]
+        let first = game.side.lan.as_ref().unwrap().hub.guests[0]
             .attachments
             .registration()
             .unwrap();
@@ -166,7 +167,7 @@ fn travel_moves_rows_before_guest_callbacks_and_keeps_captured_values() {
         assert!(snapshot(game, Dim::Overworld).is_empty());
         assert_eq!(snapshot(game, Dim::Nether)[0].entry.read(&VALUE), Ok(&18));
         assert_eq!(nether[0].entry.read(&VALUE), Ok(&17));
-        game.lan.as_mut().unwrap().hub.guests.clear();
+        game.side.lan.as_mut().unwrap().hub.guests.clear();
         assert!(snapshot(game, Dim::Nether).is_empty());
         assert!(
             game.attachment_slot(Holder::Player(12), AttachmentAccess::Store)

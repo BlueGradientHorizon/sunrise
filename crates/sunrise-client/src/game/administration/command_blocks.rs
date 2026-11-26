@@ -88,7 +88,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let block = self.command_block(pos).cloned();
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
+            dispatcher: super::chat::chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         let Some(screen) = self.side.command_block_screen.0.as_mut() else {
@@ -129,7 +129,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (w, h) = self.gui_size();
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
+            dispatcher: super::chat::chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         let screen = CommandBlockScreen::new(
@@ -289,7 +289,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
+            dispatcher: super::chat::chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         s.command.server_suggestions(&m, &c, id, range, list);
@@ -303,7 +303,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             let m = Measure(&self.side.gui.atlas.font);
             let c = Commands {
-                dispatcher: super::chat::chat_tree(&self.remote),
+                dispatcher: super::chat::chat_tree(&self.side.remote),
                 registries: &self.ui.registries,
             };
             let (x, y) = (f64::from(self.side.cursor.0), f64::from(self.side.cursor.1));
@@ -378,7 +378,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
+            dispatcher: super::chat::chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         if s.command.suggestions_key(&m, &c, key, shift) {
@@ -430,7 +430,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
+            dispatcher: super::chat::chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         s.command.type_text(&m, &c, &allowed);
@@ -456,7 +456,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             auto: s.auto,
         };
         assert!(
-            self.remote.is_some(),
+            self.side.remote.is_some(),
             "set_command_block called without a server connection"
         );
         self.send(S::SetCommandBlock(play::SetCommandBlock {

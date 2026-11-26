@@ -23,7 +23,7 @@ fn minecart_loops_gate_both_gains_on_live_interpolated_rails() {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "CartAudioTest").unwrap();
-                game.remote.as_mut().unwrap().features =
+                game.side.remote.as_mut().unwrap().features =
                     Arc::from(["minecraft:minecart_improvements".to_owned()]);
 
                 game.world
@@ -80,7 +80,7 @@ fn minecart_loops_gate_both_gains_on_live_interpolated_rails() {
                     assert!(!ext.stopped && !inside.stopped);
                 }
 
-                game.remote.as_mut().unwrap().features = Arc::from([]);
+                game.side.remote.as_mut().unwrap().features = Arc::from([]);
                 game.carts.clear();
                 let mut old_cart = Minecart::new(43, CartKind::Rideable, position(2.5));
                 old_cart.velocity = Vec3::new(0.4, 0.0, 0.0);

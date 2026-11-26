@@ -69,7 +69,7 @@ fn same_mob_guest_attack_survives_movement_panic() {
 
                 let far = Vec3::new(12.0, 80.0, 12.0);
                 game.player = Some(PlayerMotion::new(game.motion, far).unwrap());
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 for (conn, position) in [
                     (TARGET_GUEST, [1.5, 80.0, 0.5]),
                     (OTHER_GUEST, far.components()),
@@ -97,7 +97,7 @@ fn same_mob_guest_attack_survives_movement_panic() {
                 host.mob_players.insert(ZOMBIE, TARGET_GUEST);
 
                 let health = |game: &crate::game::ServerGame<'_>| {
-                    let hub = &game.lan.as_ref().unwrap().hub;
+                    let hub = &game.side.lan.as_ref().unwrap().hub;
                     (
                         game.player.as_ref().unwrap().health.health(),
                         hub.guest(TARGET_GUEST).unwrap().health,
@@ -128,7 +128,8 @@ fn same_mob_guest_attack_survives_movement_panic() {
                 // melee range without unloading the chunk and clear the hurt cooldown,
                 // so unchanged health cannot be explained by invulnerability.
                 game.mobs[0].ground.on_ground = true;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub

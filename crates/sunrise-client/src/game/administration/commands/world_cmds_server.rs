@@ -4,7 +4,7 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::look_at;
 use crate::game::commands::world_cmds::num;
 use crate::game::commands::world_cmds::take_new_reinforcements;
 use crate::game::commands::world_cmds::text_error;
-use crate::game::minecarts::CartHit;
+use crate::game::server_side::minecarts_server::CartHit;
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
 use sunrise_game_data::text::Text;
@@ -52,7 +52,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .unwrap_or(options.ty.name())
                     .to_owned();
                 let particle =
-                    crate::game::lan_particles::server_particle_from_options(&options, None);
+                    crate::game::lan_particle_data::server_particle_from_options(&options, None);
                 (name, particle)
             }
             Some(Arg::Str(spec)) => {
@@ -140,11 +140,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     _ => {
                         let options = opts
                             .as_ref()
-                            .and_then(|c| crate::game::potions::particle_options(ty, c))
+                            .and_then(|c| {
+                                sunrise_gameplay_common::particle_options::particle_options(ty, c)
+                            })
                             .unwrap_or_else(|| {
                                 sunrise_level::particle_options::ParticleOptions::simple(ty)
                             });
-                        crate::game::lan_particles::server_particle_from_options(&options, None)
+                        crate::game::lan_particle_data::server_particle_from_options(&options, None)
                     }
                 };
                 (name.to_owned(), particle)
@@ -172,7 +174,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.entities(ctx, "viewers", true)?
         } else {
             let acting = self.side.lan_acting;
-            let guests = self.lan.iter().flat_map(|h| h.hub.online_players());
+            let guests = self.side.lan.iter().flat_map(|h| h.hub.online_players());
             self.player
                 .as_ref()
                 .filter(|_| !self.side.lan_acting_fake)
@@ -197,7 +199,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         _ => None,
                     };
                     if conn.is_some_and(|conn| {
-                        self.lan
+                        self.side
+                            .lan
                             .as_ref()
                             .and_then(|host| host.hub.guest(conn))
                             .is_none_or(|g| !g.is_sunrise())
@@ -219,7 +222,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // preserving `override_limiter: force` and the exact reached recipient set.
         let packet = particle
             .as_ref()
-            .and_then(|p| self.lan.as_ref()?.hub.server_particle(p))
+            .and_then(|p| self.side.lan.as_ref()?.hub.server_particle(p))
             .map(|particle| {
                 C::LevelParticles(play::LevelParticles {
                     particle,
@@ -235,7 +238,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut sent = 0;
         for t in reached {
             match (t, &packet) {
-                (Target::Player, None) if self.lan.is_none() => {
+                (Target::Player, None) if self.side.lan.is_none() => {
                     if let Some(p) = &particle {
                         self.side.pending_particles.push(ServerQueuedParticle {
                             dimension: self.dim.id(),
@@ -255,7 +258,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     sent += 1;
                 }
                 (Target::Guest(conn), Some(p)) => {
-                    if let Some(host) = &self.lan {
+                    if let Some(host) = &self.side.lan {
                         host.hub.send_to(conn, p);
                         sent += 1;
                     }
@@ -615,7 +618,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mob = &mut self.mobs[index];
         let (queued, old_health) = (mob.outbox.len(), mob.health);
         let hurt = mob.damage(
-            crate::game::entity::damage_level_of!(self, attack, &mut credit, None),
+            crate::game::server_side::entity_server::damage_level_of!(
+                self,
+                attack,
+                &mut credit,
+                None
+            ),
             amount,
             damage,
         );
@@ -631,7 +639,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if hurt {
             if damage.attacker == Some(Who::Player) {
                 self.remember_mob_player_credit(id);
-                if let Some(host) = self.lan.as_mut() {
+                if let Some(host) = self.side.lan.as_mut() {
                     match self.side.lan_acting {
                         Some(conn) => {
                             host.mob_players.insert(id, conn);
@@ -700,7 +708,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(Target::Player) => self.own_entity_id(),
             Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
             Some(target) => {
-                crate::game::native_entities::target_id(target).map_or(0, |id| id as i32)
+                crate::game::commands_common::target_id(target).map_or(0, |id| id as i32)
             }
             None => 0,
         };
@@ -710,12 +718,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
             direct: entity_id(direct),
             position,
         };
-        if crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
-            .invulnerability_check(
-                sunrise_sim::health::Hurting::Entity(id as i32, &entity_kind, source),
-                vanilla,
-            )
-        {
+        if crate::game::server_side::entity_server::damage_level_of!(
+            self,
+            self.side.combat.0.attack(),
+            no_push,
+            None
+        )
+        .invulnerability_check(
+            sunrise_sim::health::Hurting::Entity(id as i32, &entity_kind, source),
+            vanilla,
+        ) {
             return false;
         }
         match target {
@@ -795,7 +807,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     _ => None,
                 }
                 .and_then(|conn| self.command_guest(conn))
-                .map(|g| crate::game::combat::PlayerCredit(g.uuid));
+                .map(|g| crate::game::combat_common::PlayerCredit(g.uuid));
                 let now = self.world.game_time;
                 let attack = self.current_attack();
                 self.for_player(target, |g| {
@@ -841,7 +853,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             g.with_attack(attack, |g| g.command_damage_mob(id, amount, damage))
                         })
                         .unwrap_or(false);
-                    if hurt && let Some(host) = self.lan.as_mut() {
+                    if hurt && let Some(host) = self.side.lan.as_mut() {
                         host.mob_players.insert(id, conn);
                     }
                     hurt
@@ -913,7 +925,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Player => self.side.lan_acting,
             _ => return,
         };
-        match guest.and_then(|conn| Some((conn, self.lan.as_ref()?))) {
+        match guest.and_then(|conn| Some((conn, self.side.lan.as_ref()?))) {
             Some((conn, host)) => {
                 let packet = host
                     .hub
@@ -925,7 +937,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
             None => {
-                assert!(self.lan.is_none(), "/playsound None branch is fixture-only");
+                assert!(
+                    self.side.lan.is_none(),
+                    "/playsound None branch is fixture-only"
+                );
                 self.server_play_sound_on(source, sound, at, volume, pitch);
             }
         }
@@ -952,12 +967,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.side.guest_packets.push(packet.clone());
                 }
                 Some(conn) => {
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = self.side.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
                     }
                 }
                 None => {
-                    assert!(self.lan.is_none(), "/stopsound None branch is fixture-only");
+                    assert!(
+                        self.side.lan.is_none(),
+                        "/stopsound None branch is fixture-only"
+                    );
                 }
             }
         }
@@ -1065,7 +1083,7 @@ pub(in crate::game) mod datapack_damage_tests {
             with_pack(game);
             let crystal = |game: &mut crate::game::ServerGame<'_>, id: u32| {
                 game.side.next_entity = game.side.next_entity.max(id);
-                game.crystals.push(crate::game::dragon::Crystal::new(
+                game.crystals.push(crate::game::dragon_common::Crystal::new(
                     id,
                     Vec3::new(0.5, 64.0, 0.5),
                     false,
@@ -1170,10 +1188,10 @@ pub(in crate::game) mod vehicle_damage_command_tests {
             guest.placed = true;
             guest.loaded = true;
             guest.game_mode = 1;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             receivers.push(rx);
         }
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         for name in ["Bob", "Carol"] {
             host.hub
                 .ops

@@ -1,3 +1,4 @@
+use self::screen_view::{screen_view_for_mod, screen_view_with_id};
 use super::screen_build::ObservedScreen;
 #[allow(unused_imports)]
 use super::{
@@ -6,25 +7,14 @@ use super::{
 };
 use crate::game::native_hooks::NativeRecipeView;
 use crate::game::native_hooks::NativeRecipes;
-use crate::game::native_hooks::OpenNativeMenu;
-use crate::game::native_hooks::OpenNativeScreen;
-use crate::game::native_hooks::ScreenDecision;
-use crate::game::native_hooks::ScreenMousePost;
-use crate::game::native_hooks::ScreenMousePostKind;
-use crate::game::native_hooks::ScreenMousePre;
-use crate::game::native_hooks::camera_pose::bounded_shake;
+use crate::game::native_hooks::camera_math::bounded_shake;
 use crate::game::native_hooks::client_packet_view;
-use crate::game::native_hooks::debug_takes;
 use crate::game::native_hooks::mod_menu;
-use crate::game::native_hooks::mod_screen_opens;
-use crate::game::native_hooks::observed_overlay_id;
 use crate::game::native_hooks::screen_chars::chars_to_type;
-use crate::game::native_hooks::screen_view::{screen_view_for_mod, screen_view_with_id};
 use crate::game::native_hooks::serverbound_packet_view;
 use crate::game::native_hooks::shake_pose;
 use crate::game::native_hooks::sound_and_shader_helpers::sound_id;
 use crate::game::native_hooks::sound_and_shader_helpers::{finite, finite_params, local_sound_ok};
-use crate::game::native_hooks::title_target_id;
 use crate::game::native_hooks::*;
 use mod_api::game::Shake;
 use mod_api::{
@@ -52,6 +42,10 @@ use sunrise_sim::first_person_sim::Hand;
 use sunrise_world::registry::BlockStateId;
 use winit::{event::MouseButton, keyboard::KeyCode};
 
+crate::game::native_hooks::add_pack_finders::impl_pack_discovery_context!(
+    crate::game::ClientGame<'_>
+);
+
 #[path = "animate_tick_client.rs"]
 pub(in crate::game) mod animate_tick;
 
@@ -61,6 +55,9 @@ pub(in crate::game) mod base;
 #[path = "block_entity_client_tick_client.rs"]
 pub(in crate::game) mod block_entity_client_tick;
 
+#[path = "block_entity_data_received.rs"]
+pub(in crate::game) mod block_entity_data_received;
+
 #[path = "block_entity_on_load_client.rs"]
 pub(in crate::game) mod block_entity_on_load;
 
@@ -69,6 +66,9 @@ pub(in crate::game) mod build_creative_mode_tab_contents;
 
 #[path = "can_start_swimming_client.rs"]
 pub(in crate::game) mod can_start_swimming;
+
+#[path = "camera_pose.rs"]
+pub(in crate::game) mod camera_pose;
 
 #[path = "camera_read_client.rs"]
 pub(in crate::game) mod camera_read;
@@ -133,6 +133,18 @@ pub(in crate::game) mod play_hit_sound;
 #[path = "preset_title_client.rs"]
 pub(in crate::game) mod preset_title;
 
+#[path = "register_client_item_extensions.rs"]
+pub(in crate::game) mod register_client_item_extensions;
+
+#[path = "register_client_tooltip_component_factories.rs"]
+pub(in crate::game) mod register_client_tooltip_component_factories;
+
+#[path = "register_entity_layers.rs"]
+pub(in crate::game) mod register_entity_layers;
+
+#[path = "register_gui_layers.rs"]
+pub(in crate::game) mod register_gui_layers;
+
 #[path = "register_preset_editors_client.rs"]
 pub(in crate::game) mod register_preset_editors;
 
@@ -178,14 +190,14 @@ pub(in crate::game) fn seed_native_menu(
     window: i32,
     name: &str,
 ) -> u64 {
-    if game.remote.is_none() {
+    if game.side.remote.is_none() {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Native screen fixture").unwrap();
     }
-    if game.remote.as_ref().unwrap().menu.as_ref().is_some() {
+    if game.side.remote.as_ref().unwrap().menu.as_ref().is_some() {
         game.remote_close_local();
     }
-    let menu = &mut game.remote.as_mut().unwrap().menu;
+    let menu = &mut game.side.remote.as_mut().unwrap().menu;
     menu.set(Some((window, name.to_owned())));
     menu.generation
 }
@@ -238,7 +250,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// prior opening of the same numeric window id.
     pub(in crate::game) fn active_native_screen(&self) -> Option<&OpenNativeScreen> {
         let screen = self.side.mod_screen.0.as_ref()?;
-        let remote = &self.remote.as_ref()?.menu;
+        let remote = &self.side.remote.as_ref()?.menu;
         (!screen.detached
             && remote.generation == screen.menu.generation
             && remote.as_ref()?.0 == screen.menu.window)
@@ -336,7 +348,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if detach_native && let Some(screen) = self.side.mod_screen.0.as_mut() {
             screen.detached = true;
         }
-        let has_level = self.remote.as_ref().is_some_and(|r| r.has_level());
+        let has_level = self.side.remote.as_ref().is_some_and(|r| r.has_level());
         let dead = self
             .player
             .as_ref()
@@ -385,7 +397,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
         self.reset_inventory_clicks();
         self.remove_remote_menu_screen();
-        if inventory_screen && let Some(remote) = self.remote.as_mut() {
+        if inventory_screen && let Some(remote) = self.side.remote.as_mut() {
             // InventoryMenu.removed clears the result, not the client input grid.
             remote.craft_result = None;
         }
@@ -912,7 +924,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             mod_screen: view.mod_screen.map(str::to_owned),
             menu: view.menu.map(str::to_owned),
             menu_generation: (self.side.screen == Screen::Inventory && !self.screen_over_playing())
-                .then(|| self.remote.as_ref().map(|r| r.menu.generation))
+                .then(|| self.side.remote.as_ref().map(|r| r.menu.generation))
                 .flatten(),
             dialog_key: (view.id == "dialog").then(|| match self.dialog_screen_key() {
                 (true, _, _) => (true, false, None),
@@ -920,7 +932,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }),
             title: view
                 .title
-                .and_then(|_| self.remote.as_ref()?.shared_menu_title_snapshot()),
+                .and_then(|_| self.side.remote.as_ref()?.shared_menu_title_snapshot()),
             rect: view.rect,
             screen_size,
             slots: view.slots,
@@ -1497,7 +1509,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let opening_native =
             screen == Screen::Inventory && self.active_native_screen().is_some_and(|s| !s.shown);
         let new_menu_gen = (screen == Screen::Inventory)
-            .then(|| self.remote.as_ref().map(|r| r.menu.generation))
+            .then(|| self.side.remote.as_ref().map(|r| r.menu.generation))
             .flatten();
         let menu_replaced = screen == Screen::Inventory
             && new_menu_gen.is_some()
@@ -1870,6 +1882,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .filter(|m| !m.is_empty())
                 }),
             title: self
+                .side
                 .remote
                 .as_ref()
                 .and_then(|r| r.menu_title_snapshot())
@@ -2197,3 +2210,44 @@ pub(in crate::game) mod slot_icon_tests;
 #[cfg(test)]
 #[path = "shared/slot_tooltip_tests_client.rs"]
 pub(in crate::game) mod slot_tooltip_tests;
+
+/// Which mouse Post hook owes dispatch (`ScreenMousePost`).
+pub(in crate::game) enum ScreenMousePostKind {
+    Scroll([f64; 2]),
+    Drag { button: i32, delta: [f32; 2] },
+}
+
+/// The Post a mouse input owes once the screen has handled it, built when
+/// its Pre let the input through (`Game::screen_mouse_post`), carrying the
+/// receiving screen and modifiers captured at Pre time.
+pub(in crate::game) struct ScreenMousePost {
+    pub(in crate::game) receiver: ObservedScreen,
+    pub(in crate::game) modifiers: u32,
+    pub(in crate::game) kind: ScreenMousePostKind,
+    pub(in crate::game) handled: bool,
+}
+
+impl ScreenMousePost {
+    pub(in crate::game) fn new(
+        receiver: ObservedScreen,
+        modifiers: u32,
+        kind: ScreenMousePostKind,
+    ) -> Self {
+        Self {
+            receiver,
+            modifiers,
+            kind,
+            handled: false,
+        }
+    }
+}
+
+/// What a drag's Pre decided (`Game::screen_mouse_dragged`).
+pub(in crate::game) enum ScreenMousePre {
+    /// No screen hook ran: no drag, a synthetic move or no screen open.
+    NotFired,
+    Canceled,
+    Passed(ScreenMousePost),
+}
+
+include!("shared_client.rs");

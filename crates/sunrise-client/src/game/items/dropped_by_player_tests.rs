@@ -64,7 +64,8 @@ fn with_probe(probe: &Probe, test: impl FnOnce()) {
 }
 
 fn hold(game: &mut crate::game::ServerGame<'_>, item: &str, count: u32) {
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -76,7 +77,7 @@ fn hold(game: &mut crate::game::ServerGame<'_>, item: &str, count: u32) {
 
 /// Guest 12's selected stack's count, and its menu state (bumped by a full inventory send).
 fn held(game: &crate::game::ServerGame<'_>) -> (Option<u32>, i32) {
-    let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+    let guest = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
     let count = guest.inventory[guest.selected].as_ref().map(|s| s.count);
     (count, guest.menu_state)
 }

@@ -25,9 +25,6 @@ use {
 
 pub(in crate::game) type Pos = (i32, i32, i32);
 
-/// `GameTestBlockHighlightRenderer.highlightPos`'s colour, 1610678016: ARGB 0x6000FF00.
-pub(in crate::game) const HIGHLIGHT_FILL: u32 = 0x6000_FF00;
-
 /// `ServerboundTestInstanceBlockActionPacket.Action`.
 pub(in crate::game) const INIT: i32 = 0;
 pub(in crate::game) const QUERY: i32 = 1;
@@ -105,7 +102,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &self.pack.data_changes,
             self.side.cmds.0.vanilla_disabled,
             &self.level.enabled_features,
-            &super::pack_finders::data_packs(&self.mods),
+            &crate::game::pack_discovery::data_packs(&self.mods),
         );
         let mut functions = mod_api::GameTestFunctions::default();
         self.native_register_game_tests(&mut functions);
@@ -228,7 +225,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: play::TestInstanceBlockAction,
     ) {
-        let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;
@@ -240,7 +237,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .flatten();
         if let Some((status, size)) = reply
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             host.hub.send_to(
                 conn,

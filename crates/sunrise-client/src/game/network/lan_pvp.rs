@@ -5,7 +5,7 @@
 //! (`ServerPlayer.canHarmPlayer`, `isPvpAllowed`). A player's arrow on
 //! another player lands the same way.
 use super::{
-    Game, chat_common::PLAYER_NAME, commands::Target, lan_actions::CombatPlayer,
+    Game, chat_common::PLAYER_NAME, commands_common::Target, lan_actions_server::CombatPlayer,
     lan_mobs::guest_bounds, mace::Spared,
 };
 use sunrise_items::enchant::EffectContext;
@@ -156,7 +156,7 @@ impl Strike {
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the player a hit landed on stands on the ground.
     pub(in crate::game::server_side) fn pvp_victim_on_ground(&self, victim: Victim) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         match victim {
@@ -170,7 +170,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// The player `id` that guest `conn` attacks, if it is one.
     pub(in crate::game::server_side) fn pvp_victim(&self, conn: u32, id: i32) -> Option<Victim> {
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         host.hub
             .guests
             .iter()
@@ -251,7 +251,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// The guests by connection, with their entity ids.
     pub(in crate::game::server_side) fn lan_guest_entities(&self) -> Vec<(u32, u32)> {
-        self.lan.as_ref().map_or_else(Vec::new, |host| {
+        self.side.lan.as_ref().map_or_else(Vec::new, |host| {
             host.hub
                 .guests
                 .iter()
@@ -275,6 +275,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match who {
             Who::Player => None,
             Who::Mob(id) => self
+                .side
                 .lan
                 .as_ref()?
                 .hub
@@ -321,7 +322,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> bool {
         let board = &self.score.board;
         let guest = |conn: u32| {
-            self.lan
+            self.side
+                .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
                 .map_or((-1, None), |g| (g.entity_id, board.players_team(&g.name)))
@@ -347,7 +349,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Hit::Entity { at, .. } = hit else {
             return Ok(());
         };
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return self.projectile_hit(p, hit);
         }
         let refused = match victim {
@@ -384,7 +386,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractArrow.onHitEntity`: an arrow that hurt a player tells its owner, a player other
     /// than the one hit, with `PLAY_ARROW_HIT_SOUND`, unless the arrow is silent.
     pub(in crate::game::server_side) fn arrow_hit_sound_to_shooter(&self, p: &Projectile) {
-        let (Some(host), Some(shooter)) = (self.lan.as_ref(), p.guest) else {
+        let (Some(host), Some(shooter)) = (self.side.lan.as_ref(), p.guest) else {
             return;
         };
         if self.side.lan_acting == Some(shooter) || self.entity_silent(p.id) {
@@ -407,7 +409,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<(u32, Text)> {
         match conn {
             Some(conn) => {
-                let g = self.lan.as_ref()?.hub.guest(conn)?;
+                let g = self.side.lan.as_ref()?.hub.guest(conn)?;
                 Some((g.entity_id as u32, self.player_text(&g.name, g.uuid)))
             }
             None => None,
@@ -417,7 +419,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The hit landing on the victim with its extra knockback, then the
     /// attacker's attack sound. Whether the victim was hurt.
     pub(in crate::game) fn pvp_land(&mut self, victim: Victim, s: &Strike) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         // CombatTracker: the attacking player is the death message's killer.
@@ -500,6 +502,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if hurt && (s.crit || s.magic) {
             let target = match victim {
                 Victim::Guest(conn) => self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.guest(conn))
@@ -532,7 +535,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // The sweep around the player that was hit, as its attacker.
             let (area, id) = match victim {
                 Victim::Guest(conn) => {
-                    let g = self.lan.as_ref().and_then(|host| host.hub.guest(conn));
+                    let g = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn));
                     (g.map(guest_bounds), g.map_or(-1, |g| g.entity_id))
                 }
             };
@@ -608,6 +611,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `awardKillScore` excludes the victim, even when that body is in place.
         if let Some(killer) = self.combat_player(id)
             && let Some(name) = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(victim))
@@ -688,7 +692,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(collect) = self.side.combat.0.sweeps.as_mut() {
             collect.push(sweep);
         } else if self.side.lan_acting.is_some() {
-            self.creatures.sweeps.push(sweep);
+            self.side.sweeps.push(sweep);
         } else {
             self.sweep_players(&sweep);
         }
@@ -696,7 +700,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// The sweeps guests' turns put off.
     pub(in crate::game::server_side) fn flush_sweeps(&mut self) {
-        for sweep in std::mem::take(&mut self.creatures.sweeps) {
+        for sweep in std::mem::take(&mut self.side.sweeps) {
             self.sweep_other_players(sweep);
         }
     }
@@ -706,7 +710,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`isAlliedTo`), is hurt (`ServerPlayer.canHarmPlayer`: the `pvp` rule)
     /// and pushed 0.4 along the attacker's yaw.
     pub(in crate::game::server_side) fn sweep_players(&mut self, sweep: &Sweep) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let from = Vec3::new(sweep.from[0], sweep.from[1], sweep.from[2]);
@@ -939,7 +943,8 @@ pub(in crate::game) mod arrow_hit_sound_tests {
             let mut receivers = Vec::new();
             for conn in [12, 13] {
                 let (tx, rx) = mpsc::channel();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -951,7 +956,8 @@ pub(in crate::game) mod arrow_hit_sound_tests {
             }
             let mut body = PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0)).unwrap();
             body.entity_id = victim as i32;
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -968,13 +974,21 @@ pub(in crate::game) mod arrow_hit_sound_tests {
                 }
             })
             .unwrap();
-            for g in &game.lan.as_ref().unwrap().hub.guests {
+            for g in &game.side.lan.as_ref().unwrap().hub.guests {
                 g.sender.flush();
             }
             for rx in &receivers {
                 while rx.try_recv().is_ok() {}
             }
-            let health_before = game.lan.as_ref().unwrap().hub.guest(victim).unwrap().health;
+            let health_before = game
+                .side
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(victim)
+                .unwrap()
+                .health;
             let mut arrow = Projectile::new(
                 ProjectileKind::Arrow {
                     base_damage: 2.0,
@@ -998,8 +1012,16 @@ pub(in crate::game) mod arrow_hit_sound_tests {
             };
             game.projectile_hits_player(&arrow, hit, Victim::Guest(victim))
                 .unwrap();
-            let health_after = game.lan.as_ref().unwrap().hub.guest(victim).unwrap().health;
-            for g in &game.lan.as_ref().unwrap().hub.guests {
+            let health_after = game
+                .side
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(victim)
+                .unwrap()
+                .health;
+            for g in &game.side.lan.as_ref().unwrap().hub.guests {
                 g.sender.flush();
             }
             outcome = Some(CaseOutcome {
@@ -1048,7 +1070,8 @@ mod tests {
         let mut body =
             sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0)).unwrap();
         body.entity_id = conn as i32;
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -1067,7 +1090,7 @@ mod tests {
     }
 
     fn health(game: &crate::game::ServerGame<'_>, conn: u32) -> f32 {
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         host.hub
             .guest(conn)
             .unwrap()

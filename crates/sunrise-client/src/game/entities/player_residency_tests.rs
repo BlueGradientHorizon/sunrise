@@ -24,7 +24,7 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let dimension = game.dim.key();
         let id = NonZeroU32::new(12).unwrap();
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         host.hub.guests.update(0, |guest| guest.placed = false);
         let attachments = host.hub.guests.attachments_mut(12).unwrap();
         VALUE.set(attachments, Holder::Level, 7).unwrap();
@@ -44,7 +44,8 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
                 .same_registration(&registration)),
             SlotAccess::Done(true)
         );
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -102,7 +103,7 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
                 .same_registration(&registration)),
             SlotAccess::Done(true)
         );
-        let removed = game.lan.as_mut().unwrap().hub.guests.remove(0);
+        let removed = game.side.lan.as_mut().unwrap().hub.guests.remove(0);
         assert_eq!(game.server_resident_entity(12), EntityLookup::Missing);
         assert_eq!(
             index
@@ -121,7 +122,7 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
 fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
     with_guests(|game| {
         game.as_guest(12, |g| {
-            g.install_fishing_hook(crate::game::fishing::Hook::remote(
+            g.install_fishing_hook(crate::game::fishing_common::Hook::remote(
                 900,
                 Vec3::ZERO,
                 [1, 2, 3, 4],
@@ -150,7 +151,8 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
         assert!(sunrise_sim::motion::PlayerMotion::new(&bad, Vec3::ZERO).is_err());
         let original = game.motion;
         game.motion = Box::leak(Box::new(bad));
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -196,7 +198,11 @@ fn owned_hooks_keep_their_own_uuid_and_source_across_nested_actor_loans() {
         let first = [101, 102, 103, 104];
         let second = [201, 202, 203, 204];
         game.as_guest(12, |outer| {
-            outer.install_fishing_hook(crate::game::fishing::Hook::remote(900, Vec3::ZERO, first));
+            outer.install_fishing_hook(crate::game::fishing_common::Hook::remote(
+                900,
+                Vec3::ZERO,
+                first,
+            ));
             assert!(matches!(
                 outer.server_resident_entity(900),
                 EntityLookup::Found {
@@ -209,7 +215,7 @@ fn owned_hooks_keep_their_own_uuid_and_source_across_nested_actor_loans() {
                 .as_guest(13, |inner| {
                     assert_eq!(inner.server_resident_entity(900), EntityLookup::Taken);
                     assert_eq!(inner.uuid_for(900), first);
-                    inner.install_fishing_hook(crate::game::fishing::Hook::remote(
+                    inner.install_fishing_hook(crate::game::fishing_common::Hook::remote(
                         901,
                         Vec3::ZERO,
                         second,
@@ -247,7 +253,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = Pipe::pair();
         game.connect_local(pipe, "SourceProfile").unwrap();
-        profile = game.remote.as_ref().unwrap().profile();
+        profile = game.side.remote.as_ref().unwrap().profile();
         game.handle_packet(C::Login(play::Login {
             player_id: 7,
             hardcore: false,
@@ -274,7 +280,15 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             },
         }))
         .unwrap();
-        assert_eq!(game.server_resident_entity(7), EntityLookup::Missing);
+        assert_eq!(
+            game.resident_entities
+                .table
+                .borrow_mut()
+                .server_entity_lookup::<Target>(7, |_| panic!(
+                    "unexpected resident row for the local player"
+                ),),
+            EntityLookup::Missing
+        );
         game.handle_packet(C::PlayerPosition(play::PlayerPosition {
             teleport: 1,
             position: [0.5, 65.0, 0.5],
@@ -287,13 +301,38 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
         let EntityLookup::Found {
             location,
             value: Target::Player,
-        } = game.server_resident_entity(7)
+        } = game
+            .resident_entities
+            .table
+            .borrow_mut()
+            .server_entity_lookup(7, |at| {
+                let local = &game.resident_entities.local_player;
+                if at.owner.kind != Kind::Player || local.location() != Some(at) {
+                    return None;
+                }
+                let player = game.player.as_ref()?;
+                let id = player.entity_id as u32;
+                (local.identity()?.id.get() == id).then_some(
+                    sunrise_sim::join_seq::residency::table::SourceEntity {
+                        id,
+                        value: Target::Player,
+                    },
+                )
+            })
         else {
             panic!("actual local constructor was not admitted");
         };
         assert_eq!(location.source, Source::LocalPlayer);
         game.remove_local_player_body();
-        assert_eq!(game.server_resident_entity(7), EntityLookup::Missing);
+        assert_eq!(
+            game.resident_entities
+                .table
+                .borrow_mut()
+                .server_entity_lookup::<Target>(7, |_| panic!(
+                    "unexpected resident row for the local player"
+                ),),
+            EntityLookup::Missing
+        );
     });
     let expected = sunrise_sim::lan::playerdata::uuid_ints(profile);
     crate::game::native_entity_refs::tests::with_game(|game| {
@@ -342,7 +381,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
         let motion = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
         let mut guest = Guest::connectionless(12, 12, "SourceGuest".into(), 12, [0.0; 3], motion);
         guest.placed = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         game.as_guest(12, |acting| {
             assert_eq!(acting.server_resident_entity(7), EntityLookup::Taken);
             assert_eq!(acting.uuid_for(7), expected);
@@ -506,7 +545,7 @@ fn dragon_part_registrations_retire_on_replacement_command_and_chunk_unload() {
         sync: false,
     };
     let install_dragon = |game: &mut crate::game::ServerGame<'_>, id: u32| {
-        let mut dragon = crate::game::dragon::Dragon::new(Vec3::new(1.0, 80.0, 1.0), 0.0, 0);
+        let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::new(1.0, 80.0, 1.0), 0.0, 0);
         dragon.id = id;
         game.replace_resident_dragon(dragon);
     };

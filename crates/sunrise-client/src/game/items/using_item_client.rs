@@ -1,4 +1,4 @@
-use super::{Game, Hit, item_use};
+use super::{Game, Hit, item_use_common};
 use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -22,7 +22,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return false;
         }
-        if item_use::consumes_at_once(consumable.ticks()) {
+        if item_use_common::consumes_at_once(consumable.ticks()) {
             return true;
         }
         self.start_using_item();
@@ -34,10 +34,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.clip_ray(origin, direction, self.block_reach)
     }
     pub(in crate::game) fn client_bucket_liquid_user_entity_id(&self) -> Option<u32> {
-        (self.remote.is_some() || self.player.is_some()).then(|| self.own_entity_id() as u32)
+        (self.side.remote.is_some() || self.player.is_some()).then(|| self.own_entity_id() as u32)
     }
     pub(in crate::game) fn client_projectile_player_uuid(&mut self) -> Option<u128> {
-        self.remote.as_ref().map(|r| r.profile())
+        self.side.remote.as_ref().map(|r| r.profile())
     }
     pub(in crate::game) fn client_acting_player_ref(&self) -> Option<mod_api::PlayerRef> {
         self.local_player()

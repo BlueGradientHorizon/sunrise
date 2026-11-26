@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::native_hooks::preset_title::preset_editor_key_code;
+use sunrise_client::keybinds;
 use winit::keyboard::PhysicalKey;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -93,4 +93,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
             paint.discard(batch);
         }
     }
+}
+
+pub(in crate::game) fn preset_editor_key_code(physical: PhysicalKey) -> u32 {
+    let PhysicalKey::Code(code) = physical else {
+        return 0;
+    };
+    let Some(name) = keybinds::key_name(code) else {
+        return 0;
+    };
+    sunrise_client::key_names::KEYBOARD
+        .iter()
+        .find(|(_, key_name)| *key_name == name)
+        .and_then(|(id, _)| u32::try_from(*id).ok())
+        .unwrap_or(0)
 }

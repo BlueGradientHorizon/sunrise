@@ -129,7 +129,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleCodeOfConduct`: text accepted before for this server is
     /// accepted at once; otherwise the screen opens over the connecting one.
     pub(in crate::game::client_side) fn handle_code_of_conduct(&mut self, text: String) {
-        let Some(r) = &self.remote else {
+        let Some(r) = &self.side.remote else {
             return;
         };
         let hash = java_string_hash(text.encode_utf16());
@@ -157,7 +157,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         if accepted {
             self.refresh_screen_widgets();
-            if let Some(r) = &self.remote {
+            if let Some(r) = &self.side.remote {
                 r.session.accept_code_of_conduct();
             }
             if self.player.is_some() && self.side.screen == Screen::Playing {

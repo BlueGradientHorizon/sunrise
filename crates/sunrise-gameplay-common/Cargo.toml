@@ -14,10 +14,14 @@ sunrise-game-data = { path = "../sunrise-game-data" }
 sunrise-command = { path = "../sunrise-command" }
 sunrise-core = { path = "../sunrise-core" }
 sunrise-items = { path = "../sunrise-items" }
+sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }
 sunrise-protocol = { path = "../sunrise-protocol" }
 sunrise-world = { path = "../sunrise-world" }
 sunrise-sim = { path = "../sunrise-sim" }
 sunrise-level = { path = "../sunrise-level" }
+
+[dev-dependencies]
+mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }
 
 [lints]
 workspace = true

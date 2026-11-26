@@ -1,5 +1,4 @@
 use super::*;
-use crate::game::native_hooks::client_options::{gui_options_snapshot, resolved_gui_scale};
 use mod_api::{
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions,
@@ -92,4 +91,34 @@ impl Game<'_, crate::game::client_side::ClientState> {
             auto_jump: settings.auto_jump,
         }
     }
+}
+
+/// Convert live client settings into the API-owned GUI snapshot.
+pub(in crate::game) fn gui_options_snapshot(
+    s: &sunrise_client::settings::Settings,
+) -> ClientGuiOptions {
+    ClientGuiOptions {
+        gui_scale: s.gui_scale,
+        attack_indicator: s.attack_indicator,
+        main_hand_left: s.main_hand_left,
+        reduced_debug_info: s.reduced_debug_info,
+        advanced_item_tooltips: s.file.bool("advancedItemTooltips"),
+        high_contrast: s.high_contrast,
+        show_subtitles: s.show_subtitles,
+        notification_display_time: s.notification_display_time as f32,
+        text_background_opacity: s.text_background_opacity as f32,
+        menu_blur: s.menu_blur,
+        // The factor the engine's own hurt tilt reads (`fov.rs`, `bob_hurt`).
+        damage_tilt_strength: s.file.double("damageTiltStrength"),
+    }
+}
+
+/// `Window.getGuiScale` for a framebuffer (`None` without a window): the
+/// window's own `GuiSize` resolution, the same one it draws with.
+pub(in crate::game) fn resolved_gui_scale(
+    framebuffer: Option<[u32; 2]>,
+    gui_scale: u32,
+    unicode: bool,
+) -> Option<u32> {
+    framebuffer.map(|size| sunrise_client::window::GuiSize::new(size, gui_scale, unicode).scale)
 }

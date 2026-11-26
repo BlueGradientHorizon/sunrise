@@ -30,6 +30,7 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

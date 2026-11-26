@@ -4,8 +4,8 @@
 //! type has no look of its own: without a renderer, or with one that failed until the next
 //! resource load, its rows draw nothing.
 use super::native_entity_renderers::EntityRendererTable;
-use super::remote::general::RemoteGeneral;
 use super::{Game, entity_culling};
+use crate::game::client_side::remote_client::general::RemoteGeneral;
 use glam::DVec3;
 use std::{sync::Arc, time::Instant};
 use sunrise_client::mesher::Vertex;
@@ -46,7 +46,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         camera: DVec3,
         alpha: f64,
     ) -> Option<GeneralDrawFrame<'_>> {
-        let rows = self.remote.as_ref()?.general.rows.as_slice();
+        let rows = self.side.remote.as_ref()?.general.rows.as_slice();
         if rows.is_empty() {
             return None;
         }
@@ -119,7 +119,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let entity = render_state(id, row, frame.alpha as f32);
         let block = at.floor().as_ivec3().to_array();
-        let catalog = super::general::general_type_catalog();
+        let catalog = crate::game::general::general_type_catalog();
         let (_, height) = catalog.dimensions(row.type_slot);
         let eye = (at.y + height * 0.85).floor() as i32;
         let light = self.world.light(block[0], eye, block[2]);

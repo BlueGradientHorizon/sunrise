@@ -52,7 +52,7 @@ pub(in crate::game) fn send_types(
     game: &mut crate::game::ClientGame<'_>,
     types: &[(&str, serde_json::Value)],
 ) {
-    let mut registries = (*game.remote.as_ref().unwrap().registries).clone();
+    let mut registries = (*game.side.remote.as_ref().unwrap().registries).clone();
     registries.registries.insert(
         "minecraft:dimension_type".into(),
         types
@@ -201,7 +201,7 @@ pub(in crate::game) type Built = (
 );
 
 pub(in crate::game) fn built(game: &crate::game::ClientGame<'_>) -> Built {
-    let remote = game.remote.as_ref().unwrap();
+    let remote = game.side.remote.as_ref().unwrap();
     (
         remote.level_environment.clone().unwrap(),
         remote.level_pack_environment.clone(),

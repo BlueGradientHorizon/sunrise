@@ -1,6 +1,6 @@
+use super::level_format::{LevelEnvironments, LevelFormat, pack_environment, same_stacks};
+pub(in crate::game) use super::opening::RemoteOpening;
 use super::*;
-use crate::game::remote::level_format::{LevelEnvironments, pack_environment, same_stacks};
-pub(in crate::game::client_side) use crate::game::remote::session::RemoteOpening;
 use sunrise_level::environment::Environment;
 use sunrise_protocol::packets::configuration::Transfer;
 
@@ -31,6 +31,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.clear_waypoints();
         self.hud_disconnected();
+        self.reset_server_debug_lines();
         // Vanilla's Hud also ticks on the title and connect screens, so the
         // action bar has run out by the next world; Sunrise's ticks in one.
         self.side.titles.overlay_time = 0;
@@ -44,17 +45,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // A world is leaving either way: its icon attempt goes with it.
         self.side.world_icon = None;
         // Minecraft.disconnect: the client level goes.
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.forget_all_remote_columns();
         }
-        if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
+        if let Some(old) = self.side.remote.as_mut().and_then(|r| r.heard_level.take()) {
             self.native_client_level_unload(&old);
         }
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.native_client_disconnecting();
         }
-        self.native_net.holds.borrow_mut().clear();
-        if let Some(mut r) = self.remote.take() {
+        self.side.packet_holds.borrow_mut().clear();
+        if let Some(mut r) = self.side.remote.take() {
             r.session.disconnect();
             self.clear_spectated_entity_post_effect();
             self.reset_creative_contents();
@@ -83,14 +84,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The shared world is closing: its invite code ends with it.
         self.friends_lan_closed();
         // Minecraft.disconnect waits for the integrated server before showing the title.
-        let had_integrated = self.integrated.is_some();
+        let had_integrated = self.side.integrated.is_some();
         let stop_result = self
+            .side
             .integrated
             .take()
             .map(|server| server.stop())
             .transpose();
         // Keep the server's registry snapshot until the thread has joined, even on error.
-        super::super::lan::sync::forget_sync_data();
+        crate::game::lan_common::sync::forget_sync_data();
         mod_api::content::crash::clear_detail("Server");
         self.clock = Default::default();
         self.adv = Default::default();
@@ -161,7 +163,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         address: &str,
         name: &str,
         local: Option<sunrise_protocol::connection::Pipe>,
-        cookies: Option<sunrise_client::net::Cookies>,
+        cookies: Option<sunrise_client_lib::net::Cookies>,
         lan: bool,
         realm: bool,
         list_name: Option<&str>,
@@ -175,7 +177,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         spawn: &play::SpawnInfo,
         entry: RemoteDimensionEntry,
-        reason: sunrise_client::level_loading::Reason,
+        reason: sunrise_client_render::level_loading::Reason,
     ) {
         self.track_remote_levels(&spawn.dimension);
         // The replacement player starts with its inventory menu, even if the
@@ -184,7 +186,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.carried = None;
         self.craft_grid.fill(None);
         self.set_screen(Screen::Playing);
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         r.craft_result = None;
@@ -216,12 +218,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             sunrise_command::args::GameMode::Survival
         };
-        let mode = crate::game::game_mode::mode_from_id(spawn.game_type);
+        let mode = sunrise_gameplay_common::game_modes::mode_from_id(spawn.game_type);
         let previous = spawn
             .previous_game_type
-            .map(crate::game::game_mode::mode_from_id);
+            .map(sunrise_gameplay_common::game_modes::mode_from_id);
         let body_flight = self.player.as_ref().map(|p| (p.flying, p.flying_speed));
-        let r = self.remote.as_mut().unwrap();
+        let r = self.side.remote.as_mut().unwrap();
         let new_logical_player =
             !matches!(entry, RemoteDimensionEntry::Login) || !r.has_logical_player;
         if !same {
@@ -233,7 +235,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // A Sunrise server's bulk edit sends whole columns with the light
         // from before its relight; any other server's packet light is final.
         let relight_resent = r.quiet_commands;
-        let format = r.level_format(spawn);
+        let format: LevelFormat = r.level_format(spawn);
         let (dimension, shape) = (format.dimension, format.shape);
         r.chunk_format = format.chunk_format;
         r.level_facts = format.facts;
@@ -299,7 +301,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.world.weather,
             );
             self.reset_client_world(spawn.seed);
-            if let Some(remote) = self.remote.as_ref() {
+            if let Some(remote) = self.side.remote.as_ref() {
                 self.world
                     .chunks
                     .track_connection_groups(remote.group_count.clone());
@@ -317,7 +319,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.clear_remote_projectiles();
             self.dropped.clear();
             self.clear_client_particles();
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 r.entities.clear();
                 r.synced_attributes.clear();
                 r.passenger_vehicles.clear();
@@ -346,6 +348,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // The new ClientLevel is told before setLevel drops the old one.
             let old = self
+                .side
                 .remote
                 .as_mut()
                 .and_then(|r| r.heard_level.replace(spawn.dimension.clone()));
@@ -359,6 +362,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.audio.0.set_world(&spawn.dimension);
         self.side.streaming.relight_resent = relight_resent;
         let has_sky = self
+            .side
             .remote
             .as_ref()
             .is_none_or(|r| r.dimension.has_skylight);
@@ -381,8 +385,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // handleLogin / handleRespawn: LocalPlayer.setPortalCooldown, so a
         // player who arrives standing in a portal gets no overlay from it.
-        self.portals.player.cooldown = spawn.portal_cooldown;
-        if let Some(profile) = self.remote.as_ref().map(|remote| remote.profile) {
+        self.portal_player.cooldown = spawn.portal_cooldown;
+        if let Some(profile) = self.side.remote.as_ref().map(|remote| remote.profile) {
             self.initialize_entity(Holder::Player(profile), "minecraft:player");
         }
         self.finish_remote_level();
@@ -398,7 +402,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     )
                 },
             )
-            && let Some(r) = self.remote.as_mut()
+            && let Some(r) = self.side.remote.as_mut()
         {
             r.level_load.set_transition_screen(presentation);
         }
@@ -418,13 +422,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Minecraft builds its `Services` once per client: a replay that opens a new
         // session on every seek keeps the keys the session it replaces is fetching or
         // has fetched.
-        let services_keys = match &self.remote {
+        let services_keys = match &self.side.remote {
             Some(remote) => remote.services_keys.clone(),
             None => ServicesKeys::fetching(),
         };
         self.reset_client_item_use();
-        self.realm_session = false;
-        self.lan_session = false;
+        self.side.realm_session = false;
+        self.side.lan_session = false;
         self.reset_tutorial();
         self.side.perf.world_opening();
         self.world_biomes = None;
@@ -508,7 +512,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let chat_tree = self.chat_tree_for(None);
 
         self.ui.registries.selector_tokens.clear();
-        self.remote = Some(Remote {
+        self.side.remote = Some(Remote {
             selector_metadata_supported: true,
             professions,
             display_address: Remote::display_address_for(&session.address),
@@ -573,7 +577,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
-            level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
+            level_load: sunrise_client_render::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
             group_count,
             predictions: HashMap::new(),
@@ -704,8 +708,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             list_name,
         } = opening;
         self.reset_client_item_use();
-        self.realm_session = realm;
-        self.lan_session = lan;
+        self.side.realm_session = realm;
+        self.side.lan_session = lan;
         self.reset_tutorial();
         self.side.perf.world_opening();
         if !local {
@@ -714,7 +718,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.world_biomes_base = None;
             mod_api::content::crash::set_detail(
                 "Server",
-                sunrise_client::net::shown_address(&session.address),
+                sunrise_client_lib::net::shown_address(&session.address),
             );
         }
         self.server_packs_connect(
@@ -789,7 +793,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let chat_tree = self.chat_tree_for(None);
         let services_keys = ServicesKeys::fetching();
         self.ui.registries.selector_tokens.clear();
-        self.remote = Some(Remote {
+        self.side.remote = Some(Remote {
             selector_metadata_supported: true,
             professions,
             display_address: Remote::display_address_for(&session.address),
@@ -857,7 +861,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
-            level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
+            level_load: sunrise_client_render::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
             group_count,
             predictions: HashMap::new(),
@@ -983,7 +987,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Disconnect and return to the multiplayer screen (DisconnectedScreen).
     pub(in crate::game) fn leave_server(&mut self, reason: Option<Text>) -> Result<()> {
-        if reason.is_none() && self.integrated.as_ref().is_some_and(|s| !s.stopped()) {
+        if reason.is_none() && self.side.integrated.as_ref().is_some_and(|s| !s.stopped()) {
             return self.begin_closing_save(false);
         }
         self.close_server_session(reason, |_| {})
@@ -993,7 +997,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         address: &str,
         name: &str,
         local: Option<sunrise_protocol::connection::Pipe>,
-        cookies: Option<sunrise_client::net::Cookies>,
+        cookies: Option<sunrise_client_lib::net::Cookies>,
         lan: bool,
         announce: bool,
         list_name: Option<&str>,
@@ -1080,7 +1084,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn retain_remote_player_on_login(&mut self) {
         self.side_reset_client_item_use();
         self.hook.discard();
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.respawn_velocity = None;
         }
         let retained_max_health = self.player.as_mut().map(|player| {
@@ -1099,7 +1103,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(max_health) = retained_max_health {
             self.pitch = 0.0;
             if let Some(max) = max_health
-                && let Some(r) = self.remote.as_mut()
+                && let Some(r) = self.side.remote.as_mut()
             {
                 r.health.0 = max;
             }
@@ -1114,7 +1118,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         transfer: Transfer,
     ) -> Result<Option<RemoteOpening>> {
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return Ok(None);
         };
         remote.session.close_after_pending();
@@ -1143,7 +1147,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// pack reload, which makes new stacks, builds only the frame's again, in the same entry.
     pub(in crate::game) fn build_level_environments(&mut self) {
         let stacks = self.side.client_pack.environments.as_ref();
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let Some((name, json)) = &r.synced_type else {

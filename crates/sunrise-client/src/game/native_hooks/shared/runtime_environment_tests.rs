@@ -13,16 +13,18 @@ fn client_host_reads_current_pause_state() {
 
 #[test]
 fn observed_overlay_prefers_first_open_screen() {
+    use crate::game::client_side::native_hooks_client::observed_overlay_id;
+
     assert_eq!(
-        super::observed_overlay_id(&[(false, "sign"), (false, "book")]),
+        observed_overlay_id(&[(false, "sign"), (false, "book")]),
         None
     );
     assert_eq!(
-        super::observed_overlay_id(&[(false, "sign"), (true, "book")]),
+        observed_overlay_id(&[(false, "sign"), (true, "book")]),
         Some("book")
     );
     assert_eq!(
-        super::observed_overlay_id(&[(true, "sign"), (true, "book")]),
+        observed_overlay_id(&[(true, "sign"), (true, "book")]),
         Some("sign")
     );
 }
@@ -34,7 +36,8 @@ fn observed_overlay_prefers_first_open_screen() {
 /// overlay (`owner: None`), or another mod's screen proceeds (`None`).
 #[test]
 fn a_mod_screen_opens_when_client_window_is_available() {
-    use super::{Screen, mod_screen_opens};
+    use super::Screen;
+    use crate::game::client_side::native_hooks_client::mod_screen_opens;
     assert_eq!(mod_screen_opens(Screen::Playing, false, None, "a"), None);
     for other in [
         Screen::Paused,
@@ -115,7 +118,8 @@ fn config_dir_is_config_in_the_game_folder() {
 /// and right aligned), and its charts along the bottom.
 #[test]
 fn the_debug_screen_takes_both_top_corners_and_its_charts_corners() {
-    use super::{Corner, debug_takes};
+    use crate::game::client_side::native_hooks_client::debug_takes;
+    use sunrise_client::extras::Corner;
     for corner in Corner::ALL {
         assert!(!debug_takes(corner, false, [true, true]), "{corner:?}");
     }

@@ -65,6 +65,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .as_ref()
                 .is_some_and(|p| p.health.health() > 0.0)
             && self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.session.connected())

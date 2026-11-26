@@ -158,6 +158,7 @@ fn a_payload_handler_disconnects_once_and_the_poll_logs_out_once() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -167,6 +168,7 @@ fn a_payload_handler_disconnects_once_and_the_poll_logs_out_once() {
                 std::thread::yield_now();
             }
             let port = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()

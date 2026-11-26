@@ -51,7 +51,7 @@ pub(in crate::game) fn tick_items(
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.isTickingEntity`: players always tick; other entities tick while their chunk is loaded.
     pub(in crate::game::client_side) fn remote_entity_is_ticking(&self, id: i32) -> bool {
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return true;
         };
         if r.entity_id == id || r.level_players.contains_key(&id) {

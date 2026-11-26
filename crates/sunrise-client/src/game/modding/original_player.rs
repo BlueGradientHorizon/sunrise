@@ -1,74 +1,14 @@
 //! The old `ServerPlayer` retained across `restoreFrom`, independently of its replacement.
 use super::{Dim, Game};
+use crate::game::player_state::OriginalAttachmentSlot;
 use mod_api::{
-    __private::TransactionFrame, ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore,
-    AttachmentValue, Attachments, Holder, InventoryView, LevelRef, OriginalPlayerAccess,
-    PlayerExperience,
+    ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore, AttachmentValue, Attachments,
+    Holder, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Compound;
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
-
-/// Per-player attachment state and active replacement player UUIDs during clone hooks.
-#[derive(Default)]
-pub(in crate::game) struct PlayerState {
-    pub(in crate::game) attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
-    pub(in crate::game) cloning_players: Vec<(u128, u32, u32)>,
-}
-
-/// Retained original-player attachment storage tied to `Game::transactions` so mutations,
-/// default insertions, removals and decode caching roll back with an aborted transaction.
-pub(in crate::game) struct OriginalAttachmentSlot {
-    map: Attachments,
-    active_frames: Vec<TransactionFrame>,
-    journal: Vec<(TransactionFrame, Attachments)>,
-}
-
-impl OriginalAttachmentSlot {
-    fn new(map: Attachments) -> Self {
-        Self {
-            map,
-            active_frames: Vec::new(),
-            journal: Vec::new(),
-        }
-    }
-
-    pub(in crate::game) fn open_frame(&mut self, token: TransactionFrame) {
-        self.active_frames.push(token);
-    }
-
-    pub(in crate::game) fn close_frame(&mut self, token: TransactionFrame, commit: bool) {
-        if let Some(pos) = self.active_frames.iter().rposition(|&t| t == token) {
-            self.active_frames.remove(pos);
-        }
-        let kept = self
-            .journal
-            .iter()
-            .rposition(|(t, _)| *t == token)
-            .map(|pos| self.journal.remove(pos).1);
-        let Some(kept) = kept else {
-            return;
-        };
-        if commit {
-            if let Some(&outer) = self.active_frames.last()
-                && !self.journal.iter().any(|(t, _)| *t == outer)
-            {
-                self.journal.push((outer, kept));
-            }
-        } else {
-            self.map = kept;
-        }
-    }
-
-    fn journal_current(&mut self) {
-        if let Some(&token) = self.active_frames.last()
-            && !self.journal.iter().any(|(t, _)| *t == token)
-        {
-            self.journal.push((token, self.map.clone()));
-        }
-    }
-}
 
 struct RetainedOriginalAttachments {
     slot: Arc<Mutex<OriginalAttachmentSlot>>,
@@ -212,7 +152,7 @@ impl OriginalPlayerAccess for RetainedOriginalPlayer {
     }
 
     fn with_inventory(&self, read: &mut dyn for<'a> FnMut(InventoryView<'a>)) {
-        super::native_player_inventory::lend_inventory_view(
+        crate::game::native_server::lend_inventory_view(
             &self.inventory,
             &self.armor,
             &self.offhand,
@@ -266,7 +206,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         restore_replacement: impl FnOnce(&mut sunrise_sim::lan::guest::Guest),
         after_clone: impl FnOnce(&mut Self),
     ) -> bool {
-        let Some((i, uuid, name)) = self.lan.as_ref().and_then(|host| {
+        let Some((i, uuid, name)) = self.side.lan.as_ref().and_then(|host| {
             let i = host.hub.guests.iter().position(|g| g.conn == conn)?;
             let g = &host.hub.guests[i];
             Some((i, g.uuid, g.name.clone()))
@@ -278,6 +218,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "respawn must not replace an open journal's player"
         );
         let Some(map) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.hub.guests.attachments_mut(conn))
@@ -289,7 +230,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut original = self.retain_original_player(conn, previous);
         // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
         self.keep_only_player_persisted(conn);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.guests.update(i, |g| {
                 g.dimension = destination.id().to_owned();
                 restore_replacement(g);
@@ -330,7 +271,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !mod_api::__private::listened(mod_api::HookId::PlayerClone) {
             return None;
         }
-        let guest = self.lan.as_ref()?.hub.guest(conn)?;
+        let guest = self.side.lan.as_ref()?.hub.guest(conn)?;
         Some(RetainedOriginalPlayer {
             uuid: guest.uuid,
             position: guest.position,
@@ -346,7 +287,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .effects
                 .list
                 .iter()
-                .map(super::native_living_effects::active_effect)
+                .map(crate::game::native_living_body::active_effect)
                 .collect(),
             inventory: guest.inventory.clone(),
             armor: guest.armor.clone(),
@@ -622,7 +563,7 @@ mod tests {
                     "keep_inventory",
                     sunrise_game_data::gamerules::Value::Bool(keep),
                 );
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.hub.guests.update(0, |guest| {
                     guest.dimension = dimension.id().to_owned();
                     guest.position = [7.0, 64.0, -9.0];
@@ -833,7 +774,7 @@ mod tests {
                                     .unwrap()
                             );
                         }
-                        let host = game.lan.as_mut().unwrap();
+                        let host = game.side.lan.as_mut().unwrap();
                         host.hub.guests.update(0, |guest| {
                             guest.dimension = dim.id().to_owned();
                             guest.position = [0.5, 64.0, 0.5];
@@ -856,7 +797,7 @@ mod tests {
                         assert_eq!(game.attachment_validate_write(token.clone()), Ok(()));
                         *source.lock().unwrap() = Some((index, token));
                         game.lan_open_crafting(12, [0, 64, 0]);
-                        let host = game.lan.as_mut().unwrap();
+                        let host = game.side.lan.as_mut().unwrap();
                         host.menus
                             .get_mut(&12)
                             .unwrap()
@@ -902,10 +843,10 @@ mod tests {
                             game.tick_guests();
                             let guest = game.command_guest(12).unwrap();
                             assert_eq!(guest.motion.as_ref().map(|m| m.health.tick_count), before);
-                            assert!(!game.lan.as_ref().unwrap().hub.here(guest));
+                            assert!(!game.side.lan.as_ref().unwrap().hub.here(guest));
                             game.guest_respawn(12);
                         }
-                        let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                        let guest = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
                         assert_eq!(
                             guest
                                 .inventory
@@ -990,7 +931,7 @@ mod tests {
                                 }
                             }
                         }
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                             g.dead = true;
                             g.health = 0.0;
                             g.spawn = (!missing).then_some([7.5, 64.0, 5.5]);
@@ -1019,7 +960,7 @@ mod tests {
                         }
                         let wanted = if missing { Dim::End } else { Dim::Overworld };
                         assert_eq!(*heard.lock().unwrap(), [wanted.id().to_owned()]);
-                        let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                        let guest = game.side.lan.as_ref().unwrap().hub.guest(12).unwrap();
                         assert_eq!(guest.dimension, wanted.id());
                         assert_eq!(
                             guest.position,
@@ -1056,7 +997,7 @@ mod tests {
                 with_guests(|game| {
                     game.options.dedicated = Some(Vec::new());
                     game.enter_level(Dim::End).unwrap();
-                    let host = game.lan.as_mut().unwrap();
+                    let host = game.side.lan.as_mut().unwrap();
                     host.hub.guests.update(0, |guest| {
                         guest.dimension = Dim::End.id().to_owned();
                         guest.spawn = Some([3.5, 64.0, 5.5]);
@@ -1120,7 +1061,7 @@ mod tests {
                 }
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_guests(|game| {
-                        game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                        game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                             g.spawn = Some([3.5, 64.0, 5.5]);
                             g.dead = true;
                             g.health = 0.0;
@@ -1246,7 +1187,7 @@ mod tests {
             mod_platform::testing::with_mods(mods, || {
                 with_guests(|game| {
                     game.options.dedicated = Some(Vec::new());
-                    let host = game.lan.as_mut().unwrap();
+                    let host = game.side.lan.as_mut().unwrap();
                     host.hub.guests.update(0, |guest| {
                         guest.dead = true;
                         guest.health = 0.0;

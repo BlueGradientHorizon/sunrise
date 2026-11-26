@@ -61,7 +61,6 @@ fn a_furnace_cart_is_capped_at_half_the_rule_speed_under_the_new_physics() {
 /// (which forgets the index) put another cart in a slot.
 #[test]
 fn cart_index_finds_what_a_scan_finds() {
-    use super::{CartIndex, CartKind, Minecart};
     let mut seed = 0x2545_F491_4F6C_DD1Du64;
     let mut next = |m: f64| {
         seed ^= seed << 13;
@@ -116,7 +115,6 @@ fn cart_index_finds_what_a_scan_finds() {
 #[test]
 #[ignore = "daily"]
 fn cart_index_finds_the_mobs_a_scan_finds() {
-    use super::{CartIndex, CartKind, Minecart};
     use sunrise_sim::mobs::Mob;
     crate::game::native_entity_refs::tests::with_game(|game| {
         let kinds: Vec<_> = ["minecraft:zombie", "minecraft:chicken", "minecraft:ravager"]
@@ -205,6 +203,7 @@ fn a_tnt_cart_detonates_only_when_a_collision_stops_a_moving_one() {
     assert!(!tnt_ignites_by_collision(false, 0.36), "nothing in the way");
 }
 use super::*;
+use crate::game::server_side::minecarts_server::CartIndex;
 
 /// Issue #8624: chest and hopper carts keep 0.995 of their speed when
 /// empty (0.98 when full), not the plain cart's 0.96, so powered rails

@@ -31,7 +31,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let player = self.native_acting_id();
         if self.transactions.is_empty() {
             use transactions::DeferredEffect;
-            let mut hand = powder_snow::HeldSlot {
+            let mut hand = crate::game::powder_snow::HeldSlot {
                 game: self,
                 slot,
                 dropper: None,
@@ -82,7 +82,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let outcome = self.storage_transaction(|game, _| {
             use transactions::DeferredEffect;
             game.journal_player(player);
-            let mut hand = powder_snow::HeldSlot {
+            let mut hand = crate::game::powder_snow::HeldSlot {
                 game,
                 slot,
                 dropper: Some(player),

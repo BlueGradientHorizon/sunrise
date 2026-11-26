@@ -121,7 +121,7 @@ mod tests {
         game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "writes").unwrap();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.profile = 456;
         remote.entity_id = 42;
@@ -446,7 +446,7 @@ mod tests {
     ) -> sunrise_protocol::connection::ConnReader {
         let (peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
         crate::game::remote::tests::spawn_menu_test(game);
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.loaded_sent = true;
         let mut player = sunrise_sim::motion::PlayerMotion::new(
             game.motion,

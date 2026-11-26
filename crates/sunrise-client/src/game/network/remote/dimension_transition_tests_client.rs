@@ -1,8 +1,8 @@
 #[test]
 #[ignore = "daily"]
 fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
+    use crate::game::client_side::remote_client::RemoteDimensionEntry;
     use crate::game::native_entity_refs::tests::with_client_game;
-    use crate::game::remote::RemoteDimensionEntry;
     use mod_api::{
         __private::game::RegistrationContextNew, CameraType, ClientHost, DimensionTransition,
         DimensionTransitionScreen, DrawContext, SoundPlay, SoundRef, SoundState,
@@ -102,7 +102,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                             Reason::Other,
                         );
                         for trip in [1, 2] {
-                            game.remote.as_mut().unwrap().level_load.finish();
+                            game.side.remote.as_mut().unwrap().level_load.finish();
                             game.enter_remote_dimension(
                                 &nether,
                                 RemoteDimensionEntry::Respawn,
@@ -174,7 +174,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                 );
                             }
                             assert_eq!(DRAWS.load(Ordering::Relaxed), 2);
-                            game.remote.as_mut().unwrap().level_load.finish();
+                            game.side.remote.as_mut().unwrap().level_load.finish();
                             game.enter_remote_dimension(
                                 &overworld,
                                 RemoteDimensionEntry::Respawn,

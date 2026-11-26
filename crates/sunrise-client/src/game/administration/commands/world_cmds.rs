@@ -1709,6 +1709,7 @@ pub(in crate::game) mod vehicle_damage_command_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1899,6 +1900,7 @@ pub(in crate::game) mod attribute_modifier_command_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

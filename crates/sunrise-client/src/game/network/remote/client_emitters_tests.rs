@@ -16,7 +16,8 @@ pub(in crate::game) fn registry_id(
     registry: &str,
     name: &str,
 ) -> i32 {
-    game.remote
+    game.side
+        .remote
         .as_ref()
         .unwrap()
         .builtin
@@ -288,7 +289,16 @@ fn replacing_a_general_entity_keeps_its_emitters_separate() {
 
                     let new = [12.0, 65.0, 0.0];
                     deliver(game, add_entity(game, id, 172, "minecraft:minecart", new));
-                    assert!(!game.remote.as_ref().unwrap().general.rows.contains_key(&id));
+                    assert!(
+                        !game
+                            .side
+                            .remote
+                            .as_ref()
+                            .unwrap()
+                            .general
+                            .rows
+                            .contains_key(&id)
+                    );
                     animate(game, id, 2);
                     let new_body = (EnchantedHit, new, 0.98, 0.7);
                     assert_bursts(game, &mut random, &[new_body]);

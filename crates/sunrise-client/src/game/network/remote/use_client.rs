@@ -172,7 +172,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.emit_consume(&consumable, &stack, 16);
         }
         if let Some((nutrition, saturation)) = info.food
-            && let Some(r) = self.remote.as_mut()
+            && let Some(r) = self.side.remote.as_mut()
         {
             // FoodData.eat(nutrition, saturation), as finish_consuming does;
             // the next ClientboundSetHealth replaces it.
@@ -508,7 +508,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.set_client_mining(None);
             return true;
         }
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return true;
         };
         if !start && r.destroy_delay > 0 {
@@ -545,13 +545,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 direction: face,
                 sequence: seq,
             }));
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 r.destroy_delay = 5;
             }
             return true;
         }
         // sameDestroyTarget: the same block and still the item the break began with.
-        let same = self.remote.as_ref().is_some_and(|r| {
+        let same = self.side.remote.as_ref().is_some_and(|r| {
             r.destroying.is_some_and(|(p, _, _)| p == hit.pos)
                 && self.same_destroying_item(&r.destroying_item)
         });
@@ -559,7 +559,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // sameDestroyTarget`); a click on the block a stopped break still names starts it again,
         // so the server re-anchors its clock. A held button carries the same target on, and that
         // one keeps the clock (#4124).
-        let running = self.remote.as_ref().is_some_and(|r| r.is_destroying);
+        let running = self.side.remote.as_ref().is_some_and(|r| r.is_destroying);
         if start && same && running {
             return true;
         }
@@ -577,6 +577,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // state as it was: a break that isn't instant replaces it below, and after an instant
             // one the old target is still running, so the next start aborts it again.
             let aborted = self
+                .side
                 .remote
                 .as_ref()
                 .filter(|r| r.is_destroying)
@@ -610,7 +611,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return true;
             }
             let held = self.main_hand_key();
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 (r.destroying, r.destroying_item) = (Some((hit.pos, face, 0.0)), held);
                 r.is_destroying = true;
             }
@@ -625,7 +626,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }));
             return true;
         }
-        let Some((pos, last_face, done)) = self.remote.as_ref().and_then(|r| r.destroying) else {
+        let Some((pos, last_face, done)) = self.side.remote.as_ref().and_then(|r| r.destroying)
+        else {
             return true;
         };
         let done = done + progress;
@@ -647,7 +649,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 direction: face,
                 sequence: seq,
             }));
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 // `destroyBlockPos` remains the last target after the break;
                 // if that position is filled again before the next pick, a
                 // held attack resumes it without sending a second START.
@@ -665,7 +667,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     sequence: 0,
                 }));
             }
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 r.destroying = Some((pos, face, done));
             }
             self.set_client_mining(Some(Mining {

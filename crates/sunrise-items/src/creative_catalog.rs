@@ -64,6 +64,40 @@ fn stack<'de, D: serde::Deserializer<'de>>(de: D) -> Result<ItemStack, D::Error>
         .ok_or_else(|| D::Error::custom("creative generator stacks must contain one item"))
 }
 
+/// `CreativeModeTabs`' key for an exported tab id (`itemGroup.*`); the
+/// export's `title` is the English fallback.
+pub fn item_group_key(id: &str) -> Option<&'static str> {
+    Some(match id.trim_start_matches("minecraft:") {
+        "building_blocks" => "itemGroup.buildingBlocks",
+        "colored_blocks" => "itemGroup.coloredBlocks",
+        "natural_blocks" => "itemGroup.natural",
+        "functional_blocks" => "itemGroup.functional",
+        "redstone_blocks" => "itemGroup.redstone",
+        "hotbar" => "itemGroup.hotbar",
+        "search" => "itemGroup.search",
+        "tools_and_utilities" => "itemGroup.tools",
+        "combat" => "itemGroup.combat",
+        "food_and_drinks" => "itemGroup.foodAndDrink",
+        "ingredients" => "itemGroup.ingredients",
+        "spawn_eggs" => "itemGroup.spawnEggs",
+        "op_blocks" => "itemGroup.op",
+        "inventory" => "itemGroup.inventory",
+        _ => return None,
+    })
+}
+/// A mod tab's own `itemGroup.<mod>.<name>` key, for its id `<mod>:<name>`.
+pub fn mod_item_group_key(id: &str) -> String {
+    format!("itemGroup.{}", id.replace(':', "."))
+}
+
+pub fn parse_search_metadata_stack(row: &serde_json::Value) -> Result<ItemStack, String> {
+    let snbt = row["stack"]
+        .as_str()
+        .ok_or("missing search metadata stack")?;
+    let stack = parse_stack(snbt)?.ok_or("empty search metadata stack")?;
+    Ok(stack)
+}
+
 #[derive(Deserialize)]
 struct Row {
     visibility: Visibility,

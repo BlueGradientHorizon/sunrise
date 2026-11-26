@@ -1,8 +1,10 @@
-use super::*;
+use crate::game::{advancements_common::AdvState, server_side::game_server::reset_world_progress};
+use sunrise_gameplay_common::stats::Stats;
+
 #[test]
 fn world_entry_invalidates_loaded_progress() {
-    let mut adv = advancements::AdvState::default();
-    let mut stats = stats::Stats::default();
+    let mut adv = AdvState::default();
+    let mut stats = Stats::default();
     adv.loaded = true;
     stats.loaded = true;
     adv.progress

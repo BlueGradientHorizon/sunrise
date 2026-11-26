@@ -32,6 +32,7 @@ fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 70.0, 0.0)).unwrap());

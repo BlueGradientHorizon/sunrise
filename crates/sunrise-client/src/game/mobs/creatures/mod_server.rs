@@ -1,12 +1,8 @@
 use super::api_values::{TryIntoApi, TryIntoEngine};
-use super::level_sounds::LevelSound;
 use super::piston_push::Lid;
 #[allow(unused_imports)]
-use super::{
-    Dim, Game, InteractTarget,
-    native_projectiles::{Impact, PendingImpact, ProjectileHit, projectile_impact_event},
-    view_vector,
-};
+use super::{Dim, Game, InteractTarget, view_vector};
+use crate::game::combat_common::PlayerCredit;
 use crate::game::creatures::DyingDrops;
 use crate::game::creatures::Finalized;
 use crate::game::creatures::MobOutputBatch;
@@ -14,7 +10,6 @@ use crate::game::creatures::NativeSound;
 use crate::game::creatures::NormalActionFrame;
 use crate::game::creatures::NormalMobActions;
 use crate::game::creatures::OrbOrder;
-use crate::game::creatures::ProjectileHandBack;
 use crate::game::creatures::ProjectileHitter;
 use crate::game::creatures::SpawnReason;
 use crate::game::creatures::SpawnSite;
@@ -33,6 +28,10 @@ use crate::game::creatures::projectile_targets::{
 use crate::game::creatures::seen;
 use crate::game::creatures::to_loot;
 use crate::game::creatures::*;
+use crate::game::level_sounds_common::LevelSound;
+use crate::game::server_side::native_projectiles::{
+    Impact, PendingImpact, ProjectileHit, projectile_impact_event,
+};
 use mod_api::{EquipmentSlot, LootDrops, SoundSource};
 use std::sync::Arc;
 use sunrise_core::{
@@ -89,6 +88,65 @@ pub(in crate::game) mod hoglin_target;
 pub(in crate::game) mod mob_conversion;
 pub(in crate::game) mod residency;
 pub(in crate::game) mod section_steps;
+
+/// What the server's projectile loop keeps to hand its list back for a projectile told alone,
+/// made only in a tick where a mod named a projectile type: each slot's projectile by id, the
+/// ids of the list's rows, where those are once a hook changed the list, and the projectile
+/// whose own Post is still to tell.
+pub(in crate::game) struct ProjectileHandBack {
+    pub(in crate::game) slots: Vec<u32>,
+    pub(in crate::game) rows: Vec<u32>,
+    pub(in crate::game) places: Option<sunrise_level::fast_hash::FxHashMap<u32, usize>>,
+    pub(in crate::game) told: Option<(u32, &'static str)>,
+}
+
+impl ProjectileHandBack {
+    pub(in crate::game) fn new(projectiles: &[Projectile]) -> Box<Self> {
+        let slots: Vec<u32> = projectiles.iter().map(|p| p.id).collect();
+        Box::new(Self {
+            rows: slots.clone(),
+            slots,
+            places: None,
+            told: None,
+        })
+    }
+
+    /// Where slot `slot`'s projectile is in the list now, if it is still there.
+    pub(in crate::game) fn place(&self, slot: usize) -> Option<usize> {
+        super::native_ticks::slot_place(&self.places, &self.slots, slot)
+    }
+
+    /// After a hook told with the list handed back changed it (it wrote, added or removed a
+    /// projectile, or the tick's spawns went first on the hand-back): the loop's state of each
+    /// row follows it by id. A new row is kept, and an impact whose projectile a hook took out
+    /// is dropped with it.
+    pub(in crate::game) fn follow(
+        &mut self,
+        projectiles: &[Projectile],
+        keep: &mut Vec<bool>,
+        impacts: &mut [Impact],
+    ) {
+        let places = super::native_ticks::places_of(projectiles.iter().map(|p| p.id));
+        for impact in impacts {
+            impact.index = places.get(&impact.before.id).copied();
+        }
+        let kept: sunrise_level::fast_hash::FxHashMap<u32, bool> = self
+            .rows
+            .iter()
+            .copied()
+            .zip(keep.iter().copied())
+            .collect();
+        self.rows.clear();
+        self.rows.extend(projectiles.iter().map(|p| p.id));
+        keep.clear();
+        keep.extend(
+            self.rows
+                .iter()
+                .map(|id| kept.get(id).copied().unwrap_or(true)),
+        );
+        self.places = Some(places);
+    }
+}
 
 #[cfg(test)]
 #[test]
@@ -204,7 +262,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Who::Player,
                 arrow.guest,
                 Who::Mob(
-                    self.lan
+                    self.side
+                        .lan
                         .as_ref()
                         .and_then(|h| h.hub.guest(victim_conn))
                         .map_or(0, |g| g.entity_id as u32),
@@ -847,7 +906,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 )
             };
             hurt = mob.resume_hurt(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
+                crate::game::server_side::entity_server::damage_level_of!(
+                    self,
+                    &attack,
+                    &mut credit,
+                    lend
+                ),
                 paused,
                 weapon.map(|_| &mut breach as &mut _),
             );
@@ -1065,7 +1129,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A guest's client shows the apparition and plays the curse itself
         // (ClientboundGameEventPacket.GUARDIAN_ELDER_EFFECT), the sound only
         // for 1: `isSilent() ? 0.0F : 1.0F`.
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             for conn in cursed.into_iter().flatten() {
                 host.hub.send_to(
                     conn,
@@ -1196,13 +1260,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     });
                     if res.is_some()
                         && self
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|host| host.hub.guest(shooter_conn))
                             .is_some_and(|guest| guest.participates_online())
                         && let Who::Mob(id) = hit_who
                         && self.mobs.iter().any(|m| m.id == id)
-                        && let Some(host) = self.lan.as_mut()
+                        && let Some(host) = self.side.lan.as_mut()
                     {
                         host.mob_players.insert(id, shooter_conn);
                     }
@@ -1237,7 +1302,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let mob_shot = !matches!(arrow.owner, Some(Who::Player));
             let pvp = !mob_shot && super::lan_pvp::meets_players(&arrow.kind);
             let shooter = arrow.guest.filter(|_| !mob_shot).and_then(|c| {
-                self.lan
+                self.side
+                    .lan
                     .as_ref()
                     .and_then(|h| h.hub.guest(c))
                     .map(|g| Who::Mob(g.entity_id as u32))
@@ -1693,7 +1759,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         );
                         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                            let level = crate::game::entity::damage_level_of!(
+                            let level = crate::game::server_side::entity_server::damage_level_of!(
                                 self,
                                 &attack,
                                 &mut credit,
@@ -1764,7 +1830,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.side.combat.0.explosion_source_named = noted;
                     let portal_proof = species == Species::SulfurCube
                         && source_mob.is_some_and(|id| {
-                            self.portals
+                            self.side
+                                .portals
                                 .entities
                                 .get(&id)
                                 .is_some_and(|p| p.cooldown > 0)
@@ -2065,7 +2132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     if let Some(index) = self.mob_index.find(&self.mobs, mob) {
                         self.mobs[index].damage(
-                            crate::game::entity::damage_level_of!(
+                            crate::game::server_side::entity_server::damage_level_of!(
                                 self,
                                 self.side.combat.0.attack(),
                                 &mut credit,
@@ -2079,6 +2146,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 MobEvent::SetTarget { mob, target } => {
                     let player = self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.mob_players.get(&mob).copied())
@@ -2099,6 +2167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                     if acquire {
                         let player = self
+                            .side
                             .lan
                             .as_ref()
                             .and_then(|host| host.mob_players.get(&mob).copied())
@@ -2470,14 +2539,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     )
                                 }
                                 Some(_) => None,
-                                None => super::spill::saved_entity(&self.world, pos)
-                                    .and_then(super::spill::packed_block_entity_payload),
+                                None => crate::game::spill_common::saved_entity(&self.world, pos)
+                                    .and_then(
+                                        crate::game::spill_common::packed_block_entity_payload,
+                                    ),
                             }
                         } else {
                             None
                         };
-                        let block_entity =
-                            super::spill::BlockDropEntity::at(&self.world, key, data.as_ref());
+                        let block_entity = crate::game::spill_common::BlockDropEntity::at(
+                            &self.world,
+                            key,
+                            data.as_ref(),
+                        );
                         let mut drops = self.roll_block_loot(pos, old, entity, Default::default());
                         self.native_block_loot(pos, old, None, None, None, &mut drops);
                         let dropped =
@@ -2763,6 +2837,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     aggressive,
                 } => {
                     let player = self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.mob_players.get(&mob).copied())
@@ -3683,7 +3758,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 m.add_effect("minecraft:poison", 900, 0);
                 let id = m.id;
                 let hurt = m.damage(
-                    crate::game::entity::damage_level_of!(
+                    crate::game::server_side::entity_server::damage_level_of!(
                         self,
                         &sunrise_sim::health::NO_ATTACK,
                         &mut credit_plan.lend(&mut self.side.last_hurt_by_player),
@@ -3996,7 +4071,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match conn {
             // During that guest's own turn, the player in place has their UUID.
             Some(conn) if self.side.lan_acting != Some(conn) => {
-                Some(self.lan.as_ref()?.hub.guest(conn)?.uuid)
+                Some(self.side.lan.as_ref()?.hub.guest(conn)?.uuid)
             }
             Some(_) => Some(self.native_acting_id()),
             None if self.side.lan_acting.is_none() && self.player.is_some() => {
@@ -4177,7 +4252,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             let previous_invulnerable = t.invulnerable;
             let hit = t.damage_aimed(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
+                crate::game::server_side::entity_server::damage_level_of!(
+                    self,
+                    &attack,
+                    &mut credit,
+                    lend
+                ),
                 amount,
                 source,
                 aim,
@@ -4252,7 +4332,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn player_entity_id_by_connection(&self, conn: Option<u32>) -> Option<i32> {
         match conn {
             Some(conn) if self.side.lan_acting != Some(conn) => {
-                Some(self.lan.as_ref()?.hub.guest(conn)?.entity_id)
+                Some(self.side.lan.as_ref()?.hub.guest(conn)?.entity_id)
             }
             Some(_) => Some(self.own_entity_id()),
             None if self.side.lan_acting.is_none() && self.player.is_some() => {
@@ -5143,7 +5223,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(uuid) = self.player_uuid_of(self.side.lan_acting) {
             self.side.last_hurt_by_player.insert(
                 victim,
-                super::combat::PlayerCredit(sunrise_sim::lan::playerdata::ints_uuid(uuid)),
+                PlayerCredit(sunrise_sim::lan::playerdata::ints_uuid(uuid)),
             );
         }
     }
@@ -5151,9 +5231,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the player in place; Some is a guest connection.
     pub(in crate::game::server_side) fn resolve_player_credit(
         &self,
-        credit: super::combat::PlayerCredit,
+        credit: PlayerCredit,
     ) -> Option<Option<u32>> {
-        crate::game::entity::player_resolver!(self)
+        crate::game::server_side::entity_server::player_resolver!(self)
             .resolve(credit.0)
             .map(|guest| guest.or(self.side.lan_acting))
     }
@@ -5359,7 +5439,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let primable = self.sulfur_cubes_adopted_explosive();
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut dead = Vec::new();
         let mut corpses = Vec::new();
         let mut died = std::mem::take(&mut self.side.died);
@@ -5370,13 +5450,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // What stands in a guest's slot while a mob holds that guest's view for
         // its tick (see `lent` below).
         let mut spare = guests.first().map(|g| g.1.clone());
-        let mut bindings = match self.lan.as_mut() {
+        let mut bindings = match self.side.lan.as_mut() {
             Some(host) if !guests.is_empty() => std::mem::take(&mut host.mob_players),
             _ => Default::default(),
         };
         // The guests' entity ids by connection, for the shulker bullets fired
         // at the guest a mob sees.
-        let mut guest_ids: Vec<(u32, u32)> = match self.lan.as_ref() {
+        let mut guest_ids: Vec<(u32, u32)> = match self.side.lan.as_ref() {
             Some(host) if !guests.is_empty() => host
                 .hub
                 .guests
@@ -5436,7 +5516,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         lent.give_back(&mut self.world);
         self.side.last_hurt_by_player = player_credit;
-        if let Some(host) = self.lan.as_mut()
+        if let Some(host) = self.side.lan.as_mut()
             && !guests.is_empty()
         {
             // A set: a scan of every mob for each binding is quadratic, and a
@@ -5679,6 +5759,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && p.owner == Some(Who::Player)
                         && match p.guest {
                             Some(c) => self
+                                .side
                                 .lan
                                 .as_ref()
                                 .and_then(|h| h.hub.guest(c))
@@ -5698,7 +5779,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // from the host, until it has left them.
                     let pvp = !mob_shot && super::lan_pvp::meets_players(&p.kind);
                     let shooter = p.guest.filter(|_| !mob_shot).and_then(|c| {
-                        self.lan
+                        self.side
+                            .lan
                             .as_ref()
                             .and_then(|h| h.hub.guest(c))
                             .map(|g| Who::Mob(g.entity_id as u32))
@@ -5974,7 +6056,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let creative = self.creative;
         let mut projectiles = self.creatures.projectiles.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         projectiles.retain(|shot| {
             let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {
                 return true;
@@ -6975,7 +7057,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) {
         let Some(source) = &dying.source else {
             for (stack, position, age) in stacks {
-                let mut random = crate::game::spill::prepare_item_random(None);
+                let mut random = crate::game::spill_common::prepare_item_random(None);
                 random.state.age = age;
                 let motion = velocity(self).unwrap_or(random.velocity);
                 self.add_item_entity_prepared(
@@ -6990,17 +7072,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // Vanilla builds each item entity (and draws its motion) when it
         // collects the drop, before the event sees the list.
-        let mut drops: Vec<crate::game::spill::BlockItemDrop> = stacks
+        let mut drops: Vec<crate::game::spill_common::BlockItemDrop> = stacks
             .into_iter()
             .map(|(stack, position, age)| {
-                let random = crate::game::spill::prepare_item_random(None);
-                crate::game::spill::BlockItemDrop {
+                let random = crate::game::spill_common::prepare_item_random(None);
+                crate::game::spill_common::BlockItemDrop {
                     random: Some(random),
                     stack,
                     position,
                     velocity: velocity(self).unwrap_or(random.velocity),
                     pickup_delay,
-                    state: crate::game::spill::DropState {
+                    state: crate::game::spill_common::DropState {
                         age,
                         ..Default::default()
                     },
@@ -7217,7 +7299,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Vec3::new(block[0] + 1.0, block[1] + 1.0, block[2] + 1.0),
         )
         .inflate(Vec3::new(32.0, 10.0, 32.0));
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let ids: Vec<u32> = self
@@ -7355,6 +7437,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && p.owner == Some(Who::Player)
                 && match p.guest {
                     Some(c) => self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|h| h.hub.guest(c))
@@ -7369,7 +7452,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let mob_shot = !matches!(p.owner, Some(Who::Player));
             let pvp = !mob_shot && crate::game::lan_pvp::meets_players(&p.kind);
             let shooter = p.guest.filter(|_| !mob_shot).and_then(|c| {
-                self.lan
+                self.side
+                    .lan
                     .as_ref()
                     .and_then(|h| h.hub.guest(c))
                     .map(|g| Who::Mob(g.entity_id as u32))
@@ -7698,6 +7782,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The mob hit now answers to the guest (LivingEntity.lastHurtByPlayer).
         if result.is_some()
             && self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
@@ -7706,7 +7791,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 who: Who::Mob(id), ..
             } = hit
             && self.mobs.iter().any(|m| m.id == id)
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             host.mob_players.insert(id, conn);
         }

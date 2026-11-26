@@ -45,16 +45,17 @@ fn native_movement_input_keys_axes_and_sprint() {
                     "injected forward must move, food={food}"
                 );
                 assert_eq!(player.sprinting, food > 6, "food={food}");
-                assert_eq!(game.remote.as_ref().unwrap().last_input, 1 | 64);
-                assert_eq!(game.remote.as_ref().unwrap().was_sprinting, food > 6);
+                assert_eq!(game.side.remote.as_ref().unwrap().last_input, 1 | 64);
+                assert_eq!(game.side.remote.as_ref().unwrap().was_sprinting, food > 6);
                 // What the client sent is enough to play its tick again: the input packet's keys
                 // and the sprint state, through `MotionWorld::replayed_tick` (the tick a mod's
                 // `native_simulate_player_move` plays), without asking the listener again, move
                 // the player as the client's own tick did.
                 let position = player.position;
                 let sprinting = player.sprinting;
-                let sent_keys =
-                    crate::game::lan_vehicles::input_keys(game.remote.as_ref().unwrap().last_input);
+                let sent_keys = crate::game::lan_vehicles::input_keys(
+                    game.side.remote.as_ref().unwrap().last_input,
+                );
                 let side = game_side!(game);
                 MotionWorld {
                     side: &side,
@@ -82,13 +83,16 @@ fn native_movement_input_keys_axes_and_sprint() {
             game.insert_device_key(KeyCode::KeyS);
             tick(game);
             assert_eq!(game.player.as_ref().unwrap().move_vector, [0.5, 0.25]);
-            assert_eq!(game.remote.as_ref().unwrap().last_input, 1 | 2 | 4 | 8 | 64);
+            assert_eq!(
+                game.side.remote.as_ref().unwrap().last_input,
+                1 | 2 | 4 | 8 | 64
+            );
             // Vector-only edits don't affect what gets sent, even if the vector points backward.
             reset_player(game, 20);
             game.insert_device_key(KeyCode::KeyA);
             tick(game);
             assert_eq!(game.player.as_ref().unwrap().move_vector, [0.25, -0.5]);
-            assert_eq!(game.remote.as_ref().unwrap().last_input, 4);
+            assert_eq!(game.side.remote.as_ref().unwrap().last_input, 4);
 
             // A mod's sprint request still uses the actual player's vanilla
             // crouching and slow-item eligibility, not only the hunger check.

@@ -29,6 +29,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -149,7 +150,7 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
         let first = game.ominous_spawners[0].id;
         let second = game.ominous_spawners[1].id;
         let next = game.side.next_entity;
-        crate::game::entity::taken_pass_tests::with_spawn(
+        crate::game::server_side::entity_server::taken_pass_tests::with_spawn(
             |game| {
                 assert!(game.ominous_spawners.is_empty());
                 for delay in [200, 300] {
@@ -177,7 +178,9 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
 fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
     use crate::game::{
         commands::Target,
-        entity::taken_pass_tests::{LifecycleFixture, RemoteLifecycle, run_remote_lifecycle},
+        server_side::entity_server::taken_pass_tests::{
+            LifecycleFixture, RemoteLifecycle, run_remote_lifecycle,
+        },
     };
     use sunrise_protocol::{
         connection::Pipe,
@@ -212,6 +215,7 @@ fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
             },
             apply: |game, remove, update| {
                 let item = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()

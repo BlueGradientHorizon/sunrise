@@ -2,13 +2,31 @@
 //! ([`LivingBody`]): the `LivingRef` reads (docs/modding/src/how-to/native-mods.md, "Entity
 //! and level handles") find the body their handle names and call these, and a hit's
 //! `LivingView` calls the same ones on the body the hit lends, so both answer alike.
-use super::native_living_effects::{active_effect, mob_effect};
-use mod_api::{ActiveEffect, EquipmentSlot};
+use crate::game::{
+    commands_common::Target,
+    dragon_common::{Dragon, MAX_HEALTH},
+    native_equipment_read::{hand_slot, lend_equipment},
+};
+use mod_api::{
+    ActiveEffect, AttributeModifier, AttributeOperation, EffectKey, EquipmentSlot, Identifier,
+    ItemStackView, LivingRef, Pose,
+};
 use std::sync::Arc;
+use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_level::effects::{EffectInstance, PlayerEffects};
 use sunrise_sim::health::{FixedBody, LivingBody, PlayerBody, PlayerHealthRead};
 use sunrise_sim::mobs::finalize::{self, EquipmentRead};
+use sunrise_sim::{
+    first_person_sim::Hand,
+    mobs::{Mob, spear_use, villager},
+};
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::attributes::entity::Catalog;
+use sunrise_world::{
+    attributes::{Modifier, Operation},
+    climbing::{self, ClimbingWorld},
+    registry::BlockStateId,
+};
 
 /// `LivingEntity.getHealth`.
 pub(in crate::game) fn body_health(body: LivingBody<'_>) -> Option<f32> {
@@ -50,7 +68,7 @@ pub(in crate::game) fn body_max_health(body: LivingBody<'_>) -> Option<f32> {
             player_attribute(p, "minecraft:max_health", ValueKind::Computed).map(|max| max as f32)
         }
         LivingBody::Stand(_) => Some(20.0),
-        LivingBody::Dragon(_) => Some(super::dragon::MAX_HEALTH),
+        LivingBody::Dragon(_) => Some(MAX_HEALTH),
     }
 }
 
@@ -205,11 +223,663 @@ pub(in crate::game) fn stand_body(a: &sunrise_sim::entities::ArmorStand) -> Livi
 }
 
 /// The dragon's body.
-pub(in crate::game) fn dragon_body(d: &super::dragon::Dragon) -> LivingBody<'_> {
+pub(in crate::game) fn dragon_body(d: &Dragon) -> LivingBody<'_> {
     LivingBody::Dragon(FixedBody {
         id: d.id,
         health: &d.health,
         live: &d.live,
         equipment: &d.equipment,
     })
+}
+
+/// A player's effect as the API's load-owned key and instance data.
+pub(in crate::game) fn active_effect(e: &EffectInstance) -> ActiveEffect {
+    ActiveEffect::from(mod_api::__private::built::ActiveEffect {
+        id: mod_api::__private::effect_key_by_index(
+            e.registry_index.expect("active effect registry index"),
+        )
+        .expect("effects resolved at load"),
+        duration: e.duration,
+        amplifier: e.amplifier,
+        ambient: e.ambient,
+        visible: e.visible,
+        show_icon: e.show_icon,
+    })
+}
+
+/// A mob's stored effect as the API's: ambient and particle flags remain in their own lists.
+pub(in crate::game) fn mob_effect(m: &Mob, e: &sunrise_sim::mobs::StoredEffect) -> ActiveEffect {
+    ActiveEffect::from(mod_api::__private::built::ActiveEffect {
+        id: mod_api::__private::effect_key_by_index(
+            e.registry_index.expect("active effect registry index"),
+        )
+        .expect("effects resolved at load"),
+        duration: e.duration,
+        amplifier: e.amplifier,
+        ambient: m.extra.ambient_effects.contains(&e.id),
+        visible: !m.extra.hidden_effects.contains(&e.id),
+        show_icon: e.show_icon,
+    })
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The body a living target names now, where its reads are: the player in place's own
+    /// fields, a guest's hub record, a mob that is not removed, an armor stand or the dragon.
+    pub(in crate::game) fn native_living_body(&self, target: Target) -> Option<LivingBody<'_>> {
+        Some(match target {
+            Target::Player => {
+                let p = self.player.as_ref()?;
+                LivingBody::Player(PlayerBody {
+                    id: p.entity_id,
+                    uuid: None,
+                    health: PlayerHealthRead::Synced(&p.health.data, p.health.ids),
+                    attributes: Some(&p.attributes),
+                    effects: self.native_living_player_effects(target),
+                    equipment: sunrise_sim::health::player_equipment(
+                        &self.inventory,
+                        self.selected,
+                        &self.armor,
+                        &self.offhand,
+                        &self.equipment,
+                    ),
+                    attachments: None,
+                })
+            }
+            Target::Guest(conn) => {
+                // The guest's hub record, the one read a hit's parked causer makes too; an acting
+                // guest's effects are the game's.
+                let mut body = PlayerBody::of_record(self.command_guest(conn)?);
+                body.effects = self.native_living_player_effects(target);
+                // The holder and its map are a hit's own loan; outside one the record names
+                // none, as before.
+                body.uuid = None;
+                body.attachments = None;
+                LivingBody::Player(body)
+            }
+            Target::Mob(id) => {
+                LivingBody::Mob(self.mobs.iter().find(|m| m.id == id && !m.removed)?)
+            }
+            Target::Stand(id) => stand_body(self.armor_stands.iter().find(|a| a.id == id)?),
+            Target::Dragon(id) => dragon_body(self.dragon.as_ref().filter(|d| d.id == id)?),
+            _ => return None,
+        })
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Where a player's or a guest's effects are: the acting player's own
+    /// are the game's (swapped in by the entry of `guest_turn`; a player handle names
+    /// the acting player, and a game without a hub keeps its single
+    /// player's the same way), any other guest's are their hub record's.
+    /// None for another kind.
+    pub(in crate::game) fn native_living_player_effects(
+        &self,
+        t: Target,
+    ) -> Option<&PlayerEffects> {
+        match t {
+            Target::Player => Some(&self.potions.effects),
+            Target::Guest(conn) if crate::game::Side::lan_acting(&self.side) == Some(conn) => {
+                Some(&self.potions.effects)
+            }
+            Target::Guest(conn) => self.side_guest_player_effects(conn),
+            _ => None,
+        }
+    }
+
+    /// The entity's instance of `effect` (`LivingEntity.getEffect`): its id
+    /// namespaced as the registry has it, the ticks left (-1 infinite), the
+    /// amplifier and the flags. The effect is a registration-slot key resolved at load.
+    /// None when it has the effect not, before effect resolution, or for an armor
+    /// stand, the dragon, a stale handle or a client.
+    pub(in crate::game) fn living_effect(
+        &self,
+        living: LivingRef,
+        effect: EffectKey,
+    ) -> Option<ActiveEffect> {
+        let def = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_game_data::potions::effect_by_index)?;
+        let target = self.native_living_read_target(living)?;
+        body_effect(self.native_living_body(target)?, def.index)
+    }
+
+    /// The entity's active effects (`LivingEntity.getActiveEffects`), in the
+    /// order their store keeps them, in `Some` even when it has none. None
+    /// for an armor stand, the dragon, a stale handle or a client.
+    pub(in crate::game) fn living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
+        let target = self.native_living_read_target(living)?;
+        body_effects(self.native_living_body(target)?)
+    }
+
+    /// Whether the entity has `effect` (`LivingEntity.hasEffect`), using its resolved key.
+    /// False before effect resolution, for an armor stand, the dragon or a stale handle;
+    /// on a client, for any entity but the local player, whose copy of what the server
+    /// sent it is read.
+    pub(in crate::game) fn living_potion_affected(
+        &self,
+        living: LivingRef,
+        effect: EffectKey,
+    ) -> bool {
+        let Some(def) = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_game_data::potions::effect_by_index)
+        else {
+            return false;
+        };
+        self.native_living_read_target(living)
+            .and_then(|target| self.native_living_body(target))
+            .is_some_and(|body| body_potion_affected(body, def.index))
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `LivingEntity.getUsedItemHand` while `isUsingItem`: the hand of the item
+    /// a player or a mob uses, None when it uses none. On a client, the local
+    /// player's only.
+    pub(in crate::game) fn living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
+        match self.native_living_read_target(living)? {
+            Target::Player => self.used_hand(),
+            Target::Guest(conn) => self.side_guest_used_hand(conn),
+            Target::Mob(id) => {
+                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                spear_use::is_using_item(mob).then_some(if mob.extra.using_off_hand {
+                    Hand::Off
+                } else {
+                    Hand::Main
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The ticks the entity has glided (`LivingEntity.getFallFlyingTicks`),
+    /// counted from 0 again the tick after the glide ends. Players (including
+    /// inactive guests) and mobs read their own stored body counter. None
+    /// for an armor stand or the dragon.
+    pub(in crate::game) fn living_gliding_ticks(&self, living: LivingRef) -> Option<i32> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.player.as_ref()?.fall_fly_ticks),
+            Target::Guest(conn) => Some(
+                self.command_guest(conn)?
+                    .motion
+                    .as_ref()
+                    .map_or(0, |m| m.fall_fly_ticks),
+            ),
+            Target::Mob(id) => Some(
+                self.mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)?
+                    .extra
+                    .fall_fly_ticks,
+            ),
+            _ => None,
+        }
+    }
+
+    /// Whether the entity glides on elytra (`LivingEntity.isFallFlying`;
+    /// Paper's `LivingEntity#isGliding`). The player in place and the guests
+    /// answer from their fall-flying flag, a mob from its own. None for an
+    /// armor stand or the dragon: the game keeps no glide for them.
+    pub(in crate::game) fn living_is_gliding(&self, living: LivingRef) -> Option<bool> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.player.as_ref()?.fall_flying),
+            Target::Guest(conn) => Some(self.command_guest(conn)?.fall_flying),
+            Target::Mob(id) => Some(
+                self.mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)?
+                    .extra
+                    .fall_flying,
+            ),
+            _ => None,
+        }
+    }
+
+    /// Whether the entity sleeps in a bed (`LivingEntity.isSleeping`): the
+    /// player in place, a guest, or a villager or wandering trader asleep in
+    /// its bed. Other mobs never sleep. None for an armor stand or the
+    /// dragon.
+    pub(in crate::game) fn living_is_sleeping(&self, living: LivingRef) -> Option<bool> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.sleeping.is_some()),
+            Target::Guest(conn) => Some(self.command_guest(conn)?.sleeping),
+            Target::Mob(id) => Some(
+                self.mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)
+                    .map(villager::sleeping)
+                    .unwrap_or(false),
+            ),
+            _ => None,
+        }
+    }
+
+    /// The head of the bed the entity sleeps in (`LivingEntity.getSleepingPos`),
+    /// as the block position it lies at. A guest keeps the bed it last slept
+    /// in while it sleeps, a villager or wandering trader its own. None for
+    /// an awake entity, another mob, an armor stand or the dragon.
+    pub(in crate::game) fn living_sleeping_pos(&self, living: LivingRef) -> Option<[i32; 3]> {
+        match self.native_living_read_target(living)? {
+            Target::Player => self.sleeping,
+            Target::Guest(conn) => {
+                let g = self.command_guest(conn)?;
+                g.bed.filter(|_| g.sleeping)
+            }
+            Target::Mob(id) => {
+                villager::sleeping_pos(self.mobs.iter().find(|m| m.id == id && !m.removed)?)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the entity jumps (`LivingEntity.isJumping`; Paper's
+    /// `LivingEntity#isJumping`): the player in place answers from their
+    /// own jump state. The guests' jump is their client's, and a mob has no
+    /// jump controller in the game's own AI, so both read false. None for
+    /// an armor stand or the dragon.
+    pub(in crate::game) fn living_is_jumping(&self, living: LivingRef) -> Option<bool> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.player.as_ref()?.jumping),
+            Target::Guest(_) => Some(false),
+            Target::Mob(_) => Some(false),
+            _ => None,
+        }
+    }
+
+    /// Whether the entity is on a climbable block this tick
+    /// (`LivingEntity.onClimbable`; Paper's `LivingEntity#isClimbing`), by
+    /// the block at its feet: a ladder, a vine, a scaffold or an open
+    /// trapdoor above a ladder. A spectator never climbs; a gliding entity
+    /// ignores blocks tagged to glide through, such as vines. None for an
+    /// armor stand or the dragon.
+    pub(in crate::game) fn living_is_climbing(&self, living: LivingRef) -> Option<bool> {
+        let target = self.native_living_read_target(living)?;
+        let (position, spectator, gliding) = match target {
+            Target::Player => {
+                let p = self.player.as_ref()?;
+                (p.position, p.spectator, p.fall_flying)
+            }
+            Target::Guest(conn) => {
+                let g = self.command_guest(conn)?;
+                (
+                    Vec3::new(g.position[0], g.position[1], g.position[2]),
+                    g.spectator(),
+                    g.fall_flying,
+                )
+            }
+            Target::Mob(id) => {
+                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+                (m.position, false, m.extra.fall_flying)
+            }
+            _ => return None,
+        };
+        let mut world = FlagClimbing {
+            world: &self.world,
+            context: &self.loop_context,
+            entity: living.id(),
+            position: BlockPos::containing(position),
+            spectator,
+            gliding,
+        };
+        Some(climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false))
+    }
+
+    /// Whether the entity is a baby (`LivingEntity.isBaby`): a mob answers
+    /// from its age, negative until it grows up. A player, an armor stand
+    /// and the dragon are never babies.
+    pub(in crate::game) fn living_baby(&self, living: LivingRef) -> Option<bool> {
+        match self.native_living_read_target(living)? {
+            Target::Mob(id) => Some(
+                self.mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)?
+                    .extra
+                    .age
+                    < 0,
+            ),
+            Target::Player | Target::Guest(_) | Target::Stand(_) | Target::Dragon(_) => Some(false),
+            _ => None,
+        }
+    }
+}
+
+/// `LivingEntity.onClimbable` reads the world through `ClimbingWorld`; this
+/// walks the level the flag's entity stands in, at its feet.
+pub(in crate::game) struct FlagClimbing<'a> {
+    pub(in crate::game) world: &'a sunrise_level::world::World,
+    pub(in crate::game) context: &'a sunrise_world::native_load_context::LoopContext,
+    pub(in crate::game) entity: u32,
+    pub(in crate::game) position: BlockPos,
+    pub(in crate::game) spectator: bool,
+    pub(in crate::game) gliding: bool,
+}
+
+impl ClimbingWorld for FlagClimbing<'_> {
+    type Error = std::convert::Infallible;
+    fn is_spectator(&mut self) -> Result<bool, Self::Error> {
+        Ok(self.spectator)
+    }
+    fn is_fall_flying(&mut self) -> Result<bool, Self::Error> {
+        Ok(self.gliding)
+    }
+    fn block_position(&mut self) -> Result<BlockPos, Self::Error> {
+        Ok(self.position)
+    }
+    fn in_block_state(&mut self) -> Result<BlockStateId, Self::Error> {
+        self.block_state(self.position)
+    }
+    fn block_state(&mut self, p: BlockPos) -> Result<BlockStateId, Self::Error> {
+        Ok(self.world.block(p.x, p.y, p.z))
+    }
+    fn set_last_climbable_position(&mut self, _: BlockPos) {}
+    fn adjust_ladder(&mut self, position: BlockPos, state: BlockStateId, tagged: bool) -> bool {
+        let mut ladder = tagged;
+        sunrise_sim::motion::native_is_ladder(
+            self.context,
+            self.entity,
+            position,
+            state,
+            &mut ladder,
+        );
+        ladder
+    }
+    fn adjust_trapdoor_ladder(
+        &mut self,
+        position: BlockPos,
+        state: BlockStateId,
+        trapdoor: BlockStateId,
+        ladder: bool,
+    ) -> bool {
+        let mut climbable = ladder;
+        sunrise_sim::motion::ladder::native_makes_open_trapdoor_above_climbable(
+            self.context,
+            state,
+            position,
+            trapdoor,
+            &mut climbable,
+        );
+        climbable
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `LivingEntity.getDimensions(Pose)`: the box the living entity has in
+    /// `pose` — its width, height and eye height, `minecraft:scale`
+    /// included, the fixed 0.2 box of a sleeping pose included. The species'
+    /// own state still answers where its `getDefaultDimensions` reads it: a
+    /// digging sniffer or an emerging warden is low in every pose. None for
+    /// a stale or unavailable handle.
+    pub(in crate::game) fn living_dimensions_for_pose(
+        &self,
+        living: LivingRef,
+        pose: Pose,
+    ) -> Option<[f64; 3]> {
+        let target = self.native_living_read_target(living)?;
+        // LivingEntity.getDimensions is final: sleeping wins over every
+        // species' default dimensions, but never makes a stale handle valid.
+        if pose == Pose::Sleeping {
+            return Some([f64::from(0.2_f32); 3]);
+        }
+        match target {
+            t @ (Target::Player | Target::Guest(_)) => {
+                // `Avatar.getDefaultDimensions(pose).scale(getScale())`.
+                let scale = self.native_target_attribute(
+                    t,
+                    "minecraft:scale",
+                    sunrise_world::attribute_map::ValueKind::Computed,
+                )? as f32;
+                let d = sunrise_sim::pose::Dimensions::avatar(pose, scale);
+                Some([
+                    f64::from(d.width),
+                    f64::from(d.height),
+                    f64::from(d.eye_height),
+                ])
+            }
+            Target::Mob(id) => {
+                let (w, h, e) = self
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)?
+                    .dims_in_pose(pose);
+                Some([w, h, e])
+            }
+            // ArmorStand.getDefaultDimensions ignores the pose: a marker's
+            // box is empty, a small stand's BABY_DIMENSIONS, else the type's.
+            Target::Stand(id) => {
+                let a = self.armor_stands.iter().find(|a| a.id == id)?;
+                let dims = if a.marker {
+                    (0.0, 0.0, 0.0)
+                } else {
+                    a.probe_dimensions()
+                };
+                let scale = self.native_target_attribute(
+                    target,
+                    "minecraft:scale",
+                    sunrise_world::attribute_map::ValueKind::Computed,
+                )? as f32;
+                Some([dims.0, dims.1, dims.2].map(|v| f64::from(v as f32 * scale)))
+            }
+            Target::Dragon(id) => {
+                self.dragon.as_ref().filter(|d| d.id == id)?;
+                // EntityTypes.ENDER_DRAGON: scalable(16, 8), default eye
+                // height 8 * 0.85. Dragons are not in the ordinary mob table.
+                let scale = self.native_target_attribute(
+                    target,
+                    "minecraft:scale",
+                    sunrise_world::attribute_map::ValueKind::Computed,
+                )? as f32;
+                Some([16.0_f32, 8.0, 6.8].map(|v| f64::from(v * scale)))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The map's modifiers as the API's, in their order. Their ids are canonical
+/// (`Modifier` normalizes them), so none is dropped.
+fn attribute_modifiers(list: Vec<Modifier>) -> Vec<AttributeModifier> {
+    list.iter().filter_map(api_modifier).collect()
+}
+
+/// One map modifier as the API's.
+fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
+    Some(AttributeModifier::new(
+        Identifier::parse(m.id()).ok()?,
+        m.amount(),
+        match m.operation() {
+            Operation::AddValue => AttributeOperation::AddValue,
+            Operation::AddMultipliedBase => AttributeOperation::AddMultipliedBase,
+            Operation::AddMultipliedTotal => AttributeOperation::AddMultipliedTotal,
+        },
+    ))
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The base value of an attribute, before modifiers
+    /// (`AttributeMap.getBaseValue`), read as the effective value is.
+    pub(in crate::game) fn living_attribute_base(
+        &self,
+        living: LivingRef,
+        id: &str,
+    ) -> Option<f64> {
+        self.native_living_attribute(living, id, sunrise_world::attribute_map::ValueKind::Base)
+    }
+
+    /// The ids of the attributes the entity's type has
+    /// (`AttributeMap`'s holder's attribute set), in registry order: the same
+    /// set the value and base reads answer for. None for a stale handle or an
+    /// unavailable entity; on a client, for any entity but the local player
+    /// (the client keeps no attribute map of another entity's, only the few
+    /// fields it draws).
+    pub(in crate::game) fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
+        let catalog = &self.motion.attributes;
+        let entity = self.native_living_attribute_entity(living)?;
+        Some(
+            catalog
+                .attributes()
+                .filter(|(id, _)| catalog.default_base(entity, *id).is_some())
+                // The catalog's names are canonical, so none is dropped.
+                .filter_map(|(_, a)| Identifier::parse(&a.name).ok())
+                .collect(),
+        )
+    }
+
+    /// The modifiers on the entity's attribute `id`
+    /// (`AttributeInstance.getModifiers`), in the order they were added: a
+    /// mod's transient and permanent ones, the saved list's, and what the
+    /// worn and held items grant. An attribute no modifier is on answers an
+    /// empty list; None for an attribute the entity type does not have, a
+    /// stale handle, or on a client for any entity but the local player,
+    /// whose copy of the synced instances it reads.
+    pub(in crate::game) fn living_attribute_modifiers(
+        &self,
+        living: LivingRef,
+        id: &str,
+    ) -> Option<Vec<AttributeModifier>> {
+        self.native_target_attribute_modifiers(self.native_living_read_target(living)?, id)
+    }
+
+    pub(in crate::game) fn native_living_attribute(
+        &self,
+        living: LivingRef,
+        name: &str,
+        kind: sunrise_world::attribute_map::ValueKind,
+    ) -> Option<f64> {
+        self.native_target_attribute(self.native_living_read_target(living)?, name, kind)
+    }
+
+    /// The entity's type key, for the catalog's attribute defaults: the same
+    /// set the value and base reads answer for. On a client only the local
+    /// player resolves (`native_living_read_target`).
+    pub(in crate::game) fn native_living_attribute_entity(
+        &self,
+        living: LivingRef,
+    ) -> Option<&str> {
+        match self.native_living_read_target(living)? {
+            Target::Player | Target::Guest(_) => Some("minecraft:player"),
+            Target::Mob(id) => self
+                .mobs
+                .iter()
+                .find(|m| m.id == id && !m.removed)
+                .map(|m| m.kind.id.as_str()),
+            Target::Stand(_) => Some("minecraft:armor_stand"),
+            Target::Dragon(_) => Some("minecraft:ender_dragon"),
+            _ => None,
+        }
+    }
+
+    /// The modifiers of `name` on `target`'s attribute map, as
+    /// `native_target_attribute` reads its value.
+    pub(in crate::game) fn native_target_attribute_modifiers(
+        &self,
+        target: Target,
+        name: &str,
+    ) -> Option<Vec<AttributeModifier>> {
+        let catalog = &self.motion.attributes;
+        let player = match target {
+            Target::Player => self.player.as_ref()?,
+            Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref()?,
+            Target::Mob(id) => {
+                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+                return m
+                    .extra
+                    .live
+                    .modifiers(catalog, &m.kind.id, name, || {
+                        sunrise_sim::entity_nbt::attribute_entries(m)
+                            .into_iter()
+                            .map(|(_, entry)| entry)
+                            .collect()
+                    })
+                    .map(attribute_modifiers);
+            }
+            Target::Stand(id) => {
+                let a = self.armor_stands.iter().find(|a| a.id == id)?;
+                return a
+                    .live
+                    .modifiers(catalog, "minecraft:armor_stand", name, Vec::new)
+                    .map(attribute_modifiers);
+            }
+            Target::Dragon(id) => {
+                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
+                return d
+                    .live
+                    .modifiers(catalog, "minecraft:ender_dragon", name, Vec::new)
+                    .map(attribute_modifiers);
+            }
+            _ => return None,
+        };
+        // The base read's own None: an attribute the type does not have.
+        let key = player.attributes.key(name)?;
+        player
+            .attributes
+            .value(
+                Some(key.clone()),
+                sunrise_world::attribute_map::ValueKind::Base,
+            )
+            .ok()?;
+        Some(
+            player
+                .attributes
+                .lookup(Some(&key))
+                .and_then(|handle| player.attributes.instance(&handle).ok())
+                .map(|instance| instance.modifiers())
+                .unwrap_or_default()
+                .iter()
+                .filter_map(api_modifier)
+                .collect(),
+        )
+    }
+
+    pub(in crate::game) fn native_target_attribute(
+        &self,
+        target: Target,
+        name: &str,
+        kind: sunrise_world::attribute_map::ValueKind,
+    ) -> Option<f64> {
+        body_attribute(
+            self.native_living_body(target)?,
+            &self.motion.attributes,
+            name,
+            kind,
+        )
+    }
+
+    /// The entity's health (`LivingEntity.getHealth`; Paper's
+    /// `Damageable#getHealth`). During a player's turn only that player
+    /// resolves: the hub is out for their action, and other players'
+    /// handles read `None` until it is back.
+    pub(in crate::game) fn living_health(&self, living: LivingRef) -> Option<f32> {
+        let target = self.native_living_read_target(living)?;
+        body_health(self.native_living_body(target)?)
+    }
+
+    /// The entity's maximum health (`LivingEntity.getMaxHealth`; Paper's
+    /// `Damageable#getMaxHealth`). Players and guests read their attribute
+    /// map; a mob, an armor stand and the dragon their own fields (the
+    /// armor stand the fixed 20 the game seeds it with, the dragon its
+    /// 200) until live attribute maps cover them.
+    pub(in crate::game) fn living_max_health(&self, living: LivingRef) -> Option<f32> {
+        let target = self.native_living_read_target(living)?;
+        body_max_health(self.native_living_body(target)?)
+    }
+
+    /// Lend the stack in `slot` (`LivingEntity.getItemBySlot`).
+    pub(in crate::game) fn living_equipment(
+        &self,
+        living: LivingRef,
+        slot: EquipmentSlot,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
+        lend_equipment(self.living_equipment_stack(living, slot)?, read)
+    }
+
+    /// Lend the stack in `hand` (`LivingEntity.getItemInHand`).
+    pub(in crate::game) fn living_hand_item(
+        &self,
+        living: LivingRef,
+        hand: Hand,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
+        self.living_equipment(living, hand_slot(hand), read)
+    }
 }

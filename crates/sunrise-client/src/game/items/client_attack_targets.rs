@@ -1,5 +1,6 @@
 //! Explicit client attack batches; the stored tick/frame pick lives in client_pick.
-use super::{Game, commands::Target};
+use super::Game;
+use crate::game::commands_common::Target;
 use mod_api::{CrosshairTarget, EntityRef};
 
 fn target_point(eye: [f64; 3], bounds: [[f64; 3]; 2], reach: f64) -> Option<([f64; 3], f64)> {
@@ -27,7 +28,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         entity: EntityRef,
     ) -> Option<([f64; 3], f64)> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
+        let remote = self.side.remote.as_ref().filter(|r| r.logged_in)?;
         if !self.native_window() || remote.entity_id as u32 == entity.id() {
             return None;
         }
@@ -260,6 +261,7 @@ mod tests {
                     .chunks
                     .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
                 let kind = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()

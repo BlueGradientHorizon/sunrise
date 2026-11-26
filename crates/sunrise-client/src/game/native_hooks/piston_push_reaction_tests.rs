@@ -719,6 +719,7 @@ fn piston_push_reaction_client_received_tags_refresh_the_cache() {
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let protocol_stone = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -737,7 +738,7 @@ fn piston_push_reaction_client_received_tags_refresh_the_cache() {
                 }],
             };
             // Configuration's tags become active at login through install_remote_tags.
-            Arc::make_mut(&mut game.remote.as_mut().unwrap().registries)
+            Arc::make_mut(&mut game.side.remote.as_mut().unwrap().registries)
                 .add_tags(&packet(vec![protocol_stone]));
             game.install_remote_tags();
             assert_eq!(

@@ -1,5 +1,6 @@
 //! Accepted melee hits on special targets and their shared attacker tail.
-use super::{dragon::Hurt, minecarts::CartHit, *};
+use super::{dragon::Hurt, *};
+use crate::game::server_side::minecarts_server::CartHit;
 use sunrise_sim::mobs::DamageKind;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -78,12 +79,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.creative);
-        if !crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
-            .invulnerability_check(
-                sunrise_sim::health::Hurting::Entity(id, kind, source),
-                vanilla,
-            )
-            && self.hurt_cart_result(i, damage, self.creative, burning, CartHit::player())
+        if !crate::game::entity_server::damage_level_of!(
+            self,
+            self.side.combat.0.attack(),
+            no_push,
+            None
+        )
+        .invulnerability_check(
+            sunrise_sim::health::Hurting::Entity(id, kind, source),
+            vanilla,
+        ) && self.hurt_cart_result(i, damage, self.creative, burning, CartHit::player())
             && damage > 0.0
         {
             let (knockback, _) = self.extra_knockback(kind, scale);

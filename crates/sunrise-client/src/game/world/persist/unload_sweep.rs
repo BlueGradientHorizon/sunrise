@@ -19,6 +19,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut removed: Vec<u32> = Vec::new();
         let riding = self.riding;
         let ridden_roots: HashSet<_> = self
+            .side
             .lan
             .iter()
             .flat_map(|host| host.hub.guests.iter())

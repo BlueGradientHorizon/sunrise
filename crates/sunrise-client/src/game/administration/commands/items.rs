@@ -10,40 +10,9 @@ use sunrise_sim::scoreboard_cmd::Holder;
 
 pub(in crate::game) mod contents;
 pub(in crate::game) mod slot_sources;
-use contents::Component;
+use crate::game::commands_common::Component;
+pub(in crate::game) use crate::game::commands_common::Slot;
 
-/// One addressable slot.
-#[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) enum Slot {
-    /// `inventory[0..36]`: hotbar then the main rows.
-    Inv(usize),
-    /// The selected hotbar slot as `weapon.mainhand` names it: the equipment's
-    /// `setItemSlot`, where `hotbar.N` is the inventory's `setItem`.
-    MainHand,
-    /// `armor[0..4]` (head, chest, legs, feet).
-    Armor(usize),
-    Offhand,
-    /// The player's body or saddle (`EquipmentSlot` ordinal, `Game::equipment`).
-    Equipment(usize),
-    Ender(usize),
-    /// A mob's equipment by name (`mainhand`, `offhand`, `head`, ...).
-    Mob(u32, &'static str),
-    /// An armor stand's equipment (`EquipmentSlot` ordinal).
-    Stand(u32, usize),
-    /// The ender dragon's equipment (`EquipmentSlot` ordinal).
-    Dragon(u32, usize),
-    Frame(u32),
-    /// A dropped item's stack: `ItemEntity.getSlot(0)`, the `contents` slot.
-    Item(u32),
-    /// A chest or hopper minecart's slot (`ContainerEntity.getChestVehicleSlot`).
-    Cart(u32, usize),
-    Block([i32; 3], usize),
-    /// A slot of another player (`for_player`): reached with their state in place.
-    Guest(u32, Box<Slot>),
-    /// A component collection for writes, or an indexed component item for reads.
-    Contents(Box<Slot>, Component),
-    ContentItem(Box<Slot>, Component, usize),
-}
 pub(in crate::game) struct SlotCandidate {
     pub(in crate::game) slot: Slot,
     pub(in crate::game) filters: Vec<serde_json::Value>,
@@ -946,6 +915,7 @@ pub(in crate::game) mod stand_equip_event_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1041,6 +1011,7 @@ pub(in crate::game) mod mob_equipment_command_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1352,6 +1323,7 @@ pub(in crate::game) mod mob_equipment_stack_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1588,7 +1560,7 @@ pub(in crate::game) mod builtin_component_delivery_tests {
             guest.loaded = true;
             guest.selected = 1;
             guest.permission = 2;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let clock = game.world.game_time;
             let root =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -1637,12 +1609,12 @@ pub(in crate::game) mod builtin_component_delivery_tests {
                 game,
                 "item replace entity @s inventory.0 with stone[minecraft:custom_name=\"H283 control\"] 3",
             );
-            let control = capture(game.lan.as_mut().unwrap());
+            let control = capture(game.side.lan.as_mut().unwrap());
             assert_eq!(control.item, id("minecraft:item", "minecraft:stone"));
             assert_eq!(control.count, 3);
             assert!(control.component(component::CUSTOM_NAME).is_some());
             command(game, "item replace entity @s inventory.0 with gold_ingot");
-            let plain = capture(game.lan.as_mut().unwrap());
+            let plain = capture(game.side.lan.as_mut().unwrap());
             assert!(
                 plain
                     .component(id(
@@ -1686,10 +1658,17 @@ pub(in crate::game) mod builtin_component_delivery_tests {
                     game,
                     &format!("item replace entity @s inventory.0 with {item}[{name}={value}]"),
                 );
-                let source: ItemStack = game.lan.as_ref().unwrap().hub.guest(2).unwrap().inventory
-                    [9]
-                .clone()
-                .unwrap();
+                let source: ItemStack = game
+                    .side
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(2)
+                    .unwrap()
+                    .inventory[9]
+                    .clone()
+                    .unwrap();
                 assert_eq!(source.item.as_ref(), item);
                 assert_eq!(source.count, 1);
                 assert_eq!(
@@ -1698,7 +1677,7 @@ pub(in crate::game) mod builtin_component_delivery_tests {
                     "actual registered command adoption"
                 );
                 assert!(source.wire_patch().is_none(), "no cached wire fallback");
-                let received = capture(game.lan.as_mut().unwrap());
+                let received = capture(game.side.lan.as_mut().unwrap());
                 assert_eq!(received.item, id("minecraft:item", item));
                 assert_eq!(received.count, 1);
                 assert!(received.removed.is_empty());
@@ -1712,13 +1691,23 @@ pub(in crate::game) mod builtin_component_delivery_tests {
                 if received.component(kind).is_none() {
                     failures.push((name, received));
                 }
-                assert_eq!(game.lan.as_ref().unwrap().hub.guest(2).unwrap().uuid, 283);
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
+                    game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().uuid,
+                    283
+                );
+                assert_eq!(
+                    game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
                     20.0
                 );
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guest(2).unwrap().position,
+                    game.side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(2)
+                        .unwrap()
+                        .position,
                     [8.5, 200.0, 8.5]
                 );
                 assert_eq!(game.world.game_time, clock);

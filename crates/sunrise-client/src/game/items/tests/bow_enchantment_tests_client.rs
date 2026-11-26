@@ -23,9 +23,15 @@ pub(in crate::game) fn game_with_player<'a>(
     options.resources = root.to_path_buf();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.creative = true;
     game.player = Some(
         sunrise_sim::motion::PlayerMotion::new(

@@ -1,12 +1,38 @@
 use super::*;
 
+use crate::game::remote::abilities::walking_speed;
+
+impl Remote {
+    /// `AbstractClientPlayer.gameMode()` for a remote player entity in `level_players`.
+    pub(in crate::game) fn remote_player_info_game_mode(&self, entity_id: i32) -> Option<i32> {
+        if let Some(slot) = self.level_player_infos.get(&entity_id)
+            && let Some(cell) = slot.get()
+        {
+            return Some(cell.load(std::sync::atomic::Ordering::Relaxed));
+        }
+        let uuid = self.level_players.get(&entity_id)?;
+        if let Some(cell) = self.tab_game_modes.get(uuid) {
+            if let Some(slot) = self.level_player_infos.get(&entity_id) {
+                let _ = slot.set(Arc::clone(cell));
+            }
+            return Some(cell.load(std::sync::atomic::Ordering::Relaxed));
+        }
+        self.tab_players.get(uuid).map(|t| t.game_mode)
+    }
+}
+
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
+    /// `Abilities.getWalkingSpeed()` of the local player: the server's, on a server.
+    pub(in crate::game) fn remote_walking_speed(&self) -> f32 {
+        walking_speed(self.side.remote.as_ref().map(|r| &r.abilities))
+    }
+
     /// Mirror `Remote::abilities` onto the live `PlayerMotion` body.
     pub(in crate::game::client_side) fn apply_remote_abilities(&mut self) {
         let (Some(player), Some(a)) = (
             self.player.as_mut(),
-            self.remote.as_ref().map(|r| &r.abilities),
+            self.side.remote.as_ref().map(|r| &r.abilities),
         ) else {
             return;
         };
@@ -39,13 +65,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Mirror spectator scroll-wheel `flying_speed` back into `Remote::abilities`.
     pub(in crate::game::client_side) fn set_remote_flying_speed(&mut self, speed: f32) {
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.abilities.flying_speed = speed;
         }
     }
     /// Sync local and remote player spectator modes from `PlayerInfo` and `MultiPlayerGameMode`.
     pub(in crate::game::client_side) fn sync_remote_player_game_mode(&mut self) {
-        debug_assert!(self.remote.is_some());
+        debug_assert!(self.side.remote.is_some());
         if self.player.is_some() {
             let info_spectator = self.own_player_is_spectator();
             let local_spectator = self.spectator();
@@ -54,7 +80,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 player.local_spectator = local_spectator;
             }
         }
-        if let Some(r) = self.remote.as_ref() {
+        if let Some(r) = self.side.remote.as_ref() {
             for i in 0..self.mobs.len() {
                 let id = self.mobs[i].id as i32;
                 if r.level_players.contains_key(&id) {

@@ -6,7 +6,7 @@ use sunrise_items::items::EntityTypeTags;
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Apply synced block, item, fluid, and entity-type tags plus generated class tags on clients.
     pub(in crate::game) fn install_server_items(&mut self) {
-        let Some(remote) = self.remote.as_ref() else {
+        let Some(remote) = self.side.remote.as_ref() else {
             return;
         };
         let names = |registry: &str| -> Option<HashMap<String, Vec<String>>> {
@@ -34,7 +34,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             base.entity_type_tags.ids().clone(),
         );
         items.set_entity_type_tags(tags);
-        if let Some(enchantments) = self.remote.as_mut().and_then(|r| r.enchantments.as_mut()) {
+        if let Some(enchantments) = self
+            .side
+            .remote
+            .as_mut()
+            .and_then(|r| r.enchantments.as_mut())
+        {
             Arc::make_mut(enchantments).entity_tags = items.entity_type_tags.members().clone();
         }
         self.server_items = Some(Arc::new(items));

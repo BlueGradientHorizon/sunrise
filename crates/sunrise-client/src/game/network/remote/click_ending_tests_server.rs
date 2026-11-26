@@ -118,11 +118,15 @@ fn flint_and_steel_use_on_ends_the_click() {
             root.clone(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(client, "FlintTest").unwrap();
-    game.remote.as_mut().unwrap().entity_id = 7;
+    game.side.remote.as_mut().unwrap().entity_id = 7;
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     game.inventory[0] = Some(ItemStack::new("minecraft:flint_and_steel", 1));
     game.offhand = Some(ItemStack::new("minecraft:stick", 1));

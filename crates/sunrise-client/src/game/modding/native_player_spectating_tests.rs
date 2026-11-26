@@ -75,7 +75,7 @@ fn third_guest(game: &mut crate::game::ServerGame<'_>, position: [f64; 3]) {
         10,
     );
     guest.placed = true;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
 }
 
 /// Runs `test` with the probe listening and three guests, guest 14 standing apart at `FAR`.

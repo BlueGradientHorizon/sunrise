@@ -5,7 +5,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::AwardStats`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_award_stats_packet(&mut self, p: play::AwardStats) -> Result<()> {
         // handleAwardStats: StatsCounter.setValue for each.
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return Ok(());
         };
         let mut known = Vec::new();
@@ -46,7 +46,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The chat's tree follows the server's now; a mod's commands
         // go into it again (`chat_tree_for`).
         let chat_tree = self.chat_tree_for(Some(&tree));
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.chat_tree = chat_tree;
             r.chat_tree_received = true;
         }
@@ -57,6 +57,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         p: play::ContainerSetContent,
     ) {
         let open = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.menu.as_ref())
@@ -70,7 +71,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let carried = self.to_stack(&p.carried);
             if p.container == open {
                 self.carried = carried;
-            } else if let Some(r) = self.remote.as_mut() {
+            } else if let Some(r) = self.side.remote.as_mut() {
                 r.inventory_carried = carried;
             }
             self.remote_synced();
@@ -178,7 +179,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.level.hardcore = p.hardcore;
         // handleLogin: startWaitingForNewLevel with Reason.OTHER, which
         // replaces ServerReconfigScreen.
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.reconfiguring = None;
             r.clear_attachments();
             r.viewed.clear();
@@ -193,18 +194,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.selected = 0;
         self.potions.effects.clear();
         // handleLogin creates a fresh LocalPlayer only when none exists yet.
-        if self.remote.as_ref().is_none_or(|r| !r.logged_in) {
+        if self.side.remote.as_ref().is_none_or(|r| !r.logged_in) {
             self.side.post_effects.clear();
         }
         self.riding = None;
         if let Some(player) = self.player.as_mut() {
             player.entity_id = p.player_id;
         }
-        self.native_net
-            .holds
+        self.side
+            .packet_holds
             .borrow_mut()
             .clear_cauldron_continuations();
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.carried.set(Some(0));
             r.pending_cauldrons.get_mut().clear();
             // handleLogin makes a new ClientLevel: its predictions count from 0.
@@ -232,7 +233,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
         self.side.debug_entries.0.invalidate();
-        self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+        self.side.streaming.radius = crate::game::streaming_radius::streaming_radius_for(
             self.side.settings.render_distance,
             Some(p.chunk_radius),
         );
@@ -247,14 +248,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // and ClientPacketListener.broadcastClientInformation sends it
         // again only when an option changes it.
         self.remote_chat_login();
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             self.native_client_player_logging_in(p.player_id, remote.profile);
         }
     }
     /// `C::PlayerAbilities`: mutates `Remote::abilities` in arrival order, preserving `may_build`.
     pub(in crate::game) fn apply_player_abilities_packet(&mut self, p: play::PlayerAbilities) {
         self.creative = p.flags & 8 != 0;
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.abilities.invulnerable = p.flags & 1 != 0;
             r.abilities.flying = p.flags & 2 != 0;
             r.abilities.may_fly = p.flags & 4 != 0;
@@ -269,7 +270,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // SignedMessageBody.Packed.unpack: the last seen it names must
         // be in the cache; then the message joins it
         // (MessageSignatureCache.push).
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return Ok(());
         };
         // handlePlayerChat: the global index counts every chat packet; one out of
@@ -389,8 +390,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // the chat line does, not in the language the session joined
         // with (`Remote.lang` is the vanilla server-language table).
         let message = remote_text(&p.message);
-        let me = self.remote.as_ref().is_some_and(|r| r.entity_id == p.id);
-        if let Some(r) = self.remote.as_mut() {
+        let me = self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == p.id);
+        if let Some(r) = self.side.remote.as_mut() {
             r.death_message = Some(message);
         }
         if me {
@@ -400,7 +405,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // screen, whatever health was last sent, or `respawn()` at
         // once when it is hidden.
         if me && self.side.screen != Screen::Dead && self.player.is_some() {
-            if self.remote.as_ref().is_none_or(|r| r.show_death_screen) {
+            if self
+                .side
+                .remote
+                .as_ref()
+                .is_none_or(|r| r.show_death_screen)
+            {
                 self.close_dialogs();
                 self.set_screen(Screen::Dead);
                 self.side.chat_ui.death_time = 0;
@@ -414,7 +424,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `C::PlayerInfoRemove`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_player_info_remove_packet(&mut self, p: play::PlayerInfoRemove) {
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             for u in p.uuids {
                 r.players.remove(&u);
                 r.tab_players.remove(&u);
@@ -429,7 +439,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `C::PlayerInfoUpdate`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_player_info_update_packet(&mut self, p: play::PlayerInfoUpdate) {
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             // handlePlayerInfoUpdate: new entries first, then every
             // action on every known entry.
             // INITIALIZE_CHAT: the session (or none) each entry carries; the
@@ -461,14 +471,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         for e in p.entries {
             let mode_change = e.game_mode.and_then(|mode| {
-                let r = self.remote.as_ref()?;
+                let r = self.side.remote.as_ref()?;
                 let info = r.tab_players.get(&e.uuid)?;
                 (info.game_mode != mode).then_some((info.game_mode, mode))
             });
             if let Some((current, mode)) = mode_change {
                 // LocalPlayer.onGameModeChanged(SPECTATOR) clears vertical motion before PlayerInfo.setGameMode.
                 if mode == 3
-                    && self.remote.as_ref().is_some_and(|r| {
+                    && self.side.remote.as_ref().is_some_and(|r| {
                         r.profile == e.uuid
                             && (self.player.is_some() || r.has_logical_player || r.logged_in)
                     })
@@ -477,6 +487,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         player.velocity.y = 0.0;
                     }
                     if let Some(vel) = self
+                        .side
                         .remote
                         .as_mut()
                         .and_then(|r| r.respawn_velocity.as_mut())
@@ -485,7 +496,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
                 if mod_api::__private::listened(mod_api::HookId::ClientPlayerChangeGameType) {
-                    let entity_id = self.remote.as_ref().and_then(|r| {
+                    let entity_id = self.side.remote.as_ref().and_then(|r| {
                         if e.uuid == r.profile {
                             (self.player.is_some() || r.has_logical_player || r.logged_in)
                                 .then_some(r.entity_id)
@@ -496,7 +507,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.native_client_player_change_game_type(entity_id, e.uuid, current, mode);
                 }
             }
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 if let Some(t) = r.tab_players.get_mut(&e.uuid) {
                     if let Some(mode) = e.game_mode {
                         t.game_mode = mode;
@@ -550,11 +561,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.reset_client_item_use();
         // The new LocalPlayer copies reduced debug info through its setter.
         self.side.debug_entries.0.invalidate();
-        let old_player = self.remote.as_ref().map(|r| (r.entity_id, r.profile));
+        let old_player = self.side.remote.as_ref().map(|r| (r.entity_id, r.profile));
         if let Some((_, uuid)) = old_player {
             self.forget_entity_initialization(Holder::Player(uuid));
         }
-        if let Some(r) = self.remote.as_ref() {
+        if let Some(r) = self.side.remote.as_ref() {
             self.side.audio.0.remove_sound_entity(r.entity_id as u32);
         }
         // A new player, without effects (the server sends them
@@ -563,7 +574,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.post_effects.clear();
         // Every synced attachment but the player's is sent again; the viewed
         // levels go or stay with the level entered (`enter_respawn_level`).
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.attachments
                 .retain(|holder, _| matches!(holder, Holder::Player(_)));
         }
@@ -578,14 +589,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             None
         };
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.respawn_velocity = kept_velocity;
         }
         if p.keep & 2 == 0 {
             self.reset_remote_player_riding();
             // KEEP_ENTITY_DATA copies the old player's synched data
             // (its shared flags) to the new one; without it they reset.
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 r.own_invisible = false;
                 r.own_on_fire = false;
                 r.glowing.remove(&r.entity_id);
@@ -595,6 +606,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // handleRespawn compares the levels' keys: a mod's level is
         // its own dimension even where `Dim` has no name for it.
         let dimension_changed = self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.level != p.spawn.dimension);
@@ -613,17 +625,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // handleRespawn makes a new ClientLevel for another dimension
         // key (a proxy's server switch too): its predictions count from 0.
-        self.native_net
-            .holds
+        self.side
+            .packet_holds
             .borrow_mut()
             .clear_cauldron_continuations();
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.pending_cauldrons.get_mut().clear();
             if r.level != p.spawn.dimension {
                 r.sequence = 0;
             }
         }
-        self.portals.respawn_attributes.respawn(p.keep & 1 != 0);
+        self.side.respawn_attributes.respawn(p.keep & 1 != 0);
         let entry = if died {
             RemoteDimensionEntry::DeathRespawn
         } else {
@@ -638,7 +650,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|m| m.id)
             .chain(self.boats.iter().map(|b| b.id))
             .collect();
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.ticked_before_player = before;
         }
         if dimension_changed {
@@ -650,7 +662,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .stop_playing(music.as_ref(), &mut self.side.audio.0);
         }
         self.set_screen(Screen::Playing);
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.death_message = None;
             r.health = (20.0, 20, 5.0);
             // handleRespawn: the new LocalPlayer is the camera.
@@ -705,7 +717,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::SetHealth`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game::client_side) fn apply_set_health_packet(&mut self, p: play::SetHealth) {
         // ClientPacketListener.handleSetHealth: LocalPlayer.hurtTo.
-        let flash = self.remote.as_mut().is_some_and(|r| {
+        let flash = self.side.remote.as_mut().is_some_and(|r| {
             r.health = (p.health, p.food, p.saturation);
             std::mem::replace(&mut r.flash_on_set_health, true)
         });
@@ -718,7 +730,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // The death screen opens (or the respawn is asked for) with the
         // death packet when the rule hides it.
-        let shown = self.remote.as_ref().is_none_or(|r| r.show_death_screen);
+        let shown = self
+            .side
+            .remote
+            .as_ref()
+            .is_none_or(|r| r.show_death_screen);
         if p.health <= 0.0 && shown && self.side.screen != Screen::Dead && self.player.is_some() {
             self.close_dialogs();
             self.set_screen(Screen::Dead);

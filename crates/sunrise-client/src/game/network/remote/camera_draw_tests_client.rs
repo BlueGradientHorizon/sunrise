@@ -1,5 +1,5 @@
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use crate::game::native_entity_refs::tests::with_client_game;
-use crate::game::remote::RemoteDimensionEntry;
 use sunrise_core::geometry::Vec3;
 use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::{
@@ -37,11 +37,12 @@ pub(in crate::game) fn run_local_player_and_camera_entity_draw_like_the_real_cli
             RemoteDimensionEntry::Login,
             sunrise_client::level_loading::Reason::Other,
         );
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         let villager = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -65,7 +66,7 @@ pub(in crate::game) fn run_local_player_and_camera_entity_draw_like_the_real_cli
         let mut actual = Vec::new();
         for row in witness.lines().filter(|l| !l.starts_with('#')) {
             let f: Vec<&str> = row.split(' ').collect();
-            game.remote.as_mut().unwrap().camera = (f[0] == "villager").then_some(31);
+            game.side.remote.as_mut().unwrap().camera = (f[0] == "villager").then_some(31);
             game.side.camera_type = match f[1] {
                 "0" => CameraType::FirstPerson,
                 "1" => CameraType::ThirdPersonBack,

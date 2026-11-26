@@ -366,7 +366,7 @@ mod tests {
         // Real solid-entity boxes, not a stubbed obstacle query. One item is
         // caught inside the boat; another falls onto its top this tick.
         game.side.next_entity += 1;
-        let boat = super::super::boats::Boat::new(
+        let boat = crate::game::boats_common::Boat::new(
             game.side.next_entity,
             Arc::from("oak"),
             Vec3::new(8.5, 80.0, 8.5),

@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_gameplay::mount_rules::has_mount_menu;
+use sunrise_gameplay_common::mount_rules::has_mount_menu;
 use sunrise_level::containers::BlockEntity;
 
 /// Authoritative per-turn input flags for the active server actor (guest or host-over-pipe).

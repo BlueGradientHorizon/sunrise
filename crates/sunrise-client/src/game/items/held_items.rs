@@ -108,7 +108,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// `LivingEntity.getUsedItemHand`: the hand of the item in use.
     pub(in crate::game) fn used_hand(&self) -> Option<Hand> {
-        item_use::hand_of(self.using)
+        item_use_common::hand_of(self.using)
     }
 
     /// Run `f` with `hand` acting (`held`, `consume_held`, `swing_arm`).
@@ -146,17 +146,21 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `insert_stack_into_inventory` with `max` the stack's own maximum.
     pub(in crate::game) fn insert_stack_up_to(&mut self, stack: &mut ItemStack, max: u32) -> bool {
         let before = stack.count;
-        let left = inventory_add(
+        let left = self.insert_stack_into_player_slots(stack, max);
+        if stack.count < before {
+            self.side_on_inventory_item_added(stack);
+        }
+        left
+    }
+
+    fn insert_stack_into_player_slots(&mut self, stack: &mut ItemStack, max: u32) -> bool {
+        inventory_add(
             &mut self.inventory,
             &mut self.offhand,
             self.selected,
             max,
             stack,
-        );
-        if stack.count < before {
-            self.side_on_inventory_item_added(stack);
-        }
-        left
+        )
     }
 
     /// `getAttributeValue` of an interaction range of the acting player.
@@ -371,7 +375,10 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     /// `ThrowableProjectile.tick`'s `applyGravity` and `applyInertia`.
-    pub(in crate::game) fn thrown_potion_motion(&self, t: &mut super::potions::ThrownPotion) {
+    pub(in crate::game) fn thrown_potion_motion(
+        &self,
+        t: &mut super::potions_common::ThrownPotion,
+    ) {
         let gravity = if &*t.stack.item == "minecraft:experience_bottle" {
             0.07
         } else {
@@ -398,7 +405,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// Whether the stack has `DataComponents.DEATH_PROTECTION`, whatever item it is.
     pub(in crate::game) fn has_death_protection(&self, s: &ItemStack) -> bool {
-        super::totem::death_protection_of(&self.pack.item_models, &s.item, Some(s)).is_some()
+        super::totem_common::death_protection_of(&self.pack.item_models, &s.item, Some(s)).is_some()
     }
 
     /// `Attributes.MINING_EFFICIENCY`, which `Player.getDestroySpeed` adds to tool speed > 1.
@@ -491,7 +498,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 .map_or_else(|_| id.to_owned(), |id| id.to_string());
         }
         if stack.is_some_and(|s| &*s.item == "minecraft:mace")
-            && super::mace::can_smash(fall, flying)
+            && super::mace_common::can_smash(fall, flying)
         {
             "minecraft:mace_smash".into()
         } else if player {
@@ -503,20 +510,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// Whether `kind` belongs to `#minecraft:redirectable_projectile`.
     pub(in crate::game) fn is_redirectable_projectile_type(&self, kind: &str) -> bool {
-        if let Some(remote) = &self.remote
-            && let Some(tags) = remote.registries.tags.get("minecraft:entity_type")
-            && let Some(ids) = remote.builtin.get("minecraft:entity_type")
-        {
-            return tags
-                .get("minecraft:redirectable_projectile")
-                .is_some_and(|members| ids.id(kind).is_some_and(|id| members.contains(&id)));
+        if let Some(answer) = self.side_redirectable_projectile_tag(kind) {
+            return answer;
         }
-        if let Some(members) = self
-            .items()
-            .entity_type_tags
-            .members()
-            .get("minecraft:redirectable_projectile")
-        {
+        let tags = &self.items().entity_type_tags;
+        if let Some(members) = tags.members().get("minecraft:redirectable_projectile") {
             return members.contains(kind);
         }
         matches!(
@@ -548,14 +546,17 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         p: &sunrise_sim::projectiles::Projectile,
     ) -> f64 {
         if self.projectile_is_pickable(p) {
-            super::deflect::PICK_RADIUS
+            super::deflect_common::PICK_RADIUS
         } else {
             0.0
         }
     }
 
     /// `AbstractArrow.isPickable` for `ThrownTrident`.
-    pub(in crate::game) fn trident_is_pickable(&self, t: &super::trident::ThrownTrident) -> bool {
+    pub(in crate::game) fn trident_is_pickable(
+        &self,
+        t: &sunrise_sim::thrown_trident::ThrownTrident,
+    ) -> bool {
         !t.in_ground && self.is_redirectable_projectile_type("minecraft:trident")
     }
 
@@ -739,14 +740,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn consumable(
         &self,
         stack: &ItemStack,
-    ) -> Option<super::consume::ItemConsumable> {
+    ) -> Option<super::item_use_common::ItemConsumable> {
         sunrise_sim::item_sync::consumable(stack, self.items())
     }
 
     /// `Consumable.emitParticlesAndSounds(user.getRandom(), user, stack, count)`.
     pub(in crate::game) fn emit_consume(
         &mut self,
-        consumable: &super::consume::ItemConsumable,
+        consumable: &super::item_use_common::ItemConsumable,
         stack: &ItemStack,
         count: i32,
     ) {
@@ -774,8 +775,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn item_use_state(
         &self,
         stack: &ItemStack,
-    ) -> super::item_use::ItemUseState {
-        use super::item_use::{ASKING_USE_ANIMATION, AskingUseAnimation, ItemUseState};
+    ) -> super::item_use_common::ItemUseState {
+        use super::item_use_common::{ASKING_USE_ANIMATION, AskingUseAnimation, ItemUseState};
         use sunrise_core::use_animation::UseAnimation;
         let info = self.items().get(&stack.item);
         let kinetic =
@@ -828,12 +829,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let (mut duration, mut canceled) = (own, false);
         let hand = self.hand;
         self.native_living_entity_use_item_start(&stack, None, hand, &mut duration, &mut canceled);
-        let Some(ticks_set) = super::item_use::start_of(own, duration, canceled) else {
+        let Some(ticks_set) = super::item_use_common::start_of(own, duration, canceled) else {
             return false;
         };
         self.using = Some((self.held_slot(), 0));
         self.use_duration = duration;
-        self.use_start = super::using_item::UseStart {
+        self.use_start = super::item_use_common::UseStart {
             ticks_set,
             item: Some(stack.clone()),
         };
@@ -893,21 +894,25 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// `LivingEntityUseItemEvent.Tick` for `stack` in use `ticks` so far.
     pub(in crate::game) fn use_item_ticked(&mut self, stack: &ItemStack, ticks: u32) -> bool {
-        let before = super::item_use::ticks_left(self.use_duration, ticks);
+        let before = super::item_use_common::ticks_left(self.use_duration, ticks);
         let (mut remaining, mut canceled) = (before, false);
         let hand = self.used_hand().unwrap_or(self.hand);
         self.native_living_entity_use_item_tick(stack, None, hand, &mut remaining, &mut canceled);
-        let (left, set) =
-            super::item_use::tick_left(before, remaining, canceled, self.use_start.ticks_set);
+        let (left, set) = super::item_use_common::tick_left(
+            before,
+            remaining,
+            canceled,
+            self.use_start.ticks_set,
+        );
         self.use_start.ticks_set = set;
-        self.use_duration = super::item_use::duration_leaving(ticks, left);
+        self.use_duration = super::item_use_common::duration_leaving(ticks, left);
         left > 0
     }
 
     /// A mod's `Item.onUseTick` of `stack` used `ticks`, while ticks are left.
     pub(in crate::game) fn item_on_use_tick(&mut self, stack: &ItemStack, ticks: u32) -> bool {
         let using = self.using;
-        let remaining = super::item_use::ticks_left(self.use_duration, ticks);
+        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
         if remaining > 0 {
             self.native_on_use_tick(stack, None, remaining);
         }
@@ -916,16 +921,16 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// How long `stack`, used `ticks`, counts as held.
     pub(in crate::game) fn ticks_held(&self, stack: &ItemStack, ticks: u32) -> u32 {
-        super::item_use::held(
+        super::item_use_common::held(
             self.use_duration(stack),
-            super::item_use::ticks_left(self.use_duration, ticks),
+            super::item_use_common::ticks_left(self.use_duration, ticks),
         )
     }
 
     /// `LivingEntityUseItemEvent.Stop` as `releaseUsingItem` lets go of `stack`.
     pub(in crate::game) fn use_item_stopped(&mut self, stack: &ItemStack, ticks: u32) -> bool {
         let mut canceled = false;
-        let remaining = super::item_use::ticks_left(self.use_duration, ticks);
+        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
         let hand = self.hand;
         self.native_living_entity_use_item_stop(stack, None, hand, remaining, &mut canceled);
         !canceled
@@ -934,7 +939,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A mod's `Item.releaseUsing` of `stack` used `ticks`.
     pub(in crate::game) fn mod_release_using(&mut self, stack: &ItemStack, ticks: u32) {
         let mut used = false;
-        let remaining = super::item_use::ticks_left(self.use_duration, ticks);
+        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
         self.native_release_using(stack, None, remaining, &mut used);
         if used {
             self.side_apply_use_cooldown(stack);
@@ -976,16 +981,16 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn get_projectile(
         &mut self,
         weapon: &ItemStack,
-    ) -> Option<super::crossbow::Ammo> {
+    ) -> Option<super::crossbow_common::Ammo> {
         let slot = self.projectile_slot(&weapon.item);
         let vanilla = match slot {
             Some(i) => self.stack_in(i).cloned(),
             None => self
                 .creative
-                .then(|| ItemStack::new(super::crossbow::ARROW, 1)),
+                .then(|| ItemStack::new(super::crossbow_common::ARROW, 1)),
         };
         if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
-            return vanilla.map(|stack| super::crossbow::Ammo { stack, slot });
+            return vanilla.map(|stack| super::crossbow_common::Ammo { stack, slot });
         }
         let mut projectile = vanilla.clone();
         let player = self.side_projectile_player_uuid();
@@ -999,7 +1004,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             &mut projectile,
         );
         let slot = slot.filter(|_| projectile == vanilla);
-        projectile.map(|stack| super::crossbow::Ammo { stack, slot })
+        projectile.map(|stack| super::crossbow_common::Ammo { stack, slot })
     }
 
     /// `getPlayerPOVHitResult(level, player, SOURCE_ONLY)` for an empty bucket.
@@ -1209,7 +1214,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             owner.map(|o| [o.x, o.y, o.z]),
             &mut medium,
         );
-        let mut medium = medium.filter(|m| super::fishing::inside_medium(position, &m.answer))?;
+        let mut medium =
+            medium.filter(|m| super::fishing_common::inside_medium(position, &m.answer))?;
         if !server {
             medium.answer.loot_table = None;
             medium.answer.lure_ticks = None;
@@ -1226,17 +1232,17 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         (mut position, mut velocity, state, mut ground): (
             Vec3,
             Vec3,
-            super::fishing::State,
+            super::fishing_common::State,
             sunrise_world::ground_support::GroundState,
         ),
         random: &mut impl sunrise_core::random::RandomSource,
     ) -> (
         Vec3,
         Vec3,
-        super::fishing::State,
+        super::fishing_common::State,
         sunrise_world::ground_support::GroundState,
     ) {
-        use super::fishing::{State, bounds, rebound};
+        use super::fishing_common::{State, bounds, rebound};
         let b = [
             position.x.floor() as i32,
             position.y.floor() as i32,
@@ -1264,11 +1270,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 }
             }
             State::Hooked(id) => {
-                let hooked = if self
-                    .remote
-                    .as_ref()
-                    .is_some_and(|r| r.entity_id as u32 == id)
-                {
+                let hooked = if self.side_remote_owns_bobber_target(id) {
                     self.player
                         .as_ref()
                         .map(|p| (p.position, f64::from(p.dimensions.height)))
@@ -1377,7 +1379,8 @@ pub(in crate::game) fn projectile_slot(
 ) -> Option<usize> {
     let held = |s: &ItemStack| {
         is_arrow(items, s)
-            || weapon == super::crossbow::CROSSBOW && &*s.item == super::crossbow::FIREWORK_ROCKET
+            || weapon == super::crossbow_common::CROSSBOW
+                && &*s.item == super::crossbow_common::FIREWORK_ROCKET
     };
     hands
         .into_iter()
@@ -1563,6 +1566,22 @@ pub(in crate::game) fn held_attack_item(
     selected: usize,
 ) -> Option<&Arc<str>> {
     inventory.get(selected)?.as_ref().map(|s| &s.item)
+}
+
+/// `LivingEntity.getItemBlockingWith`'s delay: an item that blocks attacks blocks once it has been
+/// used for `BlocksAttacks.blockDelayTicks` (`Math.round(seconds * 20)`) ticks.
+pub(in crate::game) fn block_delay_passed(
+    component: &sunrise_items::items::BlocksAttacks,
+    ticks: u32,
+) -> bool {
+    ticks as i32 >= (component.delay_seconds * 20.0).round() as i32
+}
+
+/// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
+/// - entity.position()`, measured from the entity's feet, as
+/// `MultiPlayerGameMode.interact` computes it.
+pub(in crate::game) fn interact_location(point: Vec3, feet: Vec3) -> [f64; 3] {
+    [point.x - feet.x, point.y - feet.y, point.z - feet.z]
 }
 
 #[cfg(test)]

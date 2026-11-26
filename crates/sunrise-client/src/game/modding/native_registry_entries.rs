@@ -1,4 +1,5 @@
 //! `RegistryAccess.lookup` and `HolderLookup.listElements` on the current side's actual tables.
+use crate::game::side_ops::modapi_modding::{FunctionRegistry, SideOps as ModdingSideOps};
 use mod_api::RegistryEntry;
 use std::{collections::BTreeMap, sync::Arc};
 use sunrise_command::args::normalized;
@@ -93,15 +94,17 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             }
             "minecraft:advancement" => LocalRegistry::Advancements(&self.adv.tree),
             "minecraft:game_rule" => LocalRegistry::Rules(&self.level.rule_registry),
-            "minecraft:predicate" => {
-                LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.predicates)
-            }
-            "minecraft:item_modifier" => {
-                LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.item_modifiers)
-            }
-            "minecraft:slot_source" => {
-                LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.slot_sources)
-            }
+            "minecraft:predicate" => LocalRegistry::Json(ModdingSideOps::side_function_registry(
+                &self.side,
+                FunctionRegistry::Predicate,
+            )?),
+            "minecraft:item_modifier" => LocalRegistry::Json(
+                ModdingSideOps::side_function_registry(&self.side, FunctionRegistry::ItemModifier)?,
+            ),
+            "minecraft:slot_source" => LocalRegistry::Json(ModdingSideOps::side_function_registry(
+                &self.side,
+                FunctionRegistry::SlotSource,
+            )?),
             "minecraft:loot_table" => LocalRegistry::Loot(self.items()),
             "minecraft:recipe" => LocalRegistry::Recipes(self.recipes()),
             "minecraft:trade_set" => LocalRegistry::HashJson(&self.stations().trades.sets),
@@ -116,7 +119,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     fn registry_datapacks(&self, registry: &str) -> Option<Arc<mod_api::DatapackRegistrySet>> {
         if self.is_logical_server() {
             self.mods.datapack_registries.clone()
-        } else if self.remote.is_some() {
+        } else if self.side_has_remote() {
             // This set has already been filtered by the offer, sync policy and accepted schema.
             sunrise_sim::datapack_net::received().filter(|set| set.registry_available(registry))
         } else {
@@ -125,32 +128,15 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     pub(in crate::game) fn registry_sync(&self) -> Option<Arc<SyncData>> {
-        self.native_lifecycle.epoch()?;
-        if !self.is_logical_server() {
-            return None;
-        }
-        self.lan
-            .as_ref()
-            .map(|host| host.hub.lan.shared.sync())
-            .or_else(|| {
-                // The same lazy, frozen/current table the server's next connection receives. Never
-                // reconstruct a dynamic registry from the prepared files at a mod call boundary.
-                super::lan::sync::sync_data(
-                    &self.options.resources,
-                    &self.res.core.item_data,
-                    self.items(),
-                    &self.pack_files(),
-                )
-                .ok()
-            })
+        self.side_registry_sync()
     }
 
     fn registry_has_entry(&self, registry: &str, id: &str) -> bool {
-        if let Some(remote) = &self.remote {
+        if let Some(names) = self.side_remote_registry_names() {
             if registry == "minecraft:game_rule" {
                 return self.ui.rules.registry().position(id).is_some();
             }
-            return network_id(&remote.builtin, &remote.registries, registry, id).is_some()
+            return network_id(names.builtin, names.dynamic, registry, id).is_some()
                 || self
                     .registry_datapacks(registry)
                     .is_some_and(|set| set.contains_entry(registry, id));
@@ -209,7 +195,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `HolderLookup.listElements`, from the same owners used by `registry_entry`.
     pub(in crate::game) fn registry_entries(&self, registry: &str) -> Option<Vec<Identifier>> {
         let registry = normalized(registry);
-        if !self.is_logical_server() && self.remote.is_none() {
+        if !self.is_logical_server() && !self.side_has_remote() {
             return None;
         }
         if self.is_logical_server() {
@@ -220,23 +206,22 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         {
             return identifiers(entries);
         }
-        if let Some(remote) = &self.remote {
+        if let Some(names) = self.side_remote_registry_names() {
             if registry == "minecraft:game_rule" {
                 return identifiers(LocalRegistry::Rules(self.ui.rules.registry()).ids());
             }
-            return network_entries(&remote.builtin, &remote.registries, &registry);
+            return network_entries(names.builtin, names.dynamic, &registry);
         }
         if let Some(table) = self.local_registry(&registry) {
             return identifiers(table.ids());
         }
         if registry == "minecraft:dimension" {
-            return identifiers(
-                std::iter::once(self.dim.id()).chain(
-                    crate::game::Side::levels(&self.side)
-                        .into_iter()
-                        .flat_map(|l| l.parked.keys().map(|dimension| dimension.id())),
-                ),
-            );
+            let mut entries = Vec::new();
+            entries.extend(Identifier::parse(self.dim.id()).ok());
+            ModdingSideOps::side_visit_parked_dimensions(&self.side, |dim| {
+                entries.extend(Identifier::parse(dim.id()).ok());
+            });
+            return Some(entries);
         }
         if registry == "minecraft:trial_spawner" {
             return identifiers(sunrise_sim::mobs::trial_spawner::registry_ids()?);
@@ -281,14 +266,13 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         {
             return Some(found);
         }
-        if let Some(remote) = &self.remote {
-            let Some(index) = network_id(&remote.builtin, &remote.registries, &registry, &id)
-            else {
+        if let Some(names) = self.side_remote_registry_names() {
+            let Some(index) = network_id(names.builtin, names.dynamic, &registry, &id) else {
                 return Some(false);
             };
             return Some(
-                remote
-                    .registries
+                names
+                    .dynamic
                     .tag(&registry, &tag)
                     .is_some_and(|members| members.contains(&index)),
             );
@@ -300,11 +284,9 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             return Some(self.sync_tag_contains(&registry, &id, &tag));
         }
         if registry == "minecraft:slot_source" {
-            return Some(crate::game::Side::fns(&self.side).is_some_and(|f| {
-                f.store
-                    .slot_source_tag(&tag)
-                    .is_ok_and(|members| members.iter().any(|member| member == &id))
-            }));
+            return Some(ModdingSideOps::side_slot_source_tag_contains(
+                &self.side, &tag, &id,
+            ));
         }
         if registry == "minecraft:villager_trade" {
             return Some(
@@ -426,71 +408,6 @@ fn network_entries(
     )
 }
 
-/// TagLoader binds mod-registry tags against the already decoded candidate, before publication.
-/// No file's name can create an entry: required missing members invalidate that tag only.
-pub(in crate::game::server_side) fn bind_datapack_tags(
-    root: &std::path::Path,
-    overlay: &sunrise_world::loot::PackOverlay<'_>,
-    candidate: &mut mod_api::DatapackCandidate,
-) -> Result<(), String> {
-    for declaration in mod_api::__private::datapack_registry_declarations() {
-        let (namespace, path) = declaration
-            .key
-            .split_once(':')
-            .ok_or("invalid mod registry key")?;
-        let folder = format!("{namespace}/{path}");
-        let known: std::collections::BTreeSet<_> = candidate
-            .entries(&declaration.key)
-            .map_err(|error| format!("mod registry tags: {error:?}"))?
-            .into_iter()
-            .collect();
-        let tags = load_registry_tags(root, overlay, &folder, |id| known.contains(id))?;
-        candidate
-            .bind_tags(&declaration.key, tags)
-            .map_err(|error| format!("mod registry tags: {error:?}"))?;
-    }
-    Ok(())
-}
-
-fn load_registry_tags(
-    root: &std::path::Path,
-    overlay: &sunrise_world::loot::PackOverlay<'_>,
-    folder: &str,
-    known: impl Fn(&str) -> bool,
-) -> Result<BTreeMap<String, Vec<String>>, String> {
-    use sunrise_world::{damage_source::resource_files, worldgen::tags::TagDefinitions};
-    let tag_folder = format!("tags/{folder}");
-    let mut files: BTreeMap<String, Vec<Vec<u8>>> = resource_files(root, &tag_folder)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|(id, bytes)| (id, vec![bytes]))
-        .collect();
-    for (id, versions) in overlay.tag_kind(folder) {
-        files
-            .entry(id)
-            .or_default()
-            .extend(versions.iter().cloned());
-    }
-    let mut files: Vec<_> = files.into_iter().collect();
-    files.sort_by_cached_key(|(id, _)| {
-        let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        (format!("{path}.json"), namespace.to_owned())
-    });
-    let mut definitions = TagDefinitions::default();
-    for (id, versions) in files {
-        for bytes in versions {
-            if let Ok(json) = std::str::from_utf8(&bytes) {
-                // TagLoader retains lower-priority members when a tag codec fails.
-                let _ = definitions.apply_json(&id, "registry tags", json);
-            }
-        }
-    }
-    definitions
-        .build(|id, _| known(id).then(|| id.to_owned()))
-        .map(|built| built.tags)
-        .map_err(|error| error.to_string())
-}
-
 #[cfg(test)]
 mod condition_tests {
     #[test]
@@ -503,7 +420,7 @@ mod condition_tests {
                     .to_vec(),
             ],
         )];
-        let tags = super::load_registry_tags(
+        let tags = crate::game::server_side::native_registry_entries_server::load_registry_tags(
             root.path(),
             &sunrise_world::loot::PackOverlay {
                 files: &files,

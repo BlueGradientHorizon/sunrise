@@ -34,14 +34,6 @@ pub(in crate::game) enum Planned {
     Loaded(SpawnTree, Option<Tag>, u32),
 }
 
-/// What the spawner code keeps between ticks.
-#[derive(Default)]
-pub(in crate::game) struct SpawnerState {
-    /// The mob shown in each spawner and the id it was made for
-    /// (`getOrCreateDisplayEntity`).
-    pub(in crate::game) displays: HashMap<Pos, (String, Mob)>,
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `EntityType.byString`: the type is in the registry.
     pub(in crate::game) fn entity_type_exists(&self, id: &str) -> bool {

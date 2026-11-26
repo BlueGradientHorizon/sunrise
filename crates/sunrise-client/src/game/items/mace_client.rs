@@ -1,5 +1,5 @@
 use super::Game;
-use crate::game::server_side::mace::KNOCKBACK_RADIUS;
+use crate::game::mace_common::KNOCKBACK_RADIUS;
 use sunrise_core::{position::BlockPos, random::RandomSource};
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 

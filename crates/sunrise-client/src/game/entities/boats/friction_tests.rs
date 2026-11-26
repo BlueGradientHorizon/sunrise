@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::boats_common::Status;
 use std::sync::atomic::Ordering;
 
 #[test]

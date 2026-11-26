@@ -7,7 +7,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`handleTakeItemEntity`).
     pub(in crate::game) fn guest_arrows(&mut self, gi: usize) {
         use sunrise_sim::arrows::Touch;
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let (conn, id, at, creative, unable, dims, player, name) = {
@@ -34,7 +34,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         .inflate(Vec3::new(1.0, 0.5, 1.0));
         let mut projectiles = self.creatures.projectiles.lift();
         #[cfg(test)]
-        crate::game::entity::taken_pass_tests::after_take(self);
+        crate::game::entity_server::taken_pass_tests::after_take(self);
         let mut picked = Vec::new();
         projectiles.retain(|shot| {
             let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {
@@ -72,14 +72,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if let Some(arrow) = shot.arrow.as_ref() {
                 self.native_player_pickup_arrow(player, &name, shot.id, &arrow.pickup_item.item);
             }
-            if let Some(host) = self.lan.as_ref() {
+            if let Some(host) = self.side.lan.as_ref() {
                 host.hub.take_item(shot.id as i32, id, 1, at);
             }
         }
     }
     /// `Player.tick`'s takeXpDelay and `Player.aiStep`'s touch of experience orbs.
     pub(in crate::game) fn guest_orbs(&mut self, gi: usize) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let g = &host.hub.guests[gi];
@@ -143,7 +143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let index = touching[pick];
         let mut orb = self.orbs[index].clone();
         let mut canceled = false;
-        let listened = (self.serving.is_some() || self.options.dedicated.is_some())
+        let listened = (self.side.serving.is_some() || self.options.dedicated.is_some())
             && mod_api::__private::listened(mod_api::HookId::PickupXp);
         if listened {
             let dimension = self.dim.id();
@@ -170,11 +170,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             self.orbs[index].count -= 1;
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.play.entry(conn).or_default().xp_delay = 2;
         }
         self.native_player_exp_cooldown_change(player, &name, 2);
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.take_item(orb.id as i32, id, 1, at);
         }
         let mut random = sunrise_level::random_source::create();
@@ -197,7 +197,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Dropped items touching a guest go into their inventory
     /// (`ItemEntity.playerTouch`, then `ServerPlayer.onItemPickup`).
     pub(in crate::game) fn guest_pickups(&mut self, gi: usize) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let (conn, mode, position, id, uuid) = {
@@ -333,7 +333,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // Entity.take: the clients play the pickup sound themselves
         // (handleTakeItemEntity).
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             for (item, count) in taken {
                 host.hub.take_item(item as i32, id, count as i32, position);
             }

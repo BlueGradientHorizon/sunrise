@@ -270,10 +270,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
                     b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     b.fire_ticks = crate::game::boats::saved_fire(&tag);
-                    b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
+                    b.ticks_frozen = crate::game::boats_common::saved_ticks_frozen(&tag);
                     if b.chest {
-                        b.items =
-                            save::decode_items(tag.get("Items"), crate::game::boats::CHEST_SLOTS);
+                        b.items = save::decode_items(
+                            tag.get("Items"),
+                            crate::game::boats_common::CHEST_SLOTS,
+                        );
                     }
                 });
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
@@ -373,7 +375,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 orb.air = new.air;
                 // Entity.load reads portalCooldown and leaves the portal
                 // process as it is.
-                if let Some(portal) = self.portals.entities.get_mut(&id) {
+                if let Some(portal) = self.side.portals.entities.get_mut(&id) {
                     portal.cooldown = match tag.get("PortalCooldown") {
                         Some(Tag::Int(cooldown)) => *cooldown,
                         _ => 0,
@@ -1265,6 +1267,7 @@ pub(in crate::game) mod modern_literal_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

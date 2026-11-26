@@ -128,7 +128,7 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
                 10,
             );
             guest.placed = true;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         }
         let kind = game
             .res
@@ -211,7 +211,7 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
         let marker = game.entity(41).expect("the marker's handle");
         assert_eq!(marker.body_yaw(game), None);
 
-        let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 540.75, 0);
+        let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 540.75, 0);
         dragon.id = 42;
         game.dragon.replace(dragon);
         let dragon = game.entity(42).expect("the dragon's handle");

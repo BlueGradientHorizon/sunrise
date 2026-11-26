@@ -7,6 +7,7 @@ use super::{
         execute::{ExecState, Source},
     },
 };
+use crate::game::function_pack_stack::PackStack;
 use mod_api::__private::reload::ReloadStageError;
 use std::sync::Arc;
 use sunrise_command::{Arg, Context};
@@ -80,27 +81,6 @@ impl PreparedFunctionCall {
     }
 }
 
-/// The world's pack stack: the built-in pack (unless disabled), the packs
-/// of `<world>/datapacks` and the resources root's feature packs, with the
-/// enabled ids from `datapacks.json` (`PackRepository.reload`).
-pub(in crate::game) struct PackStack {
-    pub builtin: Option<DataPack>,
-    pub(in crate::game) content: DataPack,
-    pub packs: Vec<Arc<DataPack>>,
-    pub enabled: Vec<String>,
-    /// The feature flags the stack was selected for: the incoming world's, also on its first
-    /// open, before `self.level` holds them (what `neoforge:feature_flags_enabled` reads).
-    pub(in crate::game) features: Vec<String>,
-}
-impl PackStack {
-    /// The enabled packs in `enabled` (the selected) order, later overriding
-    /// earlier: `PackRepository.openAllSelected` keeps the selected order.
-    pub(in crate::game) fn enabled_packs(&self) -> impl Iterator<Item = &DataPack> {
-        self.enabled
-            .iter()
-            .filter_map(|id| self.packs.iter().find(|p| &p.id == id).map(Arc::as_ref))
-    }
-}
 pub(in crate::game) fn pack_stack(
     world_root: &std::path::Path,
     resources: &std::path::Path,
@@ -112,7 +92,7 @@ pub(in crate::game) fn pack_stack(
 ) -> PackStack {
     let builtin = (!vanilla_disabled)
         .then(|| DataPack::from_source("vanilla".into(), builtin_source.clone()));
-    let packs = super::pack_finders::data_repository(world_root, resources, additional);
+    let packs = crate::game::pack_discovery::data_repository(world_root, resources, additional);
     let enabled = datapack::enabled_ids(world_root, &packs, enabled_features);
     PackStack {
         content: DataPack::from_source("sunrise-content".into(), content_source.clone()),
@@ -171,7 +151,7 @@ pub(in crate::game) fn overlay_files(
 impl FnState {
     /// The enabled world packs in resource priority order, highest first: a
     /// later selected pack overrides an earlier one (`PackRepository` order).
-    pub(in crate::game::server_side) fn pack_sources(
+    pub(in crate::game) fn pack_sources(
         &self,
     ) -> impl DoubleEndedIterator<Item = &sunrise_assets::resource_source::ResourceSource> {
         self.enabled
@@ -260,7 +240,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let changes = next_root
             .as_ref()
             .map_or(&self.pack.data_changes, |root| root.data_changes());
-        let additional = super::pack_finders::data_packs(&self.mods);
+        let additional = crate::game::pack_discovery::data_packs(&self.mods);
         let stack = pack_stack(
             &self.side.world_root,
             &resources,
@@ -1492,7 +1472,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // One resolve for the store and the tables, as `/reload`'s is: the
         // timers already in memory stay, and none come back from disk
         // (`ServerFunctionManager` keeps its queue over a pack change).
-        let additional = super::pack_finders::data_packs(&self.mods);
+        let additional = crate::game::pack_discovery::data_packs(&self.mods);
         let mut stack = pack_stack(
             &self.side.world_root,
             &self.options.resources,
@@ -2509,7 +2489,10 @@ mod tests {
             assert_eq!(first_instance.priority().unwrap(), 1000);
             let live_stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
             assert_eq!(
-                super::super::native_world_read::block_in_tag(live_stone, "reload_test:candidate"),
+                crate::game::native_world_read_common::block_in_tag(
+                    live_stone,
+                    "reload_test:candidate"
+                ),
                 Some(true)
             );
             crate::game::api_values::install_parts(&[ModEntry::new(
@@ -2524,7 +2507,7 @@ mod tests {
             crate::game::api_values::resolve_block_definitions(&registry).unwrap();
             let stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
             let old_tag =
-                super::super::native_world_read::block_in_tag(stone, "reload_test:candidate");
+                crate::game::native_world_read_common::block_in_tag(stone, "reload_test:candidate");
             let old_context = game.loop_context.clone();
             let old_root = game.options.resources.clone();
             let old_data = game.pack.data_source.clone();
@@ -2562,7 +2545,7 @@ mod tests {
             assert_eq!(game.damage_tag_generation, old_generation);
             assert_eq!(game.side.fns.0.enabled, old_enabled);
             assert_eq!(
-                super::super::native_world_read::block_in_tag(stone, "reload_test:candidate"),
+                crate::game::native_world_read_common::block_in_tag(stone, "reload_test:candidate"),
                 old_tag
             );
             game.save_datapack_settings();
@@ -2813,6 +2796,7 @@ mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -2993,6 +2977,7 @@ mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3098,6 +3083,7 @@ mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3352,6 +3338,7 @@ mod entity_score_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3451,6 +3438,7 @@ mod entity_score_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3584,6 +3572,7 @@ mod required_tag_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         let dir = std::env::temp_dir().join(format!(

@@ -7,12 +7,9 @@ pub(in crate::game) mod carrying;
 #[cfg(test)]
 #[path = "piston_push/restitution_tests.rs"]
 pub(in crate::game) mod restitution_tests;
-use super::{
-    Game,
-    entity::{Entity, EntityHandle, with_entity, with_entity_mut},
-    move_gate::MoveWho,
-};
+use super::{Game, move_gate::MoveWho};
 use crate::game::collision_source::Mover;
+use crate::game::entity::{Entity, EntityHandle, with_entity, with_entity_mut};
 use sunrise_core::geometry::{Aabb, Direction, Vec3, border::BorderGeometry};
 use sunrise_core::position::BlockPos;
 use sunrise_level::collisions::{EntityCollisions, SceneCollisions, no_collision_empty};

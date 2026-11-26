@@ -16,7 +16,7 @@ fn a_client_reads_the_light_of_its_level() {
     super::native_entity_refs::tests::with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "BrightnessTest").unwrap();
-        game.remote.as_mut().unwrap().logged_in = true;
+        game.side.remote.as_mut().unwrap().logged_in = true;
         let mut chunk = Chunk::empty(0, 0);
         Arc::make_mut(&mut chunk.sections[0]).light = Light::Uniform(0xC5);
         game.world.chunks.insert((0, 0), Arc::new(chunk));
@@ -32,7 +32,7 @@ fn a_client_reads_the_light_of_its_level() {
             None
         );
         assert_eq!(level.can_see_sky(game, lit), Some(false));
-        game.remote.as_mut().unwrap().logged_in = false;
+        game.side.remote.as_mut().unwrap().logged_in = false;
         assert_eq!(game.level_brightness(level, LightLayer::Block, lit), None);
     });
 }
@@ -50,7 +50,7 @@ fn restricted_level_support_and_sky_reads() {
         with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "SupportReadTest").unwrap();
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             let pos = [3, -60, 5];
             let unloaded = [32, -60, 5];
             // Beyond the top light padding of the Overworld, not a block position.
@@ -102,7 +102,7 @@ fn restricted_level_support_and_sky_reads() {
             game.with_level(|_, level, _| assert_eq!(level.can_see_sky(above), Some(false)));
             assert!(!game.world.loaded(unloaded[0], unloaded[2]));
             // A view without a live client level still refuses, even with a column in memory.
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(level.can_see_sky(game, pos), None);
             assert_eq!(
                 level.block_face_sturdy(game, pos, BlockFace::Up, SupportType::Rigid),
@@ -130,7 +130,7 @@ fn a_guests_sprinting_survives_a_turn() {
         assert!(game.as_guest(13, |_| ()).is_some());
         assert_eq!(game.entity_is_sprinting(entity), Some(false));
         let stored = |game: &mut crate::game::ServerGame<'_>| {
-            let lan = game.lan.as_mut().unwrap();
+            let lan = game.side.lan.as_mut().unwrap();
             let flag = lan.hub.update_guest(13, |g| g.sprinting).unwrap();
             let modifier = lan.hub.guests.motion_mut(13).unwrap().has_sprint_modifier();
             (flag, modifier)
@@ -180,7 +180,7 @@ fn a_client_reads_only_its_own_menu() {
         super::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "MenuReadTest").unwrap();
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             let player = game.local_player().unwrap();
             let other = mod_api::__private::game::player_ref(
                 mod_api::EntityRef::new(player.entity().epoch(), player.entity().id() + 1),
@@ -194,7 +194,8 @@ fn a_client_reads_only_its_own_menu() {
             assert_eq!(game.menu_slot_count(inventory), Some(46));
             assert_eq!(game.menu_slot(inventory, 36), Some(Some(stack.clone())));
             assert_eq!(game.menu_carried(inventory), Some(Some(stack.clone())));
-            game.remote
+            game.side
+                .remote
                 .as_mut()
                 .unwrap()
                 .menu
@@ -203,7 +204,7 @@ fn a_client_reads_only_its_own_menu() {
             assert_eq!(game.menu_slot_count(open), Some(63));
             assert_eq!(game.menu_slot(open, 54), Some(Some(stack)));
             assert_eq!(game.menu_slot_count(inventory), None);
-            game.remote.as_mut().unwrap().menu.set(None);
+            game.side.remote.as_mut().unwrap().menu.set(None);
             assert_eq!(game.menu_slot_count(open), None);
             assert_eq!(
                 game.menu_slot_count(game.player_container_menu(player).unwrap()),
@@ -233,7 +234,7 @@ fn client_merchant_offers_follow_the_open_menu() {
     mod_platform::testing::with_mods(Default::default(), || {
         with_client_game(|game| {
             let _server = logged_client(game);
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.builtin = std::sync::Arc::new(
                 Builtin::parse(
                     r#"{

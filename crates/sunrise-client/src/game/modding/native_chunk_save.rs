@@ -101,9 +101,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // No world open (`world_root` is set by `finish_open_world`): the save
         // is `Game::new`'s placeholder under the working directory.
         if self.world.carrier_fences.is_broken()
-            || self.remote.is_some()
             || self.side.world_root.as_os_str().is_empty()
-            || self.agent.hold_server
+            || self.side.hold_server
             || self.clock.sprinting()
             || self
                 .side

@@ -40,9 +40,15 @@ fn with_game<R>(f: impl FnOnce(&mut crate::game::ServerGame<'_>) -> R) -> Option
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let mut resources = None;
     let res = &*resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     game.world

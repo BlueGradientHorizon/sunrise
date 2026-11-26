@@ -143,7 +143,7 @@ fn content() -> serde_json::Value {
         "mod": { "api": [manifest::API] },
         "native_mod": { "exact_build": true, "rebuild": true },
         // The lines it draws: a newer one is read and checked, not drawn yet.
-        "shader": { "schema": sunrise_shader_api::SCHEMA, "api": [sunrise_shader_api::API] },
+        "shader": { "schema": sunrise_game_data::shader_versions::SCHEMA, "api": [sunrise_game_data::shader_versions::API] },
         "resourcepack": { "format": sunrise_core::version::RESOURCE_PACK_FORMAT },
         "datapack": { "format": sunrise_core::version::DATA_PACK_FORMAT },
         "modpack": { "format": sunrise_mod_package::modpack::FORMAT },
@@ -464,7 +464,7 @@ mod tests {
         );
         assert_eq!(
             content["shader"]["api"],
-            serde_json::json!([sunrise_shader_api::API])
+            serde_json::json!([sunrise_game_data::shader_versions::API])
         );
         assert_eq!(content["native_mod"]["rebuild"], true);
         assert_eq!(

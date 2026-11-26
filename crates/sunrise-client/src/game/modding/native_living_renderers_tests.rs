@@ -208,7 +208,9 @@ fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Sh
     };
     let mods = vec![mod_api::ModEntry::new("scene", Box::new(scene))].into();
     mod_platform::testing::with_mods(mods, || {
-        super::mods::register_entity_renderers(super::execution_role::ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_entity_renderers(
+            super::execution_role::ExecutionRole::Client,
+        );
         super::native_entity_refs::tests::with_client_game(|game| {
             game.resolve_entity_renderers();
             check(game, &heard, &skeleton);

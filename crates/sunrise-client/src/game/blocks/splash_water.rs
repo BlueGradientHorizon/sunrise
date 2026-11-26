@@ -156,7 +156,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     let m = &mut self.mobs[index];
                     m.damage(
-                        crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
+                        crate::game::server_side::entity_server::damage_level_of!(
+                            self,
+                            &attack,
+                            &mut credit,
+                            None
+                        ),
                         1.0,
                         source,
                     );

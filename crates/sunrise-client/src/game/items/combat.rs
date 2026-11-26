@@ -1,6 +1,7 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
 use super::{Game, commands_common::Target};
+use crate::game::combat_common::{DROWN_EVENT, PlayerCredit};
 
 #[cfg(test)]
 #[path = "tests/infested_roll_tests.rs"]
@@ -13,9 +14,6 @@ use {
     sunrise_sim::mobs::Mob, sunrise_sim::mobs::Species, sunrise_sim::mobs::Who,
     sunrise_sim::mobs::stuck::Stuck, sunrise_sim::motion::MotionEvent,
 };
-
-/// `EntityEvent.DROWN_PARTICLES`: broadcast with the drowning damage.
-pub(in crate::game) const DROWN_EVENT: i8 = 67;
 
 pub(in crate::game) struct Entry {
     pub(in crate::game) damage_type: String,
@@ -39,14 +37,6 @@ pub(in crate::game) struct PendingAttacker {
     pub(in crate::game) credit: bool,
 }
 
-/// `LivingEntity.lastHurtByPlayer`: a reference that survives a disconnect.
-#[derive(Clone, Copy)]
-pub(in crate::game) struct PlayerCredit(pub(in crate::game) u128);
-impl From<PlayerCredit> for u128 {
-    fn from(credit: PlayerCredit) -> Self {
-        credit.0
-    }
-}
 impl CombatTracker {
     /// `LivingEntity.lastHurtByPlayer`, remembered for 100 ticks (taken, as a
     /// dead player's memory goes with them).
@@ -397,7 +387,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let uuid = captured_player
                     .map(sunrise_sim::lan::playerdata::ints_uuid)
                     .or_else(|| {
-                        self.lan.as_ref().and_then(|host| {
+                        self.side.lan.as_ref().and_then(|host| {
                             host.hub
                                 .guests
                                 .iter()
@@ -665,7 +655,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if player == self.side.lan_acting {
             return self.main_hand_custom_name();
         }
-        let g = self.lan.as_ref()?.hub.guest(player?)?;
+        let g = self.side.lan.as_ref()?.hub.guest(player?)?;
         let stack = g.inventory.get(g.selected)?.as_ref()?;
         has_custom_name(stack).then(|| self.stack_display_name(stack))
     }
@@ -790,7 +780,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         let uuid = sunrise_sim::lan::playerdata::ints_uuid(owner);
-        let recipient = if let Some(lan) = &self.lan {
+        let recipient = if let Some(lan) = &self.side.lan {
             lan.hub.guests.iter().any(|g| g.placed && g.uuid == uuid)
         } else {
             self.player.is_some()
@@ -809,7 +799,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(message) = built else {
             return;
         };
-        if let Some(lan) = &self.lan {
+        if let Some(lan) = &self.side.lan {
             let content = sunrise_sim::lan::data::component_nbt(&message.component());
             lan.hub.system_message_to_player(uuid, content);
         } else {
@@ -1022,7 +1012,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game::server_side) fn last_hurt_target_alive(&self, id: u32) -> bool {
-        use super::lan_actions::CombatPlayer;
+        use crate::game::server_side::lan_actions_server::CombatPlayer;
         if let Some(player) = self.combat_player(id) {
             return match player {
                 CombatPlayer::InPlace => self

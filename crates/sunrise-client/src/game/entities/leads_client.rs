@@ -1,16 +1,53 @@
 use super::Game;
-use crate::game::server_side::leads::Rope;
-use crate::game::server_side::leads::abgr;
-use crate::game::server_side::leads::boat_hold;
-use crate::game::server_side::leads::pack_light;
-use crate::game::server_side::leads::rope_hold_angles;
-use crate::game::server_side::leads::rot_y;
 use sunrise_client::actions::Action;
 use sunrise_client::mesher::Vertex;
 use sunrise_sim::{
     mobs::leash::{self, Holder},
     pose::Pose,
 };
+
+/// `Vec3.yRot(angle)`.
+/// `LocalPlayer.getRopeHoldPosition`'s `Mth.lerp(partialTick * 0.5F, getYRot(),
+/// yRotO)` and the same for the pitch, in radians.
+pub(in crate::game) fn rope_hold_angles(
+    now: (f32, f32),
+    old: (f32, f32),
+    alpha: f32,
+) -> (f64, f64) {
+    let t = alpha * 0.5;
+    let lerp = |a: f32, b: f32| a + t * (b - a);
+    (
+        f64::from(lerp(now.0, old.0) * (std::f32::consts::PI / 180.0)),
+        f64::from(lerp(now.1, old.1) * (std::f32::consts::PI / 180.0)),
+    )
+}
+fn rot_y(v: glam::DVec3, angle: f64) -> glam::DVec3 {
+    let (s, c) = (angle.sin(), angle.cos());
+    glam::DVec3::new(v.x * c + v.z * s, v.y, v.z * c - v.x * s)
+}
+/// `Entity.getRopeHoldPosition` of a boat: 0.7 of its eye height (0.5625) up.
+fn boat_hold() -> glam::DVec3 {
+    glam::DVec3::new(0.0, f64::from(0.5625_f32) * 0.7, 0.0)
+}
+fn pack_light(light: u8) -> u32 {
+    (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8)
+}
+fn abgr(r: f32, g: f32, b: f32) -> u32 {
+    let c = |v: f32| (v * 255.0) as u32 & 255;
+    0xFF00_0000 | c(b) << 16 | c(g) << 8 | c(r)
+}
+/// One leashed entity's rope, as `EntityRenderer.extractRenderState` reads it.
+struct Rope {
+    holder: Holder,
+    /// `getPosition(partialTicks)`.
+    here: glam::DVec3,
+    /// `getPreciseBodyRotation` in radians.
+    body: f64,
+    /// `getLeashOffset`.
+    offset: [f64; 3],
+    /// `getQuadLeashOffsets`, when the entity supports a quad lead.
+    quad: Option<[[f64; 3]; 4]>,
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LeashFeatureRenderer` for every lead and `LeashKnotRenderer` for the knots.

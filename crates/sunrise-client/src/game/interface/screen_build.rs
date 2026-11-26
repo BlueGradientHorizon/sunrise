@@ -865,7 +865,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn resize_text_screens(&mut self, w: f32, h: f32) {
         let m = sunrise_client::screen_draw::Measure(&self.side.gui.atlas.font);
         let c = sunrise_client::chat::Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
+            dispatcher: super::chat::chat_tree(&self.side.remote),
             registries: &self.ui.registries,
         };
         match self.side.screen {

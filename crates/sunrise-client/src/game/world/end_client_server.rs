@@ -1,5 +1,5 @@
 use super::Game;
-use crate::game::server_side::end::EyeOfEnder;
+use crate::game::end_state::EyeOfEnder;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 

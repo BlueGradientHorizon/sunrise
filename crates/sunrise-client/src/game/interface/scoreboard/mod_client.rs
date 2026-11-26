@@ -1,11 +1,14 @@
 use super::{Game, chat_common::PLAYER_NAME};
-use crate::game::server_side::scoreboard::tab_players_needed;
-use crate::game::server_side::scoreboard::*;
+use crate::game::scoreboard_common::{pet_team, root_owner, tame_owner};
 use std::collections::HashMap;
 use sunrise_client::actions::Action;
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays};
 use sunrise_game_data::scoreboard::{self as sb};
 use sunrise_sim::{lan::playerdata::ints_uuid, save::uuid_text};
+
+pub(in crate::game) fn tab_players_needed(shown: bool, changed: bool) -> bool {
+    shown || changed
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Hud.extractScoreboardSidebar` / `displayScoreboardSidebar`.
@@ -35,7 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.flush_skin_slots();
         let key =
             self.side.screen == super::Screen::Playing && self.held_mapping(Action::Playerlist);
-        let Some(count) = self.remote.as_ref().map(|r| r.listed_player_count()) else {
+        let Some(count) = self.side.remote.as_ref().map(|r| r.listed_player_count()) else {
             self.side.tab_list.0.set_visible(false);
             return;
         };
@@ -118,6 +121,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // A server's client is in its team by its profile name.
         let name = self
+            .side
             .remote
             .as_ref()
             .map_or(PLAYER_NAME, |r| r.profile_name.as_str());
@@ -175,6 +179,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .filter_map(|m| Some((m.id, tame_owner(m)?)))
             .collect();
         let own = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| Some((u32::try_from(r.entity_id).ok()?, self.client_player_team()?)));
@@ -216,6 +221,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn client_root_owner_name(&self, owner: [i32; 4]) -> Option<String> {
         let pet_owner = |uuid: [i32; 4]| {
             let pet = self
+                .side
                 .remote
                 .as_ref()
                 .and_then(|r| r.level_uuids.get(&ints_uuid(uuid)).copied())
@@ -234,7 +240,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let root = root_owner(owner, pet_owner);
         let root_u128 = ints_uuid(root);
-        if let Some(r) = self.remote.as_ref() {
+        if let Some(r) = self.side.remote.as_ref() {
             if r.profile == root_u128 {
                 return Some(r.profile_name.clone());
             }

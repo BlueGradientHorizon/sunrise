@@ -2,14 +2,13 @@
 //! filters compile to the command matcher, its heights read, and its runs made
 //! at once through `World::edit_runs`, with what `fill ... strict` does for
 //! the block entities and the watched blocks of each block changed.
-use super::{
-    Game,
-    transactions::{StrictBlockStep, StrictBlockSteps, take_replay_row},
-};
+use super::Game;
+use crate::game::block_edits_common::Tracked;
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::block_edits_common::{
     MAX_COLUMNS, column_height, loaded_heights,
 };
+use crate::game::transactions::{StrictBlockStep, StrictBlockSteps, take_replay_row};
 use mod_api::BlockEdit;
 use mod_api::ColumnBlocks;
 use mod_api::Heightmap;
@@ -22,9 +21,6 @@ use sunrise_level::{
     world::World,
 };
 use sunrise_world::registry::BlockStateId;
-
-/// A change `World::edit_runs` reported: position, previous and new state.
-pub(in crate::game) type Tracked = ((i32, i32, i32), u32, u32);
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Make a mod's block edit; how many blocks changed, or why none did.

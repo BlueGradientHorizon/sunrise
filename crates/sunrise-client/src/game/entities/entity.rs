@@ -1,36 +1,23 @@
-//! `Entity`: what every kind in the game's entity lists answers to, so a system
-//! can treat them alike and only write down where vanilla's kinds differ.
-//!
-//! Default methods follow vanilla's `Entity`; a kind overrides one only where
-//! its vanilla class does. [`EntityHandle`] names one entity by list and index,
-//! so a system can walk handles and reach each entity after other borrows of
-//! `Game` end. The walk allocates nothing and dispatch is static: hot paths pay
-//! no vtable. A new kind is one line in `entity_lists!` and one `impl Entity`.
-
-use super::commands::Target;
+use super::nether_portal;
 use super::persist::ChunkKey;
-use super::{FallingBlock, Game, general::GeneralRow};
-use super::{
-    boats::Boat, fireworks::Rocket, minecarts::Minecart, tnt::PrimedTnt, trident::ThrownTrident,
+use crate::game::entity::{
+    Entity, EntityHandle, apply_contact_writes, armor_stand_size, entity_lists, entity_lists_of,
+    for_each_entity,
 };
-use std::borrow::Cow;
+use crate::game::{
+    FallingBlock, Game, boats_common::Boat, fireworks::Rocket, minecarts::Minecart,
+    tnt_common::PrimedTnt,
+};
 use std::collections::{HashMap, HashSet};
-use sunrise_core::geometry::{Aabb, Direction, Vec3};
+use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::RandomSource as _;
-use sunrise_level::collisions::{PowderSnowSubject, SceneCollisions};
-#[allow(unused_imports)]
-use sunrise_sim::entities::{ArmorStand, ExperienceOrb, ItemEntity, ItemFrame};
-use sunrise_sim::entity_rules::EntityRules;
-use sunrise_sim::join_seq::JoinSeq;
-use sunrise_sim::join_seq::Joined as _;
-use sunrise_sim::mobs::{Mob, Species};
-use sunrise_sim::projectiles::{Projectile, ProjectileKind};
-use sunrise_world::{
-    block_collision_scan::CollisionScanError, collision_context::CollisionContext,
-    ground_support::GroundState, level::data::PushReaction, move_gate::MoveGate, piston_push,
-};
+use sunrise_sim::entities::{ArmorStand, ExperienceOrb, ItemEntity};
+use sunrise_sim::join_seq::{JoinSeq, Joined as _};
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::thrown_trident::ThrownTrident;
 
 #[allow(unused_imports)]
 pub(in crate::game) use super::pick_entity_server::visit_server_section_members;
@@ -50,78 +37,10 @@ pub(in crate::game::server_side) fn assign_stored_id(
 /// calls `hurtServer(lightning_bolt, 5)`, so a kind whose `hurtServer` does
 /// nothing (projectiles, rockets, TNT, falling blocks, armor stands here) stays
 /// untouched. A strike runs the stages in this order.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::game) enum ThunderHit {
-    Untouched,
-    /// Burns, takes 5 damage, and the kinds with their own `thunderHit` change.
-    Mob,
-    /// `VehicleEntity.hurtServer`: 5 x 10 is over the 40 that destroys it.
-    Vehicle,
-    /// `ExperienceOrb.hurtServer`: 5 damage off 5 health.
-    Orb,
-    /// `ItemEntity.hurtServer`: burns up unless fire resistant.
-    Item,
-}
-
-/// What a blast knows about itself, for the entities in its reach to answer.
-#[derive(Clone, Copy)]
-pub(in crate::game) struct Blast {
-    /// `VehicleEntity.ignoreExplosion`: a mob's blast, with mob griefing off.
-    pub(in crate::game) vehicles_ignore: bool,
-    /// `ItemEntity.ignoreExplosion` (`shouldAffectBlocklikeEntities`).
-    pub(in crate::game) items_ignore: bool,
-    /// The exploding mob, which `getEntities(source, box)` leaves out.
-    pub(in crate::game) spared: Option<u32>,
-}
-
-/// `EntityType.TRIDENT.getDimensions()`: width, height and eye height.
-pub(in crate::game) const THROWN_TRIDENT_DIMENSIONS: [f32; 3] = [0.5, 0.5, 0.13];
-
-pub(in crate::game) trait Entity: EntityRules {
+pub(in crate::game::server_side) trait ServerEntity: Entity {
     /// The kind's serializer overlays its object-owned attachments itself (for
     /// recursive object trees); the common save walk must not encode them twice.
     const SERIALIZES_ATTACHMENTS: bool = false;
-
-    /// `Entity.getId`.
-    fn id(&self) -> u32;
-    fn position(&self) -> Vec3;
-    fn position_mut(&mut self) -> &mut Vec3;
-    /// Where it stood when the last tick began (`Entity.lastKnownPosition`'s
-    /// reading): `position - previous_position` is `computeSpeed`.
-    fn previous_position(&self) -> Vec3;
-    /// `Entity.getDeltaMovement`.
-    fn velocity(&self) -> Vec3;
-    fn velocity_mut(&mut self) -> &mut Vec3;
-    /// The server's accumulated `Entity.fallDistance`. A kind that does not track it has zero.
-    fn fall_distance(&self) -> f64 {
-        self.body_fall_distance()
-    }
-    /// `Entity.resetFallDistance`: how far it has fallen is forgotten, so its next landing
-    /// hurts it as a step does. Required, so a new kind states whether it keeps a fall distance.
-    fn reset_fall_distance(&mut self);
-    /// `Entity.getYRot` and `getXRot`: yaw, pitch.
-    fn rotation(&self) -> [f32; 2];
-    /// The rotation part of `Entity.teleportSetPosition`: `setYRot`, `setXRot`
-    /// (clamped to -90..90), then `setOldRot`.
-    fn set_rotation(&mut self, rotation: [f32; 2]);
-    fn bounds(&self) -> Aabb;
-    /// `Entity.getDimensions(getPose())` before `entity_size`, for a kind the server asks for
-    /// at its size passes (`modding/entity_sizes.rs`), its pose standing; None for one asked
-    /// another way (a mob, by `native_mob_sizes`) or not at all.
-    fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
-        None
-    }
-    /// What `entity_size` last answered for it ([`Self::vanilla_dimensions`]).
-    fn size_answer(&self) -> Option<sunrise_sim::pose::SizeAnswer> {
-        None
-    }
-    /// Keep `answer`: its box takes it while it holds.
-    fn set_size_answer(&mut self, _answer: sunrise_sim::pose::SizeAnswer) {}
-    /// What a selector finds this entity as (`@e`), or `None` for one it cannot
-    /// name yet. Required, so a new kind states which.
-    fn selector_target(&self) -> Option<Target>;
-    /// The entity type id a native mod's join hook names (`minecraft:oak_boat`).
-    fn native_type(&self) -> Cow<'_, str>;
     /// Saves entity `index` of this kind into its chunk's entity list: the
     /// chunk and the NBT when it lies in `keys` and is saved with its chunk.
     /// Required, so a new kind states how it saves.
@@ -142,221 +61,6 @@ pub(in crate::game) trait Entity: EntityRules {
         tag: Tag,
         transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag>;
-
-    fn on_ground(&self) -> bool {
-        self.ground_state().is_some_and(|g| g.on_ground)
-    }
-    fn body_fall_distance(&self) -> f64 {
-        0.0
-    }
-    fn ground_state(&self) -> Option<&GroundState> {
-        None
-    }
-    fn ground_state_mut(&mut self) -> Option<&mut GroundState> {
-        None
-    }
-    fn support_collision(
-        &self,
-        _tags: &sunrise_items::items::EntityTypeTags,
-    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        (
-            sunrise_sim::motion::BodyMotion::entity_context(self.id(), self.position()),
-            Some(PowderSnowSubject {
-                fall_distance: self.body_fall_distance(),
-                ..Default::default()
-            }),
-        )
-    }
-    /// Update the live owner's retained support. None is `Entity.setOnGround`'s null movement.
-    fn update_retained_ground(
-        &mut self,
-        world: &sunrise_level::world::World,
-        binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
-        tags: &sunrise_items::items::EntityTypeTags,
-        on_ground: bool,
-        movement: Option<Vec3>,
-    ) -> Result<bool, CollisionScanError<std::io::Error>> {
-        let Some(mut ground) = self.ground_state().copied() else {
-            return Ok(false);
-        };
-        ground.on_ground = on_ground;
-        let (context, subject) = self.support_collision(tags);
-        let mut scene = SceneCollisions {
-            world,
-            binding,
-            subject,
-        };
-        let scan = scene.update_ground_support(
-            &mut ground,
-            self.position(),
-            self.bounds(),
-            movement,
-            context,
-        );
-        if let Some(owner) = self.ground_state_mut() {
-            // Entity.setOnGround writes the flag before checking support.
-            *owner = ground;
-            return scan.map(|()| true);
-        }
-        Ok(false)
-    }
-    /// `Entity.maxUpStep`.
-    fn get_step_height(&self) -> f32 {
-        0.0
-    }
-    fn is_alive(&self) -> bool {
-        true
-    }
-    /// `Entity.isRemoved`.
-    fn is_removed(&self) -> bool {
-        false
-    }
-    /// `Entity.isPickable`: true for kinds a projectile or ray pick can strike.
-    fn is_pickable(&self) -> bool {
-        false
-    }
-    /// `Entity.canBeHitByProjectile`: alive and pickable.
-    fn can_be_hit_by_projectile(&self) -> bool {
-        self.is_alive() && self.is_pickable()
-    }
-    /// `instanceof LivingEntity`.
-    fn is_living(&self) -> bool {
-        false
-    }
-    /// `Entity.isIgnoringBlockTriggers`.
-    fn is_ignoring_block_triggers(&self) -> bool {
-        false
-    }
-    /// Whether it presses plates and tripwires: `getEntitiesOfClass` skips
-    /// removed entities, and the block's predicate skips the ones above.
-    fn triggers_blocks(&self) -> bool {
-        !self.is_removed() && !self.is_ignoring_block_triggers()
-    }
-    /// Whether `tick_blocks` sends the blocks in its box to `entityInside`
-    /// (`applyEffectsFromBlocks`). A kind that function sweeps another way, or
-    /// whose tick skips that step, says no.
-    fn sweeps_blocks_inside(&self) -> bool {
-        true
-    }
-    /// `Entity.thunderHit` for this kind.
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Untouched
-    }
-    /// The box a lightning strike tests against.
-    fn thunder_bounds(&self) -> Aabb {
-        self.bounds()
-    }
-    /// `Entity.ignoreExplosion`: the blast neither hurts nor pushes it. Also
-    /// answers for what `getEntities(source, box)` never lists: the exploding
-    /// mob, and the dead.
-    fn ignores_explosion(&self, _blast: &Blast) -> bool {
-        false
-    }
-    /// Whether a burst of wind moves it: what `Entity.push` moves, unless the
-    /// kind says otherwise.
-    fn pushed_by_wind(&self) -> bool {
-        self.pushed_by_explosion()
-    }
-    /// Whether `Entity.push` moves it. An arrow in the ground, a wind charge and
-    /// an armour stand (`explosion_breaks_decorations` takes those) stay put.
-    fn pushed_by_explosion(&self) -> bool {
-        true
-    }
-    /// The box the blast casts its rays at: `getSeenPercent`.
-    fn explosion_box(&self) -> Aabb {
-        self.bounds()
-    }
-    /// How far above its feet `pushFromExplosion` aims: `getEyeHeight`, which
-    /// defaults to 0.85 of the box.
-    fn explosion_eye_height(&self) -> f64 {
-        let b = self.explosion_box();
-        f64::from((b.max_position().y - b.min_position().y) as f32 * 0.85f32)
-    }
-    /// Whether this kind can still be waiting for its tick when a projectile
-    /// ticks, though it joined before it (orbs, falling blocks, primed TNT: they
-    /// tick between the batches, `game/world/ordered_tick.rs`).
-    fn ticks_after_projectiles(&self) -> bool {
-        false
-    }
-    /// Whether a new member of this kind waits for its spawn packet before its first tick.
-    fn waits_for_spawn_packet(&self) -> bool {
-        false
-    }
-    /// `Entity.push` with the explosion's knockback.
-    fn push_from_explosion(&mut self, push: Vec3) {
-        let v = self.velocity_mut();
-        *v = Vec3::new(v.x + push.x, v.y + push.y, v.z + push.z);
-    }
-    /// `Entity.isSupportedBy`.
-    fn is_supported_by(&self, pos: BlockPos) -> bool {
-        self.ground_state()
-            .is_some_and(|g| g.supporting_block == Some(pos))
-    }
-    /// `Entity.getEyeY`, where `updateFluidHeightAndDoFluidPushing` reads the
-    /// eye's fluid; the top of the box unless a kind sets it.
-    fn fluid_eye_y(&self) -> f64 {
-        self.bounds().max_position().y
-    }
-    /// `Entity.updateFluidHeightAndDoFluidPushing`: its water and lava heights
-    /// (`(0, 0)` for a kind that is not pushed by fluid), and the current of
-    /// each fluid added to its velocity. One body for every kind.
-    fn push_by_fluid(
-        &mut self,
-        world: &sunrise_level::world::World,
-        fluids: &sunrise_sim::motion::FluidResources,
-        context: &sunrise_world::native_load_context::LoopContext,
-    ) -> (f64, f64) {
-        if !self.is_pushed_by_fluid() {
-            return (0.0, 0.0);
-        }
-        let (bounds, at, eye) = (self.bounds(), self.position(), self.fluid_eye_y());
-        let (water, lava, _) = sunrise_sim::entities::update_entity_fluids(
-            bounds,
-            at,
-            eye,
-            self.velocity_mut(),
-            world,
-            fluids,
-            context,
-        );
-        (water, lava)
-    }
-    /// `BubbleColumnBlock.entityInside` through `applyEffectsFromBlocks`: a
-    /// column lifts or drags every kind alike.
-    fn push_by_bubble_column(
-        &mut self,
-        world: &sunrise_level::world::World,
-        registry: &sunrise_world::registry::BlockRegistry,
-        facts: &sunrise_items::blocks::BlockFacts,
-        collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
-    ) -> bool {
-        self.push_by_bubble_column_over(world, registry, facts, collision, |_| {})
-    }
-    /// [`Entity::push_by_bubble_column`], telling `surface` the position of
-    /// each column block it lies in (for the bubbles at the top).
-    fn push_by_bubble_column_over(
-        &mut self,
-        world: &sunrise_level::world::World,
-        registry: &sunrise_world::registry::BlockRegistry,
-        facts: &sunrise_items::blocks::BlockFacts,
-        collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
-        surface: impl FnMut(BlockPos),
-    ) -> bool {
-        let bounds = self.bounds();
-        sunrise_sim::motion::bubble_column_push_over(
-            world,
-            registry,
-            facts,
-            collision,
-            bounds,
-            self.velocity_mut(),
-            surface,
-        )
-    }
-    /// `Entity.getPistonPushReaction`.
-    fn get_piston_push_reaction(&self) -> PushReaction {
-        PushReaction::PushPull
-    }
     /// Width and height of the box a portal sweep follows, or None for a kind
     /// the game does not carry through portals (so far falling blocks; fishing
     /// hooks are off the walk, and `FishingHook.canUsePortal` is false in
@@ -374,11 +78,6 @@ pub(in crate::game) trait Entity: EntityRules {
     fn can_use_portal(&self, _game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         true
     }
-    /// A boat or minecart: the kinds whose portal pass opens the tick, before
-    /// they move (`AbstractMinecart.tick` handles its portal first).
-    fn is_vehicle(&self) -> bool {
-        false
-    }
     /// Whether movement applies portal block effects before Entity's base tick.
     fn portal_after_move(&self) -> bool {
         false
@@ -392,39 +91,6 @@ pub(in crate::game) trait Entity: EntityRules {
     /// arrow or a trident in the ground that did not move enters none.
     fn portal_sweeps(&self) -> bool {
         true
-    }
-    /// `Entity.noPhysics` between ticks: its moves pass through the blocks,
-    /// and a shulker's lid leaves it be. `stored` is the value a mod wrote for
-    /// a kind that keeps no field of its own (`EntityMemory.no_physics`); None
-    /// when none was written, so the kind answers its own default.
-    fn no_physics(&self, stored: Option<bool>) -> bool {
-        stored.unwrap_or(false)
-    }
-    /// Apply this kind's resolved movement after the invocation's gate is armed.
-    /// Every entity kind states how it moves; family ticks resolve through
-    /// the same gate in their own movement path.
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3);
-    /// Bounds for `AbstractArrow.shouldFall` after a non-SELF piston move.
-    fn piston_release_bounds(&self) -> Option<Aabb> {
-        None
-    }
-    fn release_after_piston(&mut self, _no_block_collision: bool) {}
-    /// Set the ground flag for a push, or for the carry pass's collider contact.
-    /// Terrain support still comes from `Entity.checkSupportingBlock`; a collider
-    /// is not `mainSupportingBlockPos`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        if let Some(ground) = self.ground_state_mut() {
-            ground.on_ground = on_ground;
-        }
-    }
-    /// `Entity.setOnGround` from outside the entity's own move (`/tp`'s
-    /// `TeleportCommand.performTeleport`); kinds that keep no ground flag ignore it.
-    fn set_on_ground(&mut self, _on_ground: bool) {}
-    /// `PistonMovingBlockEntity.causeBounce`: a slime block sets the velocity
-    /// along the movement axis.
-    fn piston_slime_bounce(&mut self, movement: Direction) {
-        let velocity = self.velocity_mut();
-        *velocity = piston_push::bounce_velocity(movement, *velocity);
     }
 }
 
@@ -550,6 +216,7 @@ impl sunrise_sim::block_contact::InsideWalk for ProjectileInside<'_, '_> {
 pub(in crate::game) mod render_bounds_tests {
     use super::*;
     use crate::game::client_side::entity_client::RenderEntityBounds;
+    use sunrise_sim::entities::ItemFrame;
 
     #[test]
     fn armor_stand_bounds_include_raised_equipment_space() {
@@ -628,106 +295,6 @@ pub(in crate::game) mod render_bounds_tests {
         let bounds = cart.render_bounds(1.0);
         assert!(bounds.min_position().y <= 9.5);
         assert!(bounds.max_position().y >= 12.8);
-    }
-}
-
-/// The `entity_size` answer a kind keeps in its `size_answer` field, for its vanilla size `$vanilla`.
-macro_rules! stored_size {
-    ($vanilla:expr) => {
-        fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
-            Some($vanilla(self))
-        }
-        fn size_answer(&self) -> Option<sunrise_sim::pose::SizeAnswer> {
-            self.size_answer
-        }
-        fn set_size_answer(&mut self, answer: sunrise_sim::pose::SizeAnswer) {
-            self.size_answer = Some(answer);
-        }
-    };
-}
-#[allow(unused_imports)]
-pub(in crate::game) use stored_size;
-
-/// The common retained support owned by moving bodies.
-macro_rules! stored_ground {
-    () => {
-        stored_ground!(fall_distance);
-    };
-    ($fall_distance:ident) => {
-        fn body_fall_distance(&self) -> f64 {
-            self.$fall_distance
-        }
-        fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
-            Some(&self.ground)
-        }
-        fn ground_state_mut(&mut self) -> Option<&mut sunrise_world::ground_support::GroundState> {
-            Some(&mut self.ground)
-        }
-    };
-}
-#[allow(unused_imports)]
-pub(in crate::game) use stored_ground;
-
-/// The fields every kind stores under the same names.
-macro_rules! stored_motion {
-    () => {
-        fn id(&self) -> u32 {
-            self.id
-        }
-        fn position(&self) -> Vec3 {
-            self.position
-        }
-        fn position_mut(&mut self) -> &mut Vec3 {
-            &mut self.position
-        }
-        fn previous_position(&self) -> Vec3 {
-            self.previous
-        }
-        fn velocity(&self) -> Vec3 {
-            self.velocity
-        }
-        fn velocity_mut(&mut self) -> &mut Vec3 {
-            &mut self.velocity
-        }
-    };
-}
-#[allow(unused_imports)]
-pub(in crate::game) use stored_motion;
-
-/// Apply the common non-damage `Entity` writes to the state the mover actually owns.
-/// An absent field means this mover does not track that effect.
-pub(in crate::game) fn apply_contact_writes(
-    writes: Vec<mod_api::EntityWrite>,
-    velocity: &mut Vec3,
-    mut fall_distance: Option<&mut f64>,
-    mut stuck: Option<&mut Vec3>,
-    mut fire_ticks: Option<&mut i32>,
-) {
-    use mod_api::EntityWrite;
-    for write in writes {
-        match write {
-            EntityWrite::Push([x, y, z]) => *velocity = velocity.add_vector(Vec3::new(x, y, z)),
-            EntityWrite::SetMovement([x, y, z]) => *velocity = Vec3::new(x, y, z),
-            EntityWrite::StuckIn([x, y, z]) => {
-                if let Some(stuck) = stuck.as_deref_mut() {
-                    *stuck = Vec3::new(x, y, z);
-                }
-                if let Some(fall) = fall_distance.as_deref_mut() {
-                    *fall = 0.0;
-                }
-            }
-            EntityWrite::ResetFallDistance => {
-                if let Some(fall) = fall_distance.as_deref_mut() {
-                    *fall = 0.0;
-                }
-            }
-            EntityWrite::SetFireTicks(ticks) => {
-                if let Some(fire) = fire_ticks.as_deref_mut() {
-                    *fire = ticks;
-                }
-            }
-            EntityWrite::AddEffect { .. } | EntityWrite::Hurt { .. } => {}
-        }
     }
 }
 
@@ -1080,8 +647,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(&self.pack.block_registries),
             &self.damage_hooks,
         )
-        .with_effects(crate::game::entity::hit_effects_of!(self, None))
-        .with_reads(crate::game::entity::hit_reads_of!(self));
+        .with_effects(crate::game::entity_server::hit_effects_of!(self, None))
+        .with_reads(crate::game::entity_server::hit_reads_of!(self));
         if let Some(hooks) = sunrise_sim::block_contact::HOOKS.get() {
             (hooks.inside_fire)(
                 &mut level,
@@ -1101,65 +668,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-/// The game's lists of entities, in the order systems walk them. Hands them to
-/// `$then`, so one list drives the handles and every typed dispatch.
-macro_rules! entity_lists {
-    ($then:ident, $($args:tt)*) => {
-        $crate::game::entity::$then! {
-            ($($args)*)
-            Mob(Mob) mobs: mobs,
-            Item(ItemEntity) dropped: dropped,
-            Boat(Boat) boats: boats,
-            Cart(Minecart) carts: carts,
-            ArmorStand(ArmorStand) armor_stands: armor_stands,
-            Tnt(PrimedTnt) tnts: tnts,
-            Falling(FallingBlock) falling: falling,
-            Orb(ExperienceOrb) orbs: orbs,
-            Projectile(Projectile) projectiles: creatures.projectiles,
-            Rocket(Rocket) rockets: rockets,
-            Trident(ThrownTrident) tridents: tridents,
-            General(GeneralRow) general: resident_entities.general.rows,
-        }
-    };
-}
-#[allow(unused_imports)]
-pub(crate) use entity_lists;
-
-macro_rules! direct_entity_edit {
-    (Projectile) => {
-        false
-    };
-    (Cart) => {
-        false
-    };
-    (Falling) => {
-        false
-    };
-    (Boat) => {
-        false
-    };
-    ($kind:ident) => {
-        true
-    };
-}
-#[allow(unused_imports)]
-pub(crate) use direct_entity_edit;
-
-macro_rules! define_entity_handles {
+macro_rules! define_server_entity_handles {
     (() $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
-        /// Every list, borrowed apart from the rest of `Game`, for
-        /// [`for_each_entity`] while the world is borrowed mutably.
-        #[derive(Clone, Copy)]
-        pub(in crate::game) struct EntityLists<'w> {
-            $(pub(in crate::game) $field: &'w [$ty],)*
-        }
-
-        /// One entity, by list and index.
-        #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-        pub(in crate::game) enum EntityHandle {
-            $($kind(usize),)*
-        }
-
         /// Allocation-free storage-order walk with stable IDs and verified index hints.
         /// The next ID is captured before the caller can remove the current entity.
         pub(in crate::game) struct EntityIdCursor {
@@ -1173,57 +683,6 @@ macro_rules! define_entity_handles {
             $(pub(in crate::game) $field: sunrise_sim::join_seq::JoinList<$ty, { $crate::game::entity::direct_entity_edit!($kind) }>,)*
         }
 
-
-        impl<'w> EntityLists<'w> {
-            /// Merge lists already ordered by join number, taking the lowest head at each
-            /// step. The cursors live on the stack. The draw pass reads only its own lists.
-            fn merge_in_join_order<const DRAWN_ONLY: bool>(self)
-                -> impl Iterator<Item = (EntityHandle, JoinSeq)> + use<'w, DRAWN_ONLY>
-            {
-                let mut cursors = [$(self.$field.len()),*].map(|_| 0usize);
-                std::iter::from_fn(move || {
-                    let mut best: Option<(usize, EntityHandle, JoinSeq)> = None;
-                    let mut list = 0;
-                    $(
-                        let index = cursors[list];
-                        let handle = EntityHandle::$kind(index);
-                        if (!DRAWN_ONLY || DrawFamily::of(handle).is_some())
-                            && let Some(row) = self.$field.get(index)
-                        {
-                            let seq = row.join_seq();
-                            if best.is_none_or(|(_, _, lowest)| seq < lowest) {
-                                best = Some((list, handle, seq));
-                            }
-                        }
-                        list += 1;
-                    )*
-                    let _ = list;
-                    let (list, handle, seq) = best?;
-                    cursors[list] += 1;
-                    Some((handle, seq))
-                })
-            }
-
-            /// Visits every entity once in join order. On authoritative lists, tick passes
-            /// can reorder storage; report any such list rather than taking it as join order.
-            pub(in crate::game) fn walk_in_join_order(
-                self,
-                mut visit: impl FnMut(EntityHandle, JoinSeq),
-            ) -> Result<(), JoinOrderError> {
-                let mut last = JoinSeq::UNJOINED;
-                for (handle, seq) in self.merge_in_join_order::<false>() {
-                    if !seq.is_joined() {
-                        return Err(JoinOrderError::Unjoined(handle));
-                    }
-                    if seq <= last {
-                        return Err(JoinOrderError::OutOfOrder(handle));
-                    }
-                    last = seq;
-                    visit(handle, seq);
-                }
-                Ok(())
-            }
-        }
 
         impl Game<'_, crate::game::server_side::ServerState> {
             /// Moves every list out; give it back with `restore_entities`.
@@ -1302,212 +761,11 @@ macro_rules! define_entity_handles {
             }
         }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-            /// Every entity's handle: lengths read now, nothing allocated, and
-            /// no borrow of `Game` held, so the caller can change it mid-walk.
-            pub(in crate::game) fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<__Side> {
-                std::iter::empty()
-                    $(.chain((0..self$(.$list)+.len()).map(EntityHandle::$kind)))*
-            }
-}
     };
 }
-#[allow(unused_imports)]
-pub(crate) use define_entity_handles;
+pub(crate) use define_server_entity_handles;
+entity_lists!(crate::game::entity_server::define_server_entity_handles,);
 
-/// Why [`EntityLists::walk_in_join_order`] stopped.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(
-    dead_code,
-    reason = "the tick order work that reads this has not landed yet"
-)]
-pub(in crate::game) enum JoinOrderError {
-    /// Never put in its list through the list's own `push`, so it has no
-    /// join number.
-    Unjoined(EntityHandle),
-    /// Joined before an entity the walk had already visited: its list is out
-    /// of join order.
-    OutOfOrder(EntityHandle),
-}
-
-/// The families `entity_geometry` draws in one ordered pass.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum DrawFamily {
-    Mob,
-    LocalPlayer,
-    RemoteGeneral,
-    Dragon,
-    Crystal,
-    Item,
-    Orb,
-    Falling,
-    Tnt,
-    ArmorStand,
-    Boat,
-    Cart,
-    Trident,
-    Rocket,
-}
-
-/// Entities of one family, by list index, that joined back to back as far as the ordered
-/// pass is concerned.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::game) struct DrawRun {
-    pub(in crate::game) family: DrawFamily,
-    pub(in crate::game) range: std::ops::Range<usize>,
-}
-
-impl DrawFamily {
-    /// The drawn family of an entity and its index in that family's list; `None` for the
-    /// entities the pass does not draw.
-    pub(in crate::game::server_side) fn of(handle: EntityHandle) -> Option<(Self, usize)> {
-        use EntityHandle as H;
-        Some(match handle {
-            H::Mob(i) => (Self::Mob, i),
-            H::Item(i) => (Self::Item, i),
-            H::Orb(i) => (Self::Orb, i),
-            H::Falling(i) => (Self::Falling, i),
-            H::Tnt(i) => (Self::Tnt, i),
-            H::ArmorStand(i) => (Self::ArmorStand, i),
-            H::Boat(i) => (Self::Boat, i),
-            H::Cart(i) => (Self::Cart, i),
-            H::Trident(i) => (Self::Trident, i),
-            H::Rocket(i) => (Self::Rocket, i),
-            _ => return None,
-        })
-    }
-}
-
-/// Draw sources that the shared `EntityLists` walk does not own.
-#[derive(Default)]
-pub(in crate::game) struct DrawExtras<'a> {
-    pub(in crate::game) local_player: Option<JoinSeq>,
-    pub(in crate::game) dragon: Option<JoinSeq>,
-    pub(in crate::game) crystals: &'a [super::dragon::Crystal],
-    pub(in crate::game) general: Option<&'a super::remote::general::RemoteGenerals>,
-}
-
-/// The drawn entities as runs in the order they joined the level. Keep the next draw-only
-/// entity cached, so the existing body walk only compares its join with that one head.
-pub(in crate::game) fn draw_runs(
-    lists: EntityLists<'_>,
-    mut extra: DrawExtras<'_>,
-    runs: &mut Vec<DrawRun>,
-) {
-    use DrawFamily as F;
-    enum Head {
-        LocalPlayer,
-        Dragon,
-        Crystal(usize),
-        General(usize),
-    }
-    let mut crystals = extra.crystals.iter().enumerate().peekable();
-    let mut general = extra
-        .general
-        .into_iter()
-        .flat_map(|g| g.rows.values())
-        .enumerate()
-        .peekable();
-    let mut next_extra = || {
-        let (join, head) = [
-            extra.local_player.map(|seq| (seq, Head::LocalPlayer)),
-            extra.dragon.map(|seq| (seq, Head::Dragon)),
-            crystals.peek().map(|&(i, c)| (c.join, Head::Crystal(i))),
-            general.peek().map(|&(i, row)| (row.join, Head::General(i))),
-        ]
-        .into_iter()
-        .flatten()
-        .min_by_key(|&(seq, _)| seq)?;
-        let (family, index) = match head {
-            Head::LocalPlayer => {
-                extra.local_player = None;
-                (F::LocalPlayer, 0)
-            }
-            Head::Dragon => {
-                extra.dragon = None;
-                (F::Dragon, 0)
-            }
-            Head::Crystal(index) => {
-                crystals.next();
-                (F::Crystal, index)
-            }
-            Head::General(index) => {
-                general.next();
-                (F::RemoteGeneral, index)
-            }
-        };
-        Some((join, family, index))
-    };
-    runs.clear();
-    let mut push = |family, index| match runs.last_mut() {
-        Some(run) if run.family == family && run.range.end == index => run.range.end += 1,
-        _ => runs.push(DrawRun {
-            family,
-            range: index..index + 1,
-        }),
-    };
-    let mut pending = next_extra();
-    for (handle, seq) in lists.merge_in_join_order::<true>() {
-        while let Some((join, family, index)) = pending
-            && join < seq
-        {
-            push(family, index);
-            pending = next_extra();
-        }
-        if let Some((family, index)) = DrawFamily::of(handle) {
-            push(family, index);
-        }
-    }
-    while let Some((_, family, index)) = pending {
-        push(family, index);
-        pending = next_extra();
-    }
-}
-
-entity_lists!(define_entity_handles,);
-sunrise_sim::impl_joined!(FallingBlock);
-
-macro_rules! entity_access {
-    (shared, $list:expr, $index:expr, $entity:ident, $body:expr) => {{
-        let $entity = &$list[$index];
-        $body
-    }};
-    (exclusive, $list:expr, $index:expr, $entity:ident, $body:expr) => {
-        $list.update($index, |$entity| $body)
-    };
-}
-#[allow(unused_imports)]
-pub(crate) use entity_access;
-
-macro_rules! match_entity {
-    (($borrow:ident, $entity:ident, $game:expr, $handle:expr, $body:expr)
-     $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
-        match $handle {
-            $($crate::game::entity::EntityHandle::$kind(i) => {
-                $crate::game::entity::entity_access!($borrow, $game$(.$list)+, i, $entity, $body)
-            })*
-        }
-    };
-}
-#[allow(unused_imports)]
-pub(crate) use match_entity;
-
-/// Runs `$body` with `$entity` bound to the handle's entity, as its own type:
-/// one match, each arm compiled for its kind, so nothing goes through a vtable.
-macro_rules! with_entity {
-    ($game:expr, $handle:expr, $entity:ident => $body:expr) => {
-        $crate::game::entity::entity_lists!(match_entity, shared, $entity, $game, $handle, $body)
-    };
-}
-#[allow(unused_imports)]
-pub(in crate::game) use with_entity;
-
-#[path = "entity/list_borrows.rs"]
-pub(in crate::game) mod list_borrows;
-#[allow(unused_imports)]
-pub(in crate::game) use list_borrows::entity_lists_of;
-#[allow(unused_imports)]
-pub(crate) use list_borrows::{borrow_level_list, borrow_lists};
 /// What a hit lends its listeners besides the level ([`sunrise_client::health::HitEffects`]):
 /// the level sound queue and sound-seed stream, and the entity the site lends (`$lend`: an
 /// `Option<`[`HitLend`](sunrise_client::health::HitLend)`>`, `None` where nothing is lent). Only field borrows of
@@ -1518,7 +776,7 @@ macro_rules! hit_effects_of {
     ($game:ident, $lend:expr, in $sounds:expr) => {
         sunrise_sim::health::HitEffects::new(
             &mut $sounds,
-            $game.lan.as_ref().map(|lan| &lan.hub),
+            $game.side.lan.as_ref().map(|lan| &lan.hub),
             $game.dim.id(),
             $game.native_lifecycle.epoch(),
             $lend,
@@ -1527,7 +785,7 @@ macro_rules! hit_effects_of {
     ($game:ident, $lend:expr) => {
         sunrise_sim::health::HitEffects::new(
             &mut $game.side.pending_native_sounds,
-            $game.lan.as_ref().map(|lan| &lan.hub),
+            $game.side.lan.as_ref().map(|lan| &lan.hub),
             $game.dim.id(),
             $game.native_lifecycle.epoch(),
             $lend,
@@ -1611,7 +869,7 @@ macro_rules! victim_and_causer {
                     )
                     .or_else(|| {
                         sunrise_sim::health::HitLend::parked_guest(
-                            $game.lan.as_ref().map(|lan| &lan.hub),
+                            $game.side.lan.as_ref().map(|lan| &lan.hub),
                             parked?,
                         )
                     })
@@ -1640,7 +898,7 @@ macro_rules! player_victim_causer {
                 .and_then(sunrise_sim::health::HitLend::mob),
             None => parked.and_then(|conn| {
                 sunrise_sim::health::HitLend::parked_guest(
-                    $game.lan.as_ref().map(|lan| &lan.hub),
+                    $game.side.lan.as_ref().map(|lan| &lan.hub),
                     conn,
                 )
             }),
@@ -1669,8 +927,8 @@ macro_rules! damage_level_of {
         .attacked_by($attack)
         .no_push()
         .with_mob_hurt_handoff(&mut $game.side.paused_mob_hurt.0)
-        .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
-        .with_reads(crate::game::entity::hit_reads_of!($game))
+        .with_effects(crate::game::entity_server::hit_effects_of!($game, $lend))
+        .with_reads(crate::game::entity_server::hit_reads_of!($game))
         $(.with_player_equipment($equipment))?
     };
     ($game:ident, $attack:expr, $credit:expr, $lend:expr) => {
@@ -1684,8 +942,8 @@ macro_rules! damage_level_of {
         .attacked_by($attack)
         .with_knockback_credit($credit)
         .with_mob_hurt_handoff(&mut $game.side.paused_mob_hurt.0)
-        .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
-        .with_reads(crate::game::entity::hit_reads_of!($game))
+        .with_effects(crate::game::entity_server::hit_effects_of!($game, $lend))
+        .with_reads(crate::game::entity_server::hit_reads_of!($game))
     };
 }
 #[allow(unused_imports)]
@@ -1703,7 +961,7 @@ macro_rules! player_resolver {
                     .or($game.level.player_uuid)
                     .unwrap_or_default()
             }),
-            hub: $game.lan.as_ref().map(|lan| &lan.hub),
+            hub: $game.side.lan.as_ref().map(|lan| &lan.hub),
         }
     };
 }
@@ -1711,27 +969,6 @@ macro_rules! player_resolver {
 pub(in crate::game) use hit_effects_of;
 #[allow(unused_imports)]
 pub(in crate::game) use player_resolver;
-
-macro_rules! walk_lists {
-    (($lists:expr, $entity:ident, $body:block)
-     $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
-        $(for $entity in $lists.$field $body)*
-    };
-}
-#[allow(unused_imports)]
-pub(crate) use walk_lists;
-
-/// Runs `$body` for every entity, with `$entity` as a reference to its own
-/// type: one loop per list, each compiled for its kind, so nothing allocates
-/// or goes through a vtable and a check a kind answers with a constant folds
-/// away. A kind added to `entity_lists!` joins every walk.
-macro_rules! for_each_entity {
-    ($lists:expr, $entity:ident => $body:block) => {
-        $crate::game::entity::entity_lists!(walk_lists, $lists, $entity, $body)
-    };
-}
-#[allow(unused_imports)]
-pub(in crate::game) use for_each_entity;
 
 macro_rules! walk_lists_mut {
     (($lists:expr, $entity:ident, $body:block)
@@ -1745,20 +982,16 @@ pub(crate) use walk_lists_mut;
 /// [`for_each_entity`] over [`TakenEntities`], with the entity mutable.
 macro_rules! for_each_entity_mut {
     ($lists:expr, $entity:ident => $body:block) => {
-        $crate::game::entity::entity_lists!(walk_lists_mut, $lists, $entity, $body)
+        $crate::game::entity::entity_lists!(
+            $crate::game::entity_server::walk_lists_mut,
+            $lists,
+            $entity,
+            $body
+        )
     };
 }
 #[allow(unused_imports)]
 pub(in crate::game) use for_each_entity_mut;
-
-/// [`with_entity`], with the entity mutable.
-macro_rules! with_entity_mut {
-    ($game:expr, $handle:expr, $entity:ident => $body:expr) => {
-        $crate::game::entity::entity_lists!(match_entity, exclusive, $entity, $game, $handle, $body)
-    };
-}
-#[allow(unused_imports)]
-pub(in crate::game) use with_entity_mut;
 
 macro_rules! save_lists {
     (($game:expr, $keys:expr, $out:expr, $include_transient:expr)
@@ -1766,9 +999,9 @@ macro_rules! save_lists {
         $(for i in 0..$game$(.$list)+.len() {
             let id = $game$(.$list)+[i].id();
             if ($include_transient || !$game.persist.transient.contains(&id))
-                && let Some((key, mut tag)) = <$ty as $crate::game::entity::Entity>::save_nbt($game, i, $keys)
+                && let Some((key, mut tag)) = <$ty as $crate::game::entity_server::ServerEntity>::save_nbt($game, i, $keys)
             {
-                if !<$ty as $crate::game::entity::Entity>::SERIALIZES_ATTACHMENTS {
+                if !<$ty as $crate::game::entity_server::ServerEntity>::SERIALIZES_ATTACHMENTS {
                     $crate::game::persist::write_attachments(&mut tag, id, &$game.entity_attachments);
                 }
                 $out.entry(key).or_default().push((id, $game$(.$list)+[i].join_seq(), tag));
@@ -1781,12 +1014,18 @@ pub(crate) use save_lists;
 
 /// Saves every entity of every list in `entity_lists!` into `$out` by chunk,
 /// each with its id and join number (`$out` maps a chunk to `(id, JoinSeq, Tag)`),
-/// each through its own `Entity::save_nbt`: one loop per list, static dispatch,
+/// each through its own `ServerEntity::save_nbt`: one loop per list, static dispatch,
 /// nothing allocated beyond the tags. A kind added to the lists cannot be left
 /// out, since `save_nbt` has no default.
 macro_rules! save_entities_of_every_kind {
     ($game:expr, $keys:expr, $out:expr, $include_transient:expr) => {
-        $crate::game::entity::entity_lists!(save_lists, $game, $keys, $out, $include_transient)
+        $crate::game::entity::entity_lists!(
+            $crate::game::entity_server::save_lists,
+            $game,
+            $keys,
+            $out,
+            $include_transient
+        )
     };
 }
 #[allow(unused_imports)]
@@ -1809,7 +1048,7 @@ macro_rules! load_lists {
     (($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr, $transferred:expr)
      $($kind_name:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {{
         let mut tag = $tag;
-        $(match <$ty as $crate::game::entity::Entity>::load_nbt($game, $kind, $uuid, $player, tag, $transferred) {
+        $(match <$ty as $crate::game::entity_server::ServerEntity>::load_nbt($game, $kind, $uuid, $player, tag, $transferred) {
             Ok(()) => return Ok(()),
             Err(back) => tag = back,
         })*
@@ -1820,7 +1059,7 @@ macro_rules! load_lists {
 pub(crate) use load_lists;
 
 /// Loads a saved entity as the first kind in `entity_lists!` that claims its
-/// type id, through that kind's own `Entity::load_nbt`: one test per kind,
+/// type id, through that kind's own `ServerEntity::load_nbt`: one test per kind,
 /// static dispatch, nothing allocated (the compound moves through). Evaluates
 /// to `Err(tag)` when no kind claims it, and `return`s `Ok` from the caller
 /// otherwise. A kind added to the lists cannot be left out, since `load_nbt`
@@ -1828,7 +1067,7 @@ pub(crate) use load_lists;
 macro_rules! load_entity_of_any_kind {
     ($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr, $transferred:expr) => {
         $crate::game::entity::entity_lists!(
-            load_lists,
+            $crate::game::entity_server::load_lists,
             $game,
             $kind,
             $uuid,
@@ -1857,7 +1096,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// The type ids the boat kind loads.
     pub(in crate::game::server_side) fn loads_as_boat(&self, kind: &str) -> bool {
-        super::boats::registered_boat(kind, &self.res.items().component_registry).is_some()
+        crate::game::boats_common::registered_boat(kind, &self.res.items().component_registry)
+            .is_some()
     }
     /// Whether `load_listed` loads `kind` as a vehicle that takes its mob
     /// riders (`take_mob_passengers`): a mob, boat, minecart or primed TNT.
@@ -1926,8 +1166,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .iter()
                     .filter(|dragon| dragon.id != 0)
                     .flat_map(|dragon| {
-                        (0..dragon.parts.len())
-                            .map(move |offset| super::dragon::dragon_part_id(dragon.id, offset))
+                        (0..dragon.parts.len()).map(move |offset| {
+                            crate::game::dragon_common::dragon_part_id(dragon.id, offset)
+                        })
                     }),
             )
             .chain(self.ominous_spawners.iter().map(|e| e.id))
@@ -1958,59 +1199,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl Entity for Mob {
+impl ServerEntity for Mob {
     const SERIALIZES_ATTACHMENTS: bool = true;
-    stored_ground!();
-
-    fn fall_distance(&self) -> f64 {
-        self.fall_distance
-    }
-    fn reset_fall_distance(&mut self) {
-        self.fall_distance = 0.0;
-    }
-    fn support_collision(
-        &self,
-        tags: &sunrise_items::items::EntityTypeTags,
-    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        let (context, subject) = Mob::support_collision(self, Some(tags));
-        (context, Some(subject))
-    }
-    /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
-    /// (a vex sets it only for the length of its own, custom travel). Its own
-    /// field is the write's store, so `stored` is None for a mob.
-    fn no_physics(&self, _stored: Option<bool>) -> bool {
-        self.no_physics
-    }
-    /// `Entity.move(MoverType.PISTON, ...)` ends in `setPos`, which `Shulker`
-    /// overrides to snap to the block centre.
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let moved = self.position.add_vector(movement);
-        if self.species() == Species::Shulker {
-            sunrise_sim::mobs::shulker::client_set_pos(self, moved.x, moved.y, moved.z);
-        } else {
-            self.position = moved;
-        }
-    }
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.head_pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.body_yaw = yaw;
-        self.head_yaw = yaw;
-        self.head_pitch = pitch.clamp(-90.0, 90.0);
-        self.previous_yaw = self.yaw;
-        self.previous_head_pitch = self.head_pitch;
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        super::native_hooks::mob_kind(self).into()
-    }
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -2032,7 +1222,6 @@ impl Entity for Mob {
         load_with_transfer!(game, transferred, load_mob, load_mob_transferred, tag, None);
         Ok(())
     }
-    stored_motion!();
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((self.width(), self.height()))
     }
@@ -2042,116 +1231,9 @@ impl Entity for Mob {
     fn can_use_portal(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.mob_portal_eligible(self)
     }
-    /// `PersistentEntitySectionManager.Callback.onRemove`: discard stops
-    /// section enumeration immediately, before the entity list is swept.
-    fn selector_target(&self) -> Option<Target> {
-        (!self.removed && self.death_time == 0).then_some(Target::Mob(self.id))
-    }
-    fn bounds(&self) -> Aabb {
-        Mob::bounds(self)
-    }
-    fn get_step_height(&self) -> f32 {
-        self.kind.step_height as f32
-    }
-    fn is_alive(&self) -> bool {
-        !self.removed && self.alive()
-    }
-    fn is_removed(&self) -> bool {
-        self.removed
-    }
-    fn is_pickable(&self) -> bool {
-        !self.removed && !(&*self.kind.id == "minecraft:player" && self.extra.spectator)
-    }
-    fn is_living(&self) -> bool {
-        true
-    }
-    /// `Bat.isIgnoringBlockTriggers`.
-    fn is_ignoring_block_triggers(&self) -> bool {
-        self.species() == Species::Bat
-    }
-    /// `Warden.ignoreExplosion`: while it digs or emerges.
-    fn ignores_explosion(&self, blast: &Blast) -> bool {
-        !self.alive()
-            || blast.spared == Some(self.id)
-            || (self.species() == Species::Warden
-                && sunrise_sim::mobs::warden::digging_or_emerging(self))
-    }
-    /// `getEyeHeight` of the mob as it stands: a baby's, a slime's or a
-    /// phantom's own scaled eye height, not the adult kind's. The blast's box
-    /// is its real `bounds`, so it needs no override.
-    fn explosion_eye_height(&self) -> f64 {
-        self.eye_height()
-    }
-    /// `Entity.push` sets `needsSync`.
-    fn push_from_explosion(&mut self, push: Vec3) {
-        self.velocity = Vec3::new(
-            self.velocity.x + push.x,
-            self.velocity.y + push.y,
-            self.velocity.z + push.z,
-        );
-        self.needs_sync = true;
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        if self.alive() {
-            ThunderHit::Mob
-        } else {
-            ThunderHit::Untouched
-        }
-    }
-    /// The kind's own size, as the strike has always read it.
-    fn thunder_bounds(&self) -> Aabb {
-        let (p, w) = (self.position, self.kind.width / 2.0);
-        Aabb::new(
-            Vec3::new(p.x - w, p.y, p.z - w),
-            Vec3::new(p.x + w, p.y + self.kind.height, p.z + w),
-        )
-    }
 }
 
-impl Entity for ItemEntity {
-    stored_size!(|_: &Self| ItemEntity::DIMENSIONS);
-    stored_ground!();
-    fn fall_distance(&self) -> f64 {
-        self.fall_distance
-    }
-    fn support_collision(
-        &self,
-        _tags: &sunrise_items::items::EntityTypeTags,
-    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        (
-            self.collision_context(),
-            Some(PowderSnowSubject {
-                fall_distance: self.fall_distance,
-                ..Default::default()
-            }),
-        )
-    }
-    fn reset_fall_distance(&mut self) {
-        self.fall_distance = 0.0;
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-
-    fn rotation(&self) -> [f32; 2] {
-        self.rotation
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn fluid_eye_y(&self) -> f64 {
-        ItemEntity::fluid_eye_y(self)
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        "minecraft:item".into()
-    }
+impl ServerEntity for ItemEntity {
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -2180,59 +1262,12 @@ impl Entity for ItemEntity {
         );
         Ok(())
     }
-    stored_motion!();
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((0.25, 0.25))
     }
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Item(self.id))
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Item
-    }
-    fn ignores_explosion(&self, blast: &Blast) -> bool {
-        blast.items_ignore
-    }
-    fn explosion_eye_height(&self) -> f64 {
-        Self::EYE_HEIGHT
-    }
-    fn bounds(&self) -> Aabb {
-        ItemEntity::bounds(self)
-    }
-    fn piston_slime_bounce(&mut self, movement: Direction) {
-        ItemEntity::piston_slime_bounce(self, movement);
-    }
 }
 
-impl Entity for ExperienceOrb {
-    stored_size!(|_: &Self| ExperienceOrb::DIMENSIONS);
-    stored_ground!();
-    fn reset_fall_distance(&mut self) {
-        // An orb keeps no fall distance here.
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-
-    fn rotation(&self) -> [f32; 2] {
-        self.rotation
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn ticks_after_projectiles(&self) -> bool {
-        true
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        "minecraft:experience_orb".into()
-    }
+impl ServerEntity for ExperienceOrb {
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -2254,56 +1289,12 @@ impl Entity for ExperienceOrb {
         load_with_transfer!(game, transferred, load_orb, load_orb_transferred, tag, uuid);
         Ok(())
     }
-    stored_motion!();
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((0.5, 0.5))
     }
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Orb(self.id))
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Orb
-    }
-    fn explosion_eye_height(&self) -> f64 {
-        f64::from(0.5f32 * 0.85f32)
-    }
-    fn bounds(&self) -> Aabb {
-        ExperienceOrb::bounds(self)
-    }
-    fn piston_slime_bounce(&mut self, movement: Direction) {
-        self.velocity = piston_push::bounce_velocity(movement, self.velocity);
-        self.ground.on_ground = false;
-        self.ground.clear_support();
-    }
 }
 
-impl Entity for Boat {
-    stored_size!(|_: &Self| Boat::DIMENSIONS);
-    stored_ground!();
-    fn reset_fall_distance(&mut self) {
-        // A boat keeps no fall distance here.
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.pitch = pitch.clamp(-90.0, 90.0);
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        self.entity_type_name().into()
-    }
+impl ServerEntity for Boat {
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -2333,71 +1324,18 @@ impl Entity for Boat {
         );
         Ok(())
     }
-    stored_motion!();
-    fn is_vehicle(&self) -> bool {
-        true
-    }
-    /// `Boat.getEyeY`: the top of the 0.5625 box.
-    fn fluid_eye_y(&self) -> f64 {
-        self.position.y + super::boats::HEIGHT
-    }
     fn portal_size(&self) -> Option<(f32, f32)> {
-        Some((super::boats::WIDTH as f32, super::boats::HEIGHT as f32))
+        Some((
+            super::boats_common::WIDTH as f32,
+            super::boats_common::HEIGHT as f32,
+        ))
     }
     fn can_use_portal(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.vehicle_can_use_portal(self.id)
     }
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Boat(self.id))
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Vehicle
-    }
-    fn ignores_explosion(&self, blast: &Blast) -> bool {
-        blast.vehicles_ignore
-    }
-    /// `EntityType.OAK_BOAT & co`: the full 0.5625.
-    fn explosion_eye_height(&self) -> f64 {
-        0.5625
-    }
-    fn bounds(&self) -> Aabb {
-        Boat::bounds(self)
-    }
-    fn is_pickable(&self) -> bool {
-        true
-    }
 }
 
-impl Entity for Minecart {
-    stored_size!(|_: &Self| Minecart::DIMENSIONS);
-    stored_ground!();
-    fn fall_distance(&self) -> f64 {
-        self.fall_distance
-    }
-    fn reset_fall_distance(&mut self) {
-        self.fall_distance = 0.0;
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.pitch = pitch.clamp(-90.0, 90.0);
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        self.kind.id().into()
-    }
+impl ServerEntity for Minecart {
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -2427,10 +1365,6 @@ impl Entity for Minecart {
         );
         Ok(())
     }
-    stored_motion!();
-    fn is_vehicle(&self) -> bool {
-        true
-    }
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((
             super::minecarts::WIDTH as f32,
@@ -2440,83 +1374,9 @@ impl Entity for Minecart {
     fn can_use_portal(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.vehicle_can_use_portal(self.id)
     }
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Cart(self.id))
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Vehicle
-    }
-    fn ignores_explosion(&self, blast: &Blast) -> bool {
-        blast.vehicles_ignore
-    }
-    fn bounds(&self) -> Aabb {
-        Minecart::bounds(self)
-    }
-    fn is_pickable(&self) -> bool {
-        true
-    }
-    /// `tick_blocks` sweeps minecarts along with the players.
-    fn sweeps_blocks_inside(&self) -> bool {
-        false
-    }
 }
 
-/// Width and height `EntityType.ARMOR_STAND` gives a stand.
-pub(in crate::game) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
-    if stand.marker {
-        (0.0, 0.0)
-    } else if stand.small {
-        (0.25, f64::from(0.9875f32))
-    } else {
-        (0.5, f64::from(1.975f32))
-    }
-}
-
-impl Entity for ArmorStand {
-    stored_size!(ArmorStand::default_dimensions);
-    stored_ground!(enchantment_fall_distance);
-    fn support_collision(
-        &self,
-        _tags: &sunrise_items::items::EntityTypeTags,
-    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        let (context, subject) = ArmorStand::support_collision(self);
-        (context, Some(subject))
-    }
-    fn reset_fall_distance(&mut self) {
-        self.enchantment_fall_distance = 0.0;
-    }
-    /// `LivingEntity.isAlive`: health above 0 (removal is the level's).
-    fn is_alive(&self) -> bool {
-        self.health > 0.0
-    }
-    fn is_pickable(&self) -> bool {
-        !self.marker
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.previous_yaw = yaw;
-        self.pitch = pitch.clamp(-90.0, 90.0);
-    }
-    fn fluid_eye_y(&self) -> f64 {
-        ArmorStand::fluid_eye_y(self)
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        super::armor_stands::TYPE_ID.into()
-    }
+impl ServerEntity for ArmorStand {
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -2545,71 +1405,6 @@ impl Entity for ArmorStand {
         );
         Ok(())
     }
-    stored_motion!();
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Stand(self.id))
-    }
-    /// `ArmorStand.ignoreExplosion`: a visible stand feels only a burst that
-    /// affects block-like entities (`items_ignore` is that flag, negated).
-    fn ignores_explosion(&self, blast: &Blast) -> bool {
-        self.invisible || blast.items_ignore
-    }
-    /// `EntityType.ARMOR_STAND`'s size, halved when small; a marker has none.
-    fn explosion_box(&self) -> Aabb {
-        let (w, h) = armor_stand_size(self);
-        let half = w / 2.0;
-        let p = self.position;
-        Aabb::new(
-            Vec3::new(p.x - half, p.y, p.z - half),
-            Vec3::new(p.x + half, p.y + h, p.z + half),
-        )
-    }
-    fn explosion_eye_height(&self) -> f64 {
-        if self.marker {
-            0.0
-        } else if self.small {
-            f64::from(0.9875f32)
-        } else {
-            f64::from(1.7775f32)
-        }
-    }
-    /// A burst of wind pushes a stand that a blast only breaks.
-    fn pushed_by_wind(&self) -> bool {
-        true
-    }
-    fn bounds(&self) -> Aabb {
-        ArmorStand::bounds(self)
-    }
-    fn is_living(&self) -> bool {
-        true
-    }
-    /// `ArmorStand.isIgnoringBlockTriggers`.
-    fn is_ignoring_block_triggers(&self) -> bool {
-        self.marker
-    }
-    /// A NoGravity stand is not swept for the blocks it stands in (plates,
-    /// fire): measured beside the real server, it never presses a plate nor
-    /// catches fire, and does again once `NoGravity` is cleared.
-    fn sweeps_blocks_inside(&self) -> bool {
-        !self.no_gravity
-    }
-    fn pushed_by_explosion(&self) -> bool {
-        false
-    }
-    /// `Entity.noPhysics`: `Marker` or `NoGravity` unless a mod wrote it,
-    /// recomputed from them on load because `readAdditionalSaveData` does.
-    /// Its own field is the write's store, so `stored` is None for a stand.
-    fn no_physics(&self, _stored: Option<bool>) -> bool {
-        self.no_physics.unwrap_or(self.marker || self.no_gravity)
-    }
-    /// `ArmorStand.getPistonPushReaction`: a marker is ignored.
-    fn get_piston_push_reaction(&self) -> PushReaction {
-        if self.marker {
-            PushReaction::IgnoreEntity
-        } else {
-            PushReaction::PushPull
-        }
-    }
     /// `ArmorStand.getDefaultDimensions`: the box a portal sweep follows, and
     /// the size its exit is placed by. `ArmorStand.readAdditionalSaveData`
     /// makes a stand without `hasPhysics` (a marker or a `NoGravity` one)
@@ -2624,44 +1419,7 @@ impl Entity for ArmorStand {
     }
 }
 
-impl Entity for PrimedTnt {
-    stored_size!(|_: &Self| PrimedTnt::DIMENSIONS);
-    stored_ground!();
-    fn support_collision(
-        &self,
-        _tags: &sunrise_items::items::EntityTypeTags,
-    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        (self.collision_context(), Some(self.powder_snow_subject()))
-    }
-    fn reset_fall_distance(&mut self) {
-        // Primed TNT keeps no fall distance here.
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-
-    fn rotation(&self) -> [f32; 2] {
-        self.rotation
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn ticks_after_projectiles(&self) -> bool {
-        true
-    }
-    fn waits_for_spawn_packet(&self) -> bool {
-        true
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        "minecraft:tnt".into()
-    }
+impl ServerEntity for PrimedTnt {
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -2683,12 +1441,6 @@ impl Entity for PrimedTnt {
         load_with_transfer!(game, transferred, load_tnt, load_tnt_transferred, tag, uuid);
         Ok(())
     }
-    stored_motion!();
-    /// `EntityTypes.TNT`'s explicit `eyeHeight(0.15F)`. Nothing vanilla reads
-    /// for TNT depends on it (only `isEyeInFluid` does), but it is the type's.
-    fn fluid_eye_y(&self) -> f64 {
-        self.position.y + f64::from(0.15_f32)
-    }
     /// `PrimedTnt` is 0.98 across.
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((0.98, 0.98))
@@ -2696,75 +1448,9 @@ impl Entity for PrimedTnt {
     fn can_use_portal(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.tnt_can_use_portal(self.id)
     }
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Tnt(self.id))
-    }
-    /// Pushed from its position, not its eyes.
-    fn explosion_eye_height(&self) -> f64 {
-        0.0
-    }
-    fn bounds(&self) -> Aabb {
-        PrimedTnt::bounds(self)
-    }
-    fn is_pickable(&self) -> bool {
-        true
-    }
-    fn piston_slime_bounce(&mut self, movement: Direction) {
-        self.velocity = piston_push::bounce_velocity(movement, self.velocity);
-        // Leave the ground so the next tick does not apply the on-ground
-        // Y * -0.5 friction that cancels the launch.
-        self.ground.on_ground = false;
-        self.ground.clear_support();
-    }
 }
 
-impl Entity for FallingBlock {
-    stored_size!(|_: &Self| FallingBlock::DIMENSIONS);
-    stored_ground!();
-    fn fall_distance(&self) -> f64 {
-        self.fall_distance
-    }
-    fn support_collision(
-        &self,
-        _tags: &sunrise_items::items::EntityTypeTags,
-    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        (
-            sunrise_sim::motion::BodyMotion::entity_context(self.id, self.position),
-            Some(PowderSnowSubject {
-                fall_distance: self.fall_distance,
-                falling_block: true,
-                ..Default::default()
-            }),
-        )
-    }
-    fn reset_fall_distance(&mut self) {
-        self.fall_distance = 0.0;
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-    fn rotation(&self) -> [f32; 2] {
-        self.rotation
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn ticks_after_projectiles(&self) -> bool {
-        true
-    }
-    fn waits_for_spawn_packet(&self) -> bool {
-        true
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        "minecraft:falling_block".into()
-    }
+impl ServerEntity for FallingBlock {
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -2793,71 +1479,15 @@ impl Entity for FallingBlock {
         );
         Ok(())
     }
-    stored_motion!();
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Falling(self.id))
-    }
-    fn bounds(&self) -> Aabb {
-        FallingBlock::bounds(self)
-    }
-    fn is_pickable(&self) -> bool {
-        true
-    }
 }
 
-impl Entity for Projectile {
-    stored_size!(|p: &Self| p.kind.dimensions());
-    stored_ground!();
-    fn fall_distance(&self) -> f64 {
-        self.arrow
-            .as_ref()
-            .map_or(self.fall_distance, |arrow| arrow.fall_distance)
-    }
-    fn support_collision(
-        &self,
-        _tags: &sunrise_items::items::EntityTypeTags,
-    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        (
-            sunrise_sim::motion::BodyMotion::entity_context(self.id, self.position),
-            Some(PowderSnowSubject {
-                fall_distance: self.fall_distance(),
-                ..Default::default()
-            }),
-        )
-    }
-    fn reset_fall_distance(&mut self) {
-        if let Some(arrow) = self.arrow.as_deref_mut() {
-            arrow.fall_distance = 0.0;
-        }
-    }
+impl ServerEntity for Projectile {
     fn portal_after_move(&self) -> bool {
         !matches!(
             self.kind,
             sunrise_sim::projectiles::ProjectileKind::LlamaSpit
                 | sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
         )
-    }
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.pitch = pitch.clamp(-90.0, 90.0);
-        self.previous_yaw = self.yaw;
-        self.previous_pitch = self.pitch;
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.ground.on_ground = on_ground;
-    }
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.ground.on_ground = on_ground;
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        self.entity_type().into()
     }
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
@@ -2926,7 +1556,6 @@ impl Entity for Projectile {
         }
         Ok(())
     }
-    stored_motion!();
     /// Arrows and the thrown items and fireballs a chunk saves.
     fn portal_size(&self) -> Option<(f32, f32)> {
         (super::nether_portal::is_arrow(self) || super::nether_portal::is_portal_projectile(self))
@@ -2938,94 +1567,9 @@ impl Entity for Projectile {
     fn portal_sweeps(&self) -> bool {
         !super::nether_portal::is_arrow(self) || !self.stuck || self.previous != self.position
     }
-    fn selector_target(&self) -> Option<Target> {
-        use sunrise_sim::projectiles::ProjectileKind as K;
-        // The kinds /data can write (entity_nbt).
-        let selectable = self.is_arrow()
-            || sunrise_sim::entity_nbt::saved_with_chunk(self)
-            || matches!(
-                self.kind,
-                K::LargeFireball { .. }
-                    | K::SmallFireball
-                    | K::DragonFireball
-                    | K::WindCharge
-                    | K::BreezeWindCharge
-            );
-        selectable.then_some(Target::Projectile(self.id))
-    }
-    /// `AbstractArrow.push` does nothing in the ground; a wind charge's motion
-    /// stays 0.
-    fn pushed_by_explosion(&self) -> bool {
-        !self.stuck && !self.kind.ignores_blast()
-    }
-    fn explosion_eye_height(&self) -> f64 {
-        self.kind.eye_height()
-    }
-    fn push_from_explosion(&mut self, push: Vec3) {
-        self.velocity = Vec3::new(
-            self.velocity.x + push.x,
-            self.velocity.y + push.y,
-            self.velocity.z + push.z,
-        );
-        self.needs_sync = true;
-    }
-    fn bounds(&self) -> Aabb {
-        Projectile::bounds(self)
-    }
-    /// A shulker bullet's, set when it is made, unless a mod wrote one: the
-    /// write has no field on this struct and lands in `stored`, so a cleared
-    /// flag is what the movement code reads; an arrow's `AbstractArrow.noPhysics`.
-    fn no_physics(&self, stored: Option<bool>) -> bool {
-        stored.unwrap_or_else(|| {
-            matches!(self.kind, ProjectileKind::ShulkerBullet { .. })
-                || self.arrow.as_ref().is_some_and(|a| a.no_physics)
-        })
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        Projectile::move_by_piston(self, movement);
-    }
-    fn piston_release_bounds(&self) -> Option<Aabb> {
-        Projectile::piston_release_bounds(self)
-    }
-    fn release_after_piston(&mut self, no_block_collision: bool) {
-        Projectile::release_after_piston(self, no_block_collision);
-    }
-    fn piston_slime_bounce(&mut self, movement: Direction) {
-        Projectile::piston_slime_bounce(self, movement);
-    }
-    fn is_pickable(&self) -> bool {
-        super::deflect::attackable(self)
-    }
 }
 
-impl Entity for Rocket {
-    stored_size!(|_: &Self| Rocket::DIMENSIONS);
-    stored_ground!();
-    fn reset_fall_distance(&mut self) {
-        // A firework rocket keeps no fall distance here.
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-    fn rotation(&self) -> [f32; 2] {
-        self.rotation
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        "minecraft:firework_rocket".into()
-    }
+impl ServerEntity for Rocket {
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
@@ -3055,7 +1599,6 @@ impl Entity for Rocket {
         );
         Ok(())
     }
-    stored_motion!();
     /// A rocket that carries its owner stays.
     fn portal_size(&self) -> Option<(f32, f32)> {
         (self.attached_to.is_none() && !self.attached).then_some((0.25, 0.25))
@@ -3063,46 +1606,11 @@ impl Entity for Rocket {
     fn portal_from(&self) -> Option<Vec3> {
         Some(self.previous)
     }
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Rocket(self.id))
-    }
-    /// 0.25 wide, so 0.2125 to the eyes.
-    fn explosion_eye_height(&self) -> f64 {
-        0.2125
-    }
-    fn bounds(&self) -> Aabb {
-        Rocket::bounds(self)
-    }
-    /// `FireworkRocketEntity.tick`: boosting a player skips the step.
-    fn sweeps_blocks_inside(&self) -> bool {
-        !self.attached
-    }
 }
 
-impl Entity for ThrownTrident {
-    stored_size!(|_: &Self| THROWN_TRIDENT_DIMENSIONS);
-    stored_ground!();
-    fn reset_fall_distance(&mut self) {
-        // A thrown trident keeps no fall distance here.
-    }
+impl ServerEntity for ThrownTrident {
     fn portal_after_move(&self) -> bool {
         true
-    }
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.pitch = pitch.clamp(-90.0, 90.0);
-    }
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.ground.on_ground = on_ground;
-    }
-    fn native_type(&self) -> Cow<'_, str> {
-        "minecraft:trident".into()
     }
     fn save_nbt(
         game: &mut Game<'_, crate::game::server_side::ServerState>,
@@ -3132,7 +1640,6 @@ impl Entity for ThrownTrident {
         );
         Ok(())
     }
-    stored_motion!();
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((0.5, 0.5))
     }
@@ -3141,92 +1648,6 @@ impl Entity for ThrownTrident {
     }
     fn portal_sweeps(&self) -> bool {
         !self.in_ground || self.previous != self.position
-    }
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Trident(self.id))
-    }
-    /// Like any arrow (`AbstractArrow.push`) not pushed while in the ground.
-    fn pushed_by_explosion(&self) -> bool {
-        !self.in_ground
-    }
-    /// `EntityType.TRIDENT`: eyes at 0.13.
-    fn explosion_eye_height(&self) -> f64 {
-        f64::from(0.13_f32)
-    }
-    fn bounds(&self) -> Aabb {
-        let p = self.position;
-        let vanilla = Aabb::new(
-            Vec3::new(p.x - 0.25, p.y, p.z - 0.25),
-            Vec3::new(p.x + 0.25, p.y + 0.5, p.z + 0.25),
-        );
-        sunrise_sim::pose::SizeAnswer::sized_box(
-            self.size_answer,
-            THROWN_TRIDENT_DIMENSIONS,
-            p,
-            vanilla,
-        )
-    }
-    /// `AbstractArrow.noPhysics`, set once a loyal trident turns back. Its own
-    /// field is the write's store, so `stored` is None for a trident.
-    fn no_physics(&self, _stored: Option<bool>) -> bool {
-        self.no_physics
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        ThrownTrident::move_by_piston(self, movement);
-    }
-    fn piston_release_bounds(&self) -> Option<Aabb> {
-        ThrownTrident::piston_release_bounds(self)
-    }
-    fn release_after_piston(&mut self, no_block_collision: bool) {
-        ThrownTrident::release_after_piston(self, no_block_collision);
-    }
-    fn piston_slime_bounce(&mut self, movement: Direction) {
-        ThrownTrident::piston_slime_bounce(self, movement);
-    }
-    /// `GameLevel::tick_blocks` sweeps tridents itself.
-    fn sweeps_blocks_inside(&self) -> bool {
-        false
-    }
-}
-
-impl EntityRules for Rocket {}
-impl EntityRules for Boat {
-    fn is_no_gravity(&self) -> bool {
-        self.no_gravity
-    }
-    /// `AbstractBoat.getDefaultGravity`.
-    fn get_default_gravity(&self) -> f64 {
-        0.04
-    }
-}
-impl EntityRules for Minecart {
-    fn is_no_gravity(&self) -> bool {
-        self.no_gravity
-    }
-    /// `AbstractMinecart.getDefaultGravity`.
-    fn get_default_gravity(&self) -> f64 {
-        if self.in_water { 0.005 } else { 0.04 }
-    }
-}
-impl EntityRules for PrimedTnt {
-    fn is_no_gravity(&self) -> bool {
-        self.no_gravity
-    }
-    /// `PrimedTnt.getDefaultGravity`.
-    fn get_default_gravity(&self) -> f64 {
-        0.04
-    }
-}
-impl EntityRules for FallingBlock {
-    fn is_no_gravity(&self) -> bool {
-        self.no_gravity
-    }
-    /// `FallingBlockEntity.getDefaultGravity`.
-    fn get_default_gravity(&self) -> f64 {
-        0.04
     }
 }
 
@@ -3288,7 +1709,10 @@ pub(in crate::game) mod load_claim_tests {
                 sunrise_sim::entity_nbt::throwable_kind(&id).is_none(),
                 "{id}"
             );
-            assert!(super::super::boats::any_boat_wood(&id).is_none(), "{id}");
+            assert!(
+                crate::game::boats_common::any_boat_wood(&id).is_none(),
+                "{id}"
+            );
             assert!(
                 super::super::minecarts::CartKind::from_id(&id).is_none(),
                 "{id}"
@@ -3300,8 +1724,9 @@ pub(in crate::game) mod load_claim_tests {
 #[cfg(test)]
 pub(in crate::game) mod trident_selector_tests {
     use super::Entity as _;
-    use crate::game::{commands::Target, trident::ThrownTrident};
+    use crate::game::commands_common::Target;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::thrown_trident::ThrownTrident;
 
     /// `@e`, `/kill` and `/data` reach a thrown trident like any other entity
     /// (`EntityTypeTest.forClass(Entity.class)`: every entity in the level).
@@ -3318,14 +1743,14 @@ pub(in crate::game) mod restore_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod join_order_tests {
-    use super::{DrawFamily, EntityHandle, EntityLists, JoinOrderError};
-    use crate::game::{
-        boats::Boat, creatures::render_fixture::mob, fireworks::Rocket, trident::ThrownTrident,
-    };
+    use crate::game::client_side::entity_client::{DrawExtras, DrawFamily, DrawRun, draw_runs};
+    use crate::game::entity::{EntityHandle, EntityLists, JoinOrderError};
+    use crate::game::{boats_common::Boat, creatures::render_fixture::mob, fireworks::Rocket};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::entities::ArmorStand;
     use sunrise_sim::join_seq::{JoinList, JoinSeq};
     use sunrise_sim::mobs::{Mob, Species};
+    use sunrise_sim::thrown_trident::ThrownTrident;
 
     fn at() -> Vec3 {
         Vec3::new(0.5, 100.0, 0.5)
@@ -3416,9 +1841,9 @@ pub(in crate::game) mod join_order_tests {
         local_player: Option<JoinSeq>,
     ) -> Vec<(DrawFamily, std::ops::Range<usize>)> {
         let mut runs = Vec::new();
-        super::draw_runs(
+        draw_runs(
             lists.view(),
-            super::DrawExtras {
+            DrawExtras {
                 local_player,
                 ..Default::default()
             },
@@ -3491,17 +1916,17 @@ pub(in crate::game) mod join_order_tests {
         projectiles.push(Projectile::new(ProjectileKind::DragonFireball, at(), None));
         lists.stand(2);
         let mut draw = Vec::new();
-        super::draw_runs(
+        draw_runs(
             EntityLists {
                 projectiles: &projectiles,
                 ..lists.view()
             },
-            super::DrawExtras::default(),
+            DrawExtras::default(),
             &mut draw,
         );
         assert_eq!(
             draw,
-            [super::DrawRun {
+            [DrawRun {
                 family: DrawFamily::ArmorStand,
                 range: 0..2
             }]
@@ -3588,6 +2013,7 @@ pub(in crate::game) mod set_rotation_tests {
 #[cfg(test)]
 pub(in crate::game) mod scoped_edit_tests {
     use super::*;
+    use crate::game::entity::entity_access;
 
     #[test]
     fn scoped_walk_skips_only_one_entity_and_keeps_later_kinds() {

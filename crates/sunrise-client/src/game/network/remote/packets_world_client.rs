@@ -26,7 +26,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !triggered {
             let state = self.world.block(p.pos[0], p.pos[1], p.pos[2]);
             let block = &self.res.facts().get(state).name;
-            let named = self.remote.as_ref().and_then(|r| {
+            let named = self.side.remote.as_ref().and_then(|r| {
                 r.builtin
                     .get("minecraft:block")?
                     .name(p.block)
@@ -55,7 +55,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )),
             // LEVEL_CHUNKS_LOAD_START: the server has begun sending the level.
             13 => {
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.level_load.loading_packets_received();
                 }
             }
@@ -86,14 +86,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // START_RAINING, STOP_RAINING, RAIN_LEVEL_CHANGE and THUNDER_LEVEL_CHANGE.
             event @ (1 | 2 | 7 | 8) => self.world.weather.game_event(event, p.param),
             3 => {
-                self.set_local_mode(crate::game::game_mode::mode_from_id(p.rounded_param()));
+                self.set_local_mode(sunrise_gameplay_common::game_modes::mode_from_id(
+                    p.rounded_param(),
+                ));
                 if self.spectator() {
                     self.reset_client_item_use();
                 }
             }
             // IMMEDIATE_RESPAWN: LocalPlayer.setShowDeathScreen.
             11 => {
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.show_death_screen = p.param == 0.0;
                 }
             }
@@ -124,7 +126,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // LIMITED_CRAFTING: LocalPlayer.setDoLimitedCrafting.
             12 => {
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.do_limited_crafting = p.param == 1.0;
                 }
             }
@@ -171,7 +173,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let [mut x, mut y, mut z] = p.pos.pos;
         // Level.getWorldBorderAdjustedRespawnData tests the integer BlockPos against
         // the active level's border, even when the packet names a different level.
-        if let Some(remote) = &self.remote
+        if let Some(remote) = &self.side.remote
             && !self
                 .border
                 .geometry()
@@ -206,7 +208,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // (possibly partial) updates. The sky still uses only the default clock.
         self.world.game_time = p.game_time;
         self.remote_clock_tick();
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             for clock in p.clocks {
                 if r.registries
                     .name("minecraft:world_clock", clock.clock)

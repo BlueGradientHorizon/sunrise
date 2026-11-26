@@ -33,7 +33,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn social_players(&mut self) -> (Vec<TabPlayer>, u128) {
         match self.remote_tab_players() {
             Some((players, _, _)) => {
-                let me = self.remote.as_ref().map_or(0, |r| r.profile());
+                let me = self.side.remote.as_ref().map_or(0, |r| r.profile());
                 (players, me)
             }
             None => (Vec::new(), 0),
@@ -44,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.side.social.hidden.contains(&id) {
             return false;
         }
-        let me = self.remote.as_ref().map_or(0, |r| r.profile());
+        let me = self.side.remote.as_ref().map_or(0, |r| r.profile());
         id != me
     }
     /// `new SocialInteractionsScreen(lastScreen)`: it opens on All, with an empty search.
@@ -125,9 +125,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The server's name: a local world's name, a server's entry in the list.
     pub(in crate::game::client_side) fn social_server_name(&self) -> String {
-        match (&self.integrated, self.server_address()) {
+        match (&self.side.integrated, self.server_address()) {
             (Some(server), _) => server.world_name.clone(),
-            (None, Some(address)) if self.remote.is_some() => address.to_owned(),
+            (None, Some(address)) if self.side.remote.is_some() => address.to_owned(),
             _ => self.level.name.clone(),
         }
     }
@@ -239,5 +239,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let text: String = text.chars().filter(|c| !c.is_control()).collect();
         self.side.social.search.insert_text(&text);
         self.side.social.scroll = 0.0;
+    }
+}
+
+#[cfg(feature = "client")]
+impl Default for Social {
+    fn default() -> Self {
+        let mut search = EditBox::new(0.0, 0.0, 200.0, 15.0);
+        search.max_length = 16;
+        Self {
+            hidden: HashSet::new(),
+            names: HashMap::new(),
+            page: Page::All,
+            search,
+            tooltip: Default::default(),
+            scroll: 0.0,
+            from_pause: false,
+        }
     }
 }

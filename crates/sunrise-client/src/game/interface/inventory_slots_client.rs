@@ -7,7 +7,7 @@ use crate::game::inventory_slots::container_slot_index;
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn craft_result(&self) -> Option<ItemStack> {
         // A server's result slot is the server's (`CraftingMenu.slotChangedCraftingGrid`).
-        if let Some(r) = &self.remote {
+        if let Some(r) = &self.side.remote {
             return r.craft_result.clone();
         }
         self.craft_recipe().map(|(_, result)| result)
@@ -591,7 +591,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if i >= MOD_MENU_SLOT_BASE && !self.is_mount_chest_slot(i) {
             return self.container_slot_mut(i - MOD_MENU_SLOT_BASE);
         }
-        if i >= mount_menu::SADDLE {
+        if i >= sunrise_gameplay_common::mount_rules::SADDLE {
             return self.mount_slot_mut(i);
         }
         if i >= stations::INPUT {
@@ -697,7 +697,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             i if i >= MOD_MENU_SLOT_BASE && !self.is_mount_chest_slot(i) => {
                 self.container_slot(i - MOD_MENU_SLOT_BASE).clone()
             }
-            i if i >= mount_menu::SADDLE => self.mount_slot(i).clone(),
+            i if i >= sunrise_gameplay_common::mount_rules::SADDLE => self.mount_slot(i).clone(),
             i if i >= stations::INPUT => self.station_slot(i).clone(),
             500..=503 => self.armor[i - 500].clone(),
             504 => self.offhand.clone(),

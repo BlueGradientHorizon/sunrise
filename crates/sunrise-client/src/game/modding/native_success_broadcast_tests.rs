@@ -79,7 +79,7 @@ fn with_operators(
                 let mut receivers = Vec::new();
                 // A dedicated server: its players' commands run at their ops.json level.
                 game.set_allow_commands(true);
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 host.settings.guest_commands = true;
                 let hub = &mut host.hub;
                 hub.config.integrated = false;
@@ -152,7 +152,7 @@ fn chats(
     game: &crate::game::ServerGame<'_>,
     receivers: &[(u32, mpsc::Receiver<Out>)],
 ) -> Vec<(u32, Vec<Value>)> {
-    for g in &game.lan.as_ref().unwrap().hub.guests {
+    for g in &game.side.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     receivers

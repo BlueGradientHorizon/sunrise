@@ -2,8 +2,8 @@
 use super::native_pool_elements::{
     Elements, element_ref, engine_element, engine_placement, engine_projection,
 };
-use super::native_structures::engine_rotation;
 use super::native_worldgen::WorkerResources;
+use crate::game::native_structure_values::engine_rotation;
 use mod_api::{
     BiomeId, ChunkPos, GenerationContext, HeightmapType, NoiseBlock, NoiseColumn, PieceContext,
     RandomSource, StructureError, StructurePiece, StructureType,

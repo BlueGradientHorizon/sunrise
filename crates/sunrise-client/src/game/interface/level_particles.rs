@@ -53,7 +53,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.deliver_level_event(id, pos, data);
             return;
         }
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.global_level_event(self.dim.id(), id, pos, data);
         } else if self.side.audio_capture_active {
             self.side
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let recorded = std::mem::replace(&mut self.side.lan_events, saved_lan_events);
         let extra_level_events = std::mem::replace(&mut self.level_events, saved_level_events);
         self.level_events.extend(extra_level_events);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             if id == 2001 {
                 host.broken
                     .push([f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])]);

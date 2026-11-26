@@ -33,7 +33,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn server_after_with_level(&mut self) {
         self.flush_spill();
-        if self.lan.is_some() {
+        if self.side.lan.is_some() {
             self.flush_lan_particles();
             self.flush_native_sounds();
         }
@@ -128,9 +128,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn server_tick(&mut self) -> Result<()> {
-        if self.remote.is_some() {
-            return Err("server-role game cannot tick a remote connection".into());
-        }
         self.tick_server_first()
     }
 
@@ -223,7 +220,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(entity) => {
                 Some(self.encode_live_block_entity(key, entity, block, self.res.items()))
             }
-            None => spill::saved_entity(&self.world, pos),
+            None => crate::game::spill_common::saved_entity(&self.world, pos),
         }
     }
 
@@ -410,7 +407,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: [i32; 3],
         progress: i32,
     ) {
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.broadcast_near(
                 [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])],
                 64.0,
@@ -541,7 +538,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(p) = self.player.as_mut() {
             players.push(drain("host", &mut p.hurt_log, &mut p.attack_log));
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.guests.update_all(|g| {
                 let name = g.name.clone();
                 if let Some(m) = g.motion.as_mut() {

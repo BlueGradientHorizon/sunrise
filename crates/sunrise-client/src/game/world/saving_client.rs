@@ -18,9 +18,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // A world still loading has no client in it yet: its server stops and is joined
         // through the same fallible path as a running one, before the loop may end.
-        if quit && let Some(starting) = self.integrated_starting.take() {
+        if quit && let Some(starting) = self.side.integrated_starting.take() {
             starting.handle.request_stop();
-            self.integrated = Some(starting.handle);
+            self.side.integrated = Some(starting.handle);
             self.side.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
@@ -41,7 +41,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             });
             return Ok(());
         }
-        if self.integrated.is_some() {
+        if self.side.integrated.is_some() {
             // Minecraft.disconnect: the client logs out before its server halts.
             self.client_logging_out();
         }
@@ -49,7 +49,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // server's own stop path aborts its workers, but the window's streaming registration
         // is dropped only after the event loop exits and would otherwise wait for queued work.
         self.side.streaming.abort_generation();
-        if let Some(integrated) = &self.integrated {
+        if let Some(integrated) = &self.side.integrated {
             integrated.request_stop();
             self.side.pending_save.0 = Some(ClosingSave {
                 quit,
@@ -58,13 +58,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 started: Instant::now(),
                 stage: Stage::Server,
             });
-        } else if self.remote.is_some() {
+        } else if self.side.remote.is_some() {
             if !quit {
                 return self.leave_server(None);
             }
             self.connection_left(sunrise_hooks::connection::Left::Quit);
             self.client_logging_out();
-            if let Some(mut remote) = self.remote.take() {
+            if let Some(mut remote) = self.side.remote.take() {
                 remote.session.disconnect();
             }
             self.side.saved_for_exit = true;
@@ -111,6 +111,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Stage::Quit => Ok(true),
                 Stage::Server => {
                     let server = self
+                        .side
                         .integrated
                         .as_ref()
                         .ok_or("the integrated server stopped with an error")?;
@@ -120,7 +121,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     // Drop/join only after completion; leave_server's teardown
                     // can then run without blocking on the server's writes.
                     if save.quit {
-                        self.integrated.take().unwrap().stop()?;
+                        self.side.integrated.take().unwrap().stop()?;
                     } else {
                         self.leave_server(None)?;
                     }

@@ -1,12 +1,7 @@
 //! ContentsSlotSource's live component collections; mutable until written back.
 use super::{Game, ItemStack, Slot, SlotCandidate};
+use crate::game::commands_common::Component;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum Component {
-    Container,
-    Bundle,
-    Charged,
-}
 pub(in crate::game) struct Provider<'a> {
     items: &'a [Option<ItemStack>],
     position: &'a mut usize,
@@ -23,85 +18,6 @@ impl<'a> Provider<'a> {
             position,
             mode,
         }
-    }
-}
-impl Component {
-    pub(in crate::game) fn named(name: &str) -> Option<Self> {
-        match name.strip_prefix("minecraft:").unwrap_or(name) {
-            "container" => Some(Self::Container),
-            "bundle_contents" => Some(Self::Bundle),
-            "charged_projectiles" => Some(Self::Charged),
-            _ => None,
-        }
-    }
-    pub(in crate::game) fn items(self, stack: &ItemStack) -> Vec<Option<ItemStack>> {
-        let Some(data) = stack.data() else {
-            return Vec::new();
-        };
-        match self {
-            Self::Container => {
-                let size = data
-                    .container
-                    .iter()
-                    .map(|(i, _)| usize::from(*i) + 1)
-                    .max()
-                    .unwrap_or(0);
-                let mut out = vec![None; size];
-                for (i, item) in &data.container {
-                    out[usize::from(*i)] = Some(item.clone());
-                }
-                out
-            }
-            Self::Bundle => data.bundle_contents.iter().cloned().map(Some).collect(),
-            Self::Charged => data.charged.iter().cloned().map(Some).collect(),
-        }
-    }
-    /// ComponentSlotCollection writes a single normalized component back to
-    /// its live parent; all unrelated parent components remain modeled.
-    pub(in crate::game) fn store(self, stack: &mut ItemStack, mut slots: Vec<Option<ItemStack>>) {
-        for slot in &mut slots {
-            if slot
-                .as_ref()
-                .is_some_and(|s| s.count == 0 || &*s.item == "minecraft:air")
-            {
-                *slot = None;
-            }
-        }
-        if self == Self::Bundle {
-            // BundleContents.Mutable.mergeIdenticalStacks: merge into a later
-            // matching entry, preserving the order of the surviving entries.
-            let mut i = 0;
-            while i < slots.len() {
-                let Some(item) = slots[i].as_ref() else {
-                    slots.remove(i);
-                    continue;
-                };
-                if let Some(j) = (i + 1..slots.len()).find(|&j| {
-                    slots[j]
-                        .as_ref()
-                        .is_some_and(|s| s.same_item_same_components(item))
-                }) {
-                    let count = item.count;
-                    slots[j].as_mut().unwrap().count += count;
-                    slots.remove(i);
-                } else {
-                    i += 1;
-                }
-            }
-        }
-        let data = stack.data_mut();
-        match self {
-            Self::Container => {
-                data.container = slots
-                    .into_iter()
-                    .enumerate()
-                    .filter_map(|(i, s)| s.map(|s| (i as u8, s)))
-                    .collect()
-            }
-            Self::Bundle => data.bundle_contents = slots.into_iter().flatten().collect(),
-            Self::Charged => data.charged = slots.into_iter().flatten().collect(),
-        }
-        stack.tidy();
     }
 }
 

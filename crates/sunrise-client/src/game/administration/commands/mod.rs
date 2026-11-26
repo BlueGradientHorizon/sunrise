@@ -1235,10 +1235,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// container saves its items, not the table.
     pub(in crate::game) fn unpack_opened_loot(&mut self, key: (i32, i32, i32), _name: &str) {
         let player = self.native_acting_player();
-        self.unpack_loot(crate::game::container_loot::LootTarget::Block(key), player);
+        self.unpack_loot(
+            crate::game::container_loot_level::LootTarget::Block(key),
+            player,
+        );
         if let Some((other, _)) = self.chest_partner(key) {
             self.unpack_loot(
-                crate::game::container_loot::LootTarget::Block(other),
+                crate::game::container_loot_level::LootTarget::Block(other),
                 player,
             );
         }
@@ -2128,12 +2131,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// owner is one of them), with the count and the max.
     pub(in crate::game::server_side) fn cmd_list(&mut self, ctx: &Context) -> R<i32> {
         let players: Vec<(u128, String)> = self
+            .side
             .lan
             .iter()
             .flat_map(|h| h.hub.online_players())
             .map(|g| (g.uuid, g.name.clone()))
             .collect();
         let max = self
+            .side
             .lan
             .as_ref()
             .map_or(sunrise_sim::lan::MAX_PLAYERS, |h| {
@@ -2200,38 +2205,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         out.push(rest);
         out
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// `Level.getEntity`: the entity of the level in place with a network
-    /// id, players aside.
-    pub(in crate::game) fn level_entity(&self, id: i32) -> Option<Target> {
-        let id = id as u32;
-        match self.server_resident_entity(id) {
-            sunrise_sim::join_seq::residency::table::EntityLookup::Found { location, value }
-                if location.owner.dimension == self.dim.key()
-                    && !matches!(
-                        location.owner.kind,
-                        sunrise_sim::join_seq::residency::Kind::Player
-                            | sunrise_sim::join_seq::residency::Kind::Hook
-                            | sunrise_sim::join_seq::residency::Kind::DragonPart
-                    ) =>
-            {
-                Some(value)
-            }
-            // A client's own copy of a row its server shows it.
-            _ => self
-                .remote
-                .as_ref()
-                .is_some_and(|r| r.general.rows.contains_key(&(id as i32)))
-                .then_some(Target::General(id)),
-        }
-    }
-
-    pub(in crate::game) fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
-        let tag = sunrise_command::args::normalized(tag);
-        self.items().entity_type_tags.contains(&tag, ty)
     }
 }
 
@@ -2663,6 +2636,7 @@ pub(in crate::game) mod selector_bounds_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -2770,7 +2744,7 @@ pub(in crate::game) mod forced_respawn_tests {
                             .unwrap();
                         assert!(config.forced);
                         assert_eq!(config.pos, [5, 64, 5]);
-                        game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                        game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                             g.dead = true;
                             g.health = 0.0;
                         });
@@ -2967,6 +2941,7 @@ pub(in crate::game) mod fill_note_instrument_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

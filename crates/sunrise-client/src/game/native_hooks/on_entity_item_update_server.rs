@@ -1,8 +1,27 @@
 use super::*;
-use crate::game::native_hooks::on_entity_item_update::ItemEntityTickAccess;
-use crate::game::native_hooks::on_entity_item_update::ResidentDroppedItem;
 use crate::game::native_ticks;
 use sunrise_core::geometry::Vec3;
+
+/// `IItemExtension.onEntityItemUpdate`: a dropped item entity is about to
+/// tick (`ItemEntity.tick`). Set `canceled` and its
+/// movement and merging are skipped for this tick. Server-side.
+pub(in crate::game) fn native_on_entity_item_update(
+    call: mod_api::__private::OnEntityItemUpdateCall<'_>,
+) {
+    crate::game::native_hooks::fire::fire_on_entity_item_update(call);
+}
+
+pub(in crate::game) struct ResidentDroppedItem<'g, 'w> {
+    pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
+    pub(in crate::game) subject: mod_api::ItemEntityRef,
+    pub(in crate::game) index: usize,
+}
+
+pub(in crate::game) struct ItemEntityTickAccess<'g, 'w> {
+    pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
+    pub(in crate::game) subject: mod_api::ItemEntityRef,
+    pub(in crate::game) index: usize,
+}
 
 impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
     fn with_view(&mut self, call: &mut dyn FnMut(mod_api::ItemEntitySubjectView<'_>)) {
@@ -156,12 +175,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             subject,
             index,
         };
-        crate::game::native_hooks::native_on_entity_item_update(
-            mod_api::__private::OnEntityItemUpdateCall {
-                subject: mod_api::ItemEntityServerScope::new(&mut access, &item_id),
-                canceled: &mut canceled,
-            },
-        );
+        native_on_entity_item_update(mod_api::__private::OnEntityItemUpdateCall {
+            subject: mod_api::ItemEntityServerScope::new(&mut access, &item_id),
+            canceled: &mut canceled,
+        });
         canceled
     }
     pub(in crate::game::server_side) fn item_update_round(&mut self) -> native_ticks::TickRound {

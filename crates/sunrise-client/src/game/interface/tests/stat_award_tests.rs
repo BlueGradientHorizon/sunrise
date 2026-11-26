@@ -137,7 +137,8 @@ fn lan_guest_awards_and_leave_game_apply_the_edited_amount() {
         vec![mod_api::ModEntry::new("rewrite", Box::new(Rewrite(mode)))].into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .play
@@ -153,7 +154,7 @@ fn lan_guest_awards_and_leave_game_apply_the_edited_amount() {
             .unwrap();
             game.award_leave_game(12, 12, "guest12");
             game.award_leave_game(12, 12, "guest12");
-            let play = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
+            let play = game.side.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
             assert_eq!(play.stats.get("custom", "minecraft:leave_game"), 2);
             assert!(play.stats.take_dirty().contains(&(
                 "minecraft:custom".into(),
@@ -176,7 +177,8 @@ fn deferred_award_rewrites_only_after_outer_commit_and_abort_emits_nothing() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .play
@@ -191,7 +193,7 @@ fn deferred_award_rewrites_only_after_outer_commit_and_abort_emits_nothing() {
                     ((), true)
                 });
                 assert_eq!(
-                    game.lan.as_ref().unwrap().play[&12]
+                    game.side.lan.as_ref().unwrap().play[&12]
                         .stats
                         .get("custom", "minecraft:jump"),
                     0
@@ -201,7 +203,7 @@ fn deferred_award_rewrites_only_after_outer_commit_and_abort_emits_nothing() {
                 ((), true)
             });
             assert_eq!(
-                game.lan.as_ref().unwrap().play[&12]
+                game.side.lan.as_ref().unwrap().play[&12]
                     .stats
                     .get("custom", "minecraft:jump"),
                 0
@@ -219,7 +221,7 @@ fn deferred_award_rewrites_only_after_outer_commit_and_abort_emits_nothing() {
                 ((), false)
             });
             assert_eq!(
-                game.lan.as_ref().unwrap().play[&12]
+                game.side.lan.as_ref().unwrap().play[&12]
                     .stats
                     .get("custom", "minecraft:jump"),
                 0
@@ -233,7 +235,7 @@ fn deferred_award_rewrites_only_after_outer_commit_and_abort_emits_nothing() {
                 ((), true)
             });
             assert_eq!(
-                game.lan.as_ref().unwrap().play[&12]
+                game.side.lan.as_ref().unwrap().play[&12]
                     .stats
                     .get("custom", "minecraft:jump"),
                 2
@@ -361,12 +363,14 @@ fn lan_real_break_and_jump(mods: mod_api::Mods, custom: &str, mode: Option<&Atom
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.build_registries();
             game.set_allow_commands(true);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .play
                 .insert(12, Default::default());
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -375,7 +379,8 @@ fn lan_real_break_and_jump(mods: mod_api::Mods, custom: &str, mode: Option<&Atom
                 })
                 .unwrap();
             let (tx, rx) = std::sync::mpsc::channel();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -404,6 +409,7 @@ fn lan_real_break_and_jump(mods: mod_api::Mods, custom: &str, mode: Option<&Atom
                 2
             );
             let dirty = game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -414,7 +420,8 @@ fn lan_real_break_and_jump(mods: mod_api::Mods, custom: &str, mode: Option<&Atom
                 .take_dirty();
             assert!(dirty.contains(&("minecraft:mined".into(), "minecraft:stone".into(), 2)));
             assert!(
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .play
@@ -424,7 +431,7 @@ fn lan_real_break_and_jump(mods: mod_api::Mods, custom: &str, mode: Option<&Atom
                     .take_dirty()
                     .is_empty()
             );
-            game.lan.as_ref().unwrap().hub.send_stats(12, &dirty);
+            game.side.lan.as_ref().unwrap().hub.send_stats(12, &dirty);
             assert_dirty_packet(
                 game,
                 &rx,
@@ -438,7 +445,7 @@ fn lan_real_break_and_jump(mods: mod_api::Mods, custom: &str, mode: Option<&Atom
             }
             game.guest_jump(12, [4.5, 64.0, 4.5], 0.0);
             game.tick_guests();
-            let play = &mut game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
+            let play = &mut game.side.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
             assert_eq!(play.stats.get("custom", custom), 3);
             assert_eq!(play.stats.get("custom", "minecraft:jump"), 0);
             if mode.is_some() {
@@ -449,7 +456,7 @@ fn lan_real_break_and_jump(mods: mod_api::Mods, custom: &str, mode: Option<&Atom
             }
             let dirty = play.stats.take_dirty();
             assert!(dirty.contains(&("minecraft:custom".into(), custom.into(), 3)));
-            game.lan.as_ref().unwrap().hub.send_stats(12, &dirty);
+            game.side.lan.as_ref().unwrap().hub.send_stats(12, &dirty);
             assert_dirty_packet(
                 game,
                 &rx,
@@ -493,7 +500,8 @@ fn lan_noncanonical_rewrite_keeps_the_entire_original_award() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .play
@@ -538,7 +546,7 @@ fn assert_dirty_packet(
     key: &str,
     count: i32,
 ) {
-    let hub = &game.lan.as_ref().unwrap().hub;
+    let hub = &game.side.lan.as_ref().unwrap().hub;
     let ty = hub
         .synced_id(
             &mod_api::Identifier::parse_namespaced("minecraft:stat_type").unwrap(),

@@ -1,6 +1,6 @@
 //! `/give`'s handing over of one stack.
 use super::{Game, Target};
-use crate::game::level_sounds::LevelSound;
+use crate::game::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;

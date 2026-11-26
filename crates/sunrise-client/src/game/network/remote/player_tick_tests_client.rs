@@ -14,7 +14,7 @@ fn client_player_ticks_on_the_death_screen_too() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "tick-client").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.profile = 456;
             remote.entity_id = 42;
@@ -23,8 +23,14 @@ fn client_player_ticks_on_the_death_screen_too() {
                 sunrise_core::geometry::Vec3::ZERO,
             )
             .ok();
-            game.remote.as_mut().unwrap().level_players.insert(66, 789);
+            game.side
+                .remote
+                .as_mut()
+                .unwrap()
+                .level_players
+                .insert(66, 789);
             let kind = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -53,7 +59,7 @@ fn client_player_ticks_on_the_death_screen_too() {
                     .collect::<Vec<_>>()
             };
             assert_eq!(phases(), [("pre", "client", 789), ("post", "client", 789)]);
-            game.remote.as_mut().unwrap().loaded_sent = true;
+            game.side.remote.as_mut().unwrap().loaded_sent = true;
             game.side
                 .streaming
                 .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));

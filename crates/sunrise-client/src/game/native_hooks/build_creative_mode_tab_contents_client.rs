@@ -8,7 +8,7 @@ use sunrise_items::creative_catalog::{Catalog, Holders, Parameters};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_creative_holders(&self) -> Option<Holders> {
-        self.remote.as_ref().map(|remote| {
+        self.side.remote.as_ref().map(|remote| {
             sunrise_sim::item_names::live_holders(&remote.builtin, &remote.registries)
         })
     }

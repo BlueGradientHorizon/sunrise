@@ -29,6 +29,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         name: &'a mut String,
     ) -> &'a str {
         let listed = self
+            .side
             .remote
             .as_ref()
             .filter(|r| r.tab_players.contains_key(&uuid))
@@ -132,7 +133,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// their downloaded skins once ready), online mode, and which players
     /// are in the level with an upside-down name.
     pub(in crate::game) fn publish_tab_object_skins(&mut self) {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let fingerprint = (
@@ -173,7 +174,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn poll_own_profile(&mut self) {
         let auth = self.auth();
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         match &mut r.own_profile {

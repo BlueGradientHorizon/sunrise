@@ -1,6 +1,6 @@
 //! The typed submission surface; renderer storage is never exposed to mods.
 use super::Game;
-use super::mods;
+use crate::game::client_side::mods_client;
 use crate::game::host::draw::GameWorldDrawContext;
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{
@@ -60,7 +60,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             overlay: self.side.debug,
             reduced: self.reduced_debug_info(),
         };
-        let renderers = mods::debug_renderers(self.options.execution_role, &states);
+        let renderers = mods_client::debug_renderers(self.options.execution_role, &states);
         self.side.debug_renderers.0 = self.side.debug_entries.0.active_renderers(renderers);
     }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
@@ -378,7 +378,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .iter()
                     .filter(|face| !face.hidden_by(copy.hidden_faces))
             };
-            super::minecarts::emit_model_faces(
+            crate::game::client_side::minecarts_client::emit_model_faces(
                 shown().copied().map(|face| (face, copy.light)),
                 world_geometry::row_major_3x4(copy.transform),
                 true,
@@ -396,7 +396,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
             }
-            super::minecarts::scale_tint_alpha(&mut entities[start..], shown(), copy.tint);
+            crate::game::client_side::minecarts_client::scale_tint_alpha(
+                &mut entities[start..],
+                shown(),
+                copy.tint,
+            );
         }
         if !materials.is_empty() {
             self.mark_model_copies(entities.len());
@@ -1216,7 +1220,7 @@ mod tests {
                 .faces(slot)
                 .expect("prepared faces");
             let mut cpu_vertices = Vec::new();
-            super::super::minecarts::emit_model_faces(
+            crate::game::client_side::minecarts_client::emit_model_faces(
                 faces
                     .iter()
                     .copied()

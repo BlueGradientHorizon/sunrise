@@ -32,7 +32,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Bound").unwrap();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.custom_books = true;
                 remote.joined = true;
                 Arc::make_mut(&mut remote.builtin).registries.insert(
@@ -58,7 +58,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                         .ready(6, sunrise_sim::recipe_book::placement_sync::schema())
                 );
                 open(game);
-                let first = game.remote.as_ref().unwrap().menu.generation;
+                let first = game.side.remote.as_ref().unwrap().menu.generation;
                 let window = game.native_net.placement.client.window().unwrap().clone();
                 assert_eq!(window.window, 1);
 
@@ -121,7 +121,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 // The server replaces the menu in place, with no close packet.
                 open(game);
                 assert_eq!(game.side.screen, Screen::Inventory);
-                assert_ne!(game.remote.as_ref().unwrap().menu.generation, first);
+                assert_ne!(game.side.remote.as_ref().unwrap().menu.generation, first);
                 let replacement = game.native_net.placement.client.window().unwrap();
                 assert_eq!(replacement.window, 1);
                 assert_ne!(replacement.nonce, window.nonce);
@@ -342,7 +342,7 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
                 assert!(mod_api::RecipeBookLayout::registered("bound:menu").is_some());
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Menu replacement").unwrap();
-                Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
+                Arc::make_mut(&mut game.side.remote.as_mut().unwrap().builtin)
                     .registries
                     .insert(
                         "minecraft:menu".into(),
@@ -363,7 +363,7 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
                 open(game, 4, 0, "Chest");
                 game.remote_menu_state(4, 15);
                 let key = game.container.expect("chest backing");
-                let generation = game.remote.as_ref().unwrap().menu.generation;
+                let generation = game.side.remote.as_ref().unwrap().menu.generation;
                 let title = game.remote_menu_title().expect("chest title");
 
                 open(game, 5, 1, "Missing factory");
@@ -376,7 +376,7 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
                     game.world.block_entities.get(&key).unwrap().slots().len(),
                     27
                 );
-                let remote = game.remote.as_ref().unwrap();
+                let remote = game.side.remote.as_ref().unwrap();
                 assert_eq!(remote.menu.generation, generation);
                 assert_eq!(remote.state_id, 15);
             });
@@ -585,7 +585,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
             || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
-                    let remote = game.remote.as_mut().unwrap();
+                    let remote = game.side.remote.as_mut().unwrap();
                     Arc::make_mut(&mut remote.registries).menu_extra_revision = LIVE_DATA_REVISION;
                     Arc::make_mut(&mut remote.builtin).registries.insert(
                         "minecraft:menu".into(),
@@ -680,13 +680,13 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
             mod_api::__private::resolve_menus(["geometry:menu"]).unwrap();
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "Geometry").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.joined = true;
             let generation = seed_native_menu(game, 1, "geometry:menu");
             // A registered book alone must not authorize the private protocol.
             receive(game, Message::Ready);
             assert!(!game.native_net.book_ready);
-            game.remote.as_mut().unwrap().custom_books = true;
+            game.side.remote.as_mut().unwrap().custom_books = true;
             game.side.settings.gui_scale = 1;
             // The fixture has no renderer; layout still needs the same viewport
             // used by geometry() to evaluate toggle gutters and book placement.
@@ -888,7 +888,7 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
                 mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Bound").unwrap();
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.custom_books = true;
                 remote.joined = true;
                 seed_native_menu(game, 1, "bound:menu");

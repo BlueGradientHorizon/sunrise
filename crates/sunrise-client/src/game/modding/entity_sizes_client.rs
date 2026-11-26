@@ -17,7 +17,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let pose = synced_pose(m);
             return Some((pose, m.vanilla_dims_in(pose), m.size_answer));
         }
-        let remote = self.remote.as_ref()?;
+        let remote = self.side.remote.as_ref()?;
         let previous = remote.entities.get(&(id as i32))?.size_answer;
         let (kind, _) = remote.tracked_entity(id as i32)?;
         let pose = pose
@@ -34,6 +34,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id) {
             m.size_answer = Some(answer);
         } else if let Some(row) = self
+            .side
             .remote
             .as_mut()
             .and_then(|remote| remote.entities.get_mut(&(id as i32)))
@@ -113,7 +114,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
             return;
         }
-        let Some(id) = self.remote.as_ref().map(|remote| remote.entity_id as u32) else {
+        let Some(id) = self
+            .side
+            .remote
+            .as_ref()
+            .map(|remote| remote.entity_id as u32)
+        else {
             return;
         };
         let Some(answers) = self
@@ -133,7 +139,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
             return;
         }
-        let Some(id) = self.remote.as_ref().map(|remote| remote.entity_id as u32) else {
+        let Some(id) = self
+            .side
+            .remote
+            .as_ref()
+            .map(|remote| remote.entity_id as u32)
+        else {
             return;
         };
         let Some(answer) = self
@@ -171,7 +182,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Size a client's copy `id` takes from its `entity_size` answer while its vanilla size holds.
     pub(in crate::game::client_side) fn client_copy_answer(&self, id: u32) -> Option<[f32; 3]> {
-        let remote = self.remote.as_ref()?;
+        let remote = self.side.remote.as_ref()?;
         let answer = remote.entities.get(&(id as i32))?.size_answer?;
         let size = answer.size?;
         let (kind, _) = remote.tracked_entity(id as i32)?;

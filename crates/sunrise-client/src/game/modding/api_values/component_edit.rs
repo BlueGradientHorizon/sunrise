@@ -4,7 +4,7 @@ use super::stack_count::{admit_stack_limits, stack_item_definition};
 use super::{
     ApiStack, EngineStack, Items, decode_stack_record, projected_stack, stack_read_metadata,
 };
-use crate::game::native_living_refs::with_equipment_view;
+use crate::game::native_equipment_read::with_equipment_view;
 use mod_api::__private::game::{ComponentEdit, ItemComponentEdits, edit_item_components};
 use mod_api::{ItemComponentEditor, ItemPlaceEditError, StackWriteError};
 use sunrise_core::nbt::{Compound, JavaString, Tag};

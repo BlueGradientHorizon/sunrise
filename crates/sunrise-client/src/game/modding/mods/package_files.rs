@@ -91,6 +91,12 @@ pub(in crate::game) struct StartupAdmission {
 }
 
 impl StartupAdmission {
+    pub(in crate::game) fn matches_selection(&self, selected: &Arc<[SelectedPackage]>) -> bool {
+        Arc::ptr_eq(&self.selected, selected)
+    }
+}
+
+impl StartupAdmission {
     pub(in crate::game) fn open(
         mods: &ModsState,
         refused: Vec<MissingJar>,

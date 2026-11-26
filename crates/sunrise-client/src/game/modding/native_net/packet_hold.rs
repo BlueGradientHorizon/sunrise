@@ -1,6 +1,6 @@
 //! Actor-owned holds. Overflow and partial publication are isolated in Holds.
 use super::Game;
-use crate::game::remote::{PendingCauldron, Remote};
+use crate::game::client_side::remote_client::{PendingCauldron, Remote};
 use mod_api::{HoldError, HoldId, SendPacketError, ServerboundPlayPacket};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -129,29 +129,30 @@ impl<T: AsRef<[u8]> + Default> Holds<T> {
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     fn hold_incarnation(&self) -> Option<(u64, u64)> {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .filter(|r| r.joined && r.reconfiguring.is_none())?
             .session
             .hold_incarnation()
     }
     pub(in crate::game) fn hold_packets(&mut self) -> Result<HoldId, HoldError> {
-        let mut holds = self.native_net.holds.borrow_mut();
+        let mut holds = self.side.packet_holds.borrow_mut();
         holds.sync(self.hold_incarnation());
         holds.start()
     }
     pub(in crate::game) fn release_held(&mut self, hold: HoldId) -> Result<usize, HoldError> {
         let (incarnation, packets) = {
-            let mut holds = self.native_net.holds.borrow_mut();
+            let mut holds = self.side.packet_holds.borrow_mut();
             holds.sync(self.hold_incarnation());
             let packets = holds.take(hold)?;
             (holds.incarnation.ok_or(HoldError::Unknown)?, packets)
         };
-        let remote = self.remote.as_ref().ok_or(HoldError::Unknown)?;
+        let remote = self.side.remote.as_ref().ok_or(HoldError::Unknown)?;
         Holds::publish(packets, |packet| packet.publish(remote, incarnation))
     }
     pub(in crate::game) fn drop_held(&mut self, hold: HoldId) -> Result<(), HoldError> {
-        let mut holds = self.native_net.holds.borrow_mut();
+        let mut holds = self.side.packet_holds.borrow_mut();
         holds.sync(self.hold_incarnation());
         holds.take(hold).map(|_| ())
     }
@@ -163,10 +164,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         packet: S,
         cauldron: Option<(i64, PendingCauldron)>,
     ) -> bool {
-        let Some(remote) = &self.remote else {
+        let Some(remote) = &self.side.remote else {
             return false;
         };
-        let mut holds = self.native_net.holds.borrow_mut();
+        let mut holds = self.side.packet_holds.borrow_mut();
         holds.sync(self.hold_incarnation());
         let tracked = cauldron.is_some();
         if holds.active.is_none() && !tracked {
@@ -201,7 +202,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !prepared.is_current() {
             return;
         }
-        let mut holds = self.native_net.holds.borrow_mut();
+        let mut holds = self.side.packet_holds.borrow_mut();
         holds.sync(self.hold_incarnation());
         if holds.active.is_none() {
             prepared.publish();
@@ -210,7 +211,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The envelope has already passed the packet service's validation and reservation.
         // Drop its reservation before applying the hold's own bounded storage.
         drop(prepared);
-        let Some(remote) = &self.remote else {
+        let Some(remote) = &self.side.remote else {
             return;
         };
         let id = sunrise_protocol::ids::play::serverbound::NAMES
@@ -234,7 +235,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `client_packet_send` did not cancel, and the packet was accepted by the active
     /// play writer or hold queue.
     pub(in crate::game) fn send_play(&self, packet: S) -> bool {
-        if self.remote.is_none() || self.client_packet_send_canceled(&packet) {
+        if self.side.remote.is_none() || self.client_packet_send_canceled(&packet) {
             return false;
         }
         self.send_or_hold_play(packet, None)

@@ -32,7 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             !self.is_logical_server(),
             "remote_drown called on Server role"
         );
-        let own = self.remote.as_ref().is_some_and(|r| r.entity_id == id);
+        let own = self.side.remote.as_ref().is_some_and(|r| r.entity_id == id);
         let body = if own {
             self.player.as_ref().map(|p| {
                 let (at, v) = (p.position, p.velocity);

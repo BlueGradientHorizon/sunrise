@@ -44,7 +44,7 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
             ],
             None,
         );
-        game.lan = Some(crate::game::lan::LanHost::for_test(hub));
+        game.side.lan = Some(crate::game::lan::LanHost::for_test(hub));
         let mut outcome = Vec::new();
         for silent in [false, true] {
             let boat = boat(game);
@@ -69,7 +69,7 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
             ));
             game.boats.clear();
         }
-        game.lan = None;
+        game.side.lan = None;
         outcome
     }) else {
         return;
@@ -102,7 +102,7 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
             ],
             None,
         );
-        game.lan = Some(crate::game::lan::LanHost::for_test(hub));
+        game.side.lan = Some(crate::game::lan::LanHost::for_test(hub));
         let mut outcome = Vec::new();
         for silent in [false, true] {
             let boat = boat(game);
@@ -117,7 +117,7 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
             ));
             game.boats.clear();
         }
-        game.lan = None;
+        game.side.lan = None;
         outcome
     }) else {
         return;

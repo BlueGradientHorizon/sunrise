@@ -74,8 +74,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::entity::damage_level_of;
     use super::super::native_entity_refs::tests::{bind_local_player, with_game};
+    use crate::game::server_side::entity_server::damage_level_of;
     use mod_api::{EntityRef, MobAiPauseRefusal, MobRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -489,8 +489,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn each_refusal_is_named_and_changes_nothing() {
-        use super::super::dragon::Dragon;
         use super::super::execution_role::ExecutionRole;
+        use crate::game::dragon_common::Dragon;
         with_game(|game| {
             level(game);
             let pig = add(game, 40, "minecraft:pig", Vec3::new(3.5, 65.0, 3.5));

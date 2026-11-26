@@ -122,6 +122,7 @@ fn a_failing_raw_handler_rolls_back_alone_and_the_next_one_commits() {
             .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -131,6 +132,7 @@ fn a_failing_raw_handler_rolls_back_alone_and_the_next_one_commits() {
                 std::thread::yield_now();
             }
             let port = game
+                .side
                 .integrated
                 .as_ref()
                 .unwrap()

@@ -438,7 +438,8 @@ fn the_acting_guest_is_read_with_its_holder() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         super::native_guest_turn_tests::with_guests(|game| {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

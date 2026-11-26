@@ -45,7 +45,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if matches!(target, Some(Who::Player))
             && (self.side.lan_acting_fake
                 || player.is_some_and(|conn| {
-                    self.lan
+                    self.side
+                        .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
                         .is_some_and(|guest| guest.is_fake())
@@ -99,7 +100,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if !redirected
             && chosen == Some(Who::Player)
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             match player {
                 Some(conn) => {
@@ -400,7 +401,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             players.push(None);
         }
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             players.extend(
                 host.hub
                     .guests

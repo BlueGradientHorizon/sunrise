@@ -20,11 +20,17 @@ fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
                 game.player = None;
                 crate::game::native_player_death::tests::add_guest(game);
                 game.side.next_entity = 100;
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.position = [4.5, 80.0, 4.5];
-                    guest.loaded = true;
-                    guest.load_timeout = 0;
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.position = [4.5, 80.0, 4.5];
+                        guest.loaded = true;
+                        guest.load_timeout = 0;
+                    });
                 mob(game, 41, "minecraft:zombie", Vec3::new(6.0, 80.0, 4.5));
                 game.mobs[0].health = 1.0;
                 let weapon = bow();
@@ -36,9 +42,16 @@ fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
                     game.player.is_none(),
                     "the impact runs in the dedicated-server context"
                 );
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.inventory[guest.selected] = Some(ItemStack::new("minecraft:stick", 1));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.inventory[guest.selected] =
+                            Some(ItemStack::new("minecraft:stick", 1));
+                    });
                 finish_projectile_death(game, 41);
                 let seen = seen.lock().unwrap();
                 assert_eq!(seen.deaths.len(), 1);

@@ -3,7 +3,6 @@
 use super::{AIR_LEVEL, log, take};
 use crate::game::{
     execution_role::ExecutionRole,
-    mods,
     native_entity_refs::tests::{run_fresh_cases, with_client_game},
 };
 use mod_api::{Hooks, ModEntry, RegisterGuiLayersEvent, RegistrationContext};
@@ -86,7 +85,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             ]
             .into(),
         );
-        mods::register_gui_layers(ExecutionRole::Client);
+        crate::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
         game.side.title.0 = None;
         game.side.screen = crate::game::Screen::Playing;
         game.side.chat_ui.hide_gui = true;

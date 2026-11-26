@@ -77,7 +77,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_ref()
             .is_some_and(|s| s.kind == stations::Kind::Anvil)
             || self.is_logical_server()
-            || self.remote.is_none()
+            || self.side.remote.is_none()
         {
             return false;
         }
@@ -89,7 +89,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         game_of.extend((9..36).chain(0..9).map(Some));
         let to_menu = |g: usize| game_of.iter().position(|x| *x == Some(g));
         let mut menu = Menu::new(Kind::Anvil);
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             menu.set_drop_spam_throttler(self.side.drop_spam_throttler);
         }
         // Prediction must dispatch the result update between the two input writes in onTake.
@@ -178,7 +178,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.station_click(right) {
             return true;
         }
-        self.remote.is_some() && self.remote_click(right)
+        self.side.remote.is_some() && self.remote_click(right)
     }
     /// `AbstractContainerMenu.clicked` on the open inventory, crafting table,
     /// chest, hopper, dispenser or furnace menu, run by the verified menu
@@ -206,7 +206,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(slot) = slot
             && input == sunrise_sim::menu::Input::Throw
             && self.carried.is_some()
-            && self.remote.is_some()
+            && self.side.remote.is_some()
             && ((slot < 9 && self.creative_tab_open()) || self.creative_inventory_open())
         {
             self.creative_throw_carrying(slot, button);
@@ -254,12 +254,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             DisplayClick::Offhand(stack) => self.offhand = Some(stack),
             // handleCreativeModeItemDrop: on a server the stack goes to it (SetCreativeModeSlot
             // to slot -1), which drops it; a disconnected client has no world to drop into.
-            DisplayClick::Drop(stack) if self.remote.is_some() => self.creative_screen_drop(stack),
+            DisplayClick::Drop(stack) if self.side.remote.is_some() => {
+                self.creative_screen_drop(stack)
+            }
             DisplayClick::Drop(_) => {}
             _ => {}
         }
         // handleCreativeModeItemAdd / broadcastChanges: a swapped-in hotbar slot goes out now.
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.send_creative_slots();
         }
     }
@@ -269,7 +271,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         menu: &mut sunrise_sim::menu::Menu,
     ) -> bool {
-        if !menu.anvil_created() || self.is_logical_server() || self.remote.is_none() {
+        if !menu.anvil_created() || self.is_logical_server() || self.side.remote.is_none() {
             return false;
         }
         if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
@@ -311,20 +313,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         if !self.is_logical_server() && self.side.screen == Screen::Inventory {
-            return self.remote.is_some() && self.remote_menu_ops(ops);
+            return self.side.remote.is_some() && self.remote_menu_ops(ops);
         }
         if let [(Some(slot), button, input)] = ops {
             self.crafter_slot_clicked(*slot, *button, *input);
         }
         if let Some(done) = self.stacked_menu_ops(ops) {
             // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-            if done && self.remote.is_some() && self.side.screen == Screen::Creative {
+            if done && self.side.remote.is_some() && self.side.screen == Screen::Creative {
                 self.send_creative_slots();
             }
             return done;
         }
         let ops = ops.to_vec();
-        let creative_remote = self.remote.is_some() && self.side.screen == Screen::Creative;
+        let creative_remote = self.side.remote.is_some() && self.side.screen == Screen::Creative;
         let done = self.menu_session_with_game(move |game, menu, env, to_menu| {
             let mut clicks = Vec::new();
             for &(slot, button, input) in &ops {
@@ -358,7 +360,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(true)
         });
         // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-        if done && self.remote.is_some() && self.side.screen == Screen::Creative {
+        if done && self.side.remote.is_some() && self.side.screen == Screen::Creative {
             self.send_creative_slots();
         }
         done
@@ -464,12 +466,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (Kind::ItemPicker, v)
         } else if let Some(columns) = self
             .mount_menu_columns()
-            .filter(|_| self.remote.is_some() && self.mount_active())
+            .filter(|_| self.side.remote.is_some() && self.mount_active())
         {
             // A server's HorseInventoryMenu: the saddle, the body armour,
             // the chest, then the inventory.
-            let mut v = vec![Some(mount_menu::SADDLE), Some(mount_menu::ARMOR)];
-            v.extend((0..columns * 3).map(|i| Some(mount_menu::CHEST + i)));
+            let mut v = vec![
+                Some(sunrise_gameplay_common::mount_rules::SADDLE),
+                Some(sunrise_gameplay_common::mount_rules::ARMOR),
+            ];
+            v.extend(
+                (0..columns * 3).map(|i| Some(sunrise_gameplay_common::mount_rules::CHEST + i)),
+            );
             v.extend((9..36).chain(0..9).map(Some));
             (Kind::Mount(columns), v)
         } else if merchant_open {
@@ -619,7 +626,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             None => game_of.iter().position(|x| *x == Some(g)),
         };
         let mut menu = Menu::new(kind);
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             menu.set_drop_spam_throttler(self.side.drop_spam_throttler);
         }
         let menu_id = if matches!(kind, Kind::Mount(_)) {
@@ -644,10 +651,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let creative = self.creative;
         // CreativeModeInventoryScreen clicks the menu itself and sends every
         // changed slot, which the server sets by player.
-        let station_menu = self.station.as_ref().map(|s| {
+        let station_menu = self.station.as_ref().map(|_| {
             (
-                s.loom.selected.map_or(-1, |i| i as i32),
-                s.loom.patterns.clone(),
+                self.side.station_loom.selected.map_or(-1, |i| i as i32),
+                self.side.station_loom.patterns.clone(),
             )
         });
         let stone = self
@@ -769,7 +776,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let outcome = run(self, &mut menu, &env, &to_menu);
         // Any creative-screen drop sent live inside `run` already updated `menu`'s
         // throttler; keep `self.drop_spam_throttler` in step even if a later click failed.
-        if self.remote.is_some()
+        if self.side.remote.is_some()
             && self.side.screen == Screen::Creative
             && let Some(throttle) = menu.drop_spam_throttler()
         {
@@ -821,9 +828,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         if kind == Kind::Loom {
-            if let Some(s) = self.station.as_mut() {
-                s.loom.selected = usize::try_from(menu.data[0]).ok();
-                s.loom.patterns = std::mem::take(&mut menu.loom_patterns);
+            if self.station.is_some() {
+                self.side.station_loom.selected = usize::try_from(menu.data[0]).ok();
+                self.side.station_loom.patterns = std::mem::take(&mut menu.loom_patterns);
             }
             self.loom_screen_changed();
         } else if kind == Kind::Stonecutter {
@@ -832,7 +839,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 s.selected = usize::try_from(menu.data[0]).ok();
                 s.stone = std::mem::take(&mut menu.stone);
                 if input_changed {
-                    s.stonecutter_changed(ui);
+                    crate::game::client_side::stations_client::stonecutter_changed(ui);
                 }
             }
         }

@@ -52,6 +52,10 @@ fn game<'a>(
             root.clone(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     let server = crate::game::native_client_session::tests::logged_client(&mut game);
@@ -87,7 +91,7 @@ fn game<'a>(
 fn a_spectator_sees_the_invisible_body() {
     let mut resources = None;
     let (mut game, _server) = game(&mut resources);
-    let profile = game.remote.as_ref().unwrap().profile();
+    let profile = game.side.remote.as_ref().unwrap().profile();
     let types = MobTypes::load(&root()).unwrap();
     let kind = Arc::new(types.types["minecraft:pig"].clone());
     let mut pig = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);

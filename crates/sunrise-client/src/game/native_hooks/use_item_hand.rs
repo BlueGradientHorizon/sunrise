@@ -46,20 +46,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         })
     }
 
-    pub(in crate::game) fn client_item_interaction(
-        &mut self,
-        hand: Hand,
-        stack: &ItemStack,
-    ) -> Option<bool> {
-        if let Some(answer) = self.right_click_item(hand, stack) {
-            if answer == mod_api::InteractionResult::Success {
-                self.with_hand(hand, Game::swing_arm);
-            }
-            return Some(answer.consumes_action());
-        }
-        self.with_hand(hand, |g| g.use_item_in_hand(stack))
-    }
-
     /// Dispatch the item Part and apply the result on this logical side.
     pub(in crate::game) fn use_item_in_hand(&mut self, stack: &ItemStack) -> Option<bool> {
         use mod_api::InteractionResult as Result;

@@ -1261,7 +1261,8 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
     /// The guests in the level in place, past the acting one: `player_view`
     /// already reads that guest's live body, and its record lags behind it.
     fn level_guests(&self) -> impl Iterator<Item = &sunrise_sim::lan::guest::Guest> + '_ {
-        self.lan
+        self.side
+            .lan
             .iter()
             .flat_map(|h| self.guests_placed_in(&h.hub.config.dimension))
     }
@@ -1270,7 +1271,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
         &'s self,
         dimension: &'s str,
     ) -> impl Iterator<Item = &'s sunrise_sim::lan::guest::Guest> + 's {
-        self.lan.iter().flat_map(move |h| {
+        self.side.lan.iter().flat_map(move |h| {
             h.hub
                 .guests
                 .iter()
@@ -1382,7 +1383,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
         let mut players = self.level_players();
         // Fake players (mods' bots) do not anchor natural spawning.
         let mut had_fake = false;
-        if let Some(h) = self.lan.as_ref() {
+        if let Some(h) = self.side.lan.as_ref() {
             let fake: Vec<u128> = h
                 .hub
                 .guests
@@ -1650,7 +1651,7 @@ mod tests {
             if spectator {
                 guest.game_mode = 3;
             }
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         }
         let full = |game: &crate::game::ServerGame<'_>, x: f64, range: f64| {
             game.level_players()

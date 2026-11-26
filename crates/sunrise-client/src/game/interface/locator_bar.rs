@@ -83,7 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 f64::from(p.dimensions.eye_height),
                 false,
             )
-        } else if let Some(remote) = &self.remote {
+        } else if let Some(remote) = &self.side.remote {
             let &id = remote.level_uuids.get(&uuid)?;
             let entity = self.live_entity_camera_subject(remote, id)?;
             // TickRateManager.isEntityFrozen: players and entities carrying them keep moving.

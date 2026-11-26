@@ -3,6 +3,8 @@
 //! replace a click, and a close listener receives any detached owned contents.
 use super::api_values::TryIntoEngine;
 use super::{Game, lan::LanHost, lan_menus::GuestMenus};
+use crate::game::native_menu_data::{ContainerPos, HeardMenu};
+use crate::game::native_menu_ids::MOUNT_MENU;
 use mod_api::__private::game::*;
 use mod_api::{MenuRef, MenuReplace, ModMenuOpen};
 use sunrise_game_data::text::Text;
@@ -70,7 +72,7 @@ pub(in crate::game::server_side) fn fit(
 #[allow(dead_code)]
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn native_conn(&self, uuid: u128) -> Option<u32> {
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let g = host
             .hub
             .guests
@@ -135,7 +137,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return None;
         }
         let conn = self.online_player_record(player)?.conn;
-        self.lan
+        self.side
+            .lan
             .as_mut()?
             .hub
             .update_guest(conn, |guest| guest.next_container_counter())
@@ -194,7 +197,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(OpenMenuError::PlayerUnavailable);
         }
         let conn = guest.conn;
-        self.lan
+        self.side
+            .lan
             .as_ref()
             .and_then(|host| host.hub.registry_id("minecraft:menu", &id))
             .ok_or(OpenMenuError::NotModMenu)?;
@@ -246,7 +250,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// None for another window, a menu the game opened, or a player not here.
     pub(in crate::game) fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef> {
         let conn = self.native_conn(uuid)?;
-        self.lan
+        self.side
+            .lan
             .as_ref()?
             .hub
             .guest(conn)?
@@ -273,7 +278,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if transactional && let Some(player) = self.player(uuid) {
             self.journal_menus(player);
         }
-        let host = self.lan.as_mut().ok_or(MenuItemsRefusal::NoPlayer)?;
+        let host = self.side.lan.as_mut().ok_or(MenuItemsRefusal::NoPlayer)?;
         host.hub
             .set_native_menu_items(conn, window, items, !transactional)?;
         // The scoped click reconciles its own window on both override and refusal.
@@ -283,7 +288,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .iter()
                 .any(|level| level.menu_click_active == Some(conn))
         {
-            self.reply_menu_click(conn, super::lan_menus::ClickReply::Resend(window));
+            self.reply_menu_click(conn, crate::game::lan_menu_data::ClickReply::Resend(window));
         }
         Ok(())
     }
@@ -291,7 +296,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// stages the close for its current window and sends it only once the transaction commits.
     pub(in crate::game) fn close_menu(&mut self, uuid: u128) {
         if let Some(conn) = self.native_conn(uuid)
-            && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
+            && let Some(guest) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn))
             && let Some(open) = guest
                 .menu
                 .as_ref()
@@ -300,20 +305,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.request_menu_close(conn, open.window, guest.menu_generation);
         }
     }
-}
-
-type ContainerPos = (i32, i32, i32);
-
-/// A menu the player opened, including the block entity instances it opened.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::game) struct HeardMenu {
-    window: i32,
-    /// The menu type's name; a mount's inventory has none in vanilla.
-    menu: String,
-    /// The block the menu is of.
-    pos: Option<[i32; 3]>,
-    /// Each position and its generation when the menu opened; combined menus hold both halves.
-    openers: [Option<(ContainerPos, u64)>; 2],
 }
 
 impl GuestMenus {
@@ -331,10 +322,6 @@ impl GuestMenus {
             })
     }
 }
-
-/// What a mount's inventory is called, as vanilla's `HorseInventoryMenu` has
-/// no menu type.
-pub(in crate::game) const MOUNT_MENU: &str = "sunrise:mount_inventory";
 
 /// The menu `conn` has open, whichever way the game keeps it: a block's
 /// container, a trade, a crafting table, a workstation, a lectern or a
@@ -362,7 +349,7 @@ pub(in crate::game) fn open_menu_of(
     } else if let Some(st) = menus.and_then(|m| m.station.as_ref()) {
         (
             st.window,
-            super::lan_stations::menu_of(st.kind)?.0,
+            crate::game::lan_station_data::menu_of(st.kind)?.0,
             Some(st.pos),
         )
     } else if let Some(l) = play.and_then(|p| p.lectern.as_ref()) {
@@ -384,7 +371,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// constructing the menu, queuing its open packet and sending full contents.
     /// Remember it before dispatch so a hook can close it synchronously.
     pub(in crate::game) fn player_menu_opening(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some((window, menu, pos)) = open_menu_of(host, conn) else {
@@ -425,6 +412,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// of open listeners.
     pub(in crate::game) fn player_menu_closing(&mut self, conn: u32) {
         let heard = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
@@ -450,7 +438,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !heard && openers == [None; 2] {
             return;
         }
-        let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let uuid = guest.uuid;
@@ -494,7 +482,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The notices the hub collected, dispatched with the hub in `self.lan` and no guest turn active.
     pub(in crate::game) fn run_native_menu_events(&mut self) {
         loop {
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             if host.hub.native_menu_events.is_empty() {
@@ -513,6 +501,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 } => {
                     if let Some(gi) = self.guest_index(conn) {
                         let dead = self
+                            .side
                             .lan
                             .as_ref()
                             .is_some_and(|host| host.hub.guests[gi].dead);
@@ -577,7 +566,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let mut player = guest(1);
         player.sender = PlayerSender::new(tx, Arc::default());
-        game.lan.as_mut().unwrap().hub.guests.push(player);
+        game.side.lan.as_mut().unwrap().hub.guests.push(player);
         rx
     }
 
@@ -625,7 +614,7 @@ mod tests {
                 let resource = ItemResource::of(&stack.clone().try_into_api().unwrap());
                 let mut restored = Vec::new();
                 for ender in [true, false] {
-                    let host = game.lan.as_mut().unwrap();
+                    let host = game.side.lan.as_mut().unwrap();
                     if ender {
                         host.hub
                             .guests
@@ -775,9 +764,15 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 let _rx = watched_guest(game);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.inventory[9] = Some(ItemStack::new("minecraft:iron_ingot", 5));
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.inventory[9] = Some(ItemStack::new("minecraft:iron_ingot", 5));
+                    });
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
@@ -944,7 +939,7 @@ mod tests {
                 ));
                 game.lan_open_mount(1, 31);
                 assert_eq!(
-                    open_menu_of(game.lan.as_ref().unwrap(), 1),
+                    open_menu_of(game.side.lan.as_ref().unwrap(), 1),
                     Some((1, "sunrise:mount_inventory", None))
                 );
                 game.lan_guest_packet(1, S::ContainerClose(play::ContainerClose { container: 1 }));
@@ -968,7 +963,7 @@ mod tests {
             };
             assert_eq!(first, 1);
             assert_eq!(
-                open_menu_of(game.lan.as_ref().unwrap(), 1),
+                open_menu_of(game.side.lan.as_ref().unwrap(), 1),
                 Some((1, "minecraft:generic_9x1", None))
             );
             assert_eq!(
@@ -1036,7 +1031,12 @@ mod tests {
             assert_eq!(written, Ok(3));
             assert!(sent(&rx).is_empty(), "nothing before the tick's sync");
 
-            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_containers(&game.world);
             let packets = sent(&rx);
             assert_eq!(packets.len(), 1, "{packets:?}");
             let C::ContainerSetSlot(set) = &packets[0] else {
@@ -1045,7 +1045,12 @@ mod tests {
             // The open's content took state 1; this is the next.
             assert_eq!((set.container, set.state, set.slot), (1, 2, 4));
             assert_eq!(set.item.as_ref().map(|item| item.count), Some(3));
-            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_containers(&game.world);
             assert!(sent(&rx).is_empty(), "sent once");
 
             // Closed, the menu answers nothing.
@@ -1065,7 +1070,8 @@ mod tests {
             let window = open(game, 1, "shop", MenuReplace::CloseFirst);
             let stone = ItemStack::new("minecraft:stone", 3);
             let cursor = ItemStack::new("minecraft:dirt", 2);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1079,7 +1085,7 @@ mod tests {
             items.resize(12, None);
             items[11] = Some(api(&stone));
             assert_eq!(host.menu_set_items(123, window, items), Ok(()));
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.native_menu.len(), 9, "cut at the menu's slots");
             assert_eq!(guest.native_menu[1], Some(stone.clone()));
             assert_eq!(
@@ -1116,7 +1122,7 @@ mod tests {
             let mut outer = guest(2);
             outer.inventory[3] = Some(ItemStack::new("minecraft:diamond", 7));
             outer.carried = Some(ItemStack::new("minecraft:dirt", 9));
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.guests.push(outer);
             hub.guests.update(0, |g| {
                 g.inventory[5] = Some(ItemStack::new("minecraft:gold_ingot", 2));
@@ -1150,7 +1156,7 @@ mod tests {
                 );
                 assert!(content.carried.is_none(), "window {}", content.container);
             }
-            let hub = &game.lan.as_ref().unwrap().hub;
+            let hub = &game.side.lan.as_ref().unwrap().hub;
             assert_eq!(hub.guests[0].carried, None);
             assert_eq!(
                 hub.guests[1].carried,
@@ -1174,7 +1180,7 @@ mod tests {
             let mut outer = guest(2);
             outer.carried = Some(outer_cursor.clone());
             outer.inventory[0] = Some(ItemStack::new("minecraft:dirt", 9));
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.guests.push(outer);
             hub.guests.update(0, |g| {
                 g.carried = Some(opener_cursor.clone());
@@ -1210,7 +1216,7 @@ mod tests {
                 assert_eq!(game.carried, Some(outer_cursor.clone()));
             })
             .unwrap();
-            let hub = &game.lan.as_ref().unwrap().hub;
+            let hub = &game.side.lan.as_ref().unwrap().hub;
             let window = hub.guests[0].menu.as_ref().unwrap().window;
             let contents = sent(&rx)
                 .into_iter()
@@ -1231,7 +1237,7 @@ mod tests {
                 1,
                 S::ContainerClose(play::ContainerClose { container: window }),
             );
-            let hub = &game.lan.as_ref().unwrap().hub;
+            let hub = &game.side.lan.as_ref().unwrap().hub;
             assert_eq!(hub.guests[0].carried, Some(opener_cursor));
             assert_eq!(hub.guests[1].carried, Some(outer_cursor));
         });
@@ -1250,11 +1256,11 @@ mod tests {
             let pending = ItemStack::new("minecraft:gold_ingot", 6);
             let mut other = guest(2);
             other.carried = Some(current.clone());
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.guests.push(other);
             hub.guests.update(0, |g| g.carried = Some(parked.clone()));
             open(game, 1, "open", MenuReplace::CloseFirst);
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             assert!(hub.guests[0].inventory.iter().all(Option::is_none));
             hub.guests
                 .update(0, |g| g.carried = Some(open_cursor.clone()));
@@ -1350,10 +1356,10 @@ mod tests {
                 let mut outer = guest(2);
                 outer.inventory[3] = Some(ItemStack::new("minecraft:diamond", 7));
                 let outer_inventory = outer.inventory.clone();
-                game.lan.as_mut().unwrap().hub.guests.push(outer);
+                game.side.lan.as_mut().unwrap().hub.guests.push(outer);
                 open(game, 1, "old", MenuReplace::CloseFirst);
                 heard.lock().unwrap().clear();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.inventory
                         .fill(Some(ItemStack::new("minecraft:stone", 64)));
                     g.inventory[0] = Some(ItemStack::new("minecraft:stone", 62));
@@ -1371,7 +1377,7 @@ mod tests {
                     game.dropped[dropped].stack,
                     ItemStack::new("minecraft:stone", 2)
                 );
-                let guests = &game.lan.as_ref().unwrap().hub.guests;
+                let guests = &game.side.lan.as_ref().unwrap().hub.guests;
                 assert_eq!(
                     guests[0].inventory[3], None,
                     "the listener's write belongs to the opener"
@@ -1399,7 +1405,9 @@ mod tests {
             );
             let window = open(game, 1, "shop", MenuReplace::CloseFirst);
             sent(&rx);
-            let before = game.lan.as_ref().unwrap().hub.guests[0].native_menu.clone();
+            let before = game.side.lan.as_ref().unwrap().hub.guests[0]
+                .native_menu
+                .clone();
             let host: &mut dyn ServerHost = game;
             assert_eq!(
                 host.menu_set_items(123, window + 1, one.clone()),
@@ -1420,7 +1428,7 @@ mod tests {
             );
             assert!(sent(&rx).is_empty(), "nothing was sent");
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].native_menu,
+                game.side.lan.as_ref().unwrap().hub.guests[0].native_menu,
                 before,
                 "nothing was changed"
             );
@@ -1458,13 +1466,20 @@ mod tests {
             assert_eq!(opens(&packets).len(), 1);
 
             let stone = ItemStack::new("minecraft:stone", 4);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .update(0, |g| g.carried = Some(stone.clone()));
-            game.lan.as_mut().unwrap().hub.native_menu_events.clear();
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .native_menu_events
+                .clear();
             assert_eq!(open(game, 2, "two", MenuReplace::InPlace), 2);
             let packets = sent(&rx);
             assert_eq!(
@@ -1476,7 +1491,7 @@ mod tests {
                 opens(&packets),
                 vec![(2, component_nbt(&Text::literal("two").component()))]
             );
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.carried, None, "the cursor stack went back");
             assert_eq!(
                 g.inventory.iter().flatten().cloned().collect::<Vec<_>>(),
@@ -1485,7 +1500,13 @@ mod tests {
             assert_eq!(g.menu.as_ref().map(|m| (m.window, m.size)), Some((2, 18)));
             assert!(
                 matches!(
-                    game.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
+                    game.side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .native_menu_events
+                        .as_slice(),
                     [NativeMenuEvent::Closed {
                         uuid: 123,
                         window: 1,
@@ -1496,7 +1517,13 @@ mod tests {
             );
 
             // The old window's click and close land on nothing.
-            game.lan.as_mut().unwrap().hub.native_menu_events.clear();
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .native_menu_events
+                .clear();
             game.lan_guest_packet(
                 1,
                 S::ContainerClick(play::ContainerClick {
@@ -1511,7 +1538,7 @@ mod tests {
             );
             game.lan_guest_packet(1, S::ContainerClose(play::ContainerClose { container: 1 }));
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.native_menu_events,
+                game.side.lan.as_ref().unwrap().hub.native_menu_events,
                 Vec::new()
             );
             let host: &mut dyn ServerHost = game;
@@ -1565,7 +1592,7 @@ mod tests {
         game: &mut crate::game::ServerGame<'_>,
     ) -> (mpsc::Receiver<Out>, mod_api::MenuKey) {
         let rx = watched_guest(game);
-        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.brand = "sunrise".into();
             g.sender.menu_extra_rev = 1;
         });
@@ -1638,13 +1665,14 @@ mod tests {
         with_mod_menu_game(|game| {
             let (rx, key) = mod_menu_guest(game);
             // Where the game keeps what the mods last heard the player open.
-            game.lan.as_mut().unwrap().play.entry(1).or_default();
+            game.side.lan.as_mut().unwrap().play.entry(1).or_default();
             let player = game.player(123).unwrap();
             assert_eq!(open(game, 3, "old", MenuReplace::CloseFirst), 1);
             assert_eq!(heard(), ["open minecraft:generic_9x3"]);
             sent(&rx);
             let stone = ItemStack::new("minecraft:stone", 4);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1699,7 +1727,7 @@ mod tests {
             let Some(C::ContainerSetContent(content)) = sent_packets.last() else {
                 panic!("expected the new window's contents");
             };
-            let hub = &game.lan.as_ref().unwrap().hub;
+            let hub = &game.side.lan.as_ref().unwrap().hub;
             let returned: Vec<_> = content.items[9..]
                 .iter()
                 .flatten()
@@ -1715,7 +1743,13 @@ mod tests {
             assert_eq!(g.menu.as_ref().map(|m| (m.window, m.size)), Some((2, 9)));
             assert!(
                 matches!(
-                    game.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
+                    game.side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .native_menu_events
+                        .as_slice(),
                     [NativeMenuEvent::Closed {
                         uuid: 123,
                         window: 1,
@@ -1785,7 +1819,7 @@ mod tests {
                 }
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0]
+                game.side.lan.as_ref().unwrap().hub.guests[0]
                     .menu
                     .as_ref()
                     .map(|m| (m.window, m.pos)),
@@ -1800,10 +1834,16 @@ mod tests {
                 ),
                 (0, vec![1], mod_api::OpenMenuError::PlayerUnavailable),
             ] {
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.sender.menu_extra_rev = revision;
                 });
-                game.lan.as_mut().unwrap().hub.native_menu_events.clear();
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .native_menu_events
+                    .clear();
                 assert_eq!(
                     game.player_open_mod_menu(player, {
                         let mut request = ModMenuOpen::new(key, mod_api::Text::literal("refused"));
@@ -1814,20 +1854,28 @@ mod tests {
                     Err(expected)
                 );
                 assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
+                    game.side.lan.as_ref().unwrap().hub.guests[0]
                         .menu
                         .as_ref()
                         .map(|m| m.window),
                     Some(window),
                     "refusal preserves the current menu"
                 );
-                assert!(game.lan.as_ref().unwrap().hub.native_menu_events.is_empty());
+                assert!(
+                    game.side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .native_menu_events
+                        .is_empty()
+                );
                 assert!(sent(&rx).is_empty(), "refusal sends neither close nor open");
             }
             // Hub-level encode refusal also aborts before closing or emitting packets.
-            let conn = game.lan.as_ref().unwrap().hub.guests[0].conn;
+            let conn = game.side.lan.as_ref().unwrap().hub.guests[0].conn;
             assert_eq!(
-                game.lan.as_mut().unwrap().hub.open_menu_window(
+                game.side.lan.as_mut().unwrap().hub.open_menu_window(
                     conn,
                     MOD_MENU,
                     sunrise_core::nbt::Tag::String("oversize".into()),
@@ -1839,7 +1887,7 @@ mod tests {
                 None
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0]
+                game.side.lan.as_ref().unwrap().hub.guests[0]
                     .menu
                     .as_ref()
                     .map(|m| m.window),
@@ -1848,7 +1896,7 @@ mod tests {
             );
             assert!(sent(&rx).is_empty(), "oversize hub refusal emits nothing");
             // Payloads past the old 32 KiB limit (up to MAX_DATA) are accepted intact.
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.sender.menu_extra_rev = 1;
             });
             let large = vec![7; 33 * 1024];
@@ -1915,13 +1963,13 @@ mod tests {
             game.world
                 .block_entities
                 .insert(mod_pos, BlockEntity::Chest(vec![None; 9]));
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.brand = "sunrise".into();
                 g.sender.menu_extra_rev = 0;
             });
             assert_eq!(game.open_block_menu(conn, mod_pos), MenuOpen::Refused);
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0]
+                game.side.lan.as_ref().unwrap().hub.guests[0]
                     .menu
                     .as_ref()
                     .map(|m| m.window),
@@ -1932,7 +1980,7 @@ mod tests {
                 sent(&rx).is_empty(),
                 "unnegotiated block-backed mod menu refusal sends neither close nor open"
             );
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.sender.menu_extra_rev = 1;
             });
             assert_eq!(game.open_block_menu(conn, mod_pos), MenuOpen::Opened);
@@ -1951,7 +1999,7 @@ mod tests {
             game.world
                 .block_entities
                 .insert(chest_pos, BlockEntity::Chest(vec![None; 27]));
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.brand = "vanilla".into();
                 g.sender.menu_extra_rev = 0;
             });
@@ -1981,7 +2029,7 @@ mod tests {
                         let (rx, key) = mod_menu_guest(game);
                         let held = ItemStack::new("minecraft:stone", 5);
                         let stored = ItemStack::new("minecraft:dirt", 2);
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                             g.sender.menu_extra_rev =
                                 sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
                             if player_inventory {
@@ -2018,7 +2066,7 @@ mod tests {
                             changed: vec![],
                             carried: None,
                         });
-                        let host = game.lan.take().unwrap();
+                        let host = game.side.lan.take().unwrap();
                         let host = game
                             .lan_process_events(
                                 host,
@@ -2146,7 +2194,8 @@ mod tests {
                             show(game, vec![-80_000, 0]),
                             Err(OpenMenuError::PlayerUnavailable)
                         );
-                        game.lan
+                        game.side
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub
@@ -2164,7 +2213,8 @@ mod tests {
                         veto.store(true, Relaxed);
                         assert_eq!(show(game, vec![-80_000, 0]), Ok(None));
                         veto.store(false, Relaxed);
-                        game.lan
+                        game.side
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub
@@ -2174,13 +2224,14 @@ mod tests {
                             show(game, vec![-80_000, 0]),
                             Err(OpenMenuError::PlayerUnavailable)
                         );
-                        game.lan
+                        game.side
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub
                             .guests
                             .update(0, |g| g.disconnect_pending = false);
-                        game.lan.as_mut().unwrap().hub.guests.push(guest(2));
+                        game.side.lan.as_mut().unwrap().hub.guests.push(guest(2));
                         game.as_guest(1, |game| {
                             game.as_guest(2, |game| {
                                 assert_eq!(
@@ -2241,7 +2292,7 @@ mod tests {
                         }
                         // A full resend of this window has no hotbar slots, so a pending
                         // inventory update must remain pending.
-                        let hub = &mut game.lan.as_mut().unwrap().hub;
+                        let hub = &mut game.side.lan.as_mut().unwrap().hub;
                         hub.guests.update(0, |g| {
                             assert_eq!(g.menu_sent[36], None);
                             g.inventory[0] = Some(ItemStack::new("minecraft:stone", 1));
@@ -2277,7 +2328,8 @@ mod tests {
                             Err(MenuDataRefusal::InvalidIndex)
                         );
                         let resend = |game: &mut crate::game::ServerGame<'_>| {
-                            game.lan
+                            game.side
+                                .lan
                                 .as_mut()
                                 .unwrap()
                                 .hub
@@ -2343,7 +2395,7 @@ mod tests {
                                 value: i32::MIN
                             }]
                         );
-                        let state = game.lan.as_ref().unwrap().hub.guests[0]
+                        let state = game.side.lan.as_ref().unwrap().hub.guests[0]
                             .menu
                             .as_ref()
                             .unwrap()
@@ -2377,7 +2429,8 @@ mod tests {
                         );
 
                         // Force the counter to reuse the old id, as it would after 100 opens.
-                        game.lan
+                        game.side
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub
@@ -2419,7 +2472,7 @@ mod tests {
                             show(game, vec![1, 2]),
                             Err(OpenMenuError::PlayerUnavailable)
                         );
-                        let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                        let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                         assert!(guest.disconnect_pending);
                         assert_eq!(guest.menu.as_ref().map(|m| m.window), Some(old));
                         assert!(!sent(&rx).iter().any(|packet| matches!(
@@ -2459,7 +2512,8 @@ mod tests {
             || {
                 with_game(|game| {
                     let (rx, key) = mod_menu_guest(game);
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -2528,7 +2582,7 @@ mod tests {
                     assert_eq!(committed, Ok(()));
                     assert!(sent(&rx).is_empty(), "unencodable index sent a delta");
 
-                    let hub = &mut game.lan.as_mut().unwrap().hub;
+                    let hub = &mut game.side.lan.as_mut().unwrap().hub;
                     let open = hub.guests[0].menu.as_ref().unwrap();
                     assert_eq!(open.blockless_data[OVERFLOW], i32::MIN);
                     hub.resend_menu(1, window, &game.world);

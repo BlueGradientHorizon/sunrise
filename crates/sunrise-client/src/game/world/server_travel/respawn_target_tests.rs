@@ -69,7 +69,7 @@ fn a_broken_bed_gives_the_world_spawn_with_missing_respawn_block() {
         let mut resources = None;
         let (_scratch, mut game, _rx) = server_with_a_nether_anchor(&mut resources);
         game.level.world_spawn_angle = [45.0, 10.0];
-        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.respawn_elsewhere = Some((Dim::Overworld.id().into(), [5, 100, 5], 0.0, 0.0, false));
         });
         light_the_world_spawn(&mut game);
@@ -91,7 +91,8 @@ fn no_respawn_point_gives_the_world_spawn() {
         let mut resources = None;
         let (_scratch, mut game, _rx) = server_with_a_nether_anchor(&mut resources);
         game.level.world_spawn_angle = [45.0, 10.0];
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

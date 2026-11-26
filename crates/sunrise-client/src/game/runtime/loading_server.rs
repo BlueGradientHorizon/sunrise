@@ -1,5 +1,9 @@
 //! Dedicated server startup (`start_dedicated_game`) and server-side agent control socket setup.
 use super::*;
+use crate::game::{
+    integrated_link::ProfileResolverFactory, packs_common::cache_dir,
+    resource_cpu_common::ServerCpuResources,
+};
 use sunrise_level::sim_settings::SimSettings;
 use sunrise_sim::control;
 
@@ -12,25 +16,26 @@ pub(in crate::game) fn start_dedicated_game(
     options: Options,
     mut settings: SimSettings,
     started: Instant,
-    prepared: Option<GameCpuResources>,
+    prepared: Option<ServerCpuResources>,
+    services: dedicated::Services,
+    profile_resolver: ProfileResolverFactory,
 ) -> Result<()> {
     if let Some(d) = options.distance_override {
         settings.render_distance = d;
     }
     let prepared = match prepared {
         Some(prepared) => Some(prepared),
-        None => Some(GameCpuResources::load(
+        None => Some(ServerCpuResources::load(
             &sunrise_assets::resource_source::ResourceRoot::new(
                 options.resources.clone(),
-                packs::cache_dir(),
+                cache_dir(),
                 pack.source.clone(),
             ),
-            None,
-            None,
-            false,
         )?),
     };
-    let mut game = crate::game::ServerGame::new(res, pack, options, settings, prepared)?;
+    let mut game =
+        crate::game::ServerGame::new(res, pack, options, settings, prepared, profile_resolver)?;
+    game.side.dedicated_services = Some(services);
     if game.options.benchmark.is_some() {
         game.options.no_pause = true;
     }
@@ -45,7 +50,7 @@ pub(in crate::game) fn start_dedicated_game(
             .get_or_insert_with(sunrise_sim::control::Server::local);
         sunrise_client::benchmark::start(
             control.sender(),
-            sunrise_client::benchmark::Setup {
+            sunrise_sim::benchmark::Setup {
                 scenario,
                 started,
                 app: sunrise_bench::App {
@@ -101,4 +106,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         Ok(())
     }
+}
+
+pub(in crate::game) fn configure_launch_spans(on: bool) {
+    tick_profile::want_spans(tick_profile::SPANS_SPIKES, on);
 }

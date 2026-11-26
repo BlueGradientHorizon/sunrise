@@ -9,7 +9,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn receive_menu_extra(&mut self, data: &[u8]) -> crate::game::Result<()> {
         match sunrise_protocol::menu_extra::decode(data) {
             Ok(extra) => {
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.menu_extra = Some(extra);
                 }
                 Ok(())
@@ -40,13 +40,13 @@ pub(in crate::game) mod menu_extra_data_tests {
             game.side.title.0 = None;
             let (pipe, _server) = Pipe::pair();
             game.connect_local(pipe, "Malformed menu extra").unwrap();
-            assert!(game.remote.is_some());
+            assert!(game.side.remote.is_some());
             game.handle_packet(C::CustomPayload(CustomPayload {
                 channel: CHANNEL.into(),
                 data: vec![1, 1, 0],
             }))
             .unwrap();
-            assert!(game.remote.is_none());
+            assert!(game.side.remote.is_none());
             let mode = &game
                 .side
                 .title

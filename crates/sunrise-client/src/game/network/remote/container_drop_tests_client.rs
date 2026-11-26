@@ -133,6 +133,7 @@ fn creative_drop_guards_charge_only_sent_drops() {
                 let vanilla = ["minecraft:vanilla".to_owned()];
                 let catalog = game.side.creative_screen.0.catalog();
                 let items = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()
@@ -169,7 +170,7 @@ fn creative_drop_guards_charge_only_sent_drops() {
                     "AIR requires minecraft:vanilla so an empty slot clear is withheld too: {packets:?}"
                 );
 
-                game.remote.as_mut().unwrap().features = vanilla.into();
+                game.side.remote.as_mut().unwrap().features = vanilla.into();
                 game.inventory[0] = None;
                 game.remote_creative_slot_add(0);
                 let clear_packets: Vec<_> = sent(&mut reader)
@@ -232,7 +233,7 @@ fn creative_drop_guards_charge_only_sent_drops() {
                     game.side.drop_spam_throttler.increment();
                 }
                 assert!(game.side.drop_spam_throttler.is_under_threshold());
-                game.remote.as_mut().unwrap().session.disconnect();
+                game.side.remote.as_mut().unwrap().session.disconnect();
                 game.remote_creative_throw(stone());
                 assert!(
                     game.side.drop_spam_throttler.is_under_threshold(),
@@ -259,7 +260,7 @@ fn creative_screen_throws_wait_for_loaded_player_tick() {
                 for _ in 0..64 {
                     game.side.drop_spam_throttler.increment();
                 }
-                game.remote.as_mut().unwrap().loaded_sent = false;
+                game.side.remote.as_mut().unwrap().loaded_sent = false;
                 assert_eq!(game.tick_remote_own_player().unwrap(), None);
                 assert!(game.click_open_inventory(Some(0), 0, Input::Throw));
                 game.throw_click(false, Input::Pickup);
@@ -271,7 +272,7 @@ fn creative_screen_throws_wait_for_loaded_player_tick() {
                         .any(|p| matches!(p, S::SetCreativeModeSlot(_)))
                 );
 
-                game.remote.as_mut().unwrap().loaded_sent = true;
+                game.side.remote.as_mut().unwrap().loaded_sent = true;
                 let _ = game.tick_remote_own_player().unwrap();
                 game.throw_click(false, Input::Pickup);
                 assert!(game.carried.is_none());
@@ -362,11 +363,11 @@ fn playing_menu_throw_uses_only_container_click_and_server_drops_once() {
             with_game(|server| {
                 server.player = None;
                 server.build_registries();
-                server.lan = Some(LanHost::for_test(hub));
+                server.side.lan = Some(LanHost::for_test(hub));
                 for packet in outgoing {
                     server.lan_guest_packet(1, packet);
                 }
-                let guest = &server.lan.as_ref().unwrap().hub.guests[index];
+                let guest = &server.side.lan.as_ref().unwrap().hub.guests[index];
                 assert_eq!(
                     guest.inventory[0].as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:stone", 2)),

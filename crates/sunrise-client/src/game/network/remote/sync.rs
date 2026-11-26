@@ -1,4 +1,4 @@
-use super::*;
+use super::Remote;
 use sunrise_level::profile_lookup::default_skin;
 
 impl Remote {

@@ -215,24 +215,13 @@ pub(in crate::game::client_side) fn effective_render_distance_for(
     }
 }
 
-/// Mesh streaming keeps the extra column it needs, separately from render and cache radii.
-pub(in crate::game) fn streaming_radius_for(
-    client_render_distance: i32,
-    server_view_distance: Option<i32>,
-) -> i32 {
-    match server_view_distance {
-        Some(server) if server > 0 => client_render_distance.min(server.saturating_add(1)),
-        _ => client_render_distance,
-    }
-}
-
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Options.getEffectiveRenderDistance: the client setting, capped by the server's view distance.
     pub(in crate::game) fn effective_render_distance(&self) -> i32 {
         effective_render_distance_for(
             self.side.settings.render_distance,
-            self.remote.as_ref().map(|r| r.view_distance),
+            self.side.remote.as_ref().map(|r| r.view_distance),
         )
     }
     /// Entity.setViewScale: entity distance times the render distance's boost (1 at 8 chunks, 2.5 at 20+).
@@ -472,7 +461,8 @@ mod precheck_envelope_tests {
 
     #[test]
     fn effective_render_distance_tracks_login_radius_updates_and_local_settings() {
-        use super::{effective_render_distance_for, streaming_radius_for};
+        use super::effective_render_distance_for;
+        use crate::game::streaming_radius::streaming_radius_for;
 
         // Login with client=12, server chunk_radius=6: effective is 6, streaming keeps +1 buffer (7).
         assert_eq!(effective_render_distance_for(12, Some(6)), 6);

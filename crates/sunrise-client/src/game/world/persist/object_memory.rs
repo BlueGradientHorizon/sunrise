@@ -36,7 +36,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// A boat object, resident or retained as the root of a passenger graph.
     /// Selectors, tracking and ticking keep iterating `boats` instead.
-    pub(in crate::game) fn boat_object(&self, id: u32) -> Option<&crate::game::boats::Boat> {
+    pub(in crate::game) fn boat_object(&self, id: u32) -> Option<&crate::game::boats_common::Boat> {
         self.boats
             .iter()
             .find(|boat| boat.id == id)
@@ -281,8 +281,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
         if let Some(n) = entity_nbt::trident_from_nbt(&tag) {
-            let mut t =
-                crate::game::trident::ThrownTrident::from_nbt(n, &tag, self.pack.assets.registry);
+            let mut t = sunrise_sim::thrown_trident::ThrownTrident::from_nbt(
+                n,
+                &tag,
+                self.pack.assets.registry,
+            );
             t.id = self.take_entity_id();
             // One that came through a portal keeps its cooldown.
             let id = t.id;
@@ -342,7 +345,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // getShortOr uses NumericTag.shortValue: floor floating values
             // to int before short narrowing; integer tags narrow directly.
             let fuse = tnt_fuse(&tag);
-            self.tnts.push(crate::game::tnt::PrimedTnt {
+            self.tnts.push(crate::game::tnt_common::PrimedTnt {
                 size_answer: None,
                 used_portal,
                 attachment_lifetime: Default::default(),
@@ -398,13 +401,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let riders = self.take_passengers(&mut tag);
             self.side.next_entity += 1;
             let id = self.side.next_entity;
-            let (wood, chest) = crate::game::boats::any_boat_wood(k).unwrap_or(("oak", false));
+            let (wood, chest) =
+                crate::game::boats_common::any_boat_wood(k).unwrap_or(("oak", false));
             let mut b =
-                crate::game::boats::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
+                crate::game::boats_common::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
             b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
             b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
             b.fire_ticks = crate::game::boats::saved_fire(&tag);
-            b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
+            b.ticks_frozen = crate::game::boats_common::saved_ticks_frozen(&tag);
             b.pitch = entity_nbt::rotation(&tag)[1];
             // Entity.load: OnGround and fall_distance, as saved.
             (b.ground.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
@@ -412,7 +416,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 b = b.with_chest();
                 b.items = sunrise_sim::save::decode_items(
                     tag.get("Items"),
-                    crate::game::boats::CHEST_SLOTS,
+                    crate::game::boats_common::CHEST_SLOTS,
                 );
             }
             b.velocity = velocity;
@@ -620,7 +624,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     Some(kind) if self.loads_as_passenger(&kind) => riders.push(p),
                     Some(kind)
                         if self.entity_type_exists(&kind)
-                            || (super::super::general::quarantined_kind(&kind)
+                            || (crate::game::general::quarantined_kind(&kind)
                                 && entity_nbt::position(&p).is_some_and(|at| {
                                     self.general_quarantine_admits(&p, &kind, at)
                                 })) =>
@@ -983,7 +987,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         for vehicle in self.riding.into_iter().chain(
-            self.lan
+            self.side
+                .lan
                 .iter()
                 .flat_map(|host| host.hub.guests.iter().filter_map(|guest| guest.vehicle)),
         ) {
@@ -1037,17 +1042,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.persist.removed_vehicles.remove(&id);
             self.forget_entity(id);
         }
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// Internal object lookup, including a passenger refused level residency.
-    /// This is deliberately separate from `level_entity` and native handle queries.
-    pub(in crate::game) fn mob_object(&self, id: u32) -> Option<&Mob> {
-        self.mobs
-            .iter()
-            .find(|mob| mob.id == id)
-            .or_else(|| self.persist.off_level.get(&id).and_then(OffLevel::as_mob))
     }
 }
 

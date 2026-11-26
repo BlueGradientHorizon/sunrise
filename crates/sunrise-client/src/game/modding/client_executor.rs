@@ -80,7 +80,7 @@ mod tests {
             .join()
             .unwrap();
             assert!(calls.lock().unwrap().is_empty());
-            assert!(game.remote.is_none());
+            assert!(game.side.remote.is_none());
             game.side.focused = true;
             game.poll_remote().unwrap();
             assert_eq!(
@@ -203,7 +203,7 @@ mod tests {
         mod_platform::testing::with_mods(Default::default(), || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
-                game.remote.as_mut().unwrap().logged_in = true;
+                game.side.remote.as_mut().unwrap().logged_in = true;
                 game.spawn_entity(20, "minecraft:pig", [2.0, 64.0, 0.0], [0.0; 3]);
                 let entity = game.entity(20).unwrap();
                 game.side.audio.0.backend_live_for_bench();
@@ -318,7 +318,12 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
-                game.remote.as_ref().unwrap().session.received_event_probe()(Event::Disconnected {
+                game.side
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .session
+                    .received_event_probe()(Event::Disconnected {
                     reason: "fixture disconnected".into(),
                     key: None,
                     from_server: true,
@@ -329,7 +334,7 @@ mod tests {
                 executor.execute(Box::new(move |_| record.send(1).unwrap()));
 
                 game.poll_remote().unwrap();
-                assert!(game.remote.is_none());
+                assert!(game.side.remote.is_none());
                 assert_eq!(calls.try_iter().collect::<Vec<_>>(), [2, 1, 3]);
             });
         });

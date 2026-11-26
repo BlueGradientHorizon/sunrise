@@ -1,9 +1,9 @@
 //! `living_damage_pre` and `living_damage_post` heard by a trait mod, through the game's own
 //! hooks: the damage container each hit fills, the hit's level host, and the mob and dragon
 //! hits that fire them.
-use super::dragon::{Dragon, SPECIAL};
-use super::entity::damage_level_of;
 use super::native_entity_refs::tests::{bind_local_player, with_game};
+use crate::game::dragon_common::{Dragon, SPECIAL};
+use crate::game::server_side::entity_server::damage_level_of;
 use mod_api::{
     self, HitHost, Hooks, HurtSource, LivingDamagePostEvent, LivingDamagePreEvent,
     LivingIncomingDamageEvent, LivingShieldBlockEvent, Reduction,
@@ -664,13 +664,14 @@ fn guest_strike_posts_before_returning_from_the_authoritative_death() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             add_guest(game);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .update(0, |guest| guest.load_timeout = 0);
-            let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            let entity = i64::from(game.side.lan.as_ref().unwrap().hub.guests[0].entity_id);
             game.guest_struck_by(1, |game| {
                 assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
                 assert_eq!(game.player.as_ref().unwrap().health.health(), 5.0);
@@ -686,7 +687,7 @@ fn guest_strike_posts_before_returning_from_the_authoritative_death() {
                 trace.cancel.store(false, Relaxed);
                 // A stronger hit in the same turn can kill the now-living body.
                 assert!(game.hurt_player_from(200.0, None, "minecraft:generic", Some(None), false));
-                assert!(game.lan.as_ref().unwrap().hub.guests[0].dead);
+                assert!(game.side.lan.as_ref().unwrap().hub.guests[0].dead);
                 assert_eq!(trace.heard.lock().unwrap().last(), Some(&("post", entity)));
             })
             .unwrap();
@@ -850,7 +851,7 @@ fn mounted_fall_posts_before_the_next_rider() {
         with_game(|game| {
             let (horse, _packets) = guest_horse_at_start_of_fall(game);
             game.mobs[0].health = 0.5;
-            let rider = game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            let rider = game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.health = 0.5;
                 g.entity_id
             });
@@ -886,7 +887,7 @@ fn mounted_fall_posts_before_the_next_rider() {
                 ],
                 "the horse settles its own hurt before calling causeFallDamage on its rider",
             );
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].health, 5.0);
+            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].health, 5.0);
             assert_eq!(game.mobs[0].health, 5.0);
             assert_eq!(game.mobs[0].fall_distance, 0.0);
         });
@@ -1620,12 +1621,18 @@ fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             add_guest(game);
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.load_timeout = 0;
-                guest.inventory[guest.selected] =
-                    Some(ItemStack::new("minecraft:totem_of_undying", 1));
-            });
-            let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.load_timeout = 0;
+                    guest.inventory[guest.selected] =
+                        Some(ItemStack::new("minecraft:totem_of_undying", 1));
+                });
+            let entity = i64::from(game.side.lan.as_ref().unwrap().hub.guests[0].entity_id);
             game.guest_struck_by(1, |game| {
                 assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
                 assert!(game.inventory[game.selected].is_none());
@@ -1641,7 +1648,7 @@ fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
                 );
             })
             .unwrap();
-            assert!(!game.lan.as_ref().unwrap().hub.guests[0].dead);
+            assert!(!game.side.lan.as_ref().unwrap().hub.guests[0].dead);
         });
     });
 }
@@ -1665,16 +1672,22 @@ fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
             let at = Vec3::new(1.0, game.world.below_world_y() - 1.0, 1.0);
             let mut body = PlayerMotion::new(game.motion, at).unwrap();
             body.fire_ticks = 20;
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.loaded = true;
-                guest.load_timeout = 0;
-                guest.position = at.components();
-                guest.health = 0.5;
-                guest.motion = Some(Box::new(body));
-                guest.inventory[guest.selected] =
-                    Some(ItemStack::new("minecraft:totem_of_undying", 1));
-            });
-            let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.loaded = true;
+                    guest.load_timeout = 0;
+                    guest.position = at.components();
+                    guest.health = 0.5;
+                    guest.motion = Some(Box::new(body));
+                    guest.inventory[guest.selected] =
+                        Some(ItemStack::new("minecraft:totem_of_undying", 1));
+                });
+            let entity = i64::from(game.side.lan.as_ref().unwrap().hub.guests[0].entity_id);
             game.guest_server_tick(1, true);
             assert!(trace.heard.lock().unwrap().starts_with(&[
                 ("incoming", entity),
@@ -1683,7 +1696,7 @@ fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
                 ("post", entity),
                 ("incoming", entity),
             ]));
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.inventory[guest.selected].is_none());
         });
     });
@@ -2006,7 +2019,7 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
 
             if !breath {
                 let at = Vec3::new(3.5, 80.0, 1.5);
-                let mut boat = super::boats::Boat::new(225049, "oak".into(), at, 0.0);
+                let mut boat = super::boats_common::Boat::new(225049, "oak".into(), at, 0.0);
                 boat.velocity.x = 0.2;
                 game.riding = Some(boat.id);
                 game.boats.push(boat);
@@ -2179,25 +2192,37 @@ fn guest_landing_posts_before_its_ground_hit() {
             let next = [16.5, landing.y, landing.z];
             let mut body = PlayerMotion::new(game.motion, start).unwrap();
             body.fall_distance = 10.0;
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.loaded = true;
-                guest.load_timeout = 0;
-                guest.place(start.components());
-                // Even honey's reduced hit kills this body.
-                guest.health = 0.5;
-                guest.motion = Some(Box::new(body));
-            });
-            let entity = game.lan.as_ref().unwrap().hub.guests[0].entity_id;
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.loaded = true;
+                    guest.load_timeout = 0;
+                    guest.place(start.components());
+                    // Even honey's reduced hit kills this body.
+                    guest.health = 0.5;
+                    guest.motion = Some(Box::new(body));
+                });
+            let entity = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id;
             game.entity_section_joined(entity as u32, start.components());
             // Fall handling belongs to each accepted packet, not to the body tick's move history.
             for (from, position, on_ground) in [
                 (start.components(), landing.components(), true),
                 (landing.components(), next, false),
             ] {
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.accept_move(position);
-                    guest.on_ground = on_ground;
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.accept_move(position);
+                        guest.on_ground = on_ground;
+                    });
                 game.guest_accepted_move(
                     1,
                     CommittedMove {
@@ -2226,7 +2251,7 @@ fn guest_landing_posts_before_its_ground_hit() {
                 ],
                 "death sees the landing before its fall reset; the next move sees the finished tail",
             );
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.position, next);
             assert_eq!(guest.motion.as_ref().unwrap().fall_distance, 0.0);
         });
@@ -2272,14 +2297,20 @@ fn ordinary_guest_move_settles_fall_before_resuming() {
             let landing = Vec3::new(1.5, 78.9375, 1.5);
             let mut body = PlayerMotion::new(game.motion, start).unwrap();
             body.fall_distance = 10.0;
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.loaded = true;
-                guest.load_timeout = 0;
-                guest.place(start.components());
-                guest.health = 0.5;
-                guest.motion = Some(Box::new(body));
-            });
-            let entity = game.lan.as_ref().unwrap().hub.guests[0].entity_id;
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.loaded = true;
+                    guest.load_timeout = 0;
+                    guest.place(start.components());
+                    guest.health = 0.5;
+                    guest.motion = Some(Box::new(body));
+                });
+            let entity = game.side.lan.as_ref().unwrap().hub.guests[0].entity_id;
             game.as_guest(1, |game| {
                 let moved = game
                     .move_local_player(MoverType::SelfMovement, Vec3::new(0.0, -1.0, 0.0), false)
@@ -2521,7 +2552,8 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::native_guest_turn_tests::with_guests(|game| {
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -2545,7 +2577,8 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
                 arrow.arrow.as_mut().unwrap().fired_from_weapon =
                     Some(ItemStack::new("minecraft:crossbow", 1));
                 arrow.velocity = Vec3::new(0.0, 0.0, -2.0);
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -2555,7 +2588,8 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
                     .unwrap();
                 if gone {
                     // Model the departed connection being absent when its projectile lands.
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub

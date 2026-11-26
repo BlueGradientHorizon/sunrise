@@ -36,7 +36,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // During the guest's own turn its body is the game's player.
         let acting = self.side.lan_acting == Some(conn);
-        let host = self.lan.as_mut().ok_or(CollisionExclusionsError::Stale)?;
+        let host = self
+            .side
+            .lan
+            .as_mut()
+            .ok_or(CollisionExclusionsError::Stale)?;
         let turn_body = host
             .hub
             .update_guest(conn, |g| {
@@ -82,7 +86,7 @@ mod tests {
     const TOO_MANY: [[f64; 6]; 65] = [[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]; 65];
 
     fn guest_boxes(game: &crate::game::ServerGame<'_>, conn: u32) -> usize {
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         host.hub
             .guest(conn)
             .unwrap()
@@ -134,7 +138,7 @@ mod tests {
             // A guest that left is gone with its boxes: its handle names nothing.
             assert_eq!(entity.set_collision_exclusions(game, &OPENING), Ok(()));
             let i = game.guest_index(12).unwrap();
-            game.lan.as_mut().unwrap().hub.guests.remove(i);
+            game.side.lan.as_mut().unwrap().hub.guests.remove(i);
             assert_eq!(
                 entity.set_collision_exclusions(game, &OPENING),
                 Err(Refusal::Stale)

@@ -3,19 +3,6 @@
 use super::*;
 use crate::game::collision_source::Mover;
 
-/// A dropped item's `bobOffs` (its bob and spin phase) from its random's draw `drawn`, or under
-/// `SUNRISE_STILL` from a random seeded by its position alone: a client seeds an item's random
-/// with the server's entity id, which follows the order chunks load in and differs between
-/// launches. The draw is made either way, so the item's random stays where vanilla's would be.
-pub(in crate::game) fn bob_offset(position: Vec3, drawn: f32, still: bool) -> f32 {
-    let drawn = if still {
-        sunrise_sim::mobs::entity_random(0, position).next_float()
-    } else {
-        drawn
-    };
-    drawn * std::f32::consts::PI * 2.0
-}
-
 /// The items `give_items_back` takes again, where the item the loop was at now is (none once it
 /// is gone), and the index the loop goes on from.
 pub(in crate::game) struct GivenBack {
@@ -237,7 +224,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if extra_life > 0 {
                         item.age = 6000 - extra_life.min(32766);
                         alive = true;
-                    } else if self.serving.is_some() || self.options.dedicated.is_some() {
+                    } else if self.side.serving.is_some() || self.options.dedicated.is_some() {
                         self.native_item_despawn(
                             item.id,
                             &item.stack.item,
@@ -545,7 +532,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let o = &mut self.orbs[i];
                 // A mod's write in the merge hook is the merged orb; else one more in its count.
                 if (o.value, o.count) == (orb_value, count) {
-                    if count >= crate::orb_limits::MAX_COUNT {
+                    if count >= sunrise_sim::orb_limits::MAX_COUNT {
                         continue;
                     }
                     o.count += 1;
@@ -658,7 +645,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 into_count
                     .checked_add(from_count)
-                    .filter(|&c| c <= crate::orb_limits::MAX_COUNT)
+                    .filter(|&c| c <= sunrise_sim::orb_limits::MAX_COUNT)
             };
             let (Some(j), Some(count)) = (fresh, count) else {
                 self.restore_orb(into_join, into_value, into_count, into_age);
@@ -786,7 +773,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         let mut orbs = self.orbs.lift();
         #[cfg(test)]
-        crate::game::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut gained = 0;
         let mut taken = Vec::new();
         if let Some((min, max)) = bounds {
@@ -956,7 +943,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         position: [f64; 3],
         velocity: [f64; 3],
     ) {
-        let random = spill::prepare_item_random(None);
+        let random = crate::game::spill_common::prepare_item_random(None);
         self.add_item_entity_prepared(stack, position, Some(velocity), 0, Some(random));
     }
 
@@ -976,7 +963,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS);
-        if let Some(at) = spill::admitted_pop_position(&mut self.world.random, pos, block_drops) {
+        if let Some(at) = crate::game::spill_common::admitted_pop_position(
+            &mut self.world.random,
+            pos,
+            block_drops,
+        ) {
             self.spawn_item_own(stack, at, 10);
         }
     }
@@ -1013,7 +1004,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         face: [i32; 3],
         stack: ItemStack,
     ) {
-        let (p, v) = spill::pop_position_from_face(&mut self.world.random, pos, face);
+        let (p, v) =
+            crate::game::spill_common::pop_position_from_face(&mut self.world.random, pos, face);
         // The private overload checks the gamerule after the offsets are drawn.
         if !self
             .ui
@@ -1051,7 +1043,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// inventory back, undoing the removal the client predicted.
     pub(in crate::game) fn guest_drop_held(&mut self, gi: usize, conn: u32, all: bool) {
         let kept = self.as_guest(conn, |g| g.drop_held_item(all)) == Some(true);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             if kept {
                 host.hub.send_inventory(gi);
             } else {
@@ -1283,7 +1275,7 @@ pub(in crate::game) mod bob_tests {
     /// The bob a client gives the item with entity id `id` at `at`.
     fn bob(id: u32, at: Vec3, still: bool) -> f32 {
         let mut random = sunrise_sim::mobs::entity_random(id, at);
-        super::bob_offset(at, random.next_float(), still)
+        crate::game::client_side::item_entities_client::bob_offset(at, random.next_float(), still)
     }
 
     /// Under `SUNRISE_STILL` the item's position decides its bob, not the id the server gave

@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::dragon_common::{FightWho, SPECIAL};
 use crate::game::server_side::dragon::thorns_tests::thorny;
 use crate::game::*;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
@@ -163,6 +164,7 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     g.options.dedicated = Some(Vec::new());

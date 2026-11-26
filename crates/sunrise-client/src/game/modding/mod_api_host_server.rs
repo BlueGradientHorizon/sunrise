@@ -247,6 +247,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && cloning.is_none()
                 && self.side.lan_acting_uuid != Some(uuid)
                 && self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.holder_guest(uuid, self.dim.id()))
@@ -265,7 +266,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             let conn = cloning
                 .or_else(|| {
-                    let host = self.lan.as_ref()?;
+                    let host = self.side.lan.as_ref()?;
                     let guest = if self.entity_initialization.active == Some(holder) {
                         host.hub.guests.iter().find(|guest| guest.uuid == uuid)
                     } else {
@@ -281,6 +282,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.bind_player_attachments(conn, true);
             }
             return Ok(self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|host| host.hub.guests.attachments_mut(conn))

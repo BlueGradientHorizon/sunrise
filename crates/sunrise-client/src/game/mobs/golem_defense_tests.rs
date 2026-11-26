@@ -41,9 +41,15 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     for x in 0..2 {
@@ -108,7 +114,7 @@ fn game<'a>(
     guest.loaded = true;
     // Its view, as the client sent it: straight down.
     guest.pitch = 90.0;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     game
 }
 
@@ -161,7 +167,7 @@ fn targets_guest(game: &mut crate::game::ServerGame<'_>, ticks: usize) -> bool {
         .id;
     let golem = game.mobs.iter().find(|m| m.id == id).unwrap();
     golem.ai.target == Some(sunrise_sim::mobs::Who::Player)
-        && game.lan.as_ref().unwrap().mob_players.get(&id) == Some(&2)
+        && game.side.lan.as_ref().unwrap().mob_players.get(&id) == Some(&2)
 }
 
 #[test]
@@ -249,7 +255,7 @@ fn control_a_hated_host_does_not_turn_the_golem_on_the_selected_guest() {
     let (golem_id, target) = golem_of(&game);
     assert_eq!(target, Some(sunrise_sim::mobs::Who::Player));
     assert_ne!(
-        game.lan.as_ref().unwrap().mob_players.get(&golem_id),
+        game.side.lan.as_ref().unwrap().mob_players.get(&golem_id),
         Some(&2),
         "the target is the host, not the guest"
     );

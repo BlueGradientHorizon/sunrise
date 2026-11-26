@@ -1,5 +1,5 @@
 //! Narrow, per-victim context prepared before the hit borrows its victim.
-use super::combat::PlayerCredit;
+use super::combat_common::PlayerCredit;
 use std::collections::HashMap;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{

@@ -44,7 +44,7 @@ fn ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay(
                         ] {
                             game.side.hand_strength.ticker = 100;
                             game.side.hand_strength.swap_ticker = 100;
-                            game.remote.as_mut().unwrap().destroy_delay = delay_before;
+                            game.side.remote.as_mut().unwrap().destroy_delay = delay_before;
                             let case = (kind, instabuild, distance.to_bits());
                             assert_eq!(
                                 game.remote_attack_entity(id, distance),
@@ -66,7 +66,7 @@ fn ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay(
                             assert_eq!(game.side.hand_strength.ticker, strength, "{case:?}");
                             assert_eq!(game.side.hand_strength.swap_ticker, strength, "{case:?}");
                             assert_eq!(
-                                game.remote.as_ref().unwrap().destroy_delay,
+                                game.side.remote.as_ref().unwrap().destroy_delay,
                                 if instabuild && allowed {
                                     5
                                 } else {
@@ -110,7 +110,7 @@ fn out_of_range_entity_click_still_swings_without_attacking_or_resetting() {
                 assert_eq!(game.swings_started, swings + 1);
                 assert_eq!(game.side.hand_strength.ticker, 100);
                 assert_eq!(game.clicks.miss_time, 0);
-                assert_eq!(game.remote.as_ref().unwrap().destroy_delay, 0);
+                assert_eq!(game.side.remote.as_ref().unwrap().destroy_delay, 0);
 
                 // The stored hit point has not moved, but the player is now far enough away.
                 // The original pick-ray distance must not be used for the attack check.

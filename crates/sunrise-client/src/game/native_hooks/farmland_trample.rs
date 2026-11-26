@@ -382,7 +382,7 @@ pub(in crate::game) mod tests {
                             .inbox
                             .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
                     }
-                    game.lan.as_mut().unwrap().hub.guests.push(player);
+                    game.side.lan.as_mut().unwrap().hub.guests.push(player);
                     game.entity_section_joined(LANDING, start);
                     health
                 } else {
@@ -429,7 +429,7 @@ pub(in crate::game) mod tests {
                 let drops = game.dropped.len();
                 if player {
                     game.tick_lan_packets();
-                    let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     assert_eq!(
                         guest.moves.len(),
                         usize::from(!converted),
@@ -453,7 +453,7 @@ pub(in crate::game) mod tests {
                     assert_eq!(game.dropped.len(), drops);
                 }
                 let (landing_y, health) = if player {
-                    let g = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let g = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     (g.position[1], g.health)
                 } else {
                     let m = game.mob_object(LANDING).unwrap();

@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use crate::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use crate::game::native_entity_refs::tests::{
         fixture_root, run_fresh_cases, with_game, with_game_at,
     };
-    use crate::game::remote::RemoteDimensionEntry;
     use mod_api::{
         Block, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntitySideScope,
         BlockEntityTicksEvent, BlocksEvent, Hooks, Host, ModEntry, Registrar, RegistrationContext,
@@ -170,7 +170,7 @@ mod tests {
                     mod_api::__private::resolve_block_entity_types(["test:holder"], |_| Some(()))
                         .unwrap();
                     game.native_lifecycle =
-                        crate::game::native_lifecycle::NativeLifecycle::default();
+                        crate::game::native_lifecycle_common::NativeLifecycle::default();
                     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(client, "OnLoadTest").unwrap();
                     let spawn = SpawnInfo {
@@ -186,7 +186,7 @@ mod tests {
                         sea_level: 63,
                     };
                     game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-                    game.remote.as_mut().unwrap().logged_in = true;
+                    game.side.remote.as_mut().unwrap().logged_in = true;
                     game.world
                         .chunks
                         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

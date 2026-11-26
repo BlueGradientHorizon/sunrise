@@ -1,7 +1,22 @@
 //! Dispatch placement intents only after the shared connection boundary admitted them.
 use super::*;
-use sunrise_sim::recipe_book::placement_sync as sync;
+use sunrise_protocol::packets::{configuration::CustomPayload, play::Clientbound as C};
+use sunrise_sim::recipe_book::{
+    placement_sync as sync, settings_codec,
+    settings_sync::{CHANNEL, Message},
+};
 impl Game<'_, crate::game::server_side::ServerState> {
+    pub(in crate::game) fn send_guest_mod_book_placement(&self, conn: u32, frame: sync::Frame) {
+        if let Some(guest) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn))
+            && let Some(data) = settings_codec::encode(&Message::Placement(frame))
+        {
+            guest.send(&C::CustomPayload(CustomPayload {
+                channel: CHANNEL.into(),
+                data,
+            }));
+        }
+    }
+
     pub(in crate::game::server_side) fn guest_mod_book_placement(
         &mut self,
         conn: u32,

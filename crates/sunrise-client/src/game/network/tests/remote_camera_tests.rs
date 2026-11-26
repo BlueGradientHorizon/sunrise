@@ -1,9 +1,9 @@
 //! `ClientboundSetCameraPacket` (`ClientPacketListener.handleSetCamera`) and
 //! `Camera.alignWithEntity`: a server's camera follows any entity the level
 //! holds, not only mobs and armor stands.
-use crate::game::boats::Boat;
+use crate::game::boats_common::Boat;
 use crate::game::remote_camera::CameraEntities;
-use crate::game::tnt::PrimedTnt;
+use crate::game::tnt_common::PrimedTnt;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::entities::ItemFrame;
 
@@ -72,7 +72,7 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
     let displays = indexmap::IndexMap::new();
     let interactions = std::collections::HashMap::from([(
         15,
-        crate::game::interactions::RemoteInteraction {
+        crate::game::interactions_common::RemoteInteraction {
             join: Default::default(),
             position: Vec3::new(0.5, 300.0, 0.5),
             previous: Vec3::new(0.5, 300.0, 0.5),

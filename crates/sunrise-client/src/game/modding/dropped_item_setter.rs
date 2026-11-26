@@ -6,7 +6,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// leaves what it couldn't take (`ItemEntity.setItem`). An empty stack
     /// (count 0) discards the entity. Players see it on their next tracker update.
     pub(in crate::game) fn native_set_item_entity(&mut self, i: usize, stack: ItemStack) -> bool {
-        if self.serving.is_none() && self.options.dedicated.is_none() {
+        if self.side.serving.is_none() && self.options.dedicated.is_none() {
             return false;
         }
         if stack.count == 0 {

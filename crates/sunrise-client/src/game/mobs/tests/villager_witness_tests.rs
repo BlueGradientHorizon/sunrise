@@ -206,7 +206,7 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
         game.side.lan_acting = None;
         bind_local_player(game, 302, 2);
         game.cloud_affect(
-            crate::game::potions::Victim::Mob(91),
+            crate::game::potions_common::Victim::Mob(91),
             &[("instant_damage", 1, 0)],
             (&[], &[], 1.0),
             [at.x, at.y, at.z],

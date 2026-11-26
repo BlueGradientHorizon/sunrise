@@ -35,6 +35,7 @@ pub(in crate::game) fn run_discarded_mob_leaves_selectors_and_saves_while_frozen
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.native_lifecycle
@@ -235,7 +236,8 @@ fn dead_guest_leaves_at_e_but_reaches_a_registered_selector() {
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.build_registries();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

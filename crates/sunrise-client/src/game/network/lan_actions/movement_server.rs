@@ -5,7 +5,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.canGlide`: not flying, airborne, not riding, no levitation, and
     /// a glider that its next point of wear won't break.
     pub(in crate::game::server_side) fn guest_can_glide(&mut self, conn: u32) -> Option<bool> {
-        let g = self.lan.as_ref()?.hub.guest(conn)?;
+        let g = self.side.lan.as_ref()?.hub.guest(conn)?;
         if g.abilities.flying || g.on_ground || g.vehicle.is_some() {
             return Some(false);
         }
@@ -19,7 +19,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `elytra_glide` game event. Entity.checkFallDistanceAccumulation runs
     /// first: a glide that isn't diving keeps the fall distance at 1.
     pub(in crate::game) fn guest_glide_tick(&mut self, conn: u32, fell: f64) {
-        let Some(creative) = self.lan.as_mut().and_then(|host| {
+        let Some(creative) = self.side.lan.as_mut().and_then(|host| {
             host.hub
                 .update_guest(conn, |g| {
                     if !g.fall_flying {
@@ -42,7 +42,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         if self.guest_can_glide(conn) != Some(true) {
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 let _ = host.hub.update_guest(conn, |g| g.fall_flying = false);
             }
             return;
@@ -75,7 +75,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn in_wall(&self, conn: u32, at: [f64; 3], body: Dimensions) -> bool {
         let y = (at[1] + f64::from(body.eye_height)).floor() as i32;
         let [xs, zs] = eye_columns(at, body);
-        let guest = self.lan.as_ref().and_then(|host| host.hub.guest(conn));
+        let guest = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn));
         let spared = |x: i32, z: i32| {
             guest.is_some_and(|g| g.collision_exclusions.spares(BlockPos::new(x, y, z)))
         };
@@ -116,7 +116,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.tryToStartFallFlying`, or else `stopFallFlying` (a second
     /// start while gliding ends the glide, as in vanilla).
     pub(in crate::game::server_side) fn lan_start_gliding(&mut self, conn: u32) {
-        let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let start = !g.fall_flying && self.guest_can_glide(conn) == Some(true);
@@ -128,7 +128,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .unwrap_or(true);
         let mut changed = None;
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             let _ = host.hub.update_guest(conn, |g| {
                 let gliding = start && !in_liquid;
                 if g.fall_flying != gliding {

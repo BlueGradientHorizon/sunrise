@@ -332,7 +332,7 @@ mod tests {
                 force_game_mode: false,
             };
             game.lan_host(settings, net, config).unwrap();
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.guests.push(guest(123, 1));
             hub.guests.push(guest(456, 2));
             let (a, b) = (game.player(123).unwrap(), game.player(456).unwrap());

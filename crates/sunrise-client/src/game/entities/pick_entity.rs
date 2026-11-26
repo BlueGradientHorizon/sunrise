@@ -23,6 +23,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             || self.falling.iter().any(|f| f.id == uid)
             || self.resident_dragon_part(uid).is_some()
             || self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.general.rows.contains_key(&id))
@@ -58,8 +59,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             });
         }
         let hit = self.pick_entity_hit_unified()?;
-        let is_synthetic_dragon_part =
-            (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&hit.id);
+        let is_synthetic_dragon_part = (crate::game::dragon_common::SPECIAL
+            ..crate::game::dragon_common::SPECIAL + 8)
+            .contains(&hit.id);
         let id = hit.id as i32;
         let pickable = !self.side.interactions.contains_key(&id)
             && !is_synthetic_dragon_part

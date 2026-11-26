@@ -80,8 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The objective a handle names: None for a stale handle, one of an earlier open, or on a
     /// client.
     fn objective_state(&self, objective: ObjectiveRef) -> Option<&sb::Objective> {
-        if self.remote.is_some() || self.native_lifecycle.epoch() != Some(objective.fields().epoch)
-        {
+        if self.native_lifecycle.epoch() != Some(objective.fields().epoch) {
             return None;
         }
         self.score
@@ -629,7 +628,13 @@ pub(in crate::game) mod tests {
     fn objectives_are_written_synced_saved_and_stale_once_removed() {
         with_game(|game| {
             let saved_board = open_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(123, 1));
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .push(guest(123, 1));
             let player = game.player(123).unwrap();
             let text = mod_api::Text::literal;
 
@@ -732,7 +737,10 @@ pub(in crate::game) mod tests {
             assert_eq!(kills.slots(game), Some(vec![DisplaySlot::Sidebar]));
             game.lan_sync_scoreboard();
             let view = sunrise_sim::lan::scoreboard::View::of(&game.score.board);
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].scoreboard, view);
+            assert_eq!(
+                game.side.lan.as_ref().unwrap().hub.guests[0].scoreboard,
+                view
+            );
 
             // Saved, the file holds the objective, its score and its slot, as a command's would.
             game.save_scoreboard();

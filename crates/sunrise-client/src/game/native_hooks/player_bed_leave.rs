@@ -46,7 +46,8 @@ pub(in crate::game) mod player_bed_leave_tests {
     }
 
     fn in_bed(game: &mut crate::game::ServerGame<'_>, conn: u32) {
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -165,7 +166,8 @@ pub(in crate::game) mod player_bed_leave_tests {
 
                 game.world.set(5, 64, 5, bed).unwrap();
                 in_bed(game, 12);
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub

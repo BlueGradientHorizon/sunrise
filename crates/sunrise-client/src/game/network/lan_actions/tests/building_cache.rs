@@ -38,9 +38,15 @@ pub(in crate::game) fn game<'a>(
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     for x in 0..2 {
@@ -102,7 +108,7 @@ pub(in crate::game) fn game<'a>(
         );
         guest.placed = true;
         guest.loaded = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     }
     game
 }
@@ -119,14 +125,14 @@ pub(in crate::game) fn the_mover_changed_mid_tick(
 ) -> (Boxes, Boxes, Boxes) {
     let mut resources = None;
     let mut game = game(&mut resources);
-    crate::game::lan_actions::building_cache(game.lan.as_ref());
+    crate::game::server_side::lan_actions_server::building_cache(game.side.lan.as_ref());
     let before = seen_by_builder(&mut game);
     assert!(game.run_command(command), "{command}");
     if turns {
         game.tick_guests_inner();
     }
     let cached = seen_by_builder(&mut game);
-    crate::game::lan_actions::building_cache(None);
+    crate::game::server_side::lan_actions_server::building_cache(None);
     let fresh = seen_by_builder(&mut game);
     (before, cached, fresh)
 }

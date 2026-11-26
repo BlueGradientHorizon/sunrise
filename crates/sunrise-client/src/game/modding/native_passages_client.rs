@@ -1,8 +1,5 @@
 use super::Game;
-use crate::game::server_side::native_passages::HeldRefusal;
-use crate::game::server_side::native_passages::MAX_PER_LEVEL;
-use crate::game::server_side::native_passages::check;
-use crate::game::server_side::native_passages::passage;
+use crate::game::native_passages::{HeldRefusal, MAX_PER_LEVEL, check, passage};
 use mod_api::PassageId;
 use sunrise_protocol::passage_sync::{Message, PassageForm};
 

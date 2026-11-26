@@ -189,51 +189,46 @@ impl StationUi {
     }
 }
 
-impl Station {
-    /// `StonecutterScreen.containerChanged`: a changed input puts the list back at the top.
-    pub(in crate::game::client_side) fn stonecutter_changed(&mut self, ui: &mut StationUi) {
-        ui.start = 0;
-        ui.scroll = 0.0;
-    }
+/// `StonecutterScreen.containerChanged`: a changed input puts the list back at the top.
+pub(in crate::game::client_side) fn stonecutter_changed(ui: &mut StationUi) {
+    ui.start = 0;
+    ui.scroll = 0.0;
+}
 
-    /// Clear state tied to the previous `UpdateRecipes` table.
-    pub(in crate::game::client_side) fn reset_stonecutter_generation(
-        &mut self,
-        ui: &mut StationUi,
-    ) {
-        self.stone = Default::default();
-        self.selected = None;
-        self.result = None;
-        ui.scrolling = false;
-        self.stonecutter_changed(ui);
-    }
+/// Clear state tied to the previous `UpdateRecipes` table.
+pub(in crate::game::client_side) fn reset_stonecutter_generation(
+    station: &mut Station,
+    ui: &mut StationUi,
+) {
+    station.stone = Default::default();
+    station.selected = None;
+    station.result = None;
+    ui.scrolling = false;
+    stonecutter_changed(ui);
+}
 
-    /// `StonecutterScreen.isScrollBarActive`.
-    pub(in crate::game::client_side) fn stonecutter_scrolls(&self) -> bool {
-        self.inputs[0].is_some() && self.stone.recipes.len() > 12
-    }
-
-    /// Moves the stonecutter's scroller to `offs`, and its first shown
-    /// recipe (`startIndex`) with it.
-    pub(in crate::game::client_side) fn stonecutter_scroll_to(
-        &mut self,
-        ui: &mut StationUi,
-        offs: f32,
-    ) {
-        ui.scroll = offs.clamp(0.0, 1.0);
-        ui.start = super::stations::stonecutter_start(self.stone.recipes.len(), ui.scroll);
-    }
+/// Moves the stonecutter's scroller to `offs`, and its first shown
+/// recipe (`startIndex`) with it.
+pub(in crate::game::client_side) fn stonecutter_scroll_to(
+    station: &Station,
+    ui: &mut StationUi,
+    offs: f32,
+) {
+    ui.scroll = offs.clamp(0.0, 1.0);
+    ui.start = super::stations::stonecutter_start(station.stone.recipes.len(), ui.scroll);
 }
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn open_station_client(&mut self, station: Station) {
         self.station = Some(station);
         self.side.station_ui = Some(StationUi::new());
+        self.side.station_loom = Default::default();
     }
 
     pub(in crate::game::client_side) fn clear_station_client(&mut self) {
         self.station = None;
         self.side.station_ui = None;
+        self.side.station_loom = Default::default();
     }
 
     pub(in crate::game) fn close_station_client(&mut self) {

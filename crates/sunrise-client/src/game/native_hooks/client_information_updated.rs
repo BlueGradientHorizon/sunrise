@@ -63,7 +63,7 @@ pub(in crate::game) mod client_information_updated_tests {
             vec![ModEntry::new("info", Box::new(Listen(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_guest_turn_tests::with_guests(|game| {
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 let (uuid, name) = host
                     .hub
                     .update_guest(12, |g| {

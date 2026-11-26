@@ -4,32 +4,20 @@
 //! container clicks, `ServerboundContainerButtonClickPacket`, the content and
 //! data slot sync after each (`broadcastChanges`), and the inputs back into
 //! the inventory when the menu closes (`AbstractContainerMenu.clearContainer`).
-use super::{
-    Game,
-    stations::{Kind as StationKind, Station},
+use super::Game;
+use crate::game::{
+    api_values::TryIntoApi,
+    lan_menu_data::GuestStation,
+    lan_station_data::menu_of,
+    stations_common::{Kind as StationKind, Station},
+    transactions::After,
 };
-use crate::game::{api_values::TryIntoApi, transactions::After};
 use mod_api::item::menu::AnvilCraftInputs;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::menu::{GrindstoneTakeEdits, Kind, Menu, QuickCraftDrag};
-
-/// A guest's open workstation menu.
-#[derive(Clone)]
-pub(in crate::game) struct GuestStation {
-    pub(in crate::game) window: i32,
-    pub(in crate::game) state: i32,
-    pub(in crate::game) kind: StationKind,
-    pub(in crate::game) pos: [i32; 3],
-    pub(in crate::game) menu: Box<Menu>,
-    /// The data slots the client was last sent. `None` is not sent yet,
-    /// which is not a cost: an anvil's signed cost may be `i32::MIN`.
-    pub(in crate::game) sent_data: Vec<Option<i32>>,
-    /// The game time of the menu's last sound (`lastSoundTime`).
-    pub(in crate::game) last_sound: u64,
-}
 
 /// A guest's open lectern: `LecternMenu` over the block entity, made on the
 /// menu engine for each click (`Game::lectern_menu`).
@@ -43,24 +31,6 @@ pub(in crate::game) struct GuestLectern {
     pub(in crate::game) sent: Option<(Option<ItemStack>, i32)>,
 }
 
-/// The `MenuType`, the engine's menu and the input slots
-/// (`clearContainer`'s container) of a station a guest can use.
-pub(in crate::game) fn menu_of(
-    kind: StationKind,
-) -> Option<(&'static str, Kind, std::ops::Range<usize>)> {
-    Some(match kind {
-        StationKind::Loom => ("minecraft:loom", Kind::Loom, 0..3),
-        StationKind::Stonecutter => ("minecraft:stonecutter", Kind::Stonecutter, 0..1),
-        StationKind::Grindstone => ("minecraft:grindstone", Kind::Grindstone, 0..2),
-        StationKind::Anvil => ("minecraft:anvil", Kind::Anvil, 0..2),
-        StationKind::Smithing => ("minecraft:smithing", Kind::Smithing, 0..3),
-        StationKind::Enchanting => ("minecraft:enchantment", Kind::Enchanting, 0..2),
-        StationKind::Beacon => ("minecraft:beacon", Kind::Beacon, 0..1),
-        StationKind::Cartography => ("minecraft:cartography_table", Kind::Cartography, 0..2),
-        _ => return None,
-    })
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A workstation a guest's use opened (`ServerPlayer.openMenu`); false
     /// when guests can't use that one yet.
@@ -72,6 +42,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // hooks are still ahead of UpdateRecipes. Do not open on an unpublished map.
         if kind == Kind::Stonecutter
             && self
+                .side
                 .lan
                 .as_ref()
                 .is_some_and(|host| host.hub.native_reload_pending)
@@ -86,6 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.guest_close_all(conn);
         let title = sunrise_protocol::text::translatable(station.kind.title_key(), &[]);
         let Some(window) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.hub.open_window(conn, menu_type, title))
@@ -96,6 +68,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         menu.set_registry_id(Some(menu_type));
         if kind == Kind::Stonecutter {
             menu.stone.server_buttons = self
+                .side
                 .lan
                 .as_ref()
                 .map(|host| host.hub.sync_data().stonecutter_buttons.clone());
@@ -107,12 +80,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if kind == Kind::Enchanting {
             // Player.enchantmentSeed, made when first needed.
             let needs_seed = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
                 .is_some_and(|g| g.xp_seed == 0);
             let drawn = needs_seed.then(|| self.world.random.next_int());
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 let _ = host.hub.update_guest(conn, |g| {
                     if let Some(drawn) = drawn {
                         g.xp_seed = drawn;
@@ -124,7 +98,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if kind == Kind::Beacon {
             menu.data = self.beacon_data(station.pos).to_vec();
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             *host.menus.entry(conn).or_default().station = Some(GuestStation {
                 window,
                 state: 0,
@@ -162,6 +136,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         menu: &mut Menu,
     ) {
         let (uuid, entity_id) = self
+            .side
             .lan
             .as_ref()
             .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
@@ -201,6 +176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         op: impl FnOnce(&mut Menu, &sunrise_sim::menu::Env),
     ) -> bool {
         let Some((owner, mut gs)) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
@@ -216,11 +192,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         let guest = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
             .filter(|&gi| {
                 !self
+                    .side
                     .lan
                     .as_ref()
                     .is_some_and(|h| h.hub.guests[gi].spectator())
@@ -285,6 +263,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 })
             {
                 let (uuid, name) = self
+                    .side
                     .lan
                     .as_ref()
                     .map(|host| {
@@ -304,6 +283,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // ItemSmithedEvent comes before the rest of SmithingMenu.onTake.
             let smithed = std::mem::take(&mut gs.menu.item_smithed);
             if let Some((uuid, entity_id)) = self
+                .side
                 .lan
                 .as_ref()
                 .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
@@ -324,7 +304,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let window = gs.window;
         let grindstone = gs.kind == StationKind::Grindstone;
-        if let Some(menus) = self.lan.as_mut().and_then(|host| host.menus.get_mut(&conn))
+        if let Some(menus) = self
+            .side
+            .lan
+            .as_mut()
+            .and_then(|host| host.menus.get_mut(&conn))
             && menus.station.id() == owner
             && menus.station.is_none()
         {
@@ -349,13 +333,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.guest_close_all(conn);
         let title = sunrise_protocol::text::translatable("container.lectern", &[]);
         let Some(window) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.hub.open_window(conn, "minecraft:lectern", title))
         else {
             return;
         };
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.play.entry(conn).or_default().lectern = Some(GuestLectern {
                 window,
                 state: 0,
@@ -372,6 +357,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// what changed since it was last sent.
     pub(in crate::game::server_side) fn lan_send_lectern(&mut self, conn: u32, all: bool) {
         let Some((key, window, sent)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.play.get(&conn))
@@ -394,7 +380,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let page_changed = sent.as_ref().is_none_or(|(_, p)| *p != page);
         let book = book.clone();
         let now = Some((book.clone(), page));
-        if let Some(host) = self.lan.as_mut()
+        if let Some(host) = self.side.lan.as_mut()
             && let Some(gi) = host.hub.guests.connection_index(conn)
             && let Some(gl) = host.play.get_mut(&conn).and_then(|p| p.lectern.as_mut())
         {
@@ -435,6 +421,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         op: impl FnOnce(&mut Menu, &sunrise_sim::menu::Env),
     ) -> bool {
         let Some((key, drag)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.play.get(&conn))
@@ -445,11 +432,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         let guest = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
             .filter(|&gi| {
                 !self
+                    .side
                     .lan
                     .as_ref()
                     .is_some_and(|h| h.hub.guests[gi].spectator())
@@ -460,6 +449,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             menu.set_quick_craft_state(drag);
             // Player.mayBuild: survival and creative.
             let may_build = self
+                .side
                 .lan
                 .as_ref()
                 .is_some_and(|host| matches!(host.hub.guests[gi].game_mode, 0 | 1));
@@ -472,6 +462,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             {
                 self.lectern_menu_done(key, &menu);
                 if let Some(gl) = self
+                    .side
                     .lan
                     .as_mut()
                     .and_then(|host| host.play.get_mut(&conn))
@@ -517,7 +508,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     output,
                 });
             let player = (pre || post)
-                .then(|| self.lan.as_ref()?.hub.guests.get(gi))
+                .then(|| self.side.lan.as_ref()?.hub.guests.get(gi))
                 .flatten()
                 .map(|g| (g.uuid, g.name.clone()));
             if pre && let (Some((uuid, name)), Some(inputs)) = (&player, &inputs) {
@@ -544,7 +535,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if let Some(take) = menu.grind_take.take() {
             let edits = if mod_api::__private::listened(mod_api::HookId::GrindstoneTake)
-                && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guests.get(gi))
+                && let Some(guest) = self
+                    .side
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guests.get(gi))
             {
                 let (uuid, entity_id) = (guest.uuid, guest.entity_id);
                 let mut cancel = false;
@@ -581,6 +576,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         gs: &mut GuestStation,
     ) {
         let (seed, guest_uuid, guest_entity_id, guest_name) = self
+            .side
             .lan
             .as_ref()
             .map(|host| {
@@ -666,7 +662,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let clue = clues[i].as_ref();
             gs.menu.data[4 + i] = clue
                 .and_then(|(e, _)| {
-                    self.lan
+                    self.side
+                        .lan
                         .as_ref()
                         .and_then(|host| host.hub.registry_id("minecraft:enchantment", e))
                 })
@@ -688,17 +685,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(item) = gs.menu.slot(0).cloned() else {
             return;
         };
-        let Some((seed, creative, conn, uuid, entity_id, name)) = self.lan.as_ref().map(|host| {
-            let g = &host.hub.guests[gi];
-            (
-                g.xp_seed,
-                g.creative(),
-                g.conn,
-                g.uuid,
-                g.entity_id,
-                g.name.clone(),
-            )
-        }) else {
+        let Some((seed, creative, conn, uuid, entity_id, name)) =
+            self.side.lan.as_ref().map(|host| {
+                let g = &host.hub.guests[gi];
+                (
+                    g.xp_seed,
+                    g.creative(),
+                    g.conn,
+                    g.uuid,
+                    g.entity_id,
+                    g.name.clone(),
+                )
+            })
+        else {
             return;
         };
         let Some(enchanted) = self.table_enchant(seed, button, gs.menu.data[button], &item) else {
@@ -728,7 +727,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             game.trigger_enchanted_item(&enchanted, need);
         });
         let new_seed = self.world.random.next_int();
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             {
                 let value = new_seed;
                 host.hub.guests.update(gi, |guest| guest.xp_seed = value);
@@ -755,6 +754,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// takes the name (`AnvilMenu.setItemName`).
     pub(in crate::game) fn lan_station_rename(&mut self, conn: u32, name: &str) {
         let anvil = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.menus.get(&conn))
@@ -798,7 +798,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn lan_station_button(&mut self, conn: u32, window: i32, id: i32) {
         // Route to the active menu type's listeners. Only a validated `Slots::Block`
         // supplies the optional position and entity backing.
-        let mod_menu = self.lan.as_ref().and_then(|host| {
+        let mod_menu = self.side.lan.as_ref().and_then(|host| {
             let g = host.hub.guest(conn)?;
             let menu = g.menu.as_ref().filter(|m| m.window == window)?;
             if !mod_api::__private::menu_listens(mod_api::HookId::MenuButton, &menu.registry_id) {
@@ -845,7 +845,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     game.mod_menu_button(&menu, context, block.as_deref(), backing, &mut carried)
                 });
                 if carried != original_carried
-                    && let Some(host) = self.lan.as_mut()
+                    && let Some(host) = self.side.lan.as_mut()
                     && let Some(gi) = host.hub.guests.connection_index(conn)
                 {
                     let changed = host.hub.guests.update(gi, |g| {
@@ -875,12 +875,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         let identity = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
             .map(|g| (g.uuid, g.name.clone()));
         let mut selected = false;
         let kind = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
@@ -914,7 +916,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The whole station menu and its changed data slots for the client
     /// (`sendAllDataToRemote` / `broadcastChanges`).
     pub(in crate::game) fn lan_send_station(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -980,7 +982,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         removal: super::lan_crafting::MenuRemoval,
     ) -> bool {
         // A lectern's menu keeps nothing of its own (the book is the block entity's).
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return false;
         };
         let lectern = host
@@ -1000,6 +1002,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         let Some(gs) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
@@ -1007,7 +1010,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         else {
             return false;
         };
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return true;
         };
         let Some(gi) = host.hub.guests.connection_index(conn) else {
@@ -1040,7 +1043,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let encode = |e: &Option<String>| {
             e.as_deref()
                 .and_then(|n| {
-                    self.lan
+                    self.side
+                        .lan
                         .as_ref()
                         .and_then(|host| host.hub.registry_id("minecraft:mob_effect", n))
                 })
@@ -1060,6 +1064,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         secondary: Option<i32>,
     ) {
         let Some(pos) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.menus.get(&conn))
@@ -1070,6 +1075,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let Some((player, name)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
@@ -1082,6 +1088,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for (k, id) in [primary, secondary].into_iter().enumerate() {
             if let Some(id) = id {
                 let Some(name) = self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.registry_name("minecraft:mob_effect", id))
@@ -1100,7 +1107,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         // handleSetBeaconPacket: effects the beacon can't give, or no payment, disconnect.
         if updated == Some(false)
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             let name = host
                 .hub
@@ -1149,6 +1156,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn lan_stations_tick(&mut self) {
         self.lan_lecterns_tick();
         let conns: Vec<u32> = self
+            .side
             .lan
             .as_ref()
             .map(|host| {
@@ -1160,7 +1168,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .unwrap_or_default();
         for conn in conns {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 continue;
             };
             let Some(g) = host
@@ -1179,7 +1187,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let invalid = !self.lan_station_valid(g, gs);
             if invalid {
                 self.lan_station_closed(conn, Some(window));
-                if let Some(host) = self.lan.as_mut() {
+                if let Some(host) = self.side.lan.as_mut() {
                     host.hub.send_to(
                         conn,
                         &C::ContainerClose(play::ContainerClose { container: window }),
@@ -1189,6 +1197,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // The beacon's data slots follow its block entity.
                 let data = self.beacon_data(pos);
                 if let Some(gs) = self
+                    .side
                     .lan
                     .as_mut()
                     .and_then(|host| host.menus.get_mut(&conn))
@@ -1209,7 +1218,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// book, the reach) closes them, and `broadcastChanges` sends a book or
     /// page another player changed.
     pub(in crate::game::server_side) fn lan_lecterns_tick(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let open: Vec<(u32, i32, (i32, i32, i32))> = host
@@ -1218,7 +1227,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter_map(|(c, p)| p.lectern.as_ref().map(|l| (*c, l.window, l.key)))
             .collect();
         for (conn, window, key) in open {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let Some(g) = host.hub.guests.iter().find(|g| g.conn == conn) else {
@@ -1231,7 +1240,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.lan_send_lectern(conn, false);
             } else {
                 self.lan_station_closed(conn, Some(window));
-                if let Some(host) = self.lan.as_mut() {
+                if let Some(host) = self.side.lan.as_mut() {
                     host.hub.send_to(
                         conn,
                         &C::ContainerClose(play::ContainerClose { container: window }),
@@ -1340,7 +1349,8 @@ pub(in crate::game) mod anvil_tests {
                     .default_state("minecraft:anvil")
                     .unwrap();
                 game.world.set(x, y, z, state).unwrap();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1353,7 +1363,7 @@ pub(in crate::game) mod anvil_tests {
                     menu.set_slot(env, 0, Some(sword));
                     menu.set_slot(env, 1, Some(ItemStack::new("minecraft:iron_ingot", 2)));
                 }));
-                let window = game.lan.as_ref().unwrap().menus[&CONN]
+                let window = game.side.lan.as_ref().unwrap().menus[&CONN]
                     .station
                     .as_ref()
                     .unwrap()
@@ -1371,7 +1381,7 @@ pub(in crate::game) mod anvil_tests {
                     }),
                 );
 
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 let menu = &host.menus[&CONN].station.as_ref().unwrap().menu;
                 assert!((0..=2).all(|slot| menu.slot(slot).is_none()));
                 let guest = &host.hub.guests[0];

@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             log::info!("{}", message.plain());
         }
-        if let Some(host) = &self.lan {
+        if let Some(host) = &self.side.lan {
             if let Some(g) = owner.and_then(|c| host.hub.guest(c)) {
                 g.send(&C::SystemChat(play::SystemChat {
                     content: component_nbt(&message.component()),

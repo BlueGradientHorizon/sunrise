@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use super::super::super::{
-        native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
+    use crate::game::client_side::remote_client::session_state::RemoteDimensionEntry;
+    use crate::game::{
+        native_entity_refs::tests::with_client_game, native_lifecycle_common::NativeLifecycle,
     };
-    use crate::game::remote::RemoteDimensionEntry;
     use mod_api::{Hooks, HostSide, LevelRef, LevelTickPostEvent, LevelTickPreEvent, ModEntry};
     use std::sync::{Arc, Mutex};
     use sunrise_client::level_loading::Reason;
@@ -138,7 +138,7 @@ mod tests {
                     sea_level: 63,
                 };
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-                game.remote.as_mut().unwrap().logged_in = true;
+                game.side.remote.as_mut().unwrap().logged_in = true;
                 let level = game.level("minecraft:overworld").unwrap();
 
                 // Login alone is no tick, and neither is a level with no tick.

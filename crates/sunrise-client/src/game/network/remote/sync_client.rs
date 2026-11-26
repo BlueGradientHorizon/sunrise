@@ -4,7 +4,7 @@ use sunrise_level::profile_lookup::TabPlayer;
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn apply_remote_health(&mut self) {
-        let Some((health, food, saturation)) = self.remote.as_ref().map(|r| r.health) else {
+        let Some((health, food, saturation)) = self.side.remote.as_ref().map(|r| r.health) else {
             return;
         };
         if let Some(p) = self.player.as_mut() {
@@ -38,7 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         effect: i32,
     ) -> Option<&'static sunrise_level::brewing::EffectDef> {
-        let r = self.remote.as_ref()?;
+        let r = self.side.remote.as_ref()?;
         let name = r.builtin.get("minecraft:mob_effect")?.name(effect)?;
         sunrise_level::brewing::effect(name)
     }
@@ -51,7 +51,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The server's network id of a mob effect (`brewing::EFFECTS` id).
     pub(in crate::game) fn remote_effect_network_id(&self, effect: &str) -> Option<i32> {
-        let r = self.remote.as_ref()?;
+        let r = self.side.remote.as_ref()?;
         r.builtin
             .get("minecraft:mob_effect")?
             .id(&format!("minecraft:{effect}"))
@@ -95,7 +95,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// before the player (`ticked_before_player`), else those that tick after
     /// it.
     pub(in crate::game) fn remote_pushes(&self, before_player: bool) -> Vec3 {
-        let (Some(p), Some(r)) = (self.player.as_ref(), self.remote.as_ref()) else {
+        let (Some(p), Some(r)) = (self.player.as_ref(), self.side.remote.as_ref()) else {
             return Vec3::ZERO;
         };
         // LivingEntity.isPushable: alive, no spectator, off ladders.
@@ -177,8 +177,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     && sunrise_game_data::scoreboard::pushable_by(player_team, None, true),
             );
             if times > 0
-                && crate::game::boat_passengers::boat_pushes(bb, bounds, false)
-                && let Some(v) = crate::game::boat_passengers::push_impulse(b.position, p.position)
+                && crate::game::boats_common::boat_pushes(bb, bounds, false)
+                && let Some(v) = crate::game::boats_common::push_impulse(b.position, p.position)
             {
                 push = push.add_vector(v.scale(times as f64));
             }
@@ -188,7 +188,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.ensureHasSentCarriedItem`: the server hears of a
     /// new selected slot before anything the slot acts with.
     pub(in crate::game) fn remote_send_carried(&self) {
-        if let Some(r) = &self.remote
+        if let Some(r) = &self.side.remote
             && r.carried.get() != Some(self.selected)
         {
             r.carried.set(Some(self.selected));
@@ -222,7 +222,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .remote_vehicle_packets()
             .into_iter()
             .partition(|p| matches!(p, S::PaddleBoat(_)));
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let mut out = paddles;
@@ -363,7 +363,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         id: i32,
     ) -> Option<sunrise_game_data::sound_source::SoundEntityState> {
-        let r = self.remote.as_ref()?;
+        let r = self.side.remote.as_ref()?;
         let player = self.player.as_ref().map(|p| {
             (
                 r.entity_id,
@@ -407,7 +407,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Option<String> {
         match &sound.1 {
             Some((location, _)) => Some(location.clone()),
-            None => self.remote.as_ref().and_then(|r| {
+            None => self.side.remote.as_ref().and_then(|r| {
                 r.builtin
                     .get("minecraft:sound_event")?
                     .name(sound.0)
@@ -483,7 +483,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_ref()
             .map(|pl| (true, pl.position))
             .unwrap_or((false, Vec3::ZERO));
-        let respawn_velocity = self.remote.as_mut().and_then(|r| r.respawn_velocity.take());
+        let respawn_velocity = self
+            .side
+            .remote
+            .as_mut()
+            .and_then(|r| r.respawn_velocity.take());
         let velocity = self
             .player
             .as_ref()
@@ -510,7 +514,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             p,
         );
         // BlockStatePredictionHandler.onTeleport: a prior prediction keeps its block, not its remembered player position.
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.last_teleport_sequence = r.sequence;
         }
         // The server's answer to a passage crossed (`cross_passage`), or any other.
@@ -562,7 +566,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         entity_section_steps::player_teleport(self, had_player, current, position);
-        if !self.replay.playing() {
+        if !self.side.replay.playing() {
             self.previous_position = position;
         }
         self.yaw = yaw;
@@ -575,7 +579,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 position_packet_pitch(m.previous_head_pitch, p.pitch, relative_pitch);
             m.head_pitch = pitch;
         }
-        if let Some(id) = self.remote.as_mut().and_then(|r| r.ghast_dismount.take()) {
+        if let Some(id) = self
+            .side
+            .remote
+            .as_mut()
+            .and_then(|r| r.ghast_dismount.take())
+        {
             self.place_ghast_under(id, position);
         }
         // handleMovePlayer does not change LocalPlayer.sendPosition's baseline:
@@ -597,7 +606,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `MultiPlayerGameMode.handleCreativeModeItemAdd`, shared by each creative slot sender.
     pub(in crate::game) fn send_creative_item_add(&self, slot: i16, stack: Option<ItemStack>) {
-        if !self.creative || self.remote.is_none() {
+        if !self.creative || self.side.remote.is_none() {
             return;
         }
         let stack = stack.filter(|stack| !stack.is_empty());
@@ -637,7 +646,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let stacks = self.creative_stacks();
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let mut changed = Vec::new();
@@ -657,7 +666,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Option<(Vec<TabPlayer>, bool, Vec<u128>)> {
         self.update_remote_skins();
         self.publish_tab_object_skins();
-        let r = self.remote.as_ref()?;
+        let r = self.side.remote.as_ref()?;
         let players: Vec<_> = r
             .listed
             .iter()
@@ -676,5 +685,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|p| p.uuid)
             .collect();
         Some((players, r.online_mode, upside_down))
+    }
+}
+
+impl Remote {
+    /// `ClientPacketListener.getPlayerInfo(String)`: exact profile name, whether listed or not.
+    pub(in crate::game) fn player_info_by_name(&self, name: &str) -> Option<&TabPlayer> {
+        self.tab_players.values().find(|p| p.name == name)
     }
 }

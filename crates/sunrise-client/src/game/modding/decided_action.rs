@@ -174,7 +174,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // The action's savepoint needs a transaction to nest in: the open one, or this one.
         let outcome = self.storage_scope(|game, _| {
-            let mut host = GameHost { game, identity };
+            let mut host = GameHost::new(game, identity);
             let outcome = decision::run(&mut host, &target, |_, _| Plan, |host| fire(host.game));
             let commit = matches!(outcome, Ok(Outcome::Applied));
             (outcome, commit)
@@ -197,7 +197,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The player entity of the guest `conn`, as the decision names it.
     pub(in crate::game) fn guest_actor(&self, conn: u32) -> Option<EntityRef> {
         let epoch = self.native_lifecycle.epoch()?;
-        let entity = self.lan.as_ref()?.hub.guest(conn)?.entity_id;
+        let entity = self.side.lan.as_ref()?.hub.guest(conn)?.entity_id;
         Some(EntityRef::new(epoch, u32::try_from(entity).ok()?))
     }
 
@@ -205,6 +205,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// grid, ender chest and mod menu storage), as they are, in the open transaction.
     pub(in crate::game) fn journal_guest_click(&mut self, conn: u32) {
         let Some(uuid) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -227,12 +228,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         click: &sunrise_protocol::packets::play::ContainerClick,
     ) -> bool {
-        use super::lan_menus::ClickReply;
+        use crate::game::lan_menu_data::ClickReply;
         use sunrise_sim::lan::menu::Slots;
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuClicked) {
             return false;
         }
-        let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return false;
         };
         let Some(open) = guest.menu.as_ref().filter(|m| {
@@ -286,6 +287,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return true;
         };
         let route = self
+            .side
             .lan
             .as_mut()
             .unwrap()
@@ -305,7 +307,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 actor,
                 Epoch::Click(&handled),
                 |game| {
-                    let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                    let Some(guest) = game.side.lan.as_ref().and_then(|host| host.hub.guest(conn))
                     else {
                         return false;
                     };

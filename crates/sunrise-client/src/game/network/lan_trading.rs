@@ -2,9 +2,11 @@
 //! merchant menu as the host's (`sunrise_client::menu`, `Kind::Merchant`),
 //! with vanilla's packets: OpenScreen (`minecraft:merchant`), MerchantOffers,
 //! the select trade packet, container clicks and the content sync after each.
-use super::{
-    Game, lan_actions::guest_within_entity_range, stacked_on_other::Pickup,
-    stations::Kind as StationKind, trading::MerchantState,
+use super::{Game, lan_actions::guest_within_entity_range, stacked_on_other::Pickup};
+use crate::game::{
+    lan_menu_data::GuestMerchant,
+    stations_common::{Kind as StationKind, Station},
+    trading_common::MerchantState,
 };
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -12,24 +14,6 @@ use sunrise_sim::{
     menu::{Env, Input, Kind, Menu, QuickCraftDrag},
     merchant::{self, TradeFeedback},
 };
-
-/// A guest's open trading screen.
-#[derive(Clone)]
-pub(in crate::game) struct GuestMerchant {
-    pub(in crate::game) window: i32,
-    state: i32,
-    /// The payment slots and the result.
-    pub(in crate::game) slots: [Option<ItemStack>; 3],
-    /// Persistent quick-craft (drag) state across rebuilt merchant menus.
-    pub(in crate::game) drag: QuickCraftDrag,
-    pub(in crate::game) merchant: Box<MerchantState>,
-    /// The offers the client was last sent.
-    sent: Vec<merchant::MerchantOffer>,
-    sent_level: i32,
-    sent_xp: i32,
-    /// The result slot last synchronized to the client (`AbstractContainerMenu.remoteSlots`).
-    sent_result: Option<ItemStack>,
-}
 
 /// A guest's UUID as gossip targets it.
 fn uuid_words(uuid: u128) -> [i32; 4] {
@@ -96,6 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// station while the guest acted): handed to the guest.
     pub(in crate::game) fn lan_open_merchant(&mut self, conn: u32, mut state: MerchantState) {
         let Some(uuid) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
@@ -119,6 +104,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // ServerPlayer.openMenu closes the menu that was open.
         self.guest_close_all(conn);
         let Some(window) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.hub.open_merchant_window(conn, title))
@@ -139,7 +125,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         self.lan_send_offers(conn, &mut gm);
         self.lan_send_merchant_content(conn, &mut gm);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.menus
                 .entry(conn)
                 .or_default()
@@ -206,7 +192,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         gm: &mut GuestMerchant,
     ) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             Self::send_merchant_offers(&mut host.hub, conn, gm);
         }
     }
@@ -263,7 +249,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         gm: &mut GuestMerchant,
     ) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
                 return;
             };
@@ -296,7 +282,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         run: MerchantRun<'_>,
         op: impl FnOnce(&mut Menu, &Env),
     ) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         let Some(gi) = host.hub.guests.connection_index(conn) else {
@@ -325,7 +311,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return true;
         }
         self.journal_guest_merchant(conn);
-        let host = self.lan.as_mut().expect("open merchant");
+        let host = self.side.lan.as_mut().expect("open merchant");
         let mut gm = host.menus.get_mut(&conn).unwrap().merchant.take().unwrap();
         let session = menu.merchant.take().expect("attached");
         let dropped = std::mem::take(&mut menu.dropped);
@@ -336,7 +322,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             menu.slot(2).cloned(),
         ];
         gm.drag = menu.quick_craft_state();
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.guests.update(gi, |g| {
                 for i in 0..36 {
                     g.inventory[i] = menu.player_item(i).cloned();
@@ -376,6 +362,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !traded.is_empty() {
             // The guest's own statistic and advancements.
             if let Some((uuid, name)) = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
@@ -395,7 +382,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.lan_send_offers(conn, &mut gm);
         }
         self.lan_send_merchant_content(conn, &mut gm);
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.menus
                 .entry(conn)
                 .or_default()
@@ -435,7 +422,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Some(&maps)
             },
         };
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let g = host.hub.guest(conn)?;
         let (player_uuid, player_entity_id) = (g.uuid, g.entity_id);
         let env = Env {
@@ -498,6 +485,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if let Some(conn) = self.lan_trade_conn(id) {
             let window = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|h| h.menus.get(&conn))
@@ -505,7 +493,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|m| m.window);
             if let Some(window) = window
                 && self.lan_merchant_closed(conn, Some(window))
-                && let Some(host) = self.lan.as_mut()
+                && let Some(host) = self.side.lan.as_mut()
             {
                 host.hub.send_to(
                     conn,
@@ -551,11 +539,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(frozen) = found.filter(crate::game::stacked_listens_for) else {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         };
-        let route = match self.lan.as_mut() {
+        let route = match self.side.lan.as_mut() {
             Some(host) => host.menus.entry(conn).or_default().hub.id(),
             None => return true,
         };
         let gi = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn));
@@ -570,7 +559,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             route,
             frozen,
             move |game| {
-                let now = game.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
+                let now = game.side.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
                 (now == carried).then(|| same.clone())
             },
             |game, carried, clicked| {
@@ -615,6 +604,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let Some((uuid, name)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
@@ -626,6 +616,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             menu.merchant_select(env, index)
         }) {
             let villager = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.menus.get(&conn))
@@ -651,6 +642,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         self.journal_guest_merchant(conn);
         let Some(mut gm) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
@@ -713,7 +705,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.tick`: broadcast menu changes before checking `stillValid`.
     pub(in crate::game) fn lan_merchant_tick(&mut self) {
         let changes: Vec<_> =
-            self.lan
+            self.side
+                .lan
                 .as_ref()
                 .map(|host| {
                     host.menus
@@ -735,7 +728,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .unwrap_or_default();
         for (conn, window, sync_result, close) in changes {
             if sync_result
-                && let Some(host) = self.lan.as_mut()
+                && let Some(host) = self.side.lan.as_mut()
                 && let Some(gm) = host
                     .menus
                     .get_mut(&conn)
@@ -758,7 +751,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             if close
                 && self.lan_merchant_closed(conn, Some(window))
-                && let Some(host) = self.lan.as_mut()
+                && let Some(host) = self.side.lan.as_mut()
             {
                 host.hub.send_to(
                     conn,
@@ -784,7 +777,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return true;
         }
-        let Some(host) = &self.lan else { return false };
+        let Some(host) = &self.side.lan else {
+            return false;
+        };
         let Some(guest) = host
             .hub
             .holder_guest(sunrise_sim::lan::playerdata::ints_uuid(uuid), self.dim.id())
@@ -810,6 +805,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         feedback: TradeFeedback,
     ) {
         let conns: Vec<u32> = self
+            .side
             .lan
             .as_ref()
             .map(|host| {
@@ -828,6 +824,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .unwrap_or_default();
         for conn in conns {
             let Some(uuid) = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| {
@@ -846,8 +843,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let reputation = self.villager_reputation_of(id, uuid);
             self.journal_guest_merchant(conn);
             self.journal_merchant_mob(id);
-            let items = world_items!(self);
-            let host = self.lan.as_mut().expect("the buyer's host");
+            let items = server_world_items!(self);
+            let host = self.side.lan.as_mut().expect("the buyer's host");
             let Some(gm) = host
                 .menus
                 .get_mut(&conn)
@@ -877,7 +874,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // A replacement can have opened a different menu in the hook. Do
             // not send the old offers or touch the replacement's result slot.
-            if let Some(host) = self.lan.as_mut()
+            if let Some(host) = self.side.lan.as_mut()
                 && let Some(gm) = host
                     .menus
                     .get_mut(&conn)
@@ -890,11 +887,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Takes a station a guest's action opened: a trading screen or a
     /// workstation menu goes to the guest (game/network/lan_stations.rs).
-    pub(in crate::game::server_side) fn lan_station_opened(
-        &mut self,
-        conn: u32,
-        station: super::stations::Station,
-    ) {
+    pub(in crate::game::server_side) fn lan_station_opened(&mut self, conn: u32, station: Station) {
         let mut station = station;
         if station.kind == StationKind::Merchant
             && let Some(m) = station.merchant.take()
@@ -916,7 +909,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         mob: u32,
     ) -> Option<(u32, &GuestMerchant)> {
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         host.menus.iter().find_map(|(&conn, state)| {
             let screen = state.merchant.as_ref()?;
             (screen.merchant.mob == Some(mob)).then_some((conn, screen))
@@ -925,12 +918,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The live session of a guest's open trading screen, whose offers,
     /// experience and level are newer than the mob's until the screen closes.
     pub(in crate::game) fn lan_trade_session(&self, conn: u32) -> Option<&merchant::Session> {
-        let gm = self.lan.as_ref()?.menus.get(&conn)?.merchant.as_ref()?;
+        let gm = self
+            .side
+            .lan
+            .as_ref()?
+            .menus
+            .get(&conn)?
+            .merchant
+            .as_ref()?;
         Some(&gm.merchant.session)
     }
     /// The guest's player UUID.
     pub(in crate::game) fn lan_trade_player(&self, conn: u32) -> Option<u128> {
-        Some(self.lan.as_ref()?.hub.guest(conn)?.uuid)
+        Some(self.side.lan.as_ref()?.hub.guest(conn)?.uuid)
     }
     /// Changes the session of a guest's open trading screen and sends the
     /// client its offers and result slot again. The merchant's own random is
@@ -989,6 +989,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.journal_trade_sequences();
         let Some(gm) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
@@ -1086,7 +1087,7 @@ mod tests {
         );
         guest.placed = true;
         let window = guest.next_menu_window();
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
 
         let villager = spawn(game, 40, "minecraft:villager");
         game.mobs[0].extra.profession = sunrise_sim::mobs::villager::ProfessionState::from_index(5);
@@ -1126,7 +1127,8 @@ mod tests {
             sent_xp: 0,
             sent_result: None,
         };
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .menus
@@ -1146,6 +1148,7 @@ mod tests {
             offer.uses = 3;
             let window = {
                 let gm = game
+                    .side
                     .lan
                     .as_mut()
                     .unwrap()
@@ -1160,11 +1163,12 @@ mod tests {
                 gm.slots[1] = Some(ItemStack::new("minecraft:coal", 2));
                 gm.window
             };
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:apple", 3))
             });
             let wheat = ItemStack::new("minecraft:wheat", 1);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .menus
@@ -1189,7 +1193,11 @@ mod tests {
             }
             game.apply_entity_nbt(super::super::commands::Target::Mob(40), tag)
                 .unwrap();
-            assert!(game.lan.as_ref().unwrap().menus[&12].merchant.is_none());
+            assert!(
+                game.side.lan.as_ref().unwrap().menus[&12]
+                    .merchant
+                    .is_none()
+            );
             game.lan_guest_packet(
                 12,
                 play::Serverbound::SelectTrade(play::SelectTrade { item: 0 }),
@@ -1266,7 +1274,7 @@ mod tests {
                 game.mobs[0].extra.trade.as_ref().unwrap().offers,
                 vec![offer]
             );
-            let inventory = &game.lan.as_ref().unwrap().hub.guests[0].inventory;
+            let inventory = &game.side.lan.as_ref().unwrap().hub.guests[0].inventory;
             for (id, count) in [
                 ("minecraft:wheat", 1),
                 ("minecraft:coal", 2),
@@ -1292,6 +1300,7 @@ mod tests {
         with_game(|game| {
             let (_, _, _) = open_trade(game, 1);
             let session = &mut game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1394,7 +1403,7 @@ mod tests {
             assert_eq!(villager.xp(game), Some(40));
             assert_eq!(villager.level(game), Some(3));
             {
-                let gm = game.lan.as_ref().unwrap().menus[&12]
+                let gm = game.side.lan.as_ref().unwrap().menus[&12]
                     .merchant
                     .as_ref()
                     .unwrap();
@@ -1403,7 +1412,7 @@ mod tests {
                 assert_eq!(gm.merchant.session.offers, live);
             }
             assert!(villager.remove_offer(game, 1));
-            let gm = game.lan.as_ref().unwrap().menus[&12]
+            let gm = game.side.lan.as_ref().unwrap().menus[&12]
                 .merchant
                 .as_ref()
                 .unwrap();
@@ -1412,6 +1421,7 @@ mod tests {
 
             // Closing the screen gives the mob the edited trades.
             let mut gm = game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1441,6 +1451,7 @@ mod tests {
             assert_eq!(game.lan_trade_session(12).unwrap().sequences.len(), 4);
             // The trade makes 12 experience: past level 1's 10, so level 2 is rolled.
             let mut gm = game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -1462,7 +1473,8 @@ mod tests {
             assert_eq!(session.level, 2);
             assert!(session.offers.len() > 1, "level 2 offers were added");
             assert_eq!(session.offers[0].uses, first.uses + 1);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .menus

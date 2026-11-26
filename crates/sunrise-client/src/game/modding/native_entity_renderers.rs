@@ -15,12 +15,12 @@
 //! drawing.
 //! Each load also asks for the layers of the living renderers (`native_entity_layers`), which draw
 //! through the same guard ([`Game::guarded_entity_draw`]).
-use super::general::GeneralTypeCatalog;
 use super::{
     Game,
     host::draw::GameBlockEntityDrawContext,
     native_block_entity_draw::{BlockEntityDraw, LevelLight},
 };
+use crate::game::general::{GeneralTypeCatalog, general_type_catalog};
 use glam::{DVec3, Mat4};
 use mod_api::{BlockEntityDrawContext, EntityRenderState, EntityRenderer};
 use std::{
@@ -307,7 +307,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn resolve_entity_renderers(&self) {
         let registered = REGISTERED.get().unwrap_or(&NO_RENDERERS);
         let rows = super::entity_type_rows::entity_type_rows(&self.options.resources);
-        let catalog = super::general::general_type_catalog();
+        let catalog = general_type_catalog();
         let (table, unknown) = EntityRendererTable::resolve(
             registered,
             sunrise_sim::projectiles::thrown_types(),

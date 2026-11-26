@@ -12,13 +12,23 @@
 //! game rules, the scoreboard, the maps and the entities waiting to arrive
 //! through a portal.
 
-use super::commands::Target;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
-    Dim, ExperienceOrb, FallingBlock, Game, ItemEntity, Mob, boats, commands,
-    creaking::CreakingState, dragon, fireworks, lightning, machines, minecarts,
-    ominous_item_spawner, persist, raids::Raiding, sculk_server::SculkState, tnt, trident,
+    Dim, ExperienceOrb, FallingBlock, Game, ItemEntity, Mob,
+    boats_common::Boat,
+    creaking::CreakingState,
+    dragon_common,
+    dragon_parts_table::DragonSlot,
+    entity_memory::{EntityMemory, OffLevel},
+    fireworks,
+    lightning_common::Bolt,
+    minecarts,
+    ominous_item_spawner_common::OminousItemSpawner,
+    raids::Raiding,
+    sculk_server::SculkState,
+    tnt_common::PrimedTnt,
 };
+use crate::game::commands_common::{OtherEntity, Target};
 use mod_api::DimensionKey;
 use std::{
     collections::HashMap,
@@ -26,6 +36,7 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::{hoppers::HopperState, leash_knot::Knot};
 use sunrise_level::spans::time as span;
 use sunrise_level::world::World;
 use sunrise_level::{block_entity_ticks::BlockEntityTicks, chunk_streamer::ChunkStreamer};
@@ -36,6 +47,7 @@ use sunrise_sim::join_seq::{
         table::{EntityLookup, Location, SourceEntity},
     },
 };
+use sunrise_sim::thrown_trident::ThrownTrident;
 use sunrise_sim::{
     random_tick_sections::RandomTickSections,
     save::SaveDir,
@@ -53,7 +65,7 @@ pub(in crate::game) struct EntityCountView<'a> {
     pub(in crate::game) mobs: &'a [Mob],
     pub(in crate::game) projectiles: &'a [sunrise_sim::projectiles::Projectile],
     pub(in crate::game) general: &'a super::general::GeneralRows,
-    pub(in crate::game) others: &'a [commands::OtherEntity],
+    pub(in crate::game) others: &'a [OtherEntity],
 }
 impl EntityCountView<'_> {
     pub(in crate::game::server_side) fn total(&self) -> usize {
@@ -221,29 +233,29 @@ pub(in crate::game) struct Parked {
     item_frames: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ItemFrame>,
     armor_stands: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ArmorStand>,
     cushions: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Cushion>,
-    others: sunrise_sim::join_seq::ResidentList<commands::OtherEntity>,
-    fangs: super::fangs::FangState,
-    pub(in crate::game) boats: sunrise_sim::join_seq::JoinList<boats::Boat, false>,
+    others: sunrise_sim::join_seq::ResidentList<OtherEntity>,
+    fangs: crate::game::fangs_common::FangState,
+    pub(in crate::game) boats: sunrise_sim::join_seq::JoinList<Boat, false>,
     pub(in crate::game) carts: sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
-    bolts: sunrise_sim::join_seq::ResidentList<lightning::Bolt>,
-    crystals: sunrise_sim::join_seq::JoinList<dragon::Crystal>,
-    dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
-    breath_clouds: sunrise_sim::join_seq::ResidentList<dragon::Breath>,
-    tridents: sunrise_sim::join_seq::JoinList<trident::ThrownTrident>,
+    bolts: sunrise_sim::join_seq::ResidentList<Bolt>,
+    crystals: sunrise_sim::join_seq::JoinList<dragon_common::Crystal>,
+    dragon: DragonSlot,
+    breath_clouds: sunrise_sim::join_seq::ResidentList<dragon_common::Breath>,
+    tridents: sunrise_sim::join_seq::JoinList<ThrownTrident>,
     rockets: sunrise_sim::join_seq::JoinList<fireworks::Rocket>,
-    ominous_spawners: sunrise_sim::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
-    tnts: sunrise_sim::join_seq::JoinList<tnt::PrimedTnt>,
+    ominous_spawners: sunrise_sim::join_seq::ResidentList<OminousItemSpawner>,
+    tnts: sunrise_sim::join_seq::JoinList<PrimedTnt>,
     general: super::general::GeneralStore,
-    hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
+    hoppers: HashMap<(i32, i32, i32), HopperState>,
     pub(in crate::game) mobs: sunrise_sim::join_seq::JoinList<Mob>,
     /// The entity ids of the level's fence knots (`knot_ids`).
     knot_ids: HashMap<[i32; 3], u32>,
     broken_knots: Vec<[i32; 3]>,
-    knots: sunrise_sim::join_seq::JoinList<super::leads::Knot>,
+    knots: sunrise_sim::join_seq::JoinList<Knot>,
     projectiles: sunrise_sim::join_seq::JoinList<sunrise_sim::projectiles::Projectile, false>,
     dropped: sunrise_sim::join_seq::JoinList<ItemEntity>,
     orbs: sunrise_sim::join_seq::JoinList<ExperienceOrb>,
-    persist: persist::EntityMemory,
+    persist: EntityMemory,
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     lid_openers: HashMap<(i32, i32, i32), i32>,
     lan_events: Vec<super::QueuedLevelEvent>,
@@ -407,12 +419,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return true;
         }
-        self.lan.iter().flat_map(|h| h.hub.guests.iter()).any(|g| {
-            g.placed
-                && !g.released
-                && Dim::from_id(&g.dimension) == self.dim
-                && sunrise_sim::lan::playerdata::uuid_ints(g.uuid) == uuid
-        })
+        self.side
+            .lan
+            .iter()
+            .flat_map(|h| h.hub.guests.iter())
+            .any(|g| {
+                g.placed
+                    && !g.released
+                    && Dim::from_id(&g.dimension) == self.dim
+                    && sunrise_sim::lan::playerdata::uuid_ints(g.uuid) == uuid
+            })
     }
 
     /// Find the canonical level without swapping or probing physical families.
@@ -451,7 +467,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Resolve through the exact owner, never by trying dimension swaps.
     pub(in crate::game) fn locate_server_resident_owner(
         &self,
@@ -466,7 +482,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         }
         if at.owner.dimension == self.dim.key() {
             // An open transaction's removal reads as gone already.
-            return crate::game::Side::locate_resident_owner(self, at).map(|mut source| {
+            return self.locate_resident_owner(at).map(|mut source| {
                 source.value.1 &= !self.removal_pending(&source.value.0);
                 source
             });
@@ -478,55 +494,15 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             key => Dim::Extra(key),
         };
         // The transactions stay with the game when a level is parked: its pending removals too.
-        crate::game::Side::levels(&self.side)?
+        self.side
+            .levels
+            .0
             .parked
             .get(&dim)?
             .locate_resident_owner(at)
             .map(|mut source| {
                 source.value.1 &= !self.removal_pending_in(dim, &source.value.0);
                 source
-            })
-    }
-
-    /// Whether `target` counts as removed in the level in place: a mod removed it, or an open
-    /// transaction did and its root commit has not run the removal yet.
-    pub(in crate::game) fn target_removed(&self, target: &Target) -> bool {
-        self.persist.removals.contains(target)
-            || self.persist.destroying_vehicles.contains(target)
-            || self.removal_pending(target)
-    }
-
-    pub(in crate::game) fn resident_source_target_visible(
-        &self,
-        dimension: DimensionKey,
-        target: Target,
-    ) -> bool {
-        let player = match target {
-            Target::Guest(conn) => Some(conn),
-            Target::Player => crate::game::Side::lan_acting(&self.side),
-            _ => None,
-        };
-        if player
-            .and_then(|conn| self.command_guest(conn))
-            .is_some_and(|guest| !guest.body_present())
-        {
-            return false;
-        }
-        if dimension == self.dim.key() {
-            return !self.target_removed(&target);
-        }
-        let dim = match dimension {
-            DimensionKey::OVERWORLD => Dim::Overworld,
-            DimensionKey::NETHER => Dim::Nether,
-            DimensionKey::END => Dim::End,
-            key => Dim::Extra(key),
-        };
-        crate::game::Side::levels(&self.side)
-            .and_then(|l| l.parked.get(&dim))
-            .is_none_or(|parked| {
-                !parked.persist.removals.contains(&target)
-                    && !parked.persist.destroying_vehicles.contains(&target)
-                    && !self.removal_pending_in(dim, &target)
             })
     }
 
@@ -616,6 +592,14 @@ pub(in crate::game) struct Levels {
 }
 
 impl Levels {
+    pub(in crate::game) fn parked_target_visible(&self, dim: Dim, target: &Target) -> Option<bool> {
+        let parked = self.parked.get(&dim)?;
+        Some(
+            !parked.persist.removals.contains(target)
+                && !parked.persist.destroying_vehicles.contains(target),
+        )
+    }
+
     /// Note that the entity `from` arrived in another level as `to` at `now`. A kill credit
     /// lasts a hundred ticks, so a travel older than that names nothing still credited.
     pub(in crate::game::server_side) fn note_travel(&mut self, from: u32, to: u32, now: i64) {
@@ -747,7 +731,7 @@ impl Levels {
 
     /// The world of the level not in place whose dimension is `dimension`
     /// (`minecraft:the_nether`), found without collecting the parked levels.
-    pub(in crate::game::server_side) fn parked_world_of(&self, dimension: &str) -> Option<&World> {
+    pub(in crate::game) fn parked_world_of(&self, dimension: &str) -> Option<&World> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
@@ -767,10 +751,7 @@ impl Levels {
     }
 
     /// The streaming of the level not in place whose dimension is `dimension`.
-    pub(in crate::game::server_side) fn parked_streaming_of(
-        &self,
-        dimension: &str,
-    ) -> Option<&ChunkStreamer> {
+    pub(in crate::game) fn parked_streaming_of(&self, dimension: &str) -> Option<&ChunkStreamer> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
@@ -831,7 +812,7 @@ impl Levels {
         )
     }
 
-    pub(in crate::game::server_side) fn parked_anims(&self, dim: Dim) -> Option<&BlockEntityTicks> {
+    pub(in crate::game) fn parked_anims(&self, dim: Dim) -> Option<&BlockEntityTicks> {
         self.parked.get(&dim).map(|level| &level.anims)
     }
 
@@ -1100,7 +1081,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut starting_level = if starting_dim != Dim::Overworld {
             let mut overworld = self.open_level(Dim::Overworld)?;
             self.replace_level(Dim::Overworld, &mut overworld);
-            self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+            self.side.streaming.radius = crate::game::streaming_radius::streaming_radius_for(
                 self.side.settings.render_distance,
                 None,
             );
@@ -1120,7 +1101,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut level = self.open_level(dim)?;
                 let left = self.replace_level(dim, &mut level);
                 self.side.levels.0.parked.insert(left, level);
-                self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                self.side.streaming.radius = crate::game::streaming_radius::streaming_radius_for(
                     self.side.settings.render_distance,
                     None,
                 );
@@ -1256,7 +1237,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &mut p.random_tick_sections,
         );
         swap(&mut self.level_events, &mut p.level_events);
-        swap(&mut self.portals.entities, &mut p.portal_states);
+        swap(&mut self.side.portals.entities, &mut p.portal_states);
         swap(&mut self.falling, &mut p.falling);
         swap(&mut self.paintings, &mut p.paintings);
         swap(&mut self.item_frames, &mut p.item_frames);
@@ -1316,7 +1297,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The tracked entities go with their level: a level's moves, read before its tick
         // describes its entities again, would otherwise meet the last level's (a move
         // missed the boat under a player while anyone was in another dimension).
-        if let Some(h) = self.lan.as_mut() {
+        if let Some(h) = self.side.lan.as_mut() {
             std::mem::swap(&mut h.states, &mut p.lan_states);
             std::mem::swap(&mut h.border_sent, &mut p.border_sent);
         }
@@ -1340,7 +1321,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let left = self.replace_level(target, &mut p);
             self.side.levels.0.parked.insert(left, p);
             if opened {
-                self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                self.side.streaming.radius = crate::game::streaming_radius::streaming_radius_for(
                     self.side.settings.render_distance,
                     None,
                 );
@@ -1350,7 +1331,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.validate_mod_chunk_tickets(target);
             }
         }
-        if let Some(h) = self.lan.as_mut() {
+        if let Some(h) = self.side.lan.as_mut() {
             h.hub.set_dimension(target.id());
         }
         self.sync_hub_clocks();
@@ -1371,12 +1352,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .mobs
                 .iter()
                 .find(|m| m.id == id)
-                .or_else(|| {
-                    p.persist
-                        .off_level
-                        .get(&id)
-                        .and_then(persist::OffLevel::as_mob)
-                })
+                .or_else(|| p.persist.off_level.get(&id).and_then(OffLevel::as_mob))
                 .filter(|m| !m.removed);
             if let Some(parent) = mob.and_then(|m| m.extra.mount) {
                 id = parent;
@@ -1385,9 +1361,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let present = mob.is_some()
                 || p.boats.iter().any(|b| b.id == id)
                 || p.carts.iter().any(|c| c.id == id);
-            let removed = p.persist.removals.iter().chain(p.persist.destroying_vehicles.iter()).any(|target| matches!(
-                target, commands::Target::Mob(n) | commands::Target::Boat(n) | commands::Target::Cart(n) if *n == id
-            ));
+            let removed = p
+                .persist
+                .removals
+                .iter()
+                .chain(p.persist.destroying_vehicles.iter())
+                .any(|target| {
+                    matches!(
+                        target, Target::Mob(n) | Target::Boat(n) | Target::Cart(n) if *n == id
+                    )
+                });
             return (present && !removed).then_some(id);
         }
         None
@@ -1407,12 +1390,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut edges: Vec<_> = p
             .mobs
             .iter()
-            .chain(
-                p.persist
-                    .off_level
-                    .values()
-                    .filter_map(persist::OffLevel::as_mob),
-            )
+            .chain(p.persist.off_level.values().filter_map(OffLevel::as_mob))
             .filter(|mob| !mob.removed)
             .map(|mob| (mob.extra.mount, mob.extra.vehicle_order, mob.id))
             .collect();
@@ -1443,14 +1421,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             }
             if let Some(state) = p.portal_states.remove(&id) {
-                self.portals.entities.insert(id, state);
+                self.side.portals.entities.insert(id, state);
             }
             let mob = if let Some(index) = p.mobs.iter().position(|m| m.id == id) {
                 Some(p.mobs.remove_for_transfer(index))
             } else {
                 // Boats and carts are only roots, which the caller takes.
                 match p.persist.off_level.remove(&id) {
-                    Some(persist::OffLevel::Mob(mob)) => Some(mob),
+                    Some(OffLevel::Mob(mob)) => Some(mob),
                     _ => None,
                 }
             };
@@ -1465,20 +1443,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// An already-owned body changes level, never construction identity.
     /// `PersistentEntitySectionManager.addEntityUuid` decides its residency:
     /// a body whose UUID an earlier arrival took is retained off-level.
-    pub(in crate::game::server_side) fn admit_transferred_object(
-        &mut self,
-        mut object: persist::OffLevel,
-    ) {
+    pub(in crate::game::server_side) fn admit_transferred_object(&mut self, mut object: OffLevel) {
         let id = match &mut object {
-            persist::OffLevel::Mob(mob) => {
+            OffLevel::Mob(mob) => {
                 self.rebind_transferred_entity(mob.id, mob);
                 mob.id
             }
-            persist::OffLevel::Boat(boat) => {
+            OffLevel::Boat(boat) => {
                 self.rebind_transferred_entity(boat.id, boat);
                 boat.id
             }
-            persist::OffLevel::Cart(cart) => {
+            OffLevel::Cart(cart) => {
                 self.rebind_transferred_entity(cart.id, cart);
                 cart.id
             }
@@ -1491,9 +1466,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         match object {
-            persist::OffLevel::Mob(mob) => self.mobs.push(mob),
-            persist::OffLevel::Boat(boat) => self.boats.push(boat),
-            persist::OffLevel::Cart(cart) => self.carts.push(cart),
+            OffLevel::Mob(mob) => self.mobs.push(mob),
+            OffLevel::Boat(boat) => self.boats.push(boat),
+            OffLevel::Cart(cart) => self.carts.push(cart),
         }
     }
 
@@ -1546,7 +1521,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // (each `ServerLevel.tick` only reads `runsNormally`), and the native
         // `ServerTickStart` before that level work (NeoForge's
         // `ServerTickEvent.Pre`). A paused pass and a held server tick nothing.
-        let running = if !paused && !self.agent.hold_server {
+        let running = if !paused && !self.side.hold_server {
             self.clock.check_sprint_completion();
             if let Some(report) = self.clock.take_sprint_report() {
                 // ServerTickRateManager.finishTickSprint: the server's sendSuccess.
@@ -1562,7 +1537,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             None
         };
-        let server = self.serving.is_some() || self.options.dedicated.is_some();
+        let server = self.side.serving.is_some() || self.options.dedicated.is_some();
         if server {
             self.run_requested_saves();
         }
@@ -1580,24 +1555,24 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.native_lifecycle_server_tick_start(running);
         }
         let observe_level =
-            running.is_some() && (self.serving.is_some() || self.options.dedicated.is_some());
+            running.is_some() && (self.side.serving.is_some() || self.options.dedicated.is_some());
         let order = self.levels_to_tick();
         let n = order.len();
         let mut result = Ok(());
         for phase in server_tick_phases(&order) {
             let ServerTickPhase::Level(k, dim) = phase else {
-                if running.is_some() && self.lan.is_some() {
+                if running.is_some() && self.side.lan.is_some() {
                     let holding = sunrise_sim::lan::Holding::start();
                     result = sunrise_level::spans::time("lan_guest_connections", || {
                         self.tick_guest_connections(true)
                     });
                     if result.is_ok()
-                        && let Some(host) = self.lan.as_mut()
+                        && let Some(host) = self.side.lan.as_mut()
                     {
                         sunrise_level::spans::time("lan_end_tick", || host.hub.end_tick());
                     }
                     drop(holding);
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = self.side.lan.as_ref() {
                         sunrise_sim::lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
                     }
                 }
@@ -1658,7 +1633,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 );
                 sunrise_sim::block_contact::in_level(
                     self.tick,
-                    (self.serving.is_some() || self.options.dedicated.is_some())
+                    (self.side.serving.is_some() || self.options.dedicated.is_some())
                         .then_some(dim.id()),
                     || {
                         if paused {
@@ -1680,7 +1655,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if result.is_ok() && !paused {
                 sunrise_sim::block_contact::in_level(
                     self.tick,
-                    (self.serving.is_some() || self.options.dedicated.is_some())
+                    (self.side.serving.is_some() || self.options.dedicated.is_some())
                         .then_some(dim.id()),
                     || self.carry_pass(&colliders),
                 );
@@ -1849,7 +1824,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     break;
                 }
                 let remaining = *next - now;
-                let received = match &self.serving {
+                let received = match &self.side.serving {
                     Some(serving) => {
                         if serving
                             .flags
@@ -1899,6 +1874,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// it, forced chunks or a `/pregen` task, or the Overworld while idle.
     pub(in crate::game::server_side) fn levels_to_tick(&self) -> Vec<Dim> {
         let guests = self
+            .side
             .lan
             .as_ref()
             .map_or(&[][..], |h| h.hub.guests.as_slice());
@@ -1942,7 +1918,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// A loading-only ticket needs chunk work, not an active simulation.
     pub(in crate::game::server_side) fn has_spawn_tickets(&self, dim: Dim) -> bool {
-        if self.lan.as_ref().is_some_and(|host| {
+        if self.side.lan.as_ref().is_some_and(|host| {
             host.hub
                 .lan
                 .configuration_tasks
@@ -2308,7 +2284,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let loaded = std::mem::take(&mut world.loaded_chunks);
         if self.pack.chunk_context.light.any_dynamic() {
-            let dimension = Self::light_emission_dimension(level);
+            let dimension = crate::game::light_emission::light_emission_dimension(level);
             for &(x, z, _) in &loaded {
                 self.ask_level_chunk_light_emission(Some(id), dimension, (x, z));
             }
@@ -2675,6 +2651,7 @@ mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -2770,6 +2747,7 @@ mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -2839,6 +2817,7 @@ mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3171,7 +3150,7 @@ mod tests {
                 .unwrap(),
             ));
             guest.max_unacknowledged = 1000;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
 
             game.prepare_levels().unwrap();
             game.native_lifecycle_world_ready();
@@ -3282,7 +3261,7 @@ mod tests {
                 let mut arrived = false;
                 for _ in 0..2000 {
                     game.tick_server(false).unwrap();
-                    let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     if guest.dimension == dim.id() && !game.on_server_trip(1) {
                         arrived = true;
                         break;
@@ -3687,10 +3666,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.is_logical_server() {
             return Err("client-role game cannot tick a server level".into());
         }
-        if self.remote.is_some() {
-            return Err("server-role game cannot tick a remote connection".into());
-        }
-        if self.agent.hold_server {
+        if self.side.hold_server {
             return Ok(());
         }
         self.abort_open_transactions();
@@ -3742,13 +3718,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // hundred seconds of ticks at the rate the server runs at now.
         self.side.ticks_until_autosave -= 1;
         self.autosaving = self.side.ticks_until_autosave <= 0;
-        if let Some(serving) = &self.serving {
+        if let Some(serving) = &self.side.serving {
             serving.set_saving(self.autosaving);
         }
         if self.autosaving {
             span("autosave", || self.save_game_with(false))?;
             self.side.ticks_until_autosave = self.next_autosave_interval();
-            if let Some(serving) = &self.serving {
+            if let Some(serving) = &self.side.serving {
                 serving.set_saving(false);
             }
         }

@@ -22,17 +22,6 @@ use sunrise_level::random_source;
 use sunrise_sim::mobs::{Damage, DamageKind, Who};
 use sunrise_world::{fluid::FluidKind, level::LevelAccess, registry::BlockStateId};
 
-/// Shared weapon damage effects; callers choose live RNG for an attack or a snapshot for a read.
-pub(in crate::game) fn stack_enchanted_damage(
-    enchantments: &Enchantments,
-    stack: &ItemStack,
-    ctx: &EffectContext<'_>,
-    random: &mut sunrise_core::random::LegacyRandom,
-    base: f32,
-) -> f32 {
-    enchantments.modify_value(Some(stack), "minecraft:damage", ctx, random, base)
-}
-
 /// `EquipmentSlot.getName` of each `mobs::finalize` slot (hands, feet to head).
 pub(in crate::game) const MOB_SLOTS: [&str; 6] =
     ["mainhand", "offhand", "feet", "legs", "chest", "head"];
@@ -532,7 +521,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let ticks = (between("min_duration", "max_duration") * 20.0).round() as i32;
         let amplifier = (between("min_amplifier", "max_amplifier").round() as i32).max(0);
-        if let Some(id) = super::potions::mob_effect_id(ids[pick]) {
+        if let Some(id) = super::potions_server::mob_effect_id(ids[pick]) {
             let (new, entity) = (!m.has_effect(id), m.id as i32);
             m.add_effect(id, ticks, amplifier);
             self.mod_effect_added(id, Some(entity), amplifier, new);
@@ -1000,7 +989,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ExperienceOrb.repairPlayerItems`: returns the experience left over.
     pub(in crate::game) fn mending(&mut self, amount: u32) -> u32 {
         let mut amount = amount;
-        let player = (self.serving.is_some() || self.options.dedicated.is_some())
+        let player = (self.side.serving.is_some() || self.options.dedicated.is_some())
             .then(|| self.native_acting_id());
         loop {
             // EnchantmentHelper.getRandomItemWith(REPAIR_WITH_XP, damaged), in

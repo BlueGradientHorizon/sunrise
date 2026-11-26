@@ -43,8 +43,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         received_ms: i64,
     ) -> ChatTrust {
         use sunrise_game_data::scoreboard::{comp_text, tag_to_json};
-        if self.integrated.is_some()
+        if self.side.integrated.is_some()
             && self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.has_logical_player && r.profile == sender)
@@ -86,7 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         decoration: Decoration,
     ) -> sunrise_game_data::text::Text {
         use sunrise_game_data::scoreboard::comp_text;
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return comp_text(content);
         };
         let chat_type = r.registries.data("minecraft:chat_type", bound.chat_type);
@@ -115,7 +116,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         packed: &(i32, Option<Vec<u8>>),
     ) -> Result<()> {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return Ok(());
         };
         let Some(signature) = r.signatures.unpack(packed) else {
@@ -164,7 +165,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 focused,
             );
         }
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.chat.push((text, Instant::now()));
             r.chat_received += 1;
             if r.chat.len() > 100 {
@@ -174,14 +175,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The server's last `n` chat lines, newest first.
     pub(in crate::game) fn remote_chat(&self, n: usize) -> Option<Vec<String>> {
-        let r = self.remote.as_ref()?;
+        let r = self.side.remote.as_ref()?;
         Some(r.chat.iter().rev().take(n).map(|l| l.0.clone()).collect())
     }
     /// ChatScreen.handleChatInput fires the client event for chat, not commands.
     pub(in crate::game) fn send_chat_from_screen(&mut self, message: &str) {
         if message.starts_with('/') || !mod_api::__private::listened(mod_api::HookId::ClientChat) {
             self.send_signed_chat_input(message);
-        } else if let Some(uuid) = self.remote.as_ref().map(|r| r.profile) {
+        } else if let Some(uuid) = self.side.remote.as_ref().map(|r| r.profile) {
             let id = self.own_entity_id();
             let sent = chat_after_event(message, |outgoing, cancel| {
                 self.native_client_chat(id, uuid, message, outgoing, cancel);
@@ -216,7 +217,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             sender,
             kind,
         } = chat;
-        let has_player = self.remote.as_ref().is_some_and(|r| r.has_logical_player);
+        let has_player = self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.has_logical_player);
         let source = ChatSource::Player;
         let visible = self.side.chat_ui.chat.shows(source);
         let (chat_type, mut line, narration, tag, info) = match kind {

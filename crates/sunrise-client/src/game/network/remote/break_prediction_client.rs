@@ -1,7 +1,6 @@
+pub(in crate::game) use super::prediction_state::{Prediction, RemovedEntity};
 use super::*;
 use crate::game::native_connection_groups::{GroupUpdates, ReceivedGroup, check_group_updates};
-use crate::game::remote::break_prediction::Prediction;
-use crate::game::remote::break_prediction::RemovedEntity;
 use sunrise_core::position::BlockPos;
 
 #[cfg(feature = "client")]
@@ -15,6 +14,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             &self.world,
             groups.iter().filter_map(|(&pos, &group)| {
                 (!self
+                    .side
                     .remote
                     .as_ref()
                     .is_some_and(|r| r.predictions.contains_key(&pos)))
@@ -31,7 +31,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         previous: BlockStateId,
         removed: Option<BlockEntity>,
     ) {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let mut attachments = r.attachments.remove(&Holder::BlockEntity(pos));
@@ -55,7 +55,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// progress goes: `destroyBlockPos` and `destroyingItem` keep the target, so a dig resumed on
     /// the same block sends no START and the server's clock runs on (#4124).
     pub(in crate::game) fn stop_remote_mining(&mut self) -> bool {
-        let kept = self.remote.as_mut().and_then(|r| {
+        let kept = self.side.remote.as_mut().and_then(|r| {
             if !std::mem::take(&mut r.is_destroying) {
                 return None;
             }
@@ -85,7 +85,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         chunk: &sunrise_level::chunk::Chunk,
     ) {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         for (&[x, y, z], prediction) in &mut r.predictions {
@@ -174,7 +174,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let [x, y, z] = pos;
         let before = self.world.block(x, y, z);
         let here = self.player_position();
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.predictions
                 .entry(pos)
                 .and_modify(|e| e.sequence = seq)
@@ -205,6 +205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             0
         });
         if let Some(p) = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.predictions.get_mut(&pos))
@@ -230,7 +231,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// BlockStatePredictionHandler.endPredictionsUpTo: settle the server's known
     /// state and restore data before the correction notice. Confirmations are silent.
     pub(in crate::game) fn end_predictions(&mut self, sequence: i32) -> Result<()> {
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return Ok(());
         };
         let last_teleport = r.last_teleport_sequence;
@@ -301,7 +302,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 ..
             } = *restored;
             self.world.block_entities.replace((x, y, z), entity);
-            if let Some(remote) = self.remote.as_mut() {
+            if let Some(remote) = self.side.remote.as_mut() {
                 let holder = Holder::BlockEntity(pos);
                 if let Some(attachments) = attachments {
                     // A fresh sync received from the server takes precedence over saved data.
@@ -374,7 +375,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game) fn request_remote_mining_stop(&mut self) {
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.stop_mining = true;
         }
     }

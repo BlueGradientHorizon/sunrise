@@ -22,7 +22,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Replacements discard the previous marker before removal can access it.
     pub(in crate::game::server_side) fn discard_clone_loot(&mut self, pos: [i32; 3]) {
-        crate::game::container_loot::take_block_pending(&mut self.world, (pos[0], pos[1], pos[2]));
+        crate::game::container_loot_level::take_block_pending(
+            &mut self.world,
+            (pos[0], pos[1], pos[2]),
+        );
     }
     pub(in crate::game::server_side) fn apply_clone_payload(
         &mut self,

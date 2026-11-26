@@ -74,12 +74,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 // The teleport has already opened its destination. Resume only the
                 // travelling connection there, with that level's world and solids.
-                self.lan = Some(host);
+                self.side.lan = Some(host);
                 if let Err(error) = self.enter_level(next) {
                     log::error!("could not reopen {}: {error}", next.id());
                     return None;
                 }
-                host = self.lan.take()?;
+                host = self.side.lan.take()?;
                 active_spawn = if next == source {
                     spawn
                 } else {

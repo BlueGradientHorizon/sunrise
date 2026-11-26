@@ -486,7 +486,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // EntityArgument.getPlayers runs before the published check.
         let host = self.entities(ctx, "targets", true).unwrap_or_default();
-        let guests: Vec<(u32, String)> = match (&self.lan, &selector) {
+        let guests: Vec<(u32, String)> = match (&self.side.lan, &selector) {
             (Some(lan), Some(s)) => lan
                 .hub
                 .guests
@@ -506,7 +506,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if host.is_empty() && guests.is_empty() {
             return Err(err("argument.entity.notfound.player", &[]));
         }
-        if self.lan.is_none() || (self.serving() && self.published_port().is_none()) {
+        if self.side.lan.is_none() || (self.serving() && self.published_port().is_none()) {
             return Err(err("commands.kick.singleplayer.failed", &[]));
         }
         let reason_raw = match ctx.get("reason") {
@@ -526,7 +526,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let mut count = 0;
         for (conn, name) in guests {
-            if let Some(lan) = self.lan.as_mut() {
+            if let Some(lan) = self.side.lan.as_mut() {
                 lan.hub.kick(conn, tag.clone());
             }
             self.feedback(Text::translate(
@@ -630,7 +630,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let published = if self.serving() {
             self.published_port()
         } else {
-            self.lan.as_ref().map(|l| l.settings.port)
+            self.side.lan.as_ref().map(|l| l.settings.port)
         };
         if let Some(port) = published {
             return Err(err("commands.publish.alreadyPublished.lan", &[&port]));

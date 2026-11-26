@@ -5,7 +5,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_lifecycle_open_started(&mut self) {
         self.client_reset_entity_residency();
         self.entity_initialization = Default::default();
-        if let Some(remote) = &mut self.remote {
+        if let Some(remote) = &mut self.side.remote {
             remote.clear_attachments();
         }
         self.attachment_indexes.clear();

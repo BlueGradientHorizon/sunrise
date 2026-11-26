@@ -30,7 +30,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let outer = self.transactions.closing.replace(closing);
         let retire = !self.has_level_transaction()
             && !entities::is_committing(&self.transactions.committing, self.dim);
-        let guard = ClosingPhase { game: self, outer };
+        let guard = ClosingPhase::new(self, outer);
         if let Some(scope) = level.packets.take()
             && commit
             && let Some(packets) = scope.finish()

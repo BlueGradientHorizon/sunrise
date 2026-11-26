@@ -51,7 +51,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let uuid = session.before.uuid;
         let creative = session.before.game_mode == 1;
         let (recipe, use_max_items) = (session.recipe.clone(), session.use_max);
-        self.native_net.placement.session = Some(session);
+        self.side.book_placement_session = Some(session);
         let mut ghost = false;
         let ran = self.native_as_player(uuid, |game| {
             game.native_recipe_book_place(mod_api::__private::RecipeBookPlaceCall {
@@ -63,9 +63,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
         });
         let session = self
-            .native_net
-            .placement
-            .session
+            .side
+            .book_placement_session
             .take()
             .ok_or(Refusal::Changed)?;
         if !ran {
@@ -92,9 +91,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         use_max_items: bool,
     ) -> Result<bool, String> {
         let mut session = self
-            .native_net
-            .placement
-            .session
+            .side
+            .book_placement_session
             .take()
             .ok_or("place_recipe_in_grid is only available inside recipe_book_place")?;
         let result = self.place_in_session(
@@ -105,7 +103,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &clear_slots,
             use_max_items,
         );
-        self.native_net.placement.session = Some(session);
+        self.side.book_placement_session = Some(session);
         result
     }
 

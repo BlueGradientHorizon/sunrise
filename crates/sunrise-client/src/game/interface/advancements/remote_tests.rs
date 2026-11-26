@@ -141,7 +141,7 @@ fn opening_reports_the_first_tab_twice_and_preserves_offscreen_selection() {
                 game.init_remote_for_replay().unwrap();
                 let (session, mut peer, _keepalive) =
                     sunrise_client::net::Session::packet_hold_probe();
-                game.remote.as_mut().unwrap().session = session;
+                game.side.remote.as_mut().unwrap().session = session;
                 let mut receive_selection = || {
                     let (id, body) = peer.recv().unwrap();
                     assert_eq!(id, SEEN_ADVANCEMENTS);

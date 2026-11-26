@@ -53,9 +53,9 @@ fn mods_replace_and_cancel_received_chat() {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "ChatTest").unwrap();
-                game.remote.as_mut().unwrap().has_logical_player = true;
+                game.side.remote.as_mut().unwrap().has_logical_player = true;
                 let lines = |game: &crate::game::ClientGame<'_>| -> Vec<String> {
-                    let chat = &game.remote.as_ref().unwrap().chat;
+                    let chat = &game.side.remote.as_ref().unwrap().chat;
                     chat.iter().map(|(line, _)| line.clone()).collect()
                 };
                 let system = |content: &str| {
@@ -102,7 +102,7 @@ fn mod_chat_needs_a_joined_player_and_what_the_chat_option_allows() {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "ChatTest").unwrap();
         assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "/warp spawn").is_err());
-        game.remote.as_mut().unwrap().joined = true;
+        game.side.remote.as_mut().unwrap().joined = true;
         assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "  ").is_err());
         // Full, then Commands Only, then Hidden.
         game.side.settings.chat_visibility = 0;

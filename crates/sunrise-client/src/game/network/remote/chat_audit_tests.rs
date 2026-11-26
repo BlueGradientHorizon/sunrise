@@ -1,6 +1,7 @@
-use super::{C, Signature, Tag, play, secure_chat};
+use super::{C, Signature, Tag, play};
 use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
 use sunrise_protocol::rsa::{RsaPrivateKey, RsaPublicKey, SignatureHash};
+use sunrise_protocol::secure_chat;
 use {
     sunrise_client::chat::ChatAbilities, sunrise_client::chat::ChatOptions,
     sunrise_client::chat::ChatVisibility, sunrise_client::hud_layout::GuiDraw,
@@ -27,7 +28,7 @@ pub(in crate::game) fn with_delayed_chat(
     in_own_process(&full, || {
         with_client_game(|game| {
             game.init_remote_for_replay().unwrap();
-            game.remote.as_mut().unwrap().has_logical_player = true;
+            game.side.remote.as_mut().unwrap().has_logical_player = true;
             game.side.settings.chat_delay = 1.0;
             check(game);
         });
@@ -35,7 +36,8 @@ pub(in crate::game) fn with_delayed_chat(
 }
 
 pub(in crate::game) fn tracker_offset(game: &mut crate::game::ClientGame<'_>) -> i32 {
-    game.remote
+    game.side
+        .remote
         .as_mut()
         .unwrap()
         .secure_chat
@@ -46,7 +48,8 @@ pub(in crate::game) fn tracker_offset(game: &mut crate::game::ClientGame<'_>) ->
 pub(in crate::game) fn take_seen_update(
     game: &mut crate::game::ClientGame<'_>,
 ) -> secure_chat::SeenUpdate {
-    game.remote
+    game.side
+        .remote
         .as_mut()
         .unwrap()
         .secure_chat
@@ -83,7 +86,8 @@ pub(in crate::game) fn player_chat(
 }
 
 pub(in crate::game) fn add_sender(game: &mut crate::game::ClientGame<'_>, sender: u128) {
-    game.remote
+    game.side
+        .remote
         .as_mut()
         .unwrap()
         .tab_players
@@ -109,7 +113,8 @@ pub(in crate::game) fn add_signed_sender(
     let services_key = RsaPublicKey::from_der(&der).unwrap();
     let session =
         secure_chat::ChatSession::validate(SESSION, profile_key, &[services_key], sender).unwrap();
-    game.remote
+    game.side
+        .remote
         .as_mut()
         .unwrap()
         .chat_validators
@@ -147,7 +152,7 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
                 .set("onlyShowSecureChat", V::Bool(true));
 
             // Before a logical local player exists, disguised chat is rejected on accept.
-            game.remote.as_mut().unwrap().has_logical_player = false;
+            game.side.remote.as_mut().unwrap().has_logical_player = false;
             game.handle_packet(C::DisguisedChat(play::DisguisedChat {
                 message: Tag::String("before login".into()),
                 chat_type: bound(),
@@ -157,7 +162,7 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
             assert!(game.chat_ui_for_test().chat.recent_lines(1).is_empty());
-            game.remote.as_mut().unwrap().has_logical_player = true;
+            game.side.remote.as_mut().unwrap().has_logical_player = true;
 
             game.handle_packet(C::SystemChat(play::SystemChat {
                 content: Tag::String("server".into()),

@@ -17,15 +17,19 @@ fn title(session: Option<&str>) -> String {
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The session part `createTitle` adds while `getConnection` has a player and its connection is open.
     fn title_session(&self) -> Option<&'static str> {
-        let live = self.remote.as_ref().is_some_and(|r| r.session.connected());
+        let live = self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.session.connected());
         if !live || self.player.is_none() {
             return None;
         }
-        Some(if self.integrated.is_some() && !self.is_published() {
+        Some(if self.side.integrated.is_some() && !self.is_published() {
             "title.singleplayer"
-        } else if self.realm_session {
+        } else if self.side.realm_session {
             "title.multiplayer.realms"
-        } else if self.integrated.is_none() && !self.lan_session {
+        } else if self.side.integrated.is_none() && !self.side.lan_session {
             "title.multiplayer.other"
         } else {
             "title.multiplayer.lan"

@@ -39,9 +39,15 @@ pub(in crate::game::server_side) fn game(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     for x in 0..2 {
@@ -101,7 +107,7 @@ pub(in crate::game::server_side) fn game(
     guest.loaded = true;
     // Its view, as the client sent it: straight down.
     guest.pitch = 90.0;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     game
 }
 
@@ -146,7 +152,7 @@ fn test_pos_as_a_guest_uses_the_guest_s_view() {
         ([p.x, p.y, p.z], game.yaw, game.pitch),
         ([4.5, 101.0, 6.5], 0.0, 90.0)
     );
-    let g = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
+    let g = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
     assert_eq!((g.position, g.pitch), ([22.5, 101.0, 9.5], 90.0));
     // At the guest, as the host: still the host's view.
     // (execute reports no failure of its own: the issuer is just told nothing.)
@@ -178,7 +184,8 @@ fn test_pos_refuses_other_sources_and_restores_the_views() {
     missing.entity = Some(commands::Target::Guest(99));
     assert!(key(game.execute_line("test pos", missing)).contains(requires));
     // The guest looking up: its own view finds no test.
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -195,7 +202,7 @@ fn test_pos_refuses_other_sources_and_restores_the_views() {
         ([p.x, p.y, p.z], game.yaw, game.pitch),
         ([4.5, 101.0, 6.5], 0.0, 90.0)
     );
-    let g = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
+    let g = game.side.lan.as_ref().unwrap().hub.guest(2).unwrap();
     assert_eq!((g.position, g.pitch), ([22.5, 101.0, 9.5], -90.0));
     assert_eq!(game.dim, Dim::Overworld);
 }

@@ -31,9 +31,15 @@ fn end_game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game =
-        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
-            .unwrap();
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     assert_eq!(game.enter_command_level(Dim::End), Some(Dim::Overworld));
@@ -70,7 +76,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         guest.dimension = "minecraft:the_end".into();
         guest.position = [0.5, 128.0, 0.5];
     });
-    game.lan = Some(crate::game::lan::LanHost::for_test(hub));
+    game.side.lan = Some(crate::game::lan::LanHost::for_test(hub));
     let mut overlay = sunrise_client::boss_overlay::BossOverlay::default();
     let drain = |rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
                  overlay: &mut sunrise_client::boss_overlay::BossOverlay| {
@@ -127,5 +133,5 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         .pop()
         .expect("the dragon's bar");
     assert_eq!(still.name.plain(), "Bob");
-    game.lan = None;
+    game.side.lan = None;
 }

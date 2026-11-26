@@ -12,23 +12,13 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::cushion::blocks_in;
 use sunrise_sim::entities::{Cushion, dye_index};
 
-/// `Direction.fromYRot(yaw).toYRot()`: the nearest 90 degree step.
-pub(crate) fn snap_yaw(yaw: f32) -> f32 {
-    (((f64::from(yaw) / 90.0 + 0.5).floor() as i64) & 3) as f32 * 90.0
-}
-
-pub(in crate::game) fn aabb(bounds: ([f64; 3], [f64; 3])) -> Aabb {
-    Aabb::new(
-        Vec3::new(bounds.0[0], bounds.0[1], bounds.0[2]),
-        Vec3::new(bounds.1[0], bounds.1[1], bounds.1[2]),
-    )
-}
-
 pub(in crate::game::server_side) fn overlaps(a: Aabb, b: Aabb) -> bool {
     a.intersects(b)
 }
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::entity_common::PlacementWorld;
+use crate::game::{
+    cushions_common::{aabb, snap_yaw},
+    entity_common::PlacementWorld,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The cushion under the crosshair, its distance and the hit point.
@@ -262,9 +252,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// cushion under the crosshair, or the one a guest's interact packet named.
     pub(in crate::game) fn interact_cushion(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((i, d, _)) = (match target {
-            Some(t) => {
-                Self::named_entity(&self.cushions, t.id, |c| c.id).map(|i| (i, 0.0, [0.0; 3]))
-            }
+            Some(t) => crate::game::item_actions::named_entity(&self.cushions, t.id, |c| c.id)
+                .map(|i| (i, 0.0, [0.0; 3])),
             None => self.cushion_hit(),
         }) else {
             return false;
@@ -280,6 +269,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let id = self.cushions[i].id;
         let occupied = self.riding == Some(id)
             || self
+                .side
                 .lan
                 .as_ref()
                 .is_some_and(|h| h.hub.guests.iter().any(|g| g.vehicle == Some(id)));
@@ -294,7 +284,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // After each hook the cushion is found again by its id: a listener
         // may have removed it, and the click is then spent.
-        if Self::named_entity(&self.cushions, id as i32, |c| c.id).is_none() {
+        if crate::game::item_actions::named_entity(&self.cushions, id as i32, |c| c.id).is_none() {
             return true;
         }
         self.stop_riding();
@@ -303,7 +293,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.riding.is_some() {
             return true;
         }
-        let Some(i) = Self::named_entity(&self.cushions, id as i32, |c| c.id) else {
+        let Some(i) = crate::game::item_actions::named_entity(&self.cushions, id as i32, |c| c.id)
+        else {
             return true;
         };
         self.start_riding(id);

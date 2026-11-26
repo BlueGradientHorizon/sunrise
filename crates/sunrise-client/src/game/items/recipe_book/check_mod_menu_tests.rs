@@ -20,12 +20,13 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "RecipeCheck").unwrap();
-            game.remote
+            game.side
+                .remote
                 .as_mut()
                 .unwrap()
                 .menu
                 .set(Some((7, name.into())));
-            game.remote.as_mut().unwrap().recipe_viewer.check = true;
+            game.side.remote.as_mut().unwrap().recipe_viewer.check = true;
             let recipe = "minecraft:stick";
             game.side.screen = Screen::Playing;
             assert!(game.transfer_recipe_check(recipe).is_none());
@@ -39,10 +40,10 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
                 !game.mod_recipe_screen(),
                 "the fixture has no crafting grid"
             );
-            game.remote.as_mut().unwrap().recipe_viewer.check = false;
+            game.side.remote.as_mut().unwrap().recipe_viewer.check = false;
             assert!(game.transfer_recipe_check(recipe).is_none());
             assert!(game.side.recipe_ui.0.checks.asked.is_none());
-            game.remote.as_mut().unwrap().recipe_viewer.check = true;
+            game.side.remote.as_mut().unwrap().recipe_viewer.check = true;
             assert!(
                 game.transfer_recipe_check(recipe).is_none(),
                 "reply is asynchronous"
@@ -62,13 +63,15 @@ fn a_remote_crafting_table_has_the_crafting_book() {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "RecipeCheck").unwrap();
         game.side.screen = Screen::Inventory;
-        game.remote
+        game.side
+            .remote
             .as_mut()
             .unwrap()
             .menu
             .set(Some((7, "minecraft:generic_9x3".into())));
         assert_eq!(game.active_book(), None, "a chest has no crafting book");
-        game.remote
+        game.side
+            .remote
             .as_mut()
             .unwrap()
             .menu

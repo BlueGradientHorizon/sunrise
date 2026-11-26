@@ -11,101 +11,6 @@ pub(in crate::game) enum MenuOpen {
     Stale,
 }
 
-/// Per-guest state of the gameplay code that lives outside `Guest`.
-#[derive(Default)]
-pub(in crate::game) struct GuestPlay {
-    pub(in crate::game) mining: Option<Mining>,
-    pub(in crate::game) destroy_delay: u32,
-    pub(in crate::game) using: Option<(usize, u32)>,
-    pub(in crate::game) use_duration: i32,
-    pub(in crate::game) use_start: super::using_item::UseStart,
-    pub(in crate::game) use_delay: u32,
-    /// The shield's ItemCooldowns entry: an axe disabled it for this many ticks.
-    pub(in crate::game) shield_cooldown: u32,
-    /// `ServerGamePacketListenerImpl.dropSpamThrottler` (`TickThrottler(20, 1480)`): 20 for each
-    /// item a creative player drops from the creative screen, one less each tick.
-    pub(in crate::game) creative_drops: u32,
-    /// `ServerGamePacketListenerImpl.chatSpamThrottler`: 20 for each chat message, one less each tick.
-    pub(in crate::game) chat_spam: u32,
-    /// `commandSpamThrottler`: 20 for each command, one less each tick.
-    pub(in crate::game) command_spam: u32,
-    /// `sunrise:recipe_check` requests still counting against the burst limit.
-    pub(in crate::game) recipe_checks: u32,
-    /// `ServerCommandSuggestionsProvider`: the latest suggestion request not answered yet (a
-    /// newer one replaces it, which then never gets an answer), and whether this tick's one
-    /// answer is still free.
-    pub(in crate::game) suggestion: Option<Vec<u8>>,
-    pub(in crate::game) suggestion_budget: bool,
-    /// The guest's `Player.getCooldowns()` (`Game::cooldowns` for its turn).
-    pub(in crate::game) cooldowns: sunrise_items::cooldowns::Cooldowns,
-    pub(in crate::game) attack_ticks: u32,
-    /// The main hand's item at the guest's last tick (`Game::attack_item`).
-    pub(in crate::game) attack_item: Option<std::sync::Arc<str>>,
-    pub(in crate::game) swing: sunrise_sim::first_person_sim::SwingState,
-    /// The block being dug and the face the client aimed at.
-    pub(in crate::game) digging: Option<([i32; 3], [i32; 3])>,
-    /// The server tick the digging started (ServerPlayerGameMode.destroyProgressStart).
-    pub(in crate::game) dig_start: u64,
-    /// The block that clock is for (ServerPlayerGameMode.destroyPos). A START is the only writer
-    /// that names one (death, a new ServerPlayerGameMode, clears it), so an abort, or a STOP that
-    /// arrives out of reach, leaves it: the STOP of a dig resumed on the same block is still
-    /// measured from the first START's ticks (#4124).
-    pub(in crate::game) destroy_pos: Option<[i32; 3]>,
-    /// A block the client stopped digging before the server's time was up: it breaks once
-    /// its progress since `dig_start` is complete (ServerPlayerGameMode.hasDelayedDestroy).
-    pub(in crate::game) delayed: Option<([i32; 3], u64)>,
-    pub(in crate::game) last_progress: i32,
-    /// Swings the guest's actions started this tick, for the players around
-    /// (`LivingEntity.swing` sends ClientboundSwingAnimationPacket).
-    pub(in crate::game) swings: u32,
-    /// The guest's riding jump charge (`LocalPlayer.jumpRidingTicks`).
-    pub(in crate::game) mount: super::mounts::MountState,
-    /// The mount inventory the guest has open (game/network/lan_mount_menu.rs).
-    pub(in crate::game) mount_window: Option<super::lan_mount_menu::GuestMount>,
-    /// The lectern the guest reads (game/network/lan_stations.rs).
-    pub(in crate::game) lectern: Option<super::lan_stations::GuestLectern>,
-    /// The equipment the mods last heard this guest wear (`native_players_equipment`), by
-    /// `EquipmentSlot`: main hand, off hand, feet, legs, chest, head.
-    pub(in crate::game) equipment_heard: Option<Box<[Option<sunrise_items::items::ItemStack>; 6]>>,
-    /// The slots of the guest's inventories the mods last heard (`native_players_inventory_changes`),
-    /// by `NativeInventoryKind`: Player, Ender, Cursor, Crafting.
-    pub(in crate::game) inventory_heard:
-        Option<Box<[Vec<Option<sunrise_items::items::ItemStack>>; 4]>>,
-    /// What the guest's body was given for its effects and enchantments.
-    pub(in crate::game) potions: super::potions::BodyPotions,
-    /// `ServerPlayer.getStats` and the inventory `inventory_changed` last saw.
-    pub(in crate::game) stats: super::stats::Stats,
-    /// `Stats.LEAVE_GAME` is counted: a guest is saved more than once on the
-    /// way out, the statistic is awarded once (`Game::award_leave_game`).
-    pub(in crate::game) left_game: bool,
-    pub(in crate::game) last_inventory: u64,
-    /// `ServerPlayer.levitationStartPos` and `levitationStartTime`.
-    pub(in crate::game) levitation: Option<([f64; 3], u64)>,
-    /// The fall, lava ride, Nether trip and blast the guest's advancements track.
-    pub(in crate::game) marks: super::advancements::TravelMarks,
-    /// `Entity.portalProcess` and `portalCooldown` (game/world/server_travel.rs).
-    pub(in crate::game) portal: sunrise_sim::nether_portal::PortalState,
-    /// `Player.takeXpDelay`: ticks until the next orb can be taken.
-    pub(in crate::game) xp_delay: u32,
-    /// This player entity's age and level-up sound cooldown.
-    pub(in crate::game) level_up_sound: sunrise_sim::entities::LevelUpSound,
-    /// What last killed the guest outright (`/kill`): the death message's key.
-    pub(in crate::game) death_cause: Option<String>,
-    /// The equipment modifiers on the guest's attributes (`apply_equipment`)
-    /// and the armour and hands they were put on for: the hub's player
-    /// is a `ServerPlayer` too, whose worn armour counts
-    /// (`LivingEntity.collectEquipmentChanges`).
-    pub(in crate::game) modifiers: Vec<(String, String)>,
-    pub(in crate::game) equipped: Option<Vec<Option<ItemStack>>>,
-    pub(in crate::game) craft_grid: Vec<Option<ItemStack>>,
-    /// The guest's cast fishing hook (`Player.fishing`).
-    pub(in crate::game) hook: sunrise_sim::join_seq::ResidentSlot<super::fishing::Hook>,
-    pub(in crate::game) sculk: super::sculk_server::PlayerEvents,
-    /// What `ServerPlayer` last recorded for the guest's scoreboard criteria
-    /// (`lastRecordedHealthAndAbsorption` and the others).
-    pub(in crate::game) score_recorded: super::scoreboard::Recorded,
-}
-
 /// `LivingEntity.collectEquipmentChanges` for a guest: whether its armor, main hand or off
 /// hand differs from what its modifiers were put on for (`equipped`), which then records them.
 /// The body tick asks (`detectEquipmentUpdates`), so the packets of a tick act with the
@@ -152,7 +57,8 @@ pub(in crate::game) enum TurnRefused {
     Nested,
 }
 
-impl GuestPlay {
+#[cfg(test)]
+impl crate::game::server_side::lan_actions_server::GuestPlay {
     #[cfg(test)]
     pub(in crate::game) fn arm_mining_for_test(
         &mut self,
@@ -171,40 +77,7 @@ impl GuestPlay {
         self.delayed = delayed;
         self.last_progress = -1;
     }
-
-    /// The guest's `Player.attackStrengthTicker` outside its turn.
-    pub(in crate::game) fn attack_ticks(&self) -> u32 {
-        self.attack_ticks
-    }
-    /// The main-hand item of the guest's last tick (`Game.attack_item`).
-    pub(in crate::game) fn attack_item(&self) -> Option<&str> {
-        self.attack_item.as_deref()
-    }
-    /// The item in use: its slot and for how many ticks.
-    pub(in crate::game) fn using(&self) -> Option<(usize, u32)> {
-        self.using
-    }
-    /// `LivingEntity.getUsedItemHand` of the item in use, none when none is.
-    pub(in crate::game) fn used_hand(&self) -> Option<sunrise_sim::first_person_sim::Hand> {
-        super::item_use::hand_of(self.using)
-    }
-    /// `LivingEntity.useItemRemaining` of the item in use, 0 when none is.
-    pub(in crate::game) fn use_remaining(&self) -> i32 {
-        super::item_use::remaining_of(self.using, self.use_duration)
-    }
-    /// Sets `useItemRemaining`; false when no item is in use.
-    pub(in crate::game) fn set_use_remaining(&mut self, remaining: i32) -> bool {
-        super::item_use::set_remaining(self.using, &mut self.use_duration, remaining)
-    }
 }
-
-pub(in crate::game) struct ItemRules<'a>(
-    pub(in crate::game) &'a sunrise_items::items::Items,
-    pub(in crate::game) &'a sunrise_items::enchant::Enchantments,
-    pub(in crate::game) Option<&'a dyn sunrise_sim::menu::SlotRules>,
-    pub(in crate::game) Option<&'a sunrise_sim::menu::StackedOutcome>,
-    pub(in crate::game) Vec<sunrise_level::containers::ModContainerInsertRule>,
-);
 
 /// `Player.isWithinEntityInteractionRange(entity, buffer)` for a guest: the
 /// eyes closer than the entity interaction range (3, 5 in creative) plus
@@ -224,72 +97,6 @@ pub(in crate::game) fn guest_within_entity_range(
     let range = if g.creative() { 5.0 } else { 3.0 } + buffer;
     d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < range * range
 }
-pub(in crate::game) fn building_player(g: &sunrise_sim::lan::guest::Guest) -> BuildingPlayer {
-    BuildingPlayer {
-        conn: Some(g.conn),
-        dimension: Dim::from_id(&g.dimension),
-        bounds: (g.participates_in_player_simulation()
-            && g.placed
-            && g.loaded
-            && !g.dead
-            && !g.spectator())
-        .then(|| g.bounds()),
-        borrowed: false,
-    }
-}
-
-thread_local! {
-    /// The hub's bodies for the turns of one `tick_guests`, built once instead
-    /// of for every turn (players x turns a tick). A guest's entry is refreshed
-    /// when its turn ends ([`refresh_building_player`]), so the turns after it
-    /// see it where it went (a pearl, a death, spectator mode).
-    pub(in crate::game) static BUILDING_CACHE: std::cell::RefCell<Option<HubBodies>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-/// The hub's current bodies, across dimensions. A borrowed ancestor's
-/// live body takes precedence over this saved state until its turn returns.
-pub(in crate::game) fn building_players(host: &LanHost) -> HubBodies {
-    let kept = BUILDING_CACHE.with(|c| {
-        c.borrow()
-            .as_ref()
-            .filter(|list| {
-                list.iter().map(|p| p.get().conn).eq(host
-                    .hub
-                    .guests
-                    .simulation_iter()
-                    .map(|g| Some(g.conn)))
-            })
-            .cloned()
-    });
-    kept.unwrap_or_else(|| shared(host.hub.guests.simulation_iter().map(building_player)))
-}
-
-/// Builds the hub's bodies once for the turns to come (`Some`), or drops them.
-pub(in crate::game) fn building_cache(host: Option<&LanHost>) {
-    let bodies = host.map(|host| shared(host.hub.guests.simulation_iter().map(building_player)));
-    BUILDING_CACHE.with(|c| *c.borrow_mut() = bodies);
-}
-
-/// The cached bodies as they are now in the hub, after `conn`'s turn (or its
-/// death step). Every entry, not only the actor's: a turn can move, kill or
-/// change another guest too (`/tp`, an attack, an explosion), and the turns
-/// after it must see that guest where it is now, as a list built afresh would.
-/// Copies into the shared cells, no allocation.
-pub(in crate::game) fn refresh_building_player(host: &LanHost, _conn: u32) {
-    BUILDING_CACHE.with(|c| {
-        if let Some(list) = c.borrow().as_ref()
-            && list.len() == host.hub.guests.simulation_iter().count()
-        {
-            for (p, g) in list.iter().zip(host.hub.guests.simulation_iter()) {
-                if p.get().conn == Some(g.conn) {
-                    p.set(building_player(g));
-                }
-            }
-        }
-    });
-}
-
 /// Kept at LAN action scope to preserve its published internals target path.
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn vehicle_has_other_viewers(
@@ -332,38 +139,6 @@ pub(in crate::game) fn eye_columns(
     let half = f64::from(body.width * 0.8) / 2.0;
     let range = |v: f64| (v - half).floor() as i32..=(v + half).floor() as i32;
     [range(at[0]), range(at[2])]
-}
-
-/// What `ServerPlayerGameMode.handleBlockBreakAction`'s STOP_DESTROY_BLOCK branch does with a
-/// guest's STOP.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::game) enum StopDig {
-    /// A block the last START did not name: the STOP is not this dig's.
-    Other,
-    /// Already broken, by the guest's own tick: only the crack goes.
-    Gone,
-    /// The dig the START counts is at least 70 % done: the block breaks outright.
-    Break,
-    /// Less than that: the server finishes it alone from that same START.
-    Delay(u64),
-}
-
-/// The STOP branch's decision: a STOP is measured from the START that named its block
-/// (`destroyPos`, which an abort or a STOP from out of reach leaves alone), whose ticks times
-/// `getDestroyProgress` decide between the break and the delayed dig (#4124).
-pub(in crate::game) fn stop_dig(
-    play: &GuestPlay,
-    pos: [i32; 3],
-    air: bool,
-    ticks: u64,
-    per_tick: f32,
-) -> StopDig {
-    match play.dig_start_for(pos) {
-        None => StopDig::Other,
-        Some(_) if air => StopDig::Gone,
-        Some(start) if per_tick * (ticks - start + 1) as f32 >= 0.7 => StopDig::Break,
-        Some(start) => StopDig::Delay(start),
-    }
 }
 
 /// ServerPlayer.swingAndResetAttackStrength resets only when a use starts a swing.
@@ -504,7 +279,7 @@ pub(in crate::game) mod tests {
                             BlockEntity::Chest(vec![None; 27])
                         },
                     );
-                    let host = game.lan.as_mut().unwrap();
+                    let host = game.side.lan.as_mut().unwrap();
                     host.hub.open_container(
                         12,
                         "minecraft:generic_9x3",
@@ -546,7 +321,8 @@ pub(in crate::game) mod tests {
                         prediction
                             .click(&game.menu_env(), 0, 0, Input::Pickup)
                             .unwrap();
-                        game.lan
+                        game.side
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub
@@ -575,7 +351,7 @@ pub(in crate::game) mod tests {
                         );
                         assert_eq!(
                             prediction.carried.as_ref().map_or(0, |s| s.count),
-                            game.lan.as_ref().unwrap().hub.guests[0]
+                            game.side.lan.as_ref().unwrap().hub.guests[0]
                                 .carried
                                 .as_ref()
                                 .map_or(0, |s| s.count)
@@ -605,15 +381,21 @@ pub(in crate::game) mod tests {
                         prediction.carried =
                             Some(sunrise_items::items::ItemStack::new(item, carried));
                         prediction.creative = creative;
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                            guest.carried =
-                                Some(sunrise_items::items::ItemStack::new(item, carried));
-                            guest.game_mode = if creative {
-                                sunrise_sim::lan::guest::CREATIVE
-                            } else {
-                                0
-                            };
-                        });
+                        game.side
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(0, |guest| {
+                                guest.carried =
+                                    Some(sunrise_items::items::ItemStack::new(item, carried));
+                                guest.game_mode = if creative {
+                                    sunrise_sim::lan::guest::CREATIVE
+                                } else {
+                                    0
+                                };
+                            });
                         let kind = if creative { 2 << 2 } else { 0 };
                         for (slot, button) in
                             [(-999, kind), (0, kind | 1), (1, kind | 1), (-999, kind | 2)]
@@ -638,7 +420,7 @@ pub(in crate::game) mod tests {
                         let result = (
                             slots[0].as_ref().map_or(0, |s| s.count),
                             slots[1].as_ref().map_or(0, |s| s.count),
-                            game.lan.as_ref().unwrap().hub.guests[0]
+                            game.side.lan.as_ref().unwrap().hub.guests[0]
                                 .carried
                                 .as_ref()
                                 .map_or(0, |s| s.count),
@@ -654,7 +436,8 @@ pub(in crate::game) mod tests {
                             assert_eq!(result.0 + result.1 + result.2, existing + carried);
                         }
                     }
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -683,10 +466,16 @@ pub(in crate::game) mod tests {
                     prediction
                         .click(&game.menu_env(), 27, 0, Input::QuickMove)
                         .unwrap();
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.inventory[9] =
-                            Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 4))
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.inventory[9] =
+                                Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 4))
+                        });
                     game.lan_guest_packet(
                         12,
                         Serverbound::ContainerClick(ContainerClick {
@@ -707,11 +496,17 @@ pub(in crate::game) mod tests {
                         2
                     );
                     assert_eq!(prediction.slot(0).unwrap().count, 2);
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.inventory.fill(None);
-                        guest.inventory[0] =
-                            Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.inventory.fill(None);
+                            guest.inventory[0] =
+                                Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
+                        });
                     game.lan_guest_packet(
                         12,
                         Serverbound::ContainerClick(ContainerClick {
@@ -724,16 +519,22 @@ pub(in crate::game) mod tests {
                             carried: None,
                         }),
                     );
-                    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.inventory[0].as_ref().unwrap().count, 8);
                     assert_eq!(guest.inventory.iter().flatten().count(), 1);
                     game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
                         Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 2));
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.inventory.fill(None);
-                        guest.inventory[0] =
-                            Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.inventory.fill(None);
+                            guest.inventory[0] =
+                                Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
+                        });
                     game.lan_guest_packet(
                         12,
                         Serverbound::ContainerClick(ContainerClick {
@@ -753,7 +554,7 @@ pub(in crate::game) mod tests {
                             .count,
                         3
                     );
-                    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.inventory[0].as_ref().unwrap().count, 5);
                     assert_eq!(guest.inventory[1].as_ref().unwrap().count, 2);
                     // A component-limited displaced stack fills to 16, then leaves 7 elsewhere.
@@ -765,13 +566,19 @@ pub(in crate::game) mod tests {
                     game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
                         Some(limited.clone());
                     limited.count = 15;
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                        guest.inventory.fill(None);
-                        guest.inventory[1] = Some(limited);
-                        guest.selected = 1;
-                        guest.inventory[0] =
-                            Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |guest| {
+                            guest.inventory.fill(None);
+                            guest.inventory[1] = Some(limited);
+                            guest.selected = 1;
+                            guest.inventory[0] =
+                                Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
+                        });
                     game.lan_guest_packet(
                         12,
                         Serverbound::ContainerClick(ContainerClick {
@@ -784,7 +591,7 @@ pub(in crate::game) mod tests {
                             carried: None,
                         }),
                     );
-                    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.inventory[1].as_ref().unwrap().count, 16);
                     assert_eq!(
                         guest
@@ -819,12 +626,19 @@ pub(in crate::game) mod tests {
                 .default_state("minecraft:crafting_table")
                 .unwrap();
             game.world.set(1, 64, 1, table).unwrap();
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.inventory[0] =
-                    Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.inventory[0] =
+                        Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
+                });
             game.lan_open_crafting(12, [1, 64, 1]);
             let window = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -848,7 +662,7 @@ pub(in crate::game) mod tests {
                     carried: None,
                 }),
             );
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref().unwrap().count, 8);
             assert_eq!(
                 guest
@@ -942,7 +756,7 @@ pub(in crate::game) mod tests {
                     .into(),
                     || {
                         use_menu(game);
-                        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                         assert!(guest.menu.is_none());
                         assert_eq!(guest.spectator(), switch.is_some());
                         assert_eq!(count(game), 0, "{block}");
@@ -969,7 +783,7 @@ pub(in crate::game) mod tests {
                                 }),
                                 Some(true)
                             );
-                            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                             assert!(!guest.spectator());
                             assert!(guest.menu.is_none());
                             assert_eq!(count(game), 1);
@@ -986,7 +800,7 @@ pub(in crate::game) mod tests {
                     } else {
                         use_menu(game);
                     }
-                    assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
+                    assert!(game.side.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
                     assert_eq!(count(game), 1, "{block}");
                     assert_eq!(
                         take_signals(game),
@@ -1009,16 +823,28 @@ pub(in crate::game) mod tests {
                         "{block}"
                     );
                 }
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.game_mode = 3;
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.game_mode = 3;
+                    });
                 assert_eq!(game.open_block_menu(12, pos), super::MenuOpen::Opened);
                 assert_eq!(count(game), 0, "{block}");
                 game.guest_close_all(12);
                 assert_eq!(take_signals(game), (vec![], vec![], vec![]), "{block}");
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.game_mode = 0;
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.game_mode = 0;
+                    });
             }
             TEST_POSTED_EVENTS.with(|posted| *posted.borrow_mut() = None);
         });
@@ -1169,7 +995,8 @@ pub(in crate::game) mod tests {
     /// block or new body inherits the clock.
     #[test]
     fn a_stop_after_a_fall_is_measured_from_the_starts_clock() {
-        use super::{GuestPlay, Mining, StopDig, stop_dig};
+        use crate::game::Mining;
+        use crate::game::server_side::lan_actions_server::{GuestPlay, StopDig, stop_dig};
         let pos = [12, 70, -5];
         let mut play = GuestPlay {
             digging: Some((pos, [0, 1, 0])),
@@ -1347,13 +1174,13 @@ pub(in crate::game) mod hotbar_tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 open_to_lan(game);
-                game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+                game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
                 let switch = |game: &mut crate::game::ServerGame<'_>, slot| {
                     game.lan_guest_packet(
                         1,
                         play::Serverbound::SetCarriedItem(play::SetCarriedItem { slot }),
                     );
-                    game.lan.as_ref().unwrap().hub.guests[0].selected
+                    game.side.lan.as_ref().unwrap().hub.guests[0].selected
                 };
                 assert_eq!(switch(game, 3), 3);
                 assert_eq!(switch(game, 3), 3);
@@ -1425,7 +1252,7 @@ pub(in crate::game) mod respawn_position_tests {
                 let mut player = guest(1);
                 player.dead = true;
                 player.spawn = Some([5.5, 64.0, 5.5]);
-                game.lan.as_mut().unwrap().hub.guests.push(player);
+                game.side.lan.as_mut().unwrap().hub.guests.push(player);
                 game.guest_respawn(1);
                 let heard = heard.lock().unwrap();
                 let [(uuid, level, original, missing)] = heard[..] else {
@@ -1435,7 +1262,7 @@ pub(in crate::game) mod respawn_position_tests {
                     (uuid, level, missing),
                     (123, LevelDimension::Overworld, false)
                 );
-                let g = &game.lan.as_ref().unwrap().hub.guests[0];
+                let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert!(!g.dead);
                 assert_eq!(g.position, [original[0] + 10.0, original[1], original[2]]);
                 assert_eq!(g.yaw, 180.0);
@@ -1480,14 +1307,14 @@ pub(in crate::game) mod respawn_position_tests {
                 player.dead = true;
                 (player.yaw, player.pitch) = (90.0, 30.0);
                 player.spawn = Some([5.5, 64.0, 5.5]);
-                game.lan.as_mut().unwrap().hub.guests.push(player);
+                game.side.lan.as_mut().unwrap().hub.guests.push(player);
                 game.guest_respawn(1);
                 let heard = heard.lock().unwrap();
                 let [(found, yaw, pitch)] = heard[..] else {
                     panic!("heard {heard:?}");
                 };
                 assert_eq!((yaw, pitch), (0.0, 0.0), "told the respawn facing");
-                let g = &game.lan.as_ref().unwrap().hub.guests[0];
+                let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert!(!g.dead);
                 assert_eq!(g.position, found);
                 assert_eq!((g.yaw, g.pitch), (0.0, 0.0));
@@ -1530,7 +1357,7 @@ pub(in crate::game) mod pickup_xp_tests {
             let mut g = guest(1);
             g.loaded = true;
             g.position = [0.5, 70.0, 0.5];
-            game.lan.as_mut().unwrap().hub.guests.push(g);
+            game.side.lan.as_mut().unwrap().hub.guests.push(g);
             let p = Vec3::new(0.5, 70.0, 0.5);
             game.orbs.push(ExperienceOrb {
                 size_answer: None,
@@ -1555,7 +1382,7 @@ pub(in crate::game) mod pickup_xp_tests {
             });
             game.guest_orbs(0);
             let left = game.orbs.iter().any(|o| o.id == 40);
-            out = (left, game.lan.as_ref().unwrap().hub.guests[0].xp_total);
+            out = (left, game.side.lan.as_ref().unwrap().hub.guests[0].xp_total);
         });
         out
     }
@@ -1624,6 +1451,7 @@ pub(in crate::game) mod swing_echo_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1698,7 +1526,7 @@ pub(in crate::game) mod swing_echo_tests {
         guest.loaded = true;
         guest.inventory[0] = Some(ItemStack::new("minecraft:stone", 16));
         guest.selected = 0;
-        let mut host = game.lan.take().unwrap();
+        let mut host = game.side.lan.take().unwrap();
         host.hub.guests.push(guest);
         let id = host.hub.guests[0].entity_id;
         let swings_back = || {
@@ -1733,7 +1561,7 @@ pub(in crate::game) mod swing_echo_tests {
                 sequence,
             })
         };
-        game.lan = Some(host);
+        game.side.lan = Some(host);
         // BlockItem.place: SUCCESS, the client's own swing.
         game.lan_guest_packet(2, use_on([4, 199, 6], [0.5, 1.0, 0.5], 1));
         assert_eq!(game.world.block(4, 200, 6).0, stone, "the stone is placed");
@@ -1742,7 +1570,8 @@ pub(in crate::game) mod swing_echo_tests {
         for _ in 0..8 {
             game.lan_swings();
         }
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -1810,7 +1639,7 @@ pub(in crate::game) mod guest_close_listener_tests {
                 sequence,
             }),
         );
-        let guest = game.lan.as_mut().unwrap().hub.guest(conn).unwrap();
+        let guest = game.side.lan.as_mut().unwrap().hub.guest(conn).unwrap();
         assert!(guest.ack_up_to.get() >= sequence);
         assert_eq!(guest.health, 20.0);
         assert_eq!(guest.position, [4.5, 100.0, 4.5]);
@@ -1832,7 +1661,8 @@ pub(in crate::game) mod guest_close_listener_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod recipe_check_budget_tests {
-    use super::{GuestPlay, RECIPE_CHECK_COST};
+    use super::RECIPE_CHECK_COST;
+    use crate::game::server_side::lan_actions_server::GuestPlay;
 
     #[test]
     fn ten_checks_at_once_then_one_each_tick() {
@@ -1897,6 +1727,7 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1970,13 +1801,13 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
         guest.inventory[0] = Some(ItemStack::new("minecraft:stone", 16));
         guest.selected = 0;
 
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
-        assert_eq!(game.lan.as_mut().unwrap().hub.guests[0].uuid, 331);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        assert_eq!(game.side.lan.as_mut().unwrap().hub.guests[0].uuid, 331);
         assert!(
-            game.lan.as_mut().unwrap().hub.guests[0].placed
-                && game.lan.as_mut().unwrap().hub.guests[0].loaded
+            game.side.lan.as_mut().unwrap().hub.guests[0].placed
+                && game.side.lan.as_mut().unwrap().hub.guests[0].loaded
         );
-        assert_eq!(game.lan.as_mut().unwrap().hub.guests[0].game_mode, 0);
+        assert_eq!(game.side.lan.as_mut().unwrap().hub.guests[0].game_mode, 0);
         let mut planks = ItemStack::new("minecraft:oak_planks", 5);
         planks.data_mut().set_other(
             "minecraft:use_cooldown",
@@ -1988,7 +1819,8 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
                 ),
             ])),
         );
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -2007,13 +1839,14 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
         };
         assert!(game.world.is_air(game.world.block(5, 200, 6)));
         if check_start.is_none() {
-            let mut stick = game.lan.as_mut().unwrap().hub.guests[0].inventory[0]
+            let mut stick = game.side.lan.as_mut().unwrap().hub.guests[0].inventory[0]
                 .as_ref()
                 .unwrap()
                 .clone();
             stick.item = "minecraft:stick".into();
             stick.count = 1;
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -2025,17 +1858,18 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
                 "failed stick use"
             );
             assert!(
-                !game.lan.as_mut().unwrap().play[&2]
+                !game.side.lan.as_mut().unwrap().play[&2]
                     .cooldowns
                     .is_on_cooldown("probe:group")
             );
-            let mut planks = game.lan.as_mut().unwrap().hub.guests[0].inventory[0]
+            let mut planks = game.side.lan.as_mut().unwrap().hub.guests[0].inventory[0]
                 .as_ref()
                 .unwrap()
                 .clone();
             planks.item = "minecraft:oak_planks".into();
             planks.count = 5;
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -2051,19 +1885,19 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
             .unwrap();
         assert_eq!(game.world.block(5, 200, 6), oak, "actual first placement");
         assert_eq!(
-            game.lan.as_mut().unwrap().hub.guests[0].inventory[0]
+            game.side.lan.as_mut().unwrap().hub.guests[0].inventory[0]
                 .as_ref()
                 .unwrap()
                 .count,
             4
         );
         assert!(
-            game.lan.as_mut().unwrap().play.contains_key(&2),
+            game.side.lan.as_mut().unwrap().play.contains_key(&2),
             "real acting guest context installed"
         );
         if check_start == Some(true) {
             assert!(
-                game.lan.as_mut().unwrap().play[&2]
+                game.side.lan.as_mut().unwrap().play[&2]
                     .cooldowns
                     .is_on_cooldown("probe:group"),
                 "successful use starts the actual guest's group"
@@ -2082,7 +1916,7 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
                 "same-group second placement is rejected"
             );
             assert_eq!(
-                game.lan.as_mut().unwrap().hub.guests[0].inventory[0]
+                game.side.lan.as_mut().unwrap().hub.guests[0].inventory[0]
                     .as_ref()
                     .unwrap()
                     .count,

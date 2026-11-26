@@ -1,5 +1,5 @@
 use super::Game;
-use super::level_sounds::LevelSound;
+use super::level_sounds_common::LevelSound;
 use crate::game::copper_golems::RECHECK_TICKS;
 use mod_api::SoundSource;
 use sunrise_core::nbt::{Compound, Tag};

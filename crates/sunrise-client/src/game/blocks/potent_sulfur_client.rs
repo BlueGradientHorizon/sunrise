@@ -56,7 +56,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         // playLocalSound: the seed is the level random's next long; a host's
                         // guests play their own.
                         let seed = self.side.particles.0.level_random().next_long();
-                        if self.remote.is_some() {
+                        if self.side.remote.is_some() {
                             self.side
                                 .audio
                                 .0

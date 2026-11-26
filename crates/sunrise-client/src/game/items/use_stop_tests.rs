@@ -46,7 +46,7 @@ fn guest_action(item: &str, action: u8) -> Vec<String> {
         player.permission = 4;
         player.position = [21.5, 70.0, -8.25];
         player.inventory[0] = Some(ItemStack::new(item, 1));
-        game.lan.as_mut().unwrap().hub.guests.push(player);
+        game.side.lan.as_mut().unwrap().hub.guests.push(player);
         game.as_guest(1, |g| assert!(g.start_using_item()));
         match action {
             0 => game.lan_guest_packet(
@@ -67,7 +67,8 @@ fn guest_action(item: &str, action: u8) -> Vec<String> {
                 assert!(game.player_set_selected_slot(player, 1));
             }
             3 => {
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -207,7 +208,7 @@ fn swap_with_emptied_used_slot_clears_silently() {
         open_to_lan(game);
         let mut player = guest(1);
         player.inventory[0] = Some(ItemStack::new("minecraft:golden_apple", 1));
-        game.lan.as_mut().unwrap().hub.guests.push(player);
+        game.side.lan.as_mut().unwrap().hub.guests.push(player);
         game.as_guest(1, |g| {
             assert!(g.start_using_item());
             *g.held_mut() = None;
@@ -286,7 +287,7 @@ fn nether_portal_stops_use_in_target_level() {
                 let mut player = guest(1);
                 player.position = [8.5, 70.0, 8.5];
                 player.inventory[0] = Some(ItemStack::new("minecraft:golden_apple", 1));
-                game.lan.as_mut().unwrap().hub.guests.push(player);
+                game.side.lan.as_mut().unwrap().hub.guests.push(player);
                 game.as_guest(1, |g| assert!(g.start_using_item())).unwrap();
                 let plan = game.portal_plan(
                     BlockPos::new(8, 70, 8),
@@ -296,7 +297,7 @@ fn nether_portal_stops_use_in_target_level() {
                     false,
                 );
                 game.start_server_trip(1, super::Dim::Nether, Some(plan));
-                let player = &game.lan.as_ref().unwrap().hub.guests[0];
+                let player = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(player.dimension, "minecraft:the_nether");
                 assert_eq!(player.position, [1.5, 70.0, 1.5]);
                 game.enter_level(super::Dim::Nether).unwrap();

@@ -38,7 +38,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         self.item_frames.retain(|f| !intersects(f.bounds(), bounds));
         self.paintings.retain(|p| !intersects(p.bounds(), bounds));
-        let (boat_w, boat_h) = (super::boats::WIDTH, super::boats::HEIGHT);
+        let (boat_w, boat_h) = (
+            crate::game::boats_common::WIDTH,
+            crate::game::boats_common::HEIGHT,
+        );
         let gone: Vec<u32> = self
             .boats
             .iter()

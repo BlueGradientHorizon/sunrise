@@ -4,7 +4,7 @@
 //! which volume and pitch. Nothing plays it otherwise, and nothing of it reaches the player's
 //! level's own sound hooks.
 use super::routing::RouteError;
-use crate::game::{Game, level_sounds::LevelSound, native_hooks::level_sound_playable};
+use crate::game::{Game, level_sounds_common::LevelSound, native_hooks::level_sound_playable};
 use mod_api::{HookId, Identifier, LevelRef, SoundSource};
 use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
@@ -78,7 +78,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let play = match &packet {
             C::Sound(p) => self.ask_viewed_level_sound(level, ViewedSound::at_position(p)),
             C::SoundEntity(p) => {
-                let emitter = self.remote.as_ref().and_then(|r| {
+                let emitter = self.side.remote.as_ref().and_then(|r| {
                     let entity = r.viewed.get(level)?.entities.get(p.id)?;
                     Some(entity.position)
                 });
@@ -155,7 +155,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The handle of viewed level `level` (`host.level`'s for it): its key and the client's epoch.
     fn viewed_level_handle(&self, level: i32) -> Option<LevelRef> {
         let epoch = self.native_lifecycle.epoch()?;
-        let world = self.remote.as_ref()?.viewed.get(level)?;
+        let world = self.side.remote.as_ref()?.viewed.get(level)?;
         Some(LevelRef::new(
             epoch,
             mod_api::__private::dimension_key(&world.level),

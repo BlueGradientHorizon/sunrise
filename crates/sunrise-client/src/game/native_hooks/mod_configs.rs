@@ -1,5 +1,21 @@
 use super::*;
 
+#[inline(always)]
+pub(in crate::game) fn native_register_configs(
+    context: &dyn mod_api::ConfigContext,
+    configs: &mut Vec<mod_api::Config>,
+) {
+    crate::game::native_hooks::fire::fire_register_configs(context, configs);
+}
+
+#[inline(always)]
+pub(in crate::game) fn native_config_loading(
+    context: &dyn mod_api::ConfigContext,
+    config: &mod_api::ConfigFile,
+) {
+    crate::game::native_hooks::fire::fire_config_loading(context, config);
+}
+
 /// The hook points. Each does nothing in Sunrise.
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The config files native mods keep (NeoForge's `registerConfig`):
@@ -11,10 +27,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// time. A file outside `config/`, or one already registered, is skipped.
     /// API 397.
     pub(in crate::game) fn native_register_configs(&mut self, configs: &mut Vec<mod_api::Config>) {
-        crate::game::native_hooks::fire::fire_register_configs(
-            crate::game::Side::as_config_context(self),
-            configs,
-        );
+        native_register_configs(crate::game::Side::as_config_context(self), configs);
     }
     /// A registered config was read (`ModConfigEvent.Loading`): `config`
     /// says whose, which file and its text, which the mod parses (TOML by
@@ -22,10 +35,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// where the config's kind loads (`native_register_configs`), a `Server`
     /// one before `native_server_about_to_start`. API 397.
     pub(in crate::game) fn native_config_loading(&mut self, config: &ConfigFile) {
-        crate::game::native_hooks::fire::fire_config_loading(
-            crate::game::Side::as_config_context(self),
-            config,
-        );
+        native_config_loading(crate::game::Side::as_config_context(self), config);
     }
     /// A loaded config's file changed on disk (`ModConfigEvent.Reloading`):
     /// its new text. The game looks at the files' modification times once a
@@ -34,15 +44,5 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// text. API 397.
     pub(in crate::game) fn native_config_reloading(&mut self, config: &ConfigFile) {
         self.fire_config_reloading(config);
-    }
-}
-
-impl crate::game::ServerGame<'_> {
-    /// A `Server` config is dropped as its server stops
-    /// (`ModConfigEvent.Unloading`), after `native_server_stopping`; the next
-    /// world reads it again. `Client` and `Common` configs stay until the
-    /// game quits. API 397.
-    pub(in crate::game) fn native_config_unloading(&mut self, config: &ConfigFile) {
-        self.fire_config_unloading(config);
     }
 }

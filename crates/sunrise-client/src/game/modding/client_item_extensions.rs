@@ -309,7 +309,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for name in gui.atlas.sprites.keys() {
             let _ = registration.register_texture(name);
         }
-        crate::game::native_hooks::native_register_client_item_extensions(
+        crate::game::client_side::native_hooks_client::register_client_item_extensions::native_register_client_item_extensions(
             &mod_api::RegistrationContext::new(),
             &mut registration,
         );
@@ -710,7 +710,7 @@ mod tests {
                         (generation, 0)
                     );
                 }
-                crate::game::native_hooks::native_register_client_item_extensions(
+                crate::game::client_side::native_hooks_client::register_client_item_extensions::native_register_client_item_extensions(
                     &RegistrationContext::new(),
                     &mut registration,
                 );
@@ -749,7 +749,7 @@ mod tests {
                     }]
                 );
                 let mut next = Registration::new(&|name| name != "missing");
-                crate::game::native_hooks::native_register_client_item_extensions(
+                crate::game::client_side::native_hooks_client::register_client_item_extensions::native_register_client_item_extensions(
                     &RegistrationContext::new(),
                     &mut next,
                 );

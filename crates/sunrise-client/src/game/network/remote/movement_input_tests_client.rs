@@ -8,7 +8,7 @@ pub(in crate::game) fn connect(
 ) -> sunrise_protocol::connection::Pipe {
     let (client, server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(client, "movement-client").unwrap();
-    let remote = game.remote.as_mut().unwrap();
+    let remote = game.side.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.loaded_sent = true;
     remote.entity_id = 42;

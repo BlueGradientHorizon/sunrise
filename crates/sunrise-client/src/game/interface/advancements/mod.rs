@@ -1,12 +1,14 @@
 //! The player's advancements in the game: criteria triggered from game
 //! events (`CriteriaTriggers`), awarding with rewards, the toast and the
 //! chat announcement, and `players/advancements/<uuid>.json`.
-use super::{Dim, Game, chat_common::PLAYER_NAME, lan_actions::DisplacedPlayer, stats::Stats};
+use super::{Dim, Game, chat_common::PLAYER_NAME, stats::Stats};
+use crate::game::server_side::lan_actions_server::DisplacedPlayer;
 pub(in crate::game) mod icons;
 
 #[cfg(test)]
 #[path = "inventory_changed_tests.rs"]
 pub(in crate::game) mod inventory_changed_tests;
+use crate::game::advancements_common::{TagSources, text_of};
 use mod_api::{GameMode, ProgressType};
 use serde_json::Value;
 #[cfg(test)]
@@ -15,7 +17,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
-use sunrise_client::{hud::rgba, toasts::Slide};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
 use sunrise_game_data::text::{self, Style, Text};
@@ -52,215 +53,6 @@ pub(in crate::game::server_side) fn progress_snapshot(
         progress.counts(a).0 as u32,
         progress.done(a),
     )
-}
-
-pub(in crate::game) struct Toast {
-    pub(in crate::game) icon: ItemStack,
-    pub(in crate::game) frame: Frame,
-    pub(in crate::game) title: Text,
-    pub(in crate::game) description: Option<Text>,
-    pub(in crate::game) slide: Slide,
-    /// A `RecipeToast`: the crafting station and result of each display
-    /// unlocked while it lasts (`recipeItems`); empty for an advancement.
-    pub(in crate::game) recipes: Vec<(String, ItemStack)>,
-    /// `RecipeToast.changed` and `lastChanged`.
-    pub(in crate::game) changed: bool,
-    pub(in crate::game) last_changed: i64,
-}
-impl Toast {
-    /// `RecipeToast.addOrUpdate` on a new toast.
-    pub(in crate::game) fn recipe(items: Vec<(String, ItemStack)>) -> Self {
-        Self {
-            icon: ItemStack::new("minecraft:air", 0),
-            frame: Frame::Task,
-            title: Text::translate("recipe.toast.title", &[]),
-            description: Some(Text::translate("recipe.toast.description", &[])),
-            slide: Slide::default(),
-            recipes: items,
-            changed: true,
-            last_changed: 0,
-        }
-    }
-    pub(in crate::game) fn is_recipe(&self) -> bool {
-        !self.recipes.is_empty()
-    }
-    /// `RecipeToast.addItem`: more displays on a toast still queued or shown.
-    pub(in crate::game) fn add_recipes(&mut self, items: Vec<(String, ItemStack)>) {
-        self.recipes.extend(items);
-        self.changed = true;
-    }
-    pub(in crate::game) fn is_challenge(&self) -> bool {
-        !self.is_recipe() && self.frame == Frame::Challenge
-    }
-    pub(in crate::game) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
-        let mut slide = std::mem::take(&mut self.slide);
-        let result = slide.update_now(|fully| self.wants_show(fully, multiplier));
-        self.slide = slide;
-        result
-    }
-    /// `Toast.update` with `fullyVisibleForMs`: whether it wants to be shown.
-    pub(in crate::game::server_side) fn wants_show(
-        &mut self,
-        fully_for: i64,
-        multiplier: f64,
-    ) -> bool {
-        let time = 5000.0 * multiplier;
-        if self.recipes.is_empty() {
-            // AdvancementToast.
-            return (fully_for as f64) < time;
-        }
-        if self.changed {
-            self.last_changed = fully_for;
-            self.changed = false;
-        }
-        ((fully_for - self.last_changed) as f64) < time
-    }
-    /// `RecipeToast.displayedRecipeIndex`: the displays take turns over the
-    /// toast's display time.
-    pub(in crate::game) fn displayed_recipe(&self, fully_for: i64, multiplier: f64) -> usize {
-        let n = self.recipes.len() as f64;
-        (fully_for as f64 / (5000.0 * multiplier / n).max(1.0) % n) as usize
-    }
-}
-/// Where the player's fall, lava ride and Nether trip began, the blast that
-/// last hit the player, and the effects the last tick saw (`ServerPlayer`'s
-/// fields of the same names). A guest keeps their own, as `levitation` does.
-#[derive(Clone, Debug, Default)]
-pub(in crate::game) struct TravelMarks {
-    /// `startingToFallPosition`.
-    pub(in crate::game) fall: Option<[f64; 3]>,
-    /// `currentExplosionImpactPos` and `currentExplosionCause` (the entity
-    /// that made the blast, if any).
-    pub(in crate::game) blast: Option<([f64; 3], Option<EntityView>)>,
-    /// `enteredLavaOnVehiclePosition`.
-    pub(in crate::game) lava_ride: Option<[f64; 3]>,
-    /// `enteredNetherPosition`.
-    pub(in crate::game) nether: Option<[f64; 3]>,
-    /// The (effect, amplifier) pairs `EffectsChangedTrigger` last saw.
-    pub(in crate::game) effects: Vec<(&'static str, i32)>,
-    /// `PlayerEffects::changes` as the last tick saw it.
-    pub(in crate::game) effect_changes: u32,
-}
-#[derive(Default)]
-pub(in crate::game) struct AdvState {
-    pub(in crate::game) tree: Arc<Tree>,
-    pub(in crate::game) remote_tree: Option<RemoteTree>,
-    /// `ClientAdvancements.selectedTab`: the connection remembers the root
-    /// independently of the open screen's tabs and the current tree.
-    pub(in crate::game) selected_tab: Option<String>,
-    pub(in crate::game) progress: Progress,
-    pub(in crate::game) loaded: bool,
-    /// Awards skip the toast (`/advancement grant ... everything`).
-    pub(in crate::game) quiet: bool,
-    /// The inventory last seen by `inventory_changed`.
-    pub(in crate::game) last_inventory: u64,
-    /// `ServerPlayer.levitationStartPos` and `levitationStartTime`.
-    pub(in crate::game) levitation: Option<([f64; 3], u64)>,
-    /// The fall, lava ride, Nether trip, blast and effects `tick_marks` follows.
-    pub(in crate::game) marks: TravelMarks,
-    /// While the game acts for a network player (`as_guest`): the
-    /// advancements whose progress changed (`progressChanged`), the recipes
-    /// unlocked and the announcements, for their client and everyone's.
-    pub(in crate::game) changed: BTreeSet<usize>,
-    pub(in crate::game) unlocked: Vec<String>,
-    pub(in crate::game) announced: Vec<Text>,
-    /// `inventory_changed`'s criteria by item, built for `tree`.
-    pub(in crate::game) inventory_index: Option<(Arc<Tree>, Arc<adv::InventoryIndex>)>,
-}
-impl AdvState {
-    /// Drop the index built for the previous tree after a new one is installed.
-    pub(in crate::game::server_side) fn reset_tree(&mut self) {
-        self.inventory_index = None;
-    }
-}
-/// The packet tree's insertion-time links. The current ID table in `Tree`
-/// can replace a node without replacing the node its parent or children know.
-#[derive(Default)]
-pub(in crate::game) struct RemoteTree {
-    pub(in crate::game) positions: Vec<(f32, f32)>,
-    /// Node identity for each ID in `Tree::list` order.
-    pub(in crate::game) current: Vec<usize>,
-    pub(in crate::game) nodes: Vec<RemoteNode>,
-}
-
-pub(in crate::game) struct RemoteNode {
-    pub(in crate::game) id: String,
-    pub(in crate::game) parent: Option<usize>,
-    pub(in crate::game) children: Vec<usize>,
-    pub(in crate::game) displayed: bool,
-}
-
-impl RemoteTree {
-    /// Root and nearest displayed parent of each current node, resolved by
-    /// ID only after walking the actual insertion-time ancestors.
-    pub(in crate::game) fn widget_links<'a>(
-        &'a self,
-        tree: &'a Tree,
-    ) -> impl Iterator<Item = (Option<usize>, Option<usize>)> + 'a {
-        // Every parent precedes its child in the arena, including after compaction.
-        let mut ancestry: Vec<(usize, Option<usize>)> = Vec::with_capacity(self.nodes.len());
-        for (i, node) in self.nodes.iter().enumerate() {
-            let links = node.parent.map_or((i, None), |parent| {
-                let (root, ancestor) = ancestry[parent];
-                (
-                    root,
-                    if self.nodes[parent].displayed {
-                        Some(parent)
-                    } else {
-                        ancestor
-                    },
-                )
-            });
-            ancestry.push(links);
-        }
-        let current_index = move |i: usize| tree.by_id.get(&self.nodes[i].id).copied();
-        self.current.iter().map(move |&node| {
-            let (root, displayed_parent) = ancestry[node];
-            (
-                current_index(root),
-                displayed_parent.and_then(current_index),
-            )
-        })
-    }
-
-    /// Release identities no current node can reach in either direction.
-    /// A removed or overwritten node remains as long as its links still matter.
-    pub(in crate::game) fn prune_unreachable(&mut self) {
-        if self.nodes.len() == self.current.len() {
-            return;
-        }
-        let mut live = vec![false; self.nodes.len()];
-        let mut stack = self.current.clone();
-        while let Some(i) = stack.pop() {
-            if !std::mem::replace(&mut live[i], true) {
-                stack.extend(self.nodes[i].parent);
-                stack.extend(self.nodes[i].children.iter().copied());
-            }
-        }
-        if live.iter().all(|&yes| yes) {
-            return;
-        }
-        let mut new_indices = vec![0; live.len()];
-        let (mut i, mut next) = (0, 0);
-        self.nodes.retain(|_| {
-            let keep = live[i];
-            if keep {
-                new_indices[i] = next;
-                next += 1;
-            }
-            i += 1;
-            keep
-        });
-        for node in &mut self.nodes {
-            node.parent = node.parent.map(|i| new_indices[i]);
-            for child in &mut node.children {
-                *child = new_indices[*child];
-            }
-        }
-        for node in &mut self.current {
-            *node = new_indices[*node];
-        }
-    }
 }
 
 /// The live parts of a player's entity predicate view, wherever the turn keeps them.
@@ -380,62 +172,6 @@ impl adv::World for View<'_, '_> {
         tags.contains(registry, tag, id)
     }
 }
-/// The tag tables a predicate's `#tag` reads, as borrows of the game's fields.
-#[derive(Clone, Copy)]
-pub(in crate::game) struct TagSources<'a> {
-    /// The world's packs' tags over the game's own, by registry.
-    pub(in crate::game) pack_tags: Option<
-        &'a std::collections::HashMap<
-            &'static str,
-            std::collections::HashMap<String, std::collections::HashSet<String>>,
-        >,
-    >,
-    pub(in crate::game) items: &'a sunrise_items::items::Items,
-    pub(in crate::game) mob_data: &'a sunrise_sim::mobs::MobData,
-    pub(in crate::game) damage: &'a sunrise_world::damage_source::Catalog,
-    pub(in crate::game) resources: &'a std::path::Path,
-}
-impl TagSources<'_> {
-    pub(in crate::game) fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {
-        // The world's packs' tags over the game's own, as the server's
-        // registries bind them (`TagLoader.loadTagsForExistingRegistries`).
-        if let Some(tags) = self.pack_tags.and_then(|t| t.get(registry)) {
-            return tags.get(tag).is_some_and(|t| t.contains(id));
-        }
-        match registry {
-            "item" => self.items.item_in_tag(tag, id),
-            "block" => self.items.block_in_tag(tag, id),
-            "damage_type" => self
-                .damage
-                .id(id)
-                .is_some_and(|source| self.damage.in_tag(source, tag)),
-            "entity_type" => self.items.entity_type_tags.contains(tag, id),
-            "worldgen/biome" => self.mob_data.biome_has(tag, id),
-            "worldgen/structure" => vanilla_structure_tags(self.resources)
-                .get(tag)
-                .is_some_and(|t| t.contains(id)),
-            _ => false,
-        }
-    }
-}
-pub(in crate::game) type Tags =
-    std::collections::HashMap<String, std::collections::HashSet<String>>;
-/// The game's own `worldgen/structure` tags (a world without data packs has
-/// no `WorldTables` to hold them), loaded once for the resource root first
-/// asked for.
-pub(in crate::game::server_side) fn vanilla_structure_tags(
-    root: &std::path::Path,
-) -> &'static Tags {
-    static TAGS: std::sync::OnceLock<Tags> = std::sync::OnceLock::new();
-    TAGS.get_or_init(|| {
-        sunrise_items::items::load_tags(
-            root,
-            "worldgen/structure",
-            &sunrise_world::loot::PackOverlay::NONE,
-        )
-        .unwrap_or_default()
-    })
-}
 pub(in crate::game::server_side) fn now_text() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -534,7 +270,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         index
     }
     pub(in crate::game) fn load_advancements(&mut self) {
-        if self.adv.loaded || self.remote.is_some() || self.no_player_here() {
+        if self.adv.loaded || self.no_player_here() {
             return;
         }
         self.adv.loaded = true;
@@ -562,7 +298,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game::server_side) fn save_advancements(&self) {
         if !self.adv.loaded
-            || self.remote.is_some()
             || self.no_player_here()
             || self.side.crash_save.holds_interrupted(self.side.lan_acting)
         {
@@ -736,7 +471,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         asked: adv::FactsAsked,
     ) -> adv::PlayerFacts {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return adv::PlayerFacts::default();
         };
         let Some(g) = host
@@ -788,7 +523,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         body: &PlayerMotion,
         trigger: &str,
     ) -> Option<EntityView> {
-        let record = self.lan.as_ref()?.hub.guest(frame.record_conn)?;
+        let record = self.side.lan.as_ref()?.hub.guest(frame.record_conn)?;
         // Vehicle and sight queries below use the installed level's entities.
         let here = frame.dimension == self.dim;
         let mut view = self.player_entity_from(PlayerEntityState {
@@ -947,7 +682,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// A boat as the predicates see it: its type, and its passengers (the
     /// mobs seated on it, then the player riding it).
-    pub(in crate::game::server_side) fn boat_entity(&self, b: &super::boats::Boat) -> EntityView {
+    pub(in crate::game::server_side) fn boat_entity(
+        &self,
+        b: &crate::game::boats_common::Boat,
+    ) -> EntityView {
         EntityView {
             kind: b.entity_type(),
             position: [b.position.x, b.position.y, b.position.z],
@@ -1034,7 +772,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let movement = (m.extra.mount.is_none()
             && m.rider.is_none()
             && self.riding != Some(m.id)
-            && self.lan.as_ref().is_none_or(|host| {
+            && self.side.lan.as_ref().is_none_or(|host| {
                 host.hub
                     .guests
                     .iter()
@@ -1081,7 +819,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         name: &str,
         test: impl Fn(&Value, &dyn adv::World) -> bool,
     ) {
-        if self.side.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
+        if self.side.lan_acting_fake || self.no_player_here() {
             return;
         }
         self.load_advancements();
@@ -1172,7 +910,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ) -> R,
     ) -> Option<R> {
         use sunrise_sim::lan::hub::advancements::{AdvancementOwners, AdvancementState};
-        let host = self.lan.as_mut()?;
+        let host = self.side.lan.as_mut()?;
         let mut owners = AdvancementOwners::active(
             &self.side.lan_guest_swaps,
             AdvancementState {
@@ -1188,7 +926,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Grant the hub's tick criteria one at a time: each hook sees the new
     /// progress before the completion's rewards and packets are applied.
     pub(in crate::game) fn run_native_advancement_grants(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let tasks = std::mem::take(&mut host.hub.native_advancement_grants);
@@ -1307,7 +1045,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !allowed.is_empty() {
             self.invalidate_mod_book_placement_knowledge();
         }
-        if allowed.is_empty() || self.remote.is_some() || self.no_player_here() {
+        if allowed.is_empty() || self.no_player_here() {
             return taken_back;
         }
         self.load_advancements();
@@ -1424,13 +1162,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 None => {
                     let text = Text::translate(key, &[self.player_display_text(), name]);
                     // The guests hear of the host's advancement too.
-                    if let Some(host) = &self.lan {
+                    if let Some(host) = &self.side.lan {
                         host.hub
                             .system_message(sunrise_sim::lan::data::component_nbt(
                                 &text.component(),
                             ));
                     }
-                    if self.lan.is_none() {
+                    if self.side.lan.is_none() {
                         self.server_system_message(text);
                     }
                 }
@@ -1486,7 +1224,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     (at, pitch)
                 }) {
                     self.send_level_sound(
-                        crate::game::level_sounds::LevelSound::new(
+                        crate::game::level_sounds_common::LevelSound::new(
                             "minecraft:entity.item.pickup",
                             at,
                             0.2,
@@ -1530,8 +1268,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Native mods hear the change before any criterion is looked at, so
         // they do with no `inventory_changed` advancement in the tree too
         // (`native_player_inventory_changed`, API 579).
-        if self.remote.is_none()
-            && !self.no_player_here()
+        if !self.no_player_here()
             && mod_api::__private::listened(mod_api::HookId::PlayerInventoryChanged)
         {
             let stacks = inventory_slots(&self.inventory, &self.armor, &self.offhand);
@@ -1566,7 +1303,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .count() as f64;
         // Only the criteria the items held could pass (`InventoryIndex`).
-        if self.remote.is_some() || self.no_player_here() {
+        if self.no_player_here() {
             return;
         }
         self.load_advancements();
@@ -1626,7 +1363,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Criteria on the level path (`ServerPlayer.tick`).
     pub(in crate::game::server_side) fn tick_level_advancements(&mut self) {
-        if self.player.is_none() || self.remote.is_some() {
+        if self.player.is_none() {
             return;
         }
         self.check_inventory_trigger();
@@ -1959,7 +1696,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `durability` tests `maxDamage - newDamage`, `delta` tests
     /// `damageValue - newDamage`.
     pub(in crate::game) fn trigger_item_durability(&mut self, stack: &ItemStack, new_damage: i32) {
-        if self.remote.is_some() || self.no_player_here() {
+        if self.no_player_here() {
             return;
         }
         let me = self.player_entity_for("minecraft:item_durability_changed");
@@ -1996,7 +1733,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// `ServerPlayer.updateUsingItem`: USING_ITEM for the item in use.
     pub(in crate::game::server_side) fn trigger_using_item(&mut self, stack: &ItemStack) {
-        if self.remote.is_some() || self.no_player_here() {
+        if self.no_player_here() {
             return;
         }
         let me = self.player_entity_for("minecraft:using_item");
@@ -2016,7 +1753,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `UsedEnderEyeTrigger.trigger`: the player threw an eye of ender toward
     /// a structure `sqr_distance` (squared, horizontal) away.
     pub(in crate::game::server_side) fn trigger_used_ender_eye(&mut self, sqr_distance: f64) {
-        if self.remote.is_some() || self.no_player_here() {
+        if self.no_player_here() {
             return;
         }
         let me = self.player_entity_for("minecraft:used_ender_eye");
@@ -2729,15 +2466,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
     }
 }
-/// The toast's frame label and its colour (`AdvancementToast`: -30465, pink,
-/// for a challenge, else -256, yellow), packed as `hud::rgba` for the batch.
-pub(in crate::game) fn toast_label(frame: Frame) -> (&'static str, u32) {
-    match frame {
-        Frame::Task => ("advancements.toast.task", rgba(255, 255, 0, 255)),
-        Frame::Goal => ("advancements.toast.goal", rgba(255, 255, 0, 255)),
-        Frame::Challenge => ("advancements.toast.challenge", rgba(255, 136, 255, 255)),
-    }
-}
 /// `Advancement.name`: the bracketed title in the frame's colour, with the
 /// description on hover; the id when there is no display.
 pub(in crate::game) fn adv_name(a: &adv::Advancement) -> Text {
@@ -2850,15 +2578,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         revoked
     }
 }
-/// An advancement's title or description: a whole component (ComponentSerialization.CODEC),
-/// with its siblings and styles, as a plugin's `{"text":"","extra":[...]}` needs.
-pub(in crate::game) fn text_of(v: &Value) -> Text {
-    sunrise_game_data::scoreboard::comp_text(v)
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use crate::game::client_side::advancement_toast::{Toast, toast_label};
+    use sunrise_client::toasts::Slide;
 
     #[test]
     #[ignore = "daily"]
@@ -2929,6 +2653,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3013,6 +2738,7 @@ pub(in crate::game) mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -3394,6 +3120,7 @@ pub(in crate::game) mod structure_tag_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         let set = |s: &str| json!(s);
@@ -3499,6 +3226,7 @@ pub(in crate::game) mod random_chance_command_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

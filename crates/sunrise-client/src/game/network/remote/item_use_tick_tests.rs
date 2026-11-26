@@ -67,20 +67,20 @@ fn client_tick_cancellation_skips_one_tick_and_countdown_continues() {
                 game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 2));
                 game.using = Some((game.selected, 0));
                 game.use_duration = 32;
-                game.use_start = crate::game::using_item::UseStart::of(
+                game.use_start = crate::game::item_use_common::UseStart::of(
                     game.inventory[game.selected].clone().unwrap(),
                 );
                 game.set_mapping_held("key.use", true);
                 game.remote_tick_using();
                 assert_eq!(game.using, Some((game.selected, 1)));
                 assert_eq!(
-                    crate::game::item_use::ticks_left(game.use_duration, 1),
+                    crate::game::item_use_common::ticks_left(game.use_duration, 1),
                     after_first
                 );
                 game.remote_tick_using();
                 assert_eq!(game.using, Some((game.selected, 2)));
                 assert_eq!(
-                    crate::game::item_use::ticks_left(game.use_duration, 2),
+                    crate::game::item_use_common::ticks_left(game.use_duration, 2),
                     after_second
                 );
                 assert_eq!(*heard.lock().unwrap(), [32, after_first]);

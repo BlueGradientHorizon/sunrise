@@ -160,7 +160,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
             let mut count = 0;
             let mut next_range: f64 = 0.0;
-            if let Some(host) = &mut self.lan {
+            if let Some(host) = &mut self.side.lan {
                 let menus = &host.menus;
                 host.hub.guests.update_all(|g| {
                     if g.placed_in(dim)

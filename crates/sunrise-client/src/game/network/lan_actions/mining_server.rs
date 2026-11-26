@@ -4,7 +4,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerPlayerGameMode.tick's delayed destroy: the block breaks once its progress since
     /// the digging started is complete, unless something else removed it first.
     pub(in crate::game) fn guest_delayed_destroy(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some((pos, start)) = host.play.get(&conn).and_then(|p| p.delayed) else {
@@ -21,7 +21,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match progress {
             Some(p) if p < 1.0 => {}
             done => {
-                if let Some(play) = self.lan.as_mut().and_then(|host| host.play.get_mut(&conn)) {
+                if let Some(play) = self
+                    .side
+                    .lan
+                    .as_mut()
+                    .and_then(|host| host.play.get_mut(&conn))
+                {
                     play.delayed = None;
                 }
                 if done.is_some() {
@@ -52,7 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// ServerPlayerGameMode.incrementDestroyProgress, including the first hit.
     pub(in crate::game) fn guest_dig_feedback(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(play) = host.play.get_mut(&conn) else {
@@ -94,7 +99,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// alone and breaks it when done (`guest_delayed_destroy`), so the client's broken block is
     /// never left standing on the server.
     pub(in crate::game::server_side) fn guest_stop_digging(&mut self, conn: u32, pos: [i32; 3]) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let ticks = host.hub.ticks;
@@ -113,7 +118,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             0.0
         };
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let decision = {

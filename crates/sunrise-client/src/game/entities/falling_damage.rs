@@ -56,7 +56,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     );
                     let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     self.mobs[index].damage(
-                        crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
+                        crate::game::server_side::entity_server::damage_level_of!(
+                            self,
+                            &attack,
+                            &mut credit,
+                            None
+                        ),
                         impact.amount,
                         source,
                     );
@@ -75,7 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let bounds = block.bounds();
                 self.falling_hurt_player(block.id, block.position, bounds, impact.amount, kind);
-                if let Some(host) = self.lan.as_ref() {
+                if let Some(host) = self.side.lan.as_ref() {
                     let conns = host
                         .hub
                         .guests
@@ -217,7 +222,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // show the block for a moment, after the block update.
         if let Landing::Placed(state) = landing
             && block.id != 0
-            && let Some(host) = &self.lan
+            && let Some(host) = &self.side.lan
         {
             host.hub.send_to_tracking(
                 block.id as i32,

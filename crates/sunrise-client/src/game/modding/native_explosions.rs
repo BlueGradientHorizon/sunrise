@@ -49,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<(u32, Target)> {
         let target = self.native_entity_target(entity)?;
         if let Target::Guest(conn) = target {
-            let hub = &self.lan.as_ref()?.hub;
+            let hub = &self.side.lan.as_ref()?.hub;
             hub.guest(conn).filter(|g| hub.here(g))?;
         }
         Some((entity.id(), target))

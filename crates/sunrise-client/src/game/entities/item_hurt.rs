@@ -23,7 +23,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(Target::Player) => self.own_entity_id(),
             Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
             Some(target) => {
-                crate::game::native_entities::target_id(target).map_or(0, |id| id as i32)
+                crate::game::commands_common::target_id(target).map_or(0, |id| id as i32)
             }
             None => 0,
         };
@@ -96,16 +96,20 @@ impl Game<'_, crate::game::server_side::ServerState> {
             kind,
             self.creative_source_of(causing),
         );
-        if crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
-            .invulnerability_check(
-                sunrise_sim::health::Hurting::Entity(id as i32, "minecraft:item", source),
-                vanilla,
-            )
-            || !self
-                .ui
-                .rules
-                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
-                && matches!(causing, Some(Target::Mob(_)))
+        if crate::game::server_side::entity_server::damage_level_of!(
+            self,
+            self.side.combat.0.attack(),
+            no_push,
+            None
+        )
+        .invulnerability_check(
+            sunrise_sim::health::Hurting::Entity(id as i32, "minecraft:item", source),
+            vanilla,
+        ) || !self
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
+            && matches!(causing, Some(Target::Mob(_)))
         {
             return None;
         }

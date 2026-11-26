@@ -5,6 +5,7 @@
 #[cfg(feature = "client")]
 use super::native_mob_draw::PlayerRender;
 use super::{Game, Screen};
+use crate::game::{collider_rays::ColliderRays, ray_shapes::ray_shape_from_boxes};
 use mod_api::Hand;
 use std::{
     io,
@@ -13,7 +14,7 @@ use std::{
 };
 use sunrise_client::{hud::HudBatch, mobs::render::FrameDraw, mouse::Rotation};
 use sunrise_core::{
-    geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
+    geometry::{Aabb, Vec3, VoxelShape},
     position::BlockPos,
 };
 use sunrise_items::blocks::BlockFacts;
@@ -31,39 +32,11 @@ use sunrise_world::{
     world_ray::{RayBlockMode, RayFluidMode, RayWorld, clip_world},
 };
 
-pub(in crate::game) fn ray_shape_from_boxes(boxes: &[[f64; 6]]) -> io::Result<VoxelShape> {
-    let mut shape = VoxelShape::empty();
-    for b in boxes {
-        let part = VoxelShape::from_box(Aabb::new(
-            Vec3::new(b[0], b[1], b[2]),
-            Vec3::new(b[3], b[4], b[5]),
-        ))
-        .map_err(|e| io::Error::other(format!("{e:?}")))?;
-        shape = shape
-            .join(&part, ShapeOp::OR)
-            .map_err(|e| io::Error::other(format!("{e:?}")))?;
-    }
-    Ok(shape)
-}
-
-pub(in crate::game) fn ray_interaction_shape(
-    registry: &sunrise_world::registry::BlockRegistry,
-    state: BlockStateId,
-) -> io::Result<VoxelShape> {
-    let state = registry
-        .state(state)
-        .ok_or_else(|| io::Error::other("unknown block state"))?;
-    ray_shape_from_boxes(&super::interaction_shapes::boxes(
-        &state.name,
-        state.properties.get("facing").map(String::as_str),
-    ))
-}
-
 /// `Level.clip` with `ClipContext.Block.VISUAL` and no fluids:
 /// `BlockBehaviour.getVisualShape` is the collision shape except for the
 /// blocks that override it.
 pub(in crate::game) struct VisualRays<'a, 'r> {
-    pub(in crate::game) inner: super::explosion::ColliderRays<'a, 'r>,
+    pub(in crate::game) inner: ColliderRays<'a, 'r>,
     pub(in crate::game) facts: &'a BlockFacts,
 }
 impl RayWorld for VisualRays<'_, '_> {
@@ -337,7 +310,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             false,
         );
         let mut rays = VisualRays {
-            inner: super::explosion::ColliderRays {
+            inner: ColliderRays {
                 scene: SceneCollisions {
                     world: &self.world,
                     binding: self.collision,
@@ -535,6 +508,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let ridden = self.ridden_body();
         // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID come from the server.
         let stuck = self
+            .side
             .remote
             .as_ref()
             .map_or((0, 0), |r| (r.own_arrows, r.own_stingers));
@@ -635,6 +609,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         m.extra.auto_spin_attack = spinning;
         (m.extra.stuck.arrows, m.extra.stuck.stingers) = stuck;
         m.extra.shoulder_parrots = self
+            .side
             .remote
             .as_ref()
             .map_or([None, None], |r| r.own_shoulders);
@@ -754,7 +729,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn own_team(
         &self,
     ) -> Option<&sunrise_game_data::scoreboard::Team> {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .and_then(|r| self.score.board.players_team(&r.profile_name))
     }
@@ -762,7 +738,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn own_invisible(&self) -> bool {
         own_invisible(
             &self.potions.effects,
-            self.remote.as_ref().is_some_and(|r| r.own_invisible),
+            self.side.remote.as_ref().is_some_and(|r| r.own_invisible),
         )
     }
     /// Whether the player's own body is drawn (`body_visible`).

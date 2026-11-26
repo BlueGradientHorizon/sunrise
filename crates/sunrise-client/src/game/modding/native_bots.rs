@@ -85,7 +85,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let sprinting = sprints(&input) && !body.item_use_slows_sprint;
         let mut side = game_side!(self);
         if let Some(conn) = unswapped {
-            let guest = self.lan.as_ref()?.hub.guest(conn)?;
+            let guest = self.side.lan.as_ref()?.hub.guest(conn)?;
             side.player_equipment = acting_equipment!(guest);
         }
         MotionWorld {
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.side.lan_acting.is_some() {
             return None;
         }
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let g = host.hub.guests.iter().find(|g| {
             g.placed
                 && !g.dead
@@ -270,7 +270,7 @@ mod tests {
             ));
             guest.offhand = Some(ItemStack::new("minecraft:bow", 1));
             let uuid = guest.uuid;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let player = game.player(uuid).unwrap();
 
             let run = |game: &mut crate::game::ServerGame<'_>| {
@@ -286,7 +286,8 @@ mod tests {
             assert!(using.position[2] > 1.5 && using.position[2] < free.position[2]);
 
             game.as_guest(1, |game| game.using = None).unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -302,7 +303,8 @@ mod tests {
                 game.player_simulate_move(player, jump).unwrap()
             };
             let fall = jump(game);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -313,7 +315,7 @@ mod tests {
             let glide = jump(game);
             assert_eq!(fall.velocity[2], 0.0);
             assert!(glide.velocity[2] > 0.0 && glide.velocity[1] > fall.velocity[1]);
-            let live = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let live = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert!(!live.motion.as_ref().unwrap().fall_flying);
         });
     }
@@ -362,7 +364,7 @@ mod tests {
                     body.entity_id = guest.entity_id;
                     guest.motion = Some(Box::new(body));
                     let uuid = guest.uuid;
-                    game.lan.as_mut().unwrap().hub.guests.push(guest);
+                    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
                     let player = game.player(uuid).unwrap();
                     game.damage_hooks = DamageHooks {
                         post: Some(|_, _, _| HITS.with(|hits| hits.set(hits.get() + 1))),
@@ -379,7 +381,8 @@ mod tests {
 
                     let mut boots = ItemStack::new("minecraft:leather_boots", 1);
                     boots.enchant("minecraft:frost_walker", 1);
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub

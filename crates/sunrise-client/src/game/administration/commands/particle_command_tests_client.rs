@@ -52,7 +52,7 @@ pub(in crate::game) fn drawn(
     assert_eq!(made.len(), 1, "{command}");
     let queued = made.remove(0);
     if let ServerParticleData::Mod { name, options } = &queued.particle.data {
-        return crate::game::lan_particles::decode_mod_particle(name, options)
+        return crate::game::lan_particle_data::decode_mod_particle(name, options)
             .expect("mod particle decodes");
     }
     let ty = queued.particle.ty;

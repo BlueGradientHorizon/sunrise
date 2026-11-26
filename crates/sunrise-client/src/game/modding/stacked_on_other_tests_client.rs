@@ -103,7 +103,8 @@ pub(in crate::game) mod item_part_tests {
 
                 // Server reconciliation stays authoritative over client prediction.
                 let item_id = |game: &crate::game::ClientGame<'_>, name: &str| {
-                    game.remote
+                    game.side
+                        .remote
                         .as_ref()
                         .unwrap()
                         .builtin
@@ -165,7 +166,7 @@ pub(in crate::game) mod item_part_tests {
 
                 // 2b. Multi-gesture batch on a remote inventory carries predicted `craft_result`
                 //     from gesture 1 to gesture 2 so gesture 2 does not see a cleared result.
-                game.remote.as_mut().unwrap().craft_result =
+                game.side.remote.as_mut().unwrap().craft_result =
                     Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
@@ -192,7 +193,7 @@ pub(in crate::game) mod item_part_tests {
                     None,
                     "second gesture in remote batch must observe updated craft_result"
                 );
-                assert_eq!(game.remote.as_ref().unwrap().craft_result, None);
+                assert_eq!(game.side.remote.as_ref().unwrap().craft_result, None);
                 let _ = drain_packets(&mut reader);
 
                 // 3. Creative Survival Inventory tab pickup runs ItemPart on HostSide::Client and

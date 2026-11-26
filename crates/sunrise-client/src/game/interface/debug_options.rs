@@ -680,6 +680,10 @@ pub(in crate::game) mod tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.side.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
@@ -698,7 +702,9 @@ pub(in crate::game) mod tests {
         let mut resources = None;
         let mut game = title_game(&mut resources);
         assert!(
-            game.player.is_none() && game.side.renderer.0.is_none() && game.integrated.is_none()
+            game.player.is_none()
+                && game.side.renderer.0.is_none()
+                && game.side.integrated.is_none()
         );
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
@@ -771,7 +777,9 @@ pub(in crate::game) mod tests {
             "the level-less options retain the panorama"
         );
         assert!(
-            game.player.is_none() && game.side.renderer.0.is_none() && game.integrated.is_none()
+            game.player.is_none()
+                && game.side.renderer.0.is_none()
+                && game.side.integrated.is_none()
         );
         let frame = game.hud([1280, 720]);
         assert!(

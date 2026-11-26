@@ -63,7 +63,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Screen::Chat | Screen::CommandBlock => {
                 let measure = Measure(&self.side.gui.atlas.font);
                 let commands = Commands {
-                    dispatcher: super::chat::chat_tree(&self.remote),
+                    dispatcher: super::chat::chat_tree(&self.side.remote),
                     registries: &self.ui.registries,
                 };
                 let screen = if self.side.screen == Screen::Chat {
@@ -255,7 +255,7 @@ mod tests {
                 game.side.chat_ui.chat_screen = Some(ChatScreen::new(
                     &Measure(&game.side.gui.atlas.font),
                     &Commands {
-                        dispatcher: super::super::chat::chat_tree(&game.remote),
+                        dispatcher: super::super::chat::chat_tree(&game.side.remote),
                         registries: &game.ui.registries,
                     },
                     "",

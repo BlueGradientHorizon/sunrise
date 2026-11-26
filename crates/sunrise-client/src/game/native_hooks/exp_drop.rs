@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::spill::BlockDropEntity;
+use crate::game::spill_common::BlockDropEntity;
 impl GameLevel<'_> {
     pub(in crate::game) fn native_exp_drop(&self, call: super::fire::ExpDropCall<'_>) {
         self.fire_exp_drop(call);
@@ -13,7 +13,7 @@ impl GameLevel<'_> {
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
-        block_entity: crate::game::spill::BlockDropEntity<'_>,
+        block_entity: BlockDropEntity<'_>,
     ) -> Option<u32> {
         if !self.native_authoritative
             || !crate::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
@@ -45,7 +45,7 @@ impl GameLevel<'_> {
         &self,
         pos: BlockPos,
         breaker: Option<u128>,
-        entity: crate::game::spill::BlockDropEntity<'_>,
+        entity: BlockDropEntity<'_>,
     ) -> (Option<mod_api::BlockEntityRef>, Option<mod_api::EntityRef>) {
         let at = [pos.x, pos.y, pos.z];
         let block_entity = match entity {
@@ -70,8 +70,9 @@ impl GameLevel<'_> {
     }
 }
 
-/// A player's break, before the removal: the block entity (for what the drops copy from it),
-/// and for the `block_drops` event its saved data with the `CustomName`, which the removal
-/// clears from the level.
-pub(in crate::game) type LiveBlockEntity =
-    (sunrise_level::containers::BlockEntity, Option<Compound>);
+impl GameLevel<'_> {
+    /// Capture the resident block entity's generation at `pos`, if one currently exists.
+    pub(in crate::game) fn resident_block_entity(&self, pos: BlockPos) -> BlockDropEntity<'static> {
+        BlockDropEntity::at(self.world, (pos.x, pos.y, pos.z), None)
+    }
+}

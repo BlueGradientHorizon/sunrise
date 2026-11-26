@@ -1,66 +1,10 @@
 //! Evoker fangs (`EvokerFangs`): rising out of the floor after a delay,
 //! biting what stands on them for 6 damage, sinking back after 22 ticks.
 use super::Game;
+use crate::game::fangs_common::{Fangs, fang_attack_pitch};
 use sunrise_core::geometry::Vec3;
-use sunrise_core::random::{LegacyRandom, RandomSource};
 use sunrise_sim::mobs::Species;
 
-#[derive(Clone, Debug)]
-pub(in crate::game) struct Fangs {
-    /// Entity-owned registration metadata; content clones are detached.
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
-    pub id: u32,
-    pub pos: [f64; 3],
-    /// `getDeltaMovement`: nothing moves the fangs by it, but a fluid's
-    /// current changes it and the save writes it.
-    pub motion: Vec3,
-    pub yaw: f32,
-    pub warmup: i32,
-    pub life: i32,
-    pub owner: u32,
-    pub started: bool,
-    /// `Entity.remainingFireTicks`, counted down by `baseTick`.
-    pub fire_ticks: i32,
-    /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
-    pub synced_fire: bool,
-    /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
-    pub has_visual_fire: bool,
-    /// `Entity.random`. The attack sound's pitch is its first draw.
-    pub(in crate::game) random: LegacyRandom,
-}
-
-sunrise_sim::impl_joined!(Fangs);
-sunrise_mod_runtime::impl_attachment_lifetime!(Fangs);
-
-/// `EvokerFangs.handleEntityEvent`: `nextFloat() * 0.2 + 0.85`.
-pub(in crate::game) fn fang_attack_pitch(random: &mut impl RandomSource) -> f32 {
-    random.next_float() * 0.2 + 0.85
-}
-/// One of the twelve `crit` particles `EvokerFangs.tick` spawns on a client
-/// when `lifeTicks` hits 14. The box is 0.5 wide (`getBbWidth() * 0.5`).
-pub(in crate::game) fn fang_crit(
-    random: &mut impl RandomSource,
-    pos: [f64; 3],
-) -> ([f64; 3], [f64; 3]) {
-    let half = 0.5 * 0.5;
-    let x = pos[0] + (random.next_double() * 2.0 - 1.0) * half;
-    let y = pos[1] + 0.05 + random.next_double();
-    let z = pos[2] + (random.next_double() * 2.0 - 1.0) * half;
-    let xd = (random.next_double() * 2.0 - 1.0) * 0.3;
-    let yd = 0.3 + random.next_double() * 0.3;
-    let zd = (random.next_double() * 2.0 - 1.0) * 0.3;
-    ([x, y + 1.0, z], [xd, yd, zd])
-}
-#[derive(Default)]
-pub(in crate::game) struct FangState {
-    pub list: sunrise_sim::join_seq::ResidentList<Fangs>,
-}
-impl FangState {
-    pub(in crate::game) fn perf_count(&self) -> usize {
-        self.list.len()
-    }
-}
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
         self.side.next_entity += 1;
@@ -103,7 +47,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let through = self.side.ticked_entities_through;
         let mut list = self.fangs.list.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         list.retain_mut(|f| {
             if f.id > through || !ticking(f.pos[0].floor() as i32, f.pos[2].floor() as i32) {
                 return true;
@@ -247,12 +191,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             // The hit's causing entity, lent to its listeners beside the victim.
             let causing = self.causer_id(attacker);
-            let decision = crate::game::entity::causer_decision!(self, causing);
+            let decision = crate::game::entity_server::causer_decision!(self, causing);
             let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
             let (victim, lend) =
-                crate::game::entity::victim_and_causer!(self, index, causing, decision);
+                crate::game::entity_server::victim_and_causer!(self, index, causing, decision);
             let hurt = victim.damage(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
+                crate::game::entity_server::damage_level_of!(self, &attack, &mut credit, lend),
                 6.0,
                 sunrise_sim::mobs::Damage {
                     kind: if owner.is_some() {
@@ -320,7 +264,9 @@ pub(in crate::game) mod current_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::{Party, fang_attack_pitch, fang_crit, fangs_allied};
+    use super::{Party, fangs_allied};
+    use crate::game::client_side::fangs_client::fang_crit;
+    use crate::game::fangs_common::fang_attack_pitch;
     use sunrise_core::random::LegacyRandom;
 
     #[test]
@@ -333,7 +279,7 @@ pub(in crate::game) mod tests {
             let first = game.fangs.list[0].id;
             let second = game.fangs.list[1].id;
             let next = game.side.next_entity;
-            super::super::entity::taken_pass_tests::with_spawn(
+            crate::game::server_side::entity_server::taken_pass_tests::with_spawn(
                 |game| {
                     assert!(game.fangs.list.is_empty());
                     game.add_fangs([2.0, 80.0, 0.0], 0.0, 40, 0);

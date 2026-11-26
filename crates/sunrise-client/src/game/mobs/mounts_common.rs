@@ -1,11 +1,55 @@
 //! Role-neutral mount helpers shared by server riding, client HUD/guide, and remote vehicles.
 use super::Game;
-use crate::game::server_side::mounts::{seat_of, turned};
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::{
     mobs::{Species, equine},
     sprint::Keys,
 };
+
+pub(in crate::game) fn steering_item(
+    species: Species,
+    main: Option<&str>,
+    offhand: Option<&str>,
+) -> bool {
+    let item = match species {
+        Species::Pig => "minecraft:carrot_on_a_stick",
+        Species::Strider => "minecraft:warped_fungus_on_a_stick",
+        _ => return false,
+    };
+    main == Some(item) || offhand == Some(item)
+}
+
+#[derive(Default)]
+pub(in crate::game) struct MountState {
+    /// `jumpRidingTicks`: -10 cooling down after a jump, >= 0 charging.
+    pub(in crate::game) jump_ticks: i32,
+    /// `jumpRidingScale` (0..1).
+    pub(in crate::game) jump_scale: f32,
+    pub(in crate::game) was_jumping: bool,
+}
+impl MountState {
+    pub(in crate::game) fn reset_jump(&mut self) {
+        self.jump_ticks = 0;
+        self.jump_scale = 0.0;
+    }
+}
+/// `EntityAttachments.transformPoint`: `Vec3.yRot(-yRot * (float) (Math.PI / 180.0))`,
+/// an attachment point turned with the vehicle.
+pub(in crate::game) fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
+    Vec3::new(a[0], a[1], a[2]).rotate_y(-yaw * (std::f64::consts::PI / 180.0) as f32)
+}
+
+/// `Entity.getPassengerRidingPosition` for a player on `m`: the vehicle's
+/// attachment point, turned with it, less the player's own vehicle attachment
+/// (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`, a `Vec3(0.0, 0.6, 0.0)` of doubles).
+pub(in crate::game) fn seat_of(m: &sunrise_sim::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
+    let at = turned(attachment, m.yaw);
+    Vec3::new(
+        m.position.x + at.x,
+        m.position.y + at.y - 0.6,
+        m.position.z + at.z,
+    )
+}
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn mount_index(&self) -> Option<usize> {
@@ -16,19 +60,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `PlayerRideableJumping`: horses, camels and nautili (the dash).
     pub(in crate::game) fn jumps(species: Species) -> bool {
         equine::is_equine(species) || sunrise_sim::mobs::nautilus::is_nautilus(species)
-    }
-
-    /// `LocalPlayer.jumpableVehicle`: controlled vehicle when it can jump now.
-    pub(in crate::game) fn jumpable_mount(&self) -> Option<u32> {
-        if !self.remote.as_ref().is_some_and(|r| r.first_passenger) {
-            return None;
-        }
-        let mount = &self.mobs[self.mount_index()?];
-        let can_jump = Self::jumps(mount.species())
-            && mount.extra.saddled()
-            && !(matches!(mount.species(), Species::Camel | Species::CamelHusk)
-                && sunrise_sim::mobs::camel::refuse_to_move(mount));
-        can_jump.then_some(mount.id)
     }
 
     pub(in crate::game) fn charge_mount_jump(&mut self, i: usize, keys: Keys) -> f32 {

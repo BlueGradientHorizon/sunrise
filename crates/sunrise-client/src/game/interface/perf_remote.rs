@@ -1,7 +1,6 @@
 //! A guest's `sunrise:perf` requests (docs/perf-platform.md §4.2): who may profile this server, the one capture at a time, and the log lines about it.
 use super::Game;
-use super::integrated::capture::{Live, Target};
-use super::profile_capture_server::{reports_dir, shown};
+use crate::game::profile_capture_common::{Live, Target, reports_dir, shown};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -72,7 +71,7 @@ fn window(wanted: &Wanted) -> String {
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A `sunrise:perf` payload from `conn`.
     pub(in crate::game::server_side) fn guest_perf(&mut self, conn: u32, data: &[u8]) {
-        let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let name = guest.name.clone();
@@ -112,7 +111,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Sends `reply` to the guest on `conn`, if it is still here.
     pub(in crate::game::server_side) fn perf_reply(&self, conn: u32, reply: &Reply) {
-        if let Some(guest) = self.lan.as_ref().and_then(|h| h.hub.guest(conn)) {
+        if let Some(guest) = self.side.lan.as_ref().and_then(|h| h.hub.guest(conn)) {
             guest.send(&payload(reply));
         }
     }
@@ -124,6 +123,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(r) = served.requester.as_mut()
             && !r.left
             && self
+                .side
                 .lan
                 .as_ref()
                 .is_some_and(|h| h.hub.guest(r.conn).is_none())
@@ -228,7 +228,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let now = Instant::now();
         let mut sending = std::mem::take(&mut self.side.profile.served.sending);
         sending.retain_mut(|s| {
-            let Some(guest) = self.lan.as_ref().and_then(|h| h.hub.guest(s.conn)) else {
+            let Some(guest) = self.side.lan.as_ref().and_then(|h| h.hub.guest(s.conn)) else {
                 return false;
             };
             let queued = guest.sender.pending.load(Ordering::Relaxed);

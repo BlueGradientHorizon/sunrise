@@ -1,5 +1,6 @@
 // `client_block_changed` through the real client: server updates, batched section updates,
 // predictions and their reconciliation each tell a changed block once, after the write.
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::remote::*;
 use mod_api::{ClientBlockChangedEvent, ClientHost};
@@ -72,7 +73,7 @@ fn with_client(name: &str, test: impl FnOnce(&mut crate::game::ClientGame<'_>, B
                 RemoteDimensionEntry::Login,
                 sunrise_client::level_loading::Reason::Other,
             );
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

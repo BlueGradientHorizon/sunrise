@@ -1,5 +1,10 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
-use super::{session::RemoteOpening, *};
+use super::opening::RemoteOpening;
+#[cfg(test)]
+use super::{C, Game, Received, play};
+#[cfg(test)]
+use std::time::{Duration, Instant};
+use sunrise_client_lib::net::Event;
 
 pub(in crate::game) fn local_transfer_notice() -> Event {
     Event::Disconnected {
@@ -24,11 +29,12 @@ pub(in crate::game) struct ListenerTurn {
     pub(in crate::game) packet_error: bool,
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+#[cfg(test)]
+impl Game<'_, crate::game::client_side::ClientState> {
     #[cfg(test)]
     pub(in crate::game) fn wait_for_test_remote_event(&mut self, until: impl Fn(&Event) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
-        let remote = self.remote.as_mut().unwrap();
+        let remote = self.side.remote.as_mut().unwrap();
         let mut backlog = std::mem::take(&mut remote.backlog);
         loop {
             remote.receive_credited_backlog(&mut backlog);
@@ -118,7 +124,13 @@ pub(in crate::game) mod tests {
         with_client_game(|game| {
             let (_reader, _writer) = connect_play_test(game, |_, _| {});
             spawn_menu_test(game);
-            let publisher = game.remote.as_ref().unwrap().session.received_event_probe();
+            let publisher = game
+                .side
+                .remote
+                .as_ref()
+                .unwrap()
+                .session
+                .received_event_probe();
             let publish = move |packet| publisher(Event::Packet(Box::new(packet)));
             game.spawn_entity(20, "minecraft:pig", [2.0, 64.0, 0.0], [0.0; 3]);
             let entity = game.entity(20).unwrap();
@@ -185,7 +197,8 @@ pub(in crate::game) mod tests {
             let (_reader, mut writer) = connect_play_test(game, |_, _| {});
             spawn_menu_test(game);
             let recorded = Arc::new(Mutex::new(Vec::new()));
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .session
@@ -207,7 +220,7 @@ pub(in crate::game) mod tests {
             let outcome =
                 |event: &Event| matches!(event, Event::Bundle(_) | Event::Disconnected { .. });
             game.wait_for_test_remote_event(outcome);
-            let backlog = &mut game.remote.as_mut().unwrap().backlog;
+            let backlog = &mut game.side.remote.as_mut().unwrap().backlog;
             let pos = backlog
                 .iter()
                 .position(|item| matches!(item, Received::Event(event, _) if outcome(event)))

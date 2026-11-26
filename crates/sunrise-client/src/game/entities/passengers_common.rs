@@ -1,6 +1,6 @@
 //! Common passenger attachment and seating helpers shared by server and client.
 use super::Game;
-use crate::game::server_side::{passengers::Riders, tnt::tnt_seat};
+use crate::game::tnt_common::tnt_seat;
 use std::collections::HashMap;
 use sunrise_core::geometry::Vec3;
 use {
@@ -185,4 +185,23 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> Option<Vec3> {
         self.side_general_passenger_position(vehicle, rider)
     }
+}
+
+/// The mobs riding each vehicle, by the vehicle's id: their indices, in the mobs' order.
+pub(in crate::game) type Riders = HashMap<u32, Vec<usize>>;
+
+/// `Player`'s passenger attachment for synced pose `pose` (the `Pose` id): the top of its box
+/// in `Player.POSES` (`EntityDimensions.scale`, in floats), at the player's scale. Poses it has
+/// no box for stand (`getOrDefault(pose, STANDING_DIMENSIONS)`).
+pub(in crate::game) fn player_box_top(pose: u8, scale: f64) -> f64 {
+    let height: f32 = match pose {
+        // FALL_FLYING, SWIMMING, SPIN_ATTACK: 0.6 x 0.6.
+        1 | 3 | 4 => 0.6,
+        // SLEEPING and DYING: 0.2 x 0.2.
+        2 | 7 => 0.2,
+        // CROUCHING: 0.6 x 1.5.
+        5 => 1.5,
+        _ => 1.8,
+    };
+    f64::from(height * scale as f32)
 }

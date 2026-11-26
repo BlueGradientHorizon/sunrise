@@ -1,6 +1,6 @@
-use super::super::combat::PlayerCredit;
 use super::super::native_entity_refs::tests::with_game;
 use super::super::native_item_places::tests::{guest, open_to_lan};
+use crate::game::combat_common::PlayerCredit;
 use crate::game::creatures::enchanted_entity_loot_tests::Answer;
 use crate::game::creatures::enchanted_entity_loot_tests::Heard;
 use crate::game::creatures::enchanted_entity_loot_tests::dropped;
@@ -72,7 +72,7 @@ fn a_kills_loot_uses_the_level_a_mod_answers() {
         with_game(|game| {
             game.load_server_loot();
             open_to_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(5));
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(5));
             // The mobs' ids, clear of the guest's.
             game.side.next_entity = 1000;
             game.as_guest(5, |g| {
@@ -219,7 +219,7 @@ fn loot_kill_asks_with_the_commands_source_as_the_attacker() {
             game.load_server_loot();
             game.set_allow_commands(true);
             open_to_lan(game);
-            game.lan.as_mut().unwrap().hub.guests.push(guest(5));
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest(5));
             game.side.next_entity = 1000;
             let victim = zombie(game, Damage::mob(0, [0.0; 3]));
             game.mobs.last_mut().unwrap().health = 20.0;

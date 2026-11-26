@@ -214,6 +214,38 @@ pub fn pack_for(id: String, title: Text, source: Source, format: (i64, i64)) -> 
         selection: None,
     })
 }
+
+pub fn pack_from_meta(pack: sunrise_level::pack_meta::PackMeta, meta: &serde_json::Value) -> Pack {
+    let sunrise_level::pack_meta::PackMeta {
+        id,
+        title,
+        source,
+        description,
+        raw_description,
+        description_style,
+        compatible,
+        compatibility,
+        filter,
+        selection,
+        ..
+    } = pack;
+    let polytone_configs = polytone_configs(&source);
+    Pack {
+        id,
+        title,
+        source,
+        description,
+        raw_description,
+        description_style,
+        compatible,
+        compatibility,
+        overlays: overlays_of(meta, &polytone_configs),
+        polytone_configs,
+        filter,
+        selection,
+    }
+}
+
 /// Built-in and `resourcepacks/` packs (vanilla itself excluded), sorted like
 /// the pack screen (built-ins first, then by name).
 pub fn discover(resources: &Path, packs_dir: &Path) -> Vec<Pack> {

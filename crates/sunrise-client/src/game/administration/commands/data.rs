@@ -3,7 +3,6 @@
 use super::{Arg, Context, Game, R, Target, err};
 use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
 use sunrise_game_data::{nbt_path::NbtPath, snbt, text::Text};
-use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{
     data_cmd::{self, Op, path_error},
     entity_nbt,
@@ -21,37 +20,6 @@ pub(in crate::game) enum DataRef {
 
 pub(in crate::game) fn empty() -> Tag {
     Tag::Compound(Compound::new())
-}
-/// What the model keeps outside a stored block entity's `encoded` form
-/// (`BlockEntity.saveWithFullMetadata`): the lock, the hopper's
-/// `TransferCooldown` (`HopperBlockEntity.saveAdditional`), the custom name
-/// and the pending loot table.
-pub(in crate::game) fn stored_block_entity_data(
-    world: &sunrise_level::world::World,
-    key: (i32, i32, i32),
-    name: &str,
-    entity: &BlockEntity,
-    items: &sunrise_items::items::Items,
-    hopper_cooldown: impl FnOnce() -> i32,
-) -> Tag {
-    let pending = world
-        .chunks
-        .get(&(key.0 >> 4, key.2 >> 4))
-        .and_then(|chunk| chunk.saved.as_ref())
-        .and_then(|saved| saved.pending_loot.get(&key));
-    save::block_entity_encode::data_with(
-        key,
-        entity,
-        name,
-        save::block_entity_encode::DataFields {
-            lock: world.block_lock(key),
-            custom_name: world.block_names.get(&key),
-            pending,
-            hopper_cooldown: (name == "minecraft:hopper").then(hopper_cooldown),
-        },
-        items,
-        |_| None,
-    )
 }
 pub(in crate::game) fn set_key(tag: &mut Tag, key: &str, value: Tag) {
     if let Tag::Compound(c) = tag {
@@ -204,7 +172,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match t {
             Target::Player => Some(self.level.player_extra.get_or_insert_with(empty)),
             Target::Guest(conn) => self
-                .lan
+                .side.lan
                 .as_mut()?
                 .hub
                 .guests
@@ -1115,6 +1083,7 @@ pub(in crate::game) mod wolf_live_anger_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1424,6 +1393,7 @@ pub(in crate::game) mod loot_table_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1557,6 +1527,7 @@ pub(in crate::game) mod arrow_owner_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -1641,6 +1612,7 @@ pub(in crate::game) mod bell_command_identity_tests {
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_level::chunk::Chunk;
+    use sunrise_level::containers::BlockEntity;
     use sunrise_sim::motion::PlayerMotion;
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
@@ -1772,6 +1744,7 @@ pub(in crate::game) mod falling_live_adoption_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

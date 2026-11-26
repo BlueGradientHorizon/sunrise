@@ -609,6 +609,10 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         loaded.client_applies,
                         loaded.entity_models,
                         None,
+                        crate::game::server_side::integrated::serve,
+                        crate::game::server_side::integrated::run_component_harness_on_server,
+                        crate::game::session_verifier(),
+                        crate::game::profile_resolver,
                     )
                     .unwrap()
                     .unwrap();
@@ -925,14 +929,15 @@ fn client_setup_reaches_each_listener_once_per_firing() {
 #[test]
 #[ignore = "daily"]
 fn only_the_first_local_client_is_the_client_start() {
+    use crate::game::client_side::launch_options_client::is_client_start;
     use crate::game::execution_role::ExecutionRole;
     use crate::game::native_entity_refs::tests::with_game;
 
     with_game(|game| {
         game.options.execution_role = ExecutionRole::Client;
-        assert!(game.options.is_client_start());
+        assert!(is_client_start(&game.options));
         game.options.execution_role = ExecutionRole::DedicatedServer;
-        assert!(!game.options.is_client_start());
+        assert!(!is_client_start(&game.options));
     });
 }
 
@@ -1444,6 +1449,10 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             vec![PreparedClientReload::Vanilla(())],
                             None,
                             None,
+                            crate::game::server_side::integrated::serve,
+                            crate::game::server_side::integrated::run_component_harness_on_server,
+                            crate::game::session_verifier(),
+                            crate::game::profile_resolver,
                         )
                         .unwrap()
                         .unwrap();

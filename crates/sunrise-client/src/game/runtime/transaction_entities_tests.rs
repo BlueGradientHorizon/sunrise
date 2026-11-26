@@ -1097,7 +1097,7 @@ fn a_level_commit_told_inside_another_levels_commit_keeps_its_own_batch() {
         game.build_registries();
         assert!(game.run_command("difficulty normal"));
         let _rx = super::lan::world_spawn_sync_tests::host_for(game);
-        game.lan.as_mut().unwrap().hub.guests.clear();
+        game.side.lan.as_mut().unwrap().hub.guests.clear();
         heard();
         game.enter_level(Dim::Nether).unwrap();
         game.world

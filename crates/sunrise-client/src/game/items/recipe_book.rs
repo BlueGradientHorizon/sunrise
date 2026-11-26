@@ -270,7 +270,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // The inventory's grid, or a crafting table's (`CraftingScreen`); a server's
             // other menus have no crafting book.
             None if self.container.is_none()
-                && self.remote.as_ref().is_none_or(|r| {
+                && self.side.remote.as_ref().is_none_or(|r| {
                     (r.menu.as_ref()).is_none_or(|(_, menu)| menu == "minecraft:crafting")
                 }) =>
             {
@@ -425,7 +425,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => None,
         }) {
             Some(toast) => toast.add_recipes(items),
-            None => self.add_advancement_toast(super::advancements::Toast::recipe(items)),
+            None => self.add_advancement_toast(
+                crate::game::client_side::advancement_toast::Toast::recipe(items),
+            ),
         }
     }
 
@@ -438,7 +440,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The items the book counts (`RecipeBookComponent.updateStackedContents`):
     /// the inventory and the menu's crafting slots, as the menu engine counts them.
     pub(in crate::game) fn book_available(&mut self, _book: BookType) -> Stacked {
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             // A server's menu: the slots it last sent, counted the same way.
             use sunrise_sim::menu::{Env, Kind, Menu};
             let table = self.craft_size == 3;
@@ -529,7 +531,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         book: &mut Book,
         entries: impl IntoIterator<Item = &'a sunrise_protocol::packets::recipes::RecipeBookEntry>,
     ) {
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.side.remote.as_ref() else {
             return;
         };
         let items = self.items();
@@ -1454,7 +1456,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Whether the open menu is a mod menu type with a crafting grid.
     pub(in crate::game) fn mod_crafting_open(&self) -> bool {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .and_then(|r| r.menu.as_ref())
             .and_then(|(_, menu)| sunrise_level::containers::mod_menu_type(menu))
@@ -1509,6 +1512,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && (self.mod_menu_open() || self.mod_recipe_screen());
         if !open
             || !self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.recipe_viewer.transfer)
@@ -1553,6 +1557,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         if self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| !r.recipe_viewer.transfer)
@@ -1583,7 +1588,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
             return;
         };
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             let mut request = ::sunrise_core::vanilla_bytes::Writer::new();
             request.varint(self.remote_menu_id());
             request.string(&id);
@@ -1608,7 +1613,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         use sunrise_sim::lan::recipes::TRANSFER_CHANNEL;
         if data.is_empty() {
-            if let Some(remote) = &mut self.remote {
+            if let Some(remote) = &mut self.side.remote {
                 let channels = &mut remote.recipe_viewer;
                 *(if channel == TRANSFER_CHANNEL {
                     &mut channels.transfer
@@ -1670,13 +1675,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Option<RecipeTransferCheck> {
         let eligible_menu = self.mod_recipe_screen()
             || (self.side.screen == Screen::Inventory && !self.spectator() && self.mod_menu_open());
-        if !eligible_menu || !self.remote.as_ref().is_some_and(|r| r.recipe_viewer.check) {
+        if !eligible_menu
+            || !self
+                .side
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.recipe_viewer.check)
+        {
             return None;
         }
         let now = Instant::now();
         let seen = (
             self.remote_menu_id(),
-            self.remote.as_ref().map_or(0, |r| r.state_id),
+            self.side.remote.as_ref().map_or(0, |r| r.state_id),
             (self.inventory.iter().take(36))
                 .chain(&self.craft_grid)
                 .cloned()
@@ -1751,7 +1762,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return;
         };
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return;
         }
         // The server places it and answers with the slots, or a ghost.

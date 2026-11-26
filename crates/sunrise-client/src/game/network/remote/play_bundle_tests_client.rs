@@ -46,12 +46,12 @@ fn a_split_frame_group_bundle_refuses_a_mismatched_companion() {
         writer.write_raw(prefix).unwrap();
         game.poll_remote_events(false).unwrap();
         assert_eq!(game.world.block(pos[0], pos[1], pos[2]), original);
-        assert!(game.remote.is_some());
+        assert!(game.side.remote.is_some());
         writer.write_raw(suffix).unwrap();
         writer.send(&delimiter).unwrap();
         wait_for_bundle(game);
         game.poll_remote_events(true).unwrap();
-        assert!(game.remote.is_none());
+        assert!(game.side.remote.is_none());
         let Some(sunrise_client::title::Mode::Multiplayer(
             sunrise_client::multiplayer::Screen::Disconnected { reason, .. },
         )) = game.side.title.0.as_ref().map(|title| &title.mode)

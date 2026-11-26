@@ -31,7 +31,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                 const ID: u32 = 1_900_000_101;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "SpecialOutlineTest").unwrap();
-                game.remote.as_mut().unwrap().glowing.insert(ID as i32);
+                game.side.remote.as_mut().unwrap().glowing.insert(ID as i32);
                 install_special_stick(game);
                 game.side.gui.atlas.sprites.insert(
                     "block/stone".into(),
@@ -239,55 +239,57 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
         assert_eq!(asked(COUNT), before + 1, "the frame's resolve didn't ask");
     });
     let stick_definition = stick_definition.unwrap();
-    crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
-        const ZOMBIE: u32 = 1_900_000_100;
-        Arc::make_mut(&mut game.pack.item_models)
-            .definitions
-            .insert("minecraft:stick".into(), stick_definition.clone());
-        let asked_by_the_frame = asked(COUNT);
-        balance.drain_balanced();
-        let kind = game
-            .res
-            .mob_types()
-            .get("minecraft:zombie")
-            .unwrap()
-            .clone();
-        let mut mob = sunrise_sim::mobs::Mob::new(
-            ZOMBIE,
-            kind,
-            sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
-            0.0,
-        );
-        mob.no_ai = true;
-        mob.extra.equipment.set(
-            sunrise_items::equipment::MAINHAND,
-            Some(sunrise_items::items::ItemStack::new(
-                "minecraft:stick",
-                COUNT,
-            )),
-        );
-        game.mobs.push(mob);
-        if !game.world.chunks.contains_key(&(0, 0)) {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
-        }
-        crate::game::entity::taken_pass_tests::with_spawn(in_pass, || {
-            game.tick_creature_entities().unwrap();
-        });
-        assert!(balance.drain_balanced() > 0, "the tick lifted no mob pass");
-        let zombie = game.mobs.iter().find(|m| m.id == ZOMBIE).unwrap();
-        assert_eq!(zombie.age, 1, "the zombie didn't tick");
-        assert_eq!(
-            ASKED_IN_PASS.lock().unwrap().take(),
-            Some(asked_by_the_frame),
-            "the renderer was asked before the pass, inside the tick"
-        );
-        assert_eq!(
-            asked(COUNT),
-            asked_by_the_frame,
-            "the renderer was asked in the tick"
-        );
-        game.mobs.clear();
-    });
+    crate::game::server_side::entity_server::taken_pass_tests::in_both_dimensions(
+        |game, balance| {
+            const ZOMBIE: u32 = 1_900_000_100;
+            Arc::make_mut(&mut game.pack.item_models)
+                .definitions
+                .insert("minecraft:stick".into(), stick_definition.clone());
+            let asked_by_the_frame = asked(COUNT);
+            balance.drain_balanced();
+            let kind = game
+                .res
+                .mob_types()
+                .get("minecraft:zombie")
+                .unwrap()
+                .clone();
+            let mut mob = sunrise_sim::mobs::Mob::new(
+                ZOMBIE,
+                kind,
+                sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
+                0.0,
+            );
+            mob.no_ai = true;
+            mob.extra.equipment.set(
+                sunrise_items::equipment::MAINHAND,
+                Some(sunrise_items::items::ItemStack::new(
+                    "minecraft:stick",
+                    COUNT,
+                )),
+            );
+            game.mobs.push(mob);
+            if !game.world.chunks.contains_key(&(0, 0)) {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+            }
+            crate::game::server_side::entity_server::taken_pass_tests::with_spawn(in_pass, || {
+                game.tick_creature_entities().unwrap();
+            });
+            assert!(balance.drain_balanced() > 0, "the tick lifted no mob pass");
+            let zombie = game.mobs.iter().find(|m| m.id == ZOMBIE).unwrap();
+            assert_eq!(zombie.age, 1, "the zombie didn't tick");
+            assert_eq!(
+                ASKED_IN_PASS.lock().unwrap().take(),
+                Some(asked_by_the_frame),
+                "the renderer was asked before the pass, inside the tick"
+            );
+            assert_eq!(
+                asked(COUNT),
+                asked_by_the_frame,
+                "the renderer was asked in the tick"
+            );
+            game.mobs.clear();
+        },
+    );
 }

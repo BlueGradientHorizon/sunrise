@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !mod_api::__private::listened(mod_api::HookId::ClientChatReceived) {
             return true;
         }
-        let registries = self.remote.as_ref().map(|r| Arc::clone(&r.registries));
+        let registries = self.side.remote.as_ref().map(|r| Arc::clone(&r.registries));
         let name = chat_type
             .zip(registries.as_deref())
             .and_then(|(id, registries)| registries.name("minecraft:chat_type", id));

@@ -196,7 +196,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .collect();
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut lent = sunrise_sim::health::LentLevel::take(&mut self.world);
         let mut w = self.mob_world_base(&snapshot);
         let pos = mobs[index].position;
@@ -212,7 +212,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 &self.damage_hooks,
             )
             .with_mob_uuids(&self.persist.uuids)
-            .with_reads(crate::game::entity::hit_reads_of!(self));
+            .with_reads(crate::game::server_side::entity_server::hit_reads_of!(self));
             let m = &mut mobs[index];
             let mut selector = if targets {
                 std::mem::take(&mut m.ai.targets)
@@ -760,116 +760,118 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn goals_read_add_remove_and_refuse_what_the_mob_does_not_hold() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            for x in 0..16 {
-                for z in 0..16 {
-                    game.world.set(x, 64, z, stone).unwrap();
+        crate::game::server_side::entity_server::taken_pass_tests::in_both_dimensions(
+            |game, balance| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                for x in 0..16 {
+                    for z in 0..16 {
+                        game.world.set(x, 64, z, stone).unwrap();
+                    }
                 }
-            }
-            let zombie = mob_in_game(game, "minecraft:zombie", 99);
-            let slime = mob_in_game(game, "minecraft:slime", 100);
-            let cow = mob_in_game(game, "minecraft:cow", 101);
-            // The species set reads in the canonical ids.
-            assert!(has(game, zombie, "melee_attack"));
-            assert!(has(game, zombie, "look_at_player"));
-            let targets = zombie.target_goals(game).unwrap();
-            assert!(targets.iter().any(|e| e.id == "nearest_target"));
-            assert!(targets.iter().any(|e| e.id == "hurt_by_target"));
-            // Add: a Panic the zombie did not have.
-            assert!(zombie.add_goal(
-                game,
-                4,
-                &GoalSpec::Panic {
-                    speed: 1.4,
-                    water_range: None,
-                }
-            ));
-            assert!(
-                zombie
-                    .goals(game)
-                    .unwrap()
-                    .iter()
-                    .any(|e| { e.priority == 4 && e.id == "panic" && !e.running })
-            );
-            // The target selector takes a species filter.
-            assert!(zombie.add_target_goal(
-                game,
-                3,
-                &GoalSpec::NearestTarget {
-                    prey: MobFilter::Species(vec!["minecraft:skeleton".into()]),
-                    must_see: true,
-                    must_reach: false,
-                    interval: 10,
-                }
-            ));
-            // Refusals: non-finite speed, a mob with no PathfinderMob goals,
-            // a goal only an animal holds, an unknown species id.
-            assert!(!zombie.add_goal(
-                game,
-                4,
-                &GoalSpec::Panic {
-                    speed: f64::NAN,
-                    water_range: None,
-                }
-            ));
-            assert!(slime.add_goal(
-                game,
-                4,
-                &GoalSpec::Panic {
-                    speed: 1.0,
-                    water_range: None,
-                }
-            ));
-            assert!(slime.add_goal(
-                game,
-                4,
-                &GoalSpec::MeleeAttack {
-                    speed: 1.0,
-                    follow_unseen: false,
-                }
-            ));
-            assert!(slime.add_goal(game, 4, &GoalSpec::Float));
-            assert!(!zombie.add_goal(game, 4, &GoalSpec::Breed { speed: 1.0 }));
-            assert!(cow.add_goal(game, 4, &GoalSpec::Breed { speed: 1.0 }));
-            assert!(!zombie.add_target_goal(
-                game,
-                3,
-                &GoalSpec::NearestTarget {
-                    prey: MobFilter::Species(vec!["minecraft:unknown".into()]),
-                    must_see: true,
-                    must_reach: false,
-                    interval: 10,
-                }
-            ));
-            // Remove: the species' melee attack goes, and only that one.
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
+                let zombie = mob_in_game(game, "minecraft:zombie", 99);
+                let slime = mob_in_game(game, "minecraft:slime", 100);
+                let cow = mob_in_game(game, "minecraft:cow", 101);
+                // The species set reads in the canonical ids.
+                assert!(has(game, zombie, "melee_attack"));
+                assert!(has(game, zombie, "look_at_player"));
+                let targets = zombie.target_goals(game).unwrap();
+                assert!(targets.iter().any(|e| e.id == "nearest_target"));
+                assert!(targets.iter().any(|e| e.id == "hurt_by_target"));
+                // Add: a Panic the zombie did not have.
+                assert!(zombie.add_goal(
+                    game,
+                    4,
+                    &GoalSpec::Panic {
+                        speed: 1.4,
+                        water_range: None,
+                    }
+                ));
+                assert!(
+                    zombie
+                        .goals(game)
+                        .unwrap()
+                        .iter()
+                        .any(|e| { e.priority == 4 && e.id == "panic" && !e.running })
+                );
+                // The target selector takes a species filter.
+                assert!(zombie.add_target_goal(
+                    game,
+                    3,
+                    &GoalSpec::NearestTarget {
+                        prey: MobFilter::Species(vec!["minecraft:skeleton".into()]),
+                        must_see: true,
+                        must_reach: false,
+                        interval: 10,
+                    }
+                ));
+                // Refusals: non-finite speed, a mob with no PathfinderMob goals,
+                // a goal only an animal holds, an unknown species id.
+                assert!(!zombie.add_goal(
+                    game,
+                    4,
+                    &GoalSpec::Panic {
+                        speed: f64::NAN,
+                        water_range: None,
+                    }
+                ));
+                assert!(slime.add_goal(
+                    game,
+                    4,
+                    &GoalSpec::Panic {
+                        speed: 1.0,
+                        water_range: None,
+                    }
+                ));
+                assert!(slime.add_goal(
+                    game,
+                    4,
+                    &GoalSpec::MeleeAttack {
+                        speed: 1.0,
+                        follow_unseen: false,
+                    }
+                ));
+                assert!(slime.add_goal(game, 4, &GoalSpec::Float));
+                assert!(!zombie.add_goal(game, 4, &GoalSpec::Breed { speed: 1.0 }));
+                assert!(cow.add_goal(game, 4, &GoalSpec::Breed { speed: 1.0 }));
+                assert!(!zombie.add_target_goal(
+                    game,
+                    3,
+                    &GoalSpec::NearestTarget {
+                        prey: MobFilter::Species(vec!["minecraft:unknown".into()]),
+                        must_see: true,
+                        must_reach: false,
+                        interval: 10,
+                    }
+                ));
+                // Remove: the species' melee attack goes, and only that one.
+                crate::game::server_side::entity_server::taken_pass_tests::assert_mob_spawn_survives(
                 game,
                 balance,
                 |game| {
                     assert_eq!(zombie.remove_goal(game, "melee_attack"), Some(1));
                 },
             );
-            assert!(!has(game, zombie, "melee_attack"));
-            assert_eq!(zombie.remove_goal(game, "melee_attack"), Some(0));
-            assert_eq!(zombie.remove_target_goal(game, "hurt_by_target"), Some(1));
-            // A stale handle and a mob whose copy is held out.
-            let stale = MobRef::new(EntityRef::new(WorldEpoch::new(999), 99));
-            assert!(!stale.add_goal(game, 1, &GoalSpec::Float));
-            assert!(stale.goals(game).is_none());
-            let taken = game.mobs.lift();
-            assert!(zombie.goals(game).is_none());
-            assert_eq!(zombie.remove_goal(game, "panic"), None);
-            game.mobs
-                .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-        });
+                assert!(!has(game, zombie, "melee_attack"));
+                assert_eq!(zombie.remove_goal(game, "melee_attack"), Some(0));
+                assert_eq!(zombie.remove_target_goal(game, "hurt_by_target"), Some(1));
+                // A stale handle and a mob whose copy is held out.
+                let stale = MobRef::new(EntityRef::new(WorldEpoch::new(999), 99));
+                assert!(!stale.add_goal(game, 1, &GoalSpec::Float));
+                assert!(stale.goals(game).is_none());
+                let taken = game.mobs.lift();
+                assert!(zombie.goals(game).is_none());
+                assert_eq!(zombie.remove_goal(game, "panic"), None);
+                game.mobs
+                    .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
+            },
+        );
     }
 }

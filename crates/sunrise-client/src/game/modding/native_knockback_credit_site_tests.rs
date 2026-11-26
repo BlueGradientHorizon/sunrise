@@ -4,7 +4,7 @@
 use super::native_knockback_tests::{
     assert_sword_credit_reached_the_push, credit_pig, heard, sword_evoker,
 };
-use super::potions::PotionOwner;
+use crate::game::server_side::potions_server::PotionOwner;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Who;
@@ -61,7 +61,7 @@ fn a_harming_area_cloud_credits_its_owner_and_its_sword() {
         let text =
             sunrise_game_data::text::Text::translate("entity.minecraft.area_effect_cloud", &[]);
         game.cloud_affect(
-            super::potions::Victim::Mob(100),
+            crate::game::potions_common::Victim::Mob(100),
             &[("instant_damage", 1, 0)],
             (&[], &[], 1.0),
             [0.0, 0.0, 0.0],

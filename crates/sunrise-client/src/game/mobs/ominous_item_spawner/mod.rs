@@ -3,43 +3,12 @@
 //! 60 to 120 ticks, then falls as an item or is fired straight down as a
 //! projectile (`spawnItem`). Saved with its chunk's entities (persist.rs).
 use super::Game;
+use crate::game::ominous_item_spawner_common::OminousItemSpawner;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 
 /// `TICKS_BEFORE_ABOUT_TO_SPAWN_SOUND`.
 pub(in crate::game) const ABOUT_TO_SPAWN: i64 = 36;
-/// `OminousItemSpawnerRenderer`: grows over its first 50 ticks, turning 40
-/// degrees a tick.
-pub(in crate::game) const TICKS_SCALING: f32 = 50.0;
-pub(in crate::game) const ROTATION_SPEED: f32 = 40.0;
-
-pub(in crate::game) struct OminousItemSpawner {
-    /// Entity-owned registration metadata; content clones are detached.
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
-    /// Its entity id: from the entity counter on the server, the server's on
-    /// a client.
-    pub(in crate::game) id: u32,
-    /// `DATA_ITEM`; `minecraft:air` stands for `ItemStack.EMPTY`.
-    pub(in crate::game) item: ItemStack,
-    pub(in crate::game) position: [f64; 3],
-    pub(in crate::game) spawn_item_after: i64,
-    pub(in crate::game) tick_count: i64,
-    /// `Entity.remainingFireTicks`, counted down by `baseTick`.
-    pub(in crate::game) fire_ticks: i32,
-    /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
-    pub(in crate::game) synced_fire: bool,
-    /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
-    pub(in crate::game) has_visual_fire: bool,
-    /// Its UUID, and the compound it was loaded from (fields Sunrise doesn't
-    /// model survive a save).
-    pub(in crate::game) uuid: [i32; 4],
-    pub(in crate::game) raw: Option<Box<sunrise_core::nbt::Tag>>,
-}
-
-sunrise_sim::impl_joined!(OminousItemSpawner);
-sunrise_mod_runtime::impl_attachment_lifetime!(OminousItemSpawner);
-
 /// `ProjectileItem.DispenseConfig` of the items fired down: power,
 /// uncertainty and `overrideDispenseEvent`; None for items that just fall.
 pub(in crate::game::server_side) fn projectile(item: &str) -> Option<(f32, f32, Option<i32>)> {
@@ -144,7 +113,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let through = self.side.ticked_entities_through;
         let mut spawners = self.ominous_spawners.lift();
         #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         spawners.retain_mut(|s| {
             if s.id > through
                 || !ticking(s.position[0].floor() as i32, s.position[2].floor() as i32)

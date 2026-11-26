@@ -28,7 +28,8 @@ fn fb(v: f32) -> String {
 }
 
 fn kind_id(game: &crate::game::ClientGame<'_>, kind: &str) -> i32 {
-    game.remote
+    game.side
+        .remote
         .as_ref()
         .unwrap()
         .builtin
@@ -58,7 +59,7 @@ fn spawn(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str) {
     if kind == "minecraft:oak_boat" {
         // The boat models are not loaded here, so the boat is tracked and listed by hand.
         game.spawn_entity(id, kind, [at().x, at().y, at().z], [0.0; 3]);
-        game.boats.push(crate::game::boats::Boat::new(
+        game.boats.push(crate::game::boats_common::Boat::new(
             id as u32,
             "oak".into(),
             at(),

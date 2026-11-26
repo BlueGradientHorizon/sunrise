@@ -268,7 +268,7 @@ fn scoped_despawn_view_tracks_peer_turns_and_defers_mid_pass_spawns() {
             observer.no_gravity = true;
             observer.ground.on_ground = true;
             game.mobs.push(observer);
-            super::super::super::entity::taken_pass_tests::with_spawn(
+            crate::game::server_side::entity_server::taken_pass_tests::with_spawn(
                 |game| {
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     let mut spawned = Mob::new(74, kind, Vec3::new(10.0, 80.0, 0.5), 0.0);

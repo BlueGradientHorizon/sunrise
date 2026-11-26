@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use crate::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use crate::game::native_entity_refs::tests::{
         run_fresh_cases, with_game_role, with_game_role_client,
     };
-    use crate::game::remote::RemoteDimensionEntry;
     use mod_api::*;
     use std::sync::{
         Arc, Mutex,
@@ -505,7 +505,8 @@ mod tests {
             false,
             crate::game::execution_role::ExecutionRole::Client,
             |game, log, _| {
-                game.native_lifecycle = crate::game::native_lifecycle::NativeLifecycle::default();
+                game.native_lifecycle =
+                    crate::game::native_lifecycle_common::NativeLifecycle::default();
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "OnLoadChunk").unwrap();
                 game.enter_remote_dimension(
@@ -524,7 +525,7 @@ mod tests {
                     RemoteDimensionEntry::Login,
                     sunrise_client::level_loading::Reason::Other,
                 );
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 let mut builtin = (*remote.builtin).clone();
                 builtin.registries.extend(Builtin::parse(r#"{"minecraft:block_entity_type":{"entries":{"test:holder":{"protocol_id":0}}}}"#).unwrap().registries);

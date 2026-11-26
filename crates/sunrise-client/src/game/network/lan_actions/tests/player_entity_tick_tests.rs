@@ -71,7 +71,7 @@ fn far_chests(game: &mut crate::game::ServerGame<'_>, cancel: &Mutex<Option<u32>
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    let guests = &game.lan.as_ref().unwrap().hub.guests;
+    let guests = &game.side.lan.as_ref().unwrap().hub.guests;
     let ids = [0, 1].map(|gi| guests[gi].entity_id as u32);
     let eyes = [0, 1].map(|gi| guests[gi].position);
     for (gi, conn) in [(0, 12), (1, 13)] {
@@ -80,7 +80,7 @@ fn far_chests(game: &mut crate::game::ServerGame<'_>, cancel: &Mutex<Option<u32>
         game.world
             .block_entities
             .insert(far, BlockEntity::Chest(vec![None; 27]));
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         host.hub.open_container(
             conn,
             "minecraft:generic_9x3",
@@ -96,7 +96,9 @@ fn far_chests(game: &mut crate::game::ServerGame<'_>, cancel: &Mutex<Option<u32>
 }
 
 fn open(game: &crate::game::ServerGame<'_>, gi: usize) -> bool {
-    game.lan.as_ref().unwrap().hub.guests[gi].menu.is_some()
+    game.side.lan.as_ref().unwrap().hub.guests[gi]
+        .menu
+        .is_some()
 }
 
 /// A Pre that cancels a player's tick skips its `ServerPlayer.tick` for that player alone: the
@@ -121,7 +123,7 @@ fn a_canceled_player_skips_its_server_player_tick_while_the_others_run_it() {
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             let [first, second] = far_chests(game, &cancel);
-            game.lan.as_mut().unwrap().owner = Some(crate::game::lan::Owner {
+            game.side.lan.as_mut().unwrap().owner = Some(crate::game::lan::Owner {
                 uuid: 12,
                 saved: None,
             });
@@ -172,13 +174,14 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             let [rider, other] = far_chests(game, &cancel);
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            let at = game.lan.as_ref().unwrap().hub.guests[0].position;
+            let at = game.side.lan.as_ref().unwrap().hub.guests[0].position;
             let mut pig = Mob::new(90, kind, Vec3::new(at[0] + 1.0, at[1], at[2]), 0.0);
             pig.no_ai = true;
             pig.no_gravity = true;
             pig.ground.on_ground = true;
             game.mobs.push(pig);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -204,7 +207,7 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
                     ("post", vec![other]),
                 ]
             );
-            let seated = game.lan.as_ref().unwrap().hub.guests[0].position;
+            let seated = game.side.lan.as_ref().unwrap().hub.guests[0].position;
             assert_eq!(
                 seated[0],
                 at[0] + 1.0,
@@ -219,7 +222,7 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
                 "the rider's Post still sees the old seat position"
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].position[0],
+                game.side.lan.as_ref().unwrap().hub.guests[0].position[0],
                 at[0] + 2.0
             );
         });

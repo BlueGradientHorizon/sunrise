@@ -1,4 +1,4 @@
-use super::{MapBanner, MapData, MapFrame};
+use crate::game::maps::{MapBanner, MapData, MapFrame};
 use sunrise_core::nbt::Tag;
 
 const OPTIONAL: [&str; 6] = [

@@ -126,7 +126,7 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
         // and with no world: nothing is placed and the hook is not asked.
         let read = |game: &crate::game::ServerGame<'_>, liquid, beside, below| {
             let source = game.res.behaviours().fluid(liquid);
-            let source = super::native_world_read::api_fluid_state(source).unwrap();
+            let source = crate::game::native_world_read_common::api_fluid_state(source).unwrap();
             game.fluid_interaction_result(source, beside, below)
         };
         let soul_soil = state("minecraft:soul_soil");
@@ -149,7 +149,9 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
             .unwrap();
         assert_eq!(read(game, lava, waterlogged, stone), Some(obsidian));
         let unknown = sunrise_world::registry::BlockStateId(u32::MAX);
-        let source = super::native_world_read::api_fluid_state(game.res.behaviours().fluid(lava));
+        let source = crate::game::native_world_read_common::api_fluid_state(
+            game.res.behaviours().fluid(lava),
+        );
         assert_eq!(
             game.fluid_interaction_result(source.unwrap(), unknown, stone),
             None,

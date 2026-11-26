@@ -79,7 +79,7 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::ga
         },
     )
     .unwrap();
-    game.lan.as_mut().unwrap().hub.guests.push(guest(
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest(
         CONN,
         VICTIM_ID as i32,
         VICTIM,
@@ -137,7 +137,7 @@ fn kill(game: &mut crate::game::ServerGame<'_>, attacker: Attacker, ty: &str) {
             "the guest is hurt"
         );
         assert_eq!(g.player.as_ref().unwrap().health.health(), 0.0);
-        assert!(g.lan.as_ref().unwrap().hub.guest(CONN).unwrap().dead);
+        assert!(g.side.lan.as_ref().unwrap().hub.guest(CONN).unwrap().dead);
     })
     .unwrap();
 }
@@ -168,7 +168,7 @@ fn add_objectives(game: &mut crate::game::ServerGame<'_>) {
 }
 
 fn guest_stats<'a>(game: &'a crate::game::ServerGame<'_>, conn: u32) -> &'a super::stats::Stats {
-    &game.lan.as_ref().unwrap().play[&conn].stats
+    &game.side.lan.as_ref().unwrap().play[&conn].stats
 }
 
 fn assert_player_kill(game: &crate::game::ServerGame<'_>, killer: &str) {
@@ -247,15 +247,25 @@ fn a_local_player_sweep_credits_the_secondary_kill() {
     game.player.as_mut().unwrap().position = Vec3::new(20.5, 100.0, 9.5);
     let primary = game.guest_index(KILLER_CONN).unwrap();
     let victim = game.guest_index(CONN).unwrap();
-    let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+    let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
     guests.update(victim, |g| g.health = 1.0);
     guests.update(primary, |g| g.position = [21.5, 100.0, 9.5]);
     let target = super::lan_mobs::guest_bounds(&guests[primary]);
     game.sweep_damage(target, super::mace::Spared::Player(KILLER_ID as i32), 1.0);
 
-    assert!(game.lan.as_ref().unwrap().hub.guest(CONN).unwrap().dead);
+    assert!(
+        game.side
+            .lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .guest(CONN)
+            .unwrap()
+            .dead
+    );
     assert!(
         !game
+            .side
             .lan
             .as_ref()
             .unwrap()
@@ -303,7 +313,7 @@ fn a_guest_killing_another_guest_credits_the_kill() {
 }
 
 fn add_guest_killer(game: &mut crate::game::ServerGame<'_>) {
-    game.lan.as_mut().unwrap().hub.guests.push(guest(
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest(
         KILLER_CONN,
         KILLER_ID as i32,
         KILLER,
@@ -417,7 +427,7 @@ fn a_displaced_archer_receives_resistance_credit() {
         g.as_guest(CONN, |g| {
             assert!(matches!(
                 g.combat_player(KILLER_ID),
-                Some(super::lan_actions::CombatPlayer::Displaced(..))
+                Some(crate::game::server_side::lan_actions_server::turn_state::CombatPlayer::Displaced(..))
             ));
             assert!(g.damage_projectile_with_weapon(&arrow, pig, 5.25, source, None));
             assert_eq!(g.stats.get("custom", stat), 0);
@@ -641,7 +651,7 @@ fn a_victim_advancement_matches_the_displaced_killers_facts() {
             .unwrap(),
         case => panic!("unexpected fresh case {case}"),
     }
-    let victim = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+    let victim = game.side.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
     assert!(victim.advancements.has(ADVANCEMENT, "killed"));
 }
 
@@ -722,7 +732,8 @@ fn a_wither_killing_a_player_without_mob_griefing_drops_the_rose() {
     let mut resources = None;
     let mut game = game(&mut resources);
     // Experience to drop: `dropAllDeathLoot` drops it before the rose.
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub

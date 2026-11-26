@@ -4,6 +4,7 @@
 //! target away. The rest of a weapon hit (`Player.itemAttackInteraction`)
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
 use super::Game;
+use crate::game::mace_common::{KNOCKBACK_RADIUS, can_smash, stack_smash_damage};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::{
     enchant::{EffectContext, Enchantments},
@@ -51,12 +52,8 @@ pub(in crate::game::server_side) fn breach_modifier<'a>(
     }
 }
 
-/// `MaceItem.SMASH_ATTACK_FALL_THRESHOLD`.
-pub(in crate::game) const FALL_THRESHOLD: f64 = 1.5;
 /// `MaceItem.SMASH_ATTACK_HEAVY_THRESHOLD`.
 pub(in crate::game) const HEAVY_THRESHOLD: f64 = 5.0;
-/// `MaceItem.SMASH_ATTACK_KNOCKBACK_RADIUS`.
-pub(in crate::game) const KNOCKBACK_RADIUS: f64 = 3.5;
 /// `MaceItem.SMASH_ATTACK_KNOCKBACK_POWER`.
 pub(in crate::game) const KNOCKBACK_POWER: f32 = 0.7;
 
@@ -135,36 +132,6 @@ pub(in crate::game::server_side) fn smash_push(
         velocity.y + f64::from(KNOCKBACK_POWER),
         velocity.z + z,
     );
-}
-
-/// `MaceItem.canSmashAttack` with explicit actor state.
-pub(in crate::game) fn can_smash(fall: f64, fall_flying: bool) -> bool {
-    fall > FALL_THRESHOLD && !fall_flying
-}
-
-/// `MaceItem.getAttackDamageBonus`, with an explicit stack, actor fall and RNG.
-pub(in crate::game) fn stack_smash_damage(
-    enchantments: &sunrise_items::enchant::Enchantments,
-    stack: &sunrise_items::items::ItemStack,
-    fall: f64,
-    ctx: &EffectContext<'_>,
-    random: &mut sunrise_core::random::LegacyRandom,
-) -> f32 {
-    let damage = if fall <= 3.0 {
-        4.0 * fall
-    } else if fall <= 8.0 {
-        12.0 + 2.0 * (fall - 3.0)
-    } else {
-        22.0 + fall - 8.0
-    };
-    let per_block = enchantments.modify_value(
-        Some(stack),
-        "minecraft:smash_damage_per_fallen_block",
-        ctx,
-        random,
-        0.0,
-    );
-    (damage + f64::from(per_block) * fall) as f32
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -323,7 +290,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.mobs[index].creative_attacker = self.creative;
         self.mobs[index].attacker_aim = aim;
         self.mobs[index].dealt_absorbed = 0;
-        let decision = crate::game::entity::causer_decision!(self, attack.attacker);
+        let decision =
+            crate::game::server_side::entity_server::causer_decision!(self, attack.attacker);
         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         let hurt = {
             let mut breach = breach_modifier(
@@ -333,10 +301,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 server_world_items!(self),
                 &server_world_stations!(self).enchantments,
             );
-            let (victim, lend) =
-                crate::game::entity::victim_and_causer!(self, index, attack.attacker, decision);
+            let (victim, lend) = crate::game::server_side::entity_server::victim_and_causer!(
+                self,
+                index,
+                attack.attacker,
+                decision
+            );
             victim.damage_with(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
+                crate::game::server_side::entity_server::damage_level_of!(
+                    self,
+                    &attack,
+                    &mut credit,
+                    lend
+                ),
                 amount,
                 source,
                 Some(&mut breach),
@@ -577,7 +554,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             team: self.player_team().cloned(),
         };
         if self.side.lan_acting.is_some() {
-            self.creatures.smash_pushes.push(push);
+            self.side.smash_pushes.push(push);
         } else {
             self.smash_push_players(&push);
         }
@@ -592,7 +569,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// The pushes guests' smashes put off.
     pub(in crate::game::server_side) fn flush_smash_pushes(&mut self) {
-        for push in std::mem::take(&mut self.creatures.smash_pushes) {
+        for push in std::mem::take(&mut self.side.smash_pushes) {
             self.smash_push_players(&push);
         }
     }
@@ -748,7 +725,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let plan = self.prepare_knockback_credit(id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-                let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
+                let level = crate::game::server_side::entity_server::damage_level_of!(
+                    self,
+                    &attack,
+                    &mut credit,
+                    None
+                );
                 self.mobs[i].knockback(level, 0.4, xd, zd, &source, amount);
                 self.post_attack(i);
             }

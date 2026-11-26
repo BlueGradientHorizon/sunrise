@@ -56,6 +56,10 @@ fn game_with_open_donkey<'a>(
             root,
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.player =

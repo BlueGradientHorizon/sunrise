@@ -6,7 +6,7 @@ use sunrise_sim::entities::ItemEntity;
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Notify tracking clients of a server-side mob item pickup without client particle bookkeeping.
     pub(in crate::game) fn server_mob_take_item(&mut self, item: &ItemEntity, collector: u32) {
-        if let Some(host) = &self.lan {
+        if let Some(host) = &self.side.lan {
             host.hub.take_item(
                 item.id as i32,
                 collector as i32,

@@ -257,6 +257,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 impl EquipmentPiece<'_> {
     // Only resolved atlas bindings reach submissions. Missing textures do not consume foil.
+    #[cfg(feature = "client")]
     fn materials<'a>(
         &self,
         stack: Option<&ItemStack>,
@@ -267,8 +268,11 @@ impl EquipmentPiece<'_> {
         self.resolved_materials(
             trim,
             |_, layer| {
-                let color =
-                    super::armor_stands::layer_color(layer.dyeable, layer.color_when_undyed, stack);
+                let color = crate::game::client_side::armor_stands_client::layer_color(
+                    layer.dyeable,
+                    layer.color_when_undyed,
+                    stack,
+                );
                 if color == 0 {
                     return None;
                 }

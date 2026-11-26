@@ -12,7 +12,7 @@ use std::sync::Arc;
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn begin_condition_reload(
         &mut self,
-        stack: &crate::game::server_side::functions::PackStack,
+        stack: &crate::game::function_pack_stack::PackStack,
         resources: &std::path::Path,
     ) -> Result<
         crate::game::server_side::server_reload::PreparedServerReload,
@@ -32,7 +32,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn prepare_pack_condition_reload(
         &mut self,
-        stack: &crate::game::server_side::functions::PackStack,
+        stack: &crate::game::function_pack_stack::PackStack,
     ) -> Result<
         crate::game::server_side::server_reload::PreparedServerReload,
         mod_api::__private::reload::ReloadStageError,

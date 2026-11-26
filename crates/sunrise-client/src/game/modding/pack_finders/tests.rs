@@ -1,9 +1,12 @@
 use super::*;
+use crate::game::client_side::pack_discovery_client::into_resource_pack;
 use mod_api::{AddPackFindersEvent, Hooks, Identifier, ModEntry};
 use mod_platform::testing::with_mods;
 use std::{fs, io::Write, path::PathBuf};
+use sunrise_client_render::packs;
 use sunrise_game_data::text::Text;
 use sunrise_level::datapack::{DataStore, FunctionLine};
+use sunrise_level::pack_meta::{RESOURCE_FORMAT, SelectionModel};
 
 const ASSET_PACK: &str = "assets/packmod/resourcepacks/optional";
 const DATA_PACK: &str = "data/packmod/datapacks/optional";
@@ -226,7 +229,7 @@ fn live_pack_rediscovery_can_read_a_registered_client_setting() {
     use mod_api::{HostSide, Registrar, RegistrationContext, SettingSpec};
 
     if run_fresh_cases(
-        "game::server_side::pack_finders::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
+        "game::pack_discovery::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
         "SUNRISE_PACK_DISCOVERY_CHILD",
         &["client"],
     ) {
@@ -273,7 +276,7 @@ fn live_pack_rediscovery_can_read_a_registered_client_setting() {
                 game.set_setting("packmod", "offer", "true");
                 let packs = game.discover_mod_packs(ty);
                 assert_eq!(packs.len(), 1);
-                assert_eq!(packs[0].id, fixture.asset_id());
+                assert_eq!(packs[0].meta.id, fixture.asset_id());
             });
         },
     );
@@ -284,8 +287,11 @@ fn hidden_packs_reach_the_screens_marked_hidden_and_still_apply() {
     let fixture = Fixture::new(false);
     let sources = fixture.sources();
     with_finder_hidden(false, true, true, || {
-        let packs = discover(PackType::ClientResources, &sources);
-        let infos = crate::game::packs::pack_infos(&fixture.root, &[], &packs);
+        let packs: Vec<_> = discover(PackType::ClientResources, &sources)
+            .into_iter()
+            .map(into_resource_pack)
+            .collect();
+        let infos = crate::game::client_side::packs::pack_infos(&fixture.root, &[], &packs);
         let info = infos
             .iter()
             .find(|info| info.id == fixture.asset_id())
@@ -312,9 +318,12 @@ fn contributed_packs_are_discoverable_and_only_selected_resources_apply() {
         let fixture = Fixture::new(archive);
         let sources = fixture.sources();
         with_finder(|| {
-            let packs = discover(PackType::ClientResources, &sources);
+            let packs: Vec<_> = discover(PackType::ClientResources, &sources)
+                .into_iter()
+                .map(into_resource_pack)
+                .collect();
             assert_eq!(packs.len(), 1);
-            let infos = crate::game::packs::pack_infos(&fixture.root, &[], &packs);
+            let infos = crate::game::client_side::packs::pack_infos(&fixture.root, &[], &packs);
             assert!(
                 infos
                     .iter()
@@ -377,11 +386,11 @@ fn rediscovery_opens_the_new_archive_without_changing_old_readers() {
         fixture.replace_asset();
         let new = discover(PackType::ClientResources, &sources);
         assert_eq!(
-            old[0].source.open().unwrap().read(ASSET).unwrap(),
+            old[0].meta.source.open().unwrap().read(ASSET).unwrap(),
             br#"{"packmod.optional":"first"}"#
         );
         assert_eq!(
-            new[0].source.open().unwrap().read(ASSET).unwrap(),
+            new[0].meta.source.open().unwrap().read(ASSET).unwrap(),
             br#"{"packmod.optional":"second"}"#
         );
         assert!(!fixture.root.join("packmod").exists());
@@ -406,7 +415,7 @@ fn refused_registrations_leave_the_repository_unchanged() {
         titled.title = mod_api::Text::literal("").append(titled.title);
     }
     registry.add_pack_finders(titled).unwrap();
-    assert_eq!(registry.packs[0].title.plain(), "leaf");
+    assert_eq!(registry.packs[0].meta.title.plain(), "leaf");
     assert_eq!(registry.packs.len(), 1);
     for (path, error) in [
         (valid.as_str(), PackFinderError::Duplicate),
@@ -419,6 +428,7 @@ fn refused_registrations_leave_the_repository_unchanged() {
     }
     assert_eq!(
         registry.packs[0]
+            .meta
             .source
             .open()
             .unwrap()
@@ -433,7 +443,10 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
     let fixture = Fixture::new(false);
     let sources = fixture.sources();
     with_finder_config(false, true, || {
-        let mut all = discover(PackType::ClientResources, &sources);
+        let mut all: Vec<_> = discover(PackType::ClientResources, &sources)
+            .into_iter()
+            .map(into_resource_pack)
+            .collect();
         let optional = fixture.root.join("override");
         fs::create_dir_all(optional.join("assets/packmod/lang")).unwrap();
         fs::write(optional.join(ASSET), br#"{"packmod.optional":"override"}"#).unwrap();
@@ -452,7 +465,7 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
                 "file/override".into(),
                 Text::translate("packmod.optional.title", &[]),
                 Source::Dir(optional),
-                packs::RESOURCE_FORMAT,
+                RESOURCE_FORMAT,
             )
             .unwrap(),
         );
@@ -476,7 +489,7 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
             br#"{"packmod.optional":"override"}"#
         );
         let info = all[0].selection.as_ref().unwrap();
-        let model = packs::SelectionModel::new(vec![info.selectable()], &[]);
+        let model = SelectionModel::new(vec![info.selectable()], &[]);
         assert!(!model.can_unselect(true, 0));
 
         let mut second_required = all[0].clone();
@@ -622,7 +635,7 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
         crate::game::native_entity_refs::tests::with_uncached_client_game(|game| {
             ran = true;
             game.mods = fixture.sources();
-            let staged = crate::game::packs::stage_pack(
+            let staged = crate::game::client_side::packs::stage_pack(
                 &game.vanilla_root(),
                 &[],
                 &[],
@@ -658,7 +671,7 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
             game.side.settings.resource_packs = vec![fixture.asset_id()];
             for expected in ["first", "second"] {
                 let listeners = game.register_client_reload_listeners();
-                let staged = crate::game::packs::stage_pack(
+                let staged = crate::game::client_side::packs::stage_pack(
                     &game.vanilla_root(),
                     &game.side.settings.resource_packs,
                     &[],
@@ -806,8 +819,8 @@ fn a_panicking_pack_finder_does_not_reserve_its_pack_id() {
             for _ in 0..2 {
                 let packs = discover(PackType::ClientResources, &sources);
                 assert_eq!(packs.len(), 1);
-                assert_eq!(packs[0].id, fixture.asset_id());
-                assert!(!packs[0].selection.as_ref().unwrap().required);
+                assert_eq!(packs[0].meta.id, fixture.asset_id());
+                assert!(!packs[0].meta.selection.as_ref().unwrap().required);
             }
             assert_eq!(
                 mod_api::__private::poisoned_listeners(HookId::AddPackFinders),
@@ -898,7 +911,7 @@ fn disabled_native_mods_skip_add_pack_finders_at_startup_and_after_toggle() {
             assert_eq!(disabled_calls.load(Ordering::SeqCst), 0);
             assert_eq!(enabled_calls.load(Ordering::SeqCst), 2);
             assert_eq!(client_packs.len(), 1);
-            assert_eq!(client_packs[0].id, fixture.asset_id());
+            assert_eq!(client_packs[0].meta.id, fixture.asset_id());
             assert_eq!(server_packs.len(), 1);
             assert_eq!(server_packs[0].id, fixture.data_id());
 

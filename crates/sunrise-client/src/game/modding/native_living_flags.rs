@@ -11,12 +11,11 @@
 //! stale handle, and for a kind Sunrise keeps no such state for (each doc
 //! says which).
 use super::{Game, commands::Target};
+use crate::game::native_living_body::FlagClimbing;
 use mod_api::LivingRef;
-use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_sim::mobs::villager;
-use sunrise_world::climbing::{self, ClimbingWorld};
-use sunrise_world::registry::BlockStateId;
+use sunrise_world::climbing;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Run a player sleep write in the authoritative body. An acting player's
@@ -35,7 +34,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 // The entity resolver includes players in other levels, but a
                 // body swap does not swap the world a bed write would touch.
-                if self.lan.as_ref().unwrap().hub.guests[gi].dimension != self.dim.id() {
+                if self.side.lan.as_ref().unwrap().hub.guests[gi].dimension != self.dim.id() {
                     return false;
                 }
                 self.as_guest_at(gi, conn, |game| !game.side.lan_acting_fake && write(game))
@@ -58,6 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 true
             }
             Some(Target::Guest(conn)) => self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|h| h.hub.update_guest(conn, |g| g.fall_flying = true))
@@ -88,6 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 true
             }
             Some(Target::Guest(conn)) => self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|h| h.hub.update_guest(conn, |g| g.fall_flying = false))
@@ -138,7 +139,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let mut mobs = self.mobs.lift();
                 #[cfg(test)]
-                super::entity::taken_pass_tests::after_take(self);
+                crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
                 let w = self.mob_world_base(&[]);
                 let mut events = Vec::new();
                 let slept = mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
@@ -181,7 +182,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 let mut mobs = self.mobs.lift();
                 #[cfg(test)]
-                super::entity::taken_pass_tests::after_take(self);
+                crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
                 let w = self.mob_world_base(&[]);
                 let mut events = Vec::new();
                 if let Some(m) = mobs.iter_mut().find(|m| m.id == id) {
@@ -271,217 +272,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             gliding: mob.extra.fall_flying,
         };
         climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false)
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The ticks the entity has glided (`LivingEntity.getFallFlyingTicks`),
-    /// counted from 0 again the tick after the glide ends. Players (including
-    /// inactive guests) and mobs read their own stored body counter. None
-    /// for an armor stand or the dragon.
-    pub(in crate::game) fn living_gliding_ticks(&self, living: LivingRef) -> Option<i32> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.player.as_ref()?.fall_fly_ticks),
-            Target::Guest(conn) => Some(
-                self.command_guest(conn)?
-                    .motion
-                    .as_ref()
-                    .map_or(0, |m| m.fall_fly_ticks),
-            ),
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
-                    .extra
-                    .fall_fly_ticks,
-            ),
-            _ => None,
-        }
-    }
-
-    /// Whether the entity glides on elytra (`LivingEntity.isFallFlying`;
-    /// Paper's `LivingEntity#isGliding`). The player in place and the guests
-    /// answer from their fall-flying flag, a mob from its own. None for an
-    /// armor stand or the dragon: the game keeps no glide for them.
-    pub(in crate::game) fn living_is_gliding(&self, living: LivingRef) -> Option<bool> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.player.as_ref()?.fall_flying),
-            Target::Guest(conn) => Some(self.command_guest(conn)?.fall_flying),
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
-                    .extra
-                    .fall_flying,
-            ),
-            _ => None,
-        }
-    }
-
-    /// Whether the entity sleeps in a bed (`LivingEntity.isSleeping`): the
-    /// player in place, a guest, or a villager or wandering trader asleep in
-    /// its bed. Other mobs never sleep. None for an armor stand or the
-    /// dragon.
-    pub(in crate::game) fn living_is_sleeping(&self, living: LivingRef) -> Option<bool> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.sleeping.is_some()),
-            Target::Guest(conn) => Some(self.command_guest(conn)?.sleeping),
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)
-                    .map(villager::sleeping)
-                    .unwrap_or(false),
-            ),
-            _ => None,
-        }
-    }
-
-    /// The head of the bed the entity sleeps in (`LivingEntity.getSleepingPos`),
-    /// as the block position it lies at. A guest keeps the bed it last slept
-    /// in while it sleeps, a villager or wandering trader its own. None for
-    /// an awake entity, another mob, an armor stand or the dragon.
-    pub(in crate::game) fn living_sleeping_pos(&self, living: LivingRef) -> Option<[i32; 3]> {
-        match self.native_living_read_target(living)? {
-            Target::Player => self.sleeping,
-            Target::Guest(conn) => {
-                let g = self.command_guest(conn)?;
-                g.bed.filter(|_| g.sleeping)
-            }
-            Target::Mob(id) => {
-                villager::sleeping_pos(self.mobs.iter().find(|m| m.id == id && !m.removed)?)
-            }
-            _ => None,
-        }
-    }
-
-    /// Whether the entity jumps (`LivingEntity.isJumping`; Paper's
-    /// `LivingEntity#isJumping`): the player in place answers from their
-    /// own jump state. The guests' jump is their client's, and a mob has no
-    /// jump controller in the game's own AI, so both read false. None for
-    /// an armor stand or the dragon.
-    pub(in crate::game) fn living_is_jumping(&self, living: LivingRef) -> Option<bool> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.player.as_ref()?.jumping),
-            Target::Guest(_) => Some(false),
-            Target::Mob(_) => Some(false),
-            _ => None,
-        }
-    }
-
-    /// Whether the entity is on a climbable block this tick
-    /// (`LivingEntity.onClimbable`; Paper's `LivingEntity#isClimbing`), by
-    /// the block at its feet: a ladder, a vine, a scaffold or an open
-    /// trapdoor above a ladder. A spectator never climbs; a gliding entity
-    /// ignores blocks tagged to glide through, such as vines. None for an
-    /// armor stand or the dragon.
-    pub(in crate::game) fn living_is_climbing(&self, living: LivingRef) -> Option<bool> {
-        let target = self.native_living_read_target(living)?;
-        let (position, spectator, gliding) = match target {
-            Target::Player => {
-                let p = self.player.as_ref()?;
-                (p.position, p.spectator, p.fall_flying)
-            }
-            Target::Guest(conn) => {
-                let g = self.command_guest(conn)?;
-                (
-                    Vec3::new(g.position[0], g.position[1], g.position[2]),
-                    g.spectator(),
-                    g.fall_flying,
-                )
-            }
-            Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-                (m.position, false, m.extra.fall_flying)
-            }
-            _ => return None,
-        };
-        let mut world = FlagClimbing {
-            world: &self.world,
-            context: &self.loop_context,
-            entity: living.id(),
-            position: BlockPos::containing(position),
-            spectator,
-            gliding,
-        };
-        Some(climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false))
-    }
-
-    /// Whether the entity is a baby (`LivingEntity.isBaby`): a mob answers
-    /// from its age, negative until it grows up. A player, an armor stand
-    /// and the dragon are never babies.
-    pub(in crate::game) fn living_baby(&self, living: LivingRef) -> Option<bool> {
-        match self.native_living_read_target(living)? {
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
-                    .extra
-                    .age
-                    < 0,
-            ),
-            Target::Player | Target::Guest(_) | Target::Stand(_) | Target::Dragon(_) => Some(false),
-            _ => None,
-        }
-    }
-}
-
-/// `LivingEntity.onClimbable` reads the world through `ClimbingWorld`; this
-/// walks the level the flag's entity stands in, at its feet.
-struct FlagClimbing<'a> {
-    world: &'a sunrise_level::world::World,
-    context: &'a sunrise_world::native_load_context::LoopContext,
-    entity: u32,
-    position: BlockPos,
-    spectator: bool,
-    gliding: bool,
-}
-
-impl ClimbingWorld for FlagClimbing<'_> {
-    type Error = std::convert::Infallible;
-    fn is_spectator(&mut self) -> Result<bool, Self::Error> {
-        Ok(self.spectator)
-    }
-    fn is_fall_flying(&mut self) -> Result<bool, Self::Error> {
-        Ok(self.gliding)
-    }
-    fn block_position(&mut self) -> Result<BlockPos, Self::Error> {
-        Ok(self.position)
-    }
-    fn in_block_state(&mut self) -> Result<BlockStateId, Self::Error> {
-        self.block_state(self.position)
-    }
-    fn block_state(&mut self, p: BlockPos) -> Result<BlockStateId, Self::Error> {
-        Ok(self.world.block(p.x, p.y, p.z))
-    }
-    fn set_last_climbable_position(&mut self, _: BlockPos) {}
-    fn adjust_ladder(&mut self, position: BlockPos, state: BlockStateId, tagged: bool) -> bool {
-        let mut ladder = tagged;
-        sunrise_sim::motion::native_is_ladder(
-            self.context,
-            self.entity,
-            position,
-            state,
-            &mut ladder,
-        );
-        ladder
-    }
-    fn adjust_trapdoor_ladder(
-        &mut self,
-        position: BlockPos,
-        state: BlockStateId,
-        trapdoor: BlockStateId,
-        ladder: bool,
-    ) -> bool {
-        let mut climbable = ladder;
-        sunrise_sim::motion::ladder::native_makes_open_trapdoor_above_climbable(
-            self.context,
-            state,
-            position,
-            trapdoor,
-            &mut climbable,
-        );
-        climbable
     }
 }
 
@@ -732,7 +522,7 @@ pub(in crate::game) mod tests {
             level_seeds: game.side.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
-        game.lan.as_mut().unwrap().hub.singleplayer_owner = owner.then_some(12);
+        game.side.lan.as_mut().unwrap().hub.singleplayer_owner = owner.then_some(12);
         game.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
@@ -775,7 +565,7 @@ pub(in crate::game) mod tests {
         // The test client's initial column has already arrived, so the
         // real tracker can pair the other guest and publish dirty flags.
         g.sent_chunks.insert((0, 0));
-        game.lan.as_mut().unwrap().hub.guests.push(g);
+        game.side.lan.as_mut().unwrap().hub.guests.push(g);
         let living = game.living(game.entity(conn).unwrap()).unwrap();
         (living, rx)
     }
@@ -822,7 +612,12 @@ pub(in crate::game) mod tests {
             border: &game.border,
             streaming: None,
         };
-        game.lan.as_mut().unwrap().hub.tick_level(&mut ctx, None);
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .tick_level(&mut ctx, None);
     }
 
     pub(in crate::game) fn packets(
@@ -1027,7 +822,8 @@ pub(in crate::game) mod tests {
                     // This world's bed is independent of the foreign sleeper;
                     // no player-bed cleanup is pending from the fixture setup.
                     game.set_bed_occupied([5, 64, 5], sleeping);
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -1154,7 +950,8 @@ pub(in crate::game) mod tests {
             guest_server(game, false, true);
             let (living, _rx) = guest(game, 12);
             let (_observer, observer_rx) = guest(game, 13);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1233,10 +1030,11 @@ pub(in crate::game) mod tests {
             let motion = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             let mut fake = Guest::connectionless(14, 14, "fake14".into(), 14, [0.0; 3], motion);
             fake.dimension = game.dim.id().to_owned();
-            game.lan.as_mut().unwrap().hub.guests.push(fake);
+            game.side.lan.as_mut().unwrap().hub.guests.push(fake);
             let fake = game.living(game.entity(14).unwrap()).unwrap();
             for conn in [12, 13, 14] {
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1294,92 +1092,94 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_flags_villager_sleep_rejects_invalid_beds_without_mutation() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
-            guest_server(game, true, false);
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:villager")
-                .unwrap()
-                .clone();
-            game.mobs
-                .push(Mob::new(20, kind, Vec3::new(3.0, 64.0, 5.0), 0.0));
-            let living = game.living(game.entity(20).unwrap()).unwrap();
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            game.world.set(4, 64, 4, stone).unwrap();
-            bed(game, "minecraft:straw_bed", [6, 64, 6]); // no foot -> no sleep shape
-            balance.drain_balanced();
-            for pos in [[5, 64, 5], [4, 64, 4], [1600, 64, 1600], [6, 64, 6]] {
-                let before = sunrise_sim::entity_nbt::mob_to_nbt(
-                    &game.mobs[0],
-                    [1, 2, 3, 4],
-                    None,
-                    Some(game.pack.assets.registry),
-                    |_| None,
-                    &Default::default(),
-                );
-                assert!(!game.living_start_sleeping(living, pos), "{pos:?}");
-                assert_eq!(
-                    sunrise_sim::entity_nbt::mob_to_nbt(
+        crate::game::server_side::entity_server::taken_pass_tests::in_both_dimensions(
+            |game, balance| {
+                guest_server(game, true, false);
+                let kind = game
+                    .res
+                    .mob_types()
+                    .get("minecraft:villager")
+                    .unwrap()
+                    .clone();
+                game.mobs
+                    .push(Mob::new(20, kind, Vec3::new(3.0, 64.0, 5.0), 0.0));
+                let living = game.living(game.entity(20).unwrap()).unwrap();
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(4, 64, 4, stone).unwrap();
+                bed(game, "minecraft:straw_bed", [6, 64, 6]); // no foot -> no sleep shape
+                balance.drain_balanced();
+                for pos in [[5, 64, 5], [4, 64, 4], [1600, 64, 1600], [6, 64, 6]] {
+                    let before = sunrise_sim::entity_nbt::mob_to_nbt(
                         &game.mobs[0],
                         [1, 2, 3, 4],
                         None,
                         Some(game.pack.assets.registry),
                         |_| None,
-                        &Default::default()
-                    ),
-                    before
-                );
-                assert_eq!(game.mobs[0].position, Vec3::new(3.0, 64.0, 5.0));
-                assert_eq!(game.living_sleeping_pos(living), None);
-                assert_eq!(balance.drain_balanced(), 0, "rejected bed opened a pass");
-            }
-            bed(game, "minecraft:red_bed", [5, 64, 5]);
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
+                        &Default::default(),
+                    );
+                    assert!(!game.living_start_sleeping(living, pos), "{pos:?}");
+                    assert_eq!(
+                        sunrise_sim::entity_nbt::mob_to_nbt(
+                            &game.mobs[0],
+                            [1, 2, 3, 4],
+                            None,
+                            Some(game.pack.assets.registry),
+                            |_| None,
+                            &Default::default()
+                        ),
+                        before
+                    );
+                    assert_eq!(game.mobs[0].position, Vec3::new(3.0, 64.0, 5.0));
+                    assert_eq!(game.living_sleeping_pos(living), None);
+                    assert_eq!(balance.drain_balanced(), 0, "rejected bed opened a pass");
+                }
+                bed(game, "minecraft:red_bed", [5, 64, 5]);
+                crate::game::server_side::entity_server::taken_pass_tests::assert_mob_spawn_survives(
                 game,
                 balance,
                 |game| {
                     assert!(game.living_start_sleeping(living, [5, 64, 5]));
                 },
             );
-            assert_eq!(game.living_sleeping_pos(living), Some([5, 64, 5]));
-            assert_eq!(game.mobs[0].position, Vec3::new(5.5, 64.6875, 5.5));
-            assert_eq!(
-                game.pack
-                    .assets
-                    .registry
-                    .state(game.world.block(5, 64, 5))
-                    .unwrap()
-                    .properties
-                    .get("occupied")
-                    .map(String::as_str),
-                Some("true")
-            );
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
+                assert_eq!(game.living_sleeping_pos(living), Some([5, 64, 5]));
+                assert_eq!(game.mobs[0].position, Vec3::new(5.5, 64.6875, 5.5));
+                assert_eq!(
+                    game.pack
+                        .assets
+                        .registry
+                        .state(game.world.block(5, 64, 5))
+                        .unwrap()
+                        .properties
+                        .get("occupied")
+                        .map(String::as_str),
+                    Some("true")
+                );
+                crate::game::server_side::entity_server::taken_pass_tests::assert_mob_spawn_survives(
                 game,
                 balance,
                 |game| {
                     assert!(game.living_stop_sleeping(living));
                 },
             );
-            assert_eq!(game.living_sleeping_pos(living), None);
-            assert_eq!(
-                game.pack
-                    .assets
-                    .registry
-                    .state(game.world.block(5, 64, 5))
-                    .unwrap()
-                    .properties
-                    .get("occupied")
-                    .map(String::as_str),
-                Some("false")
-            );
-        });
+                assert_eq!(game.living_sleeping_pos(living), None);
+                assert_eq!(
+                    game.pack
+                        .assets
+                        .registry
+                        .state(game.world.block(5, 64, 5))
+                        .unwrap()
+                        .properties
+                        .get("occupied")
+                        .map(String::as_str),
+                    Some("false")
+                );
+            },
+        );
     }
     #[test]
     #[ignore = "daily"]

@@ -25,3 +25,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         ])
     }
 }
+
+pub(in crate::game) fn block_entity_pos(tag: &Tag) -> [i32; 3] {
+    [tag.get("x"), tag.get("y"), tag.get("z")]
+        .map(|v| sunrise_sim::save::number(v).unwrap_or(0) as i32)
+}

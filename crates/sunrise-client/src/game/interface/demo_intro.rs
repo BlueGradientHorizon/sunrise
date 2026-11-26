@@ -292,7 +292,7 @@ mod tests {
                             relatives: 0,
                         }))
                         .unwrap();
-                        game.remote.as_mut().unwrap().level_load.finish();
+                        game.side.remote.as_mut().unwrap().level_load.finish();
                         game.side.focused = true;
                         game.side.chat_ui.chat.set_abilities(
                             &game.side.gui.atlas.font,
@@ -323,7 +323,7 @@ mod tests {
                         };
                         for zero in [0.0, -0.0] {
                             game.set_screen(Screen::Paused);
-                            let count = game.remote.as_ref().unwrap().chat_received;
+                            let count = game.side.remote.as_ref().unwrap().chat_received;
                             send(game, zero);
                             assert_eq!(game.side.screen, Screen::DemoIntro);
                             let intro = game.side.demo_intro.as_ref().unwrap();
@@ -390,7 +390,7 @@ mod tests {
                                 "Later does not return to Pause"
                             );
                             assert!(!game.side.agent_pointer, "Later requests capture");
-                            assert_eq!(game.remote.as_ref().unwrap().chat_received, count);
+                            assert_eq!(game.side.remote.as_ref().unwrap().chat_received, count);
                             assert!(spoken.lock().unwrap().is_empty());
                         }
                         for (phase, key, args) in [
@@ -405,10 +405,10 @@ mod tests {
                                     .keys
                                     .set("key.screenshot", "key.keyboard.z");
                             }
-                            let count = game.remote.as_ref().unwrap().chat_received;
+                            let count = game.side.remote.as_ref().unwrap().chat_received;
                             send(game, phase);
                             assert_eq!(game.side.screen, Screen::Playing);
-                            assert_eq!(game.remote.as_ref().unwrap().chat_received, count + 1);
+                            assert_eq!(game.side.remote.as_ref().unwrap().chat_received, count + 1);
                             let expected = json!({"translate": key, "with": args.iter().map(|label| json!({"text": label.to_string()})).collect::<Vec<_>>()});
                             assert_eq!(game.side.chat_ui.chat.recent_components(1), [expected]);
                             let chat = game.side.chat_ui.chat.recent_lines(1).pop().unwrap();
@@ -417,7 +417,7 @@ mod tests {
                                 [(chat, false)]
                             );
                         }
-                        let count = game.remote.as_ref().unwrap().chat_received;
+                        let count = game.side.remote.as_ref().unwrap().chat_received;
                         for phase in [
                             0.25,
                             -0.25,
@@ -431,12 +431,12 @@ mod tests {
                         ] {
                             send(game, phase);
                             assert_eq!(game.side.screen, Screen::Playing);
-                            assert_eq!(game.remote.as_ref().unwrap().chat_received, count);
+                            assert_eq!(game.side.remote.as_ref().unwrap().chat_received, count);
                             assert!(spoken.lock().unwrap().is_empty());
                         }
                         sunrise_narrator::set_status(Status::Chat);
                         send(game, 102.0);
-                        assert_eq!(game.remote.as_ref().unwrap().chat_received, count + 1);
+                        assert_eq!(game.side.remote.as_ref().unwrap().chat_received, count + 1);
                         assert!(
                             spoken.lock().unwrap().is_empty(),
                             "a demo hint is system narration, not chat narration"

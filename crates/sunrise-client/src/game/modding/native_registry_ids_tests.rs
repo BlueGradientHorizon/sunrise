@@ -131,7 +131,7 @@ fn a_client_answers_its_own_connections_registries() {
                 })
                 .collect(),
         });
-        game.remote.as_mut().unwrap().registries = std::sync::Arc::new(synced);
+        game.side.remote.as_mut().unwrap().registries = std::sync::Arc::new(synced);
         assert_eq!(
             lookup(game, "minecraft:damage_type", "minecraft:in_fire"),
             Some(0)

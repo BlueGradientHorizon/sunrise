@@ -61,10 +61,15 @@ fn with_shaped_commands(
             with_guests(|game| {
                 game.build_registries();
                 let (tx, rx) = std::sync::mpsc::channel();
-                game.lan.as_mut().unwrap().hub.update_guest(12, |guest| {
-                    guest.sender = PlayerSender::new(tx, Arc::default());
-                    guest.permission = 2;
-                });
+                game.side
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(12, |guest| {
+                        guest.sender = PlayerSender::new(tx, Arc::default());
+                        guest.permission = 2;
+                    });
                 game.register_native_commands();
                 test(game, &calls, rx);
             });

@@ -1,6 +1,6 @@
 use crate::game::{
-    lan::mob_meta, native_entity_refs::tests::with_client_game, remote::tests::spawn_menu_test,
-    villager_client::tests::meta_hub,
+    lan_mob_metadata::mob_meta, native_entity_refs::tests::with_client_game,
+    remote::tests::spawn_menu_test, villager_client::tests::meta_hub,
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{buf::Reader, connection::Pipe, packets::play::Clientbound};
@@ -22,6 +22,7 @@ fn a_client_receives_a_mannequins_main_hand() {
 
                 let kind = "minecraft:mannequin";
                 let network_kind = game
+                    .side
                     .remote
                     .as_ref()
                     .unwrap()

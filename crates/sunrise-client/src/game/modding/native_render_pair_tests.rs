@@ -229,13 +229,8 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
             game.side.camera_type = camera;
             game.side.occlusion.0.shadow_casters.1 = player_shadow;
             game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
-            assert!(
-                !game
-                    .side
-                    .entity_runs
-                    .iter()
-                    .any(|run| run.family == super::entity::DrawFamily::LocalPlayer)
-            );
+            assert!(!game.side.entity_runs.iter().any(|run| run.family
+                == crate::game::client_side::entity_client::DrawFamily::LocalPlayer));
             assert!(!events(&heard).iter().any(|event| matches!(
                 event.as_str(),
                 "player_pre true" | "player_post true" | "living_pre 4321" | "living_post 4321"
@@ -329,7 +324,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
     super::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Steve").unwrap();
-        let builtin = game.remote.as_ref().unwrap().builtin.clone();
+        let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
         let types = builtin.get("minecraft:entity_type").unwrap();
         let stone = builtin
             .get("minecraft:item")
@@ -427,7 +422,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
                         passengers: passengers.clone(),
                     }))
                     .unwrap();
-                    let remote = game.remote.as_ref().unwrap();
+                    let remote = game.side.remote.as_ref().unwrap();
                     assert_eq!(
                         remote.passenger_seats(vehicle as u32).count(),
                         passengers.len()
@@ -681,7 +676,7 @@ fn admit_own_player(game: &mut crate::game::ClientGame<'_>, spectator: bool) {
     player.entity_id = 4321;
     game.player = Some(player);
     game.previous_position = at;
-    if let Some(remote) = game.remote.as_mut() {
+    if let Some(remote) = game.side.remote.as_mut() {
         remote.entity_id = 4321;
     }
     game.side.camera_type = sunrise_level::camera_math::CameraType::ThirdPersonBack;

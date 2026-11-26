@@ -24,7 +24,7 @@ fn a_give_that_fits_plays_pickup_in_the_players_level() {
     }
     with_guests(|game| {
         let diamond = in_the_nether(game);
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         let [overworld, nether] = [12, 13].map(|conn| {
             let (tx, rx) = mpsc::channel();
             hub.update_guest(conn, |g| {

@@ -42,6 +42,10 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
             root.to_path_buf(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     assert_eq!(
@@ -50,7 +54,7 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     );
     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(pipe, "Steve").unwrap();
-    let builtin = game.remote.as_ref().unwrap().builtin.clone();
+    let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
     let id = |registry: &str, name: &str| builtin.get(registry).unwrap().id(name).unwrap();
     let item = |name: &str| id("minecraft:item", name);
     let add = |entity: i32, uuid: u128, kind: &str, position: [f64; 3]| {
@@ -104,7 +108,7 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     assert_eq!(game.entity_position(me), Some([0.5, 65.0, 0.5]));
     assert_eq!(game.entity_rotation(me), Some([45.0, 10.0]));
     // The profile the login named (the net thread's `Joined`).
-    game.remote.as_mut().unwrap().profile_name = "Steve".into();
+    game.side.remote.as_mut().unwrap().profile_name = "Steve".into();
     assert_eq!(
         me.name(&game as &dyn mod_api::ClientHost).as_deref(),
         Some("Steve")
@@ -327,11 +331,15 @@ fn a_villager_raid_sweat_event_draws_particles() {
             root.to_path_buf(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(pipe, "Steve").unwrap();
-    let builtin = game.remote.as_ref().unwrap().builtin.clone();
+    let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
     let kind = builtin
         .get("minecraft:entity_type")
         .unwrap()

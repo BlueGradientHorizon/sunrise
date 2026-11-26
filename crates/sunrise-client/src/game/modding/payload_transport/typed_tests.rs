@@ -208,6 +208,7 @@ fn typed_payloads_follow_the_raw_routes() {
                 .unwrap();
             let deadline = Instant::now() + Duration::from_secs(60);
             while !game
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.logged_in && r.joined)
@@ -229,7 +230,7 @@ fn typed_payloads_follow_the_raw_routes() {
 
 /// Exercise enumeration and a handle-addressed send, not a reply to the sender.
 fn singleplayer_list(game: &mut crate::game::ClientGame<'_>) {
-    assert_eq!(game.integrated.as_ref().unwrap().published(), None);
+    assert_eq!(game.side.integrated.as_ref().unwrap().published(), None);
     let owner = game.local_player().expect("logged-in local player");
     *OWNER.lock().unwrap() = Some((owner.uuid(), owner.entity().id()));
     let token = TOKENS.lock().unwrap().as_ref().unwrap().up.clone();
@@ -247,7 +248,7 @@ fn singleplayer_list(game: &mut crate::game::ClientGame<'_>) {
         std::thread::yield_now();
     }
     assert_eq!(*CLIENT.lock().unwrap(), [22]);
-    assert_eq!(game.integrated.as_ref().unwrap().published(), None);
+    assert_eq!(game.side.integrated.as_ref().unwrap().published(), None);
 }
 
 fn integrated(game: &mut crate::game::ClientGame<'_>) {
@@ -320,6 +321,7 @@ fn integrated(game: &mut crate::game::ClientGame<'_>) {
 
 fn lan(game: &mut crate::game::ClientGame<'_>) {
     let port = game
+        .side
         .integrated
         .as_ref()
         .unwrap()

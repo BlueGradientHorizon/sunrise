@@ -195,9 +195,10 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                 guest.motion = Some(Box::new(
                     PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap(),
                 ));
-                game.lan.as_mut().unwrap().hub.guests.push(guest);
+                game.side.lan.as_mut().unwrap().hub.guests.push(guest);
                 for boots in [true, false] {
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -221,7 +222,7 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                             },
                         },
                     );
-                    let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                     let ground = &guest.motion.as_ref().unwrap().ground;
                     assert_eq!(ground.horizontal_collision, boots);
                     assert_eq!(
@@ -326,8 +327,9 @@ pub(in crate::game) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i3
                 ));
                 guest.armor[0] = Some(ItemStack::new("minecraft:turtle_helmet", 1));
                 guest.armor[1] = Some(ItemStack::new("minecraft:diamond_chestplate", 1));
-                game.lan.as_mut().unwrap().hub.guests.push(guest);
-                game.lan
+                game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -343,7 +345,7 @@ pub(in crate::game) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i3
                     })
                     .unwrap();
                 game.guest_server_tick(1, true);
-                let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                let guest = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 left = (
                     guest.motion.as_ref().unwrap().air,
                     guest.armor[1].as_ref().unwrap().damage,

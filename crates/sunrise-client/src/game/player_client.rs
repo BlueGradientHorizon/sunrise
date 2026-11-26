@@ -1,7 +1,8 @@
 use crate::game::{
     Game, Hit,
+    client_side::interactions,
     commands_common::Target,
-    dragon::{SPECIAL, dragon_part_index},
+    dragon_common::{SPECIAL, dragon_part_index},
     game_mode_common::mode_from_id,
     pick_entity::{CrosshairDecision, aabb_extents},
     pick_ray::{PickAccumulator, pick_ray_segment},
@@ -41,7 +42,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && let Ok(speed) = player
                 .attributes
                 .computed_value_of("minecraft:attack_speed")
-            && (self.remote.is_some()
+            && (self.side.remote.is_some()
                 || !self.side.predicted_equipment_modifiers.is_empty()
                 || self.potions.effects.get("haste").is_some()
                 || self.potions.effects.get("mining_fatigue").is_some())
@@ -102,7 +103,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game) fn client_player_info_game_mode(&self) -> Option<GameMode> {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .and_then(|r| r.own_player_info_game_mode().map(mode_from_id))
     }
@@ -114,7 +116,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.native_lifecycle.epoch() != Some(player.entity().epoch()) {
             return None;
         }
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
+        let remote = self.side.remote.as_ref().filter(|r| r.logged_in)?;
         if remote.profile() != player.uuid()
             || u32::try_from(remote.entity_id).ok()? != player.entity().id()
         {
@@ -140,15 +142,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     // Player identity & residency.
     pub(in crate::game) fn client_own_entity_id(&self) -> i32 {
-        self.remote.as_ref().map_or(0, |r| r.entity_id)
+        self.side.remote.as_ref().map_or(0, |r| r.entity_id)
     }
 
     pub(in crate::game) fn client_own_profile_uuid(&self) -> Option<u128> {
-        self.remote.as_ref().map(|r| r.profile())
+        self.side.remote.as_ref().map(|r| r.profile())
     }
 
     pub(in crate::game) fn client_own_profile_name(&self) -> String {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .filter(|r| !r.profile_name.is_empty())
             .map_or_else(|| self.options.player_name(), |r| r.profile_name.clone())
@@ -157,7 +160,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Preserves checked `u32::try_from(remote.entity_id)` from `native_server.rs::player`.
     pub(in crate::game) fn client_local_player(&self) -> Option<PlayerRef> {
         let epoch = self.native_lifecycle.epoch()?;
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
+        let remote = self.side.remote.as_ref().filter(|r| r.logged_in)?;
         let id = u32::try_from(remote.entity_id).ok()?;
         Some(mod_api::__private::game::player_ref(
             EntityRef::new(epoch, id),
@@ -172,7 +175,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.resident_entities.local_player.retire();
         self.player_state.attachments.retire();
         self.player = None;
-        if self.remote.is_some()
+        if self.side.remote.is_some()
             && let Some(id) = id
         {
             self.pick_section_remove(id);
@@ -195,18 +198,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
             },
             id,
             Source::LocalPlayer,
-            self.remote
+            self.side
+                .remote
                 .as_ref()
                 .filter(|remote| remote.logged_in)
                 .map(|remote| uuid_ints(remote.profile())),
         );
-        if self.remote.is_some() && admitted {
+        if self.side.remote.is_some() && admitted {
             if let Some(old) = old.filter(|old| old.id.get() != id) {
                 self.pick_section_remove(old.id.get());
             }
             self.pick_section_sync_id(id);
         }
-        if let Some(remote) = self.remote.as_ref().filter(|remote| remote.logged_in)
+        if let Some(remote) = self.side.remote.as_ref().filter(|remote| remote.logged_in)
             && let Some(epoch) = self.native_lifecycle.epoch()
             && let Ok(wire_id) = u32::try_from(remote.entity_id)
         {
@@ -442,7 +446,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let Some(d) = self
                 .dragon
                 .as_ref()
-                .filter(|d| d.id != 0 || self.remote.is_some())
+                .filter(|d| d.id != 0 || self.side.remote.is_some())
                 && let Some(part) = dragon_part_index(d.id, id)
             {
                 return Some((SPECIAL + part as u32, distance));
@@ -660,7 +664,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .row(id)
                 .map(|row| [row.position.x, row.position.y, row.position.z])
                 .or_else(|| {
-                    self.remote
+                    self.side
+                        .remote
                         .as_ref()
                         .and_then(|r| r.general.rows.get(&(id as i32)))
                         .map(|row| row.position)
@@ -713,7 +718,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 && d.x * d.x + d.y * d.y + d.z * d.z > 4096.0);
         if snap {
             let (yaw, pitch) = rotation.unwrap_or((i.yaw, i.pitch));
-            i.snap_to(target_pos, yaw, pitch);
+            interactions::snap_to(i, target_pos, yaw, pitch);
             if let Some(old) = snap_old {
                 i.previous = Vec3::new(old.position[0], old.position[1], old.position[2]);
                 i.previous_yaw = if old.yaw.is_finite() { old.yaw } else { i.yaw };
@@ -728,7 +733,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 i.position = target_pos;
             }
             if let Some((yaw, pitch)) = rotation {
-                i.set_rot(yaw, pitch);
+                interactions::set_rot(i, yaw, pitch);
             }
         }
         true

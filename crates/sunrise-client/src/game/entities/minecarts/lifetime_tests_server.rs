@@ -188,7 +188,7 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
                 rider.extra.mount = Some(71);
                 game.persist
                     .off_level
-                    .insert(72, super::super::persist::OffLevel::Mob(rider));
+                    .insert(72, crate::game::entity_memory::OffLevel::Mob(rider));
 
                 let holder = game.entity(71).unwrap();
                 let mut values = Attachments::default();
@@ -212,7 +212,7 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
                         5.0,
                         true,
                         false,
-                        crate::game::minecarts::CartHit::default(),
+                        crate::game::server_side::minecarts_server::CartHit::default(),
                     ),
                 }
                 assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
@@ -221,7 +221,7 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
                 assert_vehicle_residency_retired(game, 71);
                 assert_eq!(game.mob_object(72).unwrap().extra.mount, Some(71));
                 assert_eq!(game.carts[0].velocity, Vec3::new(7.0, 8.0, 9.0));
-                let Some(super::super::persist::RemovedVehicle::Cart(cart)) =
+                let Some(crate::game::entity_memory::RemovedVehicle::Cart(cart)) =
                     game.persist.removed_vehicles.get(&71)
                 else {
                     panic!("the canceled passenger must retain the removed cart");
@@ -373,7 +373,7 @@ fn terminal_vehicle_damage_and_native_removal_retire_residency() {
                             5.0,
                             true,
                             false,
-                            crate::game::minecarts::CartHit::default(),
+                            crate::game::server_side::minecarts_server::CartHit::default(),
                         );
                     } else {
                         assert!(game.hurt_boat(0, 5.0, true));

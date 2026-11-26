@@ -7,12 +7,12 @@
 //! written back, and the slots go to the client after each change, as
 //! `broadcastChanges` does.
 use super::{
-    Dim, Game,
+    Game,
     lan::LanHost,
-    lan_crafting::GuestMenuEffects,
-    mount_menu::{mount_columns, shows_body},
     transactions::{After, SaveChunkScope},
 };
+use crate::game::lan_menu_data::{GuestMenuEffects, MountClickWindow};
+use sunrise_gameplay_common::mount_rules::{mount_columns, shows_body};
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{
@@ -32,27 +32,15 @@ pub(in crate::game) struct GuestMount {
     pub(in crate::game) sent: Option<Vec<Option<ItemStack>>>,
 }
 
-/// Identity of a mount window across a tentative click and its settlement.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(in crate::game) struct MountClickWindow {
-    pub(in crate::game) dim: Dim,
-    pub(in crate::game) conn: u32,
-    pub(in crate::game) generation: u64,
-    pub(in crate::game) window: i32,
-    pub(in crate::game) mob: u32,
-}
-
-impl MountClickWindow {
-    pub(in crate::game) fn live_guest(self, host: &LanHost) -> Option<usize> {
-        let gi = host.hub.guests.connection_index(self.conn)?;
-        let guest = &host.hub.guests[gi];
-        let open = host.play.get(&self.conn)?.mount_window.as_ref()?;
-        (guest.menu_generation == self.generation
-            && guest.placed_in(self.dim.id())
-            && open.window == self.window
-            && open.mob == self.mob)
-            .then_some(gi)
-    }
+fn live_guest(window: MountClickWindow, host: &LanHost) -> Option<usize> {
+    let gi = host.hub.guests.connection_index(window.conn)?;
+    let guest = &host.hub.guests[gi];
+    let open = host.play.get(&window.conn)?.mount_window.as_ref()?;
+    (guest.menu_generation == window.generation
+        && guest.placed_in(window.dim.id())
+        && open.window == window.window
+        && open.mob == window.mob)
+        .then_some(gi)
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -68,7 +56,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // ServerPlayer.openMenu closes the menu that was open.
         self.guest_close_all(conn);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(window) = host.hub.open_mount_window(conn, columns as i32, mob as i32) else {
@@ -105,7 +93,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The whole menu when its slots changed or a click requires a full correction.
     /// Cursor-only changes use the hub's carried-item broadcast.
     pub(in crate::game) fn lan_send_mount(&mut self, conn: u32, force: bool) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(gm) = host.play.get(&conn).and_then(|p| p.mount_window.as_ref()) else {
@@ -126,7 +114,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .chain(0..9)
                 .map(|i| host.hub.guests[gi].inventory[i].clone()),
         );
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(gm) = host
@@ -146,7 +134,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// A click on the guest's mount window; false for other windows.
     pub(in crate::game) fn lan_mount_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         let Some(open) = host
@@ -182,7 +170,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         }
                         None
                     };
-                    let live = game.lan.as_ref().and_then(|host| window.live_guest(host));
+                    let live = game
+                        .side
+                        .lan
+                        .as_ref()
+                        .and_then(|host| live_guest(window, host));
                     let Some(gi) = live.filter(|_| game.dim == window.dim) else {
                         return refuse();
                     };
@@ -207,6 +199,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         return refuse();
                     }
                     let open = game
+                        .side
                         .lan
                         .as_mut()
                         .unwrap()
@@ -248,8 +241,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         window: MountClickWindow,
         drag: QuickCraftDrag,
     ) {
-        if let Some(host) = self.lan.as_mut()
-            && window.live_guest(host).is_some()
+        if let Some(host) = self.side.lan.as_mut()
+            && live_guest(window, host).is_some()
         {
             host.play
                 .get_mut(&window.conn)
@@ -265,9 +258,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn send_settled_mount_reply(&mut self, window: MountClickWindow) {
         let _ = self.with_effect_level(window.dim, |game| {
             if game
+                .side
                 .lan
                 .as_ref()
-                .and_then(|host| window.live_guest(host))
+                .and_then(|host| live_guest(window, host))
                 .is_some()
             {
                 game.lan_send_mount(window.conn, true);
@@ -279,7 +273,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// None closes it whichever it is): the carried stack goes back to the
     /// inventory. False when no such window is open.
     pub(in crate::game) fn lan_mount_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return false;
         };
         let Some(mount) = host.play.get_mut(&conn).and_then(|p| {
@@ -306,7 +300,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// checks its menu (`ServerPlayer.tick`): another level ticking has
     /// none of its mobs (#5331).
     pub(in crate::game) fn tick_lan_mount_menus(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let open: Vec<(u32, u32, i32)> = host
@@ -315,7 +309,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter_map(|(c, p)| p.mount_window.as_ref().map(|m| (*c, m.mob, m.window)))
             .collect();
         for (conn, mob, window) in open {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let Some(g) = host.hub.guests.iter().find(|g| g.conn == conn) else {
@@ -328,7 +322,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.lan_send_mount(conn, false);
             } else {
                 self.lan_mount_closed(conn, Some(window));
-                if let Some(host) = self.lan.as_mut() {
+                if let Some(host) = self.side.lan.as_mut() {
                     host.hub.send_to(
                         conn,
                         &C::ContainerClose(play::ContainerClose { container: window }),

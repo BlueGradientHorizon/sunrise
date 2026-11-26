@@ -40,17 +40,22 @@ use mod_api::__private::game::*;
 #[allow(unused_imports)]
 pub(in crate::game) use registered_commands::NativeCommandState;
 // Their old home, for mixin code that names them here.
-use mod_api::LevelRef;
+use crate::game::{
+    api_values::{project_stack, stack_read_metadata},
+    commands_common::Slot,
+};
 #[allow(unused_imports)]
 use mod_api::{
     ActionOutcome, ActionRefused, FakeEffect, GameMode, GlobalPos, Identifier, PlayerAction,
     PlayerActionSetup, PlayerFood, PlayerRef, PlayerRespawnConfig,
 };
+use mod_api::{InventoryView, LevelRef};
 use serde_json::{Map, Value, json};
 use std::sync::{
     Mutex, PoisonError,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 #[allow(unused_imports)]
 use sunrise_command::{Arg, ArgType, Dispatcher};
@@ -58,6 +63,10 @@ use sunrise_command::{Arg, ArgType, Dispatcher};
 use sunrise_core::position::BlockPos;
 #[allow(unused_imports)]
 use sunrise_game_data::text::Text;
+use sunrise_items::{
+    equipment::{BODY, SADDLE},
+    items::ItemStack,
+};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 #[allow(unused_imports)]
 use sunrise_sim::{
@@ -653,7 +662,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                     sunrise_core::geometry::Vec3::new(x, y, z)
                 }
             };
-            let [x, y, z] = super::native_entity_motion::on_block_position(
+            let [x, y, z] = crate::game::native_entity_motion_values::on_block_position(
                 body.and_then(|motion| motion.ground.supporting_block),
                 position,
             );
@@ -1090,7 +1099,7 @@ pub(in crate::game) mod tests {
                     dimension: dimension.into(),
                     watches,
                 };
-                game.lan.as_mut().unwrap().hub.chunk_watches = ChunkWatchLog::new(vec![
+                game.side.lan.as_mut().unwrap().hub.chunk_watches = ChunkWatchLog::new(vec![
                     run(
                         here,
                         vec![
@@ -1105,7 +1114,7 @@ pub(in crate::game) mod tests {
                     run(here, vec![watch(ChunkWatchKind::Unwatch, [1, 2])]),
                 ]);
                 game.run_chunk_watches();
-                assert!(game.lan.as_ref().unwrap().hub.chunk_watches.is_empty());
+                assert!(game.side.lan.as_ref().unwrap().hub.chunk_watches.is_empty());
                 assert_eq!(
                     *heard.lock().unwrap(),
                     [
@@ -2256,7 +2265,13 @@ pub(in crate::game) mod tests {
                     super::super::native_entity_refs::tests::with_game(|game| {
                         super::super::native_item_places::tests::open_to_lan(game);
                         game.register_native_commands();
-                        game.lan.as_mut().unwrap().hub.guests.push(player_guest());
+                        game.side
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .push(player_guest());
                         for line in ["foo", "foo 7", "foo nope"] {
                             assert_eq!(game.perform_native_command(1, 0, line, false), Some(false));
                         }
@@ -2913,7 +2928,7 @@ pub(in crate::game) mod fake_action_tests {
         }
         let level = game.level(game.dim.id()).unwrap();
         let player = game.fake_player(level, 2, "fake").unwrap();
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         let conn = |uuid| {
             host.hub
                 .guests
@@ -2964,14 +2979,14 @@ pub(in crate::game) mod fake_action_tests {
     }
 
     use super::super::{
-        boats::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
+        boats_common::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
     };
 
     pub(in crate::game) fn held(
         game: &crate::game::ServerGame<'_>,
         uuid: u128,
     ) -> Option<ItemStack> {
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         let g = host.hub.guests.iter().find(|g| g.uuid == uuid).unwrap();
         g.inventory[g.selected].clone()
     }
@@ -3063,7 +3078,8 @@ pub(in crate::game) mod fake_action_tests {
                 };
                 // Twice: the second use is the next one finding it as it was.
                 for _ in 0..2 {
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
@@ -3108,6 +3124,7 @@ pub(in crate::game) mod fake_action_tests {
             cart.items[3] = Some(ItemStack::new("minecraft:diamond", 5));
             game.carts.push(cart);
             let gi = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -3116,7 +3133,8 @@ pub(in crate::game) mod fake_action_tests {
                 .iter()
                 .position(|g| g.conn == real_conn)
                 .unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3129,7 +3147,8 @@ pub(in crate::game) mod fake_action_tests {
             );
             let key = (i32::MAX - 15, CART_KEY_Y, 6110);
             let viewer = |game: &crate::game::ServerGame<'_>| {
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .hub
@@ -3181,7 +3200,8 @@ pub(in crate::game) mod fake_action_tests {
             );
             assert_eq!(items[4], emerald, "the viewer's edit reached the vehicle");
             assert!(
-                game.lan
+                game.side
+                    .lan
                     .as_ref()
                     .unwrap()
                     .hub
@@ -3213,7 +3233,7 @@ pub(in crate::game) mod fake_action_tests {
         // empties when used, by its ray from the eyes (looking straight down here).
         with_game(|game| {
             let (player, ..) = fake(game, Some("minecraft:water_bucket"), 0);
-            game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                 g.pitch = 90.0;
             });
             assert_eq!(
@@ -3280,7 +3300,8 @@ pub(in crate::game) mod fake_action_tests {
         use mod_api::PlayerActionSetup;
         super::super::native_entity_refs::tests::with_game(|game| {
             let (player, conn, _) = fake(game, Some("minecraft:diamond"), 1);
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -3295,7 +3316,8 @@ pub(in crate::game) mod fake_action_tests {
                     guest.motion.as_mut().unwrap().shift_key_down = true;
                 })
                 .unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .play
@@ -3342,7 +3364,7 @@ pub(in crate::game) mod fake_action_tests {
                     1
                 ))]
             );
-            let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+            let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
             assert_eq!(guest.position, [0.5, 64.0, 0.5]);
             assert_eq!(
                 (guest.yaw, guest.pitch, guest.selected, guest.game_mode),
@@ -3359,11 +3381,11 @@ pub(in crate::game) mod fake_action_tests {
             assert_eq!(game.fake_player(level, 2, "fake"), Some(player));
             // The original cooldown is still in force, not the temporary action's timer.
             assert!(
-                game.lan.as_ref().unwrap().play[&conn]
+                game.side.lan.as_ref().unwrap().play[&conn]
                     .cooldowns
                     .is_on_cooldown("minecraft:bucket")
             );
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests.len(), 2);
+            assert_eq!(game.side.lan.as_ref().unwrap().hub.guests.len(), 2);
         });
     }
 
@@ -3481,6 +3503,7 @@ pub(in crate::game) mod fake_action_tests {
             menu.carried = Some(ItemStack::new("minecraft:stick", 3));
             let owner = (&*menu) as *const sunrise_sim::menu::Menu;
             *game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -3507,7 +3530,7 @@ pub(in crate::game) mod fake_action_tests {
                 result.outcome,
                 ActionOutcome::EffectBlocked(FakeEffect::Menu)
             );
-            let restored = game.lan.as_ref().unwrap().menus[&conn]
+            let restored = game.side.lan.as_ref().unwrap().menus[&conn]
                 .crafting
                 .inventory
                 .as_ref()
@@ -3569,7 +3592,15 @@ pub(in crate::game) mod fake_action_tests {
                 Some(false)
             );
             assert_eq!(mob.target(game), None);
-            assert!(!game.lan.as_ref().unwrap().mob_players.contains_key(&5000));
+            assert!(
+                !game
+                    .side
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .mob_players
+                    .contains_key(&5000)
+            );
         });
     }
 
@@ -3579,7 +3610,7 @@ pub(in crate::game) mod fake_action_tests {
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {
             let (player, fake_conn, _) = fake(game, None, 0);
-            game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                 g.yaw = -90.0;
             });
             // A fist does 1 (the attack damage attribute's base), scaled by the attack strength
@@ -3595,7 +3626,14 @@ pub(in crate::game) mod fake_action_tests {
             let dealt = 0.208f32 * (1.0 - (2.0 - 0.208 / 2.0) / 25.0);
             assert!((full - health(game, 5000) - dealt).abs() < 1e-4);
             // No mob takes the fake as the player to answer.
-            let bound = game.lan.as_ref().unwrap().mob_players.get(&5000).copied();
+            let bound = game
+                .side
+                .lan
+                .as_ref()
+                .unwrap()
+                .mob_players
+                .get(&5000)
+                .copied();
             assert_ne!(bound, Some(fake_conn));
             assert_eq!(bound, None);
             // Ten blocks off is past the attack range; the fake itself isn't a target, nor is
@@ -3707,7 +3745,7 @@ pub(in crate::game) mod fake_action_tests {
                 Some("minecraft:bedrock")
             );
             place(game, [3, 64, 3], "minecraft:stone");
-            game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                 g.position = [-6.5, 64.0, -6.5];
             });
             assert_eq!(
@@ -3756,6 +3794,7 @@ pub(in crate::game) mod fake_action_tests {
         super::super::native_entity_refs::tests::with_game(|game| {
             let (_, fake_conn, real_conn) = fake(game, None, 0);
             let gi = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -3869,7 +3908,7 @@ pub(in crate::game) mod fake_action_tests {
                                 .unwrap(),
                         );
                     }
-                    game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+                    game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                         g.position = [0.5, 64.0, 0.5];
                         g.yaw = -90.0;
                     });
@@ -3954,6 +3993,7 @@ pub(in crate::game) mod fake_action_tests {
             // A real guest's click on a chest is the vanilla click, nothing stopped.
             place(game, [1, 64, 0], "minecraft:chest");
             let gi = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()
@@ -3988,7 +4028,7 @@ pub(in crate::game) mod player_rule_tests {
     /// The guests of `with_guests` are rows 0 and 1; both stand in the level in place.
     fn in_this_level(game: &mut crate::game::ServerGame<'_>) {
         let level = game.dim.id().to_owned();
-        game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+        game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
             g.dimension = level.clone();
         });
     }
@@ -4024,7 +4064,7 @@ pub(in crate::game) mod player_rule_tests {
                 Some(Some(respawn(nether, [1, 2, 3], -90.0, true)))
             );
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].respawn_elsewhere,
+                game.side.lan.as_ref().unwrap().hub.guests[0].respawn_elsewhere,
                 Some((nether.into(), [1, 2, 3], -90.0, 0.0, true)),
                 "the record a respawn reads"
             );
@@ -4052,7 +4092,7 @@ pub(in crate::game) mod player_rule_tests {
             assert!(a.set_respawn_config(game, None));
             assert_eq!(a.respawn_config(&*game), Some(None));
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].respawn_elsewhere,
+                game.side.lan.as_ref().unwrap().hub.guests[0].respawn_elsewhere,
                 None
             );
         });
@@ -4091,13 +4131,13 @@ pub(in crate::game) mod player_rule_tests {
     fn text_filtering_is_what_the_clients_information_said() {
         with_guests(|game| {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.info.text_filtering = true;
             });
             assert_eq!(a.text_filtering(&*game), Some(true));
             assert_eq!(b.text_filtering(&*game), Some(false));
             // A later `ClientInformation` replaces it.
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.info.text_filtering = false;
             });
             assert_eq!(a.text_filtering(&*game), Some(false));
@@ -4117,12 +4157,15 @@ pub(in crate::game) mod player_rule_tests {
             assert_eq!(a.sleep_ignored(&*game), Some(false));
 
             // A player in bed at 100 ticks is one of the deep sleepers the night waits for.
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.bed = Some([5, 64, 5]);
             });
             assert!(a.set_sleep_timer(game, 100));
             assert_eq!(a.sleep_timer(&*game), Some(100));
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].sleep_timer, 100);
+            assert_eq!(
+                game.side.lan.as_ref().unwrap().hub.guests[0].sleep_timer,
+                100
+            );
             assert_eq!(game.sleep_counts(), (active, sleeping + 1, deep + 1));
             // The wake-up fade's last value is allowed; one past it is not, and changes nothing.
             assert!(a.set_sleep_timer(game, 109));
@@ -4136,7 +4179,8 @@ pub(in crate::game) mod player_rule_tests {
             assert_eq!(game.sleep_counts().0, active - 1);
             assert!(a.set_sleep_ignored(game, true));
             assert_eq!(a.counts_for_sleep(&*game), Some(true), "in bed");
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -4148,7 +4192,7 @@ pub(in crate::game) mod player_rule_tests {
             assert_eq!(a.counts_for_sleep(&*game), Some(true));
 
             // A spectator is never counted.
-            game.lan.as_mut().unwrap().hub.guests.update(1, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(1, |g| {
                 g.game_mode = 3;
             });
             assert_eq!(b.counts_for_sleep(&*game), Some(false));
@@ -4185,5 +4229,100 @@ pub(in crate::game) mod network_settings_tests {
             OnlineMode::generate(false, std::sync::Arc::new(|_, _, _| Ok(None))).unwrap(),
         ));
         assert!(online_mode_of(&config));
+    }
+}
+
+/// `Inventory`'s slot numbers past the 36 main slots (`EQUIPMENT_SLOT_MAPPING`).
+pub(in crate::game) const SLOTS: u32 = 43;
+
+/// 0..35 main (0..8 hotbar), 36..39 feet to head, 40 offhand, 41 body, 42 saddle.
+/// ItemPlace uses 100..103 for armour and -106 for offhand; InventoryMenu has no 41/42.
+/// The slot the game keeps `Inventory` slot `slot` in.
+pub(in crate::game) fn inventory_slot(slot: u32) -> Option<Slot> {
+    Some(match slot {
+        0..36 => Slot::Inv(slot as usize),
+        // `armor` is head first: 36 feet is its last.
+        36..40 => Slot::Armor((39 - slot) as usize),
+        40 => Slot::Offhand,
+        41 => Slot::Equipment(BODY),
+        42 => Slot::Equipment(SADDLE),
+        _ => return None,
+    })
+}
+
+/// Lend `Inventory.getItem` over a player's 43 vanilla inventory slots.
+pub(in crate::game) fn lend_inventory_view(
+    inventory: &[Option<ItemStack>],
+    armor: &[Option<ItemStack>; 4],
+    offhand: &Option<ItemStack>,
+    equipment: &sunrise_items::equipment::Equipment,
+    read: &mut dyn for<'a> FnMut(InventoryView<'a>),
+) {
+    let stack_at = |slot| match inventory_slot(slot)? {
+        Slot::Inv(i) => inventory.get(i)?.as_ref(),
+        Slot::Armor(i) => armor[i].as_ref(),
+        Slot::Offhand => offhand.as_ref(),
+        Slot::Equipment(i) => equipment.get(i),
+        _ => None,
+    };
+    read(InventoryView::new(
+        0..SLOTS,
+        &|slot| stack_read_metadata(stack_at(slot)?).ok(),
+        &|slot, metadata| project_stack(stack_at(slot)?, metadata).ok(),
+    ));
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `ItemCooldowns.getCooldownGroup(stack)`: the group `stack`'s
+    /// cooldown is filed under, the group its `use_cooldown` component names
+    /// (its own, else its item's default), else its item id.
+    pub(in crate::game) fn item_cooldown_group(&self, stack: &ItemStack) -> String {
+        let default = self
+            .items()
+            .get(&stack.item)
+            .and_then(|info| info.use_cooldown.as_ref());
+        sunrise_items::cooldowns::group(stack, default).to_string()
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `Player.isSecondaryUseActive`: whether the player uses items and
+    /// blocks as with sneak held, as vanilla reads it from the shift-key
+    /// flag (the same read as `EntityRef::is_shift_key_down`). None for a
+    /// stale or unavailable player.
+    pub(in crate::game) fn player_is_secondary_use_active(
+        &self,
+        player: PlayerRef,
+    ) -> Option<bool> {
+        self.entity_is_shift_key_down(player.entity())
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `MinecraftServer.haveTime`: the current server tick has not reached the
+    /// moment the next one is due. A client, and a server outside a scheduled
+    /// tick, always has time, as NeoForge's client `LevelTickEvent.hasTime` does.
+    pub(in crate::game) fn server_has_time(&self) -> bool {
+        !self.is_logical_server()
+            || crate::game::Side::server_tick_deadline(&self.side)
+                .is_none_or(|end| Instant::now() < end)
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Lend `Inventory.getItem` over the resident slots.
+    pub(in crate::game) fn player_inventory_slots(
+        &self,
+        player: PlayerRef,
+        read: &mut dyn for<'a> FnMut(InventoryView<'a>),
+    ) -> Option<()> {
+        let (inventory, armor, offhand, equipment) = match self.player_read_both(player)? {
+            PlayerRead::Acting { .. } => {
+                (&self.inventory, &self.armor, &self.offhand, &self.equipment)
+            }
+            PlayerRead::Guest(g) => (&g.inventory, &g.armor, &g.offhand, &g.equipment),
+        };
+        lend_inventory_view(inventory, armor, offhand, equipment, read);
+        Some(())
     }
 }

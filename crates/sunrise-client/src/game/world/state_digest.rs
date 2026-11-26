@@ -1,8 +1,10 @@
 //! Per-level-tick state digest to `SUNRISE_STATE_DIGEST` (`_DETAIL=1` adds per-entity lines).
 use super::{
-    Dim, FallingBlock, Game, boats,
+    Dim, FallingBlock, Game,
+    boats_common::Boat,
     entity::{Entity as _, EntityHandle, entity_lists_of, with_entity},
-    fireworks, general, minecarts, tnt, trident,
+    fireworks, general, minecarts,
+    tnt_common::PrimedTnt,
 };
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -14,7 +16,7 @@ use std::{
     time::Instant,
 };
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
-use sunrise_sim::join_seq::JoinSeq;
+use sunrise_sim::{join_seq::JoinSeq, thrown_trident::ThrownTrident};
 
 struct Sink {
     out: std::io::BufWriter<std::fs::File>,
@@ -91,7 +93,7 @@ impl DigestParts for sunrise_sim::entities::ItemEntity {
         (i64::from(self.stack.count) << 32) | i64::from(self.age as u32)
     }
 }
-impl DigestParts for boats::Boat {
+impl DigestParts for Boat {
     fn own_random(&self) -> Option<&LegacyRandom> {
         Some(&self.random)
     }
@@ -109,7 +111,7 @@ impl DigestParts for sunrise_sim::entities::ArmorStand {
         Some(u64::from(self.health.to_bits()))
     }
 }
-impl DigestParts for tnt::PrimedTnt {
+impl DigestParts for PrimedTnt {
     fn extra(&self) -> i64 {
         i64::from(self.fuse)
     }
@@ -130,7 +132,7 @@ impl DigestParts for sunrise_sim::projectiles::Projectile {
 }
 impl DigestParts for fireworks::Rocket {}
 impl DigestParts for general::GeneralRow {}
-impl DigestParts for trident::ThrownTrident {
+impl DigestParts for ThrownTrident {
     fn own_random(&self) -> Option<&LegacyRandom> {
         Some(&self.random)
     }

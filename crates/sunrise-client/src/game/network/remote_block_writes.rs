@@ -42,7 +42,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // Then the client-wide listeners, a map's invalidation among them.
         if mod_api::__private::listened(mod_api::HookId::ClientBlockChanged)
-            && let Some(dimension) = self.remote.as_ref().and_then(|r| r.heard_level.as_deref())
+            && let Some(dimension) = self
+                .side
+                .remote
+                .as_ref()
+                .and_then(|r| r.heard_level.as_deref())
         {
             self.native_client_block_changed(dimension, at, previous, state, predicted);
         }

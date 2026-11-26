@@ -1,9 +1,7 @@
 //! The track under a minecart: `BaseRailBlock.isRail` and the shape a cart reads,
 //! which the rail's parts may answer (`rail_direction`).
 use super::Game;
-use super::api_values::TryIntoApi;
 use super::minecarts::{Rail, Shape};
-use super::native_level_signals::ReadLevel;
 use mod_api::RailShape;
 use sunrise_core::position::BlockPos;
 use sunrise_world::{level::classes::Class, registry::BlockStateId};
@@ -55,22 +53,19 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         if !super::api_values::block_state::block_listens(mod_api::HookId::RailDirection, state) {
             return vanilla;
         }
-        let (Some(level), Some(epoch), Ok(api_state)) = (
-            self.level(self.dim.id()),
-            self.native_lifecycle.epoch(),
-            state.try_into_api(),
-        ) else {
-            return vanilla;
-        };
-        let read = ReadLevel { game: self, level };
-        let side = if self.is_logical_server() {
-            mod_api::LevelSide::Server(&read)
-        } else {
-            mod_api::LevelSide::Client(&read)
-        };
-        let mut shape = RailShape::from_name(text).unwrap_or(RailShape::NorthSouth);
-        let cart = cart.map(|id| mod_api::EntityRef::new(epoch, id));
-        mod_api::dispatch_rail_direction(side, self.dim.level(), api_state, pos, cart, &mut shape);
-        Shape::parse(shape.name())
+        self.side_cart_rail_direction(cart, state, pos, text, vanilla)
     }
+}
+
+pub(in crate::game) fn dispatch_cart_rail_direction(
+    side: mod_api::LevelSide<'_>,
+    dim: sunrise_core::dimension::Dimension,
+    state: mod_api::BlockState,
+    pos: BlockPos,
+    cart: Option<mod_api::EntityRef>,
+    text: &str,
+) -> Shape {
+    let mut shape = RailShape::from_name(text).unwrap_or(RailShape::NorthSouth);
+    mod_api::dispatch_rail_direction(side, dim, state, pos, cart, &mut shape);
+    Shape::parse(shape.name())
 }

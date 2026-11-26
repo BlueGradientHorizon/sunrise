@@ -8,6 +8,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// client drives.
     pub(in crate::game::client_side) fn cancel_driven_mount_interpolation(&mut self, id: u32) {
         if let Some(h) = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.stepped.get_mut(&(id as i32)))
@@ -19,7 +20,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// while an interpolation runs, where it is going.
     pub(in crate::game::client_side) fn driven_mount_heading(&self, m: &Mob) -> PosRot {
         let at = mob_pos_rot(m);
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .and_then(|r| r.stepped.get(&(m.id as i32)))
             .map_or(at, |h| h.heading(at))
@@ -35,7 +37,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         i: usize,
     ) -> Option<(Vec3, f32, f32)> {
         let id = self.mobs[i].id as i32;
-        let handler = self.remote.as_mut().and_then(|r| r.stepped.get_mut(&id))?;
+        let handler = self
+            .side
+            .remote
+            .as_mut()
+            .and_then(|r| r.stepped.get_mut(&id))?;
         let m = &mut self.mobs[i];
         let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
@@ -65,7 +71,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         at: PosRot,
     ) {
         let m = &mut self.mobs[i];
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let handler = r.stepped.entry(m.id as i32).or_insert_with(|| {
@@ -150,12 +156,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             r.velocity = v;
         } else if self.remote_hook_motion(id as u32, v) {
         } else if let Some(p) = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.pending_items.get_mut(&id))
         {
             p.velocity = v;
-        } else if !self.potions.remote_thrown_motion(id as u32, v) {
+        } else if !crate::game::client_side::potions::remote_thrown_motion(
+            &mut self.potions,
+            id as u32,
+            v,
+        ) {
             self.end.remote_eye_motion(id as u32, velocity);
         }
     }
@@ -183,6 +194,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .get_mut(&mut self.mobs, id as u32)
             .filter(|_| !dragon);
         let tracked = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.entities.get(&id))
@@ -196,8 +208,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .map(|m| [m.position.x, m.position.y, m.position.z])
             })
             .unwrap_or([0.0; 3]);
-        if self.remote.is_some() {
-            if let Some(r) = self.remote.as_mut() {
+        if self.side.remote.is_some() {
+            if let Some(r) = self.side.remote.as_mut() {
                 if let Some(t) = r.entities.get_mut(&id) {
                     let d = [0, 1, 2].map(|i| position[i] - t.position[i]);
                     let snap = matches!(packet, MovePacket::PositionSyncSnap)
@@ -370,7 +382,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return;
             }
             if path.is_some()
-                && (self.potions.move_remote_thrown(
+                && (crate::game::client_side::potions::move_remote_thrown(
+                    &mut self.potions,
                     id as u32,
                     Vec3::new(position[0], position[1], position[2]),
                 ) || self.end.move_remote_eye(id as u32, position))
@@ -407,6 +420,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return;
             }
             if let Some(p) = self
+                .side
                 .remote
                 .as_mut()
                 .and_then(|r| r.pending_items.get_mut(&id))
@@ -438,7 +452,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // moving it.
             if let Some(o) = self.orbs.iter_mut().find(|o| o.id == id as u32) {
                 o.ground.on_ground = on_ground;
-                if let Some(r) = self.remote.as_mut() {
+                if let Some(r) = self.side.remote.as_mut() {
                     r.lerps.insert(
                         id,
                         Lerp {
@@ -451,6 +465,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return;
             }
             let has_cart_lerp = self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.cart_lerps.contains_key(&id));
@@ -469,7 +484,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     });
                 }
             } else if !self.side_has_remote_text_display(id)
-                && let Some(r) = self.remote.as_mut()
+                && let Some(r) = self.side.remote.as_mut()
             {
                 // AbstractInterpolationHandler.interpolateTo keeps the heading rotation when absent.
                 let rotation = rotation.or_else(|| r.lerps.get(&id).and_then(|l| l.rotation));

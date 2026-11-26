@@ -1,21 +1,5 @@
 use super::*;
 
-/// The hook points. Each does nothing in Sunrise.
-impl Game<'_, crate::game::server_side::ServerState> {
-    /// `LivingEntity.die`: the complete accepted killing source and its weapon,
-    /// before any loot, experience or death message. Cancelling leaves health
-    /// exactly where the listener left it; an unhealed body ticks away without loot.
-    pub(in crate::game) fn native_living_death(
-        &mut self,
-        entity: u32,
-        kind: &str,
-        source: &HurtSource<'_>,
-        weapon: Option<&mod_api::ItemStack>,
-        cancel: &mut bool,
-    ) {
-        self.fire_living_death(entity, kind, source, weapon, cancel);
-    }
-}
 /// `native_living_incoming_damage`'s entity, entity type and source for a hit.
 pub(in crate::game) fn hurt_server_args<'a>(
     hurting: Hurting<'a>,

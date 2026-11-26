@@ -57,7 +57,7 @@ fn fixture(game: &mut crate::game::ServerGame<'_>) -> Fixture {
     game.options.dedicated = Some(Vec::new());
     let (tx12, rx12) = mpsc::channel();
     let (tx13, rx13) = mpsc::channel();
-    let hub = &mut game.lan.as_mut().unwrap().hub;
+    let hub = &mut game.side.lan.as_mut().unwrap().hub;
     hub.guests
         .update(0, |g| g.sender = PlayerSender::new(tx12, Arc::default()));
     hub.guests
@@ -77,7 +77,8 @@ fn fixture(game: &mut crate::game::ServerGame<'_>) -> Fixture {
 }
 
 fn sound_id(game: &crate::game::ServerGame<'_>, name: &str) -> i32 {
-    game.lan
+    game.side
+        .lan
         .as_ref()
         .unwrap()
         .hub

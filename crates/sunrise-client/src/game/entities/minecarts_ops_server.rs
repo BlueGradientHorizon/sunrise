@@ -1,8 +1,7 @@
 //! Server-side minecart operations split from common `minecarts.rs`, `minecarts/hit.rs`, and `minecarts/save_lending.rs`.
 use super::Game;
-use crate::game::minecarts::{
-    CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed, hit::CartHit,
-};
+use crate::game::minecarts::{CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed};
+use crate::game::minecarts_server::CartHit;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_game_data::sound_source::BLOCKS;
 use sunrise_items::items::ItemStack;
@@ -39,7 +38,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         edit: impl FnOnce(&mut Vec<Option<ItemStack>>) -> R,
     ) -> Option<R> {
         let i = self.carts.iter().position(|c| c.id == id)?;
-        self.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
+        self.unpack_loot(
+            crate::game::container_loot_level::LootTarget::Cart(id),
+            None,
+        );
         match self
             .world
             .block_entities

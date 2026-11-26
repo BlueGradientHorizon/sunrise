@@ -180,7 +180,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether this window may draw PvP & HUD's own time and weather: only a client of a server
     /// (single player's included) draws them, never the server that ticks the world.
     fn own_view(&self) -> bool {
-        self.remote.is_some() && self.dim == Dim::Overworld
+        self.side.remote.is_some() && self.dim == Dim::Overworld
     }
     /// The day time the frame draws (sky, sun, moon, the sky's light): PvP & HUD's time of day,
     /// else the world's. The world's own `day_time` and everything that plays by it stay.
@@ -315,7 +315,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some((s.item.clone(), s.damage, max))
         });
         let held = if hud.held { self.held_count() } else { None };
-        let multiplayer = self.remote.is_some() && !self.has_singleplayer_server();
+        let multiplayer = self.side.remote.is_some() && !self.has_singleplayer_server();
         // 0 shows nothing rather than `0 ms`: no measurement yet.
         let ping = self.own_latency().filter(|&ms| ms > 0 && multiplayer);
         let coords = self.player.as_ref().filter(|_| !self.reduced_debug_info());
@@ -747,7 +747,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             false => s.item == held.item,
         };
         let slots = self.inventory.iter().map(Option::as_ref).enumerate();
-        let offhand = std::iter::once((crate::game::shield::OFFHAND_SLOT, self.offhand.as_ref()));
+        let offhand =
+            std::iter::once((crate::game::held_items::OFFHAND_SLOT, self.offhand.as_ref()));
         let mut found = slots
             .chain(offhand)
             .filter_map(|(i, s)| Some((i, s?)))

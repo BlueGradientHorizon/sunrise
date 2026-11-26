@@ -334,7 +334,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.world.dirty_sections.insert((key.0, sy, key.1));
             }
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.resend_biomes(&self.world, columns);
         }
     }
@@ -381,7 +381,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `BorderChangeListener.DelegateBorderChangeListener`'s packets: what
     /// changed on the border since the guests were last told of it.
     pub(in crate::game) fn lan_sync_border(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let now = sunrise_sim::lan::border::Sent::of(&self.border);
@@ -397,7 +397,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.border.tick();
         if remaining > 0
             && self.border.remaining_ticks() == 0
-            && (self.serving.is_some() || self.options.dedicated.is_some())
+            && (self.side.serving.is_some() || self.options.dedicated.is_some())
         {
             self.native_world_border_bounds_change_finish();
         }
@@ -655,6 +655,7 @@ pub(in crate::game) mod loot_mine_component_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -839,6 +840,7 @@ pub(in crate::game) mod loot_position_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();
@@ -950,6 +952,7 @@ pub(in crate::game) mod loot_kill_target_tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap();
         game.build_registries();

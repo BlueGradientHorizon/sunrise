@@ -12,7 +12,7 @@
 //! clients retain their revision's implicit swap behavior; this client answers revision 4.
 use super::{routing::default_clock, worlds::ViewedWorld};
 use crate::game::Game;
-use crate::game::remote::RemoteDimensionEntry;
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use std::sync::Arc;
 use sunrise_client::level_loading::Reason;
 use sunrise_protocol::packets::{
@@ -42,7 +42,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         reason: Reason,
     ) {
         let Some(travel) = self.take_travel(p) else {
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 r.viewed.clear();
             }
             self.enter_remote_dimension(&p.spawn, entry, reason);
@@ -59,7 +59,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if p.keep != KEEP_ALL_DATA {
             return None;
         }
-        let r = self.remote.as_mut()?;
+        let r = self.side.remote.as_mut()?;
         if p.spawn.dimension == r.level {
             return None;
         }
@@ -97,7 +97,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.world.clear_extra_models();
         let air = self.res.facts().air;
         let world = std::mem::replace(&mut self.world, crate::game::world_for_mods(air, seed));
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let clock = default_clock(r, &r.dimension);
@@ -147,7 +147,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.ask_chunk_light_emission(key);
             self.client_chunk_load(key.0, key.1);
         }
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.awaiting_viewed_chunk_center = true;
             r.level_load.finish();
         }
@@ -193,7 +193,7 @@ mod tests {
     }
 
     fn loading(game: &crate::game::ClientGame<'_>) -> bool {
-        game.remote.as_ref().unwrap().level_load.is_active()
+        game.side.remote.as_ref().unwrap().level_load.is_active()
     }
 
     /// Travels both ways between two runtime levels of one dimension type that the Login did not
@@ -216,7 +216,14 @@ mod tests {
         game.handle_packet(swap(1)).unwrap();
         assert_eq!(own(&game), vec![(5, 5)], "B's columns, now the player's");
         assert_eq!(
-            game.remote.as_ref().unwrap().viewed.get(1).unwrap().level,
+            game.side
+                .remote
+                .as_ref()
+                .unwrap()
+                .viewed
+                .get(1)
+                .unwrap()
+                .level,
             A
         );
         // The slot's next run reaches A; one of B's late, at B's epoch, is dropped.
@@ -230,7 +237,14 @@ mod tests {
         game.handle_packet(swap(1)).unwrap();
         assert_eq!(own(&game), vec![(0, 0), (1, 0)]);
         assert_eq!(
-            game.remote.as_ref().unwrap().viewed.get(1).unwrap().level,
+            game.side
+                .remote
+                .as_ref()
+                .unwrap()
+                .viewed
+                .get(1)
+                .unwrap()
+                .level,
             B
         );
         game.handle_packet(run(1, &[column(6, 6)])).unwrap();
@@ -351,7 +365,7 @@ mod tests {
             .unwrap();
         game.handle_packet(respawn(NETHER, 3)).unwrap();
         game.handle_packet(swap(1)).unwrap();
-        let r = game.remote.as_ref().unwrap();
+        let r = game.side.remote.as_ref().unwrap();
         assert_eq!(r.level, NETHER);
         assert!(!loading(&game), "no loading screen");
         assert_eq!(own(&game), vec![(5, 5), (6, 5)]);
@@ -396,7 +410,7 @@ mod tests {
         assert_eq!(own(&game), vec![(0, 0)]);
         assert!(game.world.block_entities.contains_key(&(3, 70, 5)));
         assert!(!game.world.block_entities.contains_key(&(83, 70, 85)));
-        let nether = game.remote.as_ref().unwrap().viewed.get(1).unwrap();
+        let nether = game.side.remote.as_ref().unwrap().viewed.get(1).unwrap();
         assert!(nether.world.block_entities.contains_key(&(83, 70, 85)));
     }
 
@@ -404,7 +418,7 @@ mod tests {
     fn with_chests(
         game: &mut crate::game::ClientGame<'_>,
     ) -> sunrise_world::registry::BlockStateId {
-        std::sync::Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
+        std::sync::Arc::make_mut(&mut game.side.remote.as_mut().unwrap().builtin)
             .registries
             .insert(
                 "minecraft:block_entity_type".into(),
@@ -457,7 +471,7 @@ mod tests {
             ],
         ))
         .unwrap();
-        let nether = game.remote.as_ref().unwrap().viewed.get(1).unwrap();
+        let nether = game.side.remote.as_ref().unwrap().viewed.get(1).unwrap();
         let kept: Vec<_> = nether.block_entities[&(5, 5)]
             .iter()
             .map(|info| (info.packed_xz, info.y))
@@ -533,14 +547,14 @@ mod tests {
         game.handle_packet(run(1, &[diamonds([83, 70, 85]), diamonds([86, 70, 85])]))
             .unwrap();
         {
-            let nether = game.remote.as_ref().unwrap().viewed.get(1).unwrap();
+            let nether = game.side.remote.as_ref().unwrap().viewed.get(1).unwrap();
             assert_eq!(nether.block_entities[&(5, 5)].len(), 2);
             assert_eq!(nether.world.block_entities.len(), 2);
         }
         game.handle_packet(run(1, &[block(83, 70, 85, AIR)]))
             .unwrap();
         {
-            let nether = game.remote.as_ref().unwrap().viewed.get(1).unwrap();
+            let nether = game.side.remote.as_ref().unwrap().viewed.get(1).unwrap();
             assert_eq!(nether.block_entities[&(5, 5)].len(), 1);
             assert!(nether.world.block_entities.contains_key(&(86, 70, 85)));
             assert!(!nether.world.block_entities.contains_key(&(83, 70, 85)));
@@ -548,7 +562,7 @@ mod tests {
         game.handle_packet(run(1, &[block(86, 70, 85, AIR)]))
             .unwrap();
         {
-            let nether = game.remote.as_ref().unwrap().viewed.get(1).unwrap();
+            let nether = game.side.remote.as_ref().unwrap().viewed.get(1).unwrap();
             assert!(nether.block_entities.values().all(Vec::is_empty));
             assert!(nether.world.block_entities.is_empty());
         }
@@ -571,7 +585,7 @@ mod tests {
         game.handle_packet(open(1, NETHER)).unwrap();
         game.handle_packet(run(1, &[column(5, 5)])).unwrap();
         game.handle_packet(respawn("minecraft:the_end", 3)).unwrap();
-        assert_eq!(game.remote.as_ref().unwrap().viewed.len(), 0);
+        assert_eq!(game.side.remote.as_ref().unwrap().viewed.len(), 0);
         assert!(own(&game).is_empty());
         assert!(loading(&game));
     }
@@ -589,7 +603,7 @@ mod tests {
             game.handle_packet(open(1, NETHER)).unwrap();
             game.handle_packet(run(1, &[column(5, 5)])).unwrap();
             game.handle_packet(respawn(NETHER, keep)).unwrap();
-            let r = game.remote.as_ref().unwrap();
+            let r = game.side.remote.as_ref().unwrap();
             assert_eq!(r.level, NETHER, "keep {keep}");
             assert_eq!(r.viewed.len(), 0, "keep {keep}");
             assert!(own(&game).is_empty(), "keep {keep}");

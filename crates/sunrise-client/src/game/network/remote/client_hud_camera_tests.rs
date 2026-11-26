@@ -120,7 +120,8 @@ pub(in crate::game) fn drawn_groups(game: &mut crate::game::ClientGame<'_>) -> G
 }
 
 pub(in crate::game) fn id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
-    game.remote
+    game.side
+        .remote
         .as_ref()
         .unwrap()
         .builtin

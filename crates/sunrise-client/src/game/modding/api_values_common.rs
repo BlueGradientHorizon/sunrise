@@ -61,3 +61,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         result.repair_item_count_cost = edits.material_cost.max(0) as u32;
     }
 }
+
+/// The saved block entity's payload, with its world identity and position removed.
+pub(in crate::game) fn block_entity_payload(
+    mut data: sunrise_core::nbt::Compound,
+) -> sunrise_core::nbt::Compound {
+    for key in ["id", "x", "y", "z"] {
+        data.remove(&key.into());
+    }
+    data
+}

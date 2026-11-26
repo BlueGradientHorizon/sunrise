@@ -77,7 +77,7 @@ fn server<'a>(
     guest.loaded = true;
     guest.load_timeout = 0;
     guest.health = 20.0;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     (game, rx)
 }
 
@@ -90,7 +90,8 @@ fn landing(host: &LanHost) -> bool {
 fn a_hold_ignores_the_clients_moves_until_a_tp_to_lit_land_replaces_it() {
     let mut resources = None;
     let (mut game, _rx) = server(&mut resources);
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -99,11 +100,12 @@ fn a_hold_ignores_the_clients_moves_until_a_tp_to_lit_land_replaces_it() {
     game.hold_for_chunks(CONN, Vec3::new(FAR, 150.0, FAR));
     game.tick_server_travel();
     assert!(
-        landing(game.lan.as_ref().unwrap()),
+        landing(game.side.lan.as_ref().unwrap()),
         "held while the far chunks are not lit"
     );
     // A second `tp`, to land that is lit, ends the wait: the moves are heard again.
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -113,7 +115,7 @@ fn a_hold_ignores_the_clients_moves_until_a_tp_to_lit_land_replaces_it() {
     game.tick_server_travel();
     assert!(!game.on_server_trip(CONN));
     assert!(
-        !landing(game.lan.as_ref().unwrap()),
+        !landing(game.side.lan.as_ref().unwrap()),
         "no hold left, so no moves ignored"
     );
 }
@@ -123,7 +125,8 @@ fn a_hold_ignores_the_clients_moves_until_a_tp_to_lit_land_replaces_it() {
 fn a_hold_ended_by_a_trip_elsewhere_hears_the_client_again() {
     let mut resources = None;
     let (mut game, _rx) = server(&mut resources);
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -131,11 +134,11 @@ fn a_hold_ended_by_a_trip_elsewhere_hears_the_client_again() {
         .update(0, |g| g.position = [FAR, 150.0, FAR]);
     game.hold_for_chunks(CONN, Vec3::new(FAR, 150.0, FAR));
     game.tick_server_travel();
-    assert!(landing(game.lan.as_ref().unwrap()));
+    assert!(landing(game.side.lan.as_ref().unwrap()));
     // What a death, a respawn or a `tp` to another level does to the trip waiting for the player.
     game.side.server_trips.retain(|t| !t.is(CONN));
     game.tick_server_travel();
-    assert!(!landing(game.lan.as_ref().unwrap()));
+    assert!(!landing(game.side.lan.as_ref().unwrap()));
 }
 
 #[test]
@@ -143,7 +146,8 @@ fn a_hold_ended_by_a_trip_elsewhere_hears_the_client_again() {
 fn a_hold_places_the_player_once_the_chunks_are_lit() {
     let mut resources = None;
     let (mut game, _rx) = server(&mut resources);
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -151,16 +155,17 @@ fn a_hold_places_the_player_once_the_chunks_are_lit() {
         .update(0, |g| g.position = [FAR, 150.0, FAR]);
     game.hold_for_chunks(CONN, Vec3::new(FAR, 150.0, FAR));
     game.tick_server_travel();
-    assert!(landing(game.lan.as_ref().unwrap()));
+    assert!(landing(game.side.lan.as_ref().unwrap()));
     light(&mut game, (FAR as i32) >> 4);
     game.tick_server_travel();
-    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
     assert!(!game.on_server_trip(CONN));
     assert!(!guest.landing);
     assert_eq!(guest.position, [FAR, 150.0, FAR]);
     // A `tp` inside a level sets no portal cooldown.
     assert_eq!(
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .play
@@ -177,7 +182,8 @@ fn a_hold_places_the_player_once_the_chunks_are_lit() {
 fn a_hold_follows_the_destination_a_mod_chose() {
     let mut resources = None;
     let (mut game, _rx) = server(&mut resources);
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -185,7 +191,8 @@ fn a_hold_follows_the_destination_a_mod_chose() {
         .update(0, |g| g.position = [FAR, 150.0, FAR]);
     game.hold_for_chunks(CONN, Vec3::new(FAR, 150.0, FAR));
     // A mod redirected the move to another unlit place: the hub put the player there, and the wait is for it.
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -201,7 +208,8 @@ fn a_hold_follows_the_destination_a_mod_chose() {
     assert_eq!(trips.len(), 1);
     assert_eq!(trips[0].target, Vec3::new(-FAR, 150.0, 0.5));
     // A mod canceled it: the player stays on lit land, so there is nothing to wait for.
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -210,14 +218,14 @@ fn a_hold_follows_the_destination_a_mod_chose() {
     game.tick_server_travel();
     game.tick_server_travel();
     assert!(!game.on_server_trip(CONN));
-    assert!(!landing(game.lan.as_ref().unwrap()));
+    assert!(!landing(game.side.lan.as_ref().unwrap()));
 }
 
 /// The hub reads the packets the guests queued, as the network tick does.
 fn drain_packets(game: &mut crate::game::ServerGame<'_>) {
-    let mut host = game.lan.take().unwrap();
+    let mut host = game.side.lan.take().unwrap();
     host.hub.drain_packets(&mut game.server_ctx());
-    game.lan = Some(host);
+    game.side.lan = Some(host);
 }
 
 #[test]
@@ -250,14 +258,14 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
     game.run_level_teleports();
     game.tick_server_travel();
     assert!(game.on_server_trip(CONN));
-    let id = game.lan.as_ref().unwrap().hub.guests[0].teleport_counter;
+    let id = game.side.lan.as_ref().unwrap().hub.guests[0].teleport_counter;
     let step = play::MovePlayerPos {
         x: at[0] + 1.0,
         y: at[1],
         z: at[2],
         flags: 0,
     };
-    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.inbox.push_back(InboxItem::Packet(
             S::AcceptTeleportation(play::AcceptTeleportation {
                 id,
@@ -274,11 +282,11 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
     });
     drain_packets(&mut game);
     assert_eq!(
-        game.lan.as_ref().unwrap().hub.guests[0].position,
+        game.side.lan.as_ref().unwrap().hub.guests[0].position,
         at,
         "a pending arrival cannot be left behind"
     );
-    assert!(landing(game.lan.as_ref().unwrap()));
+    assert!(landing(game.side.lan.as_ref().unwrap()));
 
     let pos = [at[0] as i32, at[1] as i32 - 1, at[2] as i32];
     let stone = game
@@ -288,7 +296,7 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
         .default_state("minecraft:stone")
         .unwrap();
     game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
-    let host = game.lan.as_mut().unwrap();
+    let host = game.side.lan.as_mut().unwrap();
     host.hub.ticks = 20_000;
     host.play
         .entry(CONN)
@@ -310,9 +318,9 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
     light(&mut game, chunk);
     game.tick_server_travel();
     assert!(!game.on_server_trip(CONN));
-    assert!(!landing(game.lan.as_ref().unwrap()));
+    assert!(!landing(game.side.lan.as_ref().unwrap()));
     // End the preceding client tick's position-packet budget before the next move.
-    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.inbox.push_back(InboxItem::Packet(
             S::ClientTickEnd(sunrise_protocol::packets::Empty),
             None,
@@ -322,7 +330,7 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
     });
     drain_packets(&mut game);
     assert_eq!(
-        game.lan.as_ref().unwrap().hub.guests[0].position,
+        game.side.lan.as_ref().unwrap().hub.guests[0].position,
         [at[0] + 1.0, at[1], at[2]]
     );
 
@@ -330,13 +338,13 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
         game.mob_hits_player(6.0, at, "minecraft:player_attack")
     };
     assert_eq!(game.as_guest(CONN, hit), Some(true));
-    let health = game.lan.as_ref().unwrap().hub.guests[0].health;
+    let health = game.side.lan.as_ref().unwrap().hub.guests[0].health;
     for _ in 0..20 {
         game.tick_guests();
     }
     assert_eq!(game.as_guest(CONN, hit), Some(true));
     assert!(
-        game.lan.as_ref().unwrap().hub.guests[0].health < health,
+        game.side.lan.as_ref().unwrap().hub.guests[0].health < health,
         "the same melee hit hurts again after its cooldown"
     );
 }
@@ -358,13 +366,19 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             game.level.world_spawn = Some(pos);
             assert!(game.ui.rules.set_string("respawn_radius", "0"));
             let elsewhere = personal.then(|| (game.dim.id().into(), pos, 93.0, 12.0, true));
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.dead = true;
-                guest.health = 0.0;
-                if let Some(elsewhere) = elsewhere {
-                    guest.respawn_elsewhere = Some(elsewhere);
-                }
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    guest.dead = true;
+                    guest.health = 0.0;
+                    if let Some(elsewhere) = elsewhere {
+                        guest.respawn_elsewhere = Some(elsewhere);
+                    }
+                });
             // The client can render its immediate surroundings before all 5x5 arrival chunks are lit.
             for x in chunk - 1..=chunk + 1 {
                 for z in chunk - 1..=chunk + 1 {
@@ -377,23 +391,29 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             game.tick_server_travel();
             assert!(game.on_server_trip(CONN));
             assert!(
-                landing(game.lan.as_ref().unwrap()),
+                landing(game.side.lan.as_ref().unwrap()),
                 "respawn must hold movement while loading"
             );
-            let at = game.lan.as_ref().unwrap().hub.guests[0].position;
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                // The old body is still present. There's no teleport to acknowledge yet.
-                assert!(guest.awaiting_teleport.is_none());
-                guest.inbox.push_back(InboxItem::Packet(
-                    S::MovePlayerPos(play::MovePlayerPos {
-                        x: at[0] + 1.0,
-                        y: at[1],
-                        z: at[2],
-                        flags: 0,
-                    }),
-                    None,
-                ));
-            });
+            let at = game.side.lan.as_ref().unwrap().hub.guests[0].position;
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| {
+                    // The old body is still present. There's no teleport to acknowledge yet.
+                    assert!(guest.awaiting_teleport.is_none());
+                    guest.inbox.push_back(InboxItem::Packet(
+                        S::MovePlayerPos(play::MovePlayerPos {
+                            x: at[0] + 1.0,
+                            y: at[1],
+                            z: at[2],
+                            flags: 0,
+                        }),
+                        None,
+                    ));
+                });
             drain_packets(&mut game);
             let guest = game.command_guest(CONN).unwrap();
             assert!(guest.left_reason.is_empty());
@@ -401,17 +421,17 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             // A second pass must preserve the respawn search, even if its eventual stand-up spot
             // differs from the original target; it must not turn into an ordinary teleport hold.
             game.tick_server_travel();
-            assert!(landing(game.lan.as_ref().unwrap()));
+            assert!(landing(game.side.lan.as_ref().unwrap()));
             light(&mut game, chunk);
             game.tick_server_travel();
             assert!(!game.on_server_trip(CONN));
-            assert!(!landing(game.lan.as_ref().unwrap()));
+            assert!(!landing(game.side.lan.as_ref().unwrap()));
             if personal {
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(guest.position, [FAR, 150.1, FAR]);
                 assert_eq!([guest.yaw, guest.pitch], [93.0, 12.0]);
             }
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             let at = host.hub.guests.update(0, |g| {
                 assert!(
                     !g.client_loaded(),
@@ -442,14 +462,14 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
                 game.mob_hits_player(6.0, at, "minecraft:player_attack")
             };
             assert_eq!(game.as_guest(CONN, hit), Some(true));
-            let health = game.lan.as_ref().unwrap().hub.guests[0].health;
+            let health = game.side.lan.as_ref().unwrap().hub.guests[0].health;
             game.add_item_entity(ItemStack::new("minecraft:stick", 1), at, Some([0.0; 3]), 0);
             for _ in 0..20 {
                 game.tick_guests();
             }
             assert!(game.dropped.is_empty(), "pickups resume after arrival");
             assert!(
-                game.lan.as_ref().unwrap().hub.guests[0]
+                game.side.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
                     .iter()
                     .flatten()
@@ -457,7 +477,7 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             );
             assert_eq!(game.as_guest(CONN, hit), Some(true));
             assert!(
-                game.lan.as_ref().unwrap().hub.guests[0].health < health,
+                game.side.lan.as_ref().unwrap().hub.guests[0].health < health,
                 "the damage cooldown must expire"
             );
         }
@@ -476,7 +496,7 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
         // with only four of its rows lit when the player requests a respawn.
         let spawn = [16, 100, 16];
         game.level.world_spawn = Some(spawn);
-        game.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
+        game.side.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
             g.dead = true;
             g.health = 0.0;
         });
@@ -488,7 +508,7 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
         for _ in 0..2 {
             game.tick_server_travel();
             assert!(game.on_server_trip(CONN));
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert!(
                 landing(host),
                 "waiting for a candidate must not release movement"
@@ -509,7 +529,7 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
         }
         game.tick_server_travel();
         assert!(!game.on_server_trip(CONN));
-        let host = game.lan.as_ref().unwrap();
+        let host = game.side.lan.as_ref().unwrap();
         assert!(!landing(host));
         assert!(!host.hub.guests[0].dead);
     });

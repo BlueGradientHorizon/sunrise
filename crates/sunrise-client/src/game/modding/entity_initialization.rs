@@ -69,6 +69,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         let data = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.hub.guests.attachments_mut(conn))
@@ -76,6 +77,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.initialize_entity(Holder::Player(uuid), "minecraft:player");
         if let Some(data) = data
             && let Some(attachments) = self
+                .side
                 .lan
                 .as_mut()
                 .and_then(|host| host.hub.guests.attachments_mut(conn))

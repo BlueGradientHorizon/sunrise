@@ -3,6 +3,7 @@
 #[cfg(feature = "client")]
 use super::host::draw::GameCameraDrawContext;
 use super::{Dim, Game, api_values::TryIntoApi, weather::precipitation_at};
+use crate::game::weather_height::motion_blocking_height;
 use mod_api::{
     __private::{SelectedBlockScreenEffectRenderer, block_screen_effect_render},
     BlockScreenEffect,
@@ -34,7 +35,6 @@ use sunrise_sim::{
 use sunrise_world::dimension_type::{CardinalLight, Skybox};
 use sunrise_world::{
     environment_attributes::{AMBIENT_PARTICLES, Value as AttributeValue, attribute},
-    heightmap::HeightmapType,
     particle_options::{ParticleOptions as PersistentOptions, block_state_id},
     registry::BlockStateId,
     worldgen::terrain::TerrainBlockStates,
@@ -83,19 +83,6 @@ pub(in crate::game) fn mob_tracking_body(mob: &Mob) -> TrackingBody {
     }
 }
 
-/// `getHeight(Heightmap.Types.MOTION_BLOCKING, x, z)` from the chunk's
-/// heightmap: one above the highest block in `blocks_motion_in_heightmap` or
-/// holding a fluid, however far above the camera it is.
-pub(in crate::game) fn motion_blocking_height(
-    world: &World,
-    properties: &Properties,
-    x: i32,
-    z: i32,
-) -> i32 {
-    world.motion_blocking(x, z, |s| {
-        HeightmapType::MotionBlocking.is_opaque(properties.heightmap_state(s))
-    })
-}
 /// `GameRenderer.nightVisionScale` for an optional night-vision duration (`-1` is infinite).
 fn night_vision_scale(duration: Option<i32>, partial: f32) -> f32 {
     match duration {
@@ -380,11 +367,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `ClientLevelData.isFlat` on a connected client.
     fn level_flat(&self) -> bool {
-        self.remote.as_ref().is_some_and(|r| r.flat)
+        self.side.remote.as_ref().is_some_and(|r| r.flat)
     }
     /// Client arm of `level_min_y` (`side_level_min_y`).
     pub(in crate::game) fn client_level_min_y(&self) -> i32 {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .map_or(self.world.shape.min_y, |r| r.dimension.min_y)
     }
@@ -745,7 +733,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         id: i32,
     ) -> Option<(TrackingTarget, TrackingBody)> {
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
+        if self.side.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             let player = self.player.as_ref()?;
             return Some((TrackingTarget::LocalPlayer, player_tracking_body(player)));
         }
@@ -784,8 +772,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let inside_portal = self.client_portal_effect();
             self.side.screen_fx.tick_portal(inside_portal);
             // LocalPlayer.aiStep: processPortalCooldown after the transition effect.
-            if self.remote.is_some() && self.portals.player.cooldown > 0 {
-                self.portals.player.cooldown -= 1;
+            if self.side.remote.is_some() && self.portal_player.cooldown > 0 {
+                self.portal_player.cooldown -= 1;
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
             self.side.screen_fx.tick_spinning(nausea);
@@ -831,10 +819,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let world = &self.world;
             let facts = self.res.facts();
             let biomes = world_biomes!(self);
-            let environment =
-                Self::level_environment(self.remote.as_ref(), &self.res, &self.dimension_type().id);
+            let environment = Self::level_environment(
+                self.side
+                    .remote
+                    .as_ref()
+                    .and_then(|r| r.level_environment.as_deref()),
+                &self.res,
+                &self.dimension_type().id,
+            );
             let ui = &self.ui;
-            let remote = self.remote.as_ref();
+            let remote = self.side.remote.as_ref();
             let clock = |name: &str| {
                 if let Some(remote) = remote {
                     return remote.named_clock_time(name);
@@ -1131,33 +1125,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .0
                 .polytone_entity(&level, "minecraft:player", feet);
         }
-        let bodies =
-            self.side
-                .particles
-                .0
-                .sample_tracking_bodies(|target| match target {
-                    TrackingTarget::LocalPlayer => self.player.as_ref().map(player_tracking_body),
-                    TrackingTarget::Entity(id) => {
-                        if self.remote.is_some() {
-                            return self.remote_entity_tracking_body(id);
-                        }
-                        if let Some(guest) = self.lan.as_ref().and_then(|host| {
-                            host.hub.guests.iter().find(|guest| {
-                                guest.entity_id == id && guest.dimension == self.dim.id()
-                            })
-                        }) {
-                            let dimensions = guest.dimensions();
-                            return Some(TrackingBody {
-                                feet: guest.position,
-                                width: f64::from(dimensions.width),
-                                height: f64::from(dimensions.height),
-                            });
-                        }
-                        self.mob_index
-                            .find_ref(&self.mobs, id as u32)
-                            .map(|i| mob_tracking_body(&self.mobs[i]))
+        let bodies = self
+            .side
+            .particles
+            .0
+            .sample_tracking_bodies(|target| match target {
+                TrackingTarget::LocalPlayer => self.player.as_ref().map(player_tracking_body),
+                TrackingTarget::Entity(id) => {
+                    if self.side.remote.is_some() {
+                        return self.remote_entity_tracking_body(id);
                     }
-                });
+                    self.mob_index
+                        .find_ref(&self.mobs, id as u32)
+                        .map(|i| mob_tracking_body(&self.mobs[i]))
+                }
+            });
         self.side.particles.0.tick_tracking(&level, bodies);
         laps.lap("tp_engine");
         self.tick_pickups();
@@ -1431,7 +1413,8 @@ mod tests {
                     // SetPlayerInventory slots 41 and 42 sync body armor and saddle.
                     game.init_remote_for_replay().unwrap();
                     let item_id = |name: &str| {
-                        game.remote
+                        game.side
+                            .remote
                             .as_ref()
                             .unwrap()
                             .builtin

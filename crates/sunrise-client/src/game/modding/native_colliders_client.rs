@@ -1,8 +1,5 @@
 use super::Game;
-use crate::game::server_side::native_colliders::Placement;
-use crate::game::server_side::native_colliders::PlacementKey;
-use crate::game::server_side::native_colliders::origin_bits;
-use crate::game::server_side::native_colliders::stack_in_graph;
+use crate::game::native_collider_state::{Placement, PlacementKey, origin_bits, stack_in_graph};
 use mod_api::EntityRef;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::collider_sync::{self, Message};
@@ -11,7 +8,7 @@ use sunrise_sim::colliders::ColliderState;
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A client forgets the collider of an entity the server stopped showing it.
     pub(in crate::game::client_side) fn forget_client_collider(&mut self, id: i32) {
-        if let Some(remote) = self.remote.as_mut() {
+        if let Some(remote) = self.side.remote.as_mut() {
             remote.colliders.remove(&(id as u32));
         }
     }
@@ -21,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Ok(message) => message,
             Err(e) => return log::debug!("Sunrise: a bad collider sync: {e}"),
         };
-        let Some(remote) = self.remote.as_mut() else {
+        let Some(remote) = self.side.remote.as_mut() else {
             return;
         };
         let entity = match message {
@@ -45,7 +42,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn client_vehicle_stack(&self, id: u32) -> Vec<u32> {
-        let Some(remote) = &self.remote else {
+        let Some(remote) = &self.side.remote else {
             return vec![id];
         };
         stack_in_graph(&remote.passenger_vehicles, id)
@@ -56,7 +53,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         id: u32,
     ) -> Option<sunrise_core::geometry::oriented::Frame> {
-        let state = self.remote.as_ref()?.colliders.get(&id)?;
+        let state = self.side.remote.as_ref()?.colliders.get(&id)?;
         Some(state.frame(self.client_collider_origin(id)?))
     }
 
@@ -64,7 +61,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         mut f: impl FnMut(u32, &ColliderState) -> bool,
     ) -> bool {
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             for (&id, state) in &remote.colliders {
                 if !f(id, state) {
                     return false;
@@ -75,7 +72,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn client_is_alone(&self, id: u32) -> bool {
-        self.remote
+        self.side
+            .remote
             .as_ref()
             .is_none_or(|r| r.passenger_vehicle(id).is_none() && !r.has_passengers(id))
     }

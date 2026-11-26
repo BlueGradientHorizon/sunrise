@@ -60,7 +60,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if players.is_empty() {
             return Err(err("commands.transfer.error.no_players", &[]));
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             for (conn, _) in &players {
                 host.hub.transfer(*conn, &hostname, port);
             }

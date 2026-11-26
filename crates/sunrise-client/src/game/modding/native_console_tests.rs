@@ -140,13 +140,13 @@ fn a_blank_line_or_no_server_runs_nothing() {
             );
         }
         assert!(game.side.chat_capture.is_none(), "nothing was captured");
-        let host = game.lan.take();
+        let host = game.side.lan.take();
         assert_eq!(
             game.native_run_command_with_output("time query gametime"),
             CommandResult::default()
         );
         assert!(!game.native_run_command("time query gametime"));
-        game.lan = host;
+        game.side.lan = host;
         assert!(
             game.native_run_command_with_output("time query gametime")
                 .success

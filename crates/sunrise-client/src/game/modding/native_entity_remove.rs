@@ -178,7 +178,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.has_seated_passengers(id)
             && let Some(mob) = self.mob_object(id)
         {
-            let vehicle = super::persist::RemovedVehicle::Mob {
+            let vehicle = crate::game::entity_memory::RemovedVehicle::Mob {
                 position,
                 kind: super::native_hooks::mob_kind(mob),
             };
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn removal_dismounts_and_tells_mods_once_at_the_call() {
-        use super::super::{boats::Boat, native_entity_refs::tests::with_game};
+        use super::super::{boats_common::Boat, native_entity_refs::tests::with_game};
         use mod_api::{EntityLeaveLevelEvent, Hooks, ServerHost};
         use std::sync::{Arc, Mutex};
         use sunrise_core::geometry::Vec3;

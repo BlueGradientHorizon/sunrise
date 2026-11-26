@@ -28,8 +28,8 @@ pub(in crate::game) mod tests {
     use sunrise_client::title::Mode;
     use sunrise_sim::world_options::WorldOptions;
     use winit::{
-        event::{DeviceId, ElementState, WindowEvent},
-        keyboard::PhysicalKey,
+        event::{DeviceId, ElementState, MouseButton, WindowEvent},
+        keyboard::{KeyCode, PhysicalKey},
     };
 
     #[derive(Debug, PartialEq, Eq)]

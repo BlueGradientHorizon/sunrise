@@ -63,7 +63,9 @@ fn state_at(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> (String, i32) 
         .cloned()
         .unwrap_or_default();
     let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-    let comparator = super::lectern_signal(&game.world, registry, state, at).expect("a lectern");
+    let comparator =
+        sunrise_gameplay_common::lectern::lectern_signal(&game.world, registry, state, at)
+            .expect("a lectern");
     (has_book, comparator)
 }
 

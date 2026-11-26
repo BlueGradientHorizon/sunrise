@@ -11,14 +11,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ChatListener.queueSize`: the messages Chat Delay holds, for the chat's
     /// `chat.queue` row.
     pub(in crate::game) fn chat_queue_len(&self) -> usize {
-        self.remote.as_ref().map_or(0, |r| r.chat_queue.len())
+        self.side.remote.as_ref().map_or(0, |r| r.chat_queue.len())
     }
 
     /// `ChatListener.handleMessage`: hold the packet's receipt context or
     /// accept it immediately when there is no delay.
     pub(in crate::game) fn enqueue_chat(&mut self, chat: QueuedChat) {
         if self.chat_delay_ms() > 0 {
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 r.chat_queue.push_back(chat);
             }
         } else {
@@ -36,7 +36,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.mark_message_processed(signature, false);
         }
         let shown = self.show_queued_chat(chat);
-        if shown && let Some(r) = self.remote.as_mut() {
+        if shown && let Some(r) = self.side.remote.as_mut() {
             r.chat_previous = Some(Instant::now());
         }
         if !error && let Some(signature) = &signature {
@@ -53,7 +53,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Minecraft.isPaused: a single-player pausing screen, not every pause menu.
         if self.pause {
             if delay > 0
-                && let Some(r) = self.remote.as_mut()
+                && let Some(r) = self.side.remote.as_mut()
             {
                 r.chat_previous = r.chat_previous.map(|t| t + Duration::from_millis(50));
             }
@@ -61,6 +61,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if delay == 0 {
             if self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| !r.chat_queue.is_empty())
@@ -69,7 +70,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             return;
         }
-        let ready = self.remote.as_ref().is_some_and(|r| {
+        let ready = self.side.remote.as_ref().is_some_and(|r| {
             r.chat_previous
                 .is_none_or(|t| t.elapsed() >= Duration::from_millis(delay as u64))
         });
@@ -77,7 +78,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         // Rejected messages do not restart the wait; keep accepting until one shows.
-        while let Some(chat) = self.remote.as_mut().and_then(|r| r.chat_queue.pop_front()) {
+        while let Some(chat) = self
+            .side
+            .remote
+            .as_mut()
+            .and_then(|r| r.chat_queue.pop_front())
+        {
             if self.accept_chat(chat) {
                 break;
             }
@@ -88,6 +94,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// delay starts over.
     pub(in crate::game) fn flush_chat_queue(&mut self) {
         let Some(queue) = self
+            .side
             .remote
             .as_mut()
             .map(|r| std::mem::take(&mut r.chat_queue))
@@ -97,7 +104,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for chat in queue {
             self.accept_chat(chat);
         }
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.chat_previous = None;
         }
     }
@@ -105,7 +112,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ChatListener.acceptNextDelayedMessage`: the queue row's click shows the
     /// next held-back message now, even before the delay has elapsed.
     pub(in crate::game) fn accept_next_delayed_message(&mut self) {
-        if let Some(chat) = self.remote.as_mut().and_then(|r| r.chat_queue.pop_front()) {
+        if let Some(chat) = self
+            .side
+            .remote
+            .as_mut()
+            .and_then(|r| r.chat_queue.pop_front())
+        {
             self.accept_chat(chat);
         }
     }

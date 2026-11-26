@@ -49,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         suppress_output: bool,
     ) -> (bool, Vec<Text>) {
         use super::commands::Target;
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return (false, Vec::new());
         }
         let Some(target) = self.native_entity_target(entity) else {
@@ -64,7 +64,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 None => (false, Vec::new()),
             },
             Target::Guest(conn) => {
-                let Some(host) = &self.lan else {
+                let Some(host) = &self.side.lan else {
                     return (false, Vec::new());
                 };
                 let Some(uuid) = host
@@ -206,10 +206,15 @@ mod tests {
                 .into_iter()
                 .map(|conn| {
                     let (tx, rx) = std::sync::mpsc::channel();
-                    game.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
-                        guest.sender =
-                            sunrise_sim::lan::PlayerSender::new(tx, std::sync::Arc::default());
-                    });
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .update_guest(conn, |guest| {
+                            guest.sender =
+                                sunrise_sim::lan::PlayerSender::new(tx, std::sync::Arc::default());
+                        });
                     rx
                 })
                 .collect();
@@ -273,7 +278,8 @@ mod tests {
             let player = game.player(12).unwrap();
             assert_eq!(player.game_mode(game), Some(GameMode::Survival));
             for permission in [0, 2] {
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -338,7 +344,7 @@ mod tests {
             let player = game.player(12).unwrap();
             let entity = player.entity();
             let (tx, rx) = mpsc::channel();
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.ops.insert(13, 2);
             hub.update_guest(13, |guest| {
                 guest.permission = 2;

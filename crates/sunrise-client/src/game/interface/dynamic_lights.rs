@@ -1,6 +1,7 @@
 //! Sunrise Extras' dynamic lights (`sunrise_client::dynamic_light`): the light sources near the
 //! camera this frame. Nothing is gathered while the extra is off.
-use super::{Game, shield};
+use super::Game;
+use crate::game::held_items::OFFHAND_SLOT;
 use glam::DVec3;
 use sunrise_client::dynamic_light::{self, BURNING, Luminance, Source};
 
@@ -52,7 +53,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     lum,
                     [
                         self.stack_in(self.selected).map(|s| &*s.item),
-                        self.stack_in(shield::OFFHAND_SLOT).map(|s| &*s.item),
+                        self.stack_in(OFFHAND_SLOT).map(|s| &*s.item),
                     ],
                     p.is_on_fire(),
                 );

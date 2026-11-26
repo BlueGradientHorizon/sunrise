@@ -62,7 +62,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// players who see them.
     pub(in crate::game) fn flush_attachment_sync(&mut self) {
         let landings = std::mem::take(&mut self.world.attachment_landings);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let snapshots = std::mem::take(&mut host.hub.attachment_snapshots);
@@ -81,7 +81,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Holder::Entity(id) => Some(id),
                 _ => None,
             };
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             let hub = &mut host.hub;
@@ -111,6 +111,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Vec::new()
             };
             let sender = self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().find(|g| g.uuid == player))
@@ -129,6 +130,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for holder in landings {
             let messages = self.attachment_snapshot(holder);
             let senders = self
+                .side
                 .lan
                 .as_ref()
                 .map_or_else(Vec::new, |host| host.hub.attachment_recipients(holder));
@@ -151,6 +153,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 changes,
             };
             let senders = self
+                .side
                 .lan
                 .as_ref()
                 .map_or_else(Vec::new, |host| host.hub.attachment_recipients(holder));

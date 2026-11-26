@@ -48,9 +48,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     fn move_who_id(&self, who: MoveWho) -> u32 {
         match who {
             MoveWho::Player => self.player.as_ref().map_or(0, |p| p.entity_id as u32),
-            MoveWho::Guest(conn) => self.lan.as_ref().map_or(0, |host| {
-                host.hub.guest(conn).map_or(0, |g| g.entity_id as u32)
-            }),
+            MoveWho::Guest(conn) => self.side_move_guest_entity_id(conn).unwrap_or(0),
             MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.id()),
         }
     }

@@ -30,7 +30,7 @@ pub(in crate::game) fn stand(
         relatives: 0,
     }))
     .unwrap();
-    let remote = game.remote.as_mut().unwrap();
+    let remote = game.side.remote.as_mut().unwrap();
     remote.loaded_sent = true;
     remote.level_load.finish();
     game.side.screen = Screen::Playing;

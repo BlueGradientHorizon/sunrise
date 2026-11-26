@@ -115,7 +115,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             size_of::<sunrise_sim::entities::ExperienceOrb>(),
             size_of::<sunrise_sim::projectiles::Projectile>(),
             size_of::<super::minecarts::Minecart>(),
-            size_of::<super::boats::Boat>(),
+            size_of::<crate::game::boats_common::Boat>(),
         ];
         let mut by_type: BTreeMap<String, (usize, usize)> = BTreeMap::new();
         let mut level = |mobs: &[sunrise_sim::mobs::Mob], loose: [usize; 5]| {
@@ -178,7 +178,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// This game's own server parts: it is a dedicated server, or the single-player server thread.
     pub(in crate::game::server_side) fn server_side(&self) -> ServerSide {
-        let (players, chunk_send) = match &self.lan {
+        let (players, chunk_send) = match &self.side.lan {
             Some(host) => (player_census(&host.hub), chunk_send_census(&host.hub)),
             None => (Players::default(), ChunkSend::default()),
         };
@@ -213,14 +213,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         MemoryInputs {
             render_distance: self.side.streaming.radius,
             client: None,
-            renderer: None,
             far: None,
         }
     }
 
     pub(in crate::game) fn server_memory_report(&self) -> MemoryReport {
         self.server_memory_inputs()
-            .report(Some(self.server_side()), || true)
+            .report(Some(self.server_side()), || true, || None)
             .expect("a manual census cannot be canceled")
     }
 }
@@ -337,10 +336,16 @@ pub(in crate::game) mod tests {
         // kept, so its bytes are not counted (`PlayerSender::publish_reserved`). A queue is counted
         // while its reader is still to come: this one outlives the report.
         let (tx, queue) = channel();
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
-            guest.sender.send(vec![0; 3 << 20]);
-        });
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                guest.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
+                guest.sender.send(vec![0; 3 << 20]);
+            });
         let report = game.memory_report();
         drop(queue);
         let by_type: std::collections::BTreeMap<_, _> = report

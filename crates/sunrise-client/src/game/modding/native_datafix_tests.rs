@@ -93,7 +93,8 @@ fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
         match expected {
             LogicalSide::Client => with_client_game(|game| {
                 use crate::game::{
-                    native_lifecycle::NativeLifecycle, remote::RemoteDimensionEntry,
+                    client_side::remote_client::session_state::RemoteDimensionEntry,
+                    native_lifecycle_common::NativeLifecycle,
                 };
                 use sunrise_client::level_loading::Reason;
                 use sunrise_protocol::{connection::Pipe, packets::play::SpawnInfo};
@@ -114,7 +115,7 @@ fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
                     sea_level: 63,
                 };
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-                game.remote.as_mut().unwrap().logged_in = true;
+                game.side.remote.as_mut().unwrap().logged_in = true;
                 game.tick_remote_level().unwrap();
             }),
             LogicalSide::Server => with_game(|game| {

@@ -19,7 +19,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `LivingEntity.handleEntityEvent(2)` on a server's client: the
     /// player `id` (this one, or another) was hit by the spear it uses.
     pub(in crate::game) fn remote_kinetic_hit(&mut self, id: i32) {
-        let own = self.remote.as_ref().is_some_and(|r| r.entity_id == id);
+        let own = self.side.remote.as_ref().is_some_and(|r| r.entity_id == id);
         let (item, at) = if own {
             let item = self
                 .using

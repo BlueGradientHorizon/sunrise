@@ -55,7 +55,7 @@ fn join(game: &mut crate::game::ServerGame<'_>, conn: u32, loaded: bool) -> mpsc
     guest.loaded = loaded;
     guest.load_timeout = if loaded { 0 } else { 60 };
     (guest.yaw, guest.pitch) = (17.0, -12.0);
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
     game.reset_entity_residency();
     rx
 }
@@ -68,14 +68,19 @@ fn packet_tick(
     let back = game.dim;
     let level = Dim::from_id(&guest(game, conn).dimension);
     game.enter_level(level).unwrap();
-    game.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
-        guest.inbox.extend(packets.into_iter().map(|packet| {
-            let body = packet.encode();
-            let mut reader = Reader::new(&body);
-            let id = reader.varint().unwrap();
-            InboxItem::Packet(S::decode(id, reader.rest()).unwrap(), None)
-        }));
-    });
+    game.side
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .update_guest(conn, |guest| {
+            guest.inbox.extend(packets.into_iter().map(|packet| {
+                let body = packet.encode();
+                let mut reader = Reader::new(&body);
+                let id = reader.varint().unwrap();
+                InboxItem::Packet(S::decode(id, reader.rest()).unwrap(), None)
+            }));
+        });
     game.side.level_pass = Default::default();
     game.tick_lan_packets();
     assert_eq!(
@@ -87,7 +92,7 @@ fn packet_tick(
 }
 
 fn guest<'a>(game: &'a crate::game::ServerGame<'_>, conn: u32) -> &'a Guest {
-    game.lan.as_ref().unwrap().hub.guest(conn).unwrap()
+    game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap()
 }
 
 fn pose(guest: &Guest) -> Value {
@@ -132,7 +137,8 @@ fn credits(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>
             .iter()
             .any(|p| matches!(p, C::GameEvent(event) if event.event == 4))
     );
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -212,14 +218,19 @@ fn credits(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>
 
 fn use_item(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     for kind in ["empty", "disabled", "survival", "spectator"] {
-        game.lan.as_mut().unwrap().hub.update_guest(VIEWER, |g| {
-            (g.yaw, g.pitch) = (17.0, -12.0);
-            g.last_action_tick = 0;
-            g.ack_up_to.set(-1);
-            g.game_mode = if kind == "spectator" { 3 } else { 0 };
-            g.offhand = (kind != "empty")
-                .then(|| sunrise_items::items::ItemStack::new("minecraft:snowball", 3));
-        });
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(VIEWER, |g| {
+                (g.yaw, g.pitch) = (17.0, -12.0);
+                g.last_action_tick = 0;
+                g.ack_up_to.set(-1);
+                g.game_mode = if kind == "spectator" { 3 } else { 0 };
+                g.offhand = (kind != "empty")
+                    .then(|| sunrise_items::items::ItemStack::new("minecraft:snowball", 3));
+            });
         let saved = game.level.enabled_features.clone();
         if kind == "disabled" {
             game.level.enabled_features = Vec::<String>::new().into();
@@ -247,7 +258,8 @@ fn use_item(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value
         );
         game.level.enabled_features = saved;
     }
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -302,7 +314,7 @@ fn spectate(
 ) {
     let shoot = |uuid| S::TeleportToEntity(play::TeleportToEntity { uuid });
     let _peer = join(game, 2, true);
-    let host = game.lan.as_mut().unwrap();
+    let host = game.side.lan.as_mut().unwrap();
     host.hub.update_guest(VIEWER, |g| g.game_mode = 3);
     host.hub.update_guest(2, |g| {
         g.place([10.5, 104.0, 7.5]);
@@ -329,10 +341,15 @@ fn spectate(
             game.guest_set_camera(i, Some(boat as i32));
             assert!(guest(game, VIEWER).watching);
         }
-        game.lan.as_mut().unwrap().hub.update_guest(VIEWER, |g| {
-            g.place(START);
-            g.vehicle = Some(boat);
-        });
+        game.side
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(VIEWER, |g| {
+                g.place(START);
+                g.vehicle = Some(boat);
+            });
         game.as_guest(VIEWER, |g| {
             let body = g.player.as_mut().unwrap();
             body.fall_distance = 7.25;
@@ -583,7 +600,7 @@ fn resend(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>)
         let conn = 20 + n as u32;
         let rx = join(game, conn, !route.starts_with("loading_"));
         let i = game.guest_index(conn).unwrap();
-        game.lan.as_mut().unwrap().hub.teleport(i, Some(START));
+        game.side.lan.as_mut().unwrap().hub.teleport(i, Some(START));
         for elapsed in 1..=22 {
             let mut packet = None;
             if elapsed >= 19 {
@@ -632,7 +649,7 @@ fn resend(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>)
         let yaw: f32 = if conn == 24 { 17.0 } else { 270.0 };
         let pitch = -12.0_f32;
         let i = game.guest_index(conn).unwrap();
-        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let hub = &mut game.side.lan.as_mut().unwrap().hub;
         hub.guests.update(i, |g| g.yaw = yaw);
         hub.teleport(i, Some(START));
         for _ in 0..20 {

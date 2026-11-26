@@ -735,20 +735,30 @@ pub fn pack_meta_for(
     format: (i64, i64),
 ) -> Option<PackMeta> {
     let meta = read_meta(&source)?;
+    Some(pack_meta_from(id, title, source, format, &meta))
+}
+
+pub fn pack_meta_from(
+    id: String,
+    title: Text,
+    source: Source,
+    format: (i64, i64),
+    meta: &serde_json::Value,
+) -> PackMeta {
     let (raw_description, description_style) = component_root(&meta["pack"]["description"]);
-    Some(PackMeta {
+    PackMeta {
         id,
         title,
         description: raw_description.resolve_legacy(),
         raw_description,
         description_style,
-        compatible: compatible(&meta),
-        compatibility: compatibility_for(&meta, format),
-        overlays: vanilla_overlays_of(&meta),
-        filter: filter_of(&meta),
+        compatible: compatible(meta),
+        compatibility: compatibility_for(meta, format),
+        overlays: vanilla_overlays_of(meta),
+        filter: filter_of(meta),
         source,
         selection: None,
-    })
+    }
 }
 
 /// The packs (folders and zips) in `dir`, by name, as `FolderRepositorySource`

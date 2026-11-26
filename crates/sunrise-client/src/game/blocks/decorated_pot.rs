@@ -2,7 +2,8 @@
 //! entities): the loot table a trial chamber pot holds, rolled into its item
 //! the first time the item is read (`RandomizableContainer.unpackLootTable`),
 //! and `DecoratedPotBlock.useItemOn` / `useWithoutItem`.
-use super::{Game, spill};
+use super::Game;
+use crate::game::spill_common::saved_entity;
 use sunrise_core::random::LegacyRandom;
 use sunrise_items::random_sequences::RandomSequences;
 use sunrise_sim::save;
@@ -69,7 +70,7 @@ pub(in crate::game) fn pot_data_in(
     if &*facts.get(state).name != "minecraft:decorated_pot" {
         return None;
     }
-    let mut tag = spill::saved_entity(world, pos).unwrap_or_else(|| {
+    let mut tag = saved_entity(world, pos).unwrap_or_else(|| {
         Tag::compound([
             ("id", Tag::String("minecraft:decorated_pot".into())),
             ("x", Tag::Int(pos[0])),

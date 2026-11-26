@@ -2,7 +2,7 @@
 //! off), riding, getting off on top, and the ghastling a dried ghast block
 //! hatches.
 use super::Game;
-use crate::game::level_sounds::LevelSound;
+use crate::game::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::{MobEvent, happy_ghast};
@@ -99,6 +99,7 @@ pub(in crate::game) fn with_headless_game(run: impl FnOnce(&mut crate::game::Ser
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     run(&mut game);

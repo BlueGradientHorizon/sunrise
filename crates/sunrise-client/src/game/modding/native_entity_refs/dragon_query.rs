@@ -12,7 +12,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let mut cursor = None;
         while let Some(id) = self.dragon.next_part(&mut cursor) {
-            if let Some(part) = crate::game::dragon::dragon_part_index(dragon.id, id)
+            if let Some(part) = crate::game::dragon_common::dragon_part_index(dragon.id, id)
                 && bounds.intersects(dragon.part_geometry(part).1)
             {
                 visit_id(id)?;
@@ -26,7 +26,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::*;
     use crate::game::{
-        dragon::Dragon,
+        dragon_common::Dragon,
         native_entity_refs::tests::{
             collect_entities_in, collect_game_all_entities, collect_game_entities_in, with_game,
         },
@@ -440,7 +440,7 @@ mod tests {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;

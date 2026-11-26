@@ -2,11 +2,9 @@
 //! layout (276x166, drawn 50 px left of the usual 176-wide origin), offer
 //! buttons, payment slots, the result slot's `onTake`, villager experience and
 //! level-ups with new offers from the next trade set.
-use super::{
-    Game,
-    stations::{Kind, Station},
-};
-use sunrise_client::widgets::Cursor;
+use super::Game;
+use crate::game::stations_common::{Kind, Station};
+use crate::game::trading_common::MerchantState;
 use sunrise_game_data::text::Text;
 use sunrise_items::{items::ItemStack, random_sequences::RandomSequences};
 use sunrise_sim::merchant::{self, MerchantOffer, TradeContext, TradeFeedback};
@@ -14,73 +12,6 @@ use sunrise_sim::mobs::{
     Mob, Species,
     villager::{self, VILLAGER_TYPES},
 };
-
-/// The merchant screen is 100 px wider than the 176-px menus it shares an origin with.
-pub(in crate::game) const SHIFT: f32 = -50.0;
-pub(in crate::game) const GREY: u32 = 0xFF40_4040;
-
-#[derive(Clone)]
-pub(in crate::game) struct MerchantState {
-    /// The merchant's side of the menu: offers, experience, level, the
-    /// selection hint and active offer (`sunrise_client::merchant::Session`).
-    pub(in crate::game) session: Box<merchant::Session>,
-    /// The offer list's scroll offset.
-    pub(in crate::game) scroll: usize,
-    /// The scroller is held by the mouse (`isDragging`).
-    pub(in crate::game) dragging: bool,
-    /// The offer button that keeps focus after a click (drawn highlighted).
-    pub(in crate::game) focused: Option<usize>,
-    /// The trading mob (its offers and experience are written back on
-    /// close) and its custom name.
-    pub(in crate::game) mob: Option<u32>,
-    /// `Merchant.getDisplayName()`: the trading mob's custom name with its
-    /// style, else nothing (the profession's name is the default).
-    pub(in crate::game) name: Option<Text>,
-}
-/// `Merchant.getDisplayName`: the merchant's custom name (style and all), else
-/// the profession's or the wandering trader's.
-pub(in crate::game) fn merchant_display_name(
-    progress: bool,
-    profession: &str,
-    custom: Option<Text>,
-) -> Text {
-    custom.unwrap_or_else(|| {
-        if progress {
-            Text::translate_with_fallback(
-                &format!("entity.minecraft.villager.{profession}"),
-                profession,
-                &[],
-            )
-        } else {
-            Text::translate_with_fallback(
-                "entity.minecraft.wandering_trader",
-                "Wandering Trader",
-                &[],
-            )
-        }
-    })
-}
-/// `MerchantScreen.extractLabels`: a villager's title is `merchant.title` with
-/// the name and its level, so the name keeps the style it was given.
-pub(in crate::game) fn merchant_title(progress: bool, level: i32, name: Text) -> Text {
-    // `extractLabels` joins the level for levels 1 to 5 only (`VillagerData`
-    // clamps a villager to 1; a level past 5 draws the name alone).
-    if !progress || !(1..=5).contains(&level) {
-        return name;
-    }
-    let level = Text::translate_with_fallback(&format!("merchant.level.{level}"), "", &[]);
-    Text::translate_with_fallback("merchant.title", "%s - %s", &[name, level])
-}
-/// Player inventory slot positions in `MerchantMenu` (x from 108).
-pub(in crate::game) fn inventory_slot(i: usize) -> (f32, f32) {
-    match i {
-        0..9 => (108.0 + SHIFT + i as f32 * 18.0, 142.0),
-        _ => (
-            108.0 + SHIFT + ((i - 9) % 9) as f32 * 18.0,
-            84.0 + ((i - 9) / 9) as f32 * 18.0,
-        ),
-    }
-}
 
 /// `ExplorationMapFunction` in the game world: the nearest structure of the
 /// tag through the generator's `/locate`, a new map centred on it with its
@@ -598,7 +529,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if matches!(feedback, TradeFeedback::AtHurt(_)) && !self.merchant_take_active() {
             if !silent {
-                self.play_immediate_level_sound(super::level_sounds::LevelSound::new(
+                self.play_immediate_level_sound(crate::game::level_sounds_common::LevelSound::new(
                     sound, at, 1.0, pitch,
                 ));
             }
@@ -669,53 +600,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-/// Whether a press at `local` (GUI origin relative) lands on the offer list's
-/// scroller, which only takes it when there are more than 7 offers.
-pub(in crate::game) fn on_scroller(local: (f32, f32), offers: usize) -> bool {
-    let x = SHIFT + 94.0;
-    offers > 7
-        && local.0 > x
-        && local.0 < x + 6.0
-        && local.1 > 18.0
-        && local.1 <= 18.0 + 139.0 + 1.0
-}
-/// `MerchantScreen.extractScroller`: the thumb's rectangle (GUI origin
-/// relative) while the offers overflow; the track's 139 px, the thumb's 27.
-pub(in crate::game) fn scroller_rect(offers: usize, scroll: usize) -> Option<[f32; 4]> {
-    let steps = offers as i32 + 1 - 7;
-    if steps <= 1 {
-        return None;
-    }
-    let left = 139 - (27 + (steps - 1) * 139 / steps);
-    let step = 1 + left / steps + 139 / steps;
-    let mut y = (scroll as i32 * step).min(113);
-    if scroll as i32 == steps - 1 {
-        y = 113;
-    }
-    Some([SHIFT + 94.0, 18.0 + y as f32, 6.0, 27.0])
-}
-/// `MerchantScreen.extractScroller`'s cursor: only the thumb asks, a hand
-/// until it is dragged and the vertical resize while it is held.
-pub(in crate::game) fn scroller_cursor(
-    local: (f32, f32),
-    rect: [f32; 4],
-    dragging: bool,
-) -> Option<Cursor> {
-    let [x, y, w, h] = rect;
-    (local.0 >= x && local.0 < x + w && local.1 >= y && local.1 <= y + h).then_some(if dragging {
-        Cursor::ResizeNs
-    } else {
-        Cursor::PointingHand
-    })
-}
-/// The first shown offer for the scroller dragged to `y` (GUI origin
-/// relative): the 139-px track starts at 18 and the scroller is 27 px tall.
-pub(in crate::game) fn drag_scroll(y: f32, offers: usize) -> usize {
-    let max = offers.saturating_sub(7) as i32;
-    let offs = (y - 18.0 - 13.5) / (139.0 - 27.0);
-    ((offs * max as f32 + 0.5) as i32).clamp(0, max) as usize
-}
-
 /// `MerchantScreen.mouseScrolled`: `Mth.clamp((int)(scrollOff - scrollY), 0, max)`,
 /// so a fractional wheel step that truncates to zero does not move the list.
 #[allow(dead_code)]
@@ -730,6 +614,10 @@ pub(in crate::game) mod random_sequences_save_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use crate::game::client_side::trading_client::{
+        SHIFT, drag_scroll, on_scroller, scroller_cursor, scroller_rect,
+    };
+    use sunrise_client::widgets::Cursor;
 
     /// `MerchantScreen.mouseScrolled`: the offset is `(int)(scrollOff - scrollY)`
     /// clamped, so the list moves by as many rows as the event's delta and a

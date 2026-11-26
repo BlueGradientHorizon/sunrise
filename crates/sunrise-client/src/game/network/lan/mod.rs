@@ -5,19 +5,19 @@
 pub(in crate::game) mod event_timings;
 #[cfg(test)]
 use sunrise_gameplay::lan::level_event_targets;
-pub(in crate::game) mod mob_metadata;
 pub(in crate::game) mod mob_states;
 pub(in crate::game) mod raw_inbox;
 pub(in crate::game) mod residency;
-pub(in crate::game) mod sync;
 pub(in crate::game) mod viewed_areas;
 
-use super::{
-    Game,
-    native_living_effects::{active_effect, mob_effect},
-    shield::OFFHAND_SLOT,
+use super::{Game, shield::OFFHAND_SLOT};
+pub(in crate::game) use crate::game::lan_common::{LanSettings, sync};
+use crate::game::{
+    api_values::TryIntoApi,
+    cauldron_prediction::publish_registrations,
+    lan_mob_metadata::mob_effects,
+    native_living_body::{active_effect, mob_effect},
 };
-use crate::game::api_values::TryIntoApi;
 use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
 use std::{collections::HashMap, sync::Arc, time::Instant};
 use sunrise_game_data::{Result, text::Text};
@@ -29,7 +29,7 @@ use sunrise_level::{
     world::World,
 };
 use sunrise_protocol::{
-    entity_data::{Particles, Value, serializer},
+    entity_data::{Value, serializer},
     packets::play::{self, Clientbound as C},
 };
 use sunrise_sim::{
@@ -38,21 +38,13 @@ use sunrise_sim::{
         chunks::ChunkEncoder,
         configuration_tasks::{Configured, PreparedSpawn},
         data::{BIOME_REGISTRY, SyncData},
-        entity::{EntityState, States, avatar_main_arm_meta},
-        hub::{HostEvent, Hub, HubConfig, TickCtx, stuck_meta},
+        entity::{EntityState, States},
+        hub::{HostEvent, Hub, HubConfig, TickCtx},
         playerdata,
     },
-    mobs::{Mob, Species, Who, leash::Holder},
+    mobs::{Mob, Species, leash::Holder},
 };
 use sunrise_world::block_collision::BlockCollisionRegistry;
-
-/// The settings of the open world (WorldOptionsScreen's multiplayer section).
-#[derive(Clone, Copy, Debug)]
-pub struct LanSettings {
-    pub port: u16,
-    pub guest_commands: bool,
-    pub force_game_mode: bool,
-}
 
 pub(in crate::game) struct LanHost {
     pub hub: Hub,
@@ -61,7 +53,7 @@ pub(in crate::game) struct LanHost {
     /// The mods heard that everyone still here leaves with the server.
     pub players_told_left: bool,
     pub settings: LanSettings,
-    pub play: HashMap<u32, super::lan_actions::GuestPlay>,
+    pub play: HashMap<u32, crate::game::server_side::lan_actions_server::GuestPlay>,
     /// Each guest's menu owners, outside `play` (`as_guest` lifts that).
     pub menus: HashMap<u32, super::lan_menus::GuestMenus>,
     /// Blocks broken this tick (their sound is a level event for the guests).
@@ -109,6 +101,24 @@ pub(in crate::game) struct LanHost {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
+    /// The commands' `minecraft:dialog` ids as the clients get them in the
+    /// configuration phase (`sync`, the world's packs' dialogs among them):
+    /// `/dialog show` parses an id against these and sends its index.
+    pub(in crate::game::server_side) fn sync_dialog_ids(&mut self, sync: &SyncData) {
+        let Some(names) = sync.dynamic.registries.get("minecraft:dialog") else {
+            return;
+        };
+        let ids = names.iter().map(|(name, _)| name.clone()).collect();
+        self.ui
+            .registries
+            .by_registry
+            .entry("minecraft:dialog".to_owned())
+            .or_default()
+            .ids = ids;
+    }
+}
+
+impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
     #[allow(dead_code)]
     pub(in crate::game) fn lan_guest_acting(&self) -> bool {
@@ -124,7 +134,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         player: u128,
         name: &str,
     ) {
-        let Some(play) = self.lan.as_mut().and_then(|host| host.play.get_mut(&conn)) else {
+        let Some(play) = self
+            .side
+            .lan
+            .as_mut()
+            .and_then(|host| host.play.get_mut(&conn))
+        else {
             return;
         };
         if std::mem::replace(&mut play.left_game, true) {
@@ -137,7 +152,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         if let Some((ty, key, n)) = award
-            && let Some(play) = self.lan.as_mut().and_then(|host| host.play.get_mut(&conn))
+            && let Some(play) = self
+                .side
+                .lan
+                .as_mut()
+                .and_then(|host| host.play.get_mut(&conn))
         {
             play.stats
                 .add(ty.strip_prefix("minecraft:").unwrap_or(&ty), &key, n);
@@ -146,7 +165,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// `PlayerList.removeAll`: every player who joined leaves with the world.
     pub(in crate::game::server_side) fn award_leave_game_to_all(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let players: Vec<(u32, u128, String)> = host
@@ -176,892 +195,6 @@ pub(in crate::game::server_side) fn entity_uuid(id: u32) -> u128 {
     0x4856_5a4e_0000_0000_0000_0000_0000_0000u128 | u128::from(id)
 }
 
-/// The SynchedEntityData index of the baby flag: AgeableMob.DATA_BABY_ID and
-/// Zombie.DATA_BABY_ID (Zoglin's too) are the first entry after Mob's (16);
-/// Piglin's comes after AbstractPiglin's zombification flag (17). Every
-/// AgeableMob has one, the happy ghast and the nautilus included (#6133).
-pub(in crate::game) fn baby_index(species: Species) -> Option<u8> {
-    use Species as S;
-    match species {
-        S::Piglin => Some(17),
-        s if sunrise_sim::mobs::finalize::ageable(s)
-            || sunrise_sim::mobs::doors::is_zombie(s)
-            || s == S::Zoglin =>
-        {
-            Some(16)
-        }
-        _ => None,
-    }
-}
-
-/// The variant and look entries of `mob_meta`'s mobs (registry holders, the
-/// fish's, the bee's, the copper golem's weathering...), in a match of their
-/// own: `mob_meta`'s arms hold these mobs' other entries.
-pub(in crate::game::server_side) fn mob_variant_meta(
-    m: &Mob,
-    hub: &Hub,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    let (kind, e) = (m.kind.id.as_str(), &m.extra);
-    let id = |registry: &str, name: &str| hub.registry_id(registry, &format!("minecraft:{name}"));
-    match kind {
-        // Axolotl.DATA_VARIANT (after AgeableMob's two).
-        "minecraft:axolotl" => {
-            if e.variant != 0 {
-                meta.push((18, serializer::INT, Value::Int(i32::from(e.variant))));
-            }
-        }
-        // Frog.DATA_VARIANT_ID, Pig's, Cow's, Chicken's and ZombieNautilus's
-        // (after the entries of their parents): registry holders.
-        "minecraft:frog"
-        | "minecraft:pig"
-        | "minecraft:cow"
-        | "minecraft:chicken"
-        | "minecraft:zombie_nautilus" => {
-            let (index, serializer, registry) = match kind {
-                "minecraft:frog" => (18, serializer::FROG_VARIANT, "minecraft:frog_variant"),
-                "minecraft:pig" => (19, serializer::PIG_VARIANT, "minecraft:pig_variant"),
-                "minecraft:cow" => (18, serializer::COW_VARIANT, "minecraft:cow_variant"),
-                "minecraft:chicken" => {
-                    (18, serializer::CHICKEN_VARIANT, "minecraft:chicken_variant")
-                }
-                _ => (
-                    21,
-                    serializer::ZOMBIE_NAUTILUS_VARIANT,
-                    "minecraft:zombie_nautilus_variant",
-                ),
-            };
-            // Each registry's default (`define(DATA_VARIANT_ID, ... TEMPERATE)`)
-            // stays out of the pairing data, as other default values do.
-            let name = sunrise_sim::mobs::finalize::variant_name(m.species(), e.variant);
-            let name = name.trim_start_matches("minecraft:");
-            if let Some(v) = id(registry, name)
-                && name != "temperate"
-            {
-                meta.push((index, serializer, Value::Id(v)));
-            }
-            if let Some(v) = id(registry, "temperate") {
-                defaults.push((index, serializer, Value::Id(v)));
-            }
-        }
-        // Rabbit.DATA_TYPE_ID (after AgeableMob's two) and
-        // Parrot.DATA_VARIANT_ID (after TamableAnimal's two and its flags and
-        // owner). The fox's type goes with its flags (#2538).
-        "minecraft:rabbit" | "minecraft:parrot" => {
-            let index = if kind == "minecraft:parrot" { 20 } else { 18 };
-            if e.variant != 0 {
-                meta.push((index, serializer::INT, Value::Int(i32::from(e.variant))));
-            }
-        }
-        // Bee.DATA_FLAGS_ID (rolling 2, stung 4, nectar 8) and
-        // DATA_ANGER_END_TIME: the texture shows the nectar and the anger.
-        "minecraft:bee" => {
-            let bee = sunrise_sim::mobs::bee::get(m);
-            let flags = bee.map_or(0, |b| b.flags);
-            if flags != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(flags as i8)));
-            }
-            defaults.push((18, serializer::BYTE, Value::Byte(0)));
-            let anger_end = bee.map_or(-1, |b| b.anger_end);
-            if anger_end != -1 {
-                meta.push((19, serializer::LONG, Value::Long(anger_end)));
-            }
-            defaults.push((19, serializer::LONG, Value::Long(-1)));
-        }
-        // AbstractFish.FROM_BUCKET takes 16: Salmon.DATA_TYPE (small 0,
-        // medium 1, large 2; medium is the data's default, so always sent),
-        // Pufferfish.PUFF_STATE and TropicalFish.DATA_ID_TYPE_VARIANT: the
-        // pattern's packed id (size, then index << 8), base colour << 16 and
-        // pattern colour << 24.
-        "minecraft:salmon" => {
-            meta.push((17, serializer::INT, Value::Int(i32::from(e.variant.min(2)))));
-        }
-        "minecraft:pufferfish" => {
-            if e.size > 0 {
-                meta.push((17, serializer::INT, Value::Int(e.size)));
-            }
-            defaults.push((17, serializer::INT, Value::Int(0)));
-        }
-        "minecraft:tropical_fish" => {
-            let pattern = e.variant.min(11);
-            let packed = i32::from(pattern >= 6)
-                | i32::from(pattern % 6) << 8
-                | i32::from(e.variant2 & 15) << 16
-                | i32::from(e.variant3 & 15) << 24;
-            if packed != 0 {
-                meta.push((17, serializer::INT, Value::Int(packed)));
-            }
-        }
-        // Tadpole.AGE_LOCKED (after AbstractFish's FROM_BUCKET).
-        "minecraft:tadpole" => {
-            if e.age_locked {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // CopperGolem.DATA_WEATHER_STATE: unaffected 0 to oxidized 3, and it
-        // goes back down when the golem is scraped.
-        "minecraft:copper_golem" => {
-            if e.variant != 0 {
-                meta.push((
-                    16,
-                    serializer::WEATHERING_COPPER_STATE,
-                    Value::Id(i32::from(e.variant.min(3))),
-                ));
-            }
-            defaults.push((16, serializer::WEATHERING_COPPER_STATE, Value::Id(0)));
-        }
-        // Ghast.DATA_IS_CHARGING: the shooting texture.
-        "minecraft:ghast" => {
-            if e.flag {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // WitherBoss.DATA_ID_INV (after the three head targets): the
-        // invulnerable ticks, the blinking texture and the growing scale.
-        "minecraft:wither" => {
-            if e.counter > 0 {
-                meta.push((19, serializer::INT, Value::Int(e.counter)));
-            }
-            defaults.push((19, serializer::INT, Value::Int(0)));
-        }
-        _ => {}
-    }
-}
-
-/// A mob's synched data as ServerEntity sends it (only the values that differ
-/// from the defaults the client constructs), with vanilla's entry indices:
-/// Entity 0..=7, LivingEntity 8..=14, Mob 15, then the subclasses.
-/// `defaults` gets the defaults of the entries that can go back to theirs.
-pub(in crate::game) fn mob_meta(
-    m: &Mob,
-    hub: &Hub,
-    player_entity: Option<i32>,
-    game_time: i64,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    // The entries are the class's: a content mod's living type has its
-    // template's.
-    let kind = m.kind.class_id();
-    // Entity.DATA_SHARED_FLAGS_ID: on fire 0x01, sprinting 0x08 (a dashing
-    // cat or ocelot), swimming 0x10 (a drowned under water,
-    // `Drowned.setSwimming`), invisible 0x20 (the effect's flag) and glowing
-    // 0x40 (LivingEntity.updateGlowingStatus).
-    let shared = i8::from(m.is_on_fire())
-        | i8::from(m.extra.sprinting) << 3
-        | i8::from(m.species() == Species::Drowned && m.extra.flag) << 4
-        | i8::from(m.is_invisible()) << 5
-        | i8::from(m.is_currently_glowing()) << 6;
-    if shared != 0 {
-        meta.push((0, serializer::BYTE, Value::Byte(shared)));
-    }
-    // Entity.DATA_POSE: the pose the species keeps in its own fields (a
-    // pose back at standing goes out by the entity's own default).
-    let pose = sunrise_sim::mobs::sync::pose_id(m);
-    if pose != 0 {
-        meta.push((6, serializer::POSE, Value::Id(i32::from(pose))));
-    }
-    // LivingEntity.DATA_SLEEPING_POS_ID: the bed a sleeping villager lies in.
-    if let Some(bed) = sunrise_sim::mobs::villager::sleeping_pos(m) {
-        meta.push((14, serializer::OPTIONAL_BLOCK_POS, Value::OptPos(Some(bed))));
-    }
-    if let Some(name) = &m.custom_name {
-        meta.push((
-            2,
-            serializer::OPTIONAL_COMPONENT,
-            Value::OptText(Some(super::names::name_component(m, name))),
-        ));
-    }
-    if m.name_visible {
-        meta.push((3, serializer::BOOLEAN, Value::Bool(true)));
-    }
-    // A name taken away or hidden again is sent as none / false.
-    defaults.push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));
-    defaults.push((3, serializer::BOOLEAN, Value::Bool(false)));
-    // Entity.DATA_NO_GRAVITY (`setNoGravity`: `/data`, a summon's NoGravity, a mod).
-    if m.no_gravity {
-        meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
-    }
-    defaults.push((5, serializer::BOOLEAN, Value::Bool(false)));
-    // LivingEntity.DATA_LIVING_ENTITY_FLAGS: using an item 1, in the off
-    // hand 2 (a skeleton draws its bow). Only startUsingItem and
-    // stopUsingItem write them: a drinking witch's count is her own
-    // (`Witch.usingTime`, with `Witch.DATA_USING_ITEM` in `mob_raider_meta`),
-    // so her living flags stay 0 while she drinks. A witch that starts a real
-    // use is sent as one. An admiring piglin's count still goes out as a use:
-    // a client draws `PiglinArmPose.ADMIRING_ITEM` from it.
-    let uses_item = m.extra.using_item > 0 && !(m.species() == Species::Witch && m.extra.flag);
-    let using = i8::from(uses_item) | i8::from(m.extra.using_off_hand) << 1;
-    if using != 0 {
-        meta.push((8, serializer::BYTE, Value::Byte(using)));
-    }
-    defaults.push((8, serializer::BYTE, Value::Byte(0)));
-    // LivingEntity.DATA_HEALTH_ID: defined as 1, then set to the max health.
-    let health = m.health.max(0.0);
-    if health != 1.0 {
-        meta.push((9, serializer::FLOAT, Value::Float(health)));
-    }
-    defaults.push((9, serializer::FLOAT, Value::Float(1.0)));
-    // LivingEntity.DATA_EFFECT_PARTICLES and DATA_EFFECT_AMBIENCE_ID: the
-    // swirls of its effects, or what the native mods made of them
-    // (`Game::lan_effect_particles`, kept only while one listens: mods are
-    // installed once per process).
-    match &m.extra.modified_effect_particles {
-        Some(modified) => meta.extend_from_slice(&modified.meta),
-        None => meta.extend(hub.effect_meta(mob_effects(m))),
-    }
-    defaults.push((
-        10,
-        serializer::PARTICLES,
-        Value::Particles(Particles::new()),
-    ));
-    defaults.push((11, serializer::BOOLEAN, Value::Bool(false)));
-    // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID.
-    stuck_meta(
-        meta,
-        defaults,
-        (m.extra.stuck.arrows, m.extra.stuck.stingers),
-    );
-    // Mob.DATA_MOB_FLAGS_ID: no AI 1, left-handed 2, aggressive 4 (what
-    // draws a vindicator's axe, a skeleton's drawn bow, a piglin's raised
-    // weapon).
-    let flags =
-        i8::from(m.no_ai) | i8::from(m.extra.left_handed) << 1 | i8::from(m.ai.aggressive) << 2;
-    if flags != 0 {
-        meta.push((15, serializer::BYTE, Value::Byte(flags)));
-    }
-    defaults.push((15, serializer::BYTE, Value::Byte(0)));
-    // AgeableMob.DATA_BABY_ID (and Zombie's, Zoglin's, Piglin's).
-    if let Some(index) = baby_index(m.species()) {
-        if m.is_baby() {
-            meta.push((index, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((index, serializer::BOOLEAN, Value::Bool(false)));
-        // AgeableMob.AGE_LOCKED, the entry after it (not Zombie's or Piglin's).
-        if index == 16 && sunrise_sim::mobs::finalize::ageable(m.species()) {
-            if m.extra.age_locked {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-        }
-    }
-    let e = &m.extra;
-    let id = |registry: &str, name: &str| hub.registry_id(registry, &format!("minecraft:{name}"));
-    // Pig.DATA_BOOST_TIME and Strider.DATA_BOOST_TIME (18, the first entry
-    // after AgeableMob's two). The total `boost()` stored in `counter2`.
-    // The default 0 is not registered: vanilla never writes it back, and the
-    // rider's client finishes the timer `onSynced` started.
-    if matches!(kind, "minecraft:pig" | "minecraft:strider") && e.counter2 > 0 {
-        meta.push((18, serializer::INT, Value::Int(e.counter2)));
-    }
-    mob_variant_meta(m, hub, meta, defaults);
-    mob_raider_meta(m, meta, defaults);
-    match kind {
-        "minecraft:guardian" | "minecraft:elder_guardian" => {
-            // Guardian.DATA_ID_MOVING and DATA_ID_ATTACK_TARGET.
-            if e.flag2 {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            let target = if e.flag {
-                m.ai.target.and_then(|who| match who {
-                    Who::Player => player_entity,
-                    Who::Mob(id) => Some(id as i32),
-                })
-            } else {
-                None
-            };
-            if let Some(target) = target {
-                meta.push((17, serializer::INT, Value::Int(target)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-            defaults.push((17, serializer::INT, Value::Int(0)));
-        }
-        // Bat.DATA_ID_FLAGS: resting in bit 0, flying by default.
-        "minecraft:bat" => {
-            if e.flag {
-                meta.push((16, serializer::BYTE, Value::Byte(1)));
-            }
-            defaults.push((16, serializer::BYTE, Value::Byte(0)));
-        }
-        // SnowGolem.DATA_PUMPKIN_ID: 16 while the pumpkin is on (the default).
-        "minecraft:snow_golem" => {
-            if e.sheared {
-                meta.push((16, serializer::BYTE, Value::Byte(0)));
-            }
-            defaults.push((16, serializer::BYTE, Value::Byte(16)));
-        }
-        // MushroomCow.DATA_TYPE (after AgeableMob's two): 0 red, 1 brown.
-        "minecraft:mooshroom" => {
-            if e.variant == 1 {
-                meta.push((18, serializer::INT, Value::Int(1)));
-            }
-            defaults.push((18, serializer::INT, Value::Int(0)));
-        }
-        // AbstractPiglin.DATA_IMMUNE_TO_ZOMBIFICATION (16: with the dimension it
-        // makes it shake) and Piglin.DATA_IS_DANCING (after the baby flag and
-        // the crossbow charge).
-        "minecraft:piglin" => {
-            if e.flag2 {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-            if e.scratch[0] > 0 {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Sheep.DATA_WOOL_ID: the colour in the low nibble, 16 when sheared.
-        "minecraft:sheep" => {
-            let value = (e.color & 15) | if e.sheared { 16 } else { 0 };
-            if value != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(value as i8)));
-            }
-            defaults.push((18, serializer::BYTE, Value::Byte(0)));
-        }
-        // Fox.DATA_TYPE_ID and DATA_FLAGS_ID (after AgeableMob's two; sleeping 32, ...).
-        "minecraft:fox" => {
-            if e.variant != 0 {
-                meta.push((18, serializer::INT, Value::Int(i32::from(e.variant))));
-            }
-            defaults.push((18, serializer::INT, Value::Int(0)));
-            let flags = (e.ints[0] & 0xff) as u8 as i8;
-            if flags != 0 {
-                meta.push((19, serializer::BYTE, Value::Byte(flags)));
-            }
-            defaults.push((19, serializer::BYTE, Value::Byte(0)));
-        }
-        "minecraft:parrot" => {
-            // TamableAnimal.DATA_FLAGS_ID: in the sitting pose 1, tame 4.
-            let flags = i8::from(e.sitting_pose) | if e.tame { 4 } else { 0 };
-            if flags != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(flags)));
-            }
-        }
-        "minecraft:cat" | "minecraft:wolf" => {
-            // TamableAnimal.DATA_FLAGS_ID: in the sitting pose 1, tame 4.
-            let flags = i8::from(e.sitting_pose) | if e.tame { 4 } else { 0 };
-            if flags != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(flags)));
-            }
-            let (index, registry, name) = if kind == "minecraft:cat" {
-                let v = sunrise_sim::mobs::tame::CAT_VARIANTS[(e.variant as usize).min(10)];
-                (20, "minecraft:cat_variant", v)
-            } else {
-                let v = sunrise_sim::mobs::tame::WOLF_VARIANTS[(e.variant as usize).min(8)].0;
-                (23, "minecraft:wolf_variant", v)
-            };
-            let serializer = if index == 20 {
-                serializer::CAT_VARIANT
-            } else {
-                serializer::WOLF_VARIANT
-            };
-            if let Some(v) = id(registry, name) {
-                meta.push((index, serializer, Value::Id(v)));
-            }
-            // Cat.IS_LYING and RELAX_STATE_ONE.
-            if kind == "minecraft:cat" {
-                for (index, on) in [(21, e.flag), (22, e.relax_one)] {
-                    if on {
-                        meta.push((index, serializer::BOOLEAN, Value::Bool(true)));
-                    }
-                    defaults.push((index, serializer::BOOLEAN, Value::Bool(false)));
-                }
-            }
-            // Wolf.DATA_COLLAR_COLOR and Cat's, red by default.
-            let collar = if kind == "minecraft:cat" { 23 } else { 21 };
-            let red = i32::from(sunrise_sim::mobs::tame::RED);
-            if i32::from(e.color & 15) != red {
-                meta.push((collar, serializer::INT, Value::Int(i32::from(e.color & 15))));
-            }
-            defaults.push((collar, serializer::INT, Value::Int(red)));
-            // Wolf.DATA_ANGER_END_TIME: the game time the anger ends, -1 when calm.
-            if kind == "minecraft:wolf" {
-                // Wolf.DATA_INTERESTED_ID: BegGoal's flag, the head tilt.
-                if e.flag {
-                    meta.push((20, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                defaults.push((20, serializer::BOOLEAN, Value::Bool(false)));
-                if e.anger > 0 {
-                    let end = game_time + i64::from(e.anger);
-                    meta.push((22, serializer::LONG, Value::Long(end)));
-                }
-                defaults.push((22, serializer::LONG, Value::Long(-1)));
-            }
-        }
-        "minecraft:horse"
-        | "minecraft:donkey"
-        | "minecraft:mule"
-        | "minecraft:llama"
-        | "minecraft:trader_llama"
-        | "minecraft:skeleton_horse"
-        | "minecraft:zombie_horse"
-        | "minecraft:camel" => {
-            // AbstractHorse.DATA_ID_FLAGS: tame 2, eating 16 (grazing), standing
-            // 32 (rearing).
-            let grazes = sunrise_sim::mobs::equine::grazes(m.species());
-            let flags = if e.tame { 2 } else { 0 }
-                | if grazes && e.flag { 16 } else { 0 }
-                | if grazes && e.counter > 0 { 32 } else { 0 };
-            if flags != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(flags)));
-            }
-            defaults.push((18, serializer::BYTE, Value::Byte(0)));
-            if kind == "minecraft:horse" {
-                let v = i32::from(e.variant) | i32::from(e.variant2) << 8;
-                if v != 0 {
-                    meta.push((19, serializer::INT, Value::Int(v)));
-                }
-            } else if kind.ends_with("llama") {
-                if e.chested {
-                    meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                meta.push((
-                    20,
-                    serializer::INT,
-                    Value::Int(i32::from(e.variant2.max(1))),
-                ));
-                if e.variant != 0 {
-                    meta.push((21, serializer::INT, Value::Int(i32::from(e.variant))));
-                }
-            } else if (kind == "minecraft:donkey" || kind == "minecraft:mule") && e.chested {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-        }
-        // HappyGhast.STAYS_STILL (after AgeableMob's two and IS_LEASH_HOLDER),
-        // set while `serverStillTimeout > 0` (`syncStayStillFlag`).
-        "minecraft:happy_ghast" => {
-            // HappyGhast.IS_LEASH_HOLDER (`setLeashHolder` in `tick`).
-            if sunrise_sim::mobs::happy_ghast::is_leash_holder(m) {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-            if sunrise_sim::mobs::happy_ghast::on_still_timeout(m) {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Villager.DATA_VILLAGER_DATA and ZombieVillager's (after Zombie's three).
-        "minecraft:villager" | "minecraft:zombie_villager" => {
-            use sunrise_sim::mobs::villager::VILLAGER_TYPES;
-            if kind == "minecraft:villager" {
-                unhappy_counter(m, meta, defaults);
-            } else {
-                // ZombieVillager.DATA_CONVERTING_ID: the cure's shaking.
-                if sunrise_sim::mobs::zombie_villager::is_converting(m) {
-                    meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-            }
-            let villager_type = VILLAGER_TYPES[e.variant as usize % VILLAGER_TYPES.len()];
-            let profession =
-                sunrise_sim::mobs::villager::profession_id(e.profession.index().unwrap_or(0));
-            if let (Some(t), Some(p)) = (
-                id("minecraft:villager_type", villager_type),
-                id("minecraft:villager_profession", profession),
-            ) {
-                let index = if kind == "minecraft:villager" { 19 } else { 20 };
-                let level = e.villager_level.max(1);
-                meta.push((
-                    index,
-                    serializer::VILLAGER_DATA,
-                    Value::Ids(vec![t, p, level]),
-                ));
-            }
-        }
-        // Phantom.ID_SIZE (after Mob's flags).
-        "minecraft:phantom" => {
-            if e.size > 0 {
-                meta.push((16, serializer::INT, Value::Int(e.size)));
-            }
-            defaults.push((16, serializer::INT, Value::Int(0)));
-        }
-        // AbstractCubeMob.ID_SIZE; SulfurCube then syncs MAX_FUSE (-1 until primed;
-        // clients tick it for the swell / white flash) and FROM_BUCKET (#13721).
-        "minecraft:slime" | "minecraft:magma_cube" | "minecraft:sulfur_cube" => {
-            if e.size > 1 {
-                meta.push((18, serializer::INT, Value::Int(e.size)));
-            }
-            defaults.push((18, serializer::INT, Value::Int(1)));
-            if kind == "minecraft:sulfur_cube" {
-                // The synced MAX_FUSE, not the countdown: a late tracker gets the value the
-                // fuse was set from, and only a change of it reaches those already tracking.
-                let max = sunrise_sim::mobs::sulfur_cube::max_fuse(m);
-                if max != -1 {
-                    meta.push((19, serializer::INT, Value::Int(max)));
-                }
-                defaults.push((19, serializer::INT, Value::Int(-1)));
-                if e.scratch[3] != 0 {
-                    meta.push((20, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                defaults.push((20, serializer::BOOLEAN, Value::Bool(false)));
-            }
-        }
-        // Creeper.DATA_SWELL_DIR, DATA_IS_POWERED and DATA_IS_IGNITED: the
-        // guest swells the creeper from them. The direction always goes in,
-        // as only changed entries are sent and it drops back to -1.
-        "minecraft:creeper" => {
-            meta.push((16, serializer::INT, Value::Int(e.counter)));
-            if e.charged {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            if e.flag {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-        }
-        // Pillager.IS_CHARGING_CROSSBOW: the charge pose and the held
-        // item's loading animation.
-        "minecraft:pillager" => {
-            if e.flag {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Panda: UNHAPPY_COUNTER, SNEEZE_COUNTER and EAT_COUNTER (after
-        // AgeableMob's two), MAIN_GENE_ID, HIDDEN_GENE_ID and DATA_ID_FLAGS;
-        // the client animates the states from them.
-        "minecraft:panda" => {
-            let (flags, counters) = sunrise_sim::mobs::panda::get(m)
-                .map_or((0, [0; 3]), |s| (s.flags, [s.unhappy, s.sneeze, s.eat]));
-            for (index, value) in (18..).zip(counters) {
-                if value != 0 {
-                    meta.push((index, serializer::INT, Value::Int(value)));
-                }
-                defaults.push((index, serializer::INT, Value::Int(0)));
-            }
-            for (index, gene) in [(21, e.variant), (22, e.variant2)] {
-                if gene != 0 {
-                    meta.push((index, serializer::BYTE, Value::Byte(gene as i8)));
-                }
-                defaults.push((index, serializer::BYTE, Value::Byte(0)));
-            }
-            if flags != 0 {
-                meta.push((23, serializer::BYTE, Value::Byte(flags as i8)));
-            }
-            defaults.push((23, serializer::BYTE, Value::Byte(0)));
-        }
-        // PolarBear.DATA_STANDING_ID (after AgeableMob's two): the bear
-        // rears up; the client animates it.
-        "minecraft:polar_bear" => {
-            if e.flag {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // SpellcasterIllager.DATA_SPELL_CASTING_ID: the casting pose.
-        "minecraft:evoker" | "minecraft:illusioner" => {
-            if e.variant2 != 0 {
-                meta.push((17, serializer::BYTE, Value::Byte(e.variant2 as i8)));
-            }
-            defaults.push((17, serializer::BYTE, Value::Byte(0)));
-        }
-        // Warden.CLIENT_ANGER_LEVEL: the heartbeat's pace.
-        "minecraft:warden" => {
-            let anger = e.warden.as_ref().map_or(0, |w| w.client_anger);
-            if anger != 0 {
-                meta.push((16, serializer::INT, Value::Int(anger)));
-            }
-            defaults.push((16, serializer::INT, Value::Int(0)));
-        }
-        // Sniffer.DATA_STATE (after AgeableMob's two).
-        "minecraft:sniffer" => {
-            if e.variant != 0 {
-                meta.push((
-                    18,
-                    serializer::SNIFFER_STATE,
-                    Value::Id(i32::from(e.variant)),
-                ));
-            }
-            defaults.push((18, serializer::SNIFFER_STATE, Value::Id(0)));
-        }
-        // Shulker.DATA_ATTACH_FACE_ID, DATA_PEEK_ID and DATA_COLOR_ID (16
-        // for none).
-        "minecraft:shulker" => {
-            if e.variant3 != 0 {
-                meta.push((16, serializer::DIRECTION, Value::Id(i32::from(e.variant3))));
-            }
-            defaults.push((16, serializer::DIRECTION, Value::Id(0)));
-            if e.counter != 0 {
-                meta.push((17, serializer::BYTE, Value::Byte(e.counter as i8)));
-            }
-            defaults.push((17, serializer::BYTE, Value::Byte(0)));
-            if e.color != 16 {
-                meta.push((18, serializer::BYTE, Value::Byte(e.color as i8)));
-            }
-            defaults.push((18, serializer::BYTE, Value::Byte(16)));
-        }
-        // Vex.DATA_FLAGS_ID: charging in bit 0 (the arms and the glowing
-        // texture).
-        "minecraft:vex" => {
-            if e.flag {
-                meta.push((16, serializer::BYTE, Value::Byte(1)));
-            }
-            defaults.push((16, serializer::BYTE, Value::Byte(0)));
-        }
-        // GlowSquid.DATA_DARK_TICKS_REMAINING (after AgeableMob's two): the
-        // dimming a hit gave, counted down by the server and the client alike.
-        "minecraft:glow_squid" => {
-            let ticks = sunrise_sim::mobs::aquatic::dark_ticks(m);
-            if ticks != 0 {
-                meta.push((18, serializer::INT, Value::Int(ticks)));
-            }
-            defaults.push((18, serializer::INT, Value::Int(0)));
-        }
-        // Ocelot.DATA_TRUSTING (after AgeableMob's two).
-        "minecraft:ocelot" => {
-            if e.trusting {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Mannequin inherits Avatar's main arm. Its own DATA_PROFILE, DATA_IMMOVABLE
-        // and DATA_DESCRIPTION follow the Avatar entries; `updateDescription`
-        // keeps the last as a component, or none when hidden.
-        "minecraft:mannequin" => {
-            avatar_main_arm_meta(e.main_hand_left, meta, defaults);
-            if let Some(profile) = &m.profile {
-                meta.push((
-                    17,
-                    serializer::RESOLVABLE_PROFILE,
-                    Value::Profile(profile.clone()),
-                ));
-            }
-            if e.immovable {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-            let default = sunrise_sim::mobs::MannequinDescription::Default.component();
-            let shown = e.description.component();
-            if shown != default {
-                meta.push((19, serializer::OPTIONAL_COMPONENT, Value::OptText(shown)));
-            }
-            defaults.push((19, serializer::OPTIONAL_COMPONENT, Value::OptText(default)));
-        }
-        // Creaking.CAN_MOVE, IS_ACTIVE and IS_TEARING_DOWN.
-        "minecraft:creaking" => {
-            if e.flag2 {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(false)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            if e.flag {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-            if sunrise_sim::mobs::creaking::tearing_down(m) {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Allay.DATA_DANCING and DATA_CAN_DUPLICATE (the held item is its
-        // main hand equipment).
-        "minecraft:allay" => {
-            if e.flag {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-            if e.egg_time > 0 {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(false)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        // Axolotl.DATA_PLAYING_DEAD (after DATA_VARIANT).
-        "minecraft:axolotl" => {
-            if sunrise_sim::mobs::axolotl::is_playing_dead(m) {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // CopperGolem.COPPER_GOLEM_STATE (after DATA_WEATHER_STATE).
-        "minecraft:copper_golem" => {
-            if e.variant3 != 0 {
-                meta.push((
-                    17,
-                    serializer::COPPER_GOLEM_STATE,
-                    Value::Id(i32::from(e.variant3)),
-                ));
-            }
-            defaults.push((17, serializer::COPPER_GOLEM_STATE, Value::Id(0)));
-        }
-        // Armadillo.ARMADILLO_STATE (after AgeableMob's two).
-        "minecraft:armadillo" => {
-            let state = sunrise_sim::mobs::armadillo::state(m);
-            if state != 0 {
-                meta.push((18, serializer::ARMADILLO_STATE, Value::Id(i32::from(state))));
-            }
-            defaults.push((18, serializer::ARMADILLO_STATE, Value::Id(0)));
-        }
-        // Frog.DATA_TONGUE_TARGET_ID (after the variant): the entity id plus
-        // one, 0 for none.
-        "minecraft:frog" => {
-            if let Some(target) = e.frog.tongue_target {
-                let id = i32::try_from(target).map_or(0, |t| t + 1);
-                meta.push((19, serializer::OPTIONAL_UNSIGNED_INT, Value::Id(id)));
-            }
-            defaults.push((19, serializer::OPTIONAL_UNSIGNED_INT, Value::Id(0)));
-        }
-        // Goat.DATA_HAS_LEFT_HORN and DATA_HAS_RIGHT_HORN (after
-        // DATA_IS_SCREAMING_GOAT): both true by default.
-        "minecraft:goat" => {
-            for (index, lost) in [(19, e.lost_horns[0]), (20, e.lost_horns[1])] {
-                if lost {
-                    meta.push((index, serializer::BOOLEAN, Value::Bool(false)));
-                }
-                defaults.push((index, serializer::BOOLEAN, Value::Bool(true)));
-            }
-        }
-        "minecraft:enderman" => mob_metadata::enderman(e, meta, defaults),
-        // Zombie.DATA_DROWNED_CONVERSION_ID (after DATA_BABY_ID and
-        // DATA_SPECIAL_TYPE_ID): the shaking of the conversion under water.
-        "minecraft:zombie" | "minecraft:husk" => {
-            if e.counter2 > 0 {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Skeleton.DATA_STRAY_CONVERSION_ID (the first entry after Mob's):
-        // the shaking of the freezing conversion.
-        "minecraft:skeleton" => {
-            if e.counter2 > 0 {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Bogged.DATA_SHEARED (the first entry after Mob's): the mushrooms
-        // on its head are gone.
-        "minecraft:bogged" => {
-            if e.sheared {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // AbstractVillager.DATA_UNHAPPY_COUNTER (after AgeableMob's two).
-        "minecraft:wandering_trader" => unhappy_counter(m, meta, defaults),
-        // Hoglin.DATA_IMMUNE_TO_ZOMBIFICATION (after AgeableMob's two) and
-        // AbstractPiglin's, the first entry of its subclasses (the piglin's is
-        // in its own arm): with the dimension it makes them shake.
-        "minecraft:hoglin" | "minecraft:piglin_brute" => {
-            let index = if kind == "minecraft:hoglin" { 18 } else { 16 };
-            if e.flag2 {
-                meta.push((index, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((index, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Blaze.DATA_FLAGS_ID: charged 1, which makes it burn.
-        "minecraft:blaze" => {
-            if e.flag {
-                meta.push((16, serializer::BYTE, Value::Byte(1)));
-            }
-            defaults.push((16, serializer::BYTE, Value::Byte(0)));
-        }
-        // Turtle.HAS_EGG and LAYING_EGG (after AgeableMob's two).
-        "minecraft:turtle" => {
-            if e.flag {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            if e.flag2 {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-            defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // WitherBoss.DATA_TARGET_B and DATA_TARGET_C (after DATA_TARGET_A, the
-        // main target): the entities the side heads look at, by id.
-        "minecraft:wither" => {
-            for (k, index) in [(0, 17), (1, 18)] {
-                let target = match e.ints[k] {
-                    0 => None,
-                    -1 => player_entity,
-                    id => Some(id),
-                };
-                if let Some(target) = target {
-                    meta.push((index, serializer::INT, Value::Int(target)));
-                }
-                defaults.push((index, serializer::INT, Value::Int(0)));
-            }
-        }
-        _ => {}
-    }
-    // Camel.DASH and LAST_POSE_CHANGE_TICK (after AbstractHorse's flags).
-    if sunrise_sim::mobs::camel::is_camel(m.species()) {
-        if e.flag2 {
-            meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        let tick = sunrise_sim::mobs::camel::synced_pose_tick(m, game_time);
-        if tick != 0 {
-            meta.push((20, serializer::LONG, Value::Long(tick)));
-        }
-        defaults.push((20, serializer::LONG, Value::Long(0)));
-    }
-}
-
-/// AbstractVillager.DATA_UNHAPPY_COUNTER (after AgeableMob's two): the head
-/// shake of a villager saying no counts it down from 40.
-use super::villager_client::unhappy_counter;
-
-/// A mob's effects as its swirls are computed from.
-pub(in crate::game::server_side) fn mob_effects(m: &Mob) -> impl Iterator<Item = ShownEffect> + '_ {
-    (m.extra.effects.iter()).map(|e| ShownEffect {
-        effect: e.id,
-        amplifier: e.amplifier,
-        visible: !m.extra.hidden_effects.contains(&e.id),
-        ambient: m.extra.ambient_effects.contains(&e.id),
-    })
-}
-
-/// Raider.IS_CELEBRATING, and a witch's Witch.DATA_USING_ITEM (17, after it):
-/// `isDrinkingPotion`, set for the drink and cleared when it is done. Both also
-/// list false, so tracking sends the end of a celebration or a drink.
-pub(in crate::game) fn mob_raider_meta(
-    m: &Mob,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    use sunrise_sim::mobs::raider;
-    if raider::is_raider(m.species()) {
-        if raider::state(m).is_some_and(|state| state.celebrating) {
-            meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-    }
-    if m.species() == Species::Witch {
-        if m.extra.flag {
-            meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-    }
-}
-
-/// What a client shakes a mob by: Entity.DATA_TICKS_FROZEN (7), whose full
-/// count is `isFullyFrozen`, and Strider.DATA_SUFFOCATING (19, after
-/// AgeableMob's two and DATA_BOOST_TIME).
-pub(in crate::game) fn mob_freeze_meta(
-    m: &Mob,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    // `setTicksFrozen` can go negative (a mob warming up), and a client reads
-    // the count as is, so anything but the default 0 goes out.
-    if m.ticks_frozen != 0 {
-        meta.push((7, serializer::INT, Value::Int(m.ticks_frozen)));
-    }
-    defaults.push((7, serializer::INT, Value::Int(0)));
-    // Every Entity tracks air, including changes back to its species' default.
-    let max = m.max_air_supply();
-    if m.air != max {
-        meta.push((1, serializer::INT, Value::Int(m.air)));
-    }
-    defaults.push((1, serializer::INT, Value::Int(max)));
-    if m.kind.id == "minecraft:strider" {
-        if m.extra.flag {
-            meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-    }
-}
-
 /// The equipment a mob shows (ClientboundSetEquipmentPacket slots: main hand,
 /// off hand, feet, legs, chest, head, body, saddle).
 pub(in crate::game::server_side) fn mob_equipment(
@@ -1075,12 +208,6 @@ pub(in crate::game::server_side) fn mob_equipment(
         }
     }
 }
-
-pub const HELP: &[&str] = &[
-    "lan open [PORT] [commands] [force]  open the world to the network (PORT 0 picks one)",
-    "lan close                      stop hosting",
-    "lan status                     the hosting state and the guests",
-];
 
 /// With the game mode forced, the guests online take the default mode
 /// (setting a mode does nothing when it is already theirs). A world open to
@@ -1125,7 +252,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// MinecraftServer.setRespawnData: every placed player hears a changed world spawn.
     pub(in crate::game) fn lan_broadcast_world_spawn(&self) {
-        if let Some(host) = &self.lan {
+        if let Some(host) = &self.side.lan {
             for guest in host.hub.guests.iter().filter(|guest| guest.placed) {
                 guest.send(&host.hub.default_spawn(
                     self.world_spawn_position(),
@@ -1139,7 +266,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `sunrise-ctl lan status`.
     pub(in crate::game) fn lan_status(&self) -> serde_json::Value {
         use serde_json::json;
-        match &self.lan {
+        match &self.side.lan {
             Some(h) if self.open_to_others() => json!({
                 "open": true,
                 // The owner's profile name.
@@ -1283,7 +410,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.world.block_log = Some(Vec::new());
         self.world.connection_group_log = Some(Default::default());
         self.world.light_log = Some(Default::default());
-        self.lan = Some(LanHost {
+        self.side.lan = Some(LanHost {
             players_told_left: false,
             hub,
             spawn_joins: Vec::new(),
@@ -1318,7 +445,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         self.native_players_leaving();
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             return;
         }
         self.award_leave_game_to_all();
@@ -1328,8 +455,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// The transport close, separate from player callbacks and saves so that
     /// server shutdown can still disconnect after one of those unwinds.
-    pub(in crate::game::server_side) fn lan_disconnect(&mut self, announce: bool) {
-        let Some(mut host) = self.lan.take() else {
+    pub(in crate::game) fn lan_disconnect(&mut self, announce: bool) {
+        let Some(mut host) = self.side.lan.take() else {
             return;
         };
         host.hub.disconnect_all();
@@ -1356,7 +483,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlayerList.removeAll`: every guest leaves in turn, the vehicle it
     /// alone rides with it (`PlayerList.remove`), and is saved.
     pub(in crate::game::server_side) fn save_leaving_guests(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         // Remove the open menu and window 0 in the guest's own level before
@@ -1382,12 +509,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let count = host.hub.guests.len();
         for i in 0..count {
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             if !host.hub.guests[i].participates_in_player_simulation() {
@@ -1396,7 +523,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let mut g = host.hub.guests.take_for_save(i);
             self.take_parent_vehicle(&mut g);
             self.save_guest(&mut g);
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             host.hub.guests.insert(i, g);
@@ -1417,6 +544,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if guest.joined() && !guest.released && !self.side.crash_save.excludes(guest.conn) {
             let _ = self.finish_player_autosaves(true);
             if self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.owner.as_ref())
@@ -1438,7 +566,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let directory = playerdata::directory(&self.side.world_root);
             self.native_player_save_to_file(guest.uuid, &guest.name, &directory);
         }
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             self.save_guest_records(host, guest);
         }
     }
@@ -1512,7 +640,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !guest.placed {
             return;
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let others = self.ridden_by_others(&host.hub.guests, &guest.dimension, None, true);
@@ -1532,7 +660,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.loadAndSpawnParentVehicle`: a guest whose file names the
     /// vehicle it rode rides it again, once the vehicle is in the world.
     pub(in crate::game::server_side) fn restore_guest_vehicles(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let waiting: Vec<(usize, [i32; 4])> = host
@@ -1554,7 +682,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .collect();
         for (i, uuid) in waiting {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let raw = host.hub.guests[i].saved.clone();
@@ -1563,7 +691,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             };
             let order = self.boarding_order(id, entity, true);
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             host.hub.guests.update(i, |g| {
@@ -1602,11 +730,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             };
             if let Some(play) = host.play.get(&guest.conn) {
-                play.stats.write(&super::stats::player_json(
-                    &self.side.world_root,
-                    "stats",
-                    uuid,
-                ));
+                play.stats
+                    .write(&sunrise_gameplay_common::stats::player_json(
+                        &self.side.world_root,
+                        "stats",
+                        uuid,
+                    ));
             }
         }
     }
@@ -1626,7 +755,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(());
         };
         let write = |dir: &str, json: &serde_json::Value| {
-            let path = super::stats::player_json(&self.side.world_root, dir, uuid);
+            let path =
+                sunrise_gameplay_common::stats::player_json(&self.side.world_root, dir, uuid);
             let text = serde_json::to_string_pretty(json).map_err(|e| e.to_string())?;
             sunrise_sim::save::write_durable(&path, text.as_bytes())
                 .map_err(|e| format!("{} is not saved: {e}", path.display()))
@@ -1646,7 +776,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// network player who joined; every statistic goes out on the first
     /// request (`PlayerList.placeNewPlayer`'s `markAllDirty`).
     pub(in crate::game::server_side) fn load_guest_records(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some((uuid, name)) = host
@@ -1657,11 +787,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let tree = self.advancement_tree();
-        let path = super::stats::player_json(&self.side.world_root, "advancements", uuid);
+        let path = sunrise_gameplay_common::stats::player_json(
+            &self.side.world_root,
+            "advancements",
+            uuid,
+        );
         let saved = std::fs::read_to_string(path)
             .ok()
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if let Some(json) = saved {
@@ -1676,20 +810,22 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
         }
         // PlayerList.getPlayerStats: locateStatsFile moves an old name-based file first.
-        let mut stats = super::stats::Stats::read(&super::stats::locate_player_json(
-            &self.side.world_root,
-            "stats",
-            uuid,
-            &name,
-        ));
+        let mut stats = sunrise_gameplay_common::stats::Stats::read(
+            &sunrise_gameplay_common::stats::locate_player_json(
+                &self.side.world_root,
+                "stats",
+                uuid,
+                &name,
+            ),
+        );
         stats.mark_all_dirty();
         host.play.entry(conn).or_default().stats = stats;
     }
     /// The integrated server's owner into the world's player, for `Level::write`.
     /// Returns the owner's uuid and name when they were stored.
     pub(in crate::game::server_side) fn store_owner(&mut self) -> Option<(u128, String)> {
-        let uuid = self.lan.as_ref().and_then(|h| h.owner.as_ref())?.uuid;
-        let (riding, dim, others) = self.lan.as_ref().and_then(|h| {
+        let uuid = self.side.lan.as_ref().and_then(|h| h.owner.as_ref())?.uuid;
+        let (riding, dim, others) = self.side.lan.as_ref().and_then(|h| {
             let g = h.hub.online_players().find(|g| g.uuid == uuid)?;
             let others = self.ridden_by_others(&h.hub.guests, &g.dimension, Some(uuid), true);
             Some((g.vehicle, g.dimension.clone(), others))
@@ -1698,7 +834,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let vehicle = self
             .parent_vehicle_in(&dim, riding, &others, false)
             .map(|(tag, _)| tag);
-        let mut host = self.lan.take()?;
+        let mut host = self.side.lan.take()?;
         let mut stored = None;
         if let Some(i) = host
             .hub
@@ -1723,7 +859,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if let Some(saved) = host.owner.as_ref().and_then(|o| o.saved.as_ref()) {
             self.level.position = saved.position;
         }
-        self.lan = Some(host);
+        self.side.lan = Some(host);
         stored.map(|name| (uuid, name))
     }
 
@@ -1731,7 +867,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn set_default_game_mode(&mut self, mode: i32) {
         self.level.game_mode = mode;
         self.level.creative = mode == 1;
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.config.default_game_mode = mode;
             // `setWorldGameType` and `DefaultGameModeCommands.setMode`: a
             // world that forces its mode puts the guests online in it.
@@ -1741,7 +877,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Apply the default mode to connected players when forcing it is enabled.
     pub(in crate::game::server_side) fn set_force_game_mode(&mut self, force: bool) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.settings.force_game_mode = force;
             host.hub.config.force_game_mode = force;
             enforce_guest_game_mode(host, &self.world, self.collision);
@@ -1750,21 +886,21 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Update the live view distance used for player chunk tracking.
     pub(in crate::game) fn set_view_distance(&mut self, distance: i32) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.set_view_distance(distance);
         }
     }
 
     /// Update the live spawn-protection radius.
     pub(in crate::game) fn set_spawn_protection(&mut self, radius: i32) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.spawn_protection = radius;
         }
     }
 
     /// Update the live simulation distance sent to player clients.
     pub(in crate::game) fn set_simulation_distance(&mut self, distance: i32) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.set_simulation_distance(distance);
         }
     }
@@ -1774,46 +910,38 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         percentage: i32,
     ) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.entity_range_percent = percentage;
         }
     }
 
     /// Update the live movement check's flight policy.
     pub(in crate::game::server_side) fn set_allow_flight(&mut self, allow: bool) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.config.allow_flight = allow;
         }
     }
 
     /// Update whether status responses include online player names.
     pub(in crate::game::server_side) fn set_hide_online_players(&mut self, hide: bool) {
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.lan.shared.set_hide_online_players(hide);
         }
     }
 
     /// Update whether the server answers connection status requests.
     pub(in crate::game::server_side) fn set_status_replies(&mut self, enable: bool) {
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.lan.shared.set_enable_status(enable);
         }
     }
 
     /// New command access and game mode forcing settings of the open world.
     pub(in crate::game) fn lan_apply_settings(&mut self, guest_commands: bool, force: bool) {
-        if let Some(server) = &self.integrated {
-            server.ask(|done| super::owner_link::OwnerRequest::LanApplySettings {
-                guest_commands,
-                force,
-                done,
-            });
-            return;
-        }
         // An integrated server gives guests commands only where the world
         // allows them (IntegratedServer.getCustomPermissionLevel).
         let effective = guest_commands && (!self.serving() || self.allow_commands());
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.settings.guest_commands = guest_commands;
             host.hub.config.guest_commands = effective;
         }
@@ -1844,7 +972,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             !levels.in_entity_ticking_range((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
         };
         for m in self.mobs.iter().filter(|m| !m.removed && m.id > after) {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let (mob_players, hub) = (&host.mob_players, &host.hub);
@@ -1892,13 +1020,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             }
             self.fill_mob_state(m, hub, player_entity(), &mut speeds, e);
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             mob_equipment(m, &mut host.hub, &mut e.equipment);
         }
         for d in self.dropped.iter().filter(|d| d.id > after) {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let idle = idle_at(d.position);
@@ -1920,7 +1048,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if bare {
                 continue;
             }
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             let stack = host.hub.stack(&Some(d.stack.clone()));
@@ -1967,7 +1095,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// until the next change. An entity whose effects are gone has none
     /// (`removeEffectParticles`).
     pub(in crate::game::server_side) fn lan_effect_particles(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         for i in 0..self.mobs.len() {
@@ -1986,7 +1114,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         for i in 0..host.hub.guests.len() {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let (hub, g) = (&host.hub, &host.hub.guests[i]);
@@ -1999,7 +1127,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 g.modified_effect_particles.as_ref(),
                 || g.effects.list.iter().map(EffectInstance::shown),
                 |i| active_effect(&g.effects.list[i]),
-            ) && let Some(host) = self.lan.as_mut()
+            ) && let Some(host) = self.side.lan.as_mut()
             {
                 host.hub
                     .guests
@@ -2074,14 +1202,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The arms below borrow the hub through `self.lan` (their helpers take no host:
         // the fork's borrow shape), so the host is put back for the match and taken out
         // again on the way through.
-        self.lan = Some(host);
+        self.side.lan = Some(host);
         let mut timings = EventTimings::new(sunrise_level::spans::NOTE_MS);
         for event in events {
-            if timed && let Some(host) = self.lan.as_ref() {
+            if timed && let Some(host) = self.side.lan.as_ref() {
                 note_event(host, previous.take(), &mut timings);
             }
             if timed {
                 let detail = self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| self.event_detail(host, &event));
@@ -2093,7 +1222,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.run_payload(delivery.endpoint, delivery.incoming);
                 }
                 HostEvent::PlayerPong { conn, id } => {
-                    let Some(guest) = self.lan.as_ref()?.hub.guest(conn).filter(|g| {
+                    let Some(guest) = self.side.lan.as_ref()?.hub.guest(conn).filter(|g| {
                         g.joined() && g.participates_online() && g.play_connection_open()
                     }) else {
                         continue;
@@ -2123,7 +1252,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     bound,
                     name,
                 } => {
-                    let host = self.lan.as_ref()?;
+                    let host = self.side.lan.as_ref()?;
                     let Some((id, conn)) = host
                         .hub
                         .guests
@@ -2178,7 +1307,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // The mods' replies reach the sender alone, as a
                     // command's do, before the message (if any) goes out.
                     if !engine_replies.is_empty() {
-                        let host = self.lan.as_ref()?;
+                        let host = self.side.lan.as_ref()?;
                         for line in engine_replies {
                             host.hub.send_to(
                                 conn,
@@ -2207,11 +1336,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.lan_player_chatted(sender, &raw);
                 }
                 HostEvent::ChatSessionStarted(update) => {
-                    let host = self.lan.as_mut()?;
+                    let host = self.side.lan.as_mut()?;
                     host.hub.broadcast(&C::PlayerInfoUpdate(*update));
                 }
                 HostEvent::Joined(conn, configured) => {
-                    let host = self.lan.as_ref()?;
+                    let host = self.side.lan.as_ref()?;
                     if host
                         .hub
                         .guest(conn)
@@ -2229,7 +1358,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 log::warn!(
                                     "Could not prepare spawn after acknowledgement: {error}"
                                 );
-                                self.lan.as_mut()?.hub.kick(
+                                self.side.lan.as_mut()?.hub.kick(
                                     conn,
                                     sunrise_protocol::text::translatable(
                                         "multiplayer.disconnect.invalid_player_data",
@@ -2239,7 +1368,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 continue;
                             }
                             None => {
-                                self.lan
+                                self.side
+                                    .lan
                                     .as_mut()?
                                     .spawn_joins
                                     .push((conn, configured.unwrap()));
@@ -2251,6 +1381,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     };
                     // The mods may refuse the login before the player is placed.
                     if let Some((uuid, name)) = self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
@@ -2269,12 +1400,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     &[],
                                 ),
                             };
-                            let host = self.lan.as_mut()?;
+                            let host = self.side.lan.as_mut()?;
                             host.hub.kick(conn, reason);
                             continue;
                         }
                     }
-                    let host = self.lan.as_mut()?;
+                    let host = self.side.lan.as_mut()?;
                     // PlayerList.placeNewPlayer: the name the user cache knew,
                     // before it learns this one, for a renamed player's join line.
                     let mut renamed = None;
@@ -2289,8 +1420,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         host.hub.former_names.insert(uuid, old.name);
                     }
                     self.lan_guest_joined(conn, entities, spawn, prepared);
-                    let host = self.lan.as_ref()?;
-                    super::cauldron_prediction::publish_registrations(
+                    let host = self.side.lan.as_ref()?;
+                    publish_registrations(
                         &super::cauldron_interactions::snapshot(),
                         host.hub.guest(conn),
                     );
@@ -2341,6 +1472,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         }
                     }
                     if let Some((uuid, name)) = self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
@@ -2352,9 +1484,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 HostEvent::Left(mut guest) => {
                     if !guest.participates_online() {
-                        let mut host = self.lan.take()?;
+                        let mut host = self.side.lan.take()?;
                         self.cleanup_fake_player(&mut host, &guest);
-                        self.lan = Some(host);
+                        self.side.lan = Some(host);
                         if self.announce_guest_left(&guest) {
                             self.native_player_logged_out(guest.uuid, &guest.name);
                         }
@@ -2366,7 +1498,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let theirs = super::Dim::from_id(&guest.dimension);
                         if self.enter_level(theirs).is_ok() {
                             let conn = guest.conn;
-                            let host = self.lan.as_mut()?;
+                            let host = self.side.lan.as_mut()?;
                             let carrier = guest.entity_id as u32;
                             let asleep = guest.bed.is_some();
                             host.hub.guests.push(*guest);
@@ -2377,7 +1509,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 self.wake_guest(gi, true, false);
                             }
                             self.guest_disconnected(conn);
-                            let Some(host) = self.lan.as_mut() else {
+                            let Some(host) = self.side.lan.as_mut() else {
                                 unreachable!("LanHost dropped inside a tick; closes are deferred")
                             };
                             let at =
@@ -2400,7 +1532,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // PlayerList.remove: the vehicle it alone rides goes too.
                     self.take_parent_vehicle(&mut guest);
                     self.save_guest(&mut guest);
-                    let host = self.lan.as_mut()?;
+                    let host = self.side.lan.as_mut()?;
                     host.play.remove(&guest.conn);
                     host.forget_menus(guest.conn);
                     self.clear_guest_book_connection(guest.conn);
@@ -2416,7 +1548,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if !mod_api::__private::listened(mod_api::HookId::PlayerToggleSneak) {
                         continue;
                     }
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
                         let (uuid, name) = (g.uuid, g.name.clone());
                         self.as_guest(conn, |game| {
                             game.native_player_toggle_sneak(uuid, &name, sneaking);
@@ -2435,6 +1567,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // The same poll can have removed the guest (their `Left`): the mods hear the
                     // kick anyway, without the guest's state swapped in.
                     if self
+                        .side
                         .lan
                         .as_ref()
                         .is_some_and(|host| host.hub.guest(conn).is_some())
@@ -2451,7 +1584,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if !mod_api::__private::listened(mod_api::HookId::PlayerInput) {
                         continue;
                     }
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
                         let (uuid, name) = (g.uuid, g.name.clone());
                         self.as_guest(conn, |game| {
                             game.native_player_input(uuid, &name, flags);
@@ -2459,7 +1592,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
                 HostEvent::ClientInformation(conn, old, new) => {
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
                         let (uuid, entity_id, name) = (g.uuid, g.entity_id, g.name.clone());
                         // The packet's raw ids become the enums once, here.
                         let old = client_info(&old);
@@ -2468,7 +1601,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
                 HostEvent::PlayerLoaded(conn) => {
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
                         let (uuid, name) = (g.uuid, g.name.clone());
                         self.native_player_client_loaded_world(uuid, &name);
                     }
@@ -2479,7 +1612,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     open,
                     filtering,
                 } => {
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
                         let (uuid, name) = (g.uuid, g.name.clone());
                         self.notify_vanilla_book_settings(uuid, &name, book, open, filtering);
                     }
@@ -2487,6 +1620,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 HostEvent::Packet(conn, packet) => {
                     self.lan_guest_packet(conn, *packet);
                     if self
+                        .side
                         .lan
                         .as_ref()
                         .is_some_and(|host| !host.commands.is_empty())
@@ -2499,13 +1633,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
         }
-        if timed && let Some(host) = self.lan.as_ref() {
+        if timed && let Some(host) = self.side.lan.as_ref() {
             note_event(host, previous, &mut timings);
             for burst in timings.bursts() {
                 sunrise_level::spans::note(burst.ms, || describe_burst(host, &burst));
             }
         }
-        self.lan.take()
+        self.side.lan.take()
     }
 
     /// Handle this level's player packets before scheduled block ticks
@@ -2517,7 +1651,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.side.level_pass.packets_drained {
             return;
         }
-        let Some(mut host) = self.lan.take() else {
+        let Some(mut host) = self.side.lan.take() else {
             return;
         };
         // ServerLoginPacketListenerImpl waits for PlayerList.remove, which saves the old
@@ -2598,27 +1732,30 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         host = back;
         if !host.quiet.is_empty() {
-            self.lan = Some(host);
+            self.side.lan = Some(host);
             sunrise_level::spans::time("lan_quiet_commands", || self.run_quiet_commands());
             host = self
+                .side
                 .lan
                 .take()
                 .expect("the hub is back after the quiet commands");
         }
         if !host.hub.native_advancement_grants.is_empty() {
-            self.lan = Some(host);
+            self.side.lan = Some(host);
             sunrise_level::spans::time("lan_advancement_grants", || {
                 self.run_native_advancement_grants()
             });
             host = self
+                .side
                 .lan
                 .take()
                 .expect("the hub is back after the advancement grants");
         }
         if !host.hub.native_menu_events.is_empty() {
-            self.lan = Some(host);
+            self.side.lan = Some(host);
             sunrise_level::spans::time("lan_menu_events", || self.run_native_menu_events());
             host = self
+                .side
                 .lan
                 .take()
                 .expect("the hub is back after the menu events");
@@ -2626,7 +1763,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         host.states = entities;
         self.side.level_pass.packets_drained = true;
         drop(holding);
-        self.lan = Some(host);
+        self.side.lan = Some(host);
         if let Some(handoffs) = handoffs {
             self.tick_lan_player_handshakes(handoffs);
         }
@@ -2727,7 +1864,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The entity id counter, once the entities Sunrise keeps without one
     /// have theirs, while guests track the level (None otherwise).
     pub(in crate::game::server_side) fn lan_ids_so_far(&mut self) -> Option<i32> {
-        if self.lan.as_ref().is_none_or(|h| h.hub.guests.is_empty()) {
+        if self
+            .side
+            .lan
+            .as_ref()
+            .is_none_or(|h| h.hub.guests.is_empty())
+        {
             return None;
         }
         self.lan_assign_ids();
@@ -2743,7 +1885,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// players get the blocks as they are then. What the tick writes from
     /// there on goes out with the next tick's.
     pub(in crate::game::server_side) fn lan_broadcast_changes(&mut self) -> Option<usize> {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.broadcast_changes(&mut self.world);
         }
         self.world.block_log.as_ref().map(Vec::len)
@@ -2751,7 +1893,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game::server_side) fn lan_mark_synced(&mut self) {
         if let Some(next) = self.lan_ids_so_far()
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             host.hub.synced = vec![(i32::MIN, next)];
         }
@@ -2763,7 +1905,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(from) = from
             && let Some(next) = self.lan_ids_so_far()
             && next > from
-            && let Some(host) = self.lan.as_mut()
+            && let Some(host) = self.side.lan.as_mut()
         {
             host.hub.synced.push((from, next));
         }
@@ -2776,12 +1918,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// described (their ids are above the counter the states were taken at),
     /// and nothing when the counter has not moved or no guest is in the level.
     pub(in crate::game::server_side) fn lan_note_joined(&mut self) {
-        let Some(host) = self.lan.take() else {
+        let Some(host) = self.side.lan.take() else {
             return;
         };
         let mut host = self.lan_flush_tracking(host);
         host.states_next_entity = None;
-        self.lan = Some(host);
+        self.side.lan = Some(host);
         self.flush_attachment_sync();
     }
 
@@ -2798,9 +1940,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if host.hub.native_tracking.is_empty() {
                 return host;
             }
-            self.lan = Some(host);
+            self.side.lan = Some(host);
             self.run_native_tracking();
             host = self
+                .side
                 .lan
                 .take()
                 .expect("the hub is back after the tracking events");
@@ -2834,7 +1977,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A frozen level does not reach tick_lan_packets through tick_world.
         // Apply its packets before taking the snapshot too.
         self.tick_lan_packets();
-        if self.lan.is_none() {
+        if self.side.lan.is_none() {
             // No one else to tell: the host's `broadcastToAdmins` lines go.
             self.side.admin_feedback.clear();
             if self.side.level_pass.running.is_none() {
@@ -2855,7 +1998,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // An animal whose rider left the game (or the level) stops taking
         // its input.
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         for m in &mut self.mobs {
@@ -2879,7 +2022,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .expect("the current-level connection pass does not switch levels");
             }
             // Ridden vehicles enter their portals on the level path.
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let ridden: Vec<u32> = host.hub.guests.iter().filter_map(|g| g.vehicle).collect();
@@ -2897,14 +2040,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.flush_started_riding();
         }
         {
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             let has_guests = !host.hub.guests.is_empty();
             let mut states = std::mem::take(&mut host.states);
             if has_guests {
                 self.lan_assign_ids();
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 let mut guests: Vec<(i64, u32, i32)> = host
@@ -2920,7 +2063,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .collect();
                 let mut riding = std::mem::take(&mut host.hub.riding);
                 self.lan_riding(&guests, &mut riding);
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.hub.riding = riding;
@@ -2946,13 +2089,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.lan_hook_states(&mut states);
                     self.lan_entity_uuids(&mut states);
                 });
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.idle_states = idle_states;
                 host.states_next_entity = Some(self.side.next_entity);
             } else {
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.states_next_entity = None;
@@ -2967,7 +2110,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
             // The step command reaches clients before the events its tick
             // generated, as ServerTickRateManager.updateStepTicks does.
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             host.hub.sync_ticking(
@@ -2985,7 +2128,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             let entities = states.as_slice();
             self.lan_prepare_captured_sounds(entities);
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             // An entity that left the level since the last tick (a snowball
@@ -3001,18 +2144,20 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             let spawn = self.world_spawn_position();
             let mut solids = self
+                .side
                 .lan
                 .as_mut()
                 .map(|host| std::mem::take(&mut host.hub.move_solids))
                 .unwrap_or_default();
             let guests = self
+                .side
                 .lan
                 .as_ref()
                 .is_some_and(|host| !host.hub.guests.is_empty());
             self.fill_move_solids(&mut solids, guests);
             let (events, last) = {
                 let clock_rate = self.network_clock_rate();
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 host.hub.move_solids = solids;
@@ -3084,14 +2229,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // The mods hear the pass's starts and stops of tracking at each one's packet, before
             // the players' own state and the end of the tick (#4522).
             self.run_native_tracking();
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 host.hub.finish_tracking_pass();
                 if last {
                     sunrise_level::spans::time("lan_end_tick", || host.hub.end_tick());
                 }
             }
             self.wake_woken_guests();
-            let Some(host) = self.lan.take() else {
+            let Some(host) = self.side.lan.take() else {
                 return;
             };
             let processed = sunrise_level::spans::time("lan_process_events", || {
@@ -3100,16 +2245,22 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let Some(back) = processed else {
                 return;
             };
-            self.lan = Some(back);
-            let Some(host) = self.lan.as_mut() else {
+            self.side.lan = Some(back);
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             host.states = states;
         }
-        if self.lan.as_ref().is_some_and(|host| !host.quiet.is_empty()) {
+        if self
+            .side
+            .lan
+            .as_ref()
+            .is_some_and(|host| !host.quiet.is_empty())
+        {
             self.run_quiet_commands();
         }
         if self
+            .side
             .lan
             .as_ref()
             .is_some_and(|host| !host.hub.native_advancement_grants.is_empty())
@@ -3117,6 +2268,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.run_native_advancement_grants();
         }
         if self
+            .side
             .lan
             .as_ref()
             .is_some_and(|host| !host.hub.native_menu_events.is_empty())
@@ -3125,10 +2277,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.run_chunk_watches();
         self.flush_passages();
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.collect_tracking();
         }
         if self
+            .side
             .lan
             .as_ref()
             .is_some_and(|host| !host.hub.native_tracking.is_empty())
@@ -3147,7 +2300,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         drop(holding);
         self.flush_attachment_sync();
         self.flush_far_terrain();
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
         }
         self.flush_native_sounds();
@@ -3197,7 +2350,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 return;
             }
         }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let default_mode = host.hub.config.default_game_mode;
@@ -3227,7 +2380,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         self.initialize_server_player(uuid, conn);
         self.native_player_load_from_file(uuid, &name, &playerdata::directory(&root));
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if host
@@ -3254,7 +2407,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         // A server places each player in their own level (`PlayerList.placeNewPlayer`).
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let back = self.dim;
@@ -3281,7 +2434,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 spawn_level
             };
-            let moved = self.lan.as_mut().and_then(|host| {
+            let moved = self.side.lan.as_mut().and_then(|host| {
                 host.hub
                     .update_guest(conn, |g| g.dimension = fallback.id().to_owned())
             });
@@ -3319,7 +2472,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             border: &self.border,
             streaming: Some(&self.side.streaming),
         };
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         host.hub.place_new_player(conn, &mut ctx);
@@ -3390,7 +2543,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         event: i8,
         _at: [f64; 3],
     ) {
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             host.hub.entity_event(id, event);
         } else if self.side.audio_capture_active {
             self.side.lan_entity_events.push((id, event));
@@ -3442,7 +2595,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Send the tick's level events, sounds and mob animations.
     pub(in crate::game) fn lan_flush_effects(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let critical_hits = std::mem::take(&mut self.side.lan_critical_hits);
@@ -3514,7 +2667,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             host.hub.global_level_event(level, kind, pos, data);
         }
         self.lan_broadcast_effects();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if host.hub.guests.is_empty() {
@@ -3604,7 +2757,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Keep the chunks around every guest loaded.
     pub(in crate::game::server_side) fn lan_update_streaming(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         // DistanceManager.PlayerTicketTracker: every chunk within the server's view distance
@@ -3621,7 +2774,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The held players are sent the level, so their chunks are kept as the placed ones'.
         self.side.streaming.extra = host
             .hub
-            .loading_chunks(|g| super::game_mode::loads_chunks(rule, g.spectator()))
+            .loading_chunks(|g| {
+                sunrise_gameplay_common::game_modes::loads_chunks(rule, g.spectator())
+            })
             .map(|chunk| (chunk, radius))
             .chain(
                 self.arrival_chunks(self.dim)
@@ -3640,7 +2795,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.setPose` for the server's players: the mods hear each placed
     /// guest's change of pose. Nothing is kept while no mod listens.
     pub(in crate::game::server_side) fn lan_guest_poses(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if !mod_api::__private::listened(mod_api::HookId::EntityPoseChange) {
@@ -3667,7 +2822,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// After a player's chat was broadcast: the dedicated server's event
     /// log, and `detectRateSpam`.
     pub(in crate::game::server_side) fn lan_player_chatted(&mut self, sender: u128, text: &str) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(g) = host.hub.online_players().find(|g| g.uuid == sender) else {
@@ -3823,9 +2978,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::{
-        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags, mob_freeze_meta,
-    };
+    use super::{EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags};
+    use crate::game::lan_mob_metadata::{mob_freeze_meta, mob_meta};
 
     impl LanHost {
         /// Install an already configured fixture hub without touching the process-wide sync cache.
@@ -4022,7 +3176,7 @@ pub(in crate::game) mod tests {
                     &[],
                     Default::default(),
                 );
-                game.lan = Some(LanHost::for_test(Hub::new(
+                game.side.lan = Some(LanHost::for_test(Hub::new(
                     lan,
                     sync,
                     encoder,
@@ -4138,8 +3292,16 @@ pub(in crate::game) mod tests {
                     assert_closed(&mut c);
                 }
 
-                let mut c =
-                    Connection::local(game.lan.as_ref().unwrap().hub.lan.connect_local().unwrap());
+                let mut c = Connection::local(
+                    game.side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .lan
+                        .connect_local()
+                        .unwrap(),
+                );
                 c.reader.set_read_timeout(Some(WAIT)).unwrap();
                 intention(&mut c, "local.test", 0, PROTOCOL_VERSION, handshake::LOGIN);
                 let long_host = format!("{REWRITTEN}{}", "a".repeat(255));
@@ -4156,12 +3318,20 @@ pub(in crate::game) mod tests {
 
                 // A peer that leaves a whole Hello behind once its handshake was taken reaches
                 // no admission.
-                let mut c =
-                    Connection::local(game.lan.as_ref().unwrap().hub.lan.connect_local().unwrap());
+                let mut c = Connection::local(
+                    game.side
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .lan
+                        .connect_local()
+                        .unwrap(),
+                );
                 intention(&mut c, "local.left", 0, PROTOCOL_VERSION, handshake::LOGIN);
                 let deadline = Instant::now() + WAIT;
                 let handoffs = loop {
-                    let handoffs = game.lan.as_ref().unwrap().hub.lan.take_handoffs();
+                    let handoffs = game.side.lan.as_ref().unwrap().hub.lan.take_handoffs();
                     if !handoffs.is_empty() {
                         break handoffs;
                     }
@@ -4377,9 +3547,15 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
-        let mut game =
-            crate::game::ServerGame::new(&res, loaded.pack, options, settings.sim_settings(), None)
-                .unwrap();
+        let mut game = crate::game::ServerGame::new(
+            &res,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
         let render = sunrise_client::assets::RenderAssets::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
             &game.pack.assets,
@@ -4439,7 +3615,7 @@ pub(in crate::game) mod tests {
         guest.placed = true;
         guest.dimension = "minecraft:overworld".into();
         hub.guests.push(guest);
-        game.lan = Some(LanHost::for_test(hub));
+        game.side.lan = Some(LanHost::for_test(hub));
         for (block, expected) in [
             ("minecraft:ladder", false),
             ("minecraft:scaffolding", false),
@@ -4447,7 +3623,8 @@ pub(in crate::game) mod tests {
         ] {
             let state = game.pack.assets.registry.default_state(block).unwrap();
             game.world.set(0, 4, 0, state).unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -4475,7 +3652,7 @@ pub(in crate::game) mod tests {
             })
             .unwrap();
             assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].fall_flying,
+                game.side.lan.as_ref().unwrap().hub.guests[0].fall_flying,
                 expected,
                 "{block}"
             );
@@ -5007,7 +4184,7 @@ pub(in crate::game) mod tests {
         let hub = meta_hub("RaiderMetaTest");
         let meta_of = |m: &Mob| {
             let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-            super::mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
+            mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
             (meta, defaults)
         };
 
@@ -5031,7 +4208,7 @@ pub(in crate::game) mod tests {
         let hub = meta_hub("EndermanTargetMetaTest");
         let metadata = |m: &Mob| {
             let (mut values, mut defaults) = (Vec::new(), Vec::new());
-            super::mob_meta(m, &hub, None, 0, &mut values, &mut defaults);
+            mob_meta(m, &hub, None, 0, &mut values, &mut defaults);
             (values, defaults)
         };
         enderman.extra.flag2 = true;
@@ -5065,7 +4242,7 @@ pub(in crate::game) mod tests {
         );
         let meta_of = |m: &Mob| {
             let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-            super::mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
+            mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
             (meta, defaults)
         };
         let count = |index| (index, serializer::INT, Value::Int(0));
@@ -5106,7 +4283,7 @@ pub(in crate::game) mod tests {
             let meta_of = |game: &crate::game::ServerGame<'_>| {
                 let m = game.mobs.iter().find(|m| m.id == 12).unwrap();
                 let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-                super::mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
+                mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
                 (meta, defaults)
             };
             assert!(
@@ -5143,7 +4320,7 @@ pub(in crate::game) mod tests {
         );
         let metadata = |mob: &Mob| {
             let (mut entries, mut defaults) = (Vec::new(), Vec::new());
-            super::mob_meta(mob, &hub, None, 0, &mut entries, &mut defaults);
+            mob_meta(mob, &hub, None, 0, &mut entries, &mut defaults);
             entries
                 .into_iter()
                 .find(|(_, serializer, _)| *serializer == serializer::VILLAGER_DATA)
@@ -5170,7 +4347,7 @@ pub(in crate::game) mod tests {
             // The same health: the ghoul's own maximum is 40, the zombie's 20.
             m.health = 10.0;
             let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-            super::mob_meta(&m, &hub, None, 0, &mut meta, &mut defaults);
+            mob_meta(&m, &hub, None, 0, &mut meta, &mut defaults);
             (meta, defaults)
         };
         for (template, id) in [
@@ -5300,7 +4477,7 @@ pub(in crate::game) mod tests {
                         2,
                     );
                     guest.placed = true;
-                    game.lan.as_mut().unwrap().hub.guests.push(guest);
+                    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
                     rx
                 };
                 let (sender, other) = (join(12), join(13));
@@ -5355,8 +4532,8 @@ pub(in crate::game) mod tests {
                         bound: Box::new(bound),
                         name: "guest12".into(),
                     };
-                    let host = game.lan.take().unwrap();
-                    game.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
+                    let host = game.side.lan.take().unwrap();
+                    game.side.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
                 };
 
                 say(game, "secret");
@@ -5375,11 +4552,14 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_guest_who_left_has_no_menu_owners() {
-        use super::super::transactions::decision::{Admission, engine::Target};
+        use crate::game::{
+            server_side::decision_engine_server::ServerDecisionTarget,
+            transactions::decision::Admission,
+        };
         use sunrise_sim::lan::hub::HostEvent;
         use sunrise_sim::menu::{Kind, Menu};
         super::super::native_guest_turn_tests::with_guests(|game| {
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             for conn in [12, 13] {
                 *host.menus.entry(conn).or_default().crafting.inventory =
                     Some(Box::new(Menu::new(Kind::Inventory)));
@@ -5389,17 +4569,17 @@ pub(in crate::game) mod tests {
             let guest = host.hub.guests.remove(0);
             assert_eq!(guest.conn, 12);
             let event = HostEvent::Left(Box::new(guest));
-            let host = game.lan.take().unwrap();
-            game.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.take().unwrap();
+            game.side.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
+            let host = game.side.lan.as_ref().unwrap();
             assert!(!host.menus.contains_key(&12));
             assert!(!host.play.contains_key(&12));
             assert!(host.menus.contains_key(&13));
             assert!(matches!(
-                Target::admit(game, 12),
+                ServerDecisionTarget::admit(game, 12),
                 Err(Admission::MissingHolder)
             ));
-            assert!(Target::admit(game, 13).is_ok());
+            assert!(ServerDecisionTarget::admit(game, 13).is_ok());
         });
     }
 
@@ -5574,7 +4754,7 @@ pub(in crate::game) mod tests {
             let mut faint_speed = EffectInstance::new("speed", 600, 0);
             faint_speed.ambient = true;
             guest.effects.list = vec![faint_speed.clone(), EffectInstance::new("slowness", 600, 0)];
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let kind = game
                 .res
                 .mob_types()
@@ -5627,7 +4807,7 @@ pub(in crate::game) mod tests {
                 let mut states = super::States::default();
                 game.lan_entities(&mut states, false, 0, None);
                 let zombie = states.as_slice().iter().find(|e| e.id == ZOMBIE).unwrap();
-                let hub = &game.lan.as_ref().unwrap().hub;
+                let hub = &game.side.lan.as_ref().unwrap().hub;
                 let listened =
                     mod_api::__private::listened(mod_api::HookId::EffectParticleModification);
                 let player = hub.player_effect_meta(&hub.guests[0], listened);
@@ -5718,7 +4898,7 @@ pub(in crate::game) mod tests {
                 // answers still go out until the next pass, which asks about
                 // both effects. The weakness the mod shows is visible and not
                 // ambient, so the flag goes, where vanilla would have set it.
-                let hub = &mut game.lan.as_mut().unwrap().hub;
+                let hub = &mut game.side.lan.as_mut().unwrap().hub;
                 let mut weakness = EffectInstance::new("weakness", 600, 0);
                 weakness.visible = false;
                 hub.guests
@@ -5746,7 +4926,7 @@ pub(in crate::game) mod tests {
                 );
 
                 // The guest's effects run out: nothing is kept or sent.
-                let hub = &mut game.lan.as_mut().unwrap().hub;
+                let hub = &mut game.side.lan.as_mut().unwrap().hub;
                 hub.guests.update(0, |g| g.effects.list.clear());
                 assert_eq!(sent(game), (zombie_swirls, Vec::new()));
                 assert!(asked().is_empty());
@@ -5778,18 +4958,6 @@ pub(in crate::game) mod sources_tests {
         assert_ne!(key(&files), key(&[]));
     }
     include!("sulfur_cube_meta_tests.rs");
-}
-
-impl super::Dim {
-    /// The level `level`'s world spawn is in (MinecraftServer.findRespawnDimension), the
-    /// Overworld when the world has no such level. It borrows only the level data, so a
-    /// `TickCtx` can name it beside the world it borrows mutably.
-    pub(in crate::game::server_side) fn of_world_spawn(level: &sunrise_sim::save::Level) -> Self {
-        level
-            .world_spawn_dimension
-            .as_deref()
-            .map_or(Self::Overworld, Self::from_id)
-    }
 }
 
 #[cfg(test)]
@@ -5856,7 +5024,7 @@ pub(in crate::game) mod world_spawn_sync_tests {
         );
         guest.placed = true;
         guest.dimension = "minecraft:the_nether".into();
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     }
 
@@ -6042,7 +5210,7 @@ pub(in crate::game) mod world_spawn_sync_tests {
             let guest_personal = [5.5, 81.0, 5.5];
             game.spawn = Some(host_personal);
             let rx = host(game);
-            let mut host = game.lan.take().unwrap();
+            let mut host = game.side.lan.take().unwrap();
             host.hub.guests.update(0, |guest| {
                 guest.dimension = "minecraft:overworld".into();
                 guest.spawn = Some(guest_personal);
@@ -6050,9 +5218,9 @@ pub(in crate::game) mod world_spawn_sync_tests {
                 guest.dead = true;
                 guest.loaded = true;
             });
-            game.lan = Some(host);
+            game.side.lan = Some(host);
             game.guest_respawn(1);
-            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
                 guest.position, guest_personal,
                 "the guest's landing stays personal"
@@ -6094,7 +5262,7 @@ pub(in crate::game) mod world_spawn_join_tests {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.side.world_root = game.side.save.0.root.clone();
             game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
-            let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+            let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
                 g.dimension = "example:gone".into();
                 g.position = [40.5, 70.0, -12.5];
@@ -6108,7 +5276,7 @@ pub(in crate::game) mod world_spawn_join_tests {
             );
             guests.update(0, |g| g.placed = false);
             game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5], None);
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.dimension, "minecraft:the_nether");
             assert_eq!(g.position, [40.5, 70.0, -12.5]);
             assert_eq!((g.yaw, g.pitch), (135.0, -20.0));
@@ -6169,7 +5337,7 @@ pub(in crate::game) mod mob_pickup_sync_tests {
             2,
         );
         guest.placed = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     }
 
@@ -6275,7 +5443,7 @@ pub(in crate::game) mod mob_swing_sync_tests {
             2,
         );
         guest.placed = true;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     }
 
@@ -6313,11 +5481,11 @@ pub(in crate::game) mod mob_swing_sync_tests {
         let rx = guest_at(&mut game, [8.5, 80.0, 8.5]);
         game.mobs[0].swing_hand_modified(true, SwingAnimation::DEFAULT);
         game.mobs[1].swing_hand_modified(false, SwingAnimation::DEFAULT);
-        let host = game.lan.take().expect("the hub");
-        game.lan = Some(host);
+        let host = game.side.lan.take().expect("the hub");
+        game.side.lan = Some(host);
         game.lan_flush_effects();
-        let host = game.lan.take().unwrap();
-        game.lan = Some(host);
+        let host = game.side.lan.take().unwrap();
+        game.side.lan = Some(host);
         let sent = swings(&rx);
         assert!(
             sent.iter().any(|p| p.id == off as i32 && p.hand == 1),
@@ -6333,7 +5501,6 @@ pub(in crate::game) mod mob_swing_sync_tests {
 #[cfg(test)]
 pub(in crate::game) mod owner_attachment_connected_statistics_save_tests;
 
-use super::stats;
 pub(in crate::game) mod advancement_records;
 
 #[cfg(test)]
@@ -6519,7 +5686,7 @@ pub(in crate::game) mod merchant_packet_tests {
             guest.sent_chunks.insert((0, 0));
             guest.inventory[0] = Some(sunrise_items::items::ItemStack::new("minecraft:emerald", 8));
             hub.guests.push(guest);
-            game.lan = Some(super::LanHost {
+            game.side.lan = Some(super::LanHost {
                 hub,
                 spawn_joins: Vec::new(),
                 players_told_left: false,
@@ -6548,7 +5715,7 @@ pub(in crate::game) mod merchant_packet_tests {
                 idle_states: Default::default(),
             });
 
-            use crate::game::trading::MerchantState;
+            use crate::game::trading_common::MerchantState;
             use sunrise_items::items::ItemStack;
             use sunrise_sim::merchant::{ItemCost, MerchantOffer, Session};
             let offer = MerchantOffer {
@@ -6645,7 +5812,7 @@ pub(in crate::game) mod merchant_packet_tests {
                 carried: None,
             };
             assert!(game.lan_merchant_click(1, &click));
-            let state = &game.lan.as_ref().unwrap().menus[&1]
+            let state = &game.side.lan.as_ref().unwrap().menus[&1]
                 .merchant
                 .as_ref()
                 .unwrap()
@@ -6673,7 +5840,7 @@ pub(in crate::game) mod merchant_packet_tests {
             assert!(content.items[0].is_none());
             assert!(content.items[2].is_none());
             assert_eq!(content.carried.as_ref().unwrap().count, 6);
-            let state = &game.lan.as_ref().unwrap().menus[&1]
+            let state = &game.side.lan.as_ref().unwrap().menus[&1]
                 .merchant
                 .as_ref()
                 .unwrap()
@@ -6722,7 +5889,7 @@ pub(in crate::game) mod merchant_packet_tests {
                 let random = sunrise_sim::merchant::sequence_random(0, &id);
                 session.sequences.insert(id, random);
             }
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory[0] = Some(ItemStack::new("minecraft:emerald", 8));
                 g.carried = None;
             });
@@ -6763,6 +5930,7 @@ pub(in crate::game) mod merchant_packet_tests {
             // damage packet. Another player gets anger but no offer; mobs and lethal
             // blows show no anger. Keep the victim's same-tick cooldown throughout.
             let gm = game
+                .side
                 .lan
                 .as_mut()
                 .unwrap()
@@ -6781,7 +5949,7 @@ pub(in crate::game) mod merchant_packet_tests {
             let merchant_window = gm.window;
             let mut states = super::States::default();
             game.lan_entities(&mut states, false, 0, None);
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.note_joined(states.as_slice(), None);
             assert!(hub.guests[0].tracker.is_tracking(77));
             rx.try_iter().for_each(drop);
@@ -6880,7 +6048,7 @@ pub(in crate::game) mod merchant_packet_tests {
                     if case.starts_with("sound-replaces-suspended-menu") {
                         let mut inner = crate::game::native_item_places::tests::guest(2);
                         inner.dimension = "minecraft:overworld".into();
-                        game.lan.as_mut().unwrap().hub.guests.push(inner);
+                        game.side.lan.as_mut().unwrap().hub.guests.push(inner);
                         game.as_guest(1, |game| {
                             game.as_guest(2, |game| {
                                 // A player-owned event (such as a cloud) can refresh prices
@@ -6905,7 +6073,7 @@ pub(in crate::game) mod merchant_packet_tests {
                         buyer_hit(game, 1.0);
                     }
                 });
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 let buyer = host.hub.guest(1).unwrap();
                 let emeralds = buyer
                     .inventory
@@ -7005,9 +6173,9 @@ pub(in crate::game) mod merchant_packet_tests {
             actual.extend(sync);
             game.lan_merchant_tick();
             assert!(record().is_empty(), "an unchanged result is not resent");
-            let hub = &game.lan.as_ref().unwrap().hub;
+            let hub = &game.side.lan.as_ref().unwrap().hub;
             assert_eq!(hub.guests[0].carried.as_ref().unwrap().count, 3);
-            let gm = game.lan.as_ref().unwrap().menus[&1]
+            let gm = game.side.lan.as_ref().unwrap().menus[&1]
                 .merchant
                 .as_ref()
                 .unwrap();

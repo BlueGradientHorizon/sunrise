@@ -148,6 +148,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             Some(conn) => {
                 let Some(index) = self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.guests.connection_index(conn))
@@ -156,7 +157,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 if value.is_none()
                     && !has_key(
-                        self.lan.as_ref().expect("resolved guest").hub.guests[index]
+                        self.side.lan.as_ref().expect("resolved guest").hub.guests[index]
                             .saved
                             .as_ref(),
                     )
@@ -164,7 +165,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Ok(());
                 }
                 self.journal_parked_player_extra(index);
-                self.lan
+                self.side
+                    .lan
                     .as_mut()
                     .expect("resolved guest")
                     .hub
@@ -179,7 +181,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// compound only `PlayerPersisted` goes to the new player (NeoForge's
     /// `PlayerEvent.Clone` keeps that sub-compound). Called before the respawn's clone event.
     pub(in crate::game::server_side) fn keep_only_player_persisted(&mut self, conn: u32) {
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub
                 .guests
                 .update_connection(conn, |g| keep_player_persisted(&mut g.saved));

@@ -3,6 +3,9 @@
 //! `ScreenWidget` dispatch & panic isolation, and separated screen input Pre/Post hooks.
 
 use super::*;
+use crate::game::client_side::{
+    native_hooks_client::screen_view::screen_view_for_mod, screen_build::ObservedScreen,
+};
 use crate::game::event_loop::EventLoopCtl;
 use crate::game::input_trace::InputOrigin;
 use crate::game::native_entity_refs::tests::with_client_game;
@@ -147,7 +150,7 @@ fn double_click_window_checks_250ms_button_screen_and_generation() {
 /// which mod's screen received an input event even after A->B or A->close transitions.
 #[test]
 fn observed_screen_view_carries_mod_screen_owner() {
-    let observed = crate::game::screen_build::ObservedScreen {
+    let observed = ObservedScreen {
         id: "mod",
         overlay: false,
         mod_screen: Some("mod_a".to_owned()),

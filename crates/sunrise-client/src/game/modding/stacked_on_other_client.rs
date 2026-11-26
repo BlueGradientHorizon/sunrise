@@ -13,7 +13,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         ops: &[(Option<usize>, i32, Input)],
     ) -> Option<bool> {
-        if self.remote.is_some() && self.side.screen != Screen::Creative {
+        if self.side.remote.is_some() && self.side.screen != Screen::Creative {
             return None;
         }
         let server = self.is_logical_server();

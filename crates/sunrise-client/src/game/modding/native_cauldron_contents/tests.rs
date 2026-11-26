@@ -79,7 +79,7 @@ fn registered_contents_and_rebuilt_tables_are_read_through_public_host() {
                 Some(1)
             );
             assert_eq!(host.cauldron_level(state("minecraft:stone")), None);
-            cauldron_contents::without_built_table(|| {
+            crate::game::server_side::machines::cauldron_contents::without_built_table(|| {
                 assert_eq!(
                     host.cauldron_content_for_block(block("minecraft:water_cauldron")),
                     None

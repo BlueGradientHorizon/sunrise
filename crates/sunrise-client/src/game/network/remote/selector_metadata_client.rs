@@ -3,7 +3,7 @@ use super::*;
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn receive_selector_tokens(&mut self, data: &[u8]) -> Result<()> {
-        let Some(remote) = self.remote.as_mut() else {
+        let Some(remote) = self.side.remote.as_mut() else {
             return Ok(());
         };
         if !remote.selector_metadata_supported {

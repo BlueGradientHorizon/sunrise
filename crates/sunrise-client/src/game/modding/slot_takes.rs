@@ -3,8 +3,8 @@
 //! entity; a blockless owned menu lends a scope with no view, whose `host()` and
 //! `transaction(...)` still reach its transient slots through `ItemPlace::MenuSlot`.
 use super::api_values::TryIntoApi;
-use super::native_hooks::ResidentBlockEntityAccess;
 use super::{Game, transactions::After};
+use crate::game::server_side::native_hooks_server::block_entity_tick::ResidentBlockEntityAccess;
 use sunrise_level::block_entities::Pos;
 use sunrise_sim::menu::SlotTake;
 

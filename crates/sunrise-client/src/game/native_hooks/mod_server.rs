@@ -1,13 +1,12 @@
-use super::native_data_maps::DataMapType;
+use self::block_entity_tick::ResidentBlockEntityAccess;
 use super::{Game, GameLevel};
 use crate::game::api_values::TryIntoApi;
+use crate::game::native_data_maps_common::DataMapType;
 #[cfg(test)]
 use crate::game::native_hooks::BLOCK_CONTACT_HOOKS;
-use crate::game::native_hooks::ContentsChangedGuard;
 use crate::game::native_hooks::HitLevel;
 use crate::game::native_hooks::LiveDamageRead;
 use crate::game::native_hooks::apply_menu_button_cursor;
-use crate::game::native_hooks::block_entity_tick::ResidentBlockEntityAccess;
 use crate::game::native_hooks::mob_kind;
 use crate::game::native_hooks::mod_menu;
 use crate::game::native_hooks::property_change;
@@ -40,6 +39,10 @@ use {
     sunrise_sim::first_person_sim::Hand, sunrise_sim::health::Attack,
     sunrise_sim::health::HurtSource, sunrise_sim::merchant::MerchantOffer, sunrise_sim::mobs::Who,
 };
+
+crate::game::native_hooks::add_pack_finders::impl_pack_discovery_context!(
+    crate::game::ServerGame<'_>
+);
 
 #[path = "base_server.rs"]
 pub(in crate::game) mod base;
@@ -83,9 +86,6 @@ pub(in crate::game) mod explosion_notice_containment;
 #[path = "farmland_trample_server.rs"]
 pub(in crate::game) mod farmland_trample;
 
-#[path = "fire_behaviour_server.rs"]
-pub(in crate::game) mod fire_behaviour;
-
 #[path = "general_entity_tick_server.rs"]
 pub(in crate::game) mod general_entity_tick;
 
@@ -113,6 +113,9 @@ pub(in crate::game) mod living_death;
 #[path = "living_death_post_server.rs"]
 pub(in crate::game) mod living_death_post;
 
+#[path = "mod_configs_server.rs"]
+pub(in crate::game) mod mod_configs;
+
 #[path = "mod_mismatch_server.rs"]
 pub(in crate::game) mod mod_mismatch;
 
@@ -131,9 +134,6 @@ pub(in crate::game) mod player_leave;
 #[path = "register_enchantment_damage_effects_server.rs"]
 pub(in crate::game) mod register_enchantment_damage_effects;
 
-#[path = "remove_block_server.rs"]
-pub(in crate::game) mod remove_block;
-
 #[path = "server_tick_rate_changed_server.rs"]
 pub(in crate::game) mod server_tick_rate_changed;
 
@@ -145,12 +145,6 @@ pub(in crate::game) mod loot;
 
 #[path = "shared/world_helpers_server.rs"]
 pub(in crate::game) mod world_helpers;
-
-impl Drop for ContentsChangedGuard<'_, '_> {
-    fn drop(&mut self) {
-        self.game.side.contents_changing.pop();
-    }
-}
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -189,6 +183,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if let Some(mob) = self.mobs.iter().find(|m| m.id as i32 == attacker) {
             [mob.extra.main_hand_stack().cloned(), None]
         } else if let Some(guest) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
@@ -207,7 +202,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             self.player_uuid_of(self.side.lan_acting)
         } else {
-            self.lan
+            self.side
+                .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
                 .map(|g| sunrise_sim::lan::playerdata::uuid_ints(g.uuid))
@@ -263,7 +259,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             (None, None) => (None, None),
         };
         let player_victim = self.player.as_ref().is_some_and(|p| p.entity_id == entity);
-        let hub = self.lan.as_ref().map(|lan| &lan.hub);
+        let hub = self.side.lan.as_ref().map(|lan| &lan.hub);
         let parked = move || HitLend::parked_guest(hub, parked?);
         let (victim, lend) = if player_victim {
             let p = self.player.as_ref().expect("the player victim");
@@ -293,7 +289,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             (victim_mob.map(LivingBody::Mob), lend)
         };
-        let level = crate::game::entity::damage_level_of!(
+        let level = crate::game::server_side::entity_server::damage_level_of!(
             self,
             &sunrise_sim::health::NO_ATTACK,
             no_push,
@@ -689,7 +685,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The players still here leave with the server (`PlayerList.removeAll`):
     /// the mods hear it once, whichever path closes it.
     pub(in crate::game) fn native_players_leaving(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if std::mem::replace(&mut host.players_told_left, true) {

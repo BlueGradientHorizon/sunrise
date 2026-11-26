@@ -13,12 +13,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // this one (#4149), and that copy is played at 1.0.
         // This player's own hurt tilt and flash come from the server too
         // (sent to the player itself): its own moves never hurt it.
-        let me = self.remote.as_ref().map(|r| r.entity_id);
+        let me = self.side.remote.as_ref().map(|r| r.entity_id);
         let own = me == Some(p.id);
         self.pvp_hurt(p.id, own, p.direct.map(|d| Some(d) == me));
         if own {
             // For `events`: this client has no combat tracker of its own here.
-            let cause = self.remote.as_ref().and_then(|r| {
+            let cause = self.side.remote.as_ref().and_then(|r| {
                 r.registries
                     .name("minecraft:damage_type", p.source_type)
                     .map(str::to_owned)
@@ -69,14 +69,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.remote_kinetic_hit(p.id);
         }
         // LocalPlayer.setPermissions also refreshes an open World Options screen.
-        if (24..=28).contains(&p.event) && self.remote.as_ref().is_some_and(|r| r.entity_id == p.id)
+        if (24..=28).contains(&p.event)
+            && self
+                .side
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.entity_id == p.id)
         {
             self.ui.registries.permission = (p.event - 24) as u8;
             self.remote_world_options_permission(p.event >= 26);
         }
         // Player.handleEntityEvent 22 / 23: reduced debug info on / off.
         if (22..=23).contains(&p.event)
-            && let Some(r) = self.remote.as_mut().filter(|r| r.entity_id == p.id)
+            && let Some(r) = self.side.remote.as_mut().filter(|r| r.entity_id == p.id)
         {
             r.reduced_debug_info = p.event == 22;
             self.side.debug_entries.0.invalidate();
@@ -166,7 +171,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // sound, which Player.playSound plays for this client alone
         // (the server's goes to everyone else).
         if p.event == 3
-            && self.remote.as_ref().is_some_and(|r| r.entity_id == p.id)
+            && self
+                .side
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.entity_id == p.id)
             && self.player.is_some()
         {
             let sound = "minecraft:entity.player.death";
@@ -189,7 +198,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let (at, w, h) = (m.position, f64::from(m.width()), f64::from(m.height()));
             self.death_poof([at.x, at.y, at.z], w, h);
         }
-        if p.event == super::super::totem::TOTEM_EVENT {
+        if p.event == crate::game::totem_common::TOTEM_EVENT {
             self.remote_totem(p.id);
         }
         // Mob.handleEntityEvent 20: the spawn poof.
@@ -222,14 +231,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.item_burst(at, item);
             }
         }
-        if p.event == super::super::combat::DROWN_EVENT {
+        if p.event == crate::game::combat_common::DROWN_EVENT {
             self.remote_drown(p.id);
         }
         // Entity events 53 and 54: honey crumbs while sliding, and the
         // ten from a landing (`HoneyBlock.showSlideParticles` /
         // `showJumpParticles`).
         if sunrise_sim::landing::honey_particle_count(p.event).is_some() {
-            let at = if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+            let at = if self
+                .side
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.entity_id == p.id)
+            {
                 self.player
                     .as_ref()
                     .map(|q| [q.position.x, q.position.y, q.position.z])
@@ -243,8 +257,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.honey_entity_particles(at, p.event);
             }
         }
-        if p.event == super::super::consume::USE_ITEM_COMPLETE_EVENT
-            && self.remote.as_ref().is_some_and(|r| r.entity_id == p.id)
+        if p.event == crate::game::item_use_common::USE_ITEM_COMPLETE_EVENT
+            && self
+                .side
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.entity_id == p.id)
         {
             self.remote_complete_using();
         }
@@ -256,7 +274,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(id) = self.remote_effect_id(p.effect) else {
             return;
         };
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+        if self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == p.id)
+        {
             self.potions.effects.list.retain(|e| e.id != id);
         } else if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
             m.extra.client_effects.list.retain(|e| e.id != id);
@@ -273,7 +296,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (index, _, value) = entry;
         let single = std::slice::from_ref(entry);
         let size_key = self.synched_size_key(id as u32);
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             if let (0, Value::Byte(flags)) = (index, value) {
                 if let Some(t) = r.entities.get_mut(&id) {
                     t.on_fire = flags & 1 != 0;
@@ -324,6 +347,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let Some(item) = self.dropped.iter_mut().find(|d| d.id == id as u32) {
                 item.no_gravity = *no_gravity;
             } else if let Some(pending) = self
+                .side
                 .remote
                 .as_mut()
                 .and_then(|r| r.pending_items.get_mut(&id))
@@ -363,6 +387,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .any(|m| m.id == id as u32 && &*m.kind.id == "minecraft:mannequin");
         let other = mannequin
             || self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.level_players.contains_key(&id) && r.entity_id != id);
@@ -403,7 +428,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // LivingEntity.onSyncedDataUpdated(SLEEPING_POS_ID): this
         // player lies down in the bed, or gets up.
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
+        if self.side.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             match (index, value) {
                 (14, Value::OptPos(bed)) => {
                     if bed.is_some() && self.sleeping.is_none() {
@@ -450,7 +475,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         pl.fall_flying = flags & -128 != 0;
                     }
                     let on_fire = flags & 0x01 != 0;
-                    if let Some(r) = self.remote.as_mut() {
+                    if let Some(r) = self.side.remote.as_mut() {
                         r.own_invisible = flags & 0x20 != 0;
                         let was_on_fire = std::mem::replace(&mut r.own_on_fire, on_fire);
                         // The server put the fire out: the
@@ -482,17 +507,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID.
                 (12, Value::Int(count)) => {
-                    if let Some(r) = self.remote.as_mut() {
+                    if let Some(r) = self.side.remote.as_mut() {
                         r.own_arrows = *count;
                     }
                 }
                 (13, Value::Int(count)) => {
-                    if let Some(r) = self.remote.as_mut() {
+                    if let Some(r) = self.side.remote.as_mut() {
                         r.own_stingers = *count;
                     }
                 }
                 (19 | 20, Value::Id(v)) => {
-                    if let Some(r) = self.remote.as_mut() {
+                    if let Some(r) = self.side.remote.as_mut() {
                         r.own_shoulders[usize::from(*index == 20)] =
                             (*v > 0).then(|| (*v - 1).clamp(0, 4));
                     }
@@ -519,7 +544,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         && let Some(stack) = self.stack_in(slot).cloned()
                     {
                         self.use_duration = self.use_duration(&stack);
-                        self.use_start = super::super::using_item::UseStart::of(stack);
+                        self.use_start = crate::game::item_use_common::UseStart::of(stack);
                         self.side_reset_client_item_use();
                     }
                 }
@@ -531,6 +556,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Entity.isDiscrete's name tag), and the dust a runner raises.
         if (mannequin
             || self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.level_players.contains_key(&id)))
@@ -566,6 +592,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         p: play::SetEntityData,
     ) -> Result<()> {
         if !self
+            .side
             .remote
             .as_ref()
             .is_some_and(|r| r.logged_in && r.reconfiguring.is_none())
@@ -652,7 +679,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The player's own instances: its maximum health (the hearts the
         // HUD draws and the health it may hold), reach, speed and so on.
         // Then the received health again, which the old maximum clamped.
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+        if self
+            .side
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == p.id)
+        {
             let nameplate = self.remote_nameplate_values(&p.values);
             self.apply_own_attributes(p.values);
             if let Some(m) = self.side.player_model.as_mut() {
@@ -671,7 +703,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The entity type of a resident remote entity (`ClientLevel.getEntity`), if present.
     pub(in crate::game::client_side) fn remote_entity_kind(&self, id: i32) -> Option<String> {
-        let r = self.remote.as_ref()?;
+        let r = self.side.remote.as_ref()?;
         if id == r.entity_id {
             return Some("minecraft:player".to_owned());
         }

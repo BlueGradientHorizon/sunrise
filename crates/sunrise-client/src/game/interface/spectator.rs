@@ -36,6 +36,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .collect();
         let teams = self.score.board.teams_streamed();
         let rosters: Vec<_> = self
+            .side
             .remote
             .iter()
             .flat_map(|remote| teams.iter().copied().map(move |team| (remote, team)))

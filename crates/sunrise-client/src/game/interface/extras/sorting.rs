@@ -29,7 +29,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return Vec::new();
         }
-        let chest_like = if self.remote.is_some() {
+        let chest_like = if self.side.remote.is_some() {
             if !self.remote_storage_open() {
                 return Vec::new();
             }

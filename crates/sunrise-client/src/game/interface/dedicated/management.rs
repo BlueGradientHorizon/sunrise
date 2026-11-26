@@ -12,7 +12,6 @@ use sunrise_game_data::{
     text::Text,
 };
 use sunrise_protocol::text::translatable;
-use sunrise_server_files::profiles;
 use sunrise_server_files::user_lists::{BanEntry, NameAndId, OpEntry, WhiteEntry};
 
 /// A `UserBan`: the player, the reason, the source, the end.
@@ -147,14 +146,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "serversettings/motd" => {
                 return json!({
-                    "value": self.lan.as_ref().map(|lan| lan.hub.lan.shared.motd()).unwrap_or_default()
+                    "value": self.side.lan.as_ref().map(|lan| lan.hub.lan.shared.motd()).unwrap_or_default()
                 });
             }
             "serversettings/motd/set" => {
                 let Some(value) = body["value"].as_str() else {
                     return json!({ "error": "MOTD must be a string" });
                 };
-                if let Some(lan) = &self.lan {
+                if let Some(lan) = &self.side.lan {
                     rpc(format!(
                         "Update MOTD from '{}' to '{}'",
                         lan.hub.lan.shared.motd(),
@@ -188,7 +187,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "serversettings/entity_broadcast_range" => {
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .map_or(100, |host| host.hub.entity_range_percent)
                 });
@@ -203,6 +202,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     });
                 };
                 let current = self
+                    .side
                     .lan
                     .as_ref()
                     .map_or(100, |host| host.hub.entity_range_percent);
@@ -216,7 +216,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.store_property("entity-broadcast-range-percentage", percentage.to_string());
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .map_or(100, |host| host.hub.entity_range_percent)
                 });
@@ -224,7 +224,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "serversettings/simulation_distance" => {
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .map_or(0, |host| host.hub.config.simulation_distance)
                 });
@@ -237,6 +237,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return json!({ "error": "simulation distance must be an integer" });
                 };
                 let current = self
+                    .side
                     .lan
                     .as_ref()
                     .map_or(0, |host| host.hub.config.simulation_distance);
@@ -248,14 +249,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.store_property("simulation-distance", distance.to_string());
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .map_or(0, |host| host.hub.config.simulation_distance)
                 });
             }
             "serversettings/view_distance" => {
                 return json!({
-                    "value": self.lan.as_ref().map_or(0, |host| host.hub.config.view_distance)
+                    "value": self.side.lan.as_ref().map_or(0, |host| host.hub.config.view_distance)
                 });
             }
             "serversettings/view_distance/set" => {
@@ -266,6 +267,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return json!({ "error": "view distance must be an integer" });
                 };
                 let current = self
+                    .side
                     .lan
                     .as_ref()
                     .map_or(0, |host| host.hub.config.view_distance);
@@ -274,7 +276,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 state.view.0 = distance.max(0) as u32;
                 self.store_property("view-distance", distance.to_string());
                 return json!({
-                    "value": self.lan.as_ref().map_or(0, |host| host.hub.config.view_distance)
+                    "value": self.side.lan.as_ref().map_or(0, |host| host.hub.config.view_distance)
                 });
             }
             "serversettings/operator_user_permission_level" => {
@@ -317,7 +319,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "serversettings/spawn_protection_radius" => {
                 return json!({
-                    "value": self.lan.as_ref().map_or(0, |host| host.hub.spawn_protection)
+                    "value": self.side.lan.as_ref().map_or(0, |host| host.hub.spawn_protection)
                 });
             }
             "serversettings/spawn_protection_radius/set" => {
@@ -328,6 +330,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return json!({ "error": "spawn protection radius must be an integer" });
                 };
                 let current = self
+                    .side
                     .lan
                     .as_ref()
                     .map_or(0, |host| host.hub.spawn_protection);
@@ -337,12 +340,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.set_spawn_protection(radius);
                 self.store_property("spawn-protection", radius.to_string());
                 return json!({
-                    "value": self.lan.as_ref().map_or(0, |host| host.hub.spawn_protection)
+                    "value": self.side.lan.as_ref().map_or(0, |host| host.hub.spawn_protection)
                 });
             }
             "serversettings/allow_flight" => {
                 return json!({
-                    "value": self.lan.as_ref().is_some_and(|host| host.hub.config.allow_flight)
+                    "value": self.side.lan.as_ref().is_some_and(|host| host.hub.config.allow_flight)
                 });
             }
             "serversettings/allow_flight/set" => {
@@ -350,6 +353,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return json!({ "error": "allow flight must be a boolean" });
                 };
                 let current = self
+                    .side
                     .lan
                     .as_ref()
                     .is_some_and(|host| host.hub.config.allow_flight);
@@ -357,13 +361,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.set_allow_flight(allow);
                 self.store_property("allow-flight", allow.to_string());
                 return json!({
-                    "value": self.lan.as_ref().is_some_and(|host| host.hub.config.allow_flight)
+                    "value": self.side.lan.as_ref().is_some_and(|host| host.hub.config.allow_flight)
                 });
             }
             "serversettings/hide_online_players" => {
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.hide_online_players())
                 });
@@ -373,6 +377,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return json!({ "error": "hide online players must be a boolean" });
                 };
                 let current = self
+                    .side
                     .lan
                     .as_ref()
                     .is_some_and(|host| host.hub.lan.shared.hide_online_players());
@@ -383,7 +388,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.store_property("hide-online-players", hide.to_string());
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.hide_online_players())
                 });
@@ -391,7 +396,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "serversettings/status_replies" => {
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.enable_status())
                 });
@@ -401,6 +406,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return json!({ "error": "status replies must be a boolean" });
                 };
                 let current = self
+                    .side
                     .lan
                     .as_ref()
                     .is_some_and(|host| host.hub.lan.shared.enable_status());
@@ -409,7 +415,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.store_property("enable-status", enable.to_string());
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.enable_status())
                 });
@@ -417,7 +423,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "serversettings/accept_transfers" => {
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.accepts_transfers())
                 });
@@ -427,6 +433,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return json!({ "error": "accepts transfers must be a boolean" });
                 };
                 let current = self
+                    .side
                     .lan
                     .as_ref()
                     .is_some_and(|host| host.hub.lan.shared.accepts_transfers());
@@ -436,7 +443,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.set_accepts_transfers(accept);
                 return json!({
                     "value": self
-                        .lan
+                        .side.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.accepts_transfers())
                 });
@@ -801,6 +808,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .and_then(|s| u128::from_str_radix(s, 16).ok());
         let name = player["name"].as_str();
         let guest = self
+            .side
             .lan
             .as_ref()?
             .hub
@@ -842,7 +850,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .as_mut()
                 .and_then(|c| c.get_by_id(id));
             return cached.or_else(|| {
-                sunrise_server_profiles_http::find_by_id(&profiles::discovery_url(), id)
+                self.side
+                    .dedicated_services
+                    .as_ref()
+                    .and_then(|services| (services.find_id)(id))
             });
         }
         self.resolve_name(player["name"].as_str()?)

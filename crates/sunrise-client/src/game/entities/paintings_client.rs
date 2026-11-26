@@ -1,6 +1,10 @@
 use super::{Game, entity_culling::default_range};
-use crate::game::server_side::paintings::*;
 use sunrise_client::mesher::Vertex;
+
+pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
+    let centre = (corners[0] + corners[1] + corners[2] + corners[3]) / 4.0;
+    normal.dot(-centre) > 0.0
+}
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// PaintingRenderer: variant on the front, back texture behind and on the edges.

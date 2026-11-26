@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `canHarmPlayer` (the `pvp` game rule and the victim's team), and not
     /// on the attacker's vehicle.
     pub(in crate::game::server_side) fn stab_players_for(&self, actor: u32) -> Vec<StabPlayer> {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Vec::new();
         };
         let board = &self.score.board;
@@ -228,7 +228,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `awardKillScore` and the victim's thorns. None when the victim has gone.
     fn land_player_stab(&mut self, attacker: u32, s: &PlayerStab) -> Option<Landed> {
         let victim = Victim::Guest(s.victim);
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let g = host.hub.guest(s.victim).filter(|g| !g.dead)?;
         let id = g.entity_id;
         let (attacker_id, attacker_name) = host

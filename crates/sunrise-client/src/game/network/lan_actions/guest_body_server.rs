@@ -52,7 +52,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             from,
             jump_yaw,
         } = commit;
-        let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
         let id = g.entity_id as u32;
@@ -151,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => None,
         });
         self.guest_motion_events(conn, at, events);
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(gi) = host.hub.guests.connection_index(conn) else {
@@ -167,6 +167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // the tracked fall. Use its position and the health after protection.
         if let Some(end) = fall_end
             && self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.play.get(&conn))
@@ -232,6 +233,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     multiplier,
                 }) => {
                     if let Some((uuid, id, name)) = self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
@@ -245,7 +247,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 MotionEvent::Fall(sunrise_sim::landing::FallEvent::Broadcast(event))
                     if sunrise_sim::landing::honey_particle_count(event as i8).is_some() =>
                 {
-                    if let Some(host) = self.lan.as_ref()
+                    if let Some(host) = self.side.lan.as_ref()
                         && let Some(id) = host.hub.guest(conn).map(|g| g.entity_id)
                     {
                         host.hub.entity_event(id, event as i8);
@@ -256,6 +258,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     state,
                 }) => {
                     let entity = self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
@@ -274,6 +277,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 MotionEvent::Fall(event) => {
                     let player = self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
@@ -283,7 +287,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
                 MotionEvent::Snowflake { position, velocity } => {
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = self.side.lan.as_ref() {
                         crate::game::lan_particles::send_snowflake_particle(
                             host,
                             [position.x, position.y, position.z],
@@ -295,11 +299,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if !self.drown_bubbles(at, [0.0; 3], bubbles) {
                         continue;
                     }
-                    if let Some(host) = self.lan.as_ref()
+                    if let Some(host) = self.side.lan.as_ref()
                         && let Some(g) = host.hub.guest(conn)
                     {
                         host.hub
-                            .entity_event(g.entity_id, crate::game::combat::DROWN_EVENT);
+                            .entity_event(g.entity_id, crate::game::combat_common::DROWN_EVENT);
                     }
                 }
                 MotionEvent::EnterBlock { state } => {
@@ -314,6 +318,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.as_guest(conn, |game| game.trigger_honey_slide([pos.x, pos.y, pos.z]));
                     }
                     let Some((id, at)) = self
+                        .side
                         .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
@@ -325,7 +330,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let name = "minecraft:block.honey_block.slide";
                         self.send_level_sound(LevelSound::new(name, at, 1.0, 1.0), Some(conn));
                     }
-                    if particles && let Some(host) = self.lan.as_ref() {
+                    if particles && let Some(host) = self.side.lan.as_ref() {
                         host.hub.entity_event(id, 53);
                     }
                 }
@@ -339,7 +344,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// for `Entity.applyEffectsFromBlocks` and the movement a glide reads.
     pub(in crate::game) fn guest_server_tick(&mut self, conn: u32, body: bool) {
         // The last move's fall stands in for the server's delta movement.
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let fell = host
@@ -348,7 +353,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .and_then(|g| g.moves.last().map(|m| m.delta[1]))
             .unwrap_or(0.0);
         self.guest_glide_tick(conn, fell);
-        let Some((moves, from_ground)) = self.lan.as_mut().and_then(|host| {
+        let Some((moves, from_ground)) = self.side.lan.as_mut().and_then(|host| {
             host.hub.update_guest(conn, |g| {
                 let moves = std::mem::take(&mut g.moves);
                 let from_ground = if moves.is_empty() {
@@ -361,7 +366,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }) else {
             return;
         };
-        let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+        let g = self.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
         let id = g.entity_id as u32;
         if g.spectator() {
             // ServerPlayer.doTick runs the player's whole tick for a spectator
@@ -385,7 +390,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let _ = player.peaceful_regeneration(&game.loop_context, rules);
                 let _ = player.food_tick(
                     &game.loop_context,
-                    crate::game::entity::damage_level_of!(
+                    crate::game::entity_server::damage_level_of!(
                         game,
                         &sunrise_sim::health::NO_ATTACK,
                         no_push,
@@ -590,7 +595,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let _ = player.peaceful_regeneration(&game.loop_context, rules);
             let _ = player.food_tick(
                 &game.loop_context,
-                crate::game::entity::damage_level_of!(
+                crate::game::entity_server::damage_level_of!(
                     game,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,
@@ -631,11 +636,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let travel_synced = self
+            .side
             .lan
             .as_mut()
             .is_some_and(|host| host.hub.apply_server_travel(conn, travel_teleport, travel));
         if let Some((at, velocity)) = soul
-            && let Some(host) = self.lan.as_ref()
+            && let Some(host) = self.side.lan.as_ref()
         {
             crate::game::lan_particles::send_soul_particle(host, at, velocity);
         }
@@ -653,6 +659,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(v) = marked {
             if mod_api::__private::listened(mod_api::HookId::PlayerVelocity)
                 && let Some((uuid, name)) = self
+                    .side
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.guest(conn))
@@ -661,7 +668,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.native_player_velocity(uuid, &name, [v.x, v.y, v.z]);
             }
             if !travel_synced
-                && let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                && let Some(g) = self.side.lan.as_ref().and_then(|host| host.hub.guest(conn))
             {
                 g.send(&C::SetEntityMotion(play::SetEntityMotion {
                     id: g.entity_id,

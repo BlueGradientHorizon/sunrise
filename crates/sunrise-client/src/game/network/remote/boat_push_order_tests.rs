@@ -13,12 +13,18 @@ fn a_boat_pushes_the_player_in_the_level_tick_order() {
         player.client_side = true;
         game.player = Some(player);
         game.mobs.clear();
-        let boat = crate::game::boats::Boat::new(9, "oak".into(), Vec3::new(0.5, 64.0, 3.5), 0.0);
+        let boat =
+            crate::game::boats_common::Boat::new(9, "oak".into(), Vec3::new(0.5, 64.0, 3.5), 0.0);
         game.boats.push(boat);
         let after = game.remote_pushes(false);
         assert_eq!(game.remote_pushes(true), Vec3::ZERO);
         assert!(after.z > 0.0, "{after:?}");
-        game.remote.as_mut().unwrap().ticked_before_player.insert(9);
+        game.side
+            .remote
+            .as_mut()
+            .unwrap()
+            .ticked_before_player
+            .insert(9);
         assert_eq!(game.remote_pushes(false), Vec3::ZERO);
         assert_eq!(game.remote_pushes(true), after);
     });

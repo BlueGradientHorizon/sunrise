@@ -1,9 +1,119 @@
 use super::*;
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_tick::BorrowedMobTick;
-use crate::game::creatures::borrowed_tick::retain_mob_rows;
-use crate::game::creatures::borrowed_tick::route_player_events;
+use crate::game::{combat_common::PlayerCredit, entity_memory::OffLevel, native_ticks};
+use sunrise_gameplay_common::lan::mob_players::{GuestViews, acts_on_player};
+
+/// Route each player event to the player selected when it was emitted.
+/// Untagged events retain the previous per-tick guest binding.
+pub(in crate::game) fn route_player_events(
+    events: &mut Vec<MobEvent>,
+    from: usize,
+    seen_guest: Option<u32>,
+    guest_ids: &[(u32, u32)],
+    guest_events: &mut Vec<(u32, u32, MobEvent)>,
+    mob: u32,
+) {
+    let mut k = from;
+    while k < events.len() {
+        let (conn, tagged) = match &events[k] {
+            MobEvent::ForPlayer { conn, .. } => (*conn, true),
+            _ => (seen_guest, false),
+        };
+        if tagged {
+            let MobEvent::ForPlayer { event, .. } = events.remove(k) else {
+                unreachable!();
+            };
+            events.insert(k, *event);
+        }
+        // A hoglin broadcast carries the source's player, not the receiving
+        // hoglin's independently selected player.
+        if let MobEvent::HoglinAttackTarget {
+            target: Who::Player,
+            player,
+            ..
+        } = &mut events[k]
+        {
+            *player = conn;
+        }
+        // ShulkerBullet stores a target for later projectile ticks. Preserve
+        // the selected guest's entity ID instead of the host-player sentinel.
+        if let Some(conn) = conn
+            && let MobEvent::Projectile(p) = &mut events[k]
+            && let ProjectileKind::ShulkerBullet { target, .. } = &mut p.kind
+            && *target == Some(Who::Player)
+        {
+            *target = guest_ids
+                .iter()
+                .find(|g| g.0 == conn)
+                .map(|g| Who::Mob(g.1));
+        }
+        if let Some(conn) = conn
+            && acts_on_player(&events[k])
+        {
+            guest_events.push((conn, mob, events.remove(k)));
+        } else {
+            k += 1;
+        }
+    }
+}
+
+/// Commit departures in the borrowed list, not when a tick merely proposes retention.
+/// In particular an interrupted pass keeps the credit of every row it gives back.
+pub(in crate::game) fn retain_mob_rows(
+    mobs: &mut sunrise_sim::join_seq::JoinList<Mob>,
+    player_credit: &mut std::collections::HashMap<u32, PlayerCredit>,
+    mut keep: impl FnMut(&Mob) -> bool,
+) {
+    mobs.retain(|mob| {
+        let kept = keep(mob);
+        if !kept {
+            player_credit.remove(&mob.id);
+        }
+        kept
+    });
+}
+
+pub(in crate::game) struct BorrowedMobTick<'a> {
+    pub(in crate::game) mobs: &'a mut sunrise_sim::join_seq::JoinList<Mob>,
+    pub(in crate::game) snapshot: &'a mut Vec<Seen>,
+    pub(in crate::game) passenger_objects: &'a [Seen],
+    pub(in crate::game) blocked: &'a std::collections::HashSet<u32>,
+    pub(in crate::game) events: &'a mut Vec<MobEvent>,
+    pub(in crate::game) restocks: &'a mut Vec<sunrise_sim::mobs::villager_brain::RestockNotice>,
+    pub(in crate::game) pushes: &'a mut sunrise_sim::mobs::PendingPushes,
+    pub(in crate::game) dead: &'a mut Vec<Mob>,
+    pub(in crate::game) corpses: &'a mut Vec<Mob>,
+    pub(in crate::game) died: &'a mut sunrise_level::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) ticked: &'a mut sunrise_level::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) guests: &'a mut GuestViews,
+    pub(in crate::game) spare: &'a mut Option<PlayerView>,
+    pub(in crate::game) bindings: &'a mut sunrise_level::fast_hash::FxHashMap<u32, u32>,
+    pub(in crate::game) guest_ids: &'a mut Vec<(u32, u32)>,
+    pub(in crate::game) guest_events: &'a mut Vec<(u32, u32, MobEvent)>,
+    pub(in crate::game) player_credit: &'a mut std::collections::HashMap<u32, PlayerCredit>,
+    pub(in crate::game) path_writes: &'a mut Vec<((i32, i32, i32), u32, u32)>,
+    pub(in crate::game) gone: &'a mut Vec<(u32, Vec3, f64, f64, Option<Mob>)>,
+    pub(in crate::game) lent: sunrise_sim::health::LentLevel,
+    pub(in crate::game) laps: &'a mut sunrise_level::spans::Laps,
+    pub(in crate::game) uuid: Option<[i32; 4]>,
+    pub(in crate::game) level_id: &'static str,
+    pub(in crate::game) round: &'a mut native_ticks::TickRound,
+    pub(in crate::game) stand_result: &'a mut Result<()>,
+}
 
 impl Game<'_, crate::game::server_side::ServerState> {
+    pub(in crate::game) fn retained_passenger_snapshot(&self, uuid: Option<[i32; 4]>) -> Vec<Seen> {
+        if self.persist.off_level.is_empty() {
+            Vec::new()
+        } else {
+            self.persist
+                .off_level
+                .values()
+                .filter_map(OffLevel::as_mob)
+                .map(|m| seen(m, uuid, self.items()))
+                .collect()
+        }
+    }
+
     /// The killing blow of a mob as the death hooks name it: its damage
     /// type and the causing entity's id (0 for none).
     pub(in crate::game::server_side) fn mob_damage_source(&self, m: &Mob) -> (&'static str, u32) {
@@ -41,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut died = std::mem::take(state.died);
         let mut ticked = std::mem::take(state.ticked);
         let mut guests = std::mem::take(state.guests);
-        let guest_indices = |guests: &super::super::lan_mobs::GuestViews| {
+        let guest_indices = |guests: &GuestViews| {
             guests
                 .iter()
                 .enumerate()
@@ -189,15 +299,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .with_mob_hurt_handoff(&mut paused_hurt)
                 .with_mob_uuids(&self.persist.uuids)
                 .with_player_resolver(
-                    crate::game::entity::player_resolver!(self),
+                    crate::game::server_side::entity_server::player_resolver!(self),
                     &mut player_credit,
                 )
-                .with_effects(crate::game::entity::hit_effects_of!(
+                .with_effects(crate::game::server_side::entity_server::hit_effects_of!(
                     self,
                     None,
                     in hit_sounds
                 ))
-                .with_reads(crate::game::entity::hit_reads_of!(self));
+                .with_reads(crate::game::server_side::entity_server::hit_reads_of!(self));
                 let path_changes = sunrise_sim::mobs::collision_changes(&base, &path_writes);
                 laps.lap("creature_prepare");
                 let mut cached_difficulty: Option<((i32, i32), spawning::LocalDifficulty)> = None;
@@ -933,7 +1043,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             std::mem::swap(&mut self.side.last_hurt_by_player, &mut player_credit);
             std::mem::swap(&mut self.side.died, &mut died);
             std::mem::swap(&mut self.creatures.ticked, &mut ticked);
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
             // Lifts and hurt listeners can write positions from the owning game.
@@ -1104,7 +1214,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             std::mem::swap(&mut self.side.last_hurt_by_player, &mut player_credit);
             std::mem::swap(&mut self.side.died, &mut died);
             std::mem::swap(&mut self.creatures.ticked, &mut ticked);
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.side.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
             if callback_panic.is_some() || state.stand_result.is_err() {
@@ -1115,6 +1225,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             guests = self.lan_guest_views();
             guest_slots = guest_indices(&guests);
             guest_ids = self
+                .side
                 .lan
                 .as_ref()
                 .map(|host| {

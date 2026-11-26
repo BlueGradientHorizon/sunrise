@@ -1,7 +1,7 @@
 use super::{GuiDraw, TrackedWaypoint};
 use crate::game::{
-    in_own_process, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
-    remote::RemoteDimensionEntry,
+    client_side::remote_client::session_state::RemoteDimensionEntry, in_own_process,
+    native_entity_refs::tests::with_client_game, native_lifecycle_common::NativeLifecycle,
 };
 use std::time::Duration;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
@@ -35,7 +35,7 @@ fn connect(game: &mut crate::game::ClientGame<'_>, position: Vec3) -> Pipe {
         RemoteDimensionEntry::Login,
         Reason::Other,
     );
-    let remote = game.remote.as_mut().unwrap();
+    let remote = game.side.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = 1;
     remote.level_load.finish();
@@ -61,6 +61,7 @@ fn add_armor_stand_facing(
     yaw: i8,
 ) {
     let kind = game
+        .side
         .remote
         .as_ref()
         .unwrap()

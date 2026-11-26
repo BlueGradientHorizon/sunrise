@@ -41,7 +41,7 @@ mod owner_attachment_save_tests {
 
     /// Set `value` in the map of the player `conn`, as a mod's write does.
     fn set_value(game: &mut crate::game::ServerGame<'_>, conn: u32, value: i32) {
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         PROGRESS
             .set(
                 host.hub.guests.attachments_mut(conn).unwrap(),
@@ -54,7 +54,7 @@ mod owner_attachment_save_tests {
     /// An integrated host whose owner is its placed player (conn 1, uuid 1).
     fn owned_host(game: &mut crate::game::ServerGame<'_>) {
         let _rx = super::super::world_spawn_sync_tests::host_for(game);
-        game.lan.as_mut().unwrap().owner = Some(crate::game::lan::Owner {
+        game.side.lan.as_mut().unwrap().owner = Some(crate::game::lan::Owner {
             uuid: 1,
             saved: None,
         });
@@ -100,7 +100,7 @@ mod owner_attachment_save_tests {
                 let mut game = crate::game::game_tests::tests::server_game(&mut resources);
                 owned_host(&mut game);
                 let other = crate::game::native_player_death::tests::new_guest(2, 2);
-                game.lan.as_mut().unwrap().hub.guests.push(other);
+                game.side.lan.as_mut().unwrap().hub.guests.push(other);
                 set_value(&mut game, 1, 7);
                 set_value(&mut game, 2, 5);
                 // For their turn, the other player's map is the game's.
@@ -157,7 +157,7 @@ mod connected_statistics_save_tests {
         )));
         game.set_allow_commands(true);
         let _rx = super::super::world_spawn_sync_tests::host_for(&mut game);
-        let host = game.lan.as_mut().unwrap();
+        let host = game.side.lan.as_mut().unwrap();
         host.owner = None;
         host.hub
             .guests
@@ -197,7 +197,7 @@ mod connected_statistics_save_tests {
                     .any(|m| m.translation_key() == Some("commands.save.success")),
                 "actual save completion"
             );
-            let host = game.lan.as_ref().unwrap();
+            let host = game.side.lan.as_ref().unwrap();
             assert_eq!(host.hub.guests.len(), 1, "saved while still connected");
             assert_eq!(
                 host.play[&1].stats.get("used", "minecraft:diamond_sword"),
@@ -241,7 +241,7 @@ mod connected_statistics_save_exclusion_tests {
         std::fs::create_dir_all(&game.side.world_root).unwrap();
         let path =
             super::super::super::stats::player_json(&game.side.world_root, "stats", [0, 0, 0, 1]);
-        let mut host = game.lan.take().unwrap();
+        let mut host = game.side.lan.take().unwrap();
         host.play
             .entry(1)
             .or_default()
@@ -259,7 +259,7 @@ mod connected_statistics_save_exclusion_tests {
         game.save_connected_guest_statistics(&host);
         assert!(!path.exists(), "no play record: no invented statistics");
         host.play.insert(1, play);
-        game.lan = Some(host);
+        game.side.lan = Some(host);
         game.options.dedicated = None;
         game.save_game_metadata().unwrap();
         assert!(!path.exists(), "the existing dedicated gate is preserved");
@@ -268,7 +268,7 @@ mod connected_statistics_save_exclusion_tests {
         game.save_game_metadata().unwrap();
         assert!(!path.exists(), "the existing nonclient gate is preserved");
         game.options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
-        let host = game.lan.take().unwrap();
+        let host = game.side.lan.take().unwrap();
         game.save_game_metadata().unwrap();
         assert!(!path.exists(), "no hub: no substituted record");
         assert_eq!(

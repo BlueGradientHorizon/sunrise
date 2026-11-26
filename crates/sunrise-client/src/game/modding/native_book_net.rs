@@ -15,7 +15,7 @@ fn registered() -> BTreeSet<String> {
 }
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn sync_replaced_book_settings(&mut self, uuid: u128) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(guest) = host.hub.guests.iter().find(|guest| guest.uuid == uuid) else {
@@ -70,7 +70,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         book: &mod_api::RecipeBookTypeKey,
         flags: sunrise_sim::recipe_book::BookFlags,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let Some(guest) = host
@@ -100,7 +100,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game::server_side) fn guest_book_settings(&mut self, conn: u32, data: &[u8]) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if !host

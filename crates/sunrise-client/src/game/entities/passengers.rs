@@ -3,15 +3,13 @@
 //! jockeys, strider jockeys, zombie horsemen) and the skeleton horse trap.
 //! Saving riders under `Passengers` lives in `persist.rs`.
 use super::Game;
+use crate::game::passengers_common::{Riders, player_box_top};
 use std::collections::HashMap;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_sim::mobs::{Species, riders};
-
-/// The mobs riding each vehicle, by the vehicle's id: their indices, in the mobs' order.
-pub(in crate::game) type Riders = HashMap<u32, Vec<usize>>;
 
 /// The seconds a skeleton horse trap waits for a player: 15 minutes.
 pub(in crate::game) const TRAP_LIFETIME: i32 = 18000;
@@ -29,7 +27,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn retain_removed_vehicle(
         &mut self,
         id: u32,
-        vehicle: super::persist::RemovedVehicle,
+        vehicle: crate::game::entity_memory::RemovedVehicle,
     ) {
         if self.riding == Some(id)
             || self.ridden_by_guest(id)
@@ -111,7 +109,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .persist
                     .off_level
                     .values()
-                    .any(crate::game::persist::OffLevel::is_removed)
+                    .any(crate::game::entity_memory::OffLevel::is_removed)
             {
                 // Keep a removed vehicle only while cancellation leaves actual
                 // references to it; completed dismounts release its ownership.
@@ -257,7 +255,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Some(super::minecarts::cart_general_seat(c.position));
         }
         if let Some(t) = self.tnts.iter().find(|t| t.id == vehicle && t.id != 0) {
-            return Some(super::tnt::tnt_general_seat(t.position));
+            return Some(crate::game::tnt_common::tnt_general_seat(t.position));
         }
         if let Some(v) = self.mobs.iter().find(|m| m.id == vehicle && !m.removed) {
             let (index, count) = self.passenger_place(vehicle, rider);
@@ -584,22 +582,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-/// `Player`'s passenger attachment for synced pose `pose` (the `Pose` id): the top of its box
-/// in `Player.POSES` (`EntityDimensions.scale`, in floats), at the player's scale. Poses it has
-/// no box for stand (`getOrDefault(pose, STANDING_DIMENSIONS)`).
-pub(in crate::game) fn player_box_top(pose: u8, scale: f64) -> f64 {
-    let height: f32 = match pose {
-        // FALL_FLYING, SWIMMING, SPIN_ATTACK: 0.6 x 0.6.
-        1 | 3 | 4 => 0.6,
-        // SLEEPING and DYING: 0.2 x 0.2.
-        2 | 7 => 0.2,
-        // CROUCHING: 0.6 x 1.5.
-        5 => 1.5,
-        _ => 1.8,
-    };
-    f64::from(height * scale as f32)
-}
-
 #[cfg(test)]
 pub(in crate::game) mod player_seat_tests {
     #[test]
@@ -628,6 +610,9 @@ pub(in crate::game) mod player_seat_tests {
 #[cfg(test)]
 pub(in crate::game) mod off_level_tests {
     use super::*;
+    use crate::game::{
+        boats_common::Boat, entity_memory::OffLevel, server_side::minecarts_server::CartHit,
+    };
     use sunrise_sim::mobs::Mob;
 
     #[test]
@@ -648,15 +633,9 @@ pub(in crate::game) mod off_level_tests {
                     game.mobs.push(vehicle);
                     game.mobs.push(rider);
                     if retained {
-                        game.persist.off_level.insert(
-                            169,
-                            crate::game::persist::OffLevel::Mob(Mob::new(
-                                169,
-                                kind,
-                                Vec3::ZERO,
-                                0.0,
-                            )),
-                        );
+                        game.persist
+                            .off_level
+                            .insert(169, OffLevel::Mob(Mob::new(169, kind, Vec3::ZERO, 0.0)));
                     }
                     game.sync_riders();
                     assert_eq!(
@@ -685,10 +664,9 @@ pub(in crate::game) mod off_level_tests {
                     game.mobs.push(rider);
                 }
                 if retained {
-                    game.persist.off_level.insert(
-                        179,
-                        crate::game::persist::OffLevel::Mob(Mob::new(179, kind, Vec3::ZERO, 0.0)),
-                    );
+                    game.persist
+                        .off_level
+                        .insert(179, OffLevel::Mob(Mob::new(179, kind, Vec3::ZERO, 0.0)));
                 }
                 game.sync_riders();
                 assert_eq!(
@@ -716,9 +694,7 @@ pub(in crate::game) mod off_level_tests {
             let mut held = Mob::new(102, kind.clone(), Vec3::ZERO, 0.0);
             held.extra.mount = Some(101);
             held.extra.vehicle_order = 0;
-            game.persist
-                .off_level
-                .insert(102, crate::game::persist::OffLevel::Mob(held));
+            game.persist.off_level.insert(102, OffLevel::Mob(held));
             let mut resident = Mob::new(103, kind, Vec3::ZERO, 0.0);
             resident.extra.mount = Some(101);
             resident.extra.vehicle_order = 1;
@@ -743,9 +719,7 @@ pub(in crate::game) mod off_level_tests {
                 let mut vehicle = Mob::new(71, kind, root.position, 0.0);
                 vehicle.extra.mount = Some(70);
                 game.mobs.push(root);
-                game.persist
-                    .off_level
-                    .insert(71, crate::game::persist::OffLevel::Mob(vehicle));
+                game.persist.off_level.insert(71, OffLevel::Mob(vehicle));
                 // Camel.getPassengerAttachmentPoint: two Animals occupy z +0.7/-0.5.
                 // EntityTypes.HAPPY_GHAST: front, left, back, right, all at y +4.
                 let expected: &[(f64, f64)] = if name == "minecraft:camel" {
@@ -761,9 +735,7 @@ pub(in crate::game) mod off_level_tests {
                     rider.extra.mount = Some(71);
                     rider.extra.vehicle_order = seat as i64;
                     if name == "minecraft:happy_ghast" && seat == 2 {
-                        game.persist
-                            .off_level
-                            .insert(id, crate::game::persist::OffLevel::Mob(rider));
+                        game.persist.off_level.insert(id, OffLevel::Mob(rider));
                         let mut child = Mob::new(80, pig.clone(), Vec3::ZERO, 0.0);
                         child.extra.mount = Some(id);
                         child.age = 23;
@@ -837,27 +809,18 @@ pub(in crate::game) mod off_level_tests {
                             at,
                         ));
                     } else {
-                        game.boats
-                            .push(super::super::boats::Boat::new(71, "oak".into(), at, 0.0));
+                        game.boats.push(Boat::new(71, "oak".into(), at, 0.0));
                     }
                     let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     let mut rider = Mob::new(72, pig.clone(), Vec3::new(5.0, 190.0, 6.0), 0.0);
                     rider.extra.mount = Some(71);
-                    game.persist
-                        .off_level
-                        .insert(72, super::super::persist::OffLevel::Mob(rider));
+                    game.persist.off_level.insert(72, OffLevel::Mob(rider));
                     let mut child = Mob::new(73, pig, Vec3::ZERO, 0.0);
                     child.extra.mount = Some(72);
                     child.age = 19;
                     game.mobs.push(child);
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            true,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, true, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, true));
                     }
@@ -921,9 +884,7 @@ pub(in crate::game) mod off_level_tests {
                     child.age = 19;
                     game.mobs.push(child);
                     game.mobs.push(root);
-                    game.persist
-                        .off_level
-                        .insert(72, crate::game::persist::OffLevel::Mob(rider));
+                    game.persist.off_level.insert(72, OffLevel::Mob(rider));
                     game.sync_riders();
                     let rider = game.mob_object(72).unwrap();
                     if cancel {
@@ -964,9 +925,7 @@ pub(in crate::game) mod off_level_tests {
             child.extra.mount = Some(72);
             game.mobs.push(root);
             game.mobs.push(child);
-            game.persist
-                .off_level
-                .insert(72, crate::game::persist::OffLevel::Mob(parent));
+            game.persist.off_level.insert(72, OffLevel::Mob(parent));
             for dying_passenger in [false, true] {
                 if dying_passenger {
                     game.mob_object_mut(72).unwrap().health = 0.0;
@@ -998,9 +957,7 @@ pub(in crate::game) mod off_level_tests {
             let before = child.position;
             game.mobs.push(root);
             game.mobs.push(child);
-            game.persist
-                .off_level
-                .insert(72, crate::game::persist::OffLevel::Mob(parent));
+            game.persist.off_level.insert(72, OffLevel::Mob(parent));
             game.sync_riders();
             assert_eq!(game.mob_object(71).unwrap().extra.rider, Some(72));
             assert_eq!(game.mob_object(72).unwrap().extra.rider, Some(73));
@@ -1017,6 +974,9 @@ pub(in crate::game) mod off_level_tests {
 pub(in crate::game) mod nested_vehicle_discard_tests {
     use super::*;
     use crate::game::native_entity_refs::tests::{collect_all_entities, collect_entities_in};
+    use crate::game::{
+        boats_common::Boat, entity_memory::OffLevel, server_side::minecarts_server::CartHit,
+    };
     use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -1060,8 +1020,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                         at,
                     ));
                 } else {
-                    game.boats
-                        .push(super::super::boats::Boat::new(71, "oak".into(), at, 0.0));
+                    game.boats.push(Boat::new(71, "oak".into(), at, 0.0));
                 }
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 let mut rider = Mob::new(72, kind.clone(), Vec3::new(2.0, 190.0, 3.0), 0.0);
@@ -1070,9 +1029,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                 let mut child = Mob::new(73, kind, Vec3::ZERO, 0.0);
                 child.extra.mount = Some(72);
                 child.age = 19;
-                game.persist
-                    .off_level
-                    .insert(73, super::super::persist::OffLevel::Mob(child));
+                game.persist.off_level.insert(73, OffLevel::Mob(child));
                 let rider = game.entity(72).unwrap();
                 game.entity_stop_riding(rider);
                 assert_eq!(
@@ -1132,16 +1089,13 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     at,
                 ));
             } else {
-                game.boats
-                    .push(super::super::boats::Boat::new(71, "oak".into(), at, 0.0));
+                game.boats.push(Boat::new(71, "oak".into(), at, 0.0));
             }
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let mut rider = Mob::new(72, kind.clone(), Vec3::new(2.0, 190.0, 3.0), 0.0);
             rider.extra.mount = Some(71);
             if rejected {
-                game.persist
-                    .off_level
-                    .insert(72, super::super::persist::OffLevel::Mob(rider));
+                game.persist.off_level.insert(72, OffLevel::Mob(rider));
             } else {
                 game.mobs.push(rider);
             }
@@ -1240,13 +1194,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     assert!(game.entity_ticking_area()(2, 3));
                     assert!(!game.entity_ticking_area()(136, 3));
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, false));
                     }
@@ -1334,13 +1282,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     game.riding = Some(71);
                     let vehicle = game.entity(71).unwrap();
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, false));
                     }
@@ -1381,32 +1323,30 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                 with_vehicle_tree(cart, false, |game| {
                     game.mobs.clear();
                     super::super::native_player_death::tests::add_guest(game);
-                    game.lan
+                    game.side
+                        .lan
                         .as_mut()
                         .unwrap()
                         .hub
                         .guests
                         .update(0, |guest| guest.vehicle = Some(71));
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, false));
                     }
                     assert_eq!(calls.load(Ordering::Relaxed), 1);
                     game.guest_vehicle_tick(1);
                     assert_eq!(calls.load(Ordering::Relaxed), 2);
-                    assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].vehicle, Some(71));
+                    assert_eq!(
+                        game.side.lan.as_ref().unwrap().hub.guests[0].vehicle,
+                        Some(71)
+                    );
                     assert!(game.persist.removed_vehicles.contains_key(&71));
                     cancel.store(false, Ordering::Relaxed);
                     game.guest_vehicle_tick(1);
                     assert_eq!(calls.load(Ordering::Relaxed), 3);
-                    assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].vehicle, None);
+                    assert_eq!(game.side.lan.as_ref().unwrap().hub.guests[0].vehicle, None);
                     assert!(!game.persist.removed_vehicles.contains_key(&71));
                 });
             });
@@ -1453,13 +1393,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     game.set_allow_commands(true);
                     game.persist.uuids.insert(72, [160, 0, 0, 72]);
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, false));
                     }
@@ -1650,13 +1584,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                         0 => {
                             assert!(game.hurt_boat(0, 5.0, false));
                         }
-                        1 => game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        ),
+                        1 => game.hurt_cart(0, 5.0, false, false, CartHit::default()),
                         2 => {
                             game.arrow_hits_cart(0, 1.0, Vec3::ZERO, true, false, None, None);
                         }
@@ -1818,13 +1746,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                         game.native_joins_flush(false, 0);
                         assert_eq!(joins.vehicle.load(Ordering::Relaxed), 1);
                         match mode {
-                            0 if cart => game.hurt_cart(
-                                0,
-                                5.0,
-                                false,
-                                false,
-                                crate::game::minecarts::CartHit::default(),
-                            ),
+                            0 if cart => game.hurt_cart(0, 5.0, false, false, CartHit::default()),
                             0 => {
                                 assert!(game.hurt_boat(0, 5.0, false));
                             }
@@ -1924,13 +1846,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     set_vehicle_test_attachment(game);
                     assert_eq!(vehicle_attachment_count(game), 1);
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, false));
                     }
@@ -1968,13 +1884,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     assert_eq!(vehicle_attachment_count(game), 1);
                     let vehicle = game.entity(71).unwrap();
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, false));
                     }
@@ -2012,13 +1922,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     if mode == 0 {
                         assert!(game.hurt_boat(0, 5.0, false));
                     } else if mode == 1 {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         game.carts
                             .update(0, |cart| cart.kind = super::super::minecarts::CartKind::Tnt);
@@ -2084,9 +1988,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     let mut parent = Mob::new(72, camel, Vec3::new(2.0, 190.0, 3.0), 0.0);
                     parent.extra.mount = Some(71);
-                    game.persist
-                        .off_level
-                        .insert(72, super::super::persist::OffLevel::Mob(parent));
+                    game.persist.off_level.insert(72, OffLevel::Mob(parent));
                     game.mob_object_mut(73).unwrap().extra.vehicle_order = 1;
                     let mut front = Mob::new(74, pig.clone(), Vec3::ZERO, 0.0);
                     front.extra.mount = Some(72);
@@ -2096,13 +1998,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     grandchild.extra.mount = Some(73);
                     game.mobs.push(grandchild);
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, false));
                     }
@@ -2142,13 +2038,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     let vehicle = game.entity(71).unwrap();
                     let rider = game.entity(72).unwrap();
                     if cart {
-                        game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        );
+                        game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         assert!(game.hurt_boat(0, 5.0, false));
                     }
@@ -2288,13 +2178,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                             assert!(game.hurt_boat(0, 5.0, false));
                         }
                         2 => game.kill_target_in_level(super::super::commands::Target::Cart(71)),
-                        3 => game.hurt_cart(
-                            0,
-                            5.0,
-                            false,
-                            false,
-                            crate::game::minecarts::CartHit::default(),
-                        ),
+                        3 => game.hurt_cart(0, 5.0, false, false, CartHit::default()),
                         _ => {
                             game.carts.update(0, |cart| {
                                 cart.kind = super::super::minecarts::CartKind::Tnt

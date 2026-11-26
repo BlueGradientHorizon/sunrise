@@ -257,7 +257,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     _ => None,
                 };
                 conn.and_then(|conn| {
-                    self.lan
+                    self.side
+                        .lan
                         .as_mut()?
                         .hub
                         .update_guest(conn, |g| g.head_yaw = yaw)
@@ -348,7 +349,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Guest(conn) => Some(conn),
             _ => None,
         }?;
-        let host = self.lan.as_mut()?;
+        let host = self.side.lan.as_mut()?;
         let motion = if target == Target::Player {
             host.hub.guest(conn).and(self.player.as_mut())
         } else {
@@ -369,7 +370,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<[f64; 3]> {
         let acting = t == Target::Player;
         {
-            let guest = self.lan.as_ref()?.hub.guest(conn)?;
+            let guest = self.side.lan.as_ref()?.hub.guest(conn)?;
             if guest.vehicle.is_some() || guest.sleeping {
                 return None;
             }
@@ -385,7 +386,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Some([0.0; 3]);
         }
         let delta = gate.delta().components();
-        let host = self.lan.as_ref()?;
+        let host = self.side.lan.as_ref()?;
         let guest = host.hub.guest(conn)?;
         let body = if acting {
             self.player.as_ref()
@@ -403,7 +404,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             // The solid entities (boats, shulkers, a still happy ghast) the player may meet.
             let entities = self.entity_collisions(Mover::PlayerAt { feet_y: from[1] });
-            self.lan.as_ref()?.hub.settle_conn(
+            self.side.lan.as_ref()?.hub.settle_conn(
                 conn,
                 from,
                 to,
@@ -416,7 +417,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if acting {
             self.player.as_mut()?.position = target;
         } else {
-            let host = self.lan.as_mut()?;
+            let host = self.side.lan.as_mut()?;
             host.hub.update_guest(conn, |g| {
                 g.motion.as_deref_mut().map(|m| m.position = target)
             })??;
@@ -426,7 +427,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             reached[1] - from[1],
             reached[2] - from[2],
         ];
-        self.lan.as_mut()?.hub.displace(conn, reached, by);
+        self.side.lan.as_mut()?.hub.displace(conn, reached, by);
         Some(by)
     }
 }

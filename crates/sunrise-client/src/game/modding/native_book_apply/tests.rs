@@ -47,7 +47,7 @@ fn open_mod_menu(
         .collect(),
     );
     game.world.modified.clear();
-    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+    game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.menu_generation = 1;
         g.menu = Some(Open {
             window: 1,
@@ -137,7 +137,8 @@ fn actual_game_stage_refuses_nested_frame_and_mutated_actor() {
                 ((), false)
             });
             assert!(game.mod_book_placement_context(&before, &selection));
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -203,6 +204,7 @@ fn place_recipe_in_grid_places_once_per_click() {
         )
         .unwrap();
         let known = game
+            .side
             .lan
             .as_ref()
             .unwrap()
@@ -211,7 +213,7 @@ fn place_recipe_in_grid_places_once_per_click() {
             .unwrap()
             .recipe_book
             .clone();
-        game.native_net.placement.session = Some(Session {
+        game.side.book_placement_session = Some(Session {
             recipe: selection.display.recipe.as_str().to_owned(),
             graph: Backings::capture(game, &before, &plan).unwrap(),
             menu: Box::new(Menu::new(Kind::Mod(before.kind))),
@@ -278,7 +280,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
     mod_platform::testing::with_mods(mods, || {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let (_, opened, selection) = open_mod_menu(game);
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 let open = g.menu.as_mut().unwrap();
                 open.slots = Slots::Native;
                 open.pos = None;
@@ -332,7 +334,15 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                 mod_api::__private::item_key("minecraft:iron_ore").unwrap()
             );
             assert_eq!(placed.count(), 1);
-            let left = game.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[9]
+            let left = game
+                .side
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(12)
+                .unwrap()
+                .inventory[9]
                 .as_ref()
                 .unwrap()
                 .count;
@@ -365,6 +375,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                 Ok(())
             );
             stale_contents.inventory = game
+                .side
                 .lan
                 .as_ref()
                 .unwrap()

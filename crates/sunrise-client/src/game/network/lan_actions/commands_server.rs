@@ -14,6 +14,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut canceled = false;
         let mut replies = Vec::new();
         if let Some((uuid, name)) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(conn))
@@ -21,7 +22,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             self.native_player_command(uuid, &name, command, &mut canceled, &mut replies);
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         for line in replies {
@@ -41,7 +42,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // ListPlayersCommand needs no permission and lists every player.
         let words: Vec<&str> = command.split(' ').collect();
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         if words[0] == "list" && (words.len() == 1 || words[1..] == ["uuids"]) {
@@ -58,7 +59,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A native mod's command, for every player its level allows,
         // whether the world allows commands or not (game/modding/native_server.rs).
         let allowed = self.options.dedicated.is_some() || self.allow_commands();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let integrated = host.hub.config.integrated;
@@ -103,7 +104,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
     }
     pub(in crate::game) fn guest_suggestions(&mut self, conn: u32, payload: &[u8]) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let mut r = sunrise_protocol::buf::Reader::new(payload);
@@ -210,7 +211,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 w.nbt(&literal(tip));
             }
         }
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         host.hub.send_to(
@@ -227,7 +228,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerCommandSuggestionsProvider.tryProcessRequest: answer the latest request if this
     /// tick's answer is free. One client asking a hundred times a tick costs one parse.
     pub(in crate::game::server_side) fn guest_try_suggestions(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let play = host.play.entry(conn).or_default();
@@ -265,7 +266,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if std::mem::take(&mut self.side.save_after_guest_turn) {
             lines.push(self.save_all_reply());
         }
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.sync_all_effects();
         }
         if !c.integrated {
@@ -275,7 +276,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // What the command earned is announced before its feedback.
         self.announce_guest_advancements();
         for line in &lines {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return Some((ok, lines));
             };
             host.hub.send_to(
@@ -294,7 +295,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// they reach the other players too (`/give Bob`, `/tp Bob`, `/kick`).
     pub(in crate::game) fn run_guest_commands(&mut self) {
         loop {
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             if host.commands.is_empty() {
@@ -312,7 +313,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// dropped: no one else can hear them.
     pub(in crate::game) fn send_admin_feedback(&mut self) {
         let lines = std::mem::take(&mut self.side.admin_feedback);
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         // server.toml's `admin_feedback_to_ops` off: the log only.

@@ -35,7 +35,7 @@ const TEXT_OVER_OUTLINE: f32 = 0.05;
 /// Atlas-resolved standalone geometry, indexed by model slot and resource generation.
 pub(in crate::game) struct StandaloneGeometry {
     generation: u64,
-    slots: Vec<Option<Vec<super::minecarts::PreparedModelFace>>>,
+    slots: Vec<Option<Vec<crate::game::client_side::minecarts_client::PreparedModelFace>>>,
     translucent: Vec<bool>,
     bounds: Vec<[[f32; 3]; 2]>,
     /// What each fluid draws as in a `fluid_box`, by fluid slot, resolved on its first box of
@@ -65,7 +65,9 @@ pub(in crate::game) struct InstanceSlot {
     pub bounds: [[f32; 3]; 2],
 }
 
-fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
+fn face_bounds(
+    faces: &[crate::game::client_side::minecarts_client::PreparedModelFace],
+) -> [[f32; 3]; 2] {
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
     for face in faces {
@@ -86,7 +88,7 @@ fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
 impl StandaloneGeometry {
     pub(in crate::game) fn new(
         pack: &super::PackResources,
-        client_pack: &super::ClientPackResources,
+        client_pack: &crate::game::client_side::resource_tables_client::ClientPackResources,
         gui: &super::UiResources,
     ) -> Self {
         let catalog = &client_pack.render.model_catalog;
@@ -110,9 +112,11 @@ impl StandaloneGeometry {
                         .layer_names
                         .get(&face.layer)
                         .and_then(|name| gui.atlas.sprites.get(name))?;
-                    Some(super::minecarts::PreparedModelFace::new(
-                        &face.quad, *sprite,
-                    ))
+                    Some(
+                        crate::game::client_side::minecarts_client::PreparedModelFace::new(
+                            &face.quad, *sprite,
+                        ),
+                    )
                 })
                 .collect();
             translucent[index] = model.faces.iter().any(|face| face.translucent);
@@ -191,7 +195,7 @@ impl StandaloneGeometry {
     pub(in crate::game::client_side) fn faces(
         &self,
         slot: u32,
-    ) -> Option<&[super::minecarts::PreparedModelFace]> {
+    ) -> Option<&[crate::game::client_side::minecarts_client::PreparedModelFace]> {
         self.slots.get(slot as usize)?.as_deref()
     }
 
@@ -624,20 +628,27 @@ impl BlockEntityDraw {
         true
     }
 
-    fn bake_recorded(&mut self, slots: &[Option<Vec<super::minecarts::PreparedModelFace>>]) {
+    fn bake_recorded(
+        &mut self,
+        slots: &[Option<Vec<crate::game::client_side::minecarts_client::PreparedModelFace>>],
+    ) {
         while let Some(record) = self.records.pop() {
             let Some(faces) = slots.get(record.slot as usize).and_then(Option::as_deref) else {
                 continue;
             };
             let mut extra = Vec::new();
-            super::minecarts::emit_model_faces(
+            crate::game::client_side::minecarts_client::emit_model_faces(
                 faces.iter().copied().map(|face| (face, record.light)),
                 record.pose,
                 true,
                 |index| (index >= 0).then_some(record.tint & 0xFF_FFFF),
                 &mut extra,
             );
-            super::minecarts::scale_tint_alpha(&mut extra, faces, record.tint);
+            crate::game::client_side::minecarts_client::scale_tint_alpha(
+                &mut extra,
+                faces,
+                record.tint,
+            );
             let count = extra.len();
             for (at, _) in &mut self.spins {
                 if *at >= record.at {
@@ -971,17 +982,25 @@ impl BlockEntityDraw {
         }
     }
 
-    fn model(&mut self, faces: &[super::minecarts::PreparedModelFace], tint: u32) {
+    fn model(
+        &mut self,
+        faces: &[crate::game::client_side::minecarts_client::PreparedModelFace],
+        tint: u32,
+    ) {
         let ambient = self.element_ambient();
         let start = self.vertices.len();
-        super::minecarts::emit_model_faces(
+        crate::game::client_side::minecarts_client::emit_model_faces(
             faces.iter().copied().map(|face| (face, ambient)),
             self.pose(),
             true,
             |index| (index >= 0).then_some(tint & 0xFF_FFFF),
             &mut self.vertices,
         );
-        super::minecarts::scale_tint_alpha(&mut self.vertices[start..], faces, tint);
+        crate::game::client_side::minecarts_client::scale_tint_alpha(
+            &mut self.vertices[start..],
+            faces,
+            tint,
+        );
         self.drawn_since(start, Self::cell_centre, self.light & 0xffff);
     }
 }
@@ -1877,8 +1896,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         seed: i32,
     ) -> bool {
         // ShelfBlockEntity.position(): Vec3.atCenterOf(getBlockPos()).
-        let owner = owner_yaw
-            .map(|yaw| super::item_draw::owner_at(draw.block.map(|c| f64::from(c) + 0.5), yaw, ""));
+        let owner = owner_yaw.map(|yaw| {
+            crate::game::client_side::item_draw::owner_at(
+                draw.block.map(|c| f64::from(c) + 0.5),
+                yaw,
+                "",
+            )
+        });
         let item = self.resolve_item(stack, display, owner.as_ref(), seed);
         if item.is_empty() {
             return false;
@@ -2051,7 +2075,7 @@ mod tests {
 
     #[test]
     fn prepared_faces_transform_and_preserve_tint_and_emission() {
-        use super::super::minecarts::{PreparedModelFace, emit_model_faces};
+        use crate::game::client_side::minecarts_client::{PreparedModelFace, emit_model_faces};
         let mut quad = bake_flat_face(
             [0.0; 3],
             [16.0; 3],
@@ -2133,7 +2157,7 @@ mod tests {
 
     #[test]
     fn prepared_models_stay_ordered_and_cpu_inside_the_block_span() {
-        use super::super::minecarts::{PreparedModelFace, emit_model_faces};
+        use crate::game::client_side::minecarts_client::{PreparedModelFace, emit_model_faces};
         let mut quad = bake_flat_face(
             [0.0; 3],
             [16.0; 3],
@@ -2283,7 +2307,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_full_instance_buffer_bakes_the_tail_after_the_cut() {
-        use super::super::minecarts::PreparedModelFace;
+        use crate::game::client_side::minecarts_client::PreparedModelFace;
         use sunrise_client::gfx::cap_prepared_instance_slots;
         struct Reset;
         impl Drop for Reset {
@@ -2588,14 +2612,18 @@ mod tests {
             let mut plain = tinted.clone();
             plain.tint_index = -1;
             let mut emitted = Vec::new();
-            super::super::minecarts::emit_model_faces(
+            crate::game::client_side::minecarts_client::emit_model_faces(
                 [
                     (
-                        super::super::minecarts::PreparedModelFace::new(&tinted, sprite),
+                        crate::game::client_side::minecarts_client::PreparedModelFace::new(
+                            &tinted, sprite,
+                        ),
                         0x2030,
                     ),
                     (
-                        super::super::minecarts::PreparedModelFace::new(&plain, sprite),
+                        crate::game::client_side::minecarts_client::PreparedModelFace::new(
+                            &plain, sprite,
+                        ),
                         0x2030,
                     ),
                 ],
@@ -3424,7 +3452,7 @@ mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("golem_mod", Box::new(Golem))].into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
-                crate::game::mods::register_layer_definitions(
+                crate::game::client_side::mods_client::register_layer_definitions(
                     crate::game::execution_role::ExecutionRole::Client,
                     &game.vanilla_root(),
                 )
@@ -3531,7 +3559,8 @@ mod tests {
             -1,
         )
         .unwrap();
-        let face = super::super::minecarts::PreparedModelFace::new(&quad, sprite());
+        let face =
+            crate::game::client_side::minecarts_client::PreparedModelFace::new(&quad, sprite());
         let mut d = draw();
         d.prepared = true;
         d.set_light(0x3070);
@@ -3738,9 +3767,11 @@ mod tests {
             -1,
         )
         .unwrap();
-        let plain = super::super::minecarts::PreparedModelFace::new(&quad, sprite());
+        let plain =
+            crate::game::client_side::minecarts_client::PreparedModelFace::new(&quad, sprite());
         quad.light_emission = 12;
-        let emissive = super::super::minecarts::PreparedModelFace::new(&quad, sprite());
+        let emissive =
+            crate::game::client_side::minecarts_client::PreparedModelFace::new(&quad, sprite());
         let pos = [10, 64, 20];
         let samples = RefCell::new(Vec::new());
         let level = LevelLight {

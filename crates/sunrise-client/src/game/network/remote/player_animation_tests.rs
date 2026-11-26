@@ -35,7 +35,7 @@ fn remote_player_use_animation_dispatches_once() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "animation-client").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.entity_id = 42;
             remote.level_players.insert(66, 789);
             let kind = remote.player_type.as_ref().unwrap().clone();

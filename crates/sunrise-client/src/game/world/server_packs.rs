@@ -340,7 +340,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         .accept_textures
     }
     fn send_pack_status(&self, id: u128, status: i32) {
-        if let Some(r) = &self.remote {
+        if let Some(r) = &self.side.remote {
             r.session.send_pack_status(id, status);
         }
     }
@@ -560,7 +560,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// or rewrite its own failure notice; headless servers log the error and do
     /// not drain the client queue.
     pub(in crate::game::client_side) fn add_hook_panic_toasts(&mut self) {
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.options.dedicated.is_some() {
             return;
         }
         for report in mod_api::__private::take_hook_panics() {
@@ -705,7 +705,7 @@ mod tests {
                     game.side.server_packs.0.packs.record_feedback();
                     game.answer_pack_prompt(false).unwrap();
 
-                    assert!(game.remote.is_none());
+                    assert!(game.side.remote.is_none());
                     assert!(matches!(
                         &game.side.title.0.as_ref().unwrap().mode,
                         sunrise_client::title::Mode::Multiplayer(multiplayer::Screen::Disconnected {
@@ -925,8 +925,8 @@ mod tests {
             "game::client_side::server_packs::tests::closing_save_reports_reach_the_title_in_the_owning_window",
             || {
                 use crate::game::{
-                    integrated::{Integrated, Serving},
-                    native_entity_refs::tests::with_client_game,
+                    client_side::integrated_client::Integrated,
+                    native_entity_refs::tests::with_client_game, server_side::integrated::Serving,
                 };
                 use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
 
@@ -951,7 +951,7 @@ mod tests {
                     with_client_game(|window| {
                         let serving =
                             Serving::fixture_with_reports(0, window.side.client_reports.0.clone());
-                        window.integrated = Some(Integrated::fixture_for(&serving));
+                        window.side.integrated = Some(Integrated::fixture_for(&serving));
                         window.begin_closing_save(false).unwrap();
                         assert!(window.side.pending_save.0.is_some());
                         let dir = tempfile::tempdir().unwrap();
@@ -972,7 +972,7 @@ mod tests {
                         drop(serving);
 
                         assert!(!window.poll_closing_save().unwrap());
-                        assert!(window.integrated.is_none());
+                        assert!(window.side.integrated.is_none());
                         assert!(window.side.title.0.is_some());
                         assert!(
                             window
@@ -1009,8 +1009,9 @@ mod tests {
             "game::client_side::server_packs::tests::scheduled_task_error_toasts_are_admitted_by_the_owning_client",
             || {
                 use crate::game::{
-                    integrated::{Integrated, Serving},
+                    client_side::integrated_client::Integrated,
                     native_entity_refs::tests::{with_client_game, with_game},
+                    server_side::integrated::Serving,
                 };
                 use mod_api::{
                     ClientHost, Flow, Hooks, ModEntry, ServerHost, ToastAddEvent, ToastKind,
@@ -1062,9 +1063,9 @@ mod tests {
                     with_client_game(|window| {
                         let serving =
                             Serving::fixture_with_reports(0, window.side.client_reports.0.clone());
-                        window.integrated = Some(Integrated::fixture_for(&serving));
+                        window.side.integrated = Some(Integrated::fixture_for(&serving));
                         with_game(|server| {
-                            server.serving = Some(serving);
+                            server.side.serving = Some(serving);
                             server.native_lifecycle.world_open_ready().unwrap();
                             for id in [ACCEPTED, CANCELLED] {
                                 let _owner = mod_api::__private::enter(id, "schedule fixture");

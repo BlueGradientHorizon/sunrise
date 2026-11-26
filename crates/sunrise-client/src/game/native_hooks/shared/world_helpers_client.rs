@@ -1,9 +1,10 @@
 use super::*;
 use crate::game::host::draw::GameDrawContext;
-use crate::game::native_hooks::world_helpers::GuiLayerWrapFrame;
-use crate::game::native_hooks::world_helpers::VanillaGuiDraw;
-use mod_api::__private::game::CallbackOwner;
-use sunrise_client::gui_layers::{self, GuiLayerBody, VanillaGuiLayer};
+use mod_api::{__private::game::CallbackOwner, ClientHost, DrawContext, GuiLayerWrapContext};
+use sunrise_client::{
+    gui_layers::{self, GuiLayerBody, VanillaGuiLayer},
+    hud::HudPaintCheckpoint,
+};
 
 #[allow(dead_code)]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -207,5 +208,38 @@ impl<'g> Game<'g, crate::game::client_side::ClientState> {
             self.keep_status_rows(&batch.vertices[start..], batch.width, batch.height);
         }
         self.native_gui_layer_post(id, batch);
+    }
+}
+
+// The vanilla paint procedure belongs to the caller's frame, not the frozen layer order.
+#[cfg(feature = "client")]
+pub(in crate::game) type VanillaGuiDraw<'p, 'g> =
+    dyn FnMut(&mut crate::game::ClientGame<'g>, &mut HudBatch) + 'p;
+
+#[cfg(feature = "client")]
+pub(in crate::game) struct GuiLayerWrapFrame<'a, 'p, 'g> {
+    pub(in crate::game) game: &'a mut crate::game::ClientGame<'g>,
+    pub(in crate::game) batch: &'a mut HudBatch,
+    pub(in crate::game) previous: &'a GuiLayerBody,
+    pub(in crate::game) vanilla: Option<&'a mut VanillaGuiDraw<'p, 'g>>,
+    pub(in crate::game) paint: &'a mut HudPaintCheckpoint,
+}
+
+#[cfg(feature = "client")]
+impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
+    fn host(&self) -> &dyn ClientHost {
+        &*self.game
+    }
+
+    fn with_draw(&mut self, draw: &mut dyn FnMut(&mut dyn DrawContext)) {
+        draw(&mut GameDrawContext::new(self.game, self.batch));
+    }
+
+    fn draw_previous(&mut self) {
+        let start = self.batch.vertices.len();
+        self.game
+            .draw_gui_layer_body(self.batch, self.previous, self.vanilla.as_deref_mut());
+        self.paint
+            .preserve_delegated(start..self.batch.vertices.len());
     }
 }

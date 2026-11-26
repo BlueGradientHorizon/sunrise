@@ -43,7 +43,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerGamePacketListenerImpl.detectRateSpam: a chat message or command adds 20 to the
     /// guest's throttler; over the threshold, a guest who is not an operator is kicked.
     pub(in crate::game::server_side) fn detect_rate_spam(&mut self, conn: u32, command: bool) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -75,7 +75,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// handleChatCommand (performUnsignedChatCommand): refused when the
     /// server enforces secure chat and the command has a message to sign.
     pub(in crate::game::server_side) fn guest_chat_command(&mut self, conn: u32, command: &str) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let permission = host.hub.guests[i].permission;
         let secure = host.hub.enforces_secure_chat();
         if secure && !self.signable_arguments(permission, command).is_empty() {
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             let name = host.hub.guests[i].name.clone();
@@ -96,7 +96,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             )));
             let failure = Text::translate("chat.disabled.invalid_command_signature", &[])
                 .with_color(text::RED);
-            if let Some(host) = self.lan.as_ref() {
+            if let Some(host) = self.side.lan.as_ref() {
                 host.hub.guests[i].send(&C::SystemChat(play::SystemChat {
                     content: component_nbt(&failure.component()),
                     overlay: false,
@@ -116,7 +116,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         p: play::ChatCommandSigned,
     ) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ran = true;
             let permission = host.hub.guests[i].permission;
             let parsed = self.signable_arguments(permission, &p.command);
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return;
             };
             match host
@@ -167,7 +167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<()> {
         let hidden = self.chat_hidden_from(|_| (message.sender, name, shown))?;
         let mut chat = Vec::new();
-        let host = self.lan.as_mut()?;
+        let host = self.side.lan.as_mut()?;
         host.hub
             .broadcast_chat(message, bound, line, &hidden, &mut chat);
         for event in chat {
@@ -196,7 +196,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             (sender, name.plain(), message.plain())
         })?;
-        let Some(host) = &self.lan else {
+        let Some(host) = &self.side.lan else {
             return Some(false);
         };
         host.hub.broadcast_source_chat(
@@ -233,7 +233,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             (sender, name.plain(), message.plain())
         })?;
-        let Some(host) = &self.lan else {
+        let Some(host) = &self.side.lan else {
             return Some(false);
         };
         host.hub.broadcast_source_chat(
@@ -263,7 +263,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         command: &str,
         signed: Option<&Signed>,
     ) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return false;
         };
         let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
@@ -286,7 +286,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|(_, m)| m.clone())
         });
         let mut events = Vec::new();
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return false;
         };
         if id == "msg" {
@@ -352,7 +352,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             else {
                 return true;
             };
-            let Some(host) = self.lan.as_mut() else {
+            let Some(host) = self.side.lan.as_mut() else {
                 return false;
             };
             host.hub

@@ -1,6 +1,5 @@
+use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
 use crate::game::event_loop::EventLoopCtl;
-use crate::game::hud_render::debug_crosshair_drawn;
-use crate::game::key_codes::{glfw_button, glfw_modifiers};
 use crate::game::loading_window::{build_renderer, loading_frame};
 use crate::game::motion_ids::motion_block_entity;
 use crate::game::subtitles::{Subtitles, in_game_ui, subtitles};
@@ -22,7 +21,7 @@ use sunrise_client::{
     mesher::Vertex,
     title::Action,
 };
-use sunrise_client_gameplay::frame_autotune;
+use sunrise_client_gameplay::{frame_autotune, hud_gates::debug_crosshair_drawn};
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
@@ -656,7 +655,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Sets the CEM frame even if there are no mobs; later passes also use it.
         let mob_frame = self.begin_mob_geometry(camera, alpha);
         for run in &runs {
-            use entity::DrawFamily as F;
+            use crate::game::client_side::entity_client::DrawFamily as F;
             let range = run.range.clone();
             match run.family {
                 F::Mob => self.mob_run_geometry(&mob_frame, range, &mut out),
@@ -1220,7 +1219,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.music.stop_playing(None, &mut self.side.audio.0);
         self.side.audio.0.leave_level();
         self.side.jukebox_sounds.clear();
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.side.world_icon = None;
             return self.leave_server(None);
         }
@@ -1236,6 +1235,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.world_icon = None;
         sunrise_level::crash::clear_detail("World");
         self.side.debug_charts.reset();
+        self.reset_server_debug_lines();
         self.side.boss_overlay.reset();
         // GameRenderer.resetData (Minecraft.clearClientLevel).
         self.side.item_activation.reset();
@@ -1258,8 +1258,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // Clear sync data (registries, dialog tags) so dialogs don't leak
         // between worlds.
-        lan::sync::forget_sync_data();
-        lan::sync::forget_server_sources();
+        crate::game::lan_common::sync::forget_sync_data();
+        crate::game::lan_common::sync::forget_server_sources();
         let mut title = self
             .new_title(std::env::current_dir().unwrap_or_default().join("saves"))
             .with_user(|| self.options.player_name());
@@ -1306,7 +1306,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         }
         let initial_instance = self.side.screen_state.0.screen_instance;
-        let mut mouse_post: Option<native_hooks::ScreenMousePost> = None;
+        use crate::game::client_side::native_hooks_client::{
+            ScreenMousePost, ScreenMousePostKind, ScreenMousePre,
+        };
+        let mut mouse_post: Option<ScreenMousePost> = None;
         let mut title_settled = false;
         let result: Result<()> = (|| {
             match event {
@@ -1388,9 +1391,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 .filter(|b| self.side.physical_buttons.contains(b))
                         };
                         match self.screen_mouse_dragged(delta) {
-                            native_hooks::ScreenMousePre::Canceled => return Ok(()),
-                            native_hooks::ScreenMousePre::Passed(post) => mouse_post = Some(post),
-                            native_hooks::ScreenMousePre::NotFired => {}
+                            ScreenMousePre::Canceled => return Ok(()),
+                            ScreenMousePre::Passed(post) => mouse_post = Some(post),
+                            ScreenMousePre::NotFired => {}
                         }
                         if self.side.screen_state.0.screen_instance != initial_instance {
                             return Ok(());
@@ -1419,7 +1422,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
                 WindowEvent::MouseWheel { .. }
-                    if self.side.screen == Screen::Playing && self.replay.driver.is_some() => {}
+                    if self.side.screen == Screen::Playing && self.side.replay.driver.is_some() => {
+                }
                 WindowEvent::MouseWheel { delta, .. } => {
                     let (raw_x, raw_y) = match delta {
                         MouseScrollDelta::LineDelta(x, y) => (f64::from(x), f64::from(y)),
@@ -1457,10 +1461,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             if canceled {
                                 return Ok(());
                             }
-                            mouse_post = Some(native_hooks::ScreenMousePost::new(
+                            mouse_post = Some(ScreenMousePost::new(
                                 receiver,
                                 modifiers,
-                                native_hooks::ScreenMousePostKind::Scroll(scroll),
+                                ScreenMousePostKind::Scroll(scroll),
                             ));
                             if self.side.screen_state.0.screen_instance != initial_instance {
                                 return Ok(());
@@ -1776,7 +1780,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         || self.remote_loading()
                         || self.side.reload_overlay.is_some()
                         || self.side.pending_entry.0.is_some()
-                        || self.integrated_starting.is_some()
+                        || self.side.integrated_starting.is_some()
                         || self.side.pending_save.0.is_some()
                     {
                         return Ok(());
@@ -1838,7 +1842,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         }
                     }
                     if self.side.title.0.is_none() {
-                        if !self.is_logical_server() && self.remote.is_none() {
+                        if !self.is_logical_server() && self.side.remote.is_none() {
                             return Err(
                                 "client frame has neither title screen nor remote connection"
                                     .into(),
@@ -1952,7 +1956,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             self.native_client_pause_change_post(paused);
                         }
                     }
-                    if let Some(server) = &self.integrated {
+                    if let Some(server) = &self.side.integrated {
                         server.set_paused(self.pause);
                         server.set_distances(
                             self.side.settings.render_distance,
@@ -2209,7 +2213,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let camera = self.camera_player();
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
-        let replaying = self.replay.playing();
+        let replaying = self.side.replay.playing();
         if !replaying {
             self.native_render_gui_pre(&mut gui_canceled);
         }
@@ -2922,7 +2926,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // FileFixerProgressScreen: Cancel is the only way out (`shouldCloseOnEsc`
         // is false), so it takes the pointer and Escape does nothing.
-        if let Some(starting) = &self.integrated_starting
+        if let Some(starting) = &self.side.integrated_starting
             && starting.handle.upgrade().is_file_fixing()
         {
             let upgrade = starting.handle.upgrade();
@@ -2961,7 +2965,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.perf.cancel_world_opening();
             return true;
         }
-        if (self.side.pending_entry.0.is_some() || self.integrated_starting.is_some())
+        if (self.side.pending_entry.0.is_some() || self.side.integrated_starting.is_some())
             && !matches!(
                 event,
                 WindowEvent::CloseRequested
@@ -3767,7 +3771,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.drop_left_screen_focus();
         // Minecraft.doWorldLoad: the LevelLoadingScreen while single player's
         // server starts, with the server's chunk map and progress.
-        if let Some(starting) = &self.integrated_starting {
+        if let Some(starting) = &self.side.integrated_starting {
             // WorldOpenFlows.upgradeAndOpenWorld: the server's file fixers run on
             // FileFixerProgressScreen, before the LevelLoadingScreen has progress.
             let upgrade = starting.handle.upgrade();
@@ -3824,6 +3828,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 );
                 // The chunk map and progress are the server thread's.
                 let view = self
+                    .side
                     .integrated_starting
                     .as_ref()
                     .map(|s| s.handle.load_view().clone());

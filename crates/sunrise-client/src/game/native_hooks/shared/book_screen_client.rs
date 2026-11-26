@@ -17,7 +17,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return None;
         }
-        let remote = &self.remote.as_ref()?.menu;
+        let remote = &self.side.remote.as_ref()?.menu;
         let active = !screen.detached
             && remote.generation == screen.menu.generation
             && remote.as_ref().is_some_and(|m| m.0 == screen.menu.window);

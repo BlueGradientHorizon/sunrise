@@ -62,7 +62,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // watching even when its last line was minutes ago.
         let agent_active = self.control.as_ref().is_some_and(|c| c.clients() > 0)
             || self.agent_busy()
-            || self.events.has_waits();
+            || super::events::has_waits(&self.events);
         if self
             .side
             .input_trace
@@ -71,7 +71,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             let event = json!({ "event": "user-input", "input": kind_name });
             self.side.repro.0.note_event(self.ticks, &event);
-            self.events.note(self.ticks, event);
+            super::events::note(&mut self.events, self.ticks, event);
             log::info!(
                 "Sunrise: {kind_name} input from a person while an agent was driving \
                  (input-log has the run)"

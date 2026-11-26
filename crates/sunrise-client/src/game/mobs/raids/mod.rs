@@ -762,7 +762,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 continue;
             }
-            if let Some((i, conn)) = self.lan.as_ref().and_then(|host| {
+            if let Some((i, conn)) = self.side.lan.as_ref().and_then(|host| {
                 host.hub.guests.iter().enumerate().find_map(|(i, g)| {
                     (g.uuid == uuid
                         && host.hub.here(g)
@@ -792,7 +792,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The raid tracks one participant (`bar.player`): the first player in
         // the level. Everyone else is heard by distance alone.
         let local_first = self.player.is_some();
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let dim = host.hub.config.dimension.clone();

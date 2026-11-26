@@ -79,7 +79,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether this game is a server whose mounts the mods hear: the server thread or a
     /// dedicated server, never a client.
     fn native_hears_mounts(&self) -> bool {
-        self.serving.is_some() || self.options.dedicated.is_some()
+        self.side.serving.is_some() || self.options.dedicated.is_some()
     }
 
     /// The entity id of the acting player: a guest's while their action runs (kept with the

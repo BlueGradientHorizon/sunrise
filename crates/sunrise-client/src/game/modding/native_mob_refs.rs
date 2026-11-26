@@ -313,7 +313,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let target_id = match target {
             Who::Mob(id) => id,
             Who::Player => {
-                let host = self.lan.as_ref()?;
+                let host = self.side.lan.as_ref()?;
                 let conn = host.mob_players.get(&id)?;
                 u32::try_from(host.hub.guest(*conn)?.entity_id).ok()?
             }
@@ -420,7 +420,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Target::Mob(id) => (Some(Who::Mob(id)), None),
                 t @ Target::Guest(conn) if self.side.lan_acting_uuid.is_none() => {
                     self.native_player_facts(t)?;
-                    let guest = self.lan.as_ref()?.hub.guest(conn)?;
+                    let guest = self.side.lan.as_ref()?.hub.guest(conn)?;
                     if guest.dimension != self.dim.id() {
                         return None;
                     }
@@ -429,7 +429,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 t @ Target::Player => {
                     self.native_player_facts(t)?;
                     match self.side.lan_acting {
-                        Some(conn) if self.lan.is_some() => (Some(Who::Player), Some(conn)),
+                        Some(conn) if self.side.lan.is_some() => (Some(Who::Player), Some(conn)),
                         _ => return None,
                     }
                 }
@@ -437,7 +437,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             },
         };
         if let Some(conn) = player {
-            self.lan.as_mut()?.mob_players.insert(id, conn);
+            self.side.lan.as_mut()?.mob_players.insert(id, conn);
         }
         Some(who)
     }
@@ -885,27 +885,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The entity as a vanilla Mob: a mob or the ender dragon. Players, armor
-    /// stands, stale handles and clients are rejected. Mobs taken out for
-    /// ticking are unavailable (a #29 follow-up).
-    pub(in crate::game) fn mob(&self, entity: EntityRef) -> Option<MobRef> {
-        match self.native_entity_target(entity)? {
-            Target::Mob(_) | Target::Dragon(_) => Some(MobRef::new(entity)),
-            _ => None,
-        }
-    }
-
-    /// The existing portal decision for an available mob in the current level.
-    pub(in crate::game) fn mob_can_use_portal(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
-            return None;
-        };
-        let mob = self.mobs.iter().find(|m| m.id == id)?;
-        Some(self.mob_portal_eligible(mob))
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -998,7 +977,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn leash_holder_reads_live_state() {
-        use super::super::{boats::Boat, lan::LanSettings};
+        use super::super::{boats_common::Boat, lan::LanSettings};
         use mobs::leash::{Holder, Pending};
         use mod_api::LeashHolder;
         use std::sync::{
@@ -1057,7 +1036,7 @@ pub(in crate::game) mod tests {
                 10,
             );
             guest.placed = true;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let cow = add_mob(game, 12, "minecraft:cow");
             let other = add_mob(game, 13, "minecraft:cow");
             game.boats
@@ -1068,7 +1047,8 @@ pub(in crate::game) mod tests {
                 Some(LeashHolder::Unleashed)
             );
             let motion = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub
@@ -1290,7 +1270,7 @@ pub(in crate::game) mod tests {
             game.mobs = taken;
             assert!(mob.set_baby(game, true));
 
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;
             game.dragon.replace(dragon);
             let dragon = game.mob(game.entity(15).unwrap()).unwrap();
@@ -1351,7 +1331,7 @@ pub(in crate::game) mod tests {
                 8,
             );
             guest.placed = true;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let zombie = game
                 .res
                 .mob_types()
@@ -1363,7 +1343,10 @@ pub(in crate::game) mod tests {
             let player = game.living(game.entity(20).unwrap()).unwrap();
             assert!(mob.set_target(game, Some(player)));
             assert_eq!(mob.target(game), Some(player));
-            assert_eq!(game.lan.as_ref().unwrap().mob_players.get(&12), Some(&1));
+            assert_eq!(
+                game.side.lan.as_ref().unwrap().mob_players.get(&12),
+                Some(&1)
+            );
             // `ZombifiedPiglin.setTarget` does not impersonate a player hit:
             // existing kill credit and its remaining lifetime are unchanged.
             let kind = game
@@ -1444,7 +1427,8 @@ pub(in crate::game) mod tests {
             assert_eq!(recipient.target(game), None);
             {
                 let value = 1;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1456,7 +1440,8 @@ pub(in crate::game) mod tests {
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
             {
                 let value = 0;
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1465,7 +1450,8 @@ pub(in crate::game) mod tests {
             }
             {
                 let value = "minecraft:the_nether".into();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -1474,7 +1460,7 @@ pub(in crate::game) mod tests {
             }
             assert!(!mob.set_target(game, Some(player)));
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
-            game.lan.as_mut().unwrap().mob_players.clear();
+            game.side.lan.as_mut().unwrap().mob_players.clear();
             assert_eq!(mob.target(game), None);
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
         });
@@ -1575,7 +1561,7 @@ pub(in crate::game) mod tests {
                 .push(Mob::new(12, zombie.clone(), Vec3::ZERO, 0.0));
             game.mobs.push(Mob::new(13, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the mobs.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -1821,7 +1807,7 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .clone();
             game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;
             game.dragon.replace(dragon);
             let entity = game.entity(12).unwrap();

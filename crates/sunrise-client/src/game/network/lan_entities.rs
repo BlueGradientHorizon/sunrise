@@ -144,7 +144,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// start's bundle or stop's removal before the mods hear it, so what a
     /// listener sends the player follows that packet; the rest after the last.
     pub(in crate::game::server_side) fn run_native_tracking(&mut self) {
-        let batches = match self.lan.as_mut() {
+        let batches = match self.side.lan.as_mut() {
             Some(host) => std::mem::take(&mut host.hub.native_tracking),
             None => return,
         };
@@ -173,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             let _ = self.send_tracking_out(batch.conn, held.collect());
             if !after_sounds.is_empty()
-                && let Some(host) = self.lan.as_mut()
+                && let Some(host) = self.side.lan.as_mut()
             {
                 host.hub
                     .tracking_after_sounds
@@ -189,7 +189,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The stops whose removal waited for a captured sound, told once `finish_captured_sounds`
     /// has sent that removal.
     pub(in crate::game::server_side) fn run_tracking_after_sounds(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         if host.hub.tracking_after_sounds.is_empty() {
@@ -201,7 +201,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     fn send_tracking_out(&self, conn: u32, part: Vec<sunrise_sim::lan::Body>) -> Vec<i32> {
-        match self.lan.as_ref() {
+        match self.side.lan.as_ref() {
             Some(host) => host.hub.send_tracking_out(conn, part),
             None => Vec::new(),
         }
@@ -295,7 +295,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         drain_minecart_steps: bool,
         after: u32,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return;
         };
         let hub = &host.hub;
@@ -474,7 +474,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Every stored slot, by `EquipmentSlot` ordinal: the wire's slot numbers.
             for (slot, item) in a.equipment.iter().enumerate() {
                 if item.is_some() {
-                    let Some(host) = self.lan.as_mut() else {
+                    let Some(host) = self.side.lan.as_mut() else {
                         return;
                     };
                     e.equipment.push((slot as u8, host.hub.stack(item)));
@@ -508,7 +508,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             e.defaults.push((8, serializer::DIRECTION, Value::Id(3)));
             if f.item.is_some() {
-                let Some(host) = self.lan.as_mut() else {
+                let Some(host) = self.side.lan.as_mut() else {
                     return;
                 };
                 e.meta.push((
@@ -553,7 +553,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             e.defaults.push((8, serializer::DIRECTION, Value::Id(3)));
             // Painting.DATA_PAINTING_VARIANT_ID, a registry holder (id + 1),
             // set unless it is the registry's first variant (VariantUtils.getAny).
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return;
             };
             if let Some(id) = host
@@ -621,7 +621,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             e.meta.push((
                 8,
                 serializer::ITEM_STACK,
-                Value::Item(self.lan.as_mut().and_then(|host| {
+                Value::Item(self.side.lan.as_mut().and_then(|host| {
                     host.hub
                         .stack(&Some(o.item.clone()).filter(|i| &*i.item != "minecraft:air"))
                 })),
@@ -643,6 +643,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     e.meta.iter_mut().find(|(index, _, _)| *index == 23)
             {
                 *stack = self
+                    .side
                     .lan
                     .as_mut()
                     .and_then(|host| host.hub.stack(&Some(item)));
@@ -854,7 +855,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         assign_resident_ids!(self.crystals, c, next, None);
         assign_resident_ids!(self.bolts, b, next, Some(&b.attachment_lifetime));
         assign_resident_ids!(self.ominous_spawners, o, next, None);
-        self.potions.thrown_ids().for_each(|id| {
+        crate::game::server_side::potions_server::thrown_ids(&mut self.potions).for_each(|id| {
             assign_entity_id(next, id);
         });
         self.end.eye_ids().for_each(|id| {
@@ -890,7 +891,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Primed TNT, falling blocks, projectiles, tridents, firework rockets and
     /// end crystals, as guests track them.
     fn lan_projectile_states(&mut self, out: &mut States, after: u32) {
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return;
         };
         let hub = &mut host.hub;
@@ -1336,8 +1337,9 @@ mod tests {
             pending!(game.ominous_spawners);
             pending!(game.breath_clouds);
             game.bolts
-                .push(crate::game::lightning::Bolt::new(0, [1.0, 70.0, 1.0], true).0);
-            game.potions.add_remote_thrown(
+                .push(crate::game::lightning_common::Bolt::new(0, [1.0, 70.0, 1.0], true).0);
+            crate::game::client_side::potions::add_remote_thrown(
+                &mut game.potions,
                 0,
                 "minecraft:splash_potion",
                 Default::default(),
@@ -1347,7 +1349,7 @@ mod tests {
             let base = game.side.next_entity;
             let joined = game.persist.joined_seq;
             let announced = game.persist.live.clone();
-            let mut slots = crate::game::entity::taken_pass_tests::SlotIdentities::default();
+            let mut slots = crate::game::entity_server::taken_pass_tests::SlotIdentities::default();
             for _ in 0..2 {
                 game.lan_assign_ids();
                 let ids = [
@@ -1359,7 +1361,9 @@ mod tests {
                     game.crystals[0].id,
                     game.bolts[0].id,
                     game.ominous_spawners[0].id,
-                    *game.potions.thrown_ids().next().unwrap(),
+                    *crate::game::server_side::potions_server::thrown_ids(&mut game.potions)
+                        .next()
+                        .unwrap(),
                     *game.end.eye_ids().next().unwrap(),
                     game.breath_clouds[0].id,
                 ];
@@ -1392,7 +1396,8 @@ mod tests {
                 };
                 game.summon_with_nbt(kind, [1.0, 70.0, 1.0], nbt).unwrap();
                 let epoch = game.native_lifecycle.epoch().unwrap();
-                let mut slots = crate::game::entity::taken_pass_tests::SlotIdentities::default();
+                let mut slots =
+                    crate::game::entity_server::taken_pass_tests::SlotIdentities::default();
                 if kind == "minecraft:arrow" {
                     pending!(game.creatures.projectiles);
                     game.creatures

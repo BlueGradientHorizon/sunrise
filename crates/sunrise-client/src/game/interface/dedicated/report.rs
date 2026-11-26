@@ -3,7 +3,7 @@ use super::super::memory::{MEMORY_EVERY_S, flatten_report};
 use super::super::{
     Dim, Game,
     perf_remote::{Asked, Done},
-    profile_capture_server::shown,
+    profile_capture_common::shown,
     tick_profile,
 };
 use std::{
@@ -58,35 +58,6 @@ pub(in crate::game::server_side) fn log_saved(perf: &mut ServerPerf, wait: bool)
             }
         })
         .collect()
-}
-
-impl super::super::mods::ModsState {
-    pub(in crate::game) fn perf_metadata<'a>(
-        &self,
-        packages: impl Iterator<Item = &'a mod_api::PackageInfo>,
-    ) -> Vec<sunrise_perf_format::v1::Mod> {
-        use sunrise_perf_format::v1::{Mod, ModKind};
-        packages
-            .map(|package| {
-                let native = self
-                    .native
-                    .built()
-                    .iter()
-                    .any(|candidate| candidate.id == package.id());
-                Mod {
-                    id: package.id().to_owned(),
-                    version: package.version().to_owned(),
-                    kind: match package.kind() {
-                        mod_api::PackageKind::Content => ModKind::Content,
-                        mod_api::PackageKind::Code if native => ModKind::Native,
-                        _ => ModKind::Unspecified,
-                    } as i32,
-                    // AdjacentManifest does not expose a compiled crate name.
-                    crate_name: String::new(),
-                }
-            })
-            .collect()
-    }
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -189,7 +160,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             mods: self.perf_mods(),
             game_rules: Some(server_perf::game_rules(&self.ui.rules)),
             sunrise_options: Some(sunrise),
-            players: self.lan.as_ref().map_or(0, |h| {
+            players: self.side.lan.as_ref().map_or(0, |h| {
                 h.hub
                     .guests
                     .iter()
@@ -236,7 +207,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             entities += view.total();
         }
         WorldCounts {
-            players: self.lan.as_ref().map_or(0, |h| {
+            players: self.side.lan.as_ref().map_or(0, |h| {
                 h.hub
                     .guests
                     .iter()
@@ -277,7 +248,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Each player's connection: wire bytes (in, out), name, brand and view distance.
     pub(in crate::game::server_side) fn wire_bytes(&self) -> Wire {
-        self.lan.as_ref().map_or_else(Vec::new, |h| {
+        self.side.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
                 .iter()
@@ -412,6 +383,7 @@ mod tests {
             options,
             settings.sim_settings(),
             None,
+            crate::game::profile_resolver,
         )
         .unwrap()
     }

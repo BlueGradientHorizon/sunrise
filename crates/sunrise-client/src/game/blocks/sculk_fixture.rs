@@ -768,7 +768,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     if let Some(index) = self.mob_index.find(&self.mobs, id) {
                         self.mobs[index].damage(
-                            crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
+                            crate::game::server_side::entity_server::damage_level_of!(
+                                self,
+                                &attack,
+                                &mut credit,
+                                None
+                            ),
                             amount,
                             sunrise_sim::mobs::Damage::player(at),
                         );

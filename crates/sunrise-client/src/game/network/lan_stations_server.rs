@@ -1,5 +1,6 @@
-use super::{Game, stations::Kind as StationKind};
-use crate::game::server_side::lan_stations::GuestStation;
+use super::Game;
+use crate::game::lan_menu_data::GuestStation;
+use crate::game::stations_common::Kind as StationKind;
 use sunrise_level::containers::BlockEntity;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -26,7 +27,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// How many slots of its own the guest's open station menu has before the
     /// player's inventory (`slot_count - 36`), if one is open.
     pub(in crate::game::server_side) fn lan_station_own_slots(&self, conn: u32) -> Option<usize> {
-        let gs = self.lan.as_ref()?.menus.get(&conn)?.station.as_ref()?;
+        let gs = self.side.lan.as_ref()?.menus.get(&conn)?.station.as_ref()?;
         Some(gs.menu.slot_count() - 36)
     }
     /// A station menu's `stillValid`: its block is still that station and the

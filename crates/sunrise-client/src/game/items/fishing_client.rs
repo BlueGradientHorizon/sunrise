@@ -1,14 +1,13 @@
 use super::{Game, billboard_axes};
-use crate::game::server_side::fishing::Hook;
-use crate::game::server_side::fishing::State;
-use crate::game::server_side::fishing::bite_impulse;
-use crate::game::server_side::fishing::near_plane_hand;
-use crate::game::server_side::fishing::push_remote_hook;
-use crate::game::server_side::fishing::remove_remote_hook_from;
-use crate::game::server_side::fishing::synchronized_random;
-use crate::game::server_side::fishing::*;
+use crate::game::fishing_common::{
+    Hook, HookLerp, State, bite_impulse, bounds, resting, synchronized_random,
+};
 use sunrise_client::{gizmos::Line, mesher::Vertex};
-use sunrise_core::geometry::{Vec3, trig};
+use sunrise_core::{
+    geometry::{Vec3, trig},
+    random::LegacyRandom,
+};
+use sunrise_level::random_source;
 use sunrise_protocol::entity_data::Value;
 use sunrise_sim::pose::Pose;
 
@@ -68,7 +67,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     pub(in crate::game::client_side) fn clear_remote_hooks(&mut self) {
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.hook.discard();
         }
         self.side.remote_hooks.clear();
@@ -105,7 +104,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(h) = self
             .hook
             .as_mut()
-            .filter(|h| h.id == id && self.remote.is_some())
+            .filter(|h| h.id == id && self.side.remote.is_some())
         {
             for (index, _, value) in values {
                 match (index, value) {
@@ -175,7 +174,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `Entity.lerpMotion` for a hook a server tracks: the motion its own tick
     /// moves it on with between the tracker's updates.
     pub(in crate::game::client_side) fn remote_hook_motion(&mut self, id: u32, v: Vec3) -> bool {
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return false;
         }
         if let Some(h) = self.hook.as_mut().filter(|h| h.id == id) {
@@ -188,7 +187,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         true
     }
     pub(in crate::game::client_side) fn remove_remote_hook(&mut self, id: u32) {
-        if self.remote.is_some() && self.hook.as_ref().is_some_and(|h| h.id == id) {
+        if self.side.remote.is_some() && self.hook.as_ref().is_some_and(|h| h.id == id) {
             self.hook.discard();
         }
         remove_remote_hook_from(&mut self.side.remote_hooks, id);
@@ -241,7 +240,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         velocity: Vec3,
         owner: i32,
     ) {
-        let own = self.remote.as_ref().map(|r| r.entity_id);
+        let own = self.side.remote.as_ref().map(|r| r.entity_id);
         if own == Some(owner) {
             let mut hook = Hook::remote(id, at, uuid);
             hook.velocity = velocity;
@@ -263,7 +262,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// updates (every five ticks), floating in water and riding what it
     /// hooked, as the server's does.
     pub(in crate::game::client_side) fn tick_remote_hooks(&mut self) {
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return;
         }
         if let Some(mut h) = self.hook.extract() {
@@ -342,7 +341,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             facts: self.res.facts(),
             biomes: self.res.biomes(),
             behaviours: self.res.behaviours(),
-            features: match &self.remote {
+            features: match &self.side.remote {
                 Some(remote) => &remote.features,
                 None => crate::game::tables::default_client_features(),
             },
@@ -366,7 +365,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 player_attachments: &self.player_state.attachments,
                 entity_attachments: &self.entity_attachments,
             },
-            tag_items: self.remote.as_ref().and_then(|remote| remote.tags.as_ref()),
+            tag_items: self
+                .side
+                .remote
+                .as_ref()
+                .and_then(|remote| remote.tags.as_ref()),
         };
         let motion = sunrise_sim::motion::BodyMotion {
             world: &self.world,
@@ -404,6 +407,101 @@ impl Game<'_, crate::game::client_side::ClientState> {
         motion.apply_block_speed(position, velocity);
         motion.step_on(entity, (position, bounds(position)), ground, velocity);
     }
+}
+
+/// A hook a server tracks to this client (`FishingHook.recreateFromPacket`)
+/// that another player cast: drawn where the server puts it, its line
+/// running to that player's hand.
+pub(in crate::game) struct RemoteHook {
+    pub(in crate::game) id: u32,
+    pub(in crate::game) uuid: [i32; 4],
+    pub(in crate::game) owner: u32,
+    pub(in crate::game) owner_fishing: bool,
+    pub(in crate::game) position: Vec3,
+    pub(in crate::game) previous: Vec3,
+    pub(in crate::game) velocity: Vec3,
+    pub(in crate::game) state: State,
+    pub(in crate::game) ground: sunrise_world::ground_support::GroundState,
+    pub(in crate::game) lerp: HookLerp,
+    pub(in crate::game) random: LegacyRandom,
+}
+
+impl RemoteHook {
+    pub(in crate::game) fn id(&self) -> u32 {
+        self.id
+    }
+    /// A server's update of another player's hook.
+    pub(in crate::game) fn move_to(&mut self, target: [f64; 3], on_ground: bool) {
+        self.ground.on_ground = resting(self.ground.on_ground, self.position, target, on_ground);
+        self.lerp.start(target);
+    }
+}
+
+pub(in crate::game) fn push_remote_hook(
+    hooks: &mut Vec<RemoteHook>,
+    id: u32,
+    owner: u32,
+    at: Vec3,
+    velocity: Vec3,
+    uuid: [i32; 4],
+) {
+    for h in hooks.iter_mut().filter(|h| h.owner == owner) {
+        h.owner_fishing = false;
+    }
+    hooks.push(RemoteHook {
+        id,
+        uuid,
+        owner,
+        owner_fishing: true,
+        position: at,
+        previous: at,
+        velocity,
+        state: State::Flying,
+        ground: Default::default(),
+        lerp: HookLerp::default(),
+        random: random_source::entity(),
+    });
+}
+
+pub(in crate::game) fn remove_remote_hook_from(hooks: &mut Vec<RemoteHook>, id: u32) {
+    let owner = hooks.iter().find(|h| h.id == id).map(|h| h.owner);
+    hooks.retain(|h| h.id != id);
+    if let Some(owner) = owner {
+        for h in hooks.iter_mut().filter(|h| h.owner == owner) {
+            h.owner_fishing = false;
+        }
+    }
+}
+
+/// `FishingHookRenderer.getPlayerHandPos` in first person, from the eye: the camera's
+/// `getNearPlane(fov).getPointOnPlane(invert * 0.525, -0.1)` scaled by 960 / fov, then
+/// `Vec3.yRot(swing * 0.5)` and `xRot(-swing * 0.7)`.
+pub(in crate::game) fn near_plane_hand(
+    plane: sunrise_client::camera::NearPlane,
+    fov: f32,
+    invert: f32,
+    swing: f32,
+) -> glam::DVec3 {
+    let point = glam::DVec3::from_array(plane.point_on_plane(invert * 0.525, -0.1))
+        * (960.0 / f64::from(fov));
+    let (s, c) = (
+        f64::from(trig::sin(f64::from(swing * 0.5))),
+        f64::from(trig::cos(f64::from(swing * 0.5))),
+    );
+    let point = glam::DVec3::new(
+        point.x * c + point.z * s,
+        point.y,
+        point.z * c - point.x * s,
+    );
+    let (s, c) = (
+        f64::from(trig::sin(f64::from(-swing * 0.7))),
+        f64::from(trig::cos(f64::from(-swing * 0.7))),
+    );
+    glam::DVec3::new(
+        point.x,
+        point.y * c + point.z * s,
+        point.z * c - point.y * s,
+    )
 }
 
 #[cfg(test)]

@@ -42,6 +42,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 None => return,
             },
         };
-        Self::apply_chunk_light_emission(world, key, pending, answers);
+        crate::game::light_emission::apply_chunk_light_emission(world, key, pending, answers);
     }
 }

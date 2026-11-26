@@ -1,5 +1,6 @@
 //! Build a complete immutable builtin generation alongside its common-store values.
 use super::Game;
+use crate::game::native_data_maps_common::Loaded;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -8,10 +9,6 @@ use sunrise_sim::neoforge_mob_maps::{self as builtin, BuiltinMap, Kind, MAPS, Ne
 
 type Tags = HashMap<String, HashSet<String>>;
 
-pub(crate) struct Loaded {
-    pub values: Vec<(BuiltinMap, BTreeMap<String, Tag>)>,
-    pub snapshot: Arc<NeoForgeMobMaps>,
-}
 struct Loader<'a, 'p> {
     definition: BuiltinMap,
     id: Identifier,

@@ -118,7 +118,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.side
             .crash_save
             .note_acting(self.side.lan_acting.is_some());
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             if (crashed || !conns.is_empty()) && self.side.crash_save.lose_hub() {
                 warn(
                     "The panic interrupted the network tick: players are not saved, only the world",

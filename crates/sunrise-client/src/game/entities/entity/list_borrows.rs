@@ -22,10 +22,10 @@ pub(crate) use borrow_lists;
 /// `$game`'s [`super::EntityLists`]; a macro so the borrow stays field by field.
 macro_rules! entity_lists_of {
     ($game:expr, without_carts) => {
-        $crate::game::entity::entity_lists!(borrow_lists, without_carts $game)
+        $crate::game::entity::entity_lists!($crate::game::entity::borrow_lists, without_carts $game)
     };
     ($game:expr) => {
-        $crate::game::entity::entity_lists!(borrow_lists, $game)
+        $crate::game::entity::entity_lists!($crate::game::entity::borrow_lists, $game)
     };
 }
 pub(crate) use entity_lists_of;

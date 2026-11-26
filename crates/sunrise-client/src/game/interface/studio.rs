@@ -53,7 +53,7 @@ pub const HELP: &[&str] = &[
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Studio is up (its bars, its camera path, its mouse): a replay plays or the free camera flies.
     pub(in crate::game::client_side) fn studio_up(&self) -> bool {
-        self.replay.playing() || self.side.studio.flying()
+        self.side.replay.playing() || self.side.studio.flying()
     }
 
     /// Studio's editor words of `/studio` (`freecam`, `keyframe`, `path`).
@@ -61,7 +61,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match words[0] {
             "freecam" => match words.get(1).copied() {
                 Some("on") => {
-                    if self.replay.driver.is_none() {
+                    if self.side.replay.driver.is_none() {
                         self.client_system_message(Text::translate(
                             "sunrise.studio.freecam.replay_required",
                             &[],
@@ -98,7 +98,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             },
             "keyframe" => {
-                let Some(driver) = self.replay.driver.as_ref() else {
+                let Some(driver) = self.side.replay.driver.as_ref() else {
                     self.client_system_message(Text::translate(
                         "sunrise.studio.replay.inactive",
                         &[],
@@ -202,7 +202,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.capture(false);
             }
             TopBarAction::ExitStudio => {
-                if self.replay.driver.is_some() {
+                if self.side.replay.driver.is_some() {
                     self.close_studio_replay();
                 } else {
                     self.side.studio.freecam.deactivate();
@@ -288,15 +288,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match action {
             TimelineAction::PauseForSeek => {
                 self.side.studio.timeline.playing = false;
-                if let Some(replay) = self.replay.driver.as_mut() {
+                if let Some(replay) = self.side.replay.driver.as_mut() {
                     replay.set_paused(true);
                 }
             }
             TimelineAction::Seek(time_ms) => {
-                let time_ms = if self.replay.standalone {
+                let time_ms = if self.side.replay.standalone {
                     time_ms
                 } else {
                     let current = self
+                        .side
                         .replay
                         .driver
                         .as_ref()
@@ -311,7 +312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             TimelineAction::TogglePlay => {
                 self.side.studio.timeline.playing = !self.side.studio.timeline.playing;
-                if let Some(replay) = self.replay.driver.as_mut() {
+                if let Some(replay) = self.side.replay.driver.as_mut() {
                     replay.set_paused(!self.side.studio.timeline.playing);
                 }
             }
@@ -342,7 +343,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )),
             TimelineAction::SetSpeed(speed) => {
                 self.side.studio.timeline.speed = speed;
-                if let Some(replay) = self.replay.driver.as_mut() {
+                if let Some(replay) = self.side.replay.driver.as_mut() {
                     replay.set_speed(speed);
                 }
             }
@@ -387,6 +388,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Add a bookmark at the replay playhead and save it in the `.mcpr` archive.
     pub(in crate::game::client_side) fn add_studio_marker(&mut self) {
         let Some(replay) = self
+            .side
             .replay
             .driver
             .as_mut()
@@ -409,6 +411,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn save_studio_camera_track(&mut self) -> std::io::Result<()> {
         if self.side.studio.camera_track_dirty
             && let Some(driver) = self
+                .side
                 .replay
                 .driver
                 .as_mut()
@@ -435,6 +438,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn studio_replay_advanced(&mut self) {
         if self.side.studio.freecam.locked_to_path
             && let Some(position) = self
+                .side
                 .replay
                 .driver
                 .as_ref()
@@ -443,7 +447,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.studio.freecam.update_spline_playback(position);
         }
         if let Some((position, duration, paused, markers)) =
-            self.replay.driver.as_ref().map(|replay| {
+            self.side.replay.driver.as_ref().map(|replay| {
                 let markers = replay
                     .as_any()
                     .downcast_ref::<ReplayDriver>()
@@ -550,7 +554,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         button: winit::event::MouseButton,
     ) -> bool {
         if !EDITOR {
-            return self.side.screen == Screen::Playing && self.replay.playing();
+            return self.side.screen == Screen::Playing && self.side.replay.playing();
         }
         if !pressed && button == winit::event::MouseButton::Left {
             let action = self.side.studio.timeline.handle_mouse_up();
@@ -558,7 +562,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.handle_studio_timeline_action(action);
             }
         }
-        if (self.side.studio.freecam.active || self.replay.driver.is_some())
+        if (self.side.studio.freecam.active || self.side.replay.driver.is_some())
             && button == winit::event::MouseButton::Right
         {
             if let Some(renderer) = &self.side.renderer.0 {
@@ -600,7 +604,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if pressed
             && button == winit::event::MouseButton::Left
             && self.side.screen == Screen::Playing
-            && (self.replay.driver.is_some() || self.side.studio.freecam.active)
+            && (self.side.replay.driver.is_some() || self.side.studio.freecam.active)
         {
             let size = self
                 .side
@@ -639,7 +643,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
         }
-        self.side.screen == Screen::Playing && self.replay.driver.is_some()
+        self.side.screen == Screen::Playing && self.side.replay.driver.is_some()
     }
 
     /// The free camera flies by the movement keys, once per frame.

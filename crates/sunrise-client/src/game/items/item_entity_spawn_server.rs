@@ -1,4 +1,5 @@
-use super::{Game, spill};
+use super::Game;
+use crate::game::spill_common as spill;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemEntity;

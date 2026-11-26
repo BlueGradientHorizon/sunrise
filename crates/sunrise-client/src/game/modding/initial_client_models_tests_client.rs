@@ -57,9 +57,13 @@ pub(in crate::game) fn with_loading_client(run: impl FnOnce(&mut crate::game::Cl
             root.to_path_buf(),
         )),
         None,
+        crate::game::server_side::integrated::serve,
+        crate::game::server_side::integrated::run_component_harness_on_server,
+        crate::game::session_verifier(),
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.rest_loader = loaded.rest_loader;
-    assert!(game.options.is_client_start());
+    assert!(crate::game::client_side::launch_options_client::is_client_start(&game.options));
     run(&mut game);
 }

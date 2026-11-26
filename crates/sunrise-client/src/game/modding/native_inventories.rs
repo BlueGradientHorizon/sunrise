@@ -159,7 +159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Result<NativeInventory, String> {
         match self.native_inventory_side(uuid)? {
             Side::Live(i) => {
-                let host = self.lan.as_ref().expect("live");
+                let host = self.side.lan.as_ref().expect("live");
                 Ok(NativeInventory {
                     slots: guest_slots(&host.hub.guests[i], kind),
                     online: true,
@@ -173,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     fn native_inventory_side(&self, uuid: u128) -> Result<Side, String> {
-        let Some(host) = self.lan.as_ref() else {
+        let Some(host) = self.side.lan.as_ref() else {
             return Err("no server".into());
         };
         if let Some(i) = host.hub.guests.iter().position(|g| g.uuid == uuid) {
@@ -234,7 +234,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let items = self.res.items();
         let max = |s: &ItemStack| items.get(&s.item).map_or(64, |i| i.max_stack);
         let read = |side: &Side, kind| match side {
-            Side::Live(i) => guest_slots(&self.lan.as_ref().expect("live").hub.guests[*i], kind),
+            Side::Live(i) => {
+                guest_slots(&self.side.lan.as_ref().expect("live").hub.guests[*i], kind)
+            }
             Side::File(level) => level_slots(level, kind),
         };
         let mut src = read(&a, from_kind);
@@ -284,7 +286,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 (a, Some(b))
             }
         };
-        let host = self.lan.as_mut().expect("checked");
+        let host = self.side.lan.as_mut().expect("checked");
         if let Side::Live(i) = a {
             host.hub
                 .guests

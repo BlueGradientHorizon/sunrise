@@ -15,6 +15,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// first) is not heard.
     pub(in crate::game) fn lan_player_move(&mut self, conn: u32) {
         let Some(report) = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.hub.pending_move_report(conn))
@@ -33,6 +34,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
         });
         if let Some(movement) = self
+            .side
             .lan
             .as_mut()
             .and_then(|host| host.hub.resolve_move(conn, !cancel))

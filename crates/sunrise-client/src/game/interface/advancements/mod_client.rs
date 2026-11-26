@@ -1,9 +1,6 @@
 use super::Game;
-use crate::game::server_side::advancements::RemoteNode;
-use crate::game::server_side::advancements::RemoteTree;
-use crate::game::server_side::advancements::Toast;
-use crate::game::server_side::advancements::text_of;
-use crate::game::server_side::advancements::*;
+use crate::game::advancements_common::{RemoteNode, RemoteTree, text_of};
+use crate::game::client_side::advancement_toast::{Toast, toast_label};
 use serde_json::Value;
 use std::sync::Arc;
 #[cfg(test)]

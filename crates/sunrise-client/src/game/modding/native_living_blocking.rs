@@ -1,6 +1,6 @@
 //! `LivingEntity.isBlocking` for native mods through a `LivingRef`: a player or a mob holding up
 //! an item that blocks attacks, past the item's block delay.
-use super::{Game, shield::block_delay_passed};
+use super::{Game, held_items::block_delay_passed};
 use mod_api::{EquipmentSlot, LivingRef, client::first_person::Hand};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

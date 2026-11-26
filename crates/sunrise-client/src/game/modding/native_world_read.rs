@@ -1,15 +1,13 @@
 //! Read-only block, tag and fluid queries for native mods.
-use super::native_level_signals::ReadLevel;
-use super::{Dim, Game};
+use super::Game;
 use mod_api::BlockKey;
-use mod_api::{FluidKey, FluidState, LevelRef, LifecycleContext, UnresolvedFluid};
-use sunrise_core::{geometry::Direction, position::BlockPos};
+use mod_api::{FluidKey, FluidState, LevelRef, LightLayer, UnresolvedFluid};
+use sunrise_core::geometry::Direction;
 use sunrise_items::items::Items;
 use sunrise_level::world::World;
 use sunrise_world::{
-    chunk::BlockState,
     fluid::{FluidHeightWorld, FluidKind, FluidState as EngineFluidState},
-    level::{Behaviours, fluid_can_be_replaced_with, fluid_tick_delay},
+    level::{Behaviours, fluid_can_be_replaced_with},
     registry::{BlockRegistry, BlockStateId},
 };
 
@@ -26,7 +24,7 @@ pub(in crate::game) fn block_face_sturdy(
         return None;
     }
     let state = world.block(pos[0], pos[1], pos[2]);
-    let direction = super::native_entity_refs::block_face_direction(face);
+    let direction = block_face_direction(face);
     if !b.has_cached_support(state) || binding.publishes_shapes(state) {
         use sunrise_level::collisions::SceneCollisions;
         use sunrise_world::{block_support::SupportType, dynamic_support::DynamicSupport};
@@ -61,21 +59,7 @@ pub(in crate::game) fn block_face_sturdy(
 
 /// Read the published sky light without requiring a block or a resident column.
 pub(in crate::game) fn can_see_sky(world: &World, pos: [i32; 3]) -> bool {
-    world.shape.sky_light
-        && super::native_level_refs::world_brightness(world, mod_api::LightLayer::Sky, pos) >= 15
-}
-
-/// Why a server block cannot be read.
-#[allow(dead_code)]
-#[derive(Debug, PartialEq, Eq)]
-pub(in crate::game) enum NativeBlockReadError {
-    /// The context is stale or the call is outside its server tick hook.
-    InactiveContext,
-    /// The dimension is unknown or is not currently open on the server.
-    UnavailableDimension,
-    OutOfBounds,
-    Unloaded,
-    InvalidState,
+    world.shape.sky_light && world_brightness(world, LightLayer::Sky, pos) >= 15
 }
 
 thread_local! {
@@ -108,7 +92,7 @@ pub(in crate::game) fn install_block_tags(
 }
 
 #[cfg(test)]
-pub(in crate::game::server_side) fn installed_block_tag_snapshot()
+pub(in crate::game) fn installed_block_tag_snapshot()
 -> std::collections::HashMap<String, std::collections::HashSet<BlockKey>> {
     BLOCK_TAGS.with(|snapshot| snapshot.borrow().clone())
 }
@@ -212,74 +196,6 @@ impl<S: crate::game::Side> FluidHeightWorld for FluidColumn<'_, '_, S> {
                     .behaviours()
                     .is_face_sturdy(state, Direction::Down)
             }))
-    }
-}
-
-impl Game<'_, crate::game::server_side::ServerState> {
-    /// The fluid state at `pos` of the level `level` names (`BlockGetter.getFluidState`). None
-    /// for a stale handle, a chunk that isn't loaded or a `y` outside the world: a read never
-    /// loads a chunk.
-    pub(in crate::game) fn level_fluid_state(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<FluidState> {
-        let state = self.level_block_state(level, pos)?;
-        self.state_fluid_state(state)
-    }
-
-    /// `Fluid.getTickDelay(level)` of `fluid` at `pos` in the level in place: vanilla's by its
-    /// family and the dimension (`World::fast_lava`), a mod fluid's as registered and as its
-    /// `fluid_rules` parts change it there (the one rule path the flow itself reads). None for
-    /// another level, a stale handle, a client, an unloaded or out-of-height position and a
-    /// fluid with no world form.
-    pub(in crate::game) fn level_fluid_tick_delay(
-        &self,
-        level: LevelRef,
-        fluid: FluidKey,
-        pos: [i32; 3],
-    ) -> Option<i32> {
-        let [x, y, z] = pos;
-        if !self.level_in_place(level) || !self.world.is_loaded_at(x, y, z) {
-            return None;
-        }
-        let kind = engine_fluid_kind(fluid)?;
-        let view = ReadLevel { game: self, level };
-        Some(fluid_tick_delay(kind, self.world.fast_lava, || {
-            let fluid = kind.mod_fluid()?;
-            Some(super::GameLevel::answered_fluid_rules(
-                self.dim.level(),
-                BlockPos::new(x, y, z),
-                fluid,
-                fluid.get().rules,
-                |call| mod_api::dispatch_fluid_rules(&view, call),
-            ))
-        }))
-    }
-
-    /// Read a loaded block in a server tick hook, without loading a chunk.
-    /// The returned name and properties are owned and remain valid after the hook.
-    #[allow(dead_code)]
-    pub(in crate::game::server_side) fn native_server_block(
-        &self,
-        context: &LifecycleContext,
-        dimension: &str,
-        pos: [i32; 3],
-    ) -> Result<BlockState, NativeBlockReadError> {
-        if !self.native_lifecycle.permits_read(context) {
-            return Err(NativeBlockReadError::InactiveContext);
-        }
-        if !Dim::exists(dimension) {
-            return Err(NativeBlockReadError::UnavailableDimension);
-        }
-        let dim = Dim::from_id(dimension);
-        let world = if dim == self.dim {
-            Some(&self.world)
-        } else {
-            self.side.levels.0.parked_world(dim)
-        }
-        .ok_or(NativeBlockReadError::UnavailableDimension)?;
-        read_block(world, self.pack.assets.registry, pos)
     }
 }
 
@@ -417,25 +333,30 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 }
 
-/// Resolve an existing world state, preserving unloaded and invalid states.
-fn read_block(
-    world: &World,
-    registry: &BlockRegistry,
-    [x, y, z]: [i32; 3],
-) -> Result<BlockState, NativeBlockReadError> {
-    if !(-30_000_000..30_000_000).contains(&x)
-        || !(-30_000_000..30_000_000).contains(&z)
-        || !world.shape.contains_y(y)
-    {
-        return Err(NativeBlockReadError::OutOfBounds);
+/// The stored light of `layer` at `pos` in `world`, as the game's own light query reads it.
+pub(in crate::game) fn world_brightness(world: &World, layer: LightLayer, pos: [i32; 3]) -> i32 {
+    let light = world.light(pos[0], pos[1], pos[2]);
+    i32::from(match layer {
+        LightLayer::Block => light & 15,
+        LightLayer::Sky => light >> 4,
+    })
+}
+
+/// The engine's direction of a mod API block face.
+pub(in crate::game) fn block_face_direction(
+    face: mod_api::BlockFace,
+) -> sunrise_core::geometry::Direction {
+    use mod_api::BlockFace;
+    use sunrise_core::geometry::Direction;
+    match face {
+        BlockFace::Down => Direction::Down,
+        BlockFace::Up => Direction::Up,
+        BlockFace::North => Direction::North,
+        BlockFace::South => Direction::South,
+        BlockFace::West => Direction::West,
+        BlockFace::East => Direction::East,
+        _ => unreachable!("BlockFace: unhandled variant"),
     }
-    if !world.loaded(x, z) {
-        return Err(NativeBlockReadError::Unloaded);
-    }
-    registry
-        .state(world.block(x, y, z))
-        .cloned()
-        .ok_or(NativeBlockReadError::InvalidState)
 }
 
 #[cfg(test)]
@@ -569,6 +490,10 @@ mod tests {
 
     #[test]
     fn reads_only_loaded_in_bounds_states() {
+        use crate::game::server_side::native_world_read_server::{
+            NativeBlockReadError, read_block,
+        };
+
         let facts = br#"{"defaults":{"minecraft:air":0,"test:pillar":1},"states":[
             ["air",true,false,"","minecraft:air"],
             ["pillar",false,false,"",{"id":"test:pillar","properties":{"axis":"x"}}]

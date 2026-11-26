@@ -26,10 +26,10 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                 assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
                 let (tx12, rx12) = mpsc::channel();
                 let (tx13, rx13) = mpsc::channel();
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.sender = PlayerSender::new(tx12, Arc::default());
                 });
-                game.lan.as_mut().unwrap().hub.guests.update(1, |g| {
+                game.side.lan.as_mut().unwrap().hub.guests.update(1, |g| {
                     g.sender = PlayerSender::new(tx13, Arc::default());
                     g.dimension = "minecraft:the_nether".to_owned();
                 });
@@ -48,6 +48,7 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                 let bell = "minecraft:block.bell.use";
                 let end_portal_spawn = "minecraft:block.end_portal.spawn";
                 let anvil_id = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()
@@ -55,6 +56,7 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                     .registry_id("minecraft:sound_event", anvil)
                     .unwrap();
                 let bell_id = game
+                    .side
                     .lan
                     .as_ref()
                     .unwrap()

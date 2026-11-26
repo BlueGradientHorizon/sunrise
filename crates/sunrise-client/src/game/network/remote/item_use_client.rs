@@ -138,6 +138,10 @@ pub(in crate::game) mod tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();

@@ -10,7 +10,8 @@
 //! the entities made for `GuiEntity::Kind` are kept per thread and reused, so a
 //! screen drawing the same entity every frame makes it once and allocates
 //! nothing once the buffers have grown.
-use super::{Game, commands::Target};
+use super::Game;
+use crate::game::commands_common::Target;
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
 use std::{cell::RefCell, sync::Arc};

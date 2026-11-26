@@ -177,7 +177,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         let elapsed = (USE_DURATION as i32)
-            .wrapping_sub(super::item_use::ticks_left(self.use_duration, ticks))
+            .wrapping_sub(crate::game::item_use_common::ticks_left(
+                self.use_duration,
+                ticks,
+            ))
             .wrapping_add(1);
         // The last tick before the backswing.
         if elapsed % 10 == 5 {

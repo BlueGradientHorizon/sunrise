@@ -4,7 +4,11 @@
 //! against the world as the transaction has it; the block is written then without its updates
 //! and kept by the journal, and the rest is done at the outermost commit. An abort leaves the
 //! world as it was, which the reference doesn't promise.
-use super::{Game, spill::Spill, transactions::After};
+use super::{Game, transactions::After};
+use crate::game::{
+    spill_common::Spill,
+    world_fluid_data::{FluidEffects, WrittenFluid},
+};
 use mod_api::{
     FluidKey, FluidStack, GameEventContext, LevelRef, PlayerRef, SoundSource, TransactionContext,
 };
@@ -18,29 +22,6 @@ use sunrise_world::{
 
 /// `FluidType.BUCKET_VOLUME`: what one source block holds.
 const BUCKET: u32 = 1000;
-
-/// A bucket's sound and fluid game event waiting for the outermost commit.
-pub(in crate::game) struct FluidEffects {
-    level: LevelRef,
-    pos: [i32; 3],
-    /// The fluid's world form, whose bucket sounds play; none for a tank-only one.
-    fluid: Option<FluidKind>,
-    /// A fill (`fluid_pickup`), else an empty (`fluid_place`).
-    pickup: bool,
-    player: Option<PlayerRef>,
-}
-
-/// A world pickup or placement decided at the call, its block already set in the transaction:
-/// what the outermost commit still does.
-pub(in crate::game) struct WrittenFluid {
-    level: LevelRef,
-    write: FluidWrite,
-    /// The broken block's drops, made from the block as it was at the call.
-    drops: Spill,
-    /// A pickup (the bucket's fill sound and `fluid_pickup`), else a placement.
-    pickup: bool,
-    player: Option<PlayerRef>,
-}
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A normal player's bucket uses the same plan as a dispenser, but lends a

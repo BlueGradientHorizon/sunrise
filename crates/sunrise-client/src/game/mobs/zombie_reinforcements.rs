@@ -80,6 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let player = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.mob_players.get(&caller).copied())

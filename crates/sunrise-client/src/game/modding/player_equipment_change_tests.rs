@@ -56,7 +56,7 @@ fn with_counter(listens: bool, test: impl FnOnce(&mut crate::game::ServerGame<'_
     mod_platform::testing::with_mods(mods, || {
         with_guests(|game| {
             // A joined guest has its play state from the login on.
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             for conn in [12, 13] {
                 host.play.entry(conn).or_default();
             }
@@ -89,7 +89,7 @@ fn a_players_hotbar_selection_pickup_and_helmet_are_each_one_change() {
         assert_eq!(take(heard), Heard::new());
 
         // Selecting hotbar slot 1, which holds a sword, moves it into the main hand.
-        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
         guests.update(0, |g| {
             g.inventory[1] = Some(sword.clone());
             g.selected = 1;
@@ -98,17 +98,17 @@ fn a_players_hotbar_selection_pickup_and_helmet_are_each_one_change() {
         assert_eq!(take(heard), player("mainhand", None, api(&sword)));
 
         // Back to the empty slot 0, then a stone picked up into it.
-        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
         guests.update(0, |g| g.selected = 0);
         game.native_players_equipment();
         assert_eq!(take(heard), player("mainhand", api(&sword), None));
-        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
         guests.update(0, |g| g.inventory[0] = Some(stone.clone()));
         game.native_players_equipment();
         assert_eq!(take(heard), player("mainhand", None, api(&stone)));
 
         // A helmet put on from the inventory screen (`armor` runs head to feet).
-        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
         guests.update(0, |g| g.armor[0] = Some(helmet.clone()));
         game.native_players_equipment();
         assert_eq!(take(heard), player("head", None, api(&helmet)));
@@ -123,7 +123,7 @@ fn a_players_hotbar_selection_pickup_and_helmet_are_each_one_change() {
 #[ignore = "daily"]
 fn players_are_not_told_without_the_listened_opt_in() {
     with_counter(false, |game, heard| {
-        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
         guests.update(0, |g| {
             g.inventory[1] = Some(ItemStack::new("minecraft:iron_sword", 1));
             g.selected = 1;

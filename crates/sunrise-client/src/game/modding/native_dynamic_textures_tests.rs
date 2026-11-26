@@ -3,7 +3,7 @@
 //! the atlas's pool follows the loaded client mods, with no mixin (#4437), and
 //! an image created as the mod whose hook runs draws under its id through `native_sprite` on
 //! the real HUD pipeline, until it is freed.
-use super::resource_tables::dynamic_texture_pool;
+use crate::game::client_side::resource_tables_client::dynamic_texture_pool;
 use mod_api::{DynamicTextureError, Hooks, Identifier, ModEntry};
 use mod_platform::testing::with_mods;
 use sunrise_client::{gfx::entity_pixel_test::render_hud, hud::HudBatch};

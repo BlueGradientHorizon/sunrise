@@ -35,7 +35,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn registered_load_conditions(
         &self,
         inventory: &sunrise_mod_package::enabled::EnabledMods,
-        stack: &super::functions::PackStack,
+        stack: &super::function_pack_stack::PackStack,
         root: &std::path::Path,
         files: &[(String, Vec<Vec<u8>>)],
     ) -> Result<sunrise_world::conditions::LoadConditions, String> {
@@ -62,7 +62,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 /// Read declared registry folders with the same scanner as the live registry loader.
 /// Convert its resource paths to the content keys candidate_registries consumes.
 fn candidate_registry_files(
-    stack: &super::functions::PackStack,
+    stack: &super::function_pack_stack::PackStack,
 ) -> Result<Vec<(String, Vec<Vec<u8>>)>, String> {
     let declarations = mod_api::__private::datapack_registry_declarations();
     if declarations.is_empty() {

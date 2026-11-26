@@ -164,11 +164,11 @@ pub(in crate::game) fn run_block_entity_draws_match_the_vanilla_cases() {
         let case = &cases[i];
         let server = case["serverDistance"].as_i64().unwrap_or(0) as i32;
         if server > 0 {
-            if game.remote.is_none() {
+            if game.side.remote.is_none() {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "Reach").unwrap();
             }
-            game.remote.as_mut().unwrap().view_distance = server;
+            game.side.remote.as_mut().unwrap().view_distance = server;
         }
         game.side.settings.render_distance = case["renderDistance"].as_i64().unwrap() as i32;
         let int = |v: &serde_json::Value| v.as_i64().unwrap() as i32;

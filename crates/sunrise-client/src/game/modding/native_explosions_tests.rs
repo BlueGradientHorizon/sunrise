@@ -373,8 +373,11 @@ fn a_players_fishing_bobber_credits_the_player() {
     kills(
         "a_players_fishing_bobber_credits_the_player",
         |game| {
-            let hook =
-                crate::game::fishing::Hook::remote(900, Vec3::new(4.5, 81.0, 4.5), [1, 2, 3, 4]);
+            let hook = crate::game::fishing_common::Hook::remote(
+                900,
+                Vec3::new(4.5, 81.0, 4.5),
+                [1, 2, 3, 4],
+            );
             game.install_fishing_hook(hook);
             900
         },

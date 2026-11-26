@@ -6,6 +6,9 @@ use sunrise_core::position::BlockPos;
 /// went through a portal.
 pub const ENTITY_DELAY: i32 = 300;
 
+/// `Player.getDimensionChangingDelay`.
+pub const PLAYER_DELAY: i32 = 10;
+
 /// `PortalProcessor` for a nether portal.
 #[derive(Clone, Copy, Debug)]
 pub struct Process {

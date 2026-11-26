@@ -50,7 +50,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        fishing::Hook,
+        fishing_common::Hook,
         native_entity_refs::tests::{collect_game_entities_in, with_game},
     };
     use super::*;

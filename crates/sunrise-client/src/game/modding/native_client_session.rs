@@ -1,6 +1,6 @@
 //! Read-only projections of the connected client's existing state.
 
-use super::{Game, remote::Remote};
+use crate::game::{Game, client_side::remote_client::Remote};
 #[cfg(test)]
 use mod_api::prelude::*;
 use mod_api::{BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, PlayerRef};
@@ -10,7 +10,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn native_session(&self) -> Option<&Remote> {
         self.native_window().then_some(())?;
         self.native_lifecycle.epoch()?;
-        self.remote.as_ref().filter(|remote| remote.logged_in)
+        self.side.remote.as_ref().filter(|remote| remote.logged_in)
     }
 
     /// The connected server, not a stale reconnect target. None outside a
@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// connections have no address. Friend-invite secrets are redacted.
     pub(in crate::game) fn native_client_server(&self) -> Option<ClientServer<'_>> {
         let remote = self.native_session()?;
-        let integrated = self.integrated.as_ref();
+        let integrated = self.side.integrated.as_ref();
         Some(ClientServer {
             name: integrated.map(|server| server.world_name.as_str()),
             address: remote.display_address.as_deref(),
@@ -268,7 +268,7 @@ pub(in crate::game) mod tests {
     ) -> sunrise_protocol::connection::Pipe {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "SessionReadTest").unwrap();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         remote.profile = 42;
@@ -331,7 +331,7 @@ pub(in crate::game) mod tests {
                 ("127.0.0.1:25565", "127.0.0.1:25565"),
                 ("friend:private-invite", "Friend's world"),
             ] {
-                let remote = game.remote.as_mut().unwrap();
+                let remote = game.side.remote.as_mut().unwrap();
                 remote.session.address = address.into();
                 remote.display_address = Remote::display_address_for(&remote.session.address);
                 let external = game.client_session().client_server().unwrap();
@@ -413,11 +413,11 @@ pub(in crate::game) mod tests {
                 game.is_paused(),
                 "the existing applied pause read remains canonical"
             );
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(game.client_session().client_server(), None);
             assert_eq!(game.client_session().client_language(), None);
             assert_eq!(game.client_session().client_frame_stats(), None);
-            game.remote = None;
+            game.side.remote = None;
             // A reconnect target must not be mistaken for the current session.
             game.connection_starts("stale.example:25565", "OldPlayer", false);
             assert_eq!(game.client_session().client_server(), None);
@@ -436,9 +436,9 @@ pub(in crate::game) mod tests {
                 None,
                 "not listed yet"
             );
-            game.remote.as_mut().unwrap().list_self(0);
+            game.side.remote.as_mut().unwrap().list_self(0);
             assert_eq!(game.client_session().client_latency(), Some(0));
-            game.remote.as_mut().unwrap().list_self(87);
+            game.side.remote.as_mut().unwrap().list_self(87);
             assert_eq!(game.client_session().client_latency(), Some(87));
 
             // A bow (use duration 72000) drawn in the main hand for 7 ticks.
@@ -456,7 +456,7 @@ pub(in crate::game) mod tests {
             game.using = None;
             assert_eq!(game.local_item_use(), None, "released");
 
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(game.client_session().client_latency(), None);
             game.using = Some((game.selected, 7));
             assert_eq!(game.local_item_use(), None, "no world");
@@ -514,10 +514,10 @@ pub(in crate::game) mod tests {
             assert_eq!(current.ambient_mood(game), None);
             assert_eq!(game.client_session().client_server(), None);
             game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(current.block_breaking(game), None);
             assert_eq!(current.ambient_mood(game), None);
-            game.remote = None;
+            game.side.remote = None;
             assert_eq!(current.block_breaking(game), None);
         });
     }

@@ -1,0 +1,205 @@
+use serde_json::Value;
+use std::{collections::BTreeSet, sync::Arc};
+use sunrise_game_data::text::Text;
+use sunrise_sim::advancements::{self as adv, EntityView, Progress, Tree};
+
+/// Where the player's fall, lava ride and Nether trip began, the blast that
+/// last hit the player, and the effects the last tick saw (`ServerPlayer`'s
+/// fields of the same names). A guest keeps their own, as `levitation` does.
+#[derive(Clone, Debug, Default)]
+pub(in crate::game) struct TravelMarks {
+    /// `startingToFallPosition`.
+    pub(in crate::game) fall: Option<[f64; 3]>,
+    /// `currentExplosionImpactPos` and `currentExplosionCause` (the entity
+    /// that made the blast, if any).
+    pub(in crate::game) blast: Option<([f64; 3], Option<EntityView>)>,
+    /// `enteredLavaOnVehiclePosition`.
+    pub(in crate::game) lava_ride: Option<[f64; 3]>,
+    /// `enteredNetherPosition`.
+    pub(in crate::game) nether: Option<[f64; 3]>,
+    /// The (effect, amplifier) pairs `EffectsChangedTrigger` last saw.
+    pub(in crate::game) effects: Vec<(&'static str, i32)>,
+    /// `PlayerEffects::changes` as the last tick saw it.
+    pub(in crate::game) effect_changes: u32,
+}
+#[derive(Default)]
+pub(in crate::game) struct AdvState {
+    pub(in crate::game) tree: Arc<Tree>,
+    pub(in crate::game) remote_tree: Option<RemoteTree>,
+    /// `ClientAdvancements.selectedTab`: the connection remembers the root
+    /// independently of the open screen's tabs and the current tree.
+    pub(in crate::game) selected_tab: Option<String>,
+    pub(in crate::game) progress: Progress,
+    pub(in crate::game) loaded: bool,
+    /// Awards skip the toast (`/advancement grant ... everything`).
+    pub(in crate::game) quiet: bool,
+    /// The inventory last seen by `inventory_changed`.
+    pub(in crate::game) last_inventory: u64,
+    /// `ServerPlayer.levitationStartPos` and `levitationStartTime`.
+    pub(in crate::game) levitation: Option<([f64; 3], u64)>,
+    /// The fall, lava ride, Nether trip, blast and effects `tick_marks` follows.
+    pub(in crate::game) marks: TravelMarks,
+    /// While the game acts for a network player (`as_guest`): the
+    /// advancements whose progress changed (`progressChanged`), the recipes
+    /// unlocked and the announcements, for their client and everyone's.
+    pub(in crate::game) changed: BTreeSet<usize>,
+    pub(in crate::game) unlocked: Vec<String>,
+    pub(in crate::game) announced: Vec<Text>,
+    /// `inventory_changed`'s criteria by item, built for `tree`.
+    pub(in crate::game) inventory_index: Option<(Arc<Tree>, Arc<adv::InventoryIndex>)>,
+}
+impl AdvState {
+    /// Drop the index built for the previous tree after a new one is installed.
+    pub(in crate::game) fn reset_tree(&mut self) {
+        self.inventory_index = None;
+    }
+}
+/// The packet tree's insertion-time links. The current ID table in `Tree`
+/// can replace a node without replacing the node its parent or children know.
+#[derive(Default)]
+pub(in crate::game) struct RemoteTree {
+    pub(in crate::game) positions: Vec<(f32, f32)>,
+    /// Node identity for each ID in `Tree::list` order.
+    pub(in crate::game) current: Vec<usize>,
+    pub(in crate::game) nodes: Vec<RemoteNode>,
+}
+
+pub(in crate::game) struct RemoteNode {
+    pub(in crate::game) id: String,
+    pub(in crate::game) parent: Option<usize>,
+    pub(in crate::game) children: Vec<usize>,
+    pub(in crate::game) displayed: bool,
+}
+
+impl RemoteTree {
+    /// Root and nearest displayed parent of each current node, resolved by
+    /// ID only after walking the actual insertion-time ancestors.
+    pub(in crate::game) fn widget_links<'a>(
+        &'a self,
+        tree: &'a Tree,
+    ) -> impl Iterator<Item = (Option<usize>, Option<usize>)> + 'a {
+        // Every parent precedes its child in the arena, including after compaction.
+        let mut ancestry: Vec<(usize, Option<usize>)> = Vec::with_capacity(self.nodes.len());
+        for (i, node) in self.nodes.iter().enumerate() {
+            let links = node.parent.map_or((i, None), |parent| {
+                let (root, ancestor) = ancestry[parent];
+                (
+                    root,
+                    if self.nodes[parent].displayed {
+                        Some(parent)
+                    } else {
+                        ancestor
+                    },
+                )
+            });
+            ancestry.push(links);
+        }
+        let current_index = move |i: usize| tree.by_id.get(&self.nodes[i].id).copied();
+        self.current.iter().map(move |&node| {
+            let (root, displayed_parent) = ancestry[node];
+            (
+                current_index(root),
+                displayed_parent.and_then(current_index),
+            )
+        })
+    }
+
+    /// Release identities no current node can reach in either direction.
+    /// A removed or overwritten node remains as long as its links still matter.
+    pub(in crate::game) fn prune_unreachable(&mut self) {
+        if self.nodes.len() == self.current.len() {
+            return;
+        }
+        let mut live = vec![false; self.nodes.len()];
+        let mut stack = self.current.clone();
+        while let Some(i) = stack.pop() {
+            if !std::mem::replace(&mut live[i], true) {
+                stack.extend(self.nodes[i].parent);
+                stack.extend(self.nodes[i].children.iter().copied());
+            }
+        }
+        if live.iter().all(|&yes| yes) {
+            return;
+        }
+        let mut new_indices = vec![0; live.len()];
+        let (mut i, mut next) = (0, 0);
+        self.nodes.retain(|_| {
+            let keep = live[i];
+            if keep {
+                new_indices[i] = next;
+                next += 1;
+            }
+            i += 1;
+            keep
+        });
+        for node in &mut self.nodes {
+            node.parent = node.parent.map(|i| new_indices[i]);
+            for child in &mut node.children {
+                *child = new_indices[*child];
+            }
+        }
+        for node in &mut self.current {
+            *node = new_indices[*node];
+        }
+    }
+}
+
+/// The tag tables a predicate's `#tag` reads, as borrows of the game's fields.
+#[derive(Clone, Copy)]
+pub(in crate::game) struct TagSources<'a> {
+    /// The world's packs' tags over the game's own, by registry.
+    pub(in crate::game) pack_tags: Option<
+        &'a std::collections::HashMap<
+            &'static str,
+            std::collections::HashMap<String, std::collections::HashSet<String>>,
+        >,
+    >,
+    pub(in crate::game) items: &'a sunrise_items::items::Items,
+    pub(in crate::game) mob_data: &'a sunrise_sim::mobs::MobData,
+    pub(in crate::game) damage: &'a sunrise_world::damage_source::Catalog,
+    pub(in crate::game) resources: &'a std::path::Path,
+}
+impl TagSources<'_> {
+    pub(in crate::game) fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {
+        // The world's packs' tags over the game's own, as the server's
+        // registries bind them (`TagLoader.loadTagsForExistingRegistries`).
+        if let Some(tags) = self.pack_tags.and_then(|t| t.get(registry)) {
+            return tags.get(tag).is_some_and(|t| t.contains(id));
+        }
+        match registry {
+            "item" => self.items.item_in_tag(tag, id),
+            "block" => self.items.block_in_tag(tag, id),
+            "damage_type" => self
+                .damage
+                .id(id)
+                .is_some_and(|source| self.damage.in_tag(source, tag)),
+            "entity_type" => self.items.entity_type_tags.contains(tag, id),
+            "worldgen/biome" => self.mob_data.biome_has(tag, id),
+            "worldgen/structure" => vanilla_structure_tags(self.resources)
+                .get(tag)
+                .is_some_and(|t| t.contains(id)),
+            _ => false,
+        }
+    }
+}
+pub(in crate::game) type Tags =
+    std::collections::HashMap<String, std::collections::HashSet<String>>;
+/// The game's own `worldgen/structure` tags (a world without data packs has
+/// no `WorldTables` to hold them), loaded once for the resource root first
+/// asked for.
+pub(in crate::game) fn vanilla_structure_tags(root: &std::path::Path) -> &'static Tags {
+    static TAGS: std::sync::OnceLock<Tags> = std::sync::OnceLock::new();
+    TAGS.get_or_init(|| {
+        sunrise_items::items::load_tags(
+            root,
+            "worldgen/structure",
+            &sunrise_world::loot::PackOverlay::NONE,
+        )
+        .unwrap_or_default()
+    })
+}
+/// An advancement's title or description: a whole component (ComponentSerialization.CODEC),
+/// with its siblings and styles, as a plugin's `{"text":"","extra":[...]}` needs.
+pub(in crate::game) fn text_of(v: &Value) -> Text {
+    sunrise_game_data::scoreboard::comp_text(v)
+}

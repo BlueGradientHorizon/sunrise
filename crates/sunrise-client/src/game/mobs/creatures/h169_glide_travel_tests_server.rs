@@ -36,6 +36,7 @@ pub(in crate::game) fn with_role_game(
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

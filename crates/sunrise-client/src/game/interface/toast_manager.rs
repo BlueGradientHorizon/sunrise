@@ -1,6 +1,7 @@
 //! The client's ordinary toast queue. Now playing is independent of the slots.
 
-use super::{advancements, mod_toasts, tutorial};
+use super::{mod_toasts, tutorial};
+use crate::game::client_side::advancement_toast;
 use std::{cell::RefCell, collections::VecDeque};
 use sunrise_client::toasts::SystemToast;
 
@@ -14,7 +15,7 @@ pub(in crate::game) enum SystemToastId {
 }
 
 pub(in crate::game) enum Toast {
-    Advancement(advancements::Toast),
+    Advancement(advancement_toast::Toast),
     Tutorial(tutorial::HintToast),
     System(Option<SystemToastId>, SystemToast),
     Diagnostic {

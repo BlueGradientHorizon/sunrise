@@ -4,7 +4,7 @@
 //! isn't online here. Writes return false (or None) for those, for a dead
 //! player, and, inside another player's turn, for anyone but that player.
 use super::{
-    Game, lan_actions::CombatPlayer, native_server::PlayerRead, stats::Stats,
+    Game, lan_actions_server::CombatPlayer, native_server::PlayerRead, stats::Stats,
     transactions::DeferredEffect,
 };
 use mod_api::{PlayerRef, StatType};
@@ -17,7 +17,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     fn native_player_stats(&self, player: PlayerRef) -> Option<Option<&Stats>> {
         match self.player_handle_read(player) {
             Some(PlayerRead::Guest(g)) => {
-                Some(self.lan.as_ref()?.play.get(&g.conn).map(|p| &p.stats))
+                Some(self.side.lan.as_ref()?.play.get(&g.conn).map(|p| &p.stats))
             }
             Some(PlayerRead::Acting { .. }) => Some(Some(&self.stats)),
             None => {
@@ -200,7 +200,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether `player` still names the same player on this server.
     pub(in crate::game) fn native_player_current(&self, player: PlayerRef) -> bool {
         self.player_handle_read(player).is_some()
@@ -311,7 +311,7 @@ mod tests {
                 assert_eq!(player.stat(game, StatType::Custom, "jump"), Some(6));
                 assert_eq!(serde_json::from_str::<Value>(&before).unwrap(), empty);
 
-                let host = game.lan.as_mut().unwrap();
+                let host = game.side.lan.as_mut().unwrap();
                 let stats = &mut host.play.get_mut(&12).unwrap().stats;
                 stats.add("mined", "minecraft:stone", 6);
                 stats.custom("jump", 3);
@@ -365,7 +365,8 @@ mod tests {
                 }
 
                 let (tx, rx) = std::sync::mpsc::channel();
-                game.lan
+                game.side
+                    .lan
                     .as_mut()
                     .unwrap()
                     .hub
@@ -374,7 +375,7 @@ mod tests {
                     })
                     .unwrap();
                 game.lan_guest_packet(12, Serverbound::ClientCommand(ClientCommand { action: 1 }));
-                let host = game.lan.as_ref().unwrap();
+                let host = game.side.lan.as_ref().unwrap();
                 let hub = &host.hub;
                 let id = |registry, key| hub.registry_id(registry, key).unwrap();
                 let mut responses = Vec::new();
@@ -502,9 +503,9 @@ mod tests {
             );
             guest.placed = true;
             guest.recipe_book.recipes.insert("minecraft:stick".into());
-            let host = game.lan.as_mut().unwrap();
+            let host = game.side.lan.as_mut().unwrap();
             host.hub.guests.push(guest);
-            let mut play = super::super::lan_actions::GuestPlay::default();
+            let mut play = crate::game::server_side::lan_actions_server::GuestPlay::default();
             play.stats.add("custom", "minecraft:jump", 7);
             host.play.insert(1, play);
             game.stats.add("custom", "minecraft:jump", 3);
@@ -533,7 +534,7 @@ mod tests {
             game.side.lan_acting_uuid = None;
             game.side.lan_acting_entity = None;
             // A guest without play state yet has counted nothing.
-            game.lan.as_mut().unwrap().play.remove(&1);
+            game.side.lan.as_mut().unwrap().play.remove(&1);
             assert_eq!(jump(game), Some(0));
         });
     }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::client_side::resource_tables_client::ClientPackResources;
 use sunrise_client_render::streaming::WorkerContext;
 use sunrise_items::blocks::{MAP_COLORS, RenderShape};
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};

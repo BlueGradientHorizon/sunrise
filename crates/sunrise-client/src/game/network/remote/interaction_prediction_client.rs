@@ -106,6 +106,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Err("extra bytes in authoritative block-use result".into());
         }
         let click = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.pending_cauldrons.get_mut().remove(&receipt));
@@ -120,7 +121,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && self.remote_item_use_aim() == click.aim
         {
             self.with_interaction_swing_scope(|game| {
-                if let Some(remote) = &mut game.remote {
+                if let Some(remote) = &mut game.side.remote {
                     remote.interaction_swing = click.swing;
                 }
                 if block_fell_through && click.item_after_block {
@@ -130,7 +131,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     };
                     let swings = game.swings_started;
                     let answer = game.remote_item_after_block(&click.hit, click.hand, held);
-                    if let Some(remote) = &mut game.remote {
+                    if let Some(remote) = &mut game.side.remote {
                         remote.use_target = Some(click.hit.pos);
                     }
                     let done = if let Some(answer) = answer {
@@ -187,7 +188,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// copy of the entity answers (`MultiPlayerGameMode.interact`).
     pub(in crate::game) fn remote_use_entity(&mut self, hand: Hand) -> bool {
         // A menu this use opens (a chest minecart's) is no clicked block's.
-        if let Some(r) = self.remote.as_mut() {
+        if let Some(r) = self.side.remote.as_mut() {
             r.use_target = None;
         }
         let spectator = self.spectator();
@@ -290,17 +291,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 && (sneaking
                     || self.riding.is_some_and(|r| r as i32 == hit.id)
                     || self
+                        .side
                         .remote
                         .as_ref()
                         .is_some_and(|r| r.has_passengers(hit.id as u32)));
             // EndCrystal, EnderDragonPart, PrimedTnt, and FallingBlock keep Entity.interact's PASS.
             let crystal_passes = self.crystals.iter().any(|c| c.id as i32 == hit.id)
                 || self.dragon.as_ref().is_some_and(|d| {
-                    crate::game::dragon::dragon_part_index(d.id, hit.id as u32).is_some()
+                    crate::game::dragon_common::dragon_part_index(d.id, hit.id as u32).is_some()
                 });
             let tnt_or_falling_passes = self.tnts.iter().any(|t| t.id as i32 == hit.id)
                 || self.falling.iter().any(|f| f.id as i32 == hit.id);
             let passes = self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.general.rows.contains_key(&hit.id))
@@ -357,6 +360,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Player.interactOn: another player passes, and so does a mob
             // the held item means nothing to: the item is used instead.
             let player = self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.level_players.contains_key(&id));
@@ -396,6 +400,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // example, a server-only listener may override sneaking). Selection
             // comes from the registration snapshot, not the client's hook answer.
             let cauldron_click = self
+                .side
                 .remote
                 .as_ref()
                 .filter(|_| !spectator && self.has_server_cauldron_handler(hit.pos, held.as_ref()))
@@ -530,7 +535,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // hooks, which can apply item effects of their own.
                 self.remote_send_carried();
                 if !self.client_packet_send_canceled(&S::UseItemOn(packet.clone()))
-                    && let Some(remote) = &mut self.remote
+                    && let Some(remote) = &mut self.side.remote
                 {
                     use sunrise_protocol::buf::Codec;
                     remote.cauldron_receipt = remote.cauldron_receipt.wrapping_add(1);
@@ -627,7 +632,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Only a predicted placement (predict_place) marks a cell whose
             // resend plays a place sound: an empty hand or a non-block item
             // places nothing (BlockItem.place is where the sound comes from).
-            if let Some(r) = self.remote.as_mut() {
+            if let Some(r) = self.side.remote.as_mut() {
                 r.use_target = Some(hit.pos);
             }
             if let Some(answer) = item_answer {

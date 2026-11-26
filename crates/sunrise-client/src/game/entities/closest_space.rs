@@ -1,5 +1,5 @@
 //! `LocalPlayer.moveTowardsClosestSpace`: the push out of a wall the player's body is in.
-pub use sunrise_client_gameplay::closest_space::closest_space_nudge;
+pub use sunrise_gameplay_common::closest_space::closest_space_nudge;
 
 #[cfg(test)]
 mod tests {

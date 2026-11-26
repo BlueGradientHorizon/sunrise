@@ -143,6 +143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         use sync::Refusal as R;
         let mut graph = Backings::capture(self, before, plan)?;
         let gi = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| {
@@ -164,7 +165,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(R::Changed);
         }
         let stocks = graph.add_sources(self, &sources)?;
-        let host = self.lan.as_ref().ok_or(R::Changed)?;
+        let host = self.side.lan.as_ref().ok_or(R::Changed)?;
         let guest = host.hub.guest(before.conn).ok_or(R::Changed)?;
         let kind = Kind::Mod(before.kind);
         let mut menu = host
@@ -264,7 +265,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             result: menu.slot(crafting.result).cloned(),
         });
         {
-            let host = self.lan.as_mut().ok_or(R::Changed)?;
+            let host = self.side.lan.as_mut().ok_or(R::Changed)?;
             let gi = host
                 .hub
                 .guests
@@ -282,7 +283,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
         }
         self.mod_book_write_native_changes(before, &changes.native)?;
-        let host = self.lan.as_mut().ok_or(R::Changed)?;
+        let host = self.side.lan.as_mut().ok_or(R::Changed)?;
         *host.menus.entry(before.conn).or_default().crafting.machine = Some((before.window, menu));
         Ok(post)
     }

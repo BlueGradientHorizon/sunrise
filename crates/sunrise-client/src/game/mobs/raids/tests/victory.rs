@@ -31,7 +31,7 @@ fn victory_rewards_players_in_hero_set_order() {
     mod_platform::testing::with_mods(mods, || {
         with_guests(|game| {
             let dim = game.dim.id();
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             // Hub order is first 14, then 13. The Java HashSet puts 13 first.
             for (conn, uuid) in [(12, 14), (13, 13)] {
                 hub.update_guest(conn, |g| {
@@ -54,7 +54,7 @@ fn victory_rewards_players_in_hero_set_order() {
             );
             assert_eq!(*awards.lock().unwrap(), [13, 14]);
 
-            for guest in game.lan.as_ref().unwrap().hub.guests.iter() {
+            for guest in game.side.lan.as_ref().unwrap().hub.guests.iter() {
                 let effect = guest.effects.get("hero_of_the_village").unwrap();
                 assert_eq!((effect.duration, effect.amplifier), (48_000, 1));
                 assert!(!effect.visible);

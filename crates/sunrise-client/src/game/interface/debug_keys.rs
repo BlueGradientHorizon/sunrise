@@ -247,7 +247,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// integrated server's instant ping (a remote one is `tick_debug_connection`).
     pub(in crate::game::client_side) fn tick_debug_charts(&mut self) {
         let shown = self.side.debug && self.side.debug_charts.network;
-        let Some(r) = &self.remote else {
+        let Some(r) = &self.side.remote else {
             // The integrated server answers within the tick.
             if shown {
                 self.side.debug_charts.ping.log(0);
@@ -272,7 +272,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.tick` after the carried slot and the chat session: the ping while the
     /// network charts show, then, with a level, `ClientDebugSubscriber.tick`'s request.
     pub(in crate::game::client_side) fn tick_debug_connection(&mut self) {
-        let Some(r) = &self.remote else {
+        let Some(r) = &self.side.remote else {
             return;
         };
         let has_level = r.has_level();
@@ -370,7 +370,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         if !self.debug_overlay_visible() {
             // Nothing reads the server's lines now: it stops computing them each tick.
-            if let Some(server) = &self.integrated {
+            if let Some(server) = &self.side.integrated {
                 server.request_debug(None);
             }
             return;
@@ -646,13 +646,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 (target, status)
             };
-            if let Some(server) = &self.integrated {
+            if let Some(server) = &self.side.integrated {
                 let tick_ms = server.smoothed_tick_ms();
                 d.line(format!(
                     "Integrated server @ {}/{target} ms{status}, {tx} tx, {rx} rx",
                     format_fixed(f64::from(tick_ms), 1),
                 ));
-            } else if let Some(remote) = &self.remote {
+            } else if let Some(remote) = &self.side.remote {
                 d.line(format!(
                     "\"{}\" server{status}, {tx} tx, {rx} rx",
                     remote.brand
@@ -698,7 +698,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::REDUCED_DEBUG_INFO)
-            || self.remote.as_ref().is_some_and(|r| r.reduced_debug_info)
+            || self
+                .side
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.reduced_debug_info)
     }
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
     pub(in crate::game::client_side) fn debug_entry(&self, path: &str) -> bool {
@@ -957,7 +961,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// from the server the game is connected to, the integrated one included
     /// (`DebugQueryHandler`); without one, the game's own data is the server's.
     fn copy_recreate_command(&mut self, add_nbt: bool, from_server: bool) {
-        let query = add_nbt && from_server && self.remote.is_some();
+        let query = add_nbt && from_server && self.side.remote.is_some();
         let side = if add_nbt && from_server {
             "server"
         } else {
@@ -973,7 +977,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if query {
                 // DebugQueryHandler.queryEntityTag: the answer copies it.
                 let reply = QueryReply::Entity { id, kind, position };
-                if let Some(transaction) = self.remote.as_mut().map(|r| r.debug_query.start(reply))
+                if let Some(transaction) = self
+                    .side
+                    .remote
+                    .as_mut()
+                    .map(|r| r.debug_query.start(reply))
                 {
                     self.send(Serverbound::EntityTagQuery(EntityTagQuery {
                         transaction,
@@ -996,7 +1004,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if query {
             // DebugQueryHandler.queryBlockEntityTag: the answer copies it.
             let reply = QueryReply::Block { pos, state };
-            if let Some(transaction) = self.remote.as_mut().map(|r| r.debug_query.start(reply)) {
+            if let Some(transaction) = self
+                .side
+                .remote
+                .as_mut()
+                .map(|r| r.debug_query.start(reply))
+            {
                 self.send(Serverbound::BlockEntityTagQuery(BlockEntityTagQuery {
                     transaction,
                     pos,
@@ -1030,6 +1043,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// it; an answer to an older query is ignored.
     pub(in crate::game::client_side) fn answer_tag_query(&mut self, transaction: i32, tag: Tag) {
         let Some(reply) = self
+            .side
             .remote
             .as_mut()
             .and_then(|r| r.debug_query.answer(transaction))
@@ -1119,7 +1133,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .camera_type
             .is_first_person()
             .then(|| {
-                self.remote
+                self.side
+                    .remote
                     .as_ref()
                     .filter(|r| r.detached_camera.is_none())
                     .and_then(|r| r.camera)
@@ -1253,8 +1268,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if hide_camera == Some(b.id) {
                 continue;
             }
-            let h = super::boats::HEIGHT as f32;
-            let (size, eye) = sized(b.id, (super::boats::WIDTH as f32, h), h);
+            let h = crate::game::boats_common::HEIGHT as f32;
+            let (size, eye) = sized(b.id, (crate::game::boats_common::WIDTH as f32, h), h);
             g.hitbox(at(b.previous, b.position), size, eye, false, (0.0, b.yaw));
         }
         for c in &self.carts {
@@ -1390,7 +1405,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // The dragon's parts.
         for (id, b) in self.special_targets() {
-            if (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&id) {
+            if (crate::game::dragon_common::SPECIAL..crate::game::dragon_common::SPECIAL + 8)
+                .contains(&id)
+            {
                 g.cuboid(
                     [b.min(Axis::X), b.min(Axis::Y), b.min(Axis::Z)],
                     [b.max(Axis::X), b.max(Axis::Y), b.max(Axis::Z)],

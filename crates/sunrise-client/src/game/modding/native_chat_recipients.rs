@@ -20,7 +20,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         FILTERING_CHAT.with(|active| {
             let _filtering = active.try_borrow_mut().ok()?;
-            let Some(host) = self.lan.as_ref() else {
+            let Some(host) = self.side.lan.as_ref() else {
                 return Some(Vec::new());
             };
             let receivers: Vec<u128> = host.hub.online_players().map(|g| g.uuid).collect();

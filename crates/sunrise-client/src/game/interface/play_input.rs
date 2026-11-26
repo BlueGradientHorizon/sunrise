@@ -192,7 +192,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (_, true) => KeyAction::Repeat,
         };
         if let Some(name) = sunrise_client::keybinds::key_name(key) {
-            let screen_open = self.mod_mappings_screen_open() || self.replay.playing();
+            let screen_open = self.mod_mappings_screen_open() || self.side.replay.playing();
             self.side.vanilla_mappings.key_event(
                 &self.side.settings.keys,
                 name,
@@ -289,7 +289,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         source: Source,
         vanilla_queued: bool,
     ) -> Result<()> {
-        if self.side.screen == Screen::Playing && self.replay.playing() {
+        if self.side.screen == Screen::Playing && self.side.replay.playing() {
             if !pressed {
                 self.release_device_key(&key, source);
                 return Ok(());
@@ -338,7 +338,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if !pressed {
             self.release_device_key(&key, source);
             return Ok(());
-        } else if !self.mod_mappings_screen_open() || self.replay.playing() {
+        } else if !self.mod_mappings_screen_open() || self.side.replay.playing() {
             self.press_device_key(key, source);
             if let Some(slot) = sunrise_client::keybinds::VanillaMappingSlot::by_default_key(key)
                 && slot.definition().2 == "movement"

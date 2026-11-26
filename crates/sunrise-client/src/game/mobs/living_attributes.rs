@@ -586,7 +586,7 @@ mod tests {
             .clone();
         game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
         game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-        let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+        let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 14;
         game.dragon.replace(dragon);
     }
@@ -833,7 +833,7 @@ mod tests {
             ));
             assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, None));
             assert_eq!(values(game), (8.0, 0.0));
-            let level = crate::game::entity::damage_level_of!(
+            let level = crate::game::server_side::entity_server::damage_level_of!(
                 game,
                 &sunrise_sim::health::NO_ATTACK,
                 no_push,

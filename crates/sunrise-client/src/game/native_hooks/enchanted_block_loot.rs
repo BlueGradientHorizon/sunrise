@@ -31,7 +31,7 @@ impl GameLevel<'_> {
             .is_none()
             .then(|| {
                 self.pending.source(at).or_else(|| {
-                    crate::game::spill::world_source(
+                    crate::game::spill_common::world_source(
                         self.world,
                         at,
                         &self.facts.get(state).name,

@@ -71,7 +71,7 @@ impl PickFingerprint {
         Self {
             epoch: game.native_lifecycle.epoch(),
             dim: Some(game.dim),
-            is_remote: game.remote.is_some(),
+            is_remote: game.side.remote.is_some(),
             mobs: (game.mobs.len(), game.mobs.last().map(|e| e.join_seq())),
             boats: (game.boats.len(), game.boats.last().map(|e| e.join_seq())),
             carts: (game.carts.len(), game.carts.last().map(|e| e.join_seq())),
@@ -111,7 +111,7 @@ impl PickFingerprint {
             ),
             cushions: (game.cushions.len(), game.cushions.last().map(|e| e.join)),
             interactions: game.side.interactions.len(),
-            remote_general: game.remote.as_ref().map_or((0, None), |r| {
+            remote_general: game.side.remote.as_ref().map_or((0, None), |r| {
                 (
                     r.general.rows.len(),
                     r.general.rows.values().next_back().map(|e| e.join),
@@ -131,7 +131,11 @@ impl PickFingerprint {
                 game.dropped.len(),
                 game.dropped.last().map(|e| e.join_seq()),
             ),
-            pending_items: game.remote.as_ref().map_or(0, |r| r.pending_items.len()),
+            pending_items: game
+                .side
+                .remote
+                .as_ref()
+                .map_or(0, |r| r.pending_items.len()),
             orbs: (game.orbs.len(), game.orbs.last().map(|e| e.join_seq())),
             player: game.client_section_player().map(|p| {
                 (
@@ -483,7 +487,7 @@ pub(in crate::game) fn visit_section_members(
             [i.position.x, i.position.y, i.position.z],
         );
     }
-    if let Some(remote) = &game.remote {
+    if let Some(remote) = &game.side.remote {
         for (&id, row) in &remote.general.rows {
             consider(
                 row.join.get(),
@@ -513,7 +517,7 @@ pub(in crate::game) fn visit_section_members(
         );
     }
 
-    if let Some(remote) = &game.remote {
+    if let Some(remote) = &game.side.remote {
         for (&id, d) in &game.side.text_displays.0 {
             consider(
                 d.join.get(),
@@ -584,7 +588,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     fn client_section_player(&self) -> Option<&sunrise_sim::motion::PlayerMotion> {
-        let remote = self.remote.as_ref()?;
+        let remote = self.side.remote.as_ref()?;
         self.player
             .as_ref()
             .filter(|p| p.entity_id == remote.entity_id)
@@ -652,7 +656,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 storage.move_id(id as u32, [i.position.x, i.position.y, i.position.z]);
             }
         }
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             for (&id, row) in &remote.general.rows {
                 if remote.passenger_vehicle(id as u32).is_some() {
                     storage.move_id(id as u32, row.position);
@@ -662,7 +666,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     fn locate_pick_member(&self, id: u32) -> Option<(PickKind, [f64; 3])> {
-        if let Some(remote) = &self.remote {
+        if let Some(remote) = &self.side.remote {
             let kind = match remote.tracked(id as i32).map(|(kind, _)| kind) {
                 _ if remote.entity_id as u32 == id => Some(PickKind::LocalPlayer),
                 Some("minecraft:ender_dragon") => Some(PickKind::Dragon),
@@ -736,6 +740,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ));
         }
         if let Some(row) = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.general.rows.get(&(id as i32)))
@@ -769,7 +774,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .find(|e| e.id == id)
                 .map(|e| e.join_seq())
                 .or_else(|| {
-                    self.remote
+                    self.side
+                        .remote
                         .as_ref()?
                         .pending_items
                         .get(&id32)
@@ -829,6 +835,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             PickKind::Cushion => self.cushions.iter().find(|e| e.id == id).map(|e| e.join),
             PickKind::Interaction => self.side.interactions.get(&id32).map(|e| e.join),
             PickKind::RemoteGeneral => self
+                .side
                 .remote
                 .as_ref()
                 .and_then(|r| r.general.rows.get(&id32).map(|e| e.join)),
@@ -858,7 +865,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .find(|e| e.id == id)
                 .map(|e| e.position.components())
                 .or_else(|| {
-                    self.remote
+                    self.side
+                        .remote
                         .as_ref()?
                         .pending_items
                         .get(&(id as i32))
@@ -944,6 +952,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .get(&(id as i32))
                 .map(|e| [e.position.x, e.position.y, e.position.z]),
             PickKind::RemoteGeneral => self
+                .side
                 .remote
                 .as_ref()?
                 .general
@@ -1080,6 +1089,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .get(&(id as i32))
                 .map(|i| (id, self.client_copy_box(id, i.position, i.bounds()), 0.0)),
             PickKind::RemoteGeneral => self
+                .side
                 .remote
                 .as_ref()?
                 .general
@@ -1155,7 +1165,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(d) = self
             .dragon
             .as_ref()
-            .filter(|d| (d.id != 0 || self.remote.is_some()) && d.id == id)
+            .filter(|d| (d.id != 0 || self.side.remote.is_some()) && d.id == id)
         {
             let p = d.position;
             return Some(Aabb::new(
@@ -1164,6 +1174,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ));
         }
         if let Some(row) = self
+            .side
             .remote
             .as_ref()
             .and_then(|r| r.general.rows.get(&(id as i32)))
@@ -1181,7 +1192,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// `cameraEntity.getBoundingBox()` at the camera entity's current position.
     pub(in crate::game::client_side) fn pick_camera_bounds(&self) -> Option<Aabb> {
-        if let Some(r) = self.remote.as_ref()
+        if let Some(r) = self.side.remote.as_ref()
             && let Some(cam_id) = r.camera
         {
             if let Some(detached) = r
@@ -1224,12 +1235,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             });
         }
         if let Some(d) = self.dragon.as_ref().filter(|d| !self.is_pick_camera(d.id)) {
-            let has_wire_id = d.id != 0 || self.remote.is_some();
+            let has_wire_id = d.id != 0 || self.side.remote.is_some();
             for i in 0..8 {
                 let part_id = if has_wire_id {
-                    crate::game::dragon::dragon_part_id(d.id, i)
+                    crate::game::dragon_common::dragon_part_id(d.id, i)
                 } else {
-                    crate::game::dragon::SPECIAL + i as u32
+                    crate::game::dragon_common::SPECIAL + i as u32
                 };
                 let part_bb = d.part_geometry(i).1;
                 if !self.is_pick_camera(part_id) && part_bb.intersects(search_box) {

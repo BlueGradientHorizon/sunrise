@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::container_loot::LootTarget;
+use crate::game::container_loot_level::LootTarget;
 use sunrise_world::loot::LootStack;
 
 // Admission preserves the list's counts through every listener. Only placement

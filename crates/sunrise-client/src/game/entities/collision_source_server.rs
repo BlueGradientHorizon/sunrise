@@ -2,7 +2,7 @@
 use super::{
     Game,
     collision_source::{Mover, boat, cart, cart_reach, player},
-    commands::Target,
+    commands_common::Target,
 };
 use sunrise_sim::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 
@@ -30,7 +30,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .filter(|m| rule.takes(m.solid_kind()))
                 .map(|m| m.solid_candidate()),
         );
-        out.extend(self.boats.iter().map(|b| boat(self, b)));
+        out.extend(
+            self.boats
+                .iter()
+                .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)),
+        );
     }
 
     /// [`Self::entity_collisions`] for an armor stand, which mobs can ride (`/ride`): each mob's
@@ -66,8 +70,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .carts
                     .iter()
                     .filter(|o| o.id != c.id)
-                    .map(|c| cart(self, c))
-                    .chain(self.boats.iter().map(|b| boat(self, b)))
+                    .map(|c| cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c))
+                    .chain(
+                        self.boats
+                            .iter()
+                            .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)),
+                    )
                 {
                     if solids.accepts(&o, || None) {
                         each(&o, None);
@@ -88,7 +96,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         each(&p, None);
                     }
                 }
-                if let Some(host) = self.lan.as_ref() {
+                if let Some(host) = self.side.lan.as_ref() {
                     for g in host.hub.guests.iter().filter(|g| {
                         host.hub.here(g)
                             && g.loaded
@@ -116,12 +124,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 for (c, target) in self
                     .boats
                     .iter()
-                    .map(|b| (boat(self, b), Target::Boat(b.id)))
-                    .chain(
-                        self.carts
-                            .iter()
-                            .map(|c| (cart(self, c), Target::Cart(c.id))),
-                    )
+                    .map(|b| {
+                        (
+                            boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b),
+                            Target::Boat(b.id),
+                        )
+                    })
+                    .chain(self.carts.iter().map(|c| {
+                        (
+                            cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c),
+                            Target::Cart(c.id),
+                        )
+                    }))
                     .chain(
                         self.players_outside(id)
                             .into_iter()

@@ -13,7 +13,6 @@ use super::Game;
 use mod_api::{ItemCooldown, PlayerRef};
 use std::sync::Arc;
 use sunrise_items::cooldowns::Cooldowns;
-use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The cooldowns of `player`, where they are kept now: a guest's own
@@ -23,7 +22,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match self.player_handle_read(player)? {
             super::native_server::PlayerRead::Acting { .. } => Some(&self.cooldowns),
             super::native_server::PlayerRead::Guest(g) => Some(
-                self.lan
+                self.side
+                    .lan
                     .as_ref()?
                     .play
                     .get(&g.conn)
@@ -100,7 +100,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match self.player_handle_read(player)? {
             super::native_server::PlayerRead::Acting { .. } => Some(self.side.xp_delay),
             super::native_server::PlayerRead::Guest(g) => Some(
-                self.lan
+                self.side
+                    .lan
                     .as_ref()?
                     .play
                     .get(&g.conn)
@@ -130,6 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The tracker loads from and saves to the level's player data, the
         // owner's: in another player's turn theirs is in its place.
         let owner = self
+            .side
             .lan
             .as_ref()
             .and_then(|host| host.owner.as_ref())
@@ -147,19 +149,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             game.load_warden_tracker();
             game.side.sculk.tracker.cooldown_ticks = i32::try_from(ticks).unwrap_or(i32::MAX);
         })
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// `ItemCooldowns.getCooldownGroup(stack)`: the group `stack`'s
-    /// cooldown is filed under, the group its `use_cooldown` component names
-    /// (its own, else its item's default), else its item id.
-    pub(in crate::game) fn item_cooldown_group(&self, stack: &ItemStack) -> String {
-        let default = self
-            .items()
-            .get(&stack.item)
-            .and_then(|info| info.use_cooldown.as_ref());
-        sunrise_items::cooldowns::group(stack, default).to_string()
     }
 }
 
@@ -255,18 +244,24 @@ mod tests {
         super::super::native_guest_turn_tests::with_guests(|game| {
             // Guest 12 owns the world: their data is the level's, and 13 has
             // their own saved tracker (as `lan_guest_joined` loads them).
-            game.lan.as_mut().unwrap().owner = Some(super::super::lan::Owner {
+            game.side.lan.as_mut().unwrap().owner = Some(super::super::lan::Owner {
                 uuid: 12,
                 saved: None,
             });
             game.level.player_extra = tracker(2);
-            game.lan.as_mut().unwrap().hub.guests.update_all(|guest| {
-                guest.saved = if guest.uuid == 12 {
-                    tracker(2)
-                } else {
-                    tracker(4)
-                };
-            });
+            game.side
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update_all(|guest| {
+                    guest.saved = if guest.uuid == 12 {
+                        tracker(2)
+                    } else {
+                        tracker(4)
+                    };
+                });
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
 
             // Anyone else's write is refused and loads nothing, in or out of

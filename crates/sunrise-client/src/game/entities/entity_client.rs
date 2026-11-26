@@ -1,11 +1,16 @@
 use super::Game;
-use super::{boats::Boat, minecarts::Minecart};
-use crate::game::server_side::entity::DrawExtras;
-use crate::game::server_side::entity::DrawRun;
-use crate::game::server_side::entity::*;
+use crate::game::{
+    boats_common::Boat,
+    collision_source::{Mover, boat, cart, cart_reach, player},
+    commands_common::Target,
+    entity::{EntityHandle, EntityLists},
+    minecarts::Minecart,
+    remote::passengers::passenger_root,
+};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_core::position::BlockPos;
 use sunrise_sim::entities::{ArmorStand, Cushion, ItemEntity, ItemFrame, Painting};
+use sunrise_sim::join_seq::JoinSeq;
 use sunrise_sim::mobs::Mob;
 
 /// Identity and glowing state needed by the render occlusion culler.
@@ -222,6 +227,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 dragon: self.dragon.as_ref().map(|dragon| dragon.join),
                 crystals: if draw_crystals { &self.crystals } else { &[] },
                 general: self
+                    .side
                     .remote
                     .as_ref()
                     .filter(|_| draw_general)
@@ -261,7 +267,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         ground: &sunrise_world::ground_support::GroundState,
         velocity: &mut Vec3,
     ) -> Vec<mod_api::EntityWrite> {
-        let side = game_side!(self, self.game_side_client());
+        let side = client_game_side!(self, self.game_side_client());
         self.body_motion(&side)
             .step_on(entity, footprint, ground, velocity);
         Vec::new()
@@ -287,23 +293,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_boat_collision_root(
         &self,
         id: u32,
-        _target: super::commands::Target,
+        _target: Target,
     ) -> Option<u32> {
-        self.remote
+        self.side
+            .remote
             .as_ref()
-            .and_then(|r| super::remote_vehicles::passenger_root(&r.passenger_vehicles, id).ok())
+            .and_then(|r| passenger_root(&r.passenger_vehicles, id).ok())
     }
 
     pub(in crate::game) fn client_vehicle_solids(
         &self,
-        mover: super::collision_source::Mover<'_>,
+        mover: Mover<'_>,
         solids: &sunrise_sim::entity_solids::Solids,
         each: &mut dyn FnMut(&sunrise_sim::entity_solids::Candidate, Option<usize>),
     ) {
-        use super::{
-            collision_source::{Mover, boat, cart, cart_reach, player},
-            commands::Target,
-        };
         use sunrise_sim::entity_solids::{Candidate, SolidKind};
         match mover {
             Mover::Cart(c) => {
@@ -311,8 +314,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .carts
                     .iter()
                     .filter(|o| o.id != c.id)
-                    .map(|c| cart(self, c))
-                    .chain(self.boats.iter().map(|b| boat(self, b)))
+                    .map(|c| cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c))
+                    .chain(
+                        self.boats
+                            .iter()
+                            .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)),
+                    )
                 {
                     if solids.accepts(&o, || None) {
                         each(&o, None);
@@ -351,12 +358,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 for (c, target) in self
                     .boats
                     .iter()
-                    .map(|b| (boat(self, b), Target::Boat(b.id)))
-                    .chain(
-                        self.carts
-                            .iter()
-                            .map(|c| (cart(self, c), Target::Cart(c.id))),
-                    )
+                    .map(|b| {
+                        (
+                            boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b),
+                            Target::Boat(b.id),
+                        )
+                    })
+                    .chain(self.carts.iter().map(|c| {
+                        (
+                            cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c),
+                            Target::Cart(c.id),
+                        )
+                    }))
                 {
                     if solids.accepts(&c, || self.client_boat_collision_root(c.id, target)) {
                         each(&c, None);
@@ -368,6 +381,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     && !p.health.dead_or_dying()
                 {
                     let pid = self
+                        .side
                         .remote
                         .as_ref()
                         .map_or(p.entity_id as u32, |r| r.entity_id as u32);
@@ -381,5 +395,140 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Mover::Player | Mover::PlayerAt { .. } | Mover::Passive => {}
         }
+    }
+}
+
+/// The families `entity_geometry` draws in one ordered pass.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum DrawFamily {
+    Mob,
+    LocalPlayer,
+    RemoteGeneral,
+    Dragon,
+    Crystal,
+    Item,
+    Orb,
+    Falling,
+    Tnt,
+    ArmorStand,
+    Boat,
+    Cart,
+    Trident,
+    Rocket,
+}
+
+/// Entities of one family, by list index, that joined back to back as far as the ordered
+/// pass is concerned.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::game) struct DrawRun {
+    pub(in crate::game) family: DrawFamily,
+    pub(in crate::game) range: std::ops::Range<usize>,
+}
+
+impl DrawFamily {
+    /// The drawn family of an entity and its index in that family's list; `None` for the
+    /// entities the pass does not draw.
+    fn of(handle: EntityHandle) -> Option<(Self, usize)> {
+        use EntityHandle as H;
+        Some(match handle {
+            H::Mob(i) => (Self::Mob, i),
+            H::Item(i) => (Self::Item, i),
+            H::Orb(i) => (Self::Orb, i),
+            H::Falling(i) => (Self::Falling, i),
+            H::Tnt(i) => (Self::Tnt, i),
+            H::ArmorStand(i) => (Self::ArmorStand, i),
+            H::Boat(i) => (Self::Boat, i),
+            H::Cart(i) => (Self::Cart, i),
+            H::Trident(i) => (Self::Trident, i),
+            H::Rocket(i) => (Self::Rocket, i),
+            _ => return None,
+        })
+    }
+}
+
+/// Draw sources that the shared `EntityLists` walk does not own.
+#[derive(Default)]
+pub(in crate::game) struct DrawExtras<'a> {
+    pub(in crate::game) local_player: Option<JoinSeq>,
+    pub(in crate::game) dragon: Option<JoinSeq>,
+    pub(in crate::game) crystals: &'a [crate::game::dragon_common::Crystal],
+    pub(in crate::game) general:
+        Option<&'a crate::game::client_side::remote_client::general::RemoteGenerals>,
+}
+
+/// The drawn entities as runs in the order they joined the level. Keep the next draw-only
+/// entity cached, so the existing body walk only compares its join with that one head.
+pub(in crate::game) fn draw_runs(
+    lists: EntityLists<'_>,
+    mut extra: DrawExtras<'_>,
+    runs: &mut Vec<DrawRun>,
+) {
+    use DrawFamily as F;
+    enum Head {
+        LocalPlayer,
+        Dragon,
+        Crystal(usize),
+        General(usize),
+    }
+    let mut crystals = extra.crystals.iter().enumerate().peekable();
+    let mut general = extra
+        .general
+        .into_iter()
+        .flat_map(|g| g.rows.values())
+        .enumerate()
+        .peekable();
+    let mut next_extra = || {
+        let (join, head) = [
+            extra.local_player.map(|seq| (seq, Head::LocalPlayer)),
+            extra.dragon.map(|seq| (seq, Head::Dragon)),
+            crystals.peek().map(|&(i, c)| (c.join, Head::Crystal(i))),
+            general.peek().map(|&(i, row)| (row.join, Head::General(i))),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by_key(|&(seq, _)| seq)?;
+        let (family, index) = match head {
+            Head::LocalPlayer => {
+                extra.local_player = None;
+                (F::LocalPlayer, 0)
+            }
+            Head::Dragon => {
+                extra.dragon = None;
+                (F::Dragon, 0)
+            }
+            Head::Crystal(index) => {
+                crystals.next();
+                (F::Crystal, index)
+            }
+            Head::General(index) => {
+                general.next();
+                (F::RemoteGeneral, index)
+            }
+        };
+        Some((join, family, index))
+    };
+    runs.clear();
+    let mut push = |family, index| match runs.last_mut() {
+        Some(run) if run.family == family && run.range.end == index => run.range.end += 1,
+        _ => runs.push(DrawRun {
+            family,
+            range: index..index + 1,
+        }),
+    };
+    let mut pending = next_extra();
+    for (handle, seq) in lists.merge_in_join_order(|handle| DrawFamily::of(handle).is_some()) {
+        while let Some((join, family, index)) = pending
+            && join < seq
+        {
+            push(family, index);
+            pending = next_extra();
+        }
+        if let Some((family, index)) = DrawFamily::of(handle) {
+            push(family, index);
+        }
+    }
+    while let Some((_, family, index)) = pending {
+        push(family, index);
+        pending = next_extra();
     }
 }

@@ -38,7 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .side
             .settings
             .client_information(client_view_distance(self.side.settings.render_distance));
-        if let Some(r) = self.remote.as_mut()
+        if let Some(r) = self.side.remote.as_mut()
             && r.joined
             && r.sent_info != info
         {

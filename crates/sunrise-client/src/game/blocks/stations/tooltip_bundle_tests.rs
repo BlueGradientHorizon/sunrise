@@ -534,7 +534,7 @@ fn custom_bundle_item_part_draws_tooltip_image_and_bar() {
     run_mods(mods, |game| {
         // The client's tooltip component factories, as client startup collects them.
         let mut factories = TooltipComponentFactories::default();
-        crate::game::native_hooks::native_register_client_tooltip_component_factories(
+        crate::game::client_side::native_hooks_client::register_client_tooltip_component_factories::native_register_client_tooltip_component_factories(
             &RegistrationContext::new(),
             &mut factories,
         );

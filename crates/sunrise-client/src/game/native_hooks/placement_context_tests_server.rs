@@ -234,7 +234,7 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(pipe, "SourceClient").unwrap();
-                    let remote = game.remote.as_mut().unwrap();
+                    let remote = game.side.remote.as_mut().unwrap();
                     remote.logged_in = true;
                     remote.entity_id = 7;
                     remote.profile = 42;

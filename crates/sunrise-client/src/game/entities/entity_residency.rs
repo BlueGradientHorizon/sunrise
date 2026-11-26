@@ -15,7 +15,7 @@ macro_rules! assign_resident_id {
         let index = $index;
         if $list[index].id == 0 {
             let id = $list.update(index, |$entity| {
-                $crate::game::entity::assign_stored_id($next, &mut $entity.id, $lifetime)
+                $crate::game::entity_server::assign_stored_id($next, &mut $entity.id, $lifetime)
             });
             $list.id_assigned(index);
             id
@@ -79,66 +79,6 @@ macro_rules! resident_visible {
 }
 pub(crate) use resident_visible;
 
-macro_rules! bind_resident_list {
-    (Mob, $list:expr, $journal:expr, $owner:expr) => {
-        $list.bind_residency_with_subtype(
-            $journal,
-            $owner,
-            |entity| (entity.id, entity.join_seq()),
-            |entity| {
-                if matches!(
-                    entity.species(),
-                    sunrise_sim::mobs::Species::Villager
-                        | sunrise_sim::mobs::Species::WanderingTrader
-                ) {
-                    sunrise_sim::join_seq::residency::EntitySubtype::Merchant
-                } else {
-                    sunrise_sim::join_seq::residency::EntitySubtype::Ordinary
-                }
-            },
-        )
-    };
-    (Other, $list:expr, $journal:expr, $owner:expr) => {
-        $list.bind_residency_with_subtype(
-            $journal,
-            $owner,
-            |entity| (entity.id, entity.join_seq()),
-            |entity| {
-                use sunrise_sim::join_seq::residency::EntitySubtype;
-                match entity.kind.as_str() {
-                    "minecraft:block_display" => EntitySubtype::BlockDisplay,
-                    "minecraft:item_display" => EntitySubtype::ItemDisplay,
-                    "minecraft:text_display" => EntitySubtype::TextDisplay,
-                    _ => EntitySubtype::Ordinary,
-                }
-            },
-        )
-    };
-    (Cart, $list:expr, $journal:expr, $owner:expr) => {
-        $list.bind_residency_with_subtype(
-            $journal,
-            $owner,
-            |entity| (entity.id, entity.join_seq()),
-            |entity| {
-                use sunrise_sim::join_seq::residency::EntitySubtype;
-                use $crate::game::minecarts::CartKind;
-                match entity.kind {
-                    CartKind::Chest => EntitySubtype::ChestCart,
-                    CartKind::Furnace => EntitySubtype::FurnaceCart,
-                    CartKind::Hopper => EntitySubtype::HopperCart,
-                    CartKind::Tnt => EntitySubtype::TntCart,
-                    CartKind::CommandBlock => EntitySubtype::CommandCart,
-                    _ => EntitySubtype::Ordinary,
-                }
-            },
-        )
-    };
-    ($kind:ident, $list:expr, $journal:expr, $owner:expr) => {
-        $list.bind_residency($journal, $owner, |entity| (entity.id, entity.join_seq()))
-    };
-}
-pub(crate) use bind_resident_list;
-
 /// Physical lifetime access, not a cached publication or a delivery promise.
 #[derive(Debug, PartialEq, Eq)]
 pub(in crate::game) enum SlotAccess<R> {
@@ -170,7 +110,7 @@ macro_rules! define_resident_access {
             if track_saved_uuids {
                 $this.persist.uuids.bind(journal, dimension);
             }
-            $($crate::game::entity_residency::bind_resident_list!($kind, $this$(.$field)+, journal, Owner { dimension, kind: Kind::$kind });)*
+            $($crate::game::resident_state::bind_resident_list!($kind, $this$(.$field)+, journal, Owner { dimension, kind: Kind::$kind });)*
             $this$(.$projectiles)+.bind_residency(journal, Owner { dimension, kind: Kind::Projectile }, |entity| (entity.id, entity.join_seq()));
             $this.dragon.bind_residency_specialized(journal, Owner { dimension, kind: Kind::Dragon }, |entity| (entity.id, entity.join_seq()), sunrise_sim::join_seq::residency::Source::Ordinary, Some((Kind::DragonPart, 8, |dragon, offset| dragon.parts.get(usize::from(offset)).map(|part| part.3))), None);
         }
@@ -225,7 +165,7 @@ macro_rules! define_resident_access {
                     let dragon = $this.dragon.as_ref()?;
                     if dragon.id == 0 { return None; }
                     dragon.parts.get(usize::from(offset))?;
-                    let id = crate::game::dragon::dragon_part_id(dragon.id, usize::from(offset));
+                    let id = crate::game::dragon_common::dragon_part_id(dragon.id, usize::from(offset));
                     let visible = true;
                     Some(SourceEntity { id, value: (Target::DragonPart(id), visible) })
                 }

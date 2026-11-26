@@ -1,71 +1,4 @@
-//! A native mod's general rows as a Sunrise client sees them (#792, stage 5): the server's
-//! `sunrise:general_entity` spawn adds one immediately, the vanilla packets keyed by its network
-//! id move and remove it as they do any tracked entity, and its declared fields are its synced
-//! attachments (`Remote::attachments`). Initial non-empty synced attachments arrive atomically
-//! with the spawn inside a `BundleDelimiter` pairing bundle (`ServerEntity.addPairing` +
-//! `ClientPacketListener.handleBundlePacket`, matching NeoForge `AttachmentSync`). Render
-//! extraction retains the published generation, not the live synced holder. The row's behaviour
-//! is the server's.
-use super::{Game, Lerp, Remote};
-use crate::game::general::general_type_catalog;
-use indexmap::IndexMap;
-use std::collections::HashMap;
-use sunrise_core::geometry::{Aabb, Vec3};
-#[allow(unused_imports)]
-use sunrise_protocol::general_entity::{self, Message};
-use sunrise_sim::join_seq::JoinSeq;
-
-/// One general row the server shows the window.
-#[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) struct RemoteGeneral {
-    /// Admission to the level, even if the first attachment snapshot has yet to arrive.
-    pub join: JoinSeq,
-    /// The client's frozen catalog slot for the row's type.
-    pub type_slot: usize,
-    pub uuid: u128,
-    pub position: [f64; 3],
-    /// Where it was when the last client tick began, for a frame's partial tick.
-    pub previous: [f64; 3],
-    /// Yaw, then pitch, in degrees.
-    pub rotation: [f32; 2],
-    pub previous_rotation: [f32; 2],
-    /// Client ticks since the spawn: `Entity.tickCount`, which wraps as Java's `int` does
-    /// (read as `i32`).
-    pub age: u32,
-    /// Frozen synced fields, initialized on spawn and rebuilt at each attachment sync boundary.
-    pub render_attachments: mod_api::EntityRenderAttachments,
-}
-
-impl RemoteGeneral {
-    pub(in crate::game) fn bounds(&self) -> Aabb {
-        let [x, y, z] = self.position;
-        general_type_catalog().bounds(self.type_slot, Vec3::new(x, y, z))
-    }
-
-    pub(in crate::game) fn kind(&self) -> &'static str {
-        general_type_catalog().key(self.type_slot)
-    }
-}
-
-/// The rows the server shows the window, by network id, and the warnings already given.
-#[derive(Default)]
-pub(in crate::game) struct RemoteGenerals {
-    /// Client entity lookup order: inserts append; removing one keeps the others in order.
-    pub rows: IndexMap<i32, RemoteGeneral>,
-    /// Type keys this client's catalog does not hold, each warned about once.
-    pub(in crate::game) unknown: std::collections::HashSet<String>,
-    /// Whether a spawn for an id already held was refused before, warned about once.
-    pub(in crate::game) duplicate: bool,
-    // Reuse the parent-before-child placement order while the window ticks.
-    pub(in crate::game) riders: Vec<(usize, i32, u32, usize)>,
-}
-
-impl Remote {
-    /// Discard the synced attachment mirror.
-    pub(in crate::game) fn clear_attachments(&mut self) {
-        self.attachments.clear();
-    }
-}
+use super::Game;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The declared type key of general row `id`: the level's own row, or on a client the
@@ -73,49 +6,22 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn general_kind(&self, id: u32) -> Option<&'static str> {
         let slot = match self.resident_entities.general.row(id) {
             Some(row) => row.type_slot,
-            None => {
-                self.remote
-                    .as_ref()?
-                    .general
-                    .rows
-                    .get(&(id as i32))?
-                    .type_slot
-            }
+            None => self.side_remote_general_type_slot(id)?,
         };
         Some(crate::game::general::general_type_catalog().key(slot))
     }
 }
 
-/// One client tick of the rows: `setOldPosAndRot`, then a step of the non-living
-/// `InterpolationHandler` (`Entity.moveOrInterpolateTo`, 3 steps) toward the server's last move.
-pub(in crate::game) fn tick_remote_general(
-    rows: &mut IndexMap<i32, RemoteGeneral>,
-    lerps: &mut HashMap<i32, Lerp>,
-) {
-    for (id, row) in rows.iter_mut() {
-        row.previous = row.position;
-        row.previous_rotation = row.rotation;
-        row.age = row.age.wrapping_add(1);
-        let Some(l) = lerps.get_mut(id).filter(|l| l.steps > 0) else {
-            continue;
-        };
-        let n = f64::from(l.steps);
-        for k in 0..3 {
-            row.position[k] += (l.target[k] - row.position[k]) / n;
-        }
-        if let Some((yaw, pitch)) = l.rotation {
-            row.rotation[0] =
-                crate::game::remote_objects::lerp_yaw_step(row.rotation[0], yaw, l.steps);
-            row.rotation[1] += (pitch - row.rotation[1]) / l.steps as f32;
-        }
-        l.steps -= 1;
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::*;
+    use crate::game::{
+        client_side::remote_client::general::{RemoteGeneral, tick_remote_general},
+        remote::Lerp,
+    };
+    use indexmap::IndexMap;
+    use std::collections::HashMap;
     use sunrise_mod_runtime::attachments::Holder;
+    use sunrise_protocol::general_entity::{self, Message};
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     pub(in crate::game) static FUEL: mod_api::AttachmentType<i32> = mod_api::AttachmentType {
@@ -235,6 +141,7 @@ pub(in crate::game) mod tests {
     /// The ids of the rows present on the window.
     pub(in crate::game) fn row_ids(game: &crate::game::ClientGame<'_>) -> Vec<i32> {
         let mut ids: Vec<i32> = game
+            .side
             .remote
             .as_ref()
             .unwrap()
@@ -250,7 +157,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn rows(
         game: &crate::game::ClientGame<'_>,
     ) -> IndexMap<i32, RemoteGeneral> {
-        game.remote.as_ref().unwrap().general.rows.clone()
+        game.side.remote.as_ref().unwrap().general.rows.clone()
     }
 
     #[test]
@@ -398,7 +305,7 @@ pub(in crate::game) mod tests {
                     keep: 0,
                 }))
                 .unwrap();
-                assert_eq!(game.remote.as_ref().unwrap().ghast_dismount, None);
+                assert_eq!(game.side.remote.as_ref().unwrap().ghast_dismount, None);
                 game.handle_packet(position(2)).unwrap();
                 assert_eq!(game.entity(7), Some(me));
                 assert_eq!(ghast.position(game), Some([2.5, 70.0, 0.5]));
@@ -444,6 +351,7 @@ pub(in crate::game) mod tests {
                 game.remote_attachment_sync(attachment_message(5, false, Some(99)));
                 assert!(
                     !game
+                        .side
                         .remote
                         .as_ref()
                         .unwrap()
@@ -473,7 +381,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(row_ids(game), [5]);
                 assert_eq!(rows(game)[&5].render_attachments.get(&FUEL), Ok(Some(&9)));
                 let fuel = |game: &crate::game::ClientGame<'_>, id: u32| {
-                    let held = game.remote.as_ref().unwrap();
+                    let held = game.side.remote.as_ref().unwrap();
                     let map = held.attachments.get(&Holder::Entity(id))?;
                     let value = map
                         .synced()
@@ -515,7 +423,8 @@ pub(in crate::game) mod tests {
                 // A client holds rows only here: none is a resident row, ticked by mod code.
                 assert!(game.resident_entities.general.rows.is_empty());
                 let holder = Holder::Entity(5);
-                game.remote
+                game.side
+                    .remote
                     .as_mut()
                     .unwrap()
                     .attachments
@@ -525,6 +434,7 @@ pub(in crate::game) mod tests {
                 assert!(rows(game).is_empty());
                 assert!(
                     !game
+                        .side
                         .remote
                         .as_ref()
                         .unwrap()
@@ -603,7 +513,8 @@ pub(in crate::game) mod tests {
                     name: "fuel".into(),
                     value: Some([("n".into(), sunrise_core::nbt::Tag::Int(77))].into()),
                 });
-                game.remote
+                game.side
+                    .remote
                     .as_mut()
                     .unwrap()
                     .attachments

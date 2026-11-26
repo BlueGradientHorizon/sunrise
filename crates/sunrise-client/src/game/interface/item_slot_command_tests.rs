@@ -18,7 +18,7 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         game.build_registries();
         game.ui.registries.permission = 4;
         game.armor_stands.push(ArmorStand::new(16, Vec3::ZERO, 0.0));
-        let mut dragon = super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+        let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 17;
         game.dragon.replace(dragon);
         let stand = "@e[type=minecraft:armor_stand,limit=1]";

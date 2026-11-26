@@ -22,6 +22,7 @@ sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab" }
 sunrise-perf-format = { path = "../sunrise-perf-format" }
 sunrise-protocol = { path = "../sunrise-protocol" }
+sunrise-system = { path = "../sunrise-system" }
 sunrise-threads = { path = "../sunrise-threads" }
 sunrise-world = { path = "../sunrise-world" }
 sunrise-server-files = { path = "../sunrise-server-files" }

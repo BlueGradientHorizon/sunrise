@@ -3,8 +3,8 @@
 //! and `PoolElement`, and the element reads a structure type or an element
 //! makes during layout.
 use super::native_structure_types::{Draws, Placing};
-use super::native_structures::engine_rotation;
 use super::native_worldgen::WorkerResources;
+use crate::game::native_structure_values::engine_rotation;
 use mod_api::{
     BlockMetadata, ElementContext, ElementDecodeContext, ElementPlacement, Identifier, JigsawBlock,
     JigsawJoint, PoolElementRef, PoolElementType, RandomSource, StructureError, StructureRotation,

@@ -93,7 +93,7 @@ pub(in crate::game::server_side) fn first_join<T: Joined>(list: &[T]) -> Option<
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A level tick starts: what has joined so far ticks this tick.
-    pub(in crate::game::server_side) fn begin_ordered_ticks(&mut self) {
+    pub(in crate::game) fn begin_ordered_ticks(&mut self) {
         let _span = sunrise_level::spans::guard("ordered_ticks");
         let pending_buf = std::mem::take(&mut self.side.ordered.pending_buf);
         let landed = std::mem::take(&mut self.side.ordered.landed);

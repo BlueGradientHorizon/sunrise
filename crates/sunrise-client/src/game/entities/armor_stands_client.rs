@@ -1,9 +1,8 @@
 use super::Game;
-use crate::game::server_side::armor_stands::ArmorStandAssets;
-use crate::game::server_side::armor_stands::TYPE_ID;
-use crate::game::server_side::armor_stands::preview_slot;
-use crate::game::server_side::armor_stands::skull_kind;
-use crate::game::server_side::armor_stands::*;
+use crate::game::armor_stands_common::{TYPE_ID, skull_kind, swap_with_equipment_slot};
+use std::{collections::HashMap, sync::Arc};
+use sunrise_assets::resource_source::ResourceSource;
+use sunrise_client::trims::{TrimOverride, TrimRegistry};
 use sunrise_client::{
     cit::{Hand, Kind, Rule},
     mesher::Vertex,
@@ -16,6 +15,201 @@ use sunrise_sim::{
     entities::ArmorStand,
     mobs::{Mob, anim::Poses},
 };
+
+/// `EquipmentLayerRenderer.getColorForLayer`: a dyeable layer takes the stack's
+/// `minecraft:dyed_color`, else its optional undyed colour, else zero to skip it.
+/// Nondyeable layers stay white. The result uses the renderer's byte order (R and B swapped).
+pub(in crate::game) fn layer_color(
+    dyeable: bool,
+    undyed: Option<u32>,
+    stack: Option<&ItemStack>,
+) -> u32 {
+    let dyed = stack
+        .and_then(|s| s.data())
+        .and_then(|d| d.dyed_color)
+        .map(|c| c as u32 & 0xFF_FFFF);
+    if !dyeable {
+        return 0xFFFF_FFFF;
+    }
+    let Some(c) = dyed.or(undyed) else {
+        return 0;
+    };
+    0xFF00_0000 | (c & 0xFF) << 16 | (c & 0xFF00) | (c >> 16) & 0xFF
+}
+
+/// Armor stand models and the humanoid layers of every equipment asset.
+#[derive(Default)]
+pub(in crate::game) struct ArmorStandAssets {
+    /// Shared (`Arc`) so the GPU path (`mobs::skin`) keeps one stored copy of each.
+    pub main: Option<Arc<Part>>,
+    pub small: Option<Arc<Part>>,
+    /// (slot model suffix, small) -> model.
+    pub layers: HashMap<(&'static str, bool), Arc<Part>>,
+    /// The player's armour models by slot (helmet, chestplate, leggings, boots).
+    pub player: HashMap<&'static str, Part>,
+    /// Asset id -> layer kind -> ordered textures with dyeability and optional undyed colour.
+    pub equipment: super::equipment_piece::EquipmentAssets,
+    pub extensions: super::client_item_extensions::ArmorExtensions,
+    /// asset id -> `trim_overrides`.
+    pub trim_overrides: HashMap<String, Vec<TrimOverride>>,
+    pub trims: TrimRegistry,
+    /// The resources the trim textures are made from.
+    pub root: ResourceSource,
+}
+#[cfg(test)]
+impl ArmorStandAssets {
+    pub(in crate::game) fn clone_for_tests(&self) -> Self {
+        Self {
+            main: self.main.clone(),
+            small: self.small.clone(),
+            layers: self.layers.clone(),
+            player: self.player.clone(),
+            equipment: self.equipment.clone(),
+            extensions: Default::default(),
+            trim_overrides: self.trim_overrides.clone(),
+            trims: self.trims.clone(),
+            root: self.root.clone(),
+        }
+    }
+}
+impl ArmorStandAssets {
+    pub fn load(
+        root: &ResourceSource,
+        document: Option<&sunrise_client::mobs::EntityModelDocument>,
+    ) -> Self {
+        let load = |key: &str| document.and_then(|document| document.model(key));
+        let mut layers = HashMap::new();
+        let mut player = HashMap::new();
+        for slot in ["helmet", "chestplate", "leggings", "boots"] {
+            if let Some(part) = load(&format!("minecraft:player#{slot}")) {
+                player.insert(slot, part);
+            }
+            for (small, model) in [(false, "armor_stand"), (true, "armor_stand_small")] {
+                if let Some(part) = load(&format!("minecraft:{model}#{slot}")) {
+                    layers.insert((slot, small), Arc::new(part));
+                }
+            }
+        }
+        for (key, name) in [
+            ("minecraft:elytra#main", "elytra"),
+            ("minecraft:elytra_baby#main", "elytra_baby"),
+        ] {
+            if let Some(part) = load(key) {
+                player.insert(name, part);
+            }
+        }
+        let mut equipment = HashMap::new();
+        let mut trim_overrides = HashMap::new();
+        // EquipmentAssetManager reads resolved resources in every namespace.
+        for namespace in root.namespaces("assets") {
+            let prefix = format!("assets/{namespace}/equipment/");
+            for path in root.list(&prefix) {
+                let Some(name) = path
+                    .strip_prefix(&prefix)
+                    .and_then(|path| path.strip_suffix(".json"))
+                else {
+                    continue;
+                };
+                let Ok(v) = root
+                    .read(&path)
+                    .map(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes))
+                else {
+                    continue;
+                };
+                let Ok(v) = v else { continue };
+                let id = format!("{namespace}:{name}");
+                let mut kinds = HashMap::new();
+                for kind in ["humanoid", "humanoid_leggings", "humanoid_baby", "wings"] {
+                    // Every layer of the kind: leather's overlay is layer 1.
+                    let layers: Vec<super::equipment_piece::EquipmentAssetLayer> = v["layers"]
+                        [kind]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|layer| {
+                            let tex = layer["texture"].as_str().unwrap_or(&id);
+                            let (tex_namespace, tex) =
+                                tex.split_once(':').unwrap_or(("minecraft", tex));
+                            let sprite = match tex_namespace {
+                                "minecraft" => format!("entity/equipment/{kind}/{tex}"),
+                                other => format!("{other}:entity/equipment/{kind}/{tex}"),
+                            };
+                            let undyed = layer["dyeable"]["color_when_undyed"]
+                                .as_i64()
+                                .map(|c| c as u32 & 0xFF_FFFF);
+                            super::equipment_piece::EquipmentAssetLayer {
+                                texture: sprite,
+                                dyeable: layer
+                                    .get("dyeable")
+                                    .is_some_and(serde_json::Value::is_object),
+                                color_when_undyed: undyed,
+                                use_player_texture: layer["use_player_texture"]
+                                    .as_bool()
+                                    .unwrap_or(false),
+                            }
+                        })
+                        .collect();
+                    if !layers.is_empty() {
+                        kinds.insert(kind.to_owned(), layers);
+                    }
+                }
+                trim_overrides.insert(id.clone(), TrimOverride::list(&v));
+                equipment.insert(id, kinds);
+            }
+        }
+        Self {
+            main: load("minecraft:armor_stand#main").map(Arc::new),
+            small: load("minecraft:armor_stand_small#main").map(Arc::new),
+            layers,
+            player,
+            equipment,
+            extensions: Default::default(),
+            trim_overrides,
+            trims: TrimRegistry::load(root),
+            root: root.to_owned(),
+        }
+    }
+}
+/// The stand's slot (`ArmorStand::SLOTS` order) for an item whose
+/// `equippable` slot is `equip` (`SmithingScreen.updateArmorStandPreview`):
+/// worn in a head, chest, legs or feet slot, else (no `equippable`, or any
+/// other slot: main hand, off hand, body, saddle) held in the left hand.
+pub(in crate::game) fn preview_slot(equip: Option<&str>) -> usize {
+    match equip {
+        Some("feet") => 2,
+        Some("legs") => 3,
+        Some("chest") => 4,
+        Some("head") => 5,
+        _ => 1,
+    }
+}
+/// The `Pose` rotations on the parts of an armor stand model or its armor
+/// (`ArmorStandArmorModel.setupAnim`); the body also turns the sticks.
+pub(in crate::game) fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
+    let parts: [&[&str]; 6] = [
+        &["head"],
+        &[
+            "body",
+            "right_body_stick",
+            "left_body_stick",
+            "shoulder_stick",
+        ],
+        &["left_arm"],
+        &["right_arm"],
+        &["left_leg"],
+        &["right_leg"],
+    ];
+    for (names, rotation) in parts.into_iter().zip(pose) {
+        for name in names {
+            if poses.has(name) {
+                let part = poses.get(name);
+                part[3] = rotation[0].to_radians();
+                part[4] = rotation[1].to_radians();
+                part[5] = rotation[2].to_radians();
+            }
+        }
+    }
+}
 
 impl ArmorStandAssets {
     /// Trim data of reloaded resources (the models stay).

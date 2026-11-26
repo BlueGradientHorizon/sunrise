@@ -1,6 +1,7 @@
 //! Moving colliders on a real game: set, read, refused, saved and loaded back, and solid to a
 //! falling item.
-use super::{Dim, native_colliders::SAVE_KEY};
+use super::Dim;
+use crate::game::native_collider_state::SAVE_KEY;
 use mod_api::{Collider, ColliderBox, ColliderError, EntityRef};
 use std::sync::Arc;
 use sunrise_core::{

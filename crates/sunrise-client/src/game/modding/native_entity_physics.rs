@@ -181,7 +181,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// stored `noPhysics` write (the dragon's flame going).
     pub(in crate::game::server_side) fn retain_breath_clouds(
         &mut self,
-        mut keep: impl FnMut(&super::dragon::Breath) -> bool,
+        mut keep: impl FnMut(&crate::game::dragon_common::Breath) -> bool,
     ) {
         let mut gone = Vec::new();
         self.breath_clouds.retain(|c| {
@@ -219,12 +219,12 @@ mod tests {
     #[ignore = "daily"]
     fn no_physics_reads_supported_entities_and_refuses_others() {
         use super::super::native_entity_refs::tests::with_game;
-        use super::super::trident::ThrownTrident;
         use mod_api::WorldEpoch;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::motion::PlayerMotion;
         use sunrise_sim::projectiles::{Projectile, ProjectileKind};
+        use sunrise_sim::thrown_trident::ThrownTrident;
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -294,14 +294,14 @@ mod tests {
             let bullet = game.entity(bullet_id).unwrap();
             assert_eq!(bullet.no_physics(game), Some(true));
 
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = game.take_entity_id();
             let dragon_id = dragon.id;
             game.dragon.replace(dragon);
             let dragon = game.entity(dragon_id).unwrap();
             assert_eq!(dragon.no_physics(game), Some(true));
 
-            game.boats.push(super::super::boats::Boat::new(
+            game.boats.push(super::super::boats_common::Boat::new(
                 44,
                 "oak".into(),
                 Vec3::ZERO,
@@ -318,7 +318,6 @@ mod tests {
     #[ignore = "daily"]
     fn no_physics_write_holds_and_covers_the_four_constant_kinds() {
         use super::super::native_entity_refs::tests::with_game;
-        use super::super::trident::ThrownTrident;
         use crate::game::commands::OtherEntity;
         use crate::game::entity::Entity as _;
         use sunrise_core::geometry::Vec3;
@@ -327,6 +326,7 @@ mod tests {
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::motion::PlayerMotion;
         use sunrise_sim::projectiles::Projectile;
+        use sunrise_sim::thrown_trident::ThrownTrident;
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -477,7 +477,7 @@ mod tests {
             assert!(bullet.set_no_physics(game, true));
             assert_eq!(bullet.no_physics(game), Some(true));
 
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = crate::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = game.take_entity_id();
             let dragon_id = dragon.id;
             game.dragon.replace(dragon);
@@ -706,8 +706,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_a_breath_cloud_expires() {
-        use super::super::dragon::Breath;
         use super::super::native_entity_refs::tests::with_game;
+        use crate::game::dragon_common::Breath;
 
         with_game(|game| {
             let id = game.take_entity_id();
@@ -747,8 +747,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_the_dragons_flame_is_removed() {
-        use super::super::dragon::{Breath, Dragon};
         use super::super::native_entity_refs::tests::with_game;
+        use crate::game::dragon_common::{Breath, Dragon};
         use sunrise_core::geometry::Vec3;
 
         with_game(|game| {

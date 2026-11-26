@@ -4,7 +4,7 @@ use sunrise_client::skins;
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_status(&self) -> Option<serde_json::Value> {
-        let r = self.remote.as_ref()?;
+        let r = self.side.remote.as_ref()?;
         Some(serde_json::json!({
             "address": sunrise_client::net::shown_address(&r.session.address),
             "name": r.session.name,
@@ -79,7 +79,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// level's player models their skin.
     pub(in crate::game) fn update_remote_skins(&mut self) {
         self.poll_own_profile();
-        let Some(r) = self.remote.as_mut() else {
+        let Some(r) = self.side.remote.as_mut() else {
             return;
         };
         let local = r.profile;
@@ -218,7 +218,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 mob.cape = cape.map(str::to_owned);
             }
         }
-        if let Some(r) = self.remote.as_mut()
+        if let Some(r) = self.side.remote.as_mut()
             && r.skins != skins
         {
             r.skins_revision = r.skins_revision.wrapping_add(1);

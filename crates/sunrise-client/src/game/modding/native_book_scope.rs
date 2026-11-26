@@ -74,7 +74,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             xp,
             known,
         ) = {
-            let host = self.lan.as_ref().ok_or(Refusal::Unavailable)?;
+            let host = self.side.lan.as_ref().ok_or(Refusal::Unavailable)?;
             let g = host
                 .hub
                 .guest(conn)
@@ -169,7 +169,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         before: &MenuSnapshot,
     ) -> bool {
         let slots = {
-            let Some(host) = &self.lan else {
+            let Some(host) = &self.side.lan else {
                 return false;
             };
             let Some(g) = host.hub.guest(before.conn) else {

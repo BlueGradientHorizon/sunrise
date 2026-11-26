@@ -4,8 +4,11 @@
 //! arrows at power 3.15, or rockets at 1.6 for three durability, with the
 //! fanned Multishot angles and their shot pitches. `Player.getProjectile`
 //! finds the ammo for bows and crossbows.
+use super::{Game, view_vector};
+use crate::game::crossbow_common::{ARROW, CROSSBOW, FIREWORK_ROCKET};
 #[allow(unused_imports)]
-use super::{Game, shield::OFFHAND_SLOT, view_vector};
+#[cfg(test)]
+use crate::game::held_items::OFFHAND_SLOT;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_items::{
     enchant::EffectContext,
@@ -15,17 +18,6 @@ use sunrise_sim::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind},
 };
-
-pub(in crate::game) const CROSSBOW: &str = "minecraft:crossbow";
-pub(in crate::game) const FIREWORK_ROCKET: &str = "minecraft:firework_rocket";
-pub(in crate::game) const ARROW: &str = "minecraft:arrow";
-
-/// What `getProjectile` returned: the ammunition and, while it is still the
-/// stack found in the inventory, the slot it is taken from.
-pub(in crate::game) struct Ammo {
-    pub(in crate::game) stack: ItemStack,
-    pub(in crate::game) slot: Option<usize>,
-}
 
 #[allow(unused_imports)]
 pub(in crate::game) use super::held_items::{is_arrow, projectile_slot};

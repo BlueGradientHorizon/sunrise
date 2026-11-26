@@ -11,8 +11,8 @@ pub(in crate::game) fn heard_stone_fall(silent: bool) -> Vec<(f32, f32)> {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {
             let _server = logged_client(game);
-            game.remote.as_mut().unwrap().loaded_sent = true;
-            game.remote.as_mut().unwrap().local_entity_silent = silent;
+            game.side.remote.as_mut().unwrap().loaded_sent = true;
+            game.side.remote.as_mut().unwrap().local_entity_silent = silent;
             game.side
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));

@@ -4,12 +4,8 @@
 //! the default pose, the hit wobble and humanoid armor layers.
 use super::entity::Entity;
 use super::{Game, InteractTarget};
-use std::{collections::HashMap, sync::Arc};
-use sunrise_assets::resource_source::ResourceSource;
-use sunrise_client::{
-    mobs::Part,
-    trims::{TrimOverride, TrimRegistry},
-};
+use crate::game::armor_stands_common::{TYPE_ID, overlaps, swap_with_equipment_slot};
+use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
@@ -19,9 +15,8 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::ArmorStand,
     join_seq::JoinSeq,
-    mobs::{Species, Who, anim::Poses},
+    mobs::{Species, Who},
 };
-pub(in crate::game) const TYPE_ID: &str = "minecraft:armor_stand";
 /// Build the living-drops input at the loot-source boundary, before equipment pops.
 pub(in crate::game::server_side) fn armor_stand_dying_drops<'a>(
     stand: &ArmorStand,
@@ -141,160 +136,6 @@ pub(in crate::game::server_side) fn armor_stand_cart_shove(
         stand_z: za / 4.0,
     })
 }
-/// `EquipmentLayerRenderer.getColorForLayer`: a dyeable layer takes the stack's
-/// `minecraft:dyed_color`, else its optional undyed colour, else zero to skip it.
-/// Nondyeable layers stay white. The result uses the renderer's byte order (R and B swapped).
-pub(in crate::game) fn layer_color(
-    dyeable: bool,
-    undyed: Option<u32>,
-    stack: Option<&ItemStack>,
-) -> u32 {
-    let dyed = stack
-        .and_then(|s| s.data())
-        .and_then(|d| d.dyed_color)
-        .map(|c| c as u32 & 0xFF_FFFF);
-    if !dyeable {
-        return 0xFFFF_FFFF;
-    }
-    let Some(c) = dyed.or(undyed) else {
-        return 0;
-    };
-    0xFF00_0000 | (c & 0xFF) << 16 | (c & 0xFF00) | (c >> 16) & 0xFF
-}
-
-/// Armor stand models and the humanoid layers of every equipment asset.
-#[derive(Default)]
-pub(in crate::game) struct ArmorStandAssets {
-    /// Shared (`Arc`) so the GPU path (`mobs::skin`) keeps one stored copy of each.
-    pub main: Option<Arc<Part>>,
-    pub small: Option<Arc<Part>>,
-    /// (slot model suffix, small) -> model.
-    pub layers: HashMap<(&'static str, bool), Arc<Part>>,
-    /// The player's armour models by slot (helmet, chestplate, leggings, boots).
-    pub player: HashMap<&'static str, Part>,
-    /// Asset id -> layer kind -> ordered textures with dyeability and optional undyed colour.
-    pub equipment: super::equipment_piece::EquipmentAssets,
-    pub extensions: super::client_item_extensions::ArmorExtensions,
-    /// asset id -> `trim_overrides`.
-    pub trim_overrides: HashMap<String, Vec<TrimOverride>>,
-    pub trims: TrimRegistry,
-    /// The resources the trim textures are made from.
-    pub root: ResourceSource,
-}
-#[cfg(test)]
-impl ArmorStandAssets {
-    pub(in crate::game) fn clone_for_tests(&self) -> Self {
-        Self {
-            main: self.main.clone(),
-            small: self.small.clone(),
-            layers: self.layers.clone(),
-            player: self.player.clone(),
-            equipment: self.equipment.clone(),
-            extensions: Default::default(),
-            trim_overrides: self.trim_overrides.clone(),
-            trims: self.trims.clone(),
-            root: self.root.clone(),
-        }
-    }
-}
-impl ArmorStandAssets {
-    pub fn load(
-        root: &ResourceSource,
-        document: Option<&sunrise_client::mobs::EntityModelDocument>,
-    ) -> Self {
-        let load = |key: &str| document.and_then(|document| document.model(key));
-        let mut layers = HashMap::new();
-        let mut player = HashMap::new();
-        for slot in ["helmet", "chestplate", "leggings", "boots"] {
-            if let Some(part) = load(&format!("minecraft:player#{slot}")) {
-                player.insert(slot, part);
-            }
-            for (small, model) in [(false, "armor_stand"), (true, "armor_stand_small")] {
-                if let Some(part) = load(&format!("minecraft:{model}#{slot}")) {
-                    layers.insert((slot, small), Arc::new(part));
-                }
-            }
-        }
-        for (key, name) in [
-            ("minecraft:elytra#main", "elytra"),
-            ("minecraft:elytra_baby#main", "elytra_baby"),
-        ] {
-            if let Some(part) = load(key) {
-                player.insert(name, part);
-            }
-        }
-        let mut equipment = HashMap::new();
-        let mut trim_overrides = HashMap::new();
-        // EquipmentAssetManager reads resolved resources in every namespace.
-        for namespace in root.namespaces("assets") {
-            let prefix = format!("assets/{namespace}/equipment/");
-            for path in root.list(&prefix) {
-                let Some(name) = path
-                    .strip_prefix(&prefix)
-                    .and_then(|path| path.strip_suffix(".json"))
-                else {
-                    continue;
-                };
-                let Ok(v) = root
-                    .read(&path)
-                    .map(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes))
-                else {
-                    continue;
-                };
-                let Ok(v) = v else { continue };
-                let id = format!("{namespace}:{name}");
-                let mut kinds = HashMap::new();
-                for kind in ["humanoid", "humanoid_leggings", "humanoid_baby", "wings"] {
-                    // Every layer of the kind: leather's overlay is layer 1.
-                    let layers: Vec<super::equipment_piece::EquipmentAssetLayer> = v["layers"]
-                        [kind]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .map(|layer| {
-                            let tex = layer["texture"].as_str().unwrap_or(&id);
-                            let (tex_namespace, tex) =
-                                tex.split_once(':').unwrap_or(("minecraft", tex));
-                            let sprite = match tex_namespace {
-                                "minecraft" => format!("entity/equipment/{kind}/{tex}"),
-                                other => format!("{other}:entity/equipment/{kind}/{tex}"),
-                            };
-                            let undyed = layer["dyeable"]["color_when_undyed"]
-                                .as_i64()
-                                .map(|c| c as u32 & 0xFF_FFFF);
-                            super::equipment_piece::EquipmentAssetLayer {
-                                texture: sprite,
-                                dyeable: layer
-                                    .get("dyeable")
-                                    .is_some_and(serde_json::Value::is_object),
-                                color_when_undyed: undyed,
-                                use_player_texture: layer["use_player_texture"]
-                                    .as_bool()
-                                    .unwrap_or(false),
-                            }
-                        })
-                        .collect();
-                    if !layers.is_empty() {
-                        kinds.insert(kind.to_owned(), layers);
-                    }
-                }
-                trim_overrides.insert(id.clone(), TrimOverride::list(&v));
-                equipment.insert(id, kinds);
-            }
-        }
-        Self {
-            main: load("minecraft:armor_stand#main").map(Arc::new),
-            small: load("minecraft:armor_stand_small#main").map(Arc::new),
-            layers,
-            player,
-            equipment,
-            extensions: Default::default(),
-            trim_overrides,
-            trims: TrimRegistry::load(root),
-            root: root.to_owned(),
-        }
-    }
-}
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ArmorStandItem.useOn`.
     pub(in crate::game::server_side) fn place_armor_stand(
@@ -384,18 +225,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some((mut i, d, point)) = (match target {
             // interactAt gets the packet's location, measured from the stand's
             // position, so getClickedSlot reads the height the client clicked.
-            Some(t) => Self::named_entity(&self.armor_stands, t.id, |a| a.id).map(|i| {
-                let p = self.armor_stands[i].position;
-                (
-                    i,
-                    0.0,
-                    [
-                        p.x + t.location[0],
-                        p.y + t.location[1],
-                        p.z + t.location[2],
-                    ],
-                )
-            }),
+            Some(t) => crate::game::item_actions::named_entity(&self.armor_stands, t.id, |a| a.id)
+                .map(|i| {
+                    let p = self.armor_stands[i].position;
+                    (
+                        i,
+                        0.0,
+                        [
+                            p.x + t.location[0],
+                            p.y + t.location[1],
+                            p.z + t.location[2],
+                        ],
+                    )
+                }),
             None => self.armor_stand_hit(),
         }) else {
             return false;
@@ -502,7 +344,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // The listener had the game in its hands: find the stand again by
             // its id and check the click's facts. A change spends the click.
-            let Some(now) = Self::named_entity(&self.armor_stands, stand, |a| a.id) else {
+            let Some(now) =
+                crate::game::item_actions::named_entity(&self.armor_stands, stand, |a| a.id)
+            else {
                 return true;
             };
             let stand = &self.armor_stands[now];
@@ -630,7 +474,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             direct: attacker,
             position: None,
         };
-        if super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
+        if super::entity_server::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_sim::health::Hurting::ArmorStand(id as i32, source),
                 vanilla,
@@ -721,7 +565,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut drowned = Vec::new();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
-        let server = self.remote.is_none();
         let stand_breathes_under_water = self.items().entity_type_tags.has_flag(
             TYPE_ID,
             sunrise_items::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,
@@ -802,7 +645,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             let in_water = water_height > 0.0;
             // LivingEntity.baseTick: shared air logic, then hurt time; aiStep clears fall flying.
-            let stand_air = if server && a.health > 0.0 {
+            let stand_air = if a.health > 0.0 {
                 let in_bubble_column = eye_in_water && {
                     let eye = a.fluid_eye_y();
                     let eye_block = sunrise_core::position::BlockPos::containing(Vec3::new(
@@ -1031,7 +874,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             };
             if self.drown_bubbles(at, v, bubbles) {
-                self.lan_entity_event(id as i32, super::combat::DROWN_EVENT, at);
+                self.lan_entity_event(id as i32, crate::game::combat_common::DROWN_EVENT, at);
             }
         }
         for (id, damage_type) in dead.into_iter().rev() {
@@ -1084,7 +927,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             delta,
             Some(self.border.geometry()),
             &nearby,
-            !self.options.execution_role.is_client() && self.remote.is_none(),
+            !self.options.execution_role.is_client(),
             mover,
             &self.loop_context,
         );
@@ -1174,10 +1017,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         landed: bool,
     ) -> Result<()> {
         let stand = &self.armor_stands[i];
-        if !stand.ground.on_ground
-            || self.remote.is_some()
-            || self.options.execution_role.is_client()
-        {
+        if !stand.ground.on_ground || self.options.execution_role.is_client() {
             return Ok(());
         }
         let p = stand.on_pos_legacy(|p| {
@@ -1346,7 +1186,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             direct: direct as i32,
             position,
         };
-        if super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
+        if super::entity_server::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_sim::health::Hurting::ArmorStand(id as i32, source),
                 invulnerable,
@@ -1625,101 +1465,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
     }
 }
-/// The stand's slot (`ArmorStand::SLOTS` order) for an item whose
-/// `equippable` slot is `equip` (`SmithingScreen.updateArmorStandPreview`):
-/// worn in a head, chest, legs or feet slot, else (no `equippable`, or any
-/// other slot: main hand, off hand, body, saddle) held in the left hand.
-pub(in crate::game) fn preview_slot(equip: Option<&str>) -> usize {
-    match equip {
-        Some("feet") => 2,
-        Some("legs") => 3,
-        Some("chest") => 4,
-        Some("head") => 5,
-        _ => 1,
-    }
-}
-/// The `Pose` rotations on the parts of an armor stand model or its armor
-/// (`ArmorStandArmorModel.setupAnim`); the body also turns the sticks.
-pub(in crate::game) fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
-    let parts: [&[&str]; 6] = [
-        &["head"],
-        &[
-            "body",
-            "right_body_stick",
-            "left_body_stick",
-            "shoulder_stick",
-        ],
-        &["left_arm"],
-        &["right_arm"],
-        &["left_leg"],
-        &["right_leg"],
-    ];
-    for (names, rotation) in parts.into_iter().zip(pose) {
-        for name in names {
-            if poses.has(name) {
-                let part = poses.get(name);
-                part[3] = rotation[0].to_radians();
-                part[4] = rotation[1].to_radians();
-                part[5] = rotation[2].to_radians();
-            }
-        }
-    }
-}
-pub(in crate::game) fn overlaps(a: Aabb, b: Aabb) -> bool {
-    let (a0, a1, b0, b1) = (
-        a.min_position(),
-        a.max_position(),
-        b.min_position(),
-        b.max_position(),
-    );
-    a0.x < b1.x && b0.x < a1.x && a0.y < b1.y && b0.y < a1.y && a0.z < b1.z && b0.z < a1.z
-}
-/// What `Equippable.swapWithEquipmentSlot` leaves once it has passed its
-/// checks: the piece worn in the slot, the hand, and the old piece bound for
-/// the inventory.
-#[derive(Debug, PartialEq)]
-pub(in crate::game) struct ArmorSwap {
-    pub(in crate::game) worn: ItemStack,
-    pub(in crate::game) hand: Option<ItemStack>,
-    pub(in crate::game) to_inventory: Option<ItemStack>,
-}
-/// `Equippable.swapWithEquipmentSlot` after its checks. A single item swaps
-/// with the worn piece: the hand gets the worn piece (`copyAndClear`), or
-/// keeps the item in creative when nothing was worn; creative wears a copy
-/// (`copy` instead of `copyAndClear`). From a larger stack one item is worn
-/// (`consumeAndReturn`, which takes none in creative) and the worn piece goes
-/// to the inventory.
-pub(in crate::game) fn swap_with_equipment_slot(
-    stack: &ItemStack,
-    current: Option<ItemStack>,
-    creative: bool,
-) -> ArmorSwap {
-    let one = ItemStack {
-        count: 1,
-        ..stack.clone()
-    };
-    if stack.count <= 1 {
-        let hand = match current {
-            Some(old) => Some(old),
-            None if creative => Some(stack.clone()),
-            None => None,
-        };
-        return ArmorSwap {
-            worn: one,
-            hand,
-            to_inventory: None,
-        };
-    }
-    let mut held = stack.clone();
-    if !creative {
-        held.count -= 1;
-    }
-    ArmorSwap {
-        worn: one,
-        hand: Some(held),
-        to_inventory: current,
-    }
-}
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Equippable.swapWithEquipmentSlot`: right-clicking armor swaps it into
     /// its slot (the worn piece comes back to the hand). It runs on a client
@@ -1811,20 +1556,6 @@ pub(in crate::game) fn stand_box(a: &ArmorStand) -> (f32, f32) {
         (false, false) => (0.5, 1.975),
     }
 }
-/// `AbstractSkullBlock.getType` of a skull item.
-pub(in crate::game) fn skull_kind(item: &str) -> Option<&'static str> {
-    Some(match item {
-        "minecraft:skeleton_skull" => "skeleton",
-        "minecraft:wither_skeleton_skull" => "wither_skeleton",
-        "minecraft:zombie_head" => "zombie",
-        "minecraft:creeper_head" => "creeper",
-        "minecraft:dragon_head" => "dragon",
-        "minecraft:piglin_head" => "piglin",
-        "minecraft:player_head" => "player",
-        _ => return None,
-    })
-}
-
 /// `ArmorStand.ignoreExplosion` (an invisible stand), and `hurtServer`
 /// refusing an invisible or marker stand: such a stand outlasts any blast.
 pub(in crate::game::server_side) fn spared_by_blast(a: &ArmorStand) -> bool {
@@ -2050,7 +1781,8 @@ pub(in crate::game) mod push_tests {
 }
 #[cfg(test)]
 pub(in crate::game) mod layer_color_tests {
-    use super::*;
+    use crate::game::client_side::armor_stands_client::{layer_color, preview_slot};
+    use sunrise_items::items::ItemStack;
     #[test]
     fn the_smithing_preview_wears_armour_and_holds_the_rest_in_its_off_hand() {
         assert_eq!(preview_slot(Some("head")), 5);
@@ -2162,7 +1894,7 @@ pub(in crate::game) mod pumpkin_equippable_use_tests {
             guest.loaded = true;
             guest.selected = 0;
             guest.permission = 2;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let clock = game.world.game_time;
             let eq = "minecraft:equippable={slot:\"head\"}";
             let marker = "minecraft:custom_data={h207:207}";
@@ -2202,7 +1934,7 @@ pub(in crate::game) mod pumpkin_equippable_use_tests {
             }).unwrap();
             let sequence = 207 + i as i32;
             game.lan_guest_packet(2, Serverbound::UseItem(UseItem { hand: 0, yaw: 0.0, pitch: 0.0, sequence }));
-            assert!(game.lan.as_ref().unwrap().hub.guest(2).unwrap().ack_up_to.get() >= sequence);
+            assert!(game.side.lan.as_ref().unwrap().hub.guest(2).unwrap().ack_up_to.get() >= sequence);
             game.as_guest(2, |g| {
                 let mut expected_inventory = before.0.clone();
                 let mut expected_armor = before.1.clone();

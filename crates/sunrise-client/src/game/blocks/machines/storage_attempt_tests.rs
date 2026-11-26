@@ -1,6 +1,7 @@
 //! #3720: real Game ticks, Parts storage and transaction close/restore traces.
 use super::super::Pos;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+use crate::game::spill_common as spill;
 use mod_api::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::{
@@ -416,7 +417,6 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
     use crate::game::{
         execution_role::ExecutionRole,
         native_entity_refs::tests::{fixture_root, with_game_role, with_game_role_client},
-        spill,
     };
     use sunrise_core::nbt::Tag;
 
@@ -493,7 +493,7 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
         with_game_role_client(fixture_root(), ExecutionRole::Client, |game| {
             let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "StorageContents").unwrap();
-            game.remote.as_mut().unwrap().logged_in = true;
+            game.side.remote.as_mut().unwrap().logged_in = true;
             let (pot, pending, before, _) = check_presence!(game, false);
             assert_eq!(spill::saved_entity(&game.world, pot), Some(pending));
             assert_eq!(
@@ -573,7 +573,6 @@ fn a_committed_pot_write_in_another_level_survives_the_parent_abort() {
         Dim,
         execution_role::ExecutionRole,
         native_entity_refs::tests::{fixture_root, with_game_role},
-        spill,
     };
     use sunrise_core::nbt::Tag;
 
@@ -762,7 +761,7 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
                     |game| {
                         let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
                         game.connect_local(pipe, "ProviderOwner").unwrap();
-                        game.remote.as_mut().unwrap().logged_in = true;
+                        game.side.remote.as_mut().unwrap().logged_in = true;
                         let (outer, query, _, _) = check_discovery!(game);
                         drop(query);
                         assert_eq!(current_native_mod(), outer);
@@ -819,7 +818,6 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
 #[test]
 #[ignore = "daily"]
 fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
-    use crate::game::spill;
     use sunrise_core::nbt::Tag;
     use sunrise_world::loot::{LootData, PackOverlay};
 
@@ -1938,7 +1936,6 @@ fn dropper_routes_saved_pot_directly_even_with_a_storage_provider() {
     fixture(
         "game::server_side::machines::native_items::storage_attempt_tests::dropper_routes_saved_pot_directly_even_with_a_storage_provider",
         |game, _, probe| {
-            use crate::game::spill;
             use sunrise_core::nbt::Tag;
             let pot = [9, 64, 8];
             place(game, HOPPER, "minecraft:dropper");

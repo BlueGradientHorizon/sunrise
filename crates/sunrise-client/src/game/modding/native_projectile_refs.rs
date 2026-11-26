@@ -399,12 +399,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        fireworks::Rocket, native_entity_refs::tests::with_game, trident::ThrownTrident,
-    };
+    use super::super::{fireworks::Rocket, native_entity_refs::tests::with_game};
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::random::RandomSource;
+    use sunrise_sim::thrown_trident::ThrownTrident;
     use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     #[test]
@@ -427,7 +426,7 @@ mod tests {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let boat_id = game.take_entity_id();
-            game.boats.push(super::super::boats::Boat::new(
+            game.boats.push(super::super::boats_common::Boat::new(
                 boat_id,
                 "oak".into(),
                 Vec3::ZERO,
@@ -479,7 +478,7 @@ mod tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Easy;
             let boat_id = game.take_entity_id();
-            game.boats.push(super::super::boats::Boat::new(
+            game.boats.push(super::super::boats_common::Boat::new(
                 boat_id,
                 "oak".into(),
                 Vec3::ZERO,
@@ -548,7 +547,7 @@ mod tests {
             assert_eq!(game.creatures.projectiles[0].owner, Some(Who::Mob(99)));
             // A non-living owner has collision identity but no living hit credit.
             let boat_id = game.take_entity_id();
-            game.boats.push(super::super::boats::Boat::new(
+            game.boats.push(super::super::boats_common::Boat::new(
                 boat_id,
                 "oak".into(),
                 Vec3::ZERO,
@@ -767,7 +766,7 @@ mod tests {
             // A rocket keeps an owner that is neither player nor mob, across a
             // save too, but a player's trident still refuses one.
             let boat_id = game.take_entity_id();
-            game.boats.push(super::super::boats::Boat::new(
+            game.boats.push(super::super::boats_common::Boat::new(
                 boat_id,
                 "oak".into(),
                 Vec3::ZERO,
@@ -884,7 +883,7 @@ mod tests {
             game.options.dedicated = Some(Vec::new());
             // A boat that moved along +Z while its velocity points along +X.
             let id = game.take_entity_id();
-            let mut boat = super::super::boats::Boat::new(id, "oak".into(), Vec3::ZERO, 0.0);
+            let mut boat = super::super::boats_common::Boat::new(id, "oak".into(), Vec3::ZERO, 0.0);
             boat.previous = Vec3::new(0.0, 0.0, -2.0);
             boat.position = Vec3::ZERO;
             boat.velocity = Vec3::new(5.0, 0.0, 0.0);

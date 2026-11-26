@@ -1,6 +1,7 @@
 //! The native parity harness runs the client boat ticker and authoritative
 //! boat attacks without a renderer, on an empty world.
-use super::{Game, boats::Boat};
+use super::Game;
+use crate::game::boats_common::Boat;
 use serde::Deserialize;
 use serde_json::json;
 use std::{

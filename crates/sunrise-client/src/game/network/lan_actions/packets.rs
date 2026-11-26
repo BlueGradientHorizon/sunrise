@@ -1,4 +1,5 @@
-use super::*;
+use super::Game;
+use crate::game::server_side::lan::LanHost;
 
 /// The creative-slot wire codec bounds a stack's count to 1..=99; an item whose
 /// own max stack size a native mod raised past 99 becomes the ceiling instead.

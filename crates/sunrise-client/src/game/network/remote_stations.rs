@@ -5,10 +5,9 @@
 //! `MultiPlayerGameMode.handleContainerInput` and `handleInventoryButtonClick`
 //! do. The menu's client-side `slotsChanged` follows the server's slots, and
 //! its data slots come in `ClientboundContainerSetDataPacket`.
-use super::{
-    Game, Screen,
-    stations::{Kind, Station},
-};
+use super::{Game, Screen, stations::Station};
+use crate::game::remote::inventory::remote_station_kind;
+use crate::game::stations_common::{INPUT, Kind};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -33,12 +32,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_station_open(&self, container: i32) -> bool {
         self.station.is_some()
             && self
+                .side
                 .remote
                 .as_ref()
                 .and_then(|r| r.menu.as_ref())
-                .is_some_and(|(id, name)| {
-                    *id == container && crate::game::remote_station_kind(name).is_some()
-                })
+                .is_some_and(|(id, name)| *id == container && remote_station_kind(name).is_some())
     }
 
     /// The server set station slot `internal`: the client menu's
@@ -91,13 +89,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Some(true)
             });
         }
-        if internal == super::stations::INPUT
+        if internal == INPUT
             && let Some((s, ui)) = self.station_and_ui_mut()
             && s.kind == Kind::Stonecutter
         {
             // The client menu's `Slot.set` on the input runs the screen's
             // listener (`StonecutterMenu.container.setChanged`).
-            s.stonecutter_changed(ui);
+            crate::game::client_side::stations_client::stonecutter_changed(ui);
         }
         // AnvilScreen.slotChanged: the box shows the new input's name, which
         // its responder sends.
@@ -111,7 +109,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         match (s.kind, id) {
             // LoomMenu.selectedBannerPatternIndex.
-            (Kind::Loom, 0) => s.loom.selected = usize::try_from(value).ok(),
+            (Kind::Loom, 0) => self.side.station_loom.selected = usize::try_from(value).ok(),
             // StonecutterMenu.selectedRecipeIndex.
             (Kind::Stonecutter, 0) => s.selected = usize::try_from(value).ok(),
             // AnvilMenu.cost. A cost outside this short is corrected by
@@ -122,7 +120,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (Kind::Enchanting, 0..3) => s.offers.costs[id] = i32::from(value),
             (Kind::Enchanting, 3) => self.level.xp_seed = i32::from(value),
             (Kind::Enchanting, 4..7) => {
-                let name = self.remote.as_ref().and_then(|r| {
+                let name = self.side.remote.as_ref().and_then(|r| {
                     r.registries
                         .name("minecraft:enchantment", i32::from(value))
                         .map(std::sync::Arc::<str>::from)
@@ -179,7 +177,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// when it is the input's own name) goes to the server when the menu's
     /// `setItemName` takes it.
     pub(in crate::game::client_side) fn remote_anvil_rename(&mut self) {
-        if self.remote.is_none() {
+        if self.side.remote.is_none() {
             return;
         }
         let Some((s, ui)) = self.station_and_ui() else {
@@ -201,7 +199,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.handleInventoryButtonClick`: the screen already
     /// ran `clickMenuButton` on its own menu.
     pub(in crate::game::client_side) fn remote_station_button(&self, button: i32) {
-        if let Some((container, _)) = self.remote.as_ref().and_then(|r| r.menu.as_ref())
+        if let Some((container, _)) = self.side.remote.as_ref().and_then(|r| r.menu.as_ref())
             && self.remote_station_open(*container)
         {
             let _ = self.remote_button_click(button);

@@ -61,11 +61,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if self.side.title.0.is_some()
             || self.side.screen != Screen::Playing
             || self.player.is_none()
-            || self.integrated_starting.is_some()
+            || self.side.integrated_starting.is_some()
             || self.side.pending_entry.0.is_some()
             || self.side.reload_overlay.is_some()
             || self.side.pending_save.0.is_some()
             || self
+                .side
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.level_load.is_active())

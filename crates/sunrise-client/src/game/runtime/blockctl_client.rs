@@ -1,0 +1,39 @@
+use crate::game::Game;
+use crate::game::client_side::ClientState;
+use crate::game::integrated_link::NO_ANSWER;
+use crate::game::owner_link::{ControlRequest, OwnerRequest};
+use serde_json::{Value, json};
+use sunrise_game_data::Result;
+
+impl Game<'_, ClientState> {
+    /// Block commands; None when `words[0]` is not one of them.
+    pub(in crate::game) fn block_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
+        let ours = matches!(
+            words.first(),
+            Some(&("setblock" | "fill" | "getblock" | "container"))
+        );
+        // Single player on its server thread: the world is the server's, so
+        // the command runs there, in the owner's level, and the client hears
+        // of it like any change.
+        if ours && let Some(server) = &self.side.integrated {
+            let owned: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+            return server
+                .ask(|reply| {
+                    OwnerRequest::Control(ControlRequest::BlockCommand {
+                        words: owned,
+                        reply,
+                    })
+                })
+                .ok_or(NO_ANSWER)?
+                .map_err(Into::into);
+        }
+        // Another server's world changes only through its own commands, which
+        // it checks as the player's; `getblock` and `container` read what this
+        // client has of it.
+        if self.side.remote.is_some() && matches!(words.first(), Some(&("setblock" | "fill"))) {
+            self.side_send_chat_command(&format!("/{}", words.join(" ")));
+            return Ok(Some(json!({ "ok": true, "sent": true })));
+        }
+        self.block_command_local(words)
+    }
+}

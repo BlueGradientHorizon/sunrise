@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 use super::*;
+use crate::game::client_side::screen_build::ObservedScreen;
 #[allow(unused_imports)]
 use mod_api::{
     ClientHost, Flow, Hooks, InteractionKeyMappingTriggeredEvent, KeyMappingPreEvent, ModEntry,
@@ -552,7 +553,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                 relatives: 0,
             }))
             .unwrap();
-            game.remote.as_mut().unwrap().level_load.finish();
+            game.side.remote.as_mut().unwrap().level_load.finish();
             let root = std::path::PathBuf::from(
                 std::env::var_os("SUNRISE_TEST_RESOURCES")
                     .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -581,7 +582,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             assert!(game.mod_screen_open("mod_a"));
             assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
-            assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
+            assert!(game.side.remote.as_ref().unwrap().menu.as_ref().is_none());
             let mut closed_container = None;
             while let Ok((id, body)) = reader.recv() {
                 if let Ok(S::ContainerClose(close)) = S::decode(id, &body) {
@@ -681,7 +682,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
 
             // 10) Opens over the title screen, reporting `"title"`.
             game.set_screen(Screen::Playing);
-            game.remote = None;
+            game.side.remote = None;
             game.player = None;
             let saves = tempfile::tempdir().unwrap();
             let title = game.new_title(saves.path().to_path_buf());

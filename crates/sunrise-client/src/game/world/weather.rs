@@ -2,6 +2,7 @@
 //! levels, where it rains or snows (`Level.isRainingAt`, the motion-blocking height), the weather's
 //! effects each tick and `Level.getSkyDarken` with `isDarkOutside`.
 use super::*;
+use crate::game::side_ops::world::SideOps as _;
 
 /// `ClientLevel.getPrecipitationAt`: a loaded column's biome and the level's sea level
 /// decide whether it snows, rains, or has no precipitation.
@@ -27,31 +28,40 @@ pub(in crate::game) fn precipitation_at(
 /// What `Level.precipitationAt` reads of the level in place: it rains (the rain level above 0.2),
 /// the sky light is 15, the motion-blocking height, and the biome's precipitation there
 /// (`ClientLevel.getPrecipitationAt`'s zoomed biome; snow is `Some(true)` there).
-pub(in crate::game) struct GamePrecipitation<'a, 'g, S: crate::game::Side>(
-    pub(in crate::game) &'a Game<'g, S>,
-);
+struct GamePrecipitation<'a, B, Z, L, R> {
+    world: &'a World,
+    properties: &'a sunrise_level::assets::Properties,
+    biomes: B,
+    biome_zoom: Z,
+    sea_level: L,
+    rain: R,
+}
 
-impl<S: crate::game::Side> sunrise_world::level::weather::PrecipitationReads
-    for GamePrecipitation<'_, '_, S>
+impl<'a, B, Z, L, R> sunrise_world::level::weather::PrecipitationReads
+    for GamePrecipitation<'a, B, Z, L, R>
+where
+    B: Fn() -> &'a Biomes,
+    Z: Fn() -> BiomeZoom,
+    L: Fn() -> i32,
+    R: Fn() -> bool,
 {
     fn is_raining(&self) -> bool {
-        self.0.weather_levels(1.0).0 > 0.2
+        (self.rain)()
     }
     fn can_see_sky(&self, p: BlockPos) -> bool {
-        self.0.world.light(p.x, p.y, p.z) >> 4 == 15
+        self.world.light(p.x, p.y, p.z) >> 4 == 15
     }
     fn motion_blocking_y(&self, p: BlockPos) -> i32 {
-        self.0.rain_height(p.x, p.z)
+        crate::game::weather_height::motion_blocking_height(self.world, self.properties, p.x, p.z)
     }
     fn biome_precipitation(&self, p: BlockPos) -> sunrise_world::level::PrecipitationKind {
         use sunrise_world::level::PrecipitationKind;
-        let game = self.0;
         match precipitation_at(
-            &game.world,
-            world_biomes!(game),
-            game.side.streaming_state().biome_zoom,
+            self.world,
+            (self.biomes)(),
+            (self.biome_zoom)(),
             p,
-            game.weather_sea_level(),
+            (self.sea_level)(),
         ) {
             Some(true) => PrecipitationKind::Snow,
             Some(false) => PrecipitationKind::Rain,
@@ -63,9 +73,9 @@ impl<S: crate::game::Side> sunrise_world::level::weather::PrecipitationReads
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The joined `ClientLevel`'s sea level, or the server level's generator setting.
     pub(in crate::game) fn weather_sea_level(&self) -> i32 {
-        self.remote
-            .as_ref()
-            .map_or_else(|| self.dim.sea_level(), |remote| remote.sea_level)
+        self.side
+            .side_remote_sea_level()
+            .unwrap_or_else(|| self.dim.sea_level())
     }
 
     /// `Level.isDarkOutside`.
@@ -96,9 +106,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         // A client of a server has the environment its server's type made for the level it is
         // in; a parked level keeps the client's own for its dimension.
         let environment = match self
-            .remote
-            .as_ref()
-            .and_then(|r| r.level_environment.as_deref())
+            .side
+            .side_remote_environment()
             .filter(|_| dimension == self.dim)
         {
             Some(own) => own,
@@ -158,13 +167,26 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Level.isRainingAt`: `Level.precipitationAt`
     /// (`sunrise_world::level::weather::precipitation_at`) is rain.
     pub(in crate::game) fn raining_at(&self, p: BlockPos) -> bool {
-        sunrise_world::level::weather::precipitation_at(&GamePrecipitation(self), p)
+        let reads = GamePrecipitation {
+            world: &self.world,
+            properties: &self.pack.assets.properties,
+            biomes: || world_biomes!(self).as_ref(),
+            biome_zoom: || self.side.streaming_state().biome_zoom,
+            sea_level: || self.weather_sea_level(),
+            rain: || self.weather_levels(1.0).0 > 0.2,
+        };
+        sunrise_world::level::weather::precipitation_at(&reads, p)
             == sunrise_world::level::PrecipitationKind::Rain
     }
 
     /// `getHeight(Heightmap.Types.MOTION_BLOCKING, x, z)`: one above the
     /// highest block in `blocks_motion_in_heightmap` or holding a fluid.
     pub(in crate::game) fn rain_height(&self, x: i32, z: i32) -> i32 {
-        render_tick::motion_blocking_height(&self.world, &self.pack.assets.properties, x, z)
+        crate::game::weather_height::motion_blocking_height(
+            &self.world,
+            &self.pack.assets.properties,
+            x,
+            z,
+        )
     }
 }

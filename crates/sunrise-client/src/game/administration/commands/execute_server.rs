@@ -3,7 +3,6 @@ pub(in crate::game::server_side) use crate::game::commands::execute::Source;
 use crate::game::commands::execute::StoreEntry;
 use crate::game::commands::execute::StoreTarget;
 use crate::game::commands::execute::fork_limit_reached;
-use crate::game::commands::execute::is_player_in_place;
 use sunrise_command::CommandError;
 use sunrise_game_data::{nbt_path::NbtPath, text::Text};
 
@@ -133,7 +132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => return Vec::new(),
         };
         let in_place = self.player.is_some() && self.riding == Some(id);
-        let guests = self.lan.iter().flat_map(|host| {
+        let guests = self.side.lan.iter().flat_map(|host| {
             host.hub
                 .guests
                 .iter()
@@ -693,167 +692,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.side.command_source = previous;
         out
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// `Entity.getYRot` and `getXRot`: the entity's angles, not the direction its model faces.
-    pub(in crate::game) fn target_rotation(&self, t: Target) -> [f32; 2] {
-        use crate::game::entity::Entity;
-        use sunrise_sim::entity_nbt::loaded_rotation;
-        let saved_rotation = |id| self.persist.raw.get(&id).map_or([0.0; 2], loaded_rotation);
-        match t {
-            Target::Player => [self.yaw, self.pitch],
-            Target::Guest(conn) => self
-                .command_guest(conn)
-                .map_or([0.0; 2], |g| [g.yaw, g.pitch]),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Item(id) => self
-                .dropped
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Orb(id) => self
-                .orbs
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Projectile(id) => self
-                .creatures
-                .projectiles
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Stand(id) => self
-                .armor_stands
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Frame(id) => self
-                .item_frames
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], sunrise_sim::entities::ItemFrame::entity_rotation),
-            Target::Painting(id) => self
-                .paintings
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], |a| {
-                    [f32::from(a.facing) * 90.0, saved_rotation(id)[1]]
-                }),
-            Target::Boat(id) => self
-                .boats
-                .iter()
-                .find(|b| b.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Cart(id) => self
-                .carts
-                .iter()
-                .find(|c| c.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Fangs(id) => self
-                .fangs
-                .list
-                .iter()
-                .find(|f| f.id == id)
-                .map_or([0.0; 2], |f| [f.yaw, saved_rotation(id)[1]]),
-            Target::Crystal(id) => self
-                .crystals
-                .iter()
-                .find(|c| c.id == id)
-                .map_or([0.0; 2], |c| c.rotation),
-            Target::Cloud(id) => saved_rotation(id),
-            Target::Bolt(id) => self
-                .bolts
-                .iter()
-                .find(|b| b.id == id)
-                .map_or([0.0; 2], |b| b.rotation),
-            Target::Dragon(id) => self
-                .dragon
-                .as_ref()
-                .filter(|a| a.id == id)
-                .map_or([0.0; 2], |a| [a.yaw, a.pitch]),
-            Target::Tnt(id) => self
-                .tnts
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Cushion(id) => self
-                .cushions
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], |a| [a.yaw, saved_rotation(id)[1]]),
-            Target::Falling(id) => self
-                .falling
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Rocket(id) => self
-                .rockets
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Trident(id) => self
-                .tridents
-                .iter()
-                .find(|a| a.id == id)
-                .map_or([0.0; 2], Entity::rotation),
-            Target::Spawner(id) => self
-                .ominous_spawners
-                .iter()
-                .find(|a| a.id == id)
-                .and_then(|a| a.raw.as_deref())
-                .map_or([0.0; 2], sunrise_sim::entity_nbt::rotation),
-            Target::Hook(id) => self
-                .fishing_hook_by_id(id)
-                .map_or([0.0; 2], |(hook, _)| [hook.yaw, hook.pitch]),
-            Target::Other(id) => crate::game::Side::others(&self.side)
-                .and_then(|others| others.iter().find(|o| o.id == id))
-                .map_or([0.0; 2], |o| [o.yaw, o.pitch]),
-            Target::General(id) => self
-                .resident_entities
-                .general
-                .row(id)
-                .map(|row| row.rotation)
-                .or_else(|| {
-                    self.remote
-                        .as_ref()
-                        .and_then(|r| r.general.rows.get(&(id as i32)))
-                        .map(|row| row.rotation)
-                })
-                .unwrap_or([0.0; 2]),
-            // Dragon parts aren't admitted by UUID. Natural fence knots never turn.
-            Target::DragonPart(_) | Target::Knot(_) => [0.0; 2],
-        }
-    }
-
-    /// `ServerLevel.getEntity(UUID)`: any entity of the level in place, not
-    /// only mobs (displays, armor stands, items...). The map is keyed by id,
-    /// so a killed entity and a later summon of the same UUID can both be
-    /// in it; the one the level still holds is the entity.
-    pub(in crate::game) fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
-        if is_player_in_place(
-            uuid,
-            crate::game::Side::lan_acting_uuid(&self.side),
-            self.level.player_uuid,
-        ) {
-            if crate::game::Side::native_command_filter(&self.side) {
-                return self
-                    .player(sunrise_sim::lan::playerdata::ints_uuid(uuid))
-                    .and_then(|player| self.native_entity_target(player.entity()));
-            }
-            return Some(Target::Player);
-        }
-        self.persist.uuids.iter().find_map(|(&id, found)| {
-            if *found != uuid {
-                return None;
-            }
-            self.level_entity(i32::try_from(id).ok()?)
-        })
     }
 }
 

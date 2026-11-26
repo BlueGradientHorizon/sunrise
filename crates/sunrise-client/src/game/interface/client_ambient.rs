@@ -17,14 +17,14 @@ use sunrise_sim::pose::Pose;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_client_ambient(&mut self) {
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.options.dedicated.is_some() {
             return;
         }
         // A window simulating the world already runs `WitherBoss.aiStep`.
         // One following a server does not: `Level.addParticle` on the server
         // draws nothing, so the smoke, the powered effect and the charge
         // cloud have to be made here.
-        let following = self.remote.is_some();
+        let following = self.side.remote.is_some();
         let mut events = Vec::new();
         let random = self.side.particles.0.level_random();
         for m in self.mobs.iter_mut().filter(|m| !m.removed) {
@@ -156,7 +156,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// valid entity returns true even if the block beneath it is invisible.
     /// Returns false for stale, untracked, server-side, or unsupported entities.
     pub(in crate::game) fn entity_sprint_particles(&mut self, entity: EntityRef) -> bool {
-        use super::commands::Target;
+        use crate::game::commands_common::Target;
         let Some(target) = self.native_client_entity_target(entity) else {
             return false;
         };
@@ -380,7 +380,7 @@ mod sprint_handle_tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "SprintParticleTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
+            let remote = game.side.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -409,7 +409,7 @@ mod sprint_handle_tests {
             assert_eq!(requests[0].1[1], 64.1);
             let stale = EntityRef::new(WorldEpoch::new(0), 7);
             assert!(!stale.sprint_particles(game));
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert!(!entity.sprint_particles(game));
             assert_eq!(game.side.particles.0.requested.as_ref().unwrap().len(), 1);
         });

@@ -20,11 +20,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         reason: Option<Text>,
     ) -> std::result::Result<(), DisconnectError> {
         let epoch = self.native_lifecycle.epoch();
-        let (Some(epoch), Some(_), None) = (epoch, self.remote.as_ref(), &self.side.pending_save.0)
+        let (Some(epoch), Some(_), None) =
+            (epoch, self.side.remote.as_ref(), &self.side.pending_save.0)
         else {
             return Err(DisconnectError::Unavailable);
         };
-        self.native_net.leave = Some(LeaveRequest { epoch, reason });
+        self.side.native_leave = Some(LeaveRequest { epoch, reason });
         Ok(())
     }
 
@@ -38,10 +39,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// reason, the disconnect screen shows it; with none, the pause menu's Disconnect runs. A
     /// request from a world that has closed since is dropped.
     pub(in crate::game::client_side) fn native_leave_if_asked(&mut self) -> Result<()> {
-        let Some(request) = self.native_net.leave.take() else {
+        let Some(request) = self.side.native_leave.take() else {
             return Ok(());
         };
-        if self.remote.is_none() || self.native_lifecycle.epoch() != Some(request.epoch) {
+        if self.side.remote.is_none() || self.native_lifecycle.epoch() != Some(request.epoch) {
             return Ok(());
         }
         let left = match request.reason {
@@ -50,7 +51,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // A hook the leaving fired (a disconnect or unload listener) may have asked again: that
         // request belongs to the world just closed.
-        self.native_net.leave = None;
+        self.side.native_leave = None;
         left
     }
 }

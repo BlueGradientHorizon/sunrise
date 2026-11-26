@@ -5,6 +5,7 @@
 use super::{Dim, Game};
 use crate::game::api_values::TryIntoApi;
 use crate::game::collision_source::Mover;
+use crate::game::item_use_common::{ItemConsumable, USE_ITEM_COMPLETE_EVENT};
 use std::convert::Infallible;
 use sunrise_core::{
     geometry::Vec3, position::BlockPos, random::LegacyRandom, random::RandomSource,
@@ -14,12 +15,10 @@ use sunrise_sim::mobs::Who;
 use {
     sunrise_core::use_animation::UseAnimation,
     sunrise_world::{
-        consumable::{Consumable, EmissionWorld},
+        consumable::EmissionWorld,
         teleport_consume::{TeleportConsume, TeleportConsumeWorld},
     },
 };
-
-pub(in crate::game) type ItemConsumable = Consumable<String, ConsumeEffect>;
 
 /// Capture once per effect, not once per attempted destination. If the stack
 /// cannot cross the API boundary (for example, an unregistered saved item), skip
@@ -32,9 +31,6 @@ pub(in crate::game::server_side) fn consumed_snapshot(
     }
     stack.try_into_api().ok()
 }
-
-/// `EntityEvent.USE_ITEM_COMPLETE`: the server finished the player's use.
-pub(in crate::game) const USE_ITEM_COMPLETE_EVENT: i8 = 9;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The consuming player, including the local player outside a guest action.

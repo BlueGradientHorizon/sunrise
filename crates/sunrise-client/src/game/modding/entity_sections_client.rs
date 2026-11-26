@@ -22,7 +22,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let own = self.own_entity_id();
         let mut sections = std::mem::take(&mut self.native_lifecycle.entity_sections);
-        if let Some(r) = self.remote.as_ref() {
+        if let Some(r) = self.side.remote.as_ref() {
             for &id in r.entities.keys().filter(|&&id| id != own && id > 0) {
                 if let Some(at) = self.entity_position(EntityRef::new(scope.epoch, id as u32)) {
                     sections.moved(scope, id as u32, None, at);

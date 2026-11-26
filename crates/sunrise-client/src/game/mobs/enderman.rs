@@ -250,8 +250,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .chain(self.lan_block_trigger_boxes().into_iter().map(boxed))
             .chain(self.item_frames.iter().map(|f| boxed(f.bounds())))
             .chain(self.paintings.iter().map(|p| boxed(p.bounds())))
-            .chain(self.crystals.iter().map(super::dragon::Crystal::bounds))
-            .chain(self.hook.iter().map(super::fishing::Hook::bounds))
+            .chain(
+                self.crystals
+                    .iter()
+                    .map(crate::game::dragon_common::Crystal::bounds),
+            )
+            .chain(
+                self.hook
+                    .iter()
+                    .map(crate::game::fishing_common::Hook::bounds),
+            )
             .any(|b| b.intersects(area))
     }
 }

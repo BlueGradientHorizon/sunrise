@@ -20,13 +20,13 @@ pub(in crate::game) const SERVER_ENTRIES: [&str; 4] = [
 
 /// What the server thread reports for the window's player
 /// (`DebugScreenOverlay.getServerChunk` and its `ServerLevel`).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(in crate::game) struct ServerDebug {
     /// The server chunk's heightmaps at the feet (`keepAfterWorldgen`).
     pub heights: Option<[i32; 4]>,
-    pub difficulty: Option<String>,
-    pub spawn_counts: Option<String>,
-    pub chunks: Option<String>,
+    pub difficulty: Option<f32>,
+    pub spawn_counts: Option<(i32, [i32; 8])>,
+    pub chunks: Option<(usize, usize, usize)>,
 }
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

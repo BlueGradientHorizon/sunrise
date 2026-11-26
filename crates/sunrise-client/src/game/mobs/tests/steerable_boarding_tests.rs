@@ -116,7 +116,7 @@ fn scene(
             None,
         ));
     }
-    let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+    let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
     guests.clear();
     guests.push(guest);
     if let Some(rider) = guest_rider {
@@ -131,7 +131,7 @@ fn scene(
     game.side.level_pass = Default::default();
     game.tick_lan_packets();
 
-    let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+    let guest = game.side.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
     let mut seats = game
         .seated_passengers(VEHICLE)
         .into_iter()

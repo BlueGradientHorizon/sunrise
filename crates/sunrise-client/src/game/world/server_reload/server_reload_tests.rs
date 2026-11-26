@@ -235,7 +235,8 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                 );
                 assert!(matches!(mod_api::Tags::blocks(game, class),
                     mod_api::TagMembers::Members(blocks) if blocks.contains(&fence)));
-                let old_bound = crate::game::native_world_read::installed_block_tag_snapshot();
+                let old_bound =
+                    crate::game::native_world_read_common::installed_block_tag_snapshot();
                 let old_order = game.items().block_tag_order.clone();
                 let old_sets = game.items().block_tags.clone();
                 let old = game
@@ -264,7 +265,7 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                         .contains("minecraft:diamond_block")
                 );
                 assert_eq!(
-                    crate::game::native_world_read::installed_block_tag_snapshot(),
+                    crate::game::native_world_read_common::installed_block_tag_snapshot(),
                     old_bound
                 );
                 assert_eq!(game.items().block_tag_order, old_order);

@@ -4,7 +4,7 @@ use sunrise_protocol::item::Stack;
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `DisplayInfo.fromNetwork`: convert the template once, not while drawing it.
     pub(in crate::game) fn remote_advancement_icon(&self, mut icon: Stack) -> ItemStack {
-        let remote = self.remote.as_ref().expect("remote advancement");
+        let remote = self.side.remote.as_ref().expect("remote advancement");
         if !sunrise_protocol::item::custom::permitted_with_names(
             &icon,
             remote.registries.custom_components,

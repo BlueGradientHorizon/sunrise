@@ -7,7 +7,7 @@ fn menu_title_snapshot_tracks_open_replacement_and_close() {
     with_client_game(|game| {
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "menu-title-test").unwrap();
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         for value in [Some("first"), Some("replacement"), None] {
             remote.set_menu_title(value.map(sunrise_game_data::text::Text::literal));
             assert_eq!(
@@ -29,7 +29,8 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "menu-title-paths").unwrap();
         let menu_id = |game: &crate::game::ClientGame<'_>, name: &str| {
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .builtin
@@ -50,6 +51,7 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         };
         let snapshot = |game: &crate::game::ClientGame<'_>| {
             let shared = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -68,7 +70,8 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         game.handle_packet(C::ContainerClose(play::ContainerClose { container: 7 }))
             .unwrap();
         assert!(
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .shared_menu_title_snapshot()
@@ -79,7 +82,8 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         snapshot(game);
         game.remote_close_container();
         assert!(
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .shared_menu_title_snapshot()
@@ -88,7 +92,8 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         open(game, chest, "before reject");
         game.remote_reject_container(7);
         assert!(
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .shared_menu_title_snapshot()
@@ -97,7 +102,8 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         open(game, chest, "before dimension change");
         spawn_menu_test(game);
         assert!(
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .shared_menu_title_snapshot()
@@ -107,7 +113,8 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         snapshot(game);
         open(game, lectern, "lectern");
         assert!(
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .shared_menu_title_snapshot()
@@ -115,7 +122,8 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         );
         game.remote_lectern_page(1);
         assert!(
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .shared_menu_title_snapshot()
@@ -124,7 +132,8 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         game.handle_packet(C::ContainerClose(play::ContainerClose { container: 7 }))
             .unwrap();
         assert!(
-            game.remote
+            game.side
+                .remote
                 .as_ref()
                 .unwrap()
                 .shared_menu_title_snapshot()

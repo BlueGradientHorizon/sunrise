@@ -41,6 +41,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         guest.joined()
             && self
+                .side
                 .lan
                 .as_ref()
                 .is_some_and(|host| !host.players_told_left)
@@ -58,7 +59,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return guest;
         }
         let (conn, uuid, name) = (guest.conn, guest.uuid, guest.name.clone());
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             return guest;
         };
         guest.disconnect_pending = true;
@@ -72,7 +73,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         host.hub.guests.insert(at, *guest);
         host.hub.departing = Some(conn);
         self.native_player_logged_out(uuid, &name);
-        let Some(host) = self.lan.as_mut() else {
+        let Some(host) = self.side.lan.as_mut() else {
             unreachable!("LanHost dropped inside a tick; closes are deferred")
         };
         host.hub.departing = None;
@@ -119,7 +120,7 @@ pub(in crate::game) mod player_leave_tests {
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 prepare(game);
-                let shared = &game.lan.as_ref().unwrap().hub.lan.shared;
+                let shared = &game.side.lan.as_ref().unwrap().hub.lan.shared;
                 shared
                     .events
                     .send(NetEvent::Left(12, "Disconnected".into()))
@@ -146,7 +147,12 @@ pub(in crate::game) mod player_leave_tests {
             |game| {
                 if credits {
                     // ServerPlayer.showEndCredits: out of the level, still joined.
-                    game.lan.as_mut().unwrap().hub.remove_player_for_respawn(0);
+                    game.side
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .remove_player_for_respawn(0);
                 }
             },
             |game, told| {

@@ -36,7 +36,7 @@ impl GameLevel<'_> {
         {
             return;
         }
-        let Some(fluid) = crate::game::native_world_read::api_fluid_state(fluid) else {
+        let Some(fluid) = crate::game::native_world_read_common::api_fluid_state(fluid) else {
             return;
         };
         let dimension = self.dimension;

@@ -1,5 +1,8 @@
 //! Prepare local worlds without blocking the window's event loop.
 use super::*;
+use crate::game::{
+    growth_features, pack_discovery::data_repository, world_preload::worldgen_overrides_of,
+};
 use sunrise_level::{chunk_streamer::ChunkStreamer, sim_settings::SimSettings};
 use sunrise_sim::vanillagen::TerrainResources;
 
@@ -299,7 +302,7 @@ impl WorldRequest {
                 sunrise_level::random_source::create().next_long()
             })?;
         }
-        growth::install_live_features(res, pack, options, &overrides);
+        growth_features::install_live_features(res, pack, options, &overrides);
         let (mut overrides, _) = worldgen_overrides_of(
             &save_root,
             &options.resources,
@@ -441,157 +444,6 @@ impl WorldLoader {
     }
 }
 
-/// How long the preloaded world data outlives the world screens: a player
-/// who goes back to the title or to Multiplayer and opens no world for this
-/// long gets the memory back.
-const PRELOAD_KEPT: std::time::Duration = std::time::Duration::from_secs(60);
-
-enum Preload {
-    Idle,
-    /// Read, or being read, on the "World data preload" thread. `left`: when
-    /// the player last left the world screens.
-    Started {
-        thread: std::thread::JoinHandle<()>,
-        left: Option<std::time::Instant>,
-    },
-    /// A world opened: the data is the world's now, and stays.
-    Used,
-}
-
-static PRELOAD: std::sync::Mutex<Preload> = std::sync::Mutex::new(Preload::Idle);
-
-/// Each frame of the title: preload the shared worldgen bundle on a helper
-/// thread while the player is on the world screens
-/// (`on_world_screens`: Singleplayer, Create World and their
-/// dialogs), so it overlaps the time spent choosing a world. A world opened
-/// meanwhile waits for the part being read instead of reading it again. Not
-/// at the title screen itself: many players only go to Multiplayer, and
-/// small machines need the memory. Dropped after `PRELOAD_KEPT` away from
-/// the world screens without a world opening.
-pub(in crate::game) fn preload_world_data(
-    on_world_screens: bool,
-    resources: &std::path::Path,
-    data_source: &sunrise_assets::resource_source::ResourceSource,
-    registry: &'static sunrise_world::registry::BlockRegistry,
-) {
-    let mut preload = PRELOAD.lock().unwrap_or_else(|e| e.into_inner());
-    match &mut *preload {
-        Preload::Used => {}
-        Preload::Idle if on_world_screens => {
-            let resources = resources.to_owned();
-            let data_source = data_source.clone();
-            let spawned = std::thread::Builder::new()
-                .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
-                .name("World data preload".into())
-                .spawn(move || {
-                    sunrise_threads::behind_server();
-                    // Errors are left for the world opening to report.
-                    if let Ok(data) = sunrise_sim::vanillagen::shared_data_from(
-                        &resources.join("worldgen"),
-                        &Default::default(),
-                        registry,
-                        &data_source,
-                    ) {
-                        // The Overworld's feature decoration, which every
-                        // seed shares: about 140 ms off opening the world.
-                        let _ = data.prepare_decoration("minecraft:normal", "minecraft:overworld");
-                    }
-                });
-            match spawned {
-                Ok(thread) => *preload = Preload::Started { thread, left: None },
-                Err(e) => log::warn!("Sunrise: world data preload: {e}"),
-            }
-        }
-        Preload::Idle => {}
-        Preload::Started { left, .. } if on_world_screens => *left = None,
-        Preload::Started { thread, left } => {
-            let left = *left.get_or_insert_with(std::time::Instant::now);
-            if left.elapsed() >= PRELOAD_KEPT && thread.is_finished() {
-                sunrise_sim::vanillagen::forget_shared_data();
-                super::lan::sync::forget_sync_data();
-                super::lan::sync::forget_server_sources();
-                sunrise_threads::release_free_memory();
-                *preload = Preload::Idle;
-                log::info!("Sunrise: preloaded world data dropped, no world opened");
-            }
-        }
-    }
-}
-
-/// A launch that names a world (`--world`, `--quickPlaySingleplayer`): the
-/// same preload, started as soon as the block registry and the biomes are
-/// loaded, so it overlaps the rest of the startup instead of the world's
-/// opening. Read for the world's own data packs and preset, the bundle and
-/// decoration `make_streaming` asks for; a world they don't fit (one its
-/// upgrade rewrites) reads its own when it opens.
-pub(in crate::game) fn preload_launch_world(
-    folder: &str,
-    resources: &std::path::Path,
-    data_source: &sunrise_assets::resource_source::ResourceSource,
-    registry: &'static sunrise_world::registry::BlockRegistry,
-    biomes: Arc<sunrise_level::biome::Biomes>,
-    additional: &[Arc<sunrise_level::datapack::DataPack>],
-) {
-    let mut preload = PRELOAD.lock().unwrap_or_else(|e| e.into_inner());
-    if !matches!(*preload, Preload::Idle) {
-        return;
-    }
-    let Ok(dir) = std::env::current_dir() else {
-        return;
-    };
-    let world_root = dir.join("saves").join(folder);
-    let resources = resources.to_owned();
-    let data_source = data_source.clone();
-    let additional = additional.to_vec();
-    let spawned = std::thread::Builder::new()
-        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
-        .name("World data preload".into())
-        .spawn(move || {
-            // Not behind the server: the world's opening waits for it.
-            let _step = startup::step("world.preload");
-            let started = std::time::Instant::now();
-            // Errors are left for the world opening to report. The world's
-            // flags from its level.dat: the feature packs a flag forces on.
-            let level = Level::read(&world_root);
-            let enabled_features = level
-                .as_ref()
-                .map_or(&[][..], |l| l.enabled_features.as_ref());
-            let (overrides, _) = worldgen_overrides_of(
-                &world_root,
-                &resources,
-                &biomes,
-                enabled_features,
-                &additional,
-            );
-            if let Ok(data) = sunrise_sim::vanillagen::shared_data_from(
-                &resources.join("worldgen"),
-                &overrides,
-                registry,
-                &data_source,
-            ) {
-                let generator = level
-                    .as_ref()
-                    .and_then(|l| l.generator.as_ref())
-                    .map(|g| g.settings());
-                let preset = sunrise_sim::save::WorldGen::noise_preset(generator);
-                let _ = data.prepare_decoration(preset, "minecraft:overworld");
-            }
-            log::info!(
-                "Sunrise: world data preloaded for the launch's world in {} ms",
-                started.elapsed().as_millis()
-            );
-        });
-    match spawned {
-        Ok(thread) => *preload = Preload::Started { thread, left: None },
-        Err(e) => log::warn!("Sunrise: world data preload: {e}"),
-    }
-}
-
-/// A world opens: what `preload_world_data` read is the world's from now on.
-pub(in crate::game) fn world_data_used() {
-    *PRELOAD.lock().unwrap_or_else(|e| e.into_inner()) = Preload::Used;
-}
-
 /// The game's biomes with the world's enabled packs over them, from the same
 /// pack list its worldgen is built from (`WorldgenOverrides` keeps only the
 /// biomes this table knows).
@@ -602,7 +454,7 @@ pub(in crate::game) fn packed_biomes(
     enabled_features: &[String],
     additional: &[Arc<sunrise_level::datapack::DataPack>],
 ) -> Arc<sunrise_level::biome::Biomes> {
-    let packs = super::pack_finders::data_repository(world_root, resources, additional);
+    let packs = data_repository(world_root, resources, additional);
     let enabled = sunrise_level::datapack::enabled_ids(world_root, &packs, enabled_features);
     let enabled: Vec<_> = enabled
         .iter()
@@ -637,28 +489,6 @@ fn live_feature_overrides(
     let biomes = packed_biomes(world_root, resources, base, enabled_features, additional);
     worldgen_overrides_of(world_root, resources, &biomes, enabled_features, additional).0
 }
-/// The Create screen's chosen packs' worldgen entries over the game's own
-/// (`applyNewPackConfig` reloads the world with the new pack config): the
-/// packs the temp folder and the resources root hold, the selection the
-/// Create screen made.
-pub(in crate::game) fn creation_worldgen_overrides(
-    pack_dir: Option<&std::path::Path>,
-    resources: &std::path::Path,
-    data_packs: &[String],
-    biomes: &sunrise_level::biome::Biomes,
-    additional: &[Arc<sunrise_level::datapack::DataPack>],
-) -> sunrise_world::worldgen::overrides::WorldgenOverrides {
-    let empty = std::path::PathBuf::new();
-    let packs =
-        super::pack_finders::data_repository(pack_dir.unwrap_or(&empty), resources, additional);
-    let enabled: Vec<_> = data_packs
-        .iter()
-        .filter_map(|id| packs.iter().find(|p| &p.id == id))
-        .collect();
-    let (overrides, _) =
-        sunrise_level::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b));
-    overrides
-}
 /// The worldgen entries of the world's enabled data packs, logging what
 /// the generator leaves out of them.
 fn world_worldgen_overrides(
@@ -674,27 +504,6 @@ fn world_worldgen_overrides(
         log::warn!("Sunrise: data pack worldgen: {warning}");
     }
     overrides
-}
-
-/// The worldgen entries of the world's enabled data packs, and what the
-/// generator leaves out of them.
-fn worldgen_overrides_of(
-    world_root: &std::path::Path,
-    resources: &std::path::Path,
-    biomes: &sunrise_level::biome::Biomes,
-    enabled_features: &[String],
-    additional: &[Arc<sunrise_level::datapack::DataPack>],
-) -> (
-    sunrise_world::worldgen::overrides::WorldgenOverrides,
-    Vec<String>,
-) {
-    let packs = super::pack_finders::data_repository(world_root, resources, additional);
-    let enabled = sunrise_level::datapack::enabled_ids(world_root, &packs, enabled_features);
-    let enabled: Vec<_> = enabled
-        .iter()
-        .filter_map(|id| packs.iter().find(|p| &p.id == id))
-        .collect();
-    sunrise_level::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b))
 }
 
 /// The shapes of the world's levels: their dimension types, the world's
@@ -1315,6 +1124,9 @@ pub(in crate::game::server_side) fn make_streaming(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::{
+        growth_features, pack_discovery::data_repository, world_preload::worldgen_overrides_of,
+    };
 
     #[test]
     fn report_root_follows_the_server_role() {
@@ -2074,6 +1886,9 @@ mod tests {
 #[cfg(test)]
 mod unused_feature_startup_tests {
     use super::*;
+    use crate::game::{
+        growth_features, pack_discovery::data_repository, world_preload::worldgen_overrides_of,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -2182,6 +1997,9 @@ mod unused_feature_startup_tests {
 #[cfg(test)]
 mod unused_feature_preservation_tests {
     use super::*;
+    use crate::game::{
+        growth_features, pack_discovery::data_repository, world_preload::worldgen_overrides_of,
+    };
 
     #[test]
     #[ignore = "daily"]

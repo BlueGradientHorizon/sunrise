@@ -1,4 +1,4 @@
-use super::{Game, combat::PlayerCredit};
+use super::{Game, combat_common::PlayerCredit};
 use crate::game::native_knockback_credit::CreditEntity;
 use crate::game::native_knockback_credit::CreditPlan;
 use crate::game::native_knockback_credit::HurtBy;

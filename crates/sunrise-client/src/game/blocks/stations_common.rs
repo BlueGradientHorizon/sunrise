@@ -72,6 +72,59 @@ impl Kind {
     }
 }
 
+impl Kind {
+    pub(in crate::game) fn texture(self) -> &'static str {
+        match self {
+            Self::Enchanting => "gui/container/enchanting_table",
+            Self::Anvil => "gui/container/anvil",
+            Self::Grindstone => "gui/container/grindstone",
+            Self::Smithing => "gui/container/smithing",
+            Self::Stonecutter => "gui/container/stonecutter",
+            Self::Merchant => "gui/container/villager",
+            Self::Beacon => "gui/container/beacon",
+            Self::Cartography => "gui/container/cartography_table",
+            Self::Loom => "gui/container/loom",
+        }
+    }
+    /// (titleLabelX, titleLabelY).
+    pub(in crate::game) fn title_pos(self) -> (f32, f32) {
+        match self {
+            Self::Anvil => (60.0, 6.0),
+            Self::Smithing => (44.0, 15.0),
+            Self::Stonecutter => (8.0, 5.0),
+            Self::Cartography | Self::Loom => (8.0, 4.0),
+            _ => (8.0, 6.0),
+        }
+    }
+    pub(in crate::game) fn input_pos(self, i: usize) -> (f32, f32) {
+        let table: &[(f32, f32)] = match self {
+            Self::Enchanting => &[(15.0, 47.0), (35.0, 47.0)],
+            Self::Anvil => &[(27.0, 47.0), (76.0, 47.0)],
+            Self::Grindstone => &[(49.0, 19.0), (49.0, 40.0)],
+            Self::Smithing => &[(8.0, 48.0), (26.0, 48.0), (44.0, 48.0)],
+            Self::Stonecutter => &[(20.0, 33.0)],
+            Self::Merchant => &[(86.0, 37.0), (112.0, 37.0)],
+            Self::Beacon => &[(109.0, 110.0)],
+            Self::Cartography => &[(15.0, 15.0), (15.0, 52.0)],
+            Self::Loom => &[(13.0, 26.0), (33.0, 26.0), (23.0, 45.0)],
+        };
+        table[i.min(table.len() - 1)]
+    }
+    pub(in crate::game) fn result_pos(self) -> Option<(f32, f32)> {
+        match self {
+            Self::Enchanting => None,
+            Self::Anvil => Some((134.0, 47.0)),
+            Self::Grindstone => Some((129.0, 34.0)),
+            Self::Smithing => Some((98.0, 48.0)),
+            Self::Stonecutter => Some((143.0, 33.0)),
+            Self::Merchant => Some((170.0, 37.0)),
+            Self::Beacon => None,
+            Self::Cartography => Some((145.0, 39.0)),
+            Self::Loom => Some((143.0, 57.0)),
+        }
+    }
+}
+
 pub(in crate::game) struct Station {
     pub(in crate::game) kind: Kind,
     pub(in crate::game) pos: [i32; 3],
@@ -88,14 +141,17 @@ pub(in crate::game) struct Station {
     #[allow(dead_code)]
     pub(in crate::game) last_sound: u64,
     /// Villager trading state.
-    pub(in crate::game) merchant: Option<Box<crate::game::trading::MerchantState>>,
+    pub(in crate::game) merchant: Option<Box<crate::game::trading_common::MerchantState>>,
     /// Beacon menu: the selected primary and secondary power (EFFECTS index).
     pub(in crate::game) beacon: [Option<usize>; 2],
-    /// The loom's patterns, selection and scroller (game/blocks/loom.rs).
-    pub(in crate::game) loom: crate::game::loom::LoomState,
 }
 
 impl Station {
+    /// `StonecutterScreen.isScrollBarActive`.
+    pub(in crate::game) fn stonecutter_scrolls(&self) -> bool {
+        self.inputs[0].is_some() && self.stone.recipes.len() > 12
+    }
+
     pub(in crate::game) fn new(kind: Kind, pos: [i32; 3]) -> Self {
         Self {
             kind,
@@ -111,7 +167,6 @@ impl Station {
             last_sound: 0,
             merchant: None,
             beacon: [None; 2],
-            loom: Default::default(),
         }
     }
 

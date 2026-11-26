@@ -1,8 +1,6 @@
 use super::Game;
-use super::render_tick::player_tracking_body;
-use crate::game::client_side::totem::Body;
-use crate::game::client_side::totem::TOTEM;
-use crate::game::client_side::totem::TOTEM_EVENT;
+use crate::game::held_items::OFFHAND_SLOT;
+use crate::game::totem_common::{TOTEM, TOTEM_EVENT};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{health::HealthEvent, motion::MotionEvent};
 
@@ -36,23 +34,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn finish_guest_damage(&mut self) {
         let _ = self.finish_guest_damage_before_resume();
     }
-    /// The server's half once a totem fired: use it up (main hand first),
-    /// count it, set health to 1, then clear and apply its effects. Returns
-    /// the player's body with the protector copy the activation animation shows.
-    /// A server guest's entity event is broadcast before the hit's Post.
-    pub(in crate::game::server_side) fn apply_totem(&mut self, entity: i32) -> Option<Body> {
+    /// Broadcast the guest's activation before the hit's Post callback.
+    fn apply_totem(&mut self, entity: i32) {
         // The mods hear a server player's totem before it is used up.
         if let (Some(uuid), Some(name)) =
             (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             self.native_player_totem(uuid, &name);
         }
-        let p = self.player.as_mut().filter(|p| p.entity_id == entity)?;
-        let _ = p.set_health(1.0, false);
-        let body = Body {
-            bounds: player_tracking_body(p),
-            protector: None,
+        let Some(p) = self.player.as_mut().filter(|p| p.entity_id == entity) else {
+            return;
         };
+        let _ = p.set_health(1.0, false);
+        let feet = [p.position.x, p.position.y, p.position.z];
         // `checkTotemDeathProtection`: the selected slot first, then the
         // offhand. The copy of that stack is the protector (`protectionItem`)
         // the use is counted and the activation animation shown with, taken
@@ -67,17 +61,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .as_ref()
             .cloned()
             .unwrap_or_else(|| ItemStack::new(TOTEM, 1));
-        let slot = if main {
-            self.selected
-        } else {
-            super::shield::OFFHAND_SLOT
-        };
+        let slot = if main { self.selected } else { OFFHAND_SLOT };
         self.consume_player_slot(slot, 1);
         self.award_stat("used", &protector.item, 1);
         self.trigger_item("minecraft:used_totem", &protector);
         // ItemStack.causeUseVibration: the totem's use effects make one.
         let ctx = self.player_context(None);
-        self.post_game_event("minecraft:item_interact_finish", body.bounds.feet, ctx);
+        self.post_game_event("minecraft:item_interact_finish", feet, ctx);
         // `DeathProtection.applyEffects`: the component's own `death_effects`,
         // read from the protector copy (the totem's clear-then-effects, or a
         // custom list; `death_protection={}` has none).
@@ -87,14 +77,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.update_totem_ready();
         if self.side.lan_acting.is_some()
-            && let Some(host) = &self.lan
+            && let Some(host) = &self.side.lan
         {
             host.hub.entity_event(entity, TOTEM_EVENT);
         }
-        Some(Body {
-            protector: Some(protector),
-            ..body
-        })
     }
     /// Settle the hit, returning the remaining events instead of resuming if the acting body is gone.
     pub(in crate::game) fn finish_guest_damage_before_resume(
@@ -110,8 +96,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Keep queued motion and packet effects with this body across the owning callbacks.
         let mut events = std::mem::take(&mut player.events);
         if std::mem::take(&mut player.health.totem_used) {
-            let _ = self.apply_totem(entity);
-        } else if let Some(index) = self.lan.as_ref().and_then(|host| {
+            self.apply_totem(entity);
+        } else if let Some(index) = self.side.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
                 .connection_index(conn)

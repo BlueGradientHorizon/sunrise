@@ -4,9 +4,9 @@
 //! `sendParticles` send them. They return false on a client, for a handle of
 //! an earlier open, or for arguments the network can't carry.
 use super::api_values::TryIntoEngine;
-use super::journal_level_write::PendingWrite;
 use super::native_hooks::{mod_particles_ok, mod_sound_ok};
 use super::{Game, creatures::NativeSound};
+use crate::game::journal_level_effects::PendingWrite;
 use mod_api::{LevelRef, PlayerRef, PlayerWorldRefusal, SoundSource};
 use sunrise_level::particle_options::ParticleOptions;
 use sunrise_sim::lan::server_effects::ServerQueuedParticle;
@@ -73,7 +73,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the level or send nothing.
     pub(in crate::game) fn level_next_sound_seed(&mut self, level: LevelRef) -> Option<i64> {
         self.native_level_dimension(level)?;
-        Some(self.lan.as_ref()?.hub.next_sound_seed())
+        Some(self.side.lan.as_ref()?.hub.next_sound_seed())
     }
     /// The connection a level sound leaves out for `except` (`Level.playSound(except, ...)`):
     /// `Some(None)` for no one, and for a fake player, who has no client to leave out; `None`
@@ -137,7 +137,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(dimension) = self.native_level_dimension(level) else {
             return false;
         };
-        if self.lan.is_none() || !mod_sound_ok(sound, at, source.index(), volume, pitch) {
+        if self.side.lan.is_none() || !mod_sound_ok(sound, at, source.index(), volume, pitch) {
             return false;
         }
         self.emit_level_effect(PendingWrite::Sound {
@@ -227,7 +227,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !mod_particles_ok(options, state, state_ok, positions, spread, speed) {
             return false;
         }
-        let Some(particle) = super::lan_particles::server_particle_from_options(options, state)
+        let Some(particle) =
+            crate::game::lan_particle_data::server_particle_from_options(options, state)
         else {
             return false;
         };
@@ -304,7 +305,7 @@ mod tests {
         with_guests(|game| {
             let (tx_near, near) = mpsc::channel();
             let (tx_far, far) = mpsc::channel();
-            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let hub = &mut game.side.lan.as_mut().unwrap().hub;
             hub.update_guest(12, |guest| {
                 guest.sender = PlayerSender::new(tx_near, Arc::default());
                 guest.position = [0.9, 64.1, 0.9];
@@ -416,7 +417,8 @@ mod tests {
             // Both guests are now in range, but only one is in the requested dimension.
             game.enter_level(Dim::Nether).unwrap();
             game.enter_level(Dim::Overworld).unwrap();
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

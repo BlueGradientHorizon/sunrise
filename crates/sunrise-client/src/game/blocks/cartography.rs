@@ -1,6 +1,4 @@
-//! The cartography table's role-neutral map state (`LevelMaps` and `MapData`
-//! derivation helpers shared across server menu commits and pure tests).
-use super::maps::MapData;
+//! The cartography table's role-neutral map session.
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -58,39 +56,6 @@ impl Maps for LevelMaps {
         self.states.borrow_mut().insert(new, made);
         self.made.borrow_mut().push((new, id, scale));
         Some(new)
-    }
-}
-
-impl MapData {
-    /// `MapItemSavedData.scaled`: a fresh map one scale up around the same centre.
-    pub(in crate::game) fn scaled(&self) -> MapData {
-        let mut m = MapData::fresh(
-            f64::from(self.center[0]),
-            f64::from(self.center[1]),
-            (self.scale + 1).min(4),
-            &self.dimension,
-        );
-        m.tracking = self.tracking;
-        m.unlimited = self.unlimited;
-        m
-    }
-    /// `MapItemSavedData.locked`: the same pixels, banner markers and
-    /// decorations, locked (the frame markers are not copied).
-    pub(in crate::game) fn locked_copy(&self) -> MapData {
-        let mut m = MapData::fresh(
-            f64::from(self.center[0]),
-            f64::from(self.center[1]),
-            self.scale,
-            &self.dimension,
-        );
-        m.center = self.center;
-        m.colors = self.colors.clone();
-        m.banners = self.banners.clone();
-        m.decorations = self.decorations.clone();
-        m.tracking = self.tracking;
-        m.unlimited = self.unlimited;
-        m.locked = true;
-        m
     }
 }
 

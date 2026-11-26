@@ -147,7 +147,8 @@ fn with_guest_probe(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<V
     .into();
     mod_platform::testing::with_mods(mods, || {
         super::native_guest_turn_tests::with_guests(|game| {
-            game.lan
+            game.side
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

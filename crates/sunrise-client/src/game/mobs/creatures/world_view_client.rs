@@ -111,7 +111,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 None => self.res.biomes(),
             },
             behaviours: self.res.behaviours(),
-            features: match &self.remote {
+            features: match &self.side.remote {
                 Some(remote) => &remote.features,
                 None => crate::game::tables::default_client_features(),
             },
@@ -135,7 +135,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 player_attachments: &self.player_state.attachments,
                 entity_attachments: &self.entity_attachments,
             },
-            tag_items: self.remote.as_ref().and_then(|remote| remote.tags.as_ref()),
+            tag_items: self
+                .side
+                .remote
+                .as_ref()
+                .and_then(|remote| remote.tags.as_ref()),
         }
     }
 

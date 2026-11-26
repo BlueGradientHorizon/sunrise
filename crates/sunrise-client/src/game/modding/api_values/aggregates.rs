@@ -1,8 +1,6 @@
 //! Whole-aggregate block-state boundaries. No partial snapshot or draw is admitted.
 use super::{TryIntoApi, block_state};
-#[cfg(feature = "client")]
-use crate::game::native_scene::SceneBlock;
-use crate::game::native_structures::TemplateSnapshot;
+use crate::game::native_structure_values::TemplateSnapshot;
 use mod_api::{BlockStateError, StructureTemplateBlock, StructureTemplateSnapshot};
 
 impl TryIntoApi for TemplateSnapshot<'_> {
@@ -25,35 +23,11 @@ impl TryIntoApi for TemplateSnapshot<'_> {
     }
 }
 
-/// Prepare borrowed scene blocks, with a refusal naming the invalid block.
-/// Conversion allocates one engine vector per scene draw, but never clones entity
-/// identifiers or saved fields, and never resolves names.
-#[cfg(feature = "client")]
-pub(in crate::game) fn scene_blocks(
-    blocks: &[mod_api::SceneBlock],
-) -> Result<Vec<SceneBlock<'_>>, mod_api::SceneError> {
-    if blocks.len() > mod_api::SCENE_MAX_BLOCKS {
-        return Err(mod_api::SceneError::TooManyBlocks);
-    }
-    let index = block_state::current().map_err(|_| mod_api::SceneError::Unavailable)?;
-    (0u32..)
-        .zip(blocks)
-        .map(|(at, block)| {
-            Ok(SceneBlock {
-                pos: block.pos,
-                state: index
-                    .to_engine(block.state)
-                    .map_err(|_| mod_api::SceneError::BadBlock { index: at })?,
-                entity: block.entity.as_ref(),
-            })
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::native_structures::TemplateBlock;
+    use crate::game::client_side::api_values_client::aggregates::scene_blocks;
+    use crate::game::native_structure_values::TemplateBlock;
     use mod_api::{Compound, Identifier, SceneBlockEntity, Tag};
     use sunrise_world::registry::{BlockRegistry, BlockStateId};
 

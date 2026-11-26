@@ -1,7 +1,7 @@
 //! The game's inputs to `EntityGetter.getEntityCollisions`: the entity lists, the spatial
 //! queries and the stand's root-vehicle grid, offered to the one rule in
 //! `sunrise_client::entity_solids` (which a mob's own move reads too).
-use super::{Game, boats::Boat, commands::Target, minecarts::Minecart};
+use super::{Game, boats_common::Boat, commands_common::Target, minecarts::Minecart};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_sim::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 
@@ -22,20 +22,17 @@ pub(in crate::game) enum Mover<'a> {
 }
 
 /// A boat as a solid, in the box a client's copy takes from its `entity_size` answer.
-pub(in crate::game) fn boat<__Side: crate::game::Side>(
-    game: &Game<'_, __Side>,
-    b: &Boat,
-) -> Candidate {
-    let bounds = game.client_copy_box(b.id, b.position, b.bounds());
+pub(in crate::game) fn boat(copy_box: impl FnOnce(u32, Vec3, Aabb) -> Aabb, b: &Boat) -> Candidate {
+    let bounds = copy_box(b.id, b.position, b.bounds());
     Candidate::fixed(SolidKind::Boat, b.id, bounds)
 }
 
 /// [`boat`] for a minecart.
-pub(in crate::game) fn cart<__Side: crate::game::Side>(
-    game: &Game<'_, __Side>,
+pub(in crate::game) fn cart(
+    copy_box: impl FnOnce(u32, Vec3, Aabb) -> Aabb,
     c: &Minecart,
 ) -> Candidate {
-    let bounds = game.client_copy_box(c.id, c.position, c.bounds());
+    let bounds = copy_box(c.id, c.position, c.bounds());
     Candidate::fixed(SolidKind::Cart, c.id, bounds)
 }
 
@@ -73,7 +70,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                     Rule::Player {
                         feet_y: p.position.y,
                         riding: self.riding,
-                        side: if self.remote.is_some() {
+                        side: if self.side_has_remote() {
                             Side::Client
                         } else {
                             Side::Server
@@ -111,7 +108,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                         }
                     }
                 }
-                for b in self.boats.iter().map(|b| boat(self, b)) {
+                for b in self
+                    .boats
+                    .iter()
+                    .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b))
+                {
                     if solids.accepts(&b, || None) {
                         each(&b, None);
                     }

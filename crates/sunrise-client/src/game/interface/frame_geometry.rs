@@ -2,6 +2,9 @@
 //! moon and stars (`celestial_geometry`), the first-person hand and arm (`hand_geometry`,
 //! `first_person_arm`) and the rain and snow around the camera (`weather_geometry`).
 use super::{weather::precipitation_at, *};
+use crate::game::client_side::item_use_client::use_pose;
+use crate::game::maps::map_id;
+use crate::game::native_hooks::camera_math::hand_pose_matrix;
 use sunrise_client::{gfx::CelestialBody, mobs::ModelNormals};
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -288,7 +291,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let to_world = if pose == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0] {
                 to_world
             } else {
-                to_world * native_hooks::hand_pose_matrix(pose)
+                to_world * hand_pose_matrix(pose)
             };
             // The main hand on its arm, the off hand on the other one.
             let left = self.side.settings.main_hand_left != (hand == Hand::Off);
@@ -311,7 +314,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 continue;
             };
             let item_id = self.rendered_item_id(&stack.item);
-            if let Some(id) = maps::map_id(&stack) {
+            if let Some(id) = map_id(&stack) {
                 use sunrise_client::first_person::{MapHold, map_arm_poses, one_handed_map_pose};
                 let hold = MapHold::of(hand, off_hand_empty);
                 // renderOneHandedMap and renderTwoHandedMap: the arms under
@@ -356,7 +359,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let using = owner.using_this_item && owner.use_item_remaining_ticks > 0;
             let ticks_used =
                 owner.use_duration as f32 - (owner.use_item_remaining_ticks as f32 - a + 1.0);
-            use item_use::ItemUseState;
+            use crate::game::item_use_common::ItemUseState;
             use sunrise_client::first_person::ItemPose;
             let state = using.then(|| self.item_use_state(&stack));
             use sunrise_core::use_animation::UseAnimation;
@@ -387,7 +390,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     remaining: owner.use_item_remaining_ticks as f32,
                     partial: a,
                 },
-                Some(ItemUseState::Other(animation)) => item_use::use_pose(
+                Some(ItemUseState::Other(animation)) => use_pose(
                     animation,
                     owner.use_item_remaining_ticks as f32,
                     owner.use_duration as f32,

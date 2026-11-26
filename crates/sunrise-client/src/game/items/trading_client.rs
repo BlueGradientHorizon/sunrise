@@ -1,17 +1,10 @@
-use super::{
-    Game,
-    stations::{INPUT, Kind, RESULT, Station},
+use super::Game;
+use crate::game::stations_common::{INPUT, Kind, RESULT, Station};
+use crate::game::trading_common::{MerchantState, merchant_display_name};
+use sunrise_client::{
+    hud::HudBatch,
+    widgets::{Cursor, request_cursor},
 };
-use crate::game::server_side::trading::GREY;
-use crate::game::server_side::trading::MerchantState;
-use crate::game::server_side::trading::SHIFT;
-use crate::game::server_side::trading::drag_scroll;
-use crate::game::server_side::trading::merchant_display_name;
-use crate::game::server_side::trading::merchant_title;
-use crate::game::server_side::trading::on_scroller;
-use crate::game::server_side::trading::scroller_cursor;
-use crate::game::server_side::trading::scroller_rect;
-use sunrise_client::{hud::HudBatch, widgets::request_cursor};
 use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::merchant::{self, MerchantOffer, TradeContext};
@@ -458,7 +451,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             menu.merchant_select(env, index);
             Some(true)
         });
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
                 m.session.selection_hint = index;
             }
@@ -469,11 +462,82 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
-impl MerchantState {
-    /// `Merchant.showProgressBar`: villagers only.
-    pub(in crate::game) fn progress(&self) -> bool {
-        self.session.show_progress()
+/// The merchant screen is 100 px wider than the 176-px menus it shares an origin with.
+pub(in crate::game) const SHIFT: f32 = -50.0;
+
+pub(in crate::game) const GREY: u32 = 0xFF40_4040;
+
+/// `MerchantScreen.extractLabels`: a villager's title is `merchant.title` with
+/// the name and its level, so the name keeps the style it was given.
+pub(in crate::game) fn merchant_title(progress: bool, level: i32, name: Text) -> Text {
+    // `extractLabels` joins the level for levels 1 to 5 only (`VillagerData`
+    // clamps a villager to 1; a level past 5 draws the name alone).
+    if !progress || !(1..=5).contains(&level) {
+        return name;
     }
+    let level = Text::translate_with_fallback(&format!("merchant.level.{level}"), "", &[]);
+    Text::translate_with_fallback("merchant.title", "%s - %s", &[name, level])
+}
+
+/// Player inventory slot positions in `MerchantMenu` (x from 108).
+pub(in crate::game) fn inventory_slot(i: usize) -> (f32, f32) {
+    match i {
+        0..9 => (108.0 + SHIFT + i as f32 * 18.0, 142.0),
+        _ => (
+            108.0 + SHIFT + ((i - 9) % 9) as f32 * 18.0,
+            84.0 + ((i - 9) / 9) as f32 * 18.0,
+        ),
+    }
+}
+
+/// Whether a press at `local` (GUI origin relative) lands on the offer list's
+/// scroller, which only takes it when there are more than 7 offers.
+pub(in crate::game) fn on_scroller(local: (f32, f32), offers: usize) -> bool {
+    let x = SHIFT + 94.0;
+    offers > 7
+        && local.0 > x
+        && local.0 < x + 6.0
+        && local.1 > 18.0
+        && local.1 <= 18.0 + 139.0 + 1.0
+}
+
+/// `MerchantScreen.extractScroller`: the thumb's rectangle (GUI origin
+/// relative) while the offers overflow; the track's 139 px, the thumb's 27.
+pub(in crate::game) fn scroller_rect(offers: usize, scroll: usize) -> Option<[f32; 4]> {
+    let steps = offers as i32 + 1 - 7;
+    if steps <= 1 {
+        return None;
+    }
+    let left = 139 - (27 + (steps - 1) * 139 / steps);
+    let step = 1 + left / steps + 139 / steps;
+    let mut y = (scroll as i32 * step).min(113);
+    if scroll as i32 == steps - 1 {
+        y = 113;
+    }
+    Some([SHIFT + 94.0, 18.0 + y as f32, 6.0, 27.0])
+}
+
+/// `MerchantScreen.extractScroller`'s cursor: only the thumb asks, a hand
+/// until it is dragged and the vertical resize while it is held.
+pub(in crate::game) fn scroller_cursor(
+    local: (f32, f32),
+    rect: [f32; 4],
+    dragging: bool,
+) -> Option<Cursor> {
+    let [x, y, w, h] = rect;
+    (local.0 >= x && local.0 < x + w && local.1 >= y && local.1 <= y + h).then_some(if dragging {
+        Cursor::ResizeNs
+    } else {
+        Cursor::PointingHand
+    })
+}
+
+/// The first shown offer for the scroller dragged to `y` (GUI origin
+/// relative): the 139-px track starts at 18 and the scroller is 27 px tall.
+pub(in crate::game) fn drag_scroll(y: f32, offers: usize) -> usize {
+    let max = offers.saturating_sub(7) as i32;
+    let offs = (y - 18.0 - 13.5) / (139.0 - 27.0);
+    ((offs * max as f32 + 0.5) as i32).clamp(0, max) as usize
 }
 
 #[cfg(test)]

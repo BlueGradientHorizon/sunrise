@@ -51,6 +51,10 @@ pub(in crate::game) mod tests {
                 root.clone(),
             )),
             None,
+            crate::game::server_side::integrated::serve,
+            crate::game::server_side::integrated::run_component_harness_on_server,
+            crate::game::session_verifier(),
+            crate::game::profile_resolver,
         )
         .unwrap();
         let (client, _server) = Pipe::pair();
@@ -66,7 +70,7 @@ pub(in crate::game) mod tests {
             || {
                 let mut resources = None;
                 let mut game = client(&mut resources);
-                let builtin = game.remote.as_ref().unwrap().builtin.clone();
+                let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
                 let registry = "minecraft:entity_type";
                 let tag = "minecraft:can_equip_saddle";
                 let update = |entity: &str| UpdateTags {
@@ -97,7 +101,7 @@ pub(in crate::game) mod tests {
                 };
 
                 // Configuration stores the tags before the client installs the server tables.
-                Arc::make_mut(&mut game.remote.as_mut().unwrap().registries)
+                Arc::make_mut(&mut game.side.remote.as_mut().unwrap().registries)
                     .add_tags(&update(horse));
                 game.install_server_items();
                 assert_equips(&game, horse, camel);
@@ -116,7 +120,7 @@ pub(in crate::game) mod tests {
         let mut resources = None;
         let mut game = client(&mut resources);
         assert!(!game.items().block_tags["minecraft:climbable"].contains("minecraft:stone"));
-        let builtin = game.remote.as_ref().unwrap().builtin.clone();
+        let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
         let id = |registry: &str, name: &str| builtin.get(registry).unwrap().id(name).unwrap();
         let tag = |registry: &str, name: &str, members: &[&str]| RegistryTags {
             registry: registry.into(),

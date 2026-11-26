@@ -1,39 +1,5 @@
 //! Dragon-owned identity and attachment metadata.
 use super::*;
-#[derive(Default)]
-pub(in crate::game) struct DragonResidency {
-    pub(in crate::game) lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-}
-
-/// A real sub-entity: geometry, identity and attachment authority move and
-/// retire together with this part, never with a shared parent attachment map.
-pub(in crate::game) struct DragonPart(
-    pub Vec3,
-    pub Vec3,
-    pub(in crate::game) sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) [i32; 4],
-);
-impl Default for DragonPart {
-    fn default() -> Self {
-        Self(
-            Vec3::ZERO,
-            Vec3::ZERO,
-            Default::default(),
-            sunrise_sim::save::insecure_uuid(&mut random_source::entity()),
-        )
-    }
-}
-impl sunrise_mod_runtime::attachments::HasAttachmentLifetime for DragonPart {
-    fn attachment_lifetime(&mut self) -> &mut sunrise_mod_runtime::attachments::AttachmentLifetime {
-        &mut self.2
-    }
-}
-impl sunrise_mod_runtime::attachments::HasAttachmentLifetime for Dragon {
-    fn attachment_lifetime(&mut self) -> &mut sunrise_mod_runtime::attachments::AttachmentLifetime {
-        &mut self.residency.lifetime
-    }
-}
-
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Install a replacement only after retiring the previous parts' sidecars.
     pub(in crate::game::server_side) fn replace_resident_dragon(&mut self, dragon: Dragon) {
@@ -47,7 +13,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(id) = self
             .dragon
             .as_ref()
-            .filter(|dragon| dragon.id != 0 || self.remote.is_some())
+            .filter(|dragon| dragon.id != 0)
             .map(|dragon| dragon.id)
         {
             for part in 0..8 {

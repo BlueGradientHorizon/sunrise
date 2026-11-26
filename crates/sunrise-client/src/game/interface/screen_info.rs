@@ -1,1 +1,1 @@
-pub(super) use sunrise_client_gameplay::screen_info::*;
+pub(in crate::game) use sunrise_client_gameplay::screen_info::*;

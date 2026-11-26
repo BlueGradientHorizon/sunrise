@@ -42,7 +42,7 @@ fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
                 game.inventory[game.selected] =
                     (hand == Hand::Main).then(|| ItemStack::new(item, 1));
                 game.offhand = (hand == Hand::Off).then(|| ItemStack::new(item, 1));
-                let sequence = game.remote.as_ref().unwrap().sequence;
+                let sequence = game.side.remote.as_ref().unwrap().sequence;
                 let swings = game.swings_started;
                 game.remote_use(mod_api::InteractionAttempt::Press);
                 let mut uses = Vec::new();
@@ -58,7 +58,7 @@ fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
                 }
                 assert_eq!(uses.as_slice(), expected, "{hand:?} {item}");
                 assert_eq!(
-                    game.remote.as_ref().unwrap().sequence - sequence,
+                    game.side.remote.as_ref().unwrap().sequence - sequence,
                     expected.len() as i32
                 );
                 assert_eq!(game.swings_started, swings, "{hand:?} {item}");

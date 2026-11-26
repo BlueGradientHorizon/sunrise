@@ -11,6 +11,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// No online players means no calls.
     pub(in crate::game) fn sync_recipe_content(&mut self) {
         let connections: Vec<_> = self
+            .side
             .lan
             .as_ref()
             .map(|host| {
@@ -37,7 +38,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     fn ask_recipe_for_conn(&mut self, conn: u32) {
-        let (Some(epoch), Some(host)) = (self.native_lifecycle.epoch(), self.lan.as_ref()) else {
+        let (Some(epoch), Some(host)) = (self.native_lifecycle.epoch(), self.side.lan.as_ref())
+        else {
             return;
         };
         let Some(g) = host.hub.guest(conn) else {
@@ -56,7 +58,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             Vec::new()
         };
-        if let Some(host) = self.lan.as_mut() {
+        if let Some(host) = self.side.lan.as_mut() {
             host.hub.update_guest(conn, |g| {
                 g.recipe_sync.replace(sunrise, types, &sources);
             });

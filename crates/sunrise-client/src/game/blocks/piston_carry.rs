@@ -4,6 +4,7 @@
 //! its moving piston's saved tag, and a client's copy. `BlockEntities` holds
 //! what is carried (`carry`, `land`).
 use super::{Game, GameLevel};
+use crate::game::piston_carry_common::{PositionChange, land_position_data, take_position_data};
 use sunrise_core::{geometry::Direction, nbt::Tag, position::BlockPos};
 use sunrise_level::block_entities::Carried;
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, Attachments, attachment_compound};
@@ -90,9 +91,14 @@ impl GameLevel<'_> {
         let partner = self
             .registry
             .state(self.world.block(from.0, from.1, from.2))
-            .and_then(|state| super::storage::chest_connected_pos(state, [from.0, from.1, from.2]))
+            .and_then(|state| {
+                sunrise_gameplay_common::chests::chest_connected_pos(
+                    state,
+                    [from.0, from.1, from.2],
+                )
+            })
             .map(|p| (p[0], p[1], p[2]));
-        let mut data = super::piston_carry_state::take_position_data(self.world, from);
+        let mut data = take_position_data(self.world, from);
         let cached = self.positions.hoppers.remove(&from).map(|h| h.cooldown);
         let is_hopper = sunrise_game_data::block_entity_types::factory_block(
             &self
@@ -124,7 +130,7 @@ impl GameLevel<'_> {
         self.world.shulkers.remove(&[from.0, from.1, from.2]);
         self.spill
             .piston_positions
-            .push(super::piston_carry_state::PositionChange::Carry { from, to, partner });
+            .push(PositionChange::Carry { from, to, partner });
     }
     /// Installs the block entity the moving piston at `pos` carried there; its
     /// custom name is the block's again, as for one loaded there, and on a
@@ -140,20 +146,21 @@ impl GameLevel<'_> {
         if !self.world.block_entities.land(key) {
             return false;
         }
-        super::piston_carry_state::land_position_data(self.world, key, &data);
+        land_position_data(self.world, key, &data);
         let cooldown = match data.get(&"HopperCooldown".into()) {
             Some(Tag::Int(n)) => Some(*n),
             _ => None,
         };
         self.positions.hoppers.remove(&key);
         if let Some(n) = cooldown {
-            self.positions
-                .hoppers
-                .insert(key, super::machines::HopperState::with_cooldown(n));
+            self.positions.hoppers.insert(
+                key,
+                sunrise_gameplay_common::hoppers::HopperState::with_cooldown(n),
+            );
         }
         self.spill
             .piston_positions
-            .push(super::piston_carry_state::PositionChange::Land { at: key });
+            .push(PositionChange::Land { at: key });
         if self.native_authoritative && self.world.block_entities.attachments(key).is_some() {
             self.world.attachment_landings.insert(
                 sunrise_mod_runtime::attachments::Holder::BlockEntity([pos.x, pos.y, pos.z]),
@@ -214,7 +221,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let Some(tag) = saved
             .into_iter()
             .flat_map(|s| &s.block_entities)
-            .find(|tag| super::persist::block_entity_pos(tag) == [pos.x, pos.y, pos.z])
+            .find(|tag| crate::game::piston_nbt::block_entity_pos(tag) == [pos.x, pos.y, pos.z])
             .and_then(|tag| tag.get(CARRIED_KEY))
         else {
             return;

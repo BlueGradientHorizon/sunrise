@@ -139,75 +139,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .resident_entities
                 .general
                 .row(id)
-                .map(|row| [row.position.x, row.position.y, row.position.z])
-                .or_else(|| {
-                    self.remote
-                        .as_ref()
-                        .and_then(|r| r.general.rows.get(&(id as i32)))
-                        .map(|row| row.position)
-                }),
-        }
-    }
-}
-
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    pub(in crate::game) fn target_type(&self, t: Target) -> String {
-        match t {
-            Target::Player | Target::Guest(_) => "minecraft:player".into(),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id)
-                .map_or_else(String::new, |m| {
-                    sunrise_command::args::normalize(&m.kind.id)
-                }),
-            Target::Item(_) => "minecraft:item".into(),
-            Target::Orb(_) => "minecraft:experience_orb".into(),
-            Target::Projectile(id) => self
-                .creatures
-                .projectiles
-                .iter()
-                .find(|p| p.id == id)
-                .map_or_else(String::new, |p| p.entity_type().into()),
-            Target::Stand(_) => "minecraft:armor_stand".into(),
-            Target::General(id) => self
-                .general_kind(id)
-                .map_or_else(String::new, str::to_owned),
-            Target::Frame(id) => {
-                if self.item_frames.iter().any(|f| f.id == id && f.glow) {
-                    "minecraft:glow_item_frame".into()
-                } else {
-                    "minecraft:item_frame".into()
-                }
-            }
-            Target::Painting(_) => "minecraft:painting".into(),
-            Target::Boat(id) => self
-                .boats
-                .iter()
-                .find(|b| b.id == id)
-                .map_or_else(|| "minecraft:oak_boat".into(), |b| b.entity_type()),
-            Target::Cart(id) => self
-                .carts
-                .iter()
-                .find(|c| c.id == id)
-                .map_or_else(|| "minecraft:minecart".into(), |c| c.kind.id().into()),
-            Target::Other(id) => crate::game::Side::others(&self.side)
-                .and_then(|others| others.iter().find(|o| o.id == id))
-                .map_or_else(String::new, |o| o.kind.clone()),
-            Target::Crystal(_) => "minecraft:end_crystal".into(),
-            // `EnderDragonPart` takes its parent's type.
-            Target::Dragon(_) | Target::DragonPart(_) => "minecraft:ender_dragon".into(),
-            Target::Tnt(_) => "minecraft:tnt".into(),
-            Target::Cushion(_) => "minecraft:cushion".into(),
-            Target::Falling(_) => "minecraft:falling_block".into(),
-            Target::Rocket(_) => "minecraft:firework_rocket".into(),
-            Target::Trident(_) => "minecraft:trident".into(),
-            Target::Fangs(_) => "minecraft:evoker_fangs".into(),
-            Target::Spawner(_) => "minecraft:ominous_item_spawner".into(),
-            Target::Cloud(_) => "minecraft:area_effect_cloud".into(),
-            Target::Bolt(_) => "minecraft:lightning_bolt".into(),
-            Target::Hook(_) => "minecraft:fishing_bobber".into(),
-            Target::Knot(_) => "minecraft:leash_knot".into(),
+                .map(|row| [row.position.x, row.position.y, row.position.z]),
         }
     }
 }

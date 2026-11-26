@@ -3,7 +3,6 @@
 //! and any redirect are resolved before the replacement is created.
 use super::respawn_anchor::RespawnConfig;
 use super::{Dim, Game};
-use sunrise_core::dimension::Dimension as LevelDimension;
 use sunrise_core::geometry::Vec3;
 
 /// Where a respawn ends, as the server found it: a level, a point and the
@@ -24,20 +23,6 @@ pub(in crate::game) struct RespawnDecision {
     /// Whether the fresh player keeps its respawn point
     /// (`copyOriginalSpawnPosition`).
     pub copy: bool,
-}
-
-impl Dim {
-    /// The level the world has for `level`; None for a `Custom` level it lacks.
-    pub(in crate::game) fn from_level(level: LevelDimension) -> Option<Self> {
-        Some(match level {
-            LevelDimension::Overworld => Self::Overworld,
-            LevelDimension::Nether => Self::Nether,
-            LevelDimension::End => Self::End,
-            LevelDimension::Custom(key) => {
-                Self::exists(key.id()).then(|| Self::from_id(key.id()))?
-            }
-        })
-    }
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {

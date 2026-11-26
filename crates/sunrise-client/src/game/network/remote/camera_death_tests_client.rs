@@ -1,5 +1,5 @@
+use crate::game::client_side::remote_client::RemoteDimensionEntry;
 use crate::game::native_entity_refs::tests::with_client_game;
-use crate::game::remote::RemoteDimensionEntry;
 use sunrise_client::level_loading::Reason;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
@@ -32,11 +32,12 @@ pub(in crate::game) fn run_a_spectated_dying_living_entity_squeezes_the_fov_26_3
             sea_level: 63,
         };
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-        let remote = game.remote.as_mut().unwrap();
+        let remote = game.side.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         let creeper = game
+            .side
             .remote
             .as_ref()
             .unwrap()

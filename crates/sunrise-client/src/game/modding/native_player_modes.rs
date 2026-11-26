@@ -4,8 +4,8 @@
 //! players (`mayUseItemAt`, `canHarmPlayer`). They return None for a stale
 //! handle or a player who isn't online here.
 use super::Game;
-use super::native_entity_refs::block_face_direction;
 use super::native_server::PlayerRead;
+use crate::game::native_world_read_common::block_face_direction;
 use mod_api::{BlockFace, GameMode, PlayerRef};
 use sunrise_items::items::ItemStack;
 
@@ -97,19 +97,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// `Player.isSecondaryUseActive`: whether the player uses items and
-    /// blocks as with sneak held, as vanilla reads it from the shift-key
-    /// flag (the same read as `EntityRef::is_shift_key_down`). None for a
-    /// stale or unavailable player.
-    pub(in crate::game) fn player_is_secondary_use_active(
-        &self,
-        player: PlayerRef,
-    ) -> Option<bool> {
-        self.entity_is_shift_key_down(player.entity())
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -123,7 +110,7 @@ mod tests {
     use sunrise_level::chunk::Chunk;
 
     fn set_mode(game: &mut crate::game::ServerGame<'_>, uuid: u128, mode: i32) {
-        game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+        game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
             if g.uuid == uuid {
                 g.game_mode = mode;
                 g.abilities.update_for_mode(mode);

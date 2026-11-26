@@ -6,10 +6,11 @@ use super::{
     Game,
     entity::{Blast, Entity, EntityHandle, with_entity, with_entity_mut},
 };
+use crate::game::collider_rays::ColliderRays;
 use mod_api::ExplosionStart;
-use std::{cmp::Ordering, collections::HashSet, io};
+use std::{cmp::Ordering, collections::HashSet};
 use sunrise_core::{
-    geometry::{Vec3, VoxelShape},
+    geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
@@ -24,7 +25,7 @@ use {
         collision_context::{CollisionContext, CollisionEntity, CollisionItem},
         entity_obstruction::EntityIdentity,
         registry::BlockStateId,
-        world_ray::{RayBlockMode, RayFluidMode, RayWorld, clip_world},
+        world_ray::{RayBlockMode, RayFluidMode, clip_world},
     },
 };
 
@@ -36,124 +37,6 @@ pub(in crate::game) struct ExplosionCause {
     pub player: bool,
     pub guest: Option<u32>,
     pub species: Option<sunrise_sim::mobs::Species>,
-}
-
-/// `Level.clip` with `ClipContext.Block.COLLIDER`, no fluids and the
-/// collision context of the entity whose exposure is measured.
-pub(in crate::game) struct ClipData<'a, 'r> {
-    pub facts: &'a sunrise_items::blocks::BlockFacts,
-    pub behaviours: &'a sunrise_world::level::Behaviours,
-    pub registry: &'r sunrise_world::registry::BlockRegistry,
-}
-pub(in crate::game) struct ColliderRays<'a, 'r> {
-    pub scene: SceneCollisions<'a, 'r>,
-    pub context: CollisionContext<'static>,
-    pub clip_data: Option<ClipData<'a, 'r>>,
-}
-impl RayWorld for ColliderRays<'_, '_> {
-    type Error = io::Error;
-    type Block = BlockStateId;
-    type Fluid = ();
-    fn block_state(&mut self, p: BlockPos) -> io::Result<BlockStateId> {
-        let world = self.scene.world;
-        if self.clip_data.is_some()
-            && (!(world.bottom_y()..world.top_y()).contains(&p.y)
-                || !world.chunks.contains_key(&(p.x >> 4, p.z >> 4)))
-        {
-            return Err(io::Error::other("ray entered an unloaded block"));
-        }
-        Ok(world.block(p.x, p.y, p.z))
-    }
-    fn fluid_state(&mut self, _: BlockPos) -> io::Result<()> {
-        Ok(())
-    }
-    fn block_shape(
-        &mut self,
-        state: BlockStateId,
-        p: BlockPos,
-        mode: RayBlockMode,
-    ) -> io::Result<VoxelShape> {
-        if let Some(data) = &self.clip_data {
-            // A block entity's published shapes stand over the declared ones, a
-            // dynamic template's included (#1666): the collider below reads them
-            // through the binding, the outline here.
-            let at = [p.x, p.y, p.z];
-            let published = sunrise_level::collisions::published_outline(
-                self.scene.world,
-                self.scene.binding,
-                state,
-                at,
-            );
-            if published.is_none() && data.behaviours.data(state).dynamic_shape {
-                return Err(io::Error::other("dynamic ray shape unsupported"));
-            }
-            if mode == RayBlockMode::Outline {
-                let facts = data.facts.get(state);
-                let offset = crate::game::native_state_shapes::outline_offset(
-                    data.facts,
-                    state,
-                    p.x,
-                    p.z,
-                    facts.outline_offset,
-                );
-                let offset = Vec3::new(offset[0], offset[1], offset[2]);
-                if let Some(shape) = published {
-                    return Ok(if offset == Vec3::ZERO {
-                        shape.clone()
-                    } else {
-                        shape.moved(offset)
-                    });
-                }
-                let cached = self.scene.binding.cached_shapes();
-                if let Some(shape) = cached.context_outline_shape(state, self.context.entity_kind())
-                {
-                    return Ok(cached.positioned_shape(
-                        state,
-                        sunrise_world::collision::ShapeChannel::ContextOutline,
-                        at,
-                        shape,
-                    ));
-                }
-                let shape = super::perspective::ray_shape_from_boxes(&facts.outline)?;
-                return Ok(if offset == Vec3::ZERO {
-                    shape
-                } else {
-                    shape.moved(offset)
-                });
-            }
-        }
-        let binding = self.scene.binding;
-        binding
-            .collision_shape_with_context(&mut self.scene, state, p, &self.context)
-            .map_err(|e| io::Error::other(format!("{e:?}")))
-    }
-    fn interaction_shape(&mut self, state: BlockStateId, p: BlockPos) -> io::Result<VoxelShape> {
-        let cached = self.scene.binding.cached_shapes();
-        if let Some(shape) = cached.interaction_shape(state) {
-            return Ok(cached.positioned_shape(
-                state,
-                sunrise_world::collision::ShapeChannel::Interaction,
-                [p.x, p.y, p.z],
-                shape,
-            ));
-        }
-        match &self.clip_data {
-            Some(data) => super::perspective::ray_interaction_shape(data.registry, state),
-            None => Ok(VoxelShape::empty()),
-        }
-    }
-    fn fluid_is_source(&mut self, _: ()) -> io::Result<bool> {
-        Ok(false)
-    }
-    fn fluid_is_empty(&mut self, _: ()) -> io::Result<bool> {
-        Ok(true)
-    }
-    fn fluid_is_water(&mut self, _: ()) -> io::Result<bool> {
-        Ok(false)
-    }
-    fn fluid_shape(&mut self, _: (), _: BlockPos) -> io::Result<VoxelShape> {
-        Ok(VoxelShape::empty())
-    }
 }
 
 /// `BlockPos` with Java `Vec3i.hashCode` / `compareTo`.
@@ -397,7 +280,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .lan_acting_entity
             .or_else(|| self.player.as_ref().map(|p| p.entity_id as u32));
         acting == Some(cause.entity.0)
-            || self.lan.as_ref().is_some_and(|host| {
+            || self.side.lan.as_ref().is_some_and(|host| {
                 host.hub
                     .guests
                     .iter()
@@ -481,6 +364,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let team = match guest {
             Some(conn) => self
+                .side
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
@@ -914,7 +798,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The blast's causing entity, lent to the hit's listeners: decided once, before the
         // player is borrowed for the hit.
         let causing = attacker.map_or(0, |(id, _)| *id as i32);
-        let decision = crate::game::entity::causer_decision!(self, causing);
+        let decision = crate::game::entity_server::causer_decision!(self, causing);
         if let Some(p) = self.player.as_mut()
             && let Some(id) = self.health_resources.damage.id(damage_type)
         {
@@ -922,11 +806,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if !spectator
                 && hurtable
                 && let Ok(o) = p.hurt_caused_by(
-                    crate::game::entity::damage_level_of!(
+                    crate::game::entity_server::damage_level_of!(
                         self,
                         self.side.combat.0.attack(),
                         no_push,
-                        crate::game::entity::player_victim_causer!(self, decision),
+                        crate::game::entity_server::player_victim_causer!(self, decision),
                         acting_equipment!(self)
                     ),
                     &self.health_resources,
@@ -1112,7 +996,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             )
         };
         let mut pushed: Vec<_> = self.side.lan_acting.zip(own).into_iter().collect();
-        if let Some(host) = self.lan.as_ref() {
+        if let Some(host) = self.side.lan.as_ref() {
             let combat = &self.side.combat.0;
             let guests: Vec<u32> = host
                 .hub
@@ -1210,7 +1094,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let creative = self.creative_damage_source_id(source.causing);
                 let vanilla = self.saved_refuses_damage($id as u32, damage_type, creative);
-                crate::game::entity::damage_level_of!(
+                crate::game::entity_server::damage_level_of!(
                     self,
                     self.side.combat.0.attack(),
                     no_push,
@@ -1328,12 +1212,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         );
                         // The blast's causing entity, lent beside its victim.
                         let causing = attacker.as_ref().map_or(0, |&(id, _)| id as i32);
-                        let decision = crate::game::entity::causer_decision!(self, causing);
+                        let decision = crate::game::entity_server::causer_decision!(self, causing);
                         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
-                        let (victim_mob, lend) =
-                            crate::game::entity::victim_and_causer!(self, i, causing, decision);
+                        let (victim_mob, lend) = crate::game::entity_server::victim_and_causer!(
+                            self, i, causing, decision
+                        );
                         let hurt = hurt_mob(
-                            crate::game::entity::damage_level_of!(
+                            crate::game::entity_server::damage_level_of!(
                                 self,
                                 &blast_attack,
                                 &mut credit,
@@ -1352,7 +1237,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         // (`resolvePlayerResponsibleForDamage`); a guest's also names its connection.
                         if hurt
                             && source.attacker == Some(Who::Player)
-                            && let Some(host) = self.lan.as_mut()
+                            && let Some(host) = self.side.lan.as_mut()
                         {
                             match self.side.combat.0.blast_guest {
                                 Some(conn) => {
@@ -1428,7 +1313,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 amount,
                                 false,
                                 true,
-                                super::minecarts::CartHit::attributed(blast_by),
+                                super::minecarts_server::CartHit::attributed(blast_by),
                             );
                         }
                     }
@@ -1628,7 +1513,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let creative = self.creative_damage_source_id(source.causing);
                 let vanilla = self.saved_refuses_damage(id, damage_type, creative);
-                if crate::game::entity::damage_level_of!(
+                if crate::game::entity_server::damage_level_of!(
                     self,
                     self.side.combat.0.attack(),
                     no_push,
@@ -1849,7 +1734,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         source: ExplosionSource,
     ) -> Result<()> {
         let start = self.explosion_start(center, radius, interaction, fire, damage_type);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.side.serving.is_some() || self.options.dedicated.is_some() {
             if self.explosion_start_cancelled(&start) {
                 return Ok(());
             }

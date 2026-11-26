@@ -100,7 +100,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(edit) = self.side.sign_edit.take() else {
             return false;
         };
-        if self.remote.is_some() {
+        if self.side.remote.is_some() {
             self.send(S::SignUpdate(play::SignUpdate {
                 pos: [edit.pos.0, edit.pos.1, edit.pos.2],
                 lines: edit.lines,

@@ -1,6 +1,5 @@
 use super::{Game, entity_culling::default_range};
-use crate::game::server_side::cushions::aabb;
-use crate::game::server_side::cushions::snap_yaw;
+use crate::game::cushions_common::{aabb, snap_yaw};
 use sunrise_core::geometry::Aabb;
 use sunrise_sim::mobs::anim::Poses;
 

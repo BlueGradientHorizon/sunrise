@@ -38,6 +38,7 @@ fn frame_adoption(glow_first: bool) {
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     game.build_registries();

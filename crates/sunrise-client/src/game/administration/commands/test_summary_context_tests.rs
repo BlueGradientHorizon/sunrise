@@ -105,7 +105,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         guest.placed = true;
         guest.loaded = true;
         guest.permission = 2;
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
         receivers.push(rx);
     }
     // Added actor/issuer separation: actual execute-as, with the issuer unchanged.
@@ -134,7 +134,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     for _ in 0..8 {
         game.tick_game_tests();
     }
-    for g in &game.lan.as_ref().unwrap().hub.guests {
+    for g in &game.side.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     let _ = chats(&receivers[0]);
@@ -163,7 +163,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         "added transient Player-alias normalization control"
     );
     game.flush_game_test_output();
-    for g in &game.lan.as_ref().unwrap().hub.guests {
+    for g in &game.side.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     let _ = chats(&receivers[0]);
@@ -181,7 +181,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     let marker = Text::literal("issuer-only-context-control");
     let component = component_nbt(&marker.component());
     game.test_source_output(context, marker.clone(), false);
-    for g in &game.lan.as_ref().unwrap().hub.guests {
+    for g in &game.side.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     assert_eq!(chats(&receivers[0]), [component]);
@@ -202,7 +202,8 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         (game.side.exec.0.commands, game.side.exec.0.callback)
     );
     // Added missing-recipient control: no host fallback or operator broadcast.
-    game.lan
+    game.side
+        .lan
         .as_mut()
         .unwrap()
         .hub
@@ -215,7 +216,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         .outbox
         .push(Out::Coordinates(context, vec![Dim::Overworld]));
     game.flush_game_test_output();
-    for g in &game.lan.as_ref().unwrap().hub.guests {
+    for g in &game.side.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
     assert!(chats(&receivers[1]).is_empty());

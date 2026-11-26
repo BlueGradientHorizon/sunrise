@@ -104,7 +104,7 @@ mod give_stack {
 
     /// `name`'s network id in `registry`, from the tables the server gave the client.
     fn net_id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
-        let r = game.remote.as_ref().unwrap();
+        let r = game.side.remote.as_ref().unwrap();
         r.builtin
             .get(registry)
             .and_then(|ids| ids.id(name))
@@ -186,14 +186,14 @@ mod give_stack {
                             mod_api::StackWriteError::StackableDamageable
                         ))
                     );
-                    let synced = game.remote.as_ref().unwrap().synced.clone();
-                    game.remote.as_mut().unwrap().features = Vec::<String>::new().into();
+                    let synced = game.side.remote.as_ref().unwrap().synced.clone();
+                    game.side.remote.as_mut().unwrap().features = Vec::<String>::new().into();
                     assert_eq!(
                         game.give_stack(&stone),
                         Err(CreativeGiveError::FeatureDisabled)
                     );
-                    assert_eq!(game.remote.as_ref().unwrap().synced, synced);
-                    game.remote.as_mut().unwrap().features =
+                    assert_eq!(game.side.remote.as_ref().unwrap().synced, synced);
+                    game.side.remote.as_mut().unwrap().features =
                         ["minecraft:vanilla".to_owned()].into();
                     game.options.execution_role =
                         crate::game::execution_role::ExecutionRole::IntegratedServer;
@@ -219,8 +219,8 @@ mod give_stack {
                 with_client_game(|game| {
                     let mut reader = logged_in(game);
                     // The enchantment registry a server sends in configuration.
-                    std::sync::Arc::make_mut(&mut game.remote.as_mut().unwrap().registries).add(
-                        sunrise_protocol::packets::configuration::RegistryData {
+                    std::sync::Arc::make_mut(&mut game.side.remote.as_mut().unwrap().registries)
+                        .add(sunrise_protocol::packets::configuration::RegistryData {
                             registry: "minecraft:enchantment".into(),
                             entries: vec![
                                 sunrise_protocol::packets::configuration::RegistryEntry {
@@ -228,8 +228,7 @@ mod give_stack {
                                     data: None,
                                 },
                             ],
-                        },
-                    );
+                        });
                     game.set_local_mode(GameMode::Creative);
                     game.selected = 0;
 
@@ -323,7 +322,8 @@ mod give_stack {
                     assert_eq!((slot, stack.item, stack.count), (39, stone, 16));
                     tick_sends_nothing(game, &mut reader);
 
-                    game.remote
+                    game.side
+                        .remote
                         .as_mut()
                         .unwrap()
                         .menu
@@ -342,7 +342,7 @@ mod give_stack {
                         component(game, stack, "minecraft:custom_name"),
                         &Component::Text(Tag::String("letter".into()))
                     );
-                    game.remote.as_mut().unwrap().menu.set(None);
+                    game.side.remote.as_mut().unwrap().menu.set(None);
                     tick_sends_nothing(game, &mut reader);
                 });
             },

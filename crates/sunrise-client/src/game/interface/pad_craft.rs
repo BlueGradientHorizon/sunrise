@@ -297,14 +297,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Direct crafting on an external server is opt-in unless this world was discovered over LAN.
     /// Joining by address does not count as LAN, even if the address is local.
     fn direct_craft_elsewhere(&self) -> bool {
-        self.integrated.is_none() && !self.server_is_lan()
+        self.side.integrated.is_none() && !self.server_is_lan()
     }
 
     /// Whether direct crafting is allowed where the player is: only through a server, as every
     /// world is played (its quick moves are the server's), and on someone else's only if the
     /// player allowed it (`craft_on_servers`).
     fn direct_craft_allowed(&self) -> bool {
-        self.remote.is_some()
+        self.side.remote.is_some()
             && (!self.direct_craft_elsewhere() || self.side.settings.controller.craft_on_servers)
     }
 
@@ -366,7 +366,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.direct_craft_elsewhere() {
             craft.request_gap = REQUEST_GAP;
         }
-        if self.integrated.is_none() {
+        if self.side.integrated.is_none() {
             craft.place_gap = PLACE_GAP;
         }
         self.side.pad.0.menu.craft = Some(craft);

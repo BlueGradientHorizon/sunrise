@@ -1,5 +1,11 @@
 use super::*;
 
+#[cfg(feature = "client")]
+#[inline(always)]
+pub(in crate::game) fn native_client_setup(context: &mut dyn mod_api::ClientSetupContext) {
+    crate::game::native_hooks::fire::fire_client_setup(context);
+}
+
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -7,6 +13,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// after the first client load has applied and before the title screen's first frame;
     /// never again on a reload (`client_resources_reloaded`) or a new world.
     pub(in crate::game) fn native_client_setup(&mut self) {
-        crate::game::native_hooks::fire::fire_client_setup(self);
+        native_client_setup(self);
     }
 }

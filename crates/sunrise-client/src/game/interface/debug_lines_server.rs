@@ -1,6 +1,5 @@
 use super::Game;
 use crate::game::debug_lines::ServerDebug;
-use sunrise_client::debug_overlay as overlay;
 use sunrise_world::heightmap::HeightmapType;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -23,22 +22,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         let difficulty = (loaded && inside).then(|| {
             let at = [f64::from(x), f64::from(y), f64::from(z)];
-            overlay::local_difficulty_line(self.local_difficulty(at).effective)
+            self.local_difficulty(at).effective
         });
-        let spawn_counts = self
-            .side
-            .spawn_counts
-            .get(&self.dim)
-            .map(|(chunks, counts)| overlay::spawn_counts_line(*chunks, counts));
+        let spawn_counts = self.side.spawn_counts.get(&self.dim).copied();
         // ServerLevel.gatherChunkSourceStats: the chunk map's size, then
         // PersistentEntitySectionManager's known and visible entities, its
         // sections, the chunks it loaded and sees, and its two queues
         // (Sunrise loads a chunk's entities with it: both stay empty).
         let (entities, loaded) = (self.debug_entity_count(), self.world.chunks.len());
-        let chunks = Some(format!(
-            "Chunks[S] W: {loaded} E: {entities},{entities},{},{loaded},{loaded},0,0",
-            self.debug_entity_sections()
-        ));
+        let chunks = Some((loaded, entities, self.debug_entity_sections()));
         ServerDebug {
             heights,
             difficulty,

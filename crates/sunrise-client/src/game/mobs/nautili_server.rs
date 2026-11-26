@@ -157,7 +157,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// click on a nautilus, used or not, makes it persistent before its own
     /// handling runs.
     pub(in crate::game::server_side) fn nautilus_clicked(&mut self, id: Option<i32>) {
-        let Some(index) = id.and_then(|id| Self::named_entity(&self.mobs, id, |m| m.id)) else {
+        let Some(index) =
+            id.and_then(|id| crate::game::item_actions::named_entity(&self.mobs, id, |m| m.id))
+        else {
             return;
         };
         if nautilus::is_nautilus(self.mobs[index].species()) {

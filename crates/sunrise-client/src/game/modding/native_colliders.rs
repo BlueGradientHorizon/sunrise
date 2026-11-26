@@ -5,163 +5,17 @@
 //! The server keeps a [`ColliderEntry`] by entity id beside the entity's attachments, and a
 //! client keeps what its tracking server sent in `Remote::colliders`. A level with no colliders
 //! holds empty maps, so nothing else in the game pays for them.
-use super::{
-    Dim, Game,
-    commands::Target,
-    remote_vehicles::{PassengerSeat, passenger_root},
+use super::{Dim, Game, commands::Target};
+use crate::game::native_collider_state::{
+    ColliderEntry, Placement, PlacementKey, SAVE_KEY, origin_bits,
 };
 use mod_api::{Collider, ColliderError, EntityRef};
 use std::collections::{HashMap, HashSet};
-use sunrise_core::{
-    geometry::Vec3,
-    nbt::{Compound, Tag},
-};
-use sunrise_level::fast_hash::FxHashMap;
-use sunrise_mod_runtime::attachments::{Attachments, Holder};
+use sunrise_core::{geometry::Vec3, nbt::Tag};
+use sunrise_mod_runtime::attachments::Holder;
 use sunrise_protocol::collider_sync::{self, Message};
 use sunrise_sim::colliders::{ColliderState, valid_rotation};
 use sunrise_world::moving_colliders::History;
-
-/// The save key of an entity's collider, beside its attachments.
-pub(in crate::game) const SAVE_KEY: &str = "SunriseCollider";
-
-/// A server entity's collider, with the form the save writes.
-pub(in crate::game) struct ColliderEntry {
-    pub state: ColliderState,
-    pub(in crate::game) saved: Compound,
-}
-
-/// The per-entity maps the game keeps by entity id: attachments, and colliders. It reads as
-/// the attachments map, which is what most of the game wants; the colliders are beside it so
-/// that what saves, loads and forgets an entity's attachments handles its collider too.
-#[derive(Default)]
-pub(in crate::game) struct EntityMaps {
-    pub(in crate::game) attachments: FxHashMap<u32, Attachments>,
-    pub(in crate::game) colliders: FxHashMap<u32, ColliderEntry>,
-    /// The ids of the colliders each level holds, so a level's tick places only its own.
-    pub(in crate::game) by_level: HashMap<Dim, HashSet<u32>>,
-}
-
-impl std::ops::Deref for EntityMaps {
-    type Target = FxHashMap<u32, Attachments>;
-    fn deref(&self) -> &Self::Target {
-        &self.attachments
-    }
-}
-
-impl std::ops::DerefMut for EntityMaps {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.attachments
-    }
-}
-
-impl EntityMaps {
-    pub(in crate::game::server_side) fn collider(&self, id: u32) -> Option<&ColliderEntry> {
-        self.colliders.get(&id)
-    }
-
-    pub(in crate::game::server_side) fn collider_mut(
-        &mut self,
-        id: u32,
-    ) -> Option<&mut ColliderEntry> {
-        self.colliders.get_mut(&id)
-    }
-
-    /// Gives the entity `id`, which stands in `level`, this collider.
-    pub(in crate::game::server_side) fn insert_collider(
-        &mut self,
-        id: u32,
-        level: Dim,
-        entry: ColliderEntry,
-    ) {
-        if self.colliders.insert(id, entry).is_some() {
-            self.unindex(id);
-        }
-        self.by_level.entry(level).or_default().insert(id);
-    }
-
-    /// Takes the collider off the entity, wherever it stands.
-    pub(in crate::game) fn remove_collider(&mut self, id: u32) -> bool {
-        let had = self.colliders.remove(&id).is_some();
-        if had {
-            self.unindex(id);
-        }
-        had
-    }
-
-    /// The entity `id` arrived in `level` with its collider.
-    pub(in crate::game::server_side) fn move_collider(&mut self, id: u32, level: Dim) {
-        if self.colliders.contains_key(&id) {
-            self.unindex(id);
-            self.by_level.entry(level).or_default().insert(id);
-        }
-    }
-
-    pub(in crate::game::server_side) fn unindex(&mut self, id: u32) {
-        self.by_level.retain(|_, ids| {
-            ids.remove(&id);
-            !ids.is_empty()
-        });
-    }
-
-    /// The ids of the colliders in `level`.
-    pub(in crate::game::server_side) fn colliders_in(
-        &self,
-        level: Dim,
-    ) -> impl Iterator<Item = u32> + '_ {
-        self.by_level.get(&level).into_iter().flatten().copied()
-    }
-
-    /// Writes the entity's collider into its saved compound.
-    pub(in crate::game::server_side) fn write_collider(&self, root: &mut Compound, id: u32) {
-        match self.colliders.get(&id) {
-            Some(entry) => {
-                root.insert(SAVE_KEY.into(), Tag::Compound(entry.saved.clone()));
-            }
-            None => {
-                root.remove(&SAVE_KEY.into());
-            }
-        }
-    }
-}
-
-/// What a placed collider was made from: when all of these are as they were, so is it.
-#[derive(PartialEq)]
-pub(in crate::game) struct PlacementKey {
-    pub(in crate::game) id: u32,
-    pub(in crate::game) serial: u64,
-    pub(in crate::game) origin: [u64; 3],
-    /// The entities of its vehicle stack.
-    pub(in crate::game) stack: Vec<u32>,
-}
-
-/// The vehicle stack of `id` in a riding graph (passenger to vehicle): the root and everything
-/// whose way up reaches it, `id` included. The walks are bounded by the graph's size, so a
-/// cycle in what a server sent ends them.
-pub(in crate::game) fn stack_in_graph(vehicles: &HashMap<u32, PassengerSeat>, id: u32) -> Vec<u32> {
-    let root_of = |at| passenger_root(vehicles, at).unwrap_or_else(|last| last);
-    let root = root_of(id);
-    let mut stack = vec![root];
-    stack.extend(
-        vehicles
-            .keys()
-            .copied()
-            .filter(|&rider| root_of(rider) == root),
-    );
-    if !stack.contains(&id) {
-        stack.push(id);
-    }
-    stack
-}
-
-pub(in crate::game) fn origin_bits(origin: Vec3) -> [u64; 3] {
-    [origin.x.to_bits(), origin.y.to_bits(), origin.z.to_bits()]
-}
-
-pub(in crate::game) struct Placement {
-    pub(in crate::game) keys: Vec<PlacementKey>,
-    pub(in crate::game) prepared: sunrise_world::moving_colliders::Prepared,
-}
 
 /// The recent frames of each level's colliders, on a server, for the move check of a player a
 /// collider carries.
@@ -169,10 +23,6 @@ pub(in crate::game) struct Placement {
 pub(in crate::game) struct Histories(
     pub(in crate::game) HashMap<Dim, std::rc::Rc<std::cell::RefCell<History>>>,
 );
-
-/// The placements of each level's colliders, kept from tick to tick.
-#[derive(Default)]
-pub(in crate::game) struct Placements(pub(in crate::game) HashMap<Dim, Placement>);
 
 /// What the server sends about one entity's collider this tick.
 pub(in crate::game) struct ColliderChange {
@@ -435,7 +285,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn level_collider_history(
         &self,
     ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_world::moving_colliders::History>>> {
-        self.collider_histories.0.get(&self.dim).cloned()
+        self.side.collider_histories.0.get(&self.dim).cloned()
     }
 
     /// The server level in place, including the world lifetime and runtime level generation.
@@ -455,7 +305,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return f(self);
         }
         let placed = self.placed_moving_colliders();
-        let history = self.collider_histories.0.get(&self.dim).cloned();
+        let history = self.side.collider_histories.0.get(&self.dim).cloned();
         let _history = HistoryScope::replace(history);
         let _scope = Scope::enter_level(level, placed);
         f(self)
@@ -468,10 +318,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_world::moving_colliders::History>>> {
         let level = self.dim;
         if placed.is_empty() {
-            self.collider_histories.0.remove(&level);
+            self.side.collider_histories.0.remove(&level);
             return None;
         }
-        let history = self.collider_histories.0.entry(level).or_default().clone();
+        let history = self
+            .side
+            .collider_histories
+            .0
+            .entry(level)
+            .or_default()
+            .clone();
         history.borrow_mut().record(placed);
         Some(history)
     }
@@ -481,7 +337,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn flush_collider_sync(&mut self, fresh: &HashSet<(u128, u32)>) {
         let changes = std::mem::take(&mut self.side.collider_changes);
         for change in changes {
-            let senders = self.lan.as_ref().map_or_else(Vec::new, |host| {
+            let senders = self.side.lan.as_ref().map_or_else(Vec::new, |host| {
                 host.hub
                     .guests
                     .iter()
@@ -565,6 +421,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use crate::game::{native_collider_state::stack_in_graph, remote::passengers::PassengerSeat};
 
     /// What a client works out from the riding its server told: the root, every rider at any
     /// depth, siblings included.

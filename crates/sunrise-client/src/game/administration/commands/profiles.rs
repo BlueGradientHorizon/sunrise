@@ -235,7 +235,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // PlayerList.getPlayerByName, then ServerPlayer.getIpAddress.
         let address = |name: &str| {
-            let hub = &self.lan.as_ref()?.hub;
+            let hub = &self.side.lan.as_ref()?.hub;
             hub.online_players()
                 .find(|g| g.name.eq_ignore_ascii_case(name))
                 .map(|g| g.ip_address().to_owned())
@@ -252,6 +252,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(err("commands.banip.failed", &[]));
         }
         let players: Vec<(u128, String)> = self
+            .side
             .lan
             .as_ref()
             .map(|h| {

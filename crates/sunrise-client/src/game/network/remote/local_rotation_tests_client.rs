@@ -61,7 +61,7 @@ fn a_mod_set_look_is_clamped_and_sent_once_by_the_tick() {
             assert_eq!(sent_moves(game, &mut server), [("rot", 12.0, 3.0)]);
             game.riding = None;
 
-            game.remote.as_mut().unwrap().logged_in = false;
+            game.side.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(
                 game.set_local_rotation(0.0, 0.0),
                 Err(LocalRotationError::NoWorld)

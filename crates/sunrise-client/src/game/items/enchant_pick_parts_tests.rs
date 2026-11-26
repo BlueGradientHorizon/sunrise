@@ -276,6 +276,10 @@ fn a_client_refresh_keeps_and_a_world_close_retires_the_servers_answers() {
                     root,
                 )),
                 None,
+                crate::game::server_side::integrated::serve,
+                crate::game::server_side::integrated::run_component_harness_on_server,
+                crate::game::session_verifier(),
+                crate::game::profile_resolver,
             )
             .unwrap();
             *answers.primary.lock().unwrap() = Vec::new();
@@ -652,6 +656,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "EnchantTags").unwrap();
             let sword = game
+                .side
                 .remote
                 .as_ref()
                 .unwrap()
@@ -669,7 +674,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
                     }],
                 }],
             };
-            let registries = &mut game.remote.as_mut().unwrap().registries;
+            let registries = &mut game.side.remote.as_mut().unwrap().registries;
             Arc::make_mut(registries).add_tags(&tags(vec![sword]));
             seen.lock().unwrap().clear();
             game.handle_packet(C::Login(play::Login {

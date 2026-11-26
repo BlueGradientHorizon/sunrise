@@ -49,7 +49,7 @@ fn death_loot_killer_is_not_the_acting_guest() {
                 victim.last_damage = Some((Damage::player([0.0; 3]), 0));
                 game.side
                     .last_hurt_by_player
-                    .insert(id, crate::game::combat::PlayerCredit(12));
+                    .insert(id, crate::game::combat_common::PlayerCredit(12));
                 if let Some(conn) = acting {
                     game.as_guest(conn, |g| g.mob_die(&victim)).unwrap();
                 } else {

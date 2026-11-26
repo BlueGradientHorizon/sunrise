@@ -35,6 +35,7 @@ pub(in crate::game::server_side) fn run_falling_impacts_wear_the_helmet_before_n
         options,
         settings.sim_settings(),
         None,
+        crate::game::profile_resolver,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!("sunrise-helmet-{}", std::process::id()));

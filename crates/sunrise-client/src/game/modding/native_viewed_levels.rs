@@ -21,7 +21,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// On a client, the key of the level `dimension` names: the one it shows, or one the server
     /// opened for viewing while that view is open. None before login.
     pub(in crate::game) fn client_level_key(&self, dimension: &str) -> Option<DimensionKey> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
+        let remote = self.side.remote.as_ref().filter(|r| r.logged_in)?;
         if remote.level == dimension {
             return Some(remote.level_key);
         }
@@ -30,7 +30,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// On a client, the world a handle names now: the player's own, or a viewed level's while
     /// the server keeps it open. None before login, for a stale handle and for any other level.
     pub(in crate::game) fn client_view_world(&self, level: LevelRef) -> Option<&World> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
+        let remote = self.side.remote.as_ref().filter(|r| r.logged_in)?;
         if self.native_lifecycle.epoch() != Some(level.epoch()) {
             return None;
         }
@@ -43,7 +43,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// level's epoch): what a world view naming a level is compared with, resolved with the
     /// same rules as `client_view_world`. None before login.
     fn client_own_level(&self) -> Option<LevelRef> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
+        let remote = self.side.remote.as_ref().filter(|r| r.logged_in)?;
         Some(LevelRef::new(
             self.native_lifecycle.epoch()?,
             remote.level_key,
@@ -204,7 +204,15 @@ mod tests {
         assert_eq!(read(&game, own, missing), (None, None));
         assert_eq!(read(&game, viewed, missing), (None, None));
         assert!(!game.world.chunks.contains_key(&(1, 0)));
-        let world = &game.remote.as_ref().unwrap().viewed.get(1).unwrap().world;
+        let world = &game
+            .side
+            .remote
+            .as_ref()
+            .unwrap()
+            .viewed
+            .get(1)
+            .unwrap()
+            .world;
         assert!(!world.chunks.contains_key(&(1, 0)));
 
         let stale = LevelRef::new(
@@ -283,7 +291,15 @@ mod tests {
         let across = [15.0, 85.0, 8.0, 17.0, 86.0, 9.0];
         assert_eq!(viewed.collision_boxes(&game, across), None);
         assert_eq!(viewed.has_collisions(&game, across), None);
-        let world = &game.remote.as_ref().unwrap().viewed.get(1).unwrap().world;
+        let world = &game
+            .side
+            .remote
+            .as_ref()
+            .unwrap()
+            .viewed
+            .get(1)
+            .unwrap()
+            .world;
         assert_eq!(world.chunks.len(), 1);
     }
 

@@ -4,7 +4,7 @@ use super::native_guest_turn_tests::with_guests;
 use mod_api::{Compound, JavaString, PlayerPersistentDataError, Tag, prelude::*};
 
 fn saved_data<'a>(game: &'a crate::game::ServerGame<'_>, conn: u32) -> Option<&'a Compound> {
-    let hub = &game.lan.as_ref().unwrap().hub;
+    let hub = &game.side.lan.as_ref().unwrap().hub;
     match hub.guest(conn)?.saved.as_ref()?.get("NeoForgeData")? {
         Tag::Compound(data) => Some(data),
         _ => None,
@@ -108,7 +108,8 @@ fn each_persistent_data_refusal_has_its_own_name_and_writes_nothing() {
         let kept = Compound::from([(key.clone(), Tag::Byte(1))]);
         assert_eq!(b.persistent_data(game), Some(&kept));
 
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub
@@ -144,6 +145,7 @@ fn each_persistent_data_refusal_has_its_own_name_and_writes_nothing() {
         assert_eq!(after_respawn.get(&key), None);
 
         let index = game
+            .side
             .lan
             .as_ref()
             .unwrap()
@@ -151,7 +153,7 @@ fn each_persistent_data_refusal_has_its_own_name_and_writes_nothing() {
             .guests
             .connection_index(13)
             .unwrap();
-        game.lan.as_mut().unwrap().hub.guests.remove(index);
+        game.side.lan.as_mut().unwrap().hub.guests.remove(index);
         assert_eq!(b.set_persistent_data_key(game, &key, None), Err(Stale));
         assert_eq!(b.persistent_data(game), None);
         // Client refusal is enforced at compile time (`ClientGame` lacks server player persistent-data ops).
@@ -170,7 +172,8 @@ fn a_respawn_keeps_only_player_persisted() {
             .unwrap();
         b.set_persistent_data_key(game, &persisted, Some(&inside))
             .unwrap();
-        game.lan
+        game.side
+            .lan
             .as_mut()
             .unwrap()
             .hub

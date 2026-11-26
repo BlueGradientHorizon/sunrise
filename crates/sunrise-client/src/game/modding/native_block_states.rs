@@ -16,7 +16,7 @@ use sunrise_world::registry::{BlockRegistry, BlockStateId};
 /// world form, an amount above 8, a zero amount for anything but the empty fluid, or a source
 /// that isn't full.
 pub(super) fn engine_fluid_state(state: FluidState) -> Option<EngineFluidState> {
-    let kind = super::native_world_read::engine_fluid_kind(state.fluid)?;
+    let kind = crate::game::native_world_read_common::engine_fluid_kind(state.fluid)?;
     let engine = EngineFluidState::new(kind, state.amount, state.falling);
     let consistent = match kind {
         FluidKind::Empty => state.amount == 0,
