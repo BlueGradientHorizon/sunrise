@@ -3962,7 +3962,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 }
 pub use end_common::EndGameExt as _;
-pub use mobs::creatures::world_view::WorldViewExt as _;
+pub use creatures::world_view::WorldViewExt as _;
 pub use native_hooks::base::GameHooks as _;
 pub use side_ops::blocks::BlocksSideGameExt as _;
 pub use side_ops::events::EventsSideGameExt as _;

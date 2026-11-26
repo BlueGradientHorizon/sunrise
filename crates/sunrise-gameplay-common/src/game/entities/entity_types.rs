@@ -491,7 +491,7 @@ macro_rules! direct_entity_edit {
     };
 }
 #[allow(unused_imports)]
-pub use direct_entity_edit;
+pub(crate) use direct_entity_edit;
 
 macro_rules! define_entity_handles {
     (() $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
@@ -644,7 +644,7 @@ macro_rules! walk_lists {
     };
 }
 #[allow(unused_imports)]
-pub use walk_lists;
+pub(crate) use walk_lists;
 
 /// Runs `$body` for every entity, with `$entity` as a reference to its own
 /// type: one loop per list, each compiled for its kind, so nothing allocates
