@@ -55,8 +55,11 @@ READERS = {
         # The installed-client daily builds and installs the fn-replace-check `lower` fixture.
         "tools/ci/fn-replace-check/lower",
     ],
-    # The pinned Rust, and the mods library's template its tests render.
-    "sunrise-native-build": ["crates/sunrise-client/src/native_mod_entry.rs.template", "tools/ci/rust-version"],
+    # The pinned Rust, the mods library's template and the packager's game/SDK lock pair.
+    "sunrise-native-build": [
+        "crates/sunrise-client/src/native_mod_entry.rs.template", "tools/ci/rust-version",
+        "tools/fixtures/sdk-git-patches",
+    ],
     # The pipeline bench example links the bench mod's source in.
     "sunrise-mod-host": ["tools/fixtures/mod-pipeline-bench"],
     "sunrise-client": SUNRISE_CLIENT,
