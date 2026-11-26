@@ -266,7 +266,7 @@ fn combine(
 ) -> Result<(Preprocessed, u32), Vec<Error>> {
     let error = |message: String| {
         vec![Error::new(
-            geometry.files.first().cloned().unwrap_or_default(),
+            geometry.file(),
             0,
             message,
         )]

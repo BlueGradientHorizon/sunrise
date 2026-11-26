@@ -59,6 +59,13 @@ impl Preprocessed {
         let file = self.files.get(o.file as usize).map_or("?", String::as_str);
         format!("{file}:{}", o.line)
     }
+
+    /// The stage's own file: the first of [`Preprocessed::files`]. [`preprocess`] always reads it
+    /// first; only a stage file that could not be read (refused by its diagnostic before any
+    /// translation) or a `Preprocessed` built by hand has none, and then the name is empty.
+    pub(crate) fn file(&self) -> &str {
+        self.files.first().map_or("", String::as_str)
+    }
 }
 
 /// Runs the preprocessor on the stage file `path` of `pack` with `macros` defined.
