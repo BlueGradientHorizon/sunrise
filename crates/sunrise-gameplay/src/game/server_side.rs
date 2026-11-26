@@ -549,7 +549,7 @@ pub mod server_travel;
 #[path = "items/shield.rs"]
 pub mod shield;
 #[path = "mobs/shoulders.rs"]
-pub(in crate::game) mod shoulders;
+pub mod shoulders;
 #[path = "interface/sign_edit_server.rs"]
 pub(in crate::game) mod sign_edit_server;
 #[path = "modding/slot_changes.rs"]
@@ -557,7 +557,7 @@ pub mod slot_changes;
 #[path = "modding/slot_takes.rs"]
 pub(in crate::game) mod slot_takes;
 #[path = "mobs/spawner.rs"]
-pub(in crate::game) mod spawner;
+pub mod spawner;
 #[path = "mobs/spawner_server.rs"]
 pub(in crate::game) mod spawner_server;
 #[path = "items/spear_players.rs"]
@@ -584,7 +584,7 @@ pub(in crate::game) mod table_enchant;
 #[path = "administration/test_environments.rs"]
 pub(in crate::game) mod test_environments;
 #[path = "administration/test_instances.rs"]
-pub(in crate::game) mod test_instances;
+pub mod test_instances;
 #[path = "entities/tnt.rs"]
 pub mod tnt;
 #[path = "items/trading.rs"]

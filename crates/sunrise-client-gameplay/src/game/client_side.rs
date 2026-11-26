@@ -71,10 +71,10 @@ pub(in crate::game) mod client_cracks;
 #[path = "modding/client_executor.rs"]
 pub(in crate::game) mod client_executor;
 #[path = "modding/client_item_extensions.rs"]
-pub(in crate::game) mod client_item_extensions;
+pub mod client_item_extensions;
 #[cfg(feature = "client")]
 #[path = "interface/client_reload/mod.rs"]
-pub(in crate::game) mod client_reload;
+pub mod client_reload;
 #[cfg(feature = "client")]
 #[path = "runtime/client_tick_steps.rs"]
 pub(in crate::game) mod client_tick_steps;

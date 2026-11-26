@@ -1887,7 +1887,7 @@ impl Dim {
 /// empty slot of the inventory (`getFreeSlot`, never the off hand), until the
 /// stack is used up, no slot is left or a slot takes none of it. What does
 /// not fit stays in `stack`; true when some of it is left.
-pub pub fn inventory_add(
+pub fn inventory_add(
     inventory: &mut [Option<ItemStack>],
     offhand: &mut Option<ItemStack>,
     selected: usize,
