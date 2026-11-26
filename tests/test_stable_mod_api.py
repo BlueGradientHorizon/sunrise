@@ -612,11 +612,22 @@ class JudgeBuildTests(unittest.TestCase):
             git = nightly.git
             with chdir(repo), mock.patch.object(nightly, "REPOSITORY", repo):
                 git("init", "-q")
-                Path("a.txt").write_text("a\n")
+                Path("a.txt").write_text("parent\n")
                 git("add", "a.txt")
-                git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a")
-                nightly.unpack("HEAD", work / "tree")
-                self.assertEqual((work / "tree" / "a.txt").read_text(), "a\n")
+                git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "parent")
+                parent = git("rev-parse", "HEAD")
+
+                Path("a.txt").write_text("candidate\n")
+                Path("candidate-only.txt").write_text("tracked in candidate\n")
+                git("add", "a.txt", "candidate-only.txt")
+                git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "candidate")
+                Path("a.txt").write_text("dirty\n")
+                Path("worktree-only.txt").write_text("untracked\n")
+
+                tree = work / "tree"
+                nightly.unpack(parent, tree)
+                self.assertEqual((tree / "a.txt").read_text(), "parent\n")
+                self.assertEqual({path.name for path in tree.iterdir()}, {"a.txt"})
                 self.assertEqual(len(git("worktree", "list").splitlines()), 1)
 
     def test_download_only_returns_assets_verified_under_their_tag(self):

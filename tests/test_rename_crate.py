@@ -1,9 +1,9 @@
 """Crate renames must not rename player data paths or the separate registry repo."""
-from contextlib import redirect_stdout
 import importlib.util
-import io
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -58,26 +58,36 @@ let registry = "https://github.com/horizon-rust/horizon-mods";
 '''
         self.assertEqual(rename.rewrite("crates/sunrise-client/src/native_mod_host.rs", source), expected)
 
-    @unittest.skipUnless(shutil.which("rustfmt"), "requires rustfmt")
     def test_verify_rejects_an_unchanged_file_that_still_needs_the_mapping(self):
         with TemporaryDirectory() as directory, patch.object(rename, "ROOT", Path(directory)):
             crate = rename.ROOT / rename.OLD_PATH
             crate.mkdir(parents=True)
-            (crate / "Cargo.toml").write_text('[package]\nname = "sunrise-mods"\n')
-            consumer = rename.ROOT / "consumer.rs"
-            consumer.write_text("use sunrise_mods::Manifest;\n")
+            (crate / "Cargo.toml").write_text('[package]\nname = "sunrise-mods"\n', newline="\n")
+            consumer = rename.ROOT / "consumer/Cargo.toml"
+            consumer.parent.mkdir()
+            consumer.write_text('[dependencies]\nsunrise-mods = { path = "../crates/sunrise-mods" }\n', newline="\n")
             rename.run("git", "init", "-q")
-            rename.run("git", "add", "--", rename.OLD_PATH, "consumer.rs")
+            rename.run("git", "add", "--", rename.OLD_PATH, "consumer/Cargo.toml")
             rename.run("git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
                        "commit", "-qm", "Baseline")
             rename.run("git", "mv", rename.OLD_PATH, rename.NEW_PATH)
             (rename.ROOT / rename.NEW_PATH / "Cargo.toml").write_text(
                 '[package]\nname = "sunrise-mod-package"\n', newline="\n")
-            with self.assertRaisesRegex(AssertionError, "unexpected content change: consumer.rs"):
-                rename.verify("HEAD")
-            consumer.write_text("use sunrise_mod_package::Manifest;\n", newline="\n")
-            with redirect_stdout(io.StringIO()):
-                rename.verify("HEAD")
+
+            script = rename.ROOT / "tools/rename_crate.py"
+            script.parent.mkdir()
+            shutil.copyfile(rename.__file__, script)
+            command = [sys.executable, "-O", str(script), "--verify", "HEAD"]
+            refused = subprocess.run(command, cwd=rename.ROOT, capture_output=True, text=True)
+            self.assertNotEqual(refused.returncode, 0, refused.stdout)
+            self.assertIn("unexpected content change: consumer/Cargo.toml", refused.stderr)
+            self.assertNotIn("Verified ", refused.stdout)
+
+            consumer.write_text('[dependencies]\nsunrise-mod-package = { path = "../crates/sunrise-mod-package" }\n',
+                                newline="\n")
+            verified = subprocess.run(command, cwd=rename.ROOT, capture_output=True, text=True)
+            self.assertEqual(verified.returncode, 0, verified.stderr)
+            self.assertIn("Verified ", verified.stdout)
 
     def test_book_filters_and_translations_obey_the_boundary(self):
         source = '{{#include ../../crates/sunrise-mods/src/lib.rs}}\n(crates/sunrise-mods)\ncrates/sunrise-mods/**\n'

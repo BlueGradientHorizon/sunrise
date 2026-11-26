@@ -75,8 +75,10 @@ def names(base=None):
 
 def verify(base):
     before, after = names(base), names()
-    assert after - OWN_FILES == {destination(path) for path in before - OWN_FILES}, "unexpected file inventory"
-    assert not (ROOT / OLD_PATH).exists(), "old crate directory still exists"
+    if after - OWN_FILES != {destination(path) for path in before - OWN_FILES}:
+        raise SystemExit("unexpected file inventory")
+    if (ROOT / OLD_PATH).exists():
+        raise SystemExit("old crate directory still exists")
     changed = set(run("git", "diff", "--name-only", "--no-renames", base).decode().splitlines())
     text = text_paths(base)
     removed, added = Counter(), Counter()
@@ -92,13 +94,15 @@ def verify(base):
         if not changed_file and expected == original:
             continue
         if path in LOCKS:
-            assert Counter(expected.splitlines()) == Counter(actual.splitlines()), f"lockfile changed dependencies: {path}"
-        else:
-            assert actual == expected, f"unexpected content change: {target}"
+            if Counter(expected.splitlines()) != Counter(actual.splitlines()):
+                raise SystemExit(f"lockfile changed dependencies: {path}")
+        elif actual != expected:
+            raise SystemExit(f"unexpected content change: {target}")
         removed.update(expected.splitlines())
         added.update(actual.splitlines())
         files += 1
-    assert removed == added, "rename-normalized removed/added payload multisets differ"
+    if removed != added:
+        raise SystemExit("rename-normalized removed/added payload multisets differ")
     print(f"Verified {files} files; {sum(removed.values())} rename-normalized payload lines; removed/added multisets equal")
     print("Declared normalization: crate-only mappings; rustfmt; lockfile ordering; exact 8-line staging regression excluded. Player paths and registry URLs unchanged.")
 
