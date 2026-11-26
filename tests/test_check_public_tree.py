@@ -4,8 +4,9 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from unittest import mock
 
-from tests.git_fixture import isolated_git_env
+from tests.git_fixture import decoy_git_env, isolated_git_env
 
 SCRIPT = Path(__file__).resolve().parents[1] / "tools/check_public_tree.py"
 
@@ -16,7 +17,8 @@ def git(repo, *args):
 
 
 def check(repo, *args):
-    return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=repo, capture_output=True, text=True)
+    return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=repo, env=isolated_git_env(),
+                          capture_output=True, text=True)
 
 
 class HistoryScopeTests(unittest.TestCase):
@@ -41,7 +43,8 @@ class HistoryScopeTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             self.repo_with_artifact_on_a_branch(directory)
             git(directory, "merge", "-q", "--no-edit", "other")
-            result = check(directory, "--history")
+            with mock.patch.dict("os.environ", decoy_git_env(Path(directory) / "decoy"), clear=True):
+                result = check(directory, "--history")
             self.assertEqual(result.returncode, 1)
             self.assertIn("Leak.java", result.stderr)
 

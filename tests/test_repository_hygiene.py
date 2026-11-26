@@ -1,14 +1,14 @@
 """Exercise hygiene against real tracked contents, not source spelling."""
 
-import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
-from tests.git_fixture import isolated_git_env
+from tests.git_fixture import decoy_git_env, isolated_git_env
 
 SCRIPT = Path(__file__).resolve().parents[1] / "tools/ci/check_repository_hygiene.py"
 VENDOR = SCRIPT.parent / "vendor"
@@ -31,6 +31,7 @@ class RepositoryHygieneTests(unittest.TestCase):
         self.git("config", "user.name", "Fixture")
         self.git("config", "user.email", "fixture@example.invalid")
         self.write("clean.txt", "clean\n")
+        self.enterContext(mock.patch.dict("os.environ", decoy_git_env(self.root / "decoy"), clear=True))
 
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.root, env=isolated_git_env(), text=True).strip()
@@ -57,8 +58,8 @@ class RepositoryHygieneTests(unittest.TestCase):
         command = [sys.executable, str(script)]
         if pre_push is not None:
             command.append("--pre-push")
-        return subprocess.run(command, cwd=self.root, input=pre_push, text=True,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        return subprocess.run(command, cwd=self.root, env=isolated_git_env(), input=pre_push,
+                              text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
     def test_clean_tree_and_untracked_or_ignored_notices(self):
         self.write(".github/workflows/ok.yml", "on: push\njobs: {}\n")
@@ -131,7 +132,7 @@ class RepositoryHygieneTests(unittest.TestCase):
     def test_offline_parser_without_site_packages(self):
         self.write(".github/workflows/ok.yml", "on: push\njobs: {}\n")
         command = [sys.executable, "-S", str(SCRIPT)]
-        env = {**os.environ, "PYTHONPATH": ""}
+        env = isolated_git_env(PYTHONPATH="")
         result = subprocess.run(command, cwd=self.root, env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.write(".github/workflows/ok.yml", "jobs: [unterminated\n")
@@ -150,7 +151,8 @@ class RepositoryHygieneTests(unittest.TestCase):
         tip = self.git("rev-parse", "HEAD")
         refs = f"refs/heads/x {tip} refs/heads/x {'0' * 40}\n"
         hook = SCRIPT.parents[2] / ".githooks/pre-push"
-        result = subprocess.run(["sh", str(hook)], cwd=self.root, input=refs,
+        env = isolated_git_env()
+        result = subprocess.run(["sh", str(hook)], cwd=self.root, env=env, input=refs,
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.root / "forwarded.txt").read_text(), refs.rstrip("\n"))
@@ -159,7 +161,7 @@ class RepositoryHygieneTests(unittest.TestCase):
         self.git("commit", "-qm", "bad tip")
         bad = self.git("rev-parse", "HEAD")
         self.write("bad.md", "working tree fixed\n")
-        result = subprocess.run(["sh", str(hook)], cwd=self.root,
+        result = subprocess.run(["sh", str(hook)], cwd=self.root, env=env,
                                 input=f"refs/heads/x {bad} refs/heads/x {tip}\n",
                                 text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
