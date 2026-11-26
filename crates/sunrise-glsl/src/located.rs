@@ -25,6 +25,17 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+impl Error {
+    /// `message` at `line` of `file` (line 0: the file as a whole).
+    pub fn new(file: impl Into<String>, line: u32, message: impl Into<String>) -> Self {
+        Self {
+            file: file.into(),
+            line,
+            message: message.into(),
+        }
+    }
+}
+
 /// Where something is in the author's files: a file id and a line from 1, as [`Error`] has them
 /// (line 0: the file as a whole; no file: nowhere known, for a program made without its
 /// sources).
@@ -37,11 +48,7 @@ pub struct Location {
 impl Location {
     /// `message` here.
     pub fn error(&self, message: impl std::fmt::Display) -> Error {
-        Error {
-            file: self.file.clone(),
-            line: self.line,
-            message: message.to_string(),
-        }
+        Error::new(self.file.clone(), self.line, message.to_string())
     }
 }
 

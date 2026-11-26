@@ -509,11 +509,7 @@ pub fn translate(
     let (vertex_text, fragment_text) =
         (stage(vertex, vertex_file)?, stage(fragment, fragment_file)?);
     let base = other_binding_base(inputs).map_err(|message| {
-        vec![Error {
-            file: vertex_file.to_owned(),
-            line: 0,
-            message,
-        }]
+        vec![Error::new(vertex_file, 0, message)]
     })?;
     let mut names = Names::new(base);
     let rewritten = |text: &Expanded, stage, names: &mut Names| {
@@ -910,11 +906,7 @@ pub fn translate_compute(
         interface,
     };
     let mut names = Names::new(other_binding_base(inputs).map_err(|message| {
-        vec![Error {
-            file: file.to_owned(),
-            line: 0,
-            message,
-        }]
+        vec![Error::new(file, 0, message)]
     })?);
     let code =
         rewrite(&expanded, ShaderStage::Compute, inputs, &glue, &mut names).map_err(|e| vec![e])?;
@@ -923,11 +915,11 @@ pub fn translate_compute(
     let parsed = run_directives(&code, inputs.defines).map_err(|e| vec![e])?;
     let (module, info) = compile(ShaderStage::Compute, &parsed, &names, &|_| false, interface)?;
     let Some(entry) = module.entry_points.first() else {
-        return Err(vec![Error {
-            file: file.to_owned(),
-            line: 0,
-            message: "the compute shader has no `main`".to_owned(),
-        }]);
+        return Err(vec![Error::new(
+            file,
+            0,
+            "the compute shader has no `main`",
+        )]);
     };
     let workgroup_size = entry.workgroup_size;
     let uses_subgroup = module_uses_subgroup(&module);
@@ -1050,11 +1042,7 @@ pub struct ImportError {
 
 impl From<ImportError> for Error {
     fn from(e: ImportError) -> Self {
-        Error {
-            file: e.file,
-            line: e.line,
-            message: e.refusal.to_string(),
-        }
+        Error::new(e.file, e.line, e.refusal.to_string())
     }
 }
 
