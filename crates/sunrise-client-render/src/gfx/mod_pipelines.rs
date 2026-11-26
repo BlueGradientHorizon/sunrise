@@ -7714,16 +7714,41 @@ void main() {
         assert_near(at(56, 32), [0.0, 0.0, 255.0, 255.0], 1.0, "repeat 1 blue");
     }
 
-    /// `Sampler::new` blends mip levels, which wgpu refuses on a depth texture; the engine reads
-    /// the depth through a nearest sampler instead (#6033), so the draw is not skipped and
-    /// samples the stored depth.
-    #[test]
-    #[ignore = "daily"]
-    fn a_depth_texture_binds_to_a_default_sampler_and_reads_nearest() {
-        let _guard = crate::gfx::test_gpu::lock();
-        let Some((device, queue)) = device() else {
-            return;
-        };
+    /// Clears the depth texture `attachment` (a view of every aspect) to a quarter, the way a
+    /// depth target a mod owns, the world's or a frame graph's holds its depth.
+    fn clear_depth_to_a_quarter(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        attachment: &wgpu::TextureView,
+    ) {
+        let mut encoder = device.create_command_encoder(&Default::default());
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: attachment,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0.25),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        }));
+        queue.submit([encoder.finish()]);
+    }
+
+    /// Draws a quad whose pipeline binds `DepthTex` to a default `Sampler::new` sampler, with
+    /// `view` (a depth texture cleared to a quarter) bound to it, and checks the frame holds
+    /// the stored depth. `Sampler::new` blends mip levels, which wgpu refuses on a depth
+    /// texture, so the engine reads the depth through a nearest sampler instead (#6033): the
+    /// draw is not skipped.
+    fn draw_sampling_depth(
+        gpu: (wgpu::Device, wgpu::Queue),
+        view: wgpu::TextureView,
+        view_id: u64,
+    ) {
+        let device = &gpu.0;
         let id = Identifier::parse("mod_c3:depth_tex").unwrap();
         let vsh = "#version 330\n\
             #include <minecraft:projection.glsl>\n\
@@ -7772,39 +7797,6 @@ void main() {
         })
         .expect("textured set-1 pipeline must translate");
 
-        // A 4 x 4 depth texture cleared to a quarter, the way a depth target a mod owns is.
-        let depth = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Depth to sample"),
-            size: wgpu::Extent3d {
-                width: 4,
-                height: 4,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let view = depth.create_view(&Default::default());
-        let mut encoder = device.create_command_encoder(&Default::default());
-        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
-            color_attachments: &[],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(0.25),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            ..Default::default()
-        }));
-        queue.submit([encoder.finish()]);
-        let view_id = crate::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | 2;
-
         let corner = |x: f32, y: f32, uv: [f32; 2]| PipelineVertex {
             pos: [x, y, 0.0],
             uv,
@@ -7837,8 +7829,7 @@ void main() {
         };
 
         let format = wgpu::TextureFormat::Rgba8Unorm;
-        let mut primitives = WorldPrimitives::new(&device, (format, false));
-        let gpu = (device, queue);
+        let mut primitives = WorldPrimitives::new(device, (format, false));
         let batch = Batch {
             set: Some(&set),
             draws: std::slice::from_ref(&draw_cmd),
@@ -7850,6 +7841,119 @@ void main() {
         for (x, y) in [(8, 8), (32, 32), (56, 56)] {
             assert_near(at(x, y), [63.75, 0.0, 0.0, 255.0], 1.5, "the depth, read");
         }
+    }
+
+    /// A depth texture bound through `TextureSource::WorldDepth`: the view the renderer makes
+    /// for its own depth buffer.
+    #[test]
+    #[ignore = "daily"]
+    fn the_world_depth_binds_to_a_default_sampler_and_reads_nearest() {
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            width: 4,
+            height: 4,
+            present_mode: wgpu::PresentMode::Fifo,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            view_formats: vec![],
+            color_space: wgpu::SurfaceColorSpace::default(),
+        };
+        let view = crate::gfx::Renderer::depth(&device, &config);
+        clear_depth_to_a_quarter(&device, &queue, &view);
+        draw_sampling_depth(
+            (device, queue),
+            view,
+            crate::gfx::mod_uniforms::WORLD_DEPTH_VIEW_ID,
+        );
+    }
+
+    /// A depth texture bound through `TextureSource::RenderTargetDepth`: the depth-only view a
+    /// mod's render target resolves for sampling.
+    #[test]
+    #[ignore = "daily"]
+    fn a_render_target_depth_binds_to_a_default_sampler_and_reads_nearest() {
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let mut targets = crate::gfx::mod_render_targets::ModRenderTargets::default();
+        let rt = targets
+            .create(
+                &device,
+                Some("test_mod"),
+                &mod_api::RenderTargetDescriptor::rgba8(
+                    [4, 4],
+                    mod_api::RenderTargetDepth::Depth32Float,
+                ),
+            )
+            .unwrap();
+        let attachment = targets
+            .resolve_target(Some("test_mod"), rt, 0)
+            .unwrap()
+            .depth_view
+            .unwrap();
+        clear_depth_to_a_quarter(&device, &queue, &attachment);
+        let (view_id, view) = targets.resolve_depth(Some("test_mod"), rt).unwrap();
+        draw_sampling_depth((device, queue), view, view_id);
+    }
+
+    /// A depth texture bound through `TextureSource::TransientTargetDepth`: the depth view the
+    /// frame graph's pool makes for a transient target.
+    #[test]
+    #[ignore = "daily"]
+    fn a_transient_depth_binds_to_a_default_sampler_and_reads_nearest() {
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let mut pool = crate::gfx::mod_frame_graph::TransientTargetPool::default();
+        let transient = pool.acquire(
+            &device,
+            &mod_api::RenderTargetDescriptor::rgba8(
+                [4, 4],
+                mod_api::RenderTargetDepth::Depth32Float,
+            ),
+        );
+        let attachment = transient.as_resolved().depth_view.unwrap();
+        clear_depth_to_a_quarter(&device, &queue, &attachment);
+        let (view_id, view) = transient.depth_view().unwrap();
+        draw_sampling_depth((device, queue), view, view_id);
+    }
+
+    /// A depth texture a test creates itself, with no engine path in between.
+    #[test]
+    #[ignore = "daily"]
+    fn a_depth_texture_binds_to_a_default_sampler_and_reads_nearest() {
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let depth = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Depth to sample"),
+            size: wgpu::Extent3d {
+                width: 4,
+                height: 4,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let view = depth.create_view(&Default::default());
+        clear_depth_to_a_quarter(&device, &queue, &view);
+        draw_sampling_depth(
+            (device, queue),
+            view,
+            crate::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | 2,
+        );
     }
 
     #[test]

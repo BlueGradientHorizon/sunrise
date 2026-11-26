@@ -613,7 +613,7 @@ pub struct PooledTransientTarget {
 }
 
 impl PooledTransientTarget {
-    fn as_resolved(&self) -> ResolvedOffscreenTarget {
+    pub(super) fn as_resolved(&self) -> ResolvedOffscreenTarget {
         ResolvedOffscreenTarget {
             handle: mod_api::__private::built::render_target_ref(1, 0),
             size: self.desc.size,
@@ -631,7 +631,7 @@ impl PooledTransientTarget {
             .map(|c| (c.view_id, c.view.clone()))
     }
 
-    fn depth_view(&self) -> Option<(u64, wgpu::TextureView)> {
+    pub(super) fn depth_view(&self) -> Option<(u64, wgpu::TextureView)> {
         self.depth
             .as_ref()
             .map(|d| (d.view_id, d.sample_view.clone()))
