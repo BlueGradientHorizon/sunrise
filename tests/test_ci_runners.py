@@ -252,6 +252,22 @@ class OwnRunnerTests(unittest.TestCase):
             # Events that carry no fork's code are not refused.
             self.assertEqual(job("push", "someone/sunrise").returncode, 0)
 
+    @needs_runner_shell
+    @unittest.skipUnless(shutil.which("jq"), "the hook reads the event with jq")
+    def test_a_failed_size_check_of_the_checkout_does_not_fail_the_job(self):
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            (home / "workspace/.git").mkdir(parents=True)
+            (home / "bin").mkdir()
+            du = home / "bin/du"
+            du.write_text("#!/bin/sh\nexit 1\n")
+            du.chmod(0o755)
+            job = subprocess.run(["bash", str(ROOT / "tools/ci/job-started.sh")], capture_output=True, text=True, env={
+                "PATH": f"{home / 'bin'}{os.pathsep}{os.environ['PATH']}", "GITHUB_EVENT_NAME": "push",
+                "GITHUB_WORKSPACE": str(home / "workspace")})
+            self.assertEqual(job.returncode, 0, job.stderr)
+            self.assertTrue((home / "workspace/.git").is_dir())
+
 
 if __name__ == "__main__":
     unittest.main()
