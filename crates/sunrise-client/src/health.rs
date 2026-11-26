@@ -36,7 +36,6 @@ pub use kill_credit::{KnockbackCredit, PlayerMemory, PlayerResolver};
 mod hit_attempt;
 pub use accepted_hit::AcceptedHit;
 pub use attack::{damage_type, melee, mob_source, source_damage_type};
-/// What `LivingEntity.hurtServer` is about to hurt, for [`DamageHooks::incoming`], or
 include!("health/hit.rs");
 
 include!("health/damage.rs");

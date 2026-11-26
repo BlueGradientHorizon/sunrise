@@ -1,4 +1,5 @@
 // Included in health.rs to retain its private scope.
+/// What `LivingEntity.hurtServer` is about to hurt, for [`DamageHooks::incoming`], or
 /// `LivingEntity.knockback` to push, for [`DamageHooks::knockback`]: the entity and the
 /// hit's source.
 #[derive(Clone, Copy)]
