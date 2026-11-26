@@ -107,6 +107,9 @@ impl ReloadContext for Game<'_> {
     fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName> {
         <Self as prelude::KeysBackend>::entity_type_key_id(self, key)
     }
+    fn entity_type_category(&self, key: EntityTypeKey) -> Option<MobCategory> {
+        <Self as prelude::KeysBackend>::entity_type_category(self, key)
+    }
     fn menu_key_id(&self, key: MenuKey) -> Option<RegistryName> {
         <Self as prelude::KeysBackend>::menu_key_id(self, key)
     }

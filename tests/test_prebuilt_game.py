@@ -566,7 +566,13 @@ class SdkAssetTests(unittest.TestCase):
                 shutil.rmtree(folder, ignore_errors=True)
                 folder.mkdir()
                 with tarfile.open(leg / archive, "r:xz") as tar:
-                    tar.extractall(folder, filter="data")
+                    for member in tar.getmembers():
+                        target = folder / member.name
+                        if member.isdir():
+                            target.mkdir(exist_ok=True)
+                        else:
+                            target.write_bytes(tar.extractfile(member).read())
+                            target.chmod(member.mode)
                 (folder / name).write_text(text)
                 prebuilt_game.tar_xz(folder, prebuilt_game.tree(folder), leg / archive)
 

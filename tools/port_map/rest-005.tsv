@@ -118,7 +118,7 @@ CommandSourceStack.withAnchor	inline	crates/sunrise-client/src/game/administrati
 CommandSourceStack.withSigningContext	skip:service		chat message signing
 CommandSourceStack.getPlayer	port	crates/sunrise-client/src/game/administration/commands/players.rs::Game::source_entity	the source entity; callers check for a player
 CommandSourceStack.shouldFilterMessageTo	skip:service		chat text filtering
-CommandSourceStack.sendChatMessage	port	crates/sunrise-client/src/lan/hub.rs::Hub::chat	gap: minor: console and command block sources are not sent here
+CommandSourceStack.sendChatMessage	port	crates/sunrise-client/src/lan/hub/chat.rs::Hub::chat	gap: minor: console and command block sources are not sent here
 CommandSourceStack.suggestRegistryElements	port	crates/sunrise-command/src/args.rs::suggest_resources	registry tags and elements
 CommandSourceStack.getLookup	skip:data		registry lookup; registries come from tables
 Commands.<init>	port	crates/sunrise-command/src/vanilla.rs::build	registers the command tree

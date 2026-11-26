@@ -83,15 +83,22 @@ def checkouts(job):
 
 
 def labels_of(runs_on):
-    """The labels a parsed runs-on can select: a list's or mapping's own, a plain label, or the lists in an
-    expression's fromJSON('[...]') literals, whichever branch picks them (other values name hosted runners)."""
+    """The labels a parsed runs-on can select: a list's or mapping's own, a plain label, or the labels an expression
+    picks, whichever branch picks them: its quoted labels and the lists in its fromJSON('[...]') literals, but not
+    the values it compares or passes to a function (other values name hosted runners)."""
     if isinstance(runs_on, dict):
         runs_on = runs_on.get("labels", [])
     if isinstance(runs_on, list):
         return set(runs_on)
     if not runs_on.startswith("${{"):
         return {runs_on}
-    return {label for literal in re.findall(r"fromJSON\('(\[[^']*\])'\)", runs_on) for label in json.loads(literal)}
+    labels = set()
+    for literal in re.finditer(r"(?P<before>[=!]=\s*|,\s*)?'(?P<text>[^']*)'(?P<after>\s*[=!]=)?", runs_on):
+        if literal["before"] or literal["after"]:
+            continue
+        text = literal["text"]
+        labels.update(json.loads(text) if text.startswith("[") else [text])
+    return labels
 
 
 def parsed_expression(runs_on):
@@ -99,7 +106,7 @@ def parsed_expression(runs_on):
     body = runs_on.removeprefix("${{").removesuffix("}}").replace("&&", " and ").replace("||", " or ")
     tree = ast.parse(re.sub(r"!(?!=)", " not ", body).strip(), mode="eval").body
     comparisons = {ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.Compare)}
-    return comparisons, tree.values[-1]
+    return comparisons, tree.values[-1] if isinstance(tree, ast.BoolOp) else tree
 
 
 def routed():
@@ -132,6 +139,12 @@ class OwnRunnerTests(unittest.TestCase):
         found = [e for e in fork_flag_expressions(document) if "head.repo.fork" in e]
         self.assertEqual(len(found), 3)
 
+    def test_a_runs_on_expression_is_read_for_every_label_it_picks(self):
+        light = "${{ vars.SELF_HOSTED_CI != 'off' && 'sunrise-light' || 'ubuntu-latest' }}"
+        self.assertEqual(labels_of(light), {"sunrise-light", "ubuntu-latest"})
+        both = "${{ a == 'x' && fromJSON('[\"self-hosted\", \"sunrise-checks\"]') || 'ubuntu-24.04' }}"
+        self.assertEqual(labels_of(both), {"self-hosted", "sunrise-checks", "ubuntu-24.04"})
+
     def test_every_job_on_our_runners_can_go_back_to_github(self):
         count = 0
         for where, _, _, _, value, pools in routed():
@@ -162,9 +175,12 @@ class OwnRunnerTests(unittest.TestCase):
             if "pull_request" in on:
                 # The guard lives in the job's `if` upstream; dyna-ci.yml (ours)
                 # puts it in `runs-on`, before the self-hosted labels.
-                condition = job.get("if", "")
-                guarded = any(guard in condition or guard in value for guard in (FORK_GUARD, TRUSTED))
-                self.assertTrue(guarded, f"{where}: a fork's pull request")
+                comparisons = set()
+                if job.get("if"):
+                    comparisons |= parsed_expression(job["if"])[0]
+                if isinstance(value, str) and value.startswith("${{"):
+                    comparisons |= parsed_expression(value)[0]
+                self.assertTrue({FORK_GUARD, TRUSTED} & comparisons, f"{where}: a fork's pull request")
             if "pull_request_target" in on:
                 # main's code only: every checkout is main's.
                 self.assertEqual(len(checkouts(job)), sum(c.get("with", {}).get("ref") == "main" for c in checkouts(job)), where)
@@ -251,6 +267,22 @@ class OwnRunnerTests(unittest.TestCase):
             self.assertEqual(job("pull_request", "sunrise-org/sunrise").returncode, 0)
             # Events that carry no fork's code are not refused.
             self.assertEqual(job("push", "someone/sunrise").returncode, 0)
+
+    @needs_runner_shell
+    @unittest.skipUnless(shutil.which("jq"), "the hook reads the event with jq")
+    def test_a_failed_size_check_of_the_checkout_does_not_fail_the_job(self):
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            (home / "workspace/.git").mkdir(parents=True)
+            (home / "bin").mkdir()
+            du = home / "bin/du"
+            du.write_text("#!/bin/sh\nexit 1\n")
+            du.chmod(0o755)
+            job = subprocess.run(["bash", str(ROOT / "tools/ci/job-started.sh")], capture_output=True, text=True, env={
+                "PATH": f"{home / 'bin'}{os.pathsep}{os.environ['PATH']}", "GITHUB_EVENT_NAME": "push",
+                "GITHUB_WORKSPACE": str(home / "workspace")})
+            self.assertEqual(job.returncode, 0, job.stderr)
+            self.assertTrue((home / "workspace/.git").is_dir())
 
 
 if __name__ == "__main__":

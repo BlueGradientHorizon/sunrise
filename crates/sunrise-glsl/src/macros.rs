@@ -17,6 +17,24 @@ struct Macro {
     /// `None` for an object-like macro; the parameter names of a function-like one.
     params: Option<Vec<String>>,
     body: String,
+    /// How many tokens an object-like macro's `body` lexes into: what its expansion makes,
+    /// known before it is made ([`Macros::bound`]). 0 for a function-like one, whose body is
+    /// charged as it is made.
+    tokens: usize,
+}
+
+impl Macro {
+    fn new(params: Option<Vec<String>>, body: String) -> Self {
+        let tokens = match params {
+            None => Lexer::new(&body).count(),
+            Some(_) => 0,
+        };
+        Self {
+            params,
+            body,
+            tokens,
+        }
+    }
 }
 
 /// How deep a call may sit in another call's arguments, in either mode: each level expands its
@@ -29,6 +47,12 @@ pub const MAX_ARGUMENT_DEPTH: usize = 128;
 /// Why an expansion with a call deeper than [`MAX_ARGUMENT_DEPTH`] is refused ([`Stop::Depth`]).
 pub fn calls_too_deep() -> String {
     format!("a macro call sits more than {MAX_ARGUMENT_DEPTH} calls deep in arguments")
+}
+
+/// Why an expansion of [`Macros::bound`] that spent its `work` ([`Stop::Work`]) is refused,
+/// naming the work it had.
+pub fn work_ran_out(work: usize) -> String {
+    format!("macro expansion past {work} units of work")
 }
 
 /// Why an expansion stopped, its result unfinished.
@@ -47,10 +71,18 @@ pub enum Stop {
 #[derive(Clone, Debug)]
 pub struct Macros {
     map: BTreeMap<String, Macro>,
-    /// The expansion work left ([`Macros::checked`]), in tokens: each expansion costs the
+    /// The expansion work left ([`Macros::checked`], [`Macros::bound`]), in tokens with
+    /// `checked` (in what is held with `bound`, see `names`): each expansion costs the
     /// tokens a call reads, each copy of an argument (charged before it is made) and the tokens
     /// its replacement makes; telling whether a call goes on past its line costs its expansion.
     work: Cell<usize>,
+    /// The work [`Macros::bound`] gave, for the refusal that names it.
+    budget: usize,
+    /// [`Macros::bound`]: the work is what the expansion holds, charged before it is made: each
+    /// token it makes, reads or copies costs 1, a unit per byte of its text and one per name it
+    /// hides (each held as long as the token, 16 bytes: a chain of macros that ends in a long
+    /// replacement makes tokens that each hide the whole chain).
+    names: bool,
     /// [`Macros::checked`]: calls must give a function-like macro as many arguments as it takes,
     /// and a stop lasts.
     arity: bool,
@@ -61,14 +93,17 @@ pub struct Macros {
     stopped: RefCell<Option<Stop>>,
 }
 
-/// No macros, no bound on the work, and a call with too many or too few arguments takes what it
-/// has (a missing argument is empty). Calls nest at most [`MAX_ARGUMENT_DEPTH`] deep, and a call
-/// past it stops that one expansion only ([`Macros::try_expand`]): the next starts afresh.
+/// No macros, no bound on the work (until [`Macros::bound`]), and a call with too many or too few
+/// arguments takes what it has (a missing argument is empty). Calls nest at most
+/// [`MAX_ARGUMENT_DEPTH`] deep, and a call past it stops that one expansion only
+/// ([`Macros::try_expand`]): the next starts afresh.
 impl Default for Macros {
     fn default() -> Self {
         Self {
             map: BTreeMap::new(),
             work: Cell::new(usize::MAX),
+            budget: usize::MAX,
+            names: false,
             arity: false,
             depth: Cell::new(0),
             condition: Cell::new(false),
@@ -95,6 +130,19 @@ impl Macros {
             arity: true,
             ..Self::default()
         }
+    }
+
+    /// From now on, `work` to spend on the expansions to come, whatever was spent before: the
+    /// macros of one file of a shader pack, which keep the default's other rules. The work is
+    /// counted in what the expansion holds, before it is made: each token a replacement makes, a
+    /// call reads or an argument copies costs 1, a unit per byte of its text and one per name it
+    /// hides. Once spent, an expansion that needs more stops with [`Stop::Work`]
+    /// ([`Macros::try_expand`], [`work_ran_out`]); one that fits in what is left goes on.
+    pub fn bound(&mut self, work: usize) {
+        self.work.set(work);
+        self.budget = work;
+        self.names = true;
+        self.stopped.replace(None);
     }
 
     /// Why an expansion stopped, its result unfinished. With [`Macros::checked`], from then on
@@ -209,7 +257,7 @@ impl Macros {
 
     pub fn define(&mut self, name: impl Into<String>, value: impl Into<String>) {
         let body = value.into();
-        self.map.insert(name.into(), Macro { params: None, body });
+        self.map.insert(name.into(), Macro::new(None, body));
     }
 
     /// The rest of a `#define` line: `NAME body`, or `NAME(a, b) body` (no space before the `(`)
@@ -239,14 +287,8 @@ impl Macros {
     }
 
     pub fn define_function(&mut self, name: &str, params: Vec<String>, body: &str) {
-        let body = body.to_owned();
-        self.map.insert(
-            name.to_owned(),
-            Macro {
-                params: Some(params),
-                body,
-            },
-        );
+        let body = Macro::new(Some(params), body.to_owned());
+        self.map.insert(name.to_owned(), body);
     }
 
     pub fn undef(&mut self, name: &str) {
@@ -297,7 +339,14 @@ impl Macros {
     /// [`Macros::expand`], or why it stopped ([`Stop`]) when it did.
     pub fn try_expand(&self, text: &str) -> Result<String, String> {
         let expanded = self.expand(text);
+        self.result(expanded)
+    }
+
+    /// `expanded`, or why its expansion stopped: past the work of [`Macros::bound`]
+    /// ([`work_ran_out`]), or as the directives name a stop ([`crate::directives::stopped`]).
+    fn result(&self, expanded: String) -> Result<String, String> {
         match self.stopped() {
+            Some(Stop::Work) if self.names => Err(work_ran_out(self.budget)),
             Some(stop) => Err(crate::directives::stopped(stop)),
             None => Ok(expanded),
         }
@@ -359,17 +408,34 @@ impl Macros {
             }
             let mut hidden = token.hidden.clone();
             let mut body = match &m.params {
-                None => expansion_tokens(&m.body),
+                None => {
+                    // With [`Macros::bound`], what it makes is charged before it is made: each
+                    // token hides `hidden` and the macro's name.
+                    let made =
+                        (m.tokens.saturating_mul(hidden.len() + 2)).saturating_add(m.body.len());
+                    if self.names && !self.charge(made) {
+                        break;
+                    }
+                    expansion_tokens(&m.body)
+                }
                 Some(params) => {
-                    let Some((args, used)) = arguments(&pending) else {
-                        unfinished |= (pending.iter().rev())
-                            .find(|t| !t.blank())
-                            .is_some_and(|t| t.text == "(");
-                        out.push(token);
-                        continue;
+                    // With [`Macros::bound`], each token the call reads is charged as it is read,
+                    // before its argument is copied, whether or not the call closes.
+                    let read = |t: &ExpansionToken<'_>| !self.names || self.charge(held(t));
+                    let (args, used) = match arguments(&pending, read) {
+                        Call::Made(args, used) => (args, used),
+                        Call::Spent => {
+                            pending.push(token);
+                            break;
+                        }
+                        call => {
+                            unfinished |= matches!(call, Call::Unclosed);
+                            out.push(token);
+                            continue;
+                        }
                     };
                     // What the call reads is work, whether or not it is used.
-                    if !self.charge(used) {
+                    if !self.names && !self.charge(used) {
                         pending.push(token);
                         break;
                     }
@@ -387,11 +453,18 @@ impl Macros {
                     self.substitute(params, &args, &m.body)
                 }
             };
-            // The tokens it makes are work: they are read again.
-            if !self.charge(body.len()) {
+            hidden.push(name);
+            // The tokens it makes are work: they are read again. With [`Macros::bound`] they are
+            // charged already (an object-like macro's above, a call's as `substitute` makes
+            // them); the names they are given here, at most `hidden` each, are charged now.
+            let made = match (self.names, m.params.is_some()) {
+                (false, _) => body.len(),
+                (true, false) => 0,
+                (true, true) => body.len().saturating_mul(hidden.len()),
+            };
+            if !self.charge(made) {
                 break;
             }
-            hidden.push(name);
             for token in &mut body {
                 if token.hidden.is_empty() {
                     token.hidden.clone_from(&hidden);
@@ -435,14 +508,23 @@ impl Macros {
                     let from = arg.iter().position(|t| !t.blank()).unwrap_or(arg.len());
                     let end = arg.iter().rposition(|t| !t.blank()).map_or(from, |n| n + 1);
                     // Each copy of an argument is work, charged before it is made: a parameter
-                    // used many times can't build its copies past the work first.
-                    if !self.charge(end - from) {
+                    // used many times can't build its copies past the work first. With
+                    // [`Macros::bound`], so is each name its tokens hide.
+                    let copied = match self.names {
+                        true => arg[from..end].iter().map(held).sum(),
+                        false => end - from,
+                    };
+                    if !self.charge(copied) {
                         break;
                     }
                     let arg = arg[from..end].to_vec();
                     if pasted(at, -1) || pasted(at, 1) {
                         if arg.is_empty() {
-                            // An empty paste operand must not capture the preceding token.
+                            // An empty paste operand must not capture the preceding token. With
+                            // [`Macros::bound`], its placeholder costs 1, before it is made.
+                            if self.names && !self.charge(1) {
+                                break;
+                            }
                             out.push(ExpansionToken::new(""));
                         } else {
                             out.extend(arg);
@@ -454,10 +536,16 @@ impl Macros {
                         break;
                     }
                 }
-                None => out.push(ExpansionToken::new(token)),
+                None => {
+                    // With [`Macros::bound`], each token of the body is charged before it is made.
+                    if self.names && !self.charge(1 + token.len()) {
+                        break;
+                    }
+                    out.push(ExpansionToken::new(token));
+                }
             }
         }
-        // `a ## b` → `ab`.
+        // `a ## b` → `ab`: the text both had, held once.
         let mut joined: Vec<ExpansionToken<'a>> = Vec::new();
         let mut paste = false;
         for token in out {
@@ -490,22 +578,23 @@ impl Macros {
         // A paste that makes no single token (`b ## (`, `name_ ## a ## _to_ ## b ##(x)`) stays
         // the tokens it is made of: the name before the `(` is then rescanned and can call a
         // macro.
-        joined
-            .into_iter()
-            .flat_map(|token| {
-                let parts = lex(&token.text);
-                if parts.len() < 2 {
-                    return vec![token];
-                }
-                parts
-                    .into_iter()
-                    .map(|text| ExpansionToken {
-                        text: text.into(),
-                        hidden: token.hidden.clone(),
-                    })
-                    .collect()
-            })
-            .collect()
+        // With [`Macros::bound`], the tokens a paste splits into are charged before they are made:
+        // their text once more, and each part with the paste's names.
+        let mut split = Vec::with_capacity(joined.len());
+        for token in joined {
+            let parts = lex(&token.text);
+            let cost = (parts.len().saturating_mul(1 + token.hidden.len()))
+                .saturating_add(token.text.len());
+            if parts.len() < 2 || (self.names && !self.charge(cost)) {
+                split.push(token);
+                continue;
+            }
+            split.extend(parts.into_iter().map(|text| ExpansionToken {
+                text: text.into(),
+                hidden: token.hidden.clone(),
+            }));
+        }
+        split
     }
 }
 
@@ -534,27 +623,56 @@ fn expansion_tokens(text: &str) -> Vec<ExpansionToken<'_>> {
     lex(text).into_iter().map(ExpansionToken::new).collect()
 }
 
+/// What [`arguments`] read.
+enum Call<'a> {
+    /// The arguments, split at top-level commas, and how many tokens of `pending` the call
+    /// takes, its `)` the last.
+    Made(Vec<Vec<ExpansionToken<'a>>>, usize),
+    /// No `(` follows.
+    Not,
+    /// A `(` follows and never closes.
+    Unclosed,
+    /// `read` refused a token: the work ran out.
+    Spent,
+}
+
 /// The arguments of a call whose `(` is the next non-blank token of `pending` (read from its
-/// end), split at top-level commas, and how many tokens of `pending` the call takes, its `)`
-/// the last. `None` when no `(` follows or it never closes.
-fn arguments<'a>(pending: &[ExpansionToken<'a>]) -> Option<(Vec<Vec<ExpansionToken<'a>>>, usize)> {
+/// end). Each token the call takes, the white space before its `(` too, is given to `read`
+/// before it is copied; one it refuses stops the reading ([`Call::Spent`]).
+fn arguments<'a>(
+    pending: &[ExpansionToken<'a>],
+    read: impl Fn(&ExpansionToken<'a>) -> bool,
+) -> Call<'a> {
     let mut next = pending.iter().rev().enumerate();
+    // The white space between the name and its `(` is read when a `(` follows.
+    let mut blanks = 0;
     loop {
-        let (_, t) = next.next()?;
-        if !t.blank() {
-            if t.text != "(" {
-                return None;
-            }
-            break;
+        let Some((_, t)) = next.next() else {
+            return Call::Not;
+        };
+        if t.blank() {
+            blanks += 1;
+            continue;
         }
+        if t.text != "(" {
+            return Call::Not;
+        }
+        let space = pending.iter().rev().take(blanks);
+        if !space.chain([t]).all(&read) {
+            return Call::Spent;
+        }
+        break;
     }
     let (mut depth, mut args, mut arg) = (0, Vec::new(), Vec::new());
     for (n, t) in next {
+        if !read(t) {
+            return Call::Spent;
+        }
         match t.text.as_str() {
             "(" => depth += 1,
             ")" if depth == 0 => {
                 args.push(arg);
-                return Some((args, n + 1));
+                return Call::Made(args, n + 1);
             }
             ")" => depth -= 1,
             "," if depth == 0 => {
@@ -565,16 +683,42 @@ fn arguments<'a>(pending: &[ExpansionToken<'a>]) -> Option<(Vec<Vec<ExpansionTok
         }
         arg.push(t.clone());
     }
-    None
+    Call::Unclosed
+}
+
+/// What a token holds, in the work of [`Macros::bound`]: 1, a unit per byte of its text and one
+/// per name it hides.
+fn held(t: &ExpansionToken<'_>) -> usize {
+    1 + t.text.len() + t.hidden.len()
 }
 
 /// Preprocessing tokens: identifiers, numbers (with their suffixes and exponents), runs of
 /// white space, `##`, and single characters. Concatenated they give back `text`.
 pub fn lex(text: &str) -> Vec<&str> {
-    let bytes = text.as_bytes();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
+    Lexer::new(text).collect()
+}
+
+/// [`lex`]'s tokens one at a time, none collected.
+struct Lexer<'t> {
+    text: &'t str,
+    at: usize,
+}
+
+impl<'t> Lexer<'t> {
+    fn new(text: &'t str) -> Self {
+        Self { text, at: 0 }
+    }
+}
+
+impl<'t> Iterator for Lexer<'t> {
+    type Item = &'t str;
+
+    fn next(&mut self) -> Option<&'t str> {
+        let (text, bytes) = (self.text, self.text.as_bytes());
+        let mut i = self.at;
+        if i >= bytes.len() {
+            return None;
+        }
         let c = bytes[i] as char;
         let start = i;
         i += 1;
@@ -602,9 +746,9 @@ pub fn lex(text: &str) -> Vec<&str> {
                 i += 1;
             }
         }
-        out.push(&text[start..i]);
+        self.at = i;
+        Some(&text[start..i])
     }
-    out
 }
 
 pub fn is_ident_start(c: char) -> bool {
@@ -695,6 +839,131 @@ mod tests {
             n += 1 + m.join_call(&mut line, &lines[n + 1..], 0);
         }
         assert_eq!(m.stopped(), Some(Stop::Work));
+    }
+
+    /// With [`Macros::bound`] each name a token hides is work too. A chain of 100 macros, `C99`
+    /// to `C01` each the next one's 3-byte name, `C00` 100 one-byte tokens: the 99 single tokens
+    /// cost 1, 3 bytes and the names they hide, 1 to 99: 5 + 6 + ... + 103 = 5346; `C00`'s 100
+    /// tokens 1 and 100 names each, and 100 bytes: 10,200. 15,546 in all. A bound gives the whole
+    /// work again, the stop forgotten.
+    #[test]
+    fn a_bound_counts_the_names_tokens_hide() {
+        let mut m = Macros::default();
+        m.define("C00", "a,".repeat(50));
+        for n in 1..100 {
+            m.define(format!("C{n:02}"), format!("C{:02}", n - 1));
+        }
+        m.bound(15_545);
+        assert_eq!(m.try_expand("C99"), Err(work_ran_out(15_545)));
+        m.bound(15_546);
+        assert_eq!(m.try_expand("C99"), Ok("a,".repeat(50)));
+        assert_eq!(m.try_expand("C00"), Err(work_ran_out(15_546)));
+    }
+
+    /// With [`Macros::bound`] each copy of an argument costs its tokens, bytes and the names they
+    /// hide. `G`: the 4 one-byte tokens `F(b)`, each hiding `G`, 12; the call reads `(b)`, 3 each
+    /// (hiding `G`): 9; each of the 2 copies of `b` 3, the body's space 2; the 3 tokens `b b` get
+    /// `G` and `F`: 6. 35 in all.
+    #[test]
+    fn a_bound_counts_the_names_of_argument_copies() {
+        let mut m = Macros::default();
+        m.define_function("F", vec!["x".into()], "x x");
+        m.define("G", "F(b)");
+        m.bound(34);
+        assert_eq!(m.try_expand("G"), Err(work_ran_out(34)));
+        m.bound(35);
+        assert_eq!(m.try_expand("G"), Ok("b b".into()));
+    }
+
+    /// With [`Macros::bound`] a token costs its bytes too, before it is made: `L`, one token of
+    /// 1000 bytes, costs 1002 each time (itself, its name, its bytes), and `F` copies an
+    /// argument of 1000 bytes twice: the call reads `(`, the argument and `)` (1005), the copies
+    /// cost 1001 each and the space 2, the 3 tokens get `F`: 3012.
+    #[test]
+    fn a_bound_counts_the_bytes_of_tokens() {
+        let long = "a".repeat(1000);
+        let mut m = Macros::default();
+        m.define("L", long.clone());
+        m.define_function("F", vec!["x".into()], "x x");
+        m.bound(3005);
+        assert_eq!(m.try_expand("L L L"), Err(work_ran_out(3005)));
+        m.bound(3006);
+        assert_eq!(m.try_expand("L L L"), Ok(format!("{long} {long} {long}")));
+        let call = format!("F({long})");
+        m.bound(3011);
+        assert_eq!(m.try_expand(&call), Err(work_ran_out(3011)));
+        m.bound(3012);
+        assert_eq!(m.try_expand(&call), Ok(format!("{long} {long}")));
+    }
+
+    /// With [`Macros::bound`] the tokens a paste splits into are charged before they are made.
+    /// `C(x, +)`: the call reads 6 one-byte tokens (12); the body copies `x` and `+` (2 each)
+    /// and makes a space, `##` and a space (2, 3, 2); `x+` splits into 2 tokens of 2 bytes (4);
+    /// they get `C` (2). 29 in all.
+    #[test]
+    fn a_bound_counts_what_a_paste_splits_into() {
+        let mut m = Macros::default();
+        m.define_function("C", vec!["a".into(), "b".into()], "a ## b");
+        m.bound(28);
+        assert_eq!(m.try_expand("C(x, +)"), Err(work_ran_out(28)));
+        m.bound(29);
+        assert_eq!(m.try_expand("C(x, +)"), Ok("x+".into()));
+    }
+
+    /// With [`Macros::bound`] a call is charged as it is read, before its arguments are copied,
+    /// whether or not it closes: 1000 calls that never close would each read what follows them
+    /// again (a million tokens), and stop at the work, as a spent work, not as an unfinished
+    /// call. Ten read in it.
+    #[test]
+    fn calls_that_never_close_are_charged_as_they_are_read() {
+        let mut m = Macros::default();
+        m.define_function("F", vec!["x".into()], "x");
+        m.bound(100_000);
+        let open = "F(".repeat(10);
+        assert_eq!(m.try_expand(&open), Ok(open.clone()));
+        assert!(m.unfinished_call(&open, &[]));
+        assert_eq!(m.try_expand(&"F(".repeat(1000)), Err(work_ran_out(100_000)));
+        assert_eq!(m.stopped(), Some(Stop::Work));
+    }
+
+    /// With [`Macros::bound`] an empty operand of `##` costs 1 for the placeholder it makes.
+    /// `C(, x)`: the call reads 5 one-byte tokens (10); the placeholder 1, the space, `##` and
+    /// space of the body 2, 3 and 2, the copy of `x` 2; `x` gets `C` (1). 21 in all.
+    #[test]
+    fn a_bound_counts_an_empty_paste_operand() {
+        let mut m = Macros::default();
+        m.define_function("C", vec!["a".into(), "b".into()], "a ## b");
+        m.bound(20);
+        assert_eq!(m.try_expand("C(, x)"), Err(work_ran_out(20)));
+        m.bound(21);
+        assert_eq!(m.try_expand("C(, x)"), Ok("x".into()));
+    }
+
+    /// With [`Macros::bound`] the white space between a call's name and its `(` is read too.
+    /// `F (1)`: the space, `(`, `1` and `)` (8); the copies of `1` and the body's space (6); the
+    /// 3 tokens get `F` (3). 17 in all, as `F(1 )`.
+    #[test]
+    fn a_bound_counts_the_space_before_a_calls_parenthesis() {
+        let mut m = Macros::default();
+        m.define_function("F", vec!["x".into()], "x x");
+        m.bound(16);
+        assert_eq!(m.try_expand("F (1)"), Err(work_ran_out(16)));
+        m.bound(17);
+        assert_eq!(m.try_expand("F (1)"), Ok("1 1".into()));
+    }
+
+    /// [`Macros::checked`] keeps its refusal at the work: the directives' ([`Stop::Work`]).
+    #[test]
+    fn the_checked_mode_keeps_its_refusal() {
+        let mut m = Macros::checked(5);
+        m.define("M0", "x");
+        for n in 1..10 {
+            m.define(format!("M{n}"), format!("M{} M{}", n - 1, n - 1));
+        }
+        assert_eq!(
+            m.try_expand("M9"),
+            Err(crate::ImportRefusal::TooMuchScanned.to_string())
+        );
     }
 
     /// The default expansion, as `Macros::default` reads: a call made of a replacement's last

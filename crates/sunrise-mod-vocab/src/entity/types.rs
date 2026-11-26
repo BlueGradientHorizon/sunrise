@@ -86,6 +86,15 @@ impl TryFrom<u32> for DamageTypeKey {
 // exhaustive: incoming scalar slots are checked against the host's registry
 pub struct EntityTypeKey(pub(crate) u32);
 
+impl EntityTypeKey {
+    /// `EntityType.getCategory()` of this registered type, on either side and with no entity
+    /// spawned: `minecraft:zombie` is `Monster`, a mod mob its declared category. See
+    /// `KeysHost::entity_type_category`; a live entity's is `EntityRef::classification`.
+    pub fn category(self, host: &dyn crate::Host) -> Option<crate::MobCategory> {
+        crate::backend_of(host)?.entity_type_category(self)
+    }
+}
+
 impl From<&EntityTypeKey> for u32 {
     fn from(key: &EntityTypeKey) -> Self {
         key.0

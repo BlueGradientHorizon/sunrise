@@ -488,27 +488,34 @@ class MainTests(unittest.TestCase):
         self.assertTrue(report.call_args.kwargs["with_internals"])
         find_base.assert_not_called()
 
-    def test_a_given_base_replaces_the_event_based_one(self):
+    def test_a_given_base_is_resolved_to_its_commit_and_replaces_the_event_based_one(self):
         fetched, built = [], []
-        git = mock.Mock(side_effect=AssertionError("the event's merge commit is not read"))
+        sha = "cafe" * 10
+
+        def git(*args):
+            # Only the given ref is resolved; the event's merge commit is not read.
+            self.assertEqual(args, ("rev-parse", "--verify", "origin/main"))
+            return sha + "\n"
 
         def report(tool, base, head, work, gate_on, *, own_base_tool, **_):
             own_base_tool()
             return 0, "Surface: identical\n"
 
         code, out, _ = self.run_main(
-            "push", argv=["--base", "cafe"], git=git, report=report,
-            unpack=lambda sha, into: fetched.append(sha),
-            base_tool=lambda sha, work: built.append(sha) or "base-stage",
+            "push", argv=["--base", "origin/main"], git=git, report=report,
+            unpack=lambda commit, into: fetched.append(commit),
+            base_tool=lambda commit, work: built.append(commit) or "base-stage",
             landed_notes=lambda head, base: {})
-        self.assertEqual((code, fetched, built), (0, ["cafe"], ["cafe"]))
-        self.assertRegex(out, r"^Surface: identical\nBase cafe; fetch \d+\.\ds, total \d+\.\ds\n$")
+        # The base's tool tree is named by the commit, so a ref's `/` never reaches a path.
+        self.assertEqual((code, fetched, built), (0, [sha], [sha]))
+        self.assertRegex(out, rf"^Surface: identical\nBase {sha}; fetch \d+\.\ds, total \d+\.\ds\n$")
 
     def test_a_given_base_that_cannot_be_fetched_fails(self):
         def unpack(sha, into):
             raise subprocess.CalledProcessError(128, ["git", "archive", sha])
 
-        code, out, summary = self.run_main("push", argv=["--base", "cafe"], unpack=unpack)
+        code, out, summary = self.run_main("push", argv=["--base", "cafe"], git=lambda *a: "cafe" * 10,
+                                           unpack=unpack)
         self.assertEqual(code, 1)
         self.assertTrue(out.startswith("No surface report: the base could not be fetched"), out)
         self.assertIn("No surface report: the base could not be fetched", summary)

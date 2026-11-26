@@ -106,11 +106,11 @@ Bat.isFlapping	port	crates/sunrise-client/src/game/blocks/sculk.rs::flaps	an awa
 Bat.getMovementEmission	port	crates/sunrise-client/src/mobs/ai.rs::movement_sounds	EVENTS
 Bat.getAmbientSound	inline	crates/sunrise-client/src/mobs/ai.rs::play_ambient	Species::Bat arm: a resting bat is silent three times in four
 Bat.isResting	port	crates/sunrise-client/src/mobs/bat.rs::resting
-Bat.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	BatFlags byte, bit 0 resting
+Bat.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_write.rs::mob_to_nbt	BatFlags byte, bit 0 resting
 Bat.checkBatSpawnRules	inline	crates/sunrise-client/src/mobs/spawn_rules.rs::check_spawn_rules	S::Bat arm: below the surface, coin flip, light against nextInt(4), bats_spawnable_on, mob rules
 Dolphin.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	S::Dolphin arm: full air, pitch 0, baby chance 0.1
 Dolphin.defineSynchedData	skip:java		synched fields: got_fish is extra.flag and moistness extra.counter
-Dolphin.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	GotFish and Moistness
+Dolphin.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_write.rs::mob_to_nbt	GotFish and Moistness
 Dolphin.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	GotFish and Moistness, 2400 when absent
 Dolphin.registerGoals	port	crates/sunrise-client/src/mobs/aquatic.rs::register	the Dolphin arm registers MoveToItem, PlayWithItems, FollowPlayerRidden (boats and nautiluses), an AvoidEntity of guardians and a HurtByTarget that ignores guardians
 Dolphin.createAttributes	skip:data		attributes come from the entity tables
@@ -126,7 +126,7 @@ Dolphin.MoveToItemGoal.canUse	port	crates/sunrise-client/src/mobs/dolphin.rs::Mo
 Dolphin.MoveToItemGoal.stop	port	crates/sunrise-client/src/mobs/dolphin.rs::MoveToItem::stop	drops what it holds and rests for up to 100 ticks
 Dolphin.MoveToItemGoal.start	port	crates/sunrise-client/src/mobs/dolphin.rs::MoveToItem::start	swims to it and plays the play sound
 AbstractChestedHorse.dropEquipment	port	crates/sunrise-client/src/mobs/drops.rs::die	the stored items and then a chest drop, chested cleared
-AbstractChestedHorse.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	ChestedHorse and Items for llamas, donkeys and mules
+AbstractChestedHorse.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_write.rs::mob_to_nbt	ChestedHorse and Items for llamas, donkeys and mules
 AbstractChestedHorse.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	ChestedHorse and Items, 15 slots
 AbstractChestedHorse.getSlot	missing		slot 499 (horse.chest) is not mapped for mobs, so /item replace entity ... horse.chest does nothing; the mob slot names Sunrise resolves are the eight of loot::EQUIPMENT_SLOTS
 AbstractChestedHorse.equipChest	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	tamed donkey or mule takes a held chest with the sound; llamas do it in game/mobs/llamas.rs interact_llama
