@@ -420,10 +420,13 @@ impl Game<'_> {
         Some(position)
     }
 
-    /// AbstractBoat.getControllingPassenger: only the first player steers a boat.
-    /// A non-remote world retains its existing local movement ownership.
+    /// AbstractBoat.getControllingPassenger: `id` is a boat this client's player rides as its
+    /// first passenger, the only one who steers it. Another vehicle is never a driven boat. A
+    /// non-remote world retains its existing local movement ownership.
     pub(super) fn controls_boat(&self, id: u32) -> bool {
-        self.riding == Some(id) && self.remote.as_ref().is_none_or(|r| r.first_passenger)
+        self.riding == Some(id)
+            && self.remote.as_ref().is_none_or(|r| r.first_passenger)
+            && self.boats.iter().any(|b| b.id == id)
     }
 
     /// Tick the local player's vehicle before the player tick:
@@ -1003,6 +1006,39 @@ pub(in crate::game) mod tests {
 
     use super::*;
     use sunrise_client::mobs::MobTypes;
+
+    /// `AbstractBoat.getControllingPassenger` (#6003): only a boat the player rides first is
+    /// the boat this client steers; a ridden minecart is not, though the player rides it first.
+    #[test]
+    #[ignore = "daily"]
+    fn only_a_boat_is_the_driven_boat() {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            use super::super::boats::Boat;
+            use super::super::minecarts::{CartKind, Minecart};
+            game.carts.push(Minecart::new(
+                5,
+                CartKind::Rideable,
+                Vec3::new(0.5, 64.0, 0.5),
+            ));
+            game.boats
+                .push(Boat::new(6, "oak".into(), Vec3::new(2.5, 64.0, 0.5), 0.0));
+            for (riding, cart, boat) in [
+                (None, false, false),
+                (Some(5), false, false),
+                (Some(6), false, true),
+            ] {
+                game.riding = riding;
+                assert_eq!(game.controls_boat(5), cart, "the cart, riding {riding:?}");
+                assert_eq!(game.controls_boat(6), boat, "the boat, riding {riding:?}");
+            }
+            assert!(game.driven_boat().is_some(), "riding the boat steers it");
+            game.riding = Some(5);
+            assert!(
+                game.driven_boat().is_none(),
+                "riding the cart steers no boat"
+            );
+        });
+    }
 
     /// handleTeleportEntity and handleMoveVehicle for the vehicle this client moves (a saddled pig steered with a
     /// carrot on a stick): a relative teleport counts from where the pig is on this client and eases it there,
