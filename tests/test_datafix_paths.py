@@ -2,17 +2,16 @@
 import argparse
 import contextlib
 import hashlib
-import importlib
 import io
 import json
 import os
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 from unittest import mock
 import zipfile
 
+from tests.fresh_import import fresh_tools
 from tests.os_support import needs_symlinks
 from tools import datafix_paths, pr_ready
 
@@ -147,19 +146,7 @@ class DatafixPaths(unittest.TestCase):
 
     def consumers(self):
         """datafix_worlds and test_datafix_parity, imported with the owning boundary selecting a temp root."""
-        # Script consumers import siblings directly and mutate sys.path. Keep
-        # those mutations scoped so later unittest discovery cannot import a
-        # tools/test_* module in place of a tests/test_* module with the same name.
-        with_path = mock.patch.object(sys, 'path', [str(Path(__file__).resolve().parents[1] / 'tools'), *sys.path])
-        with_path.start()
-        self.addCleanup(with_path.stop)
-        alias = mock.patch.dict(sys.modules, {'datafix_paths': datafix_paths})
-        alias.start()
-        self.addCleanup(alias.stop)
-        for name in ('datafix_worlds', 'test_datafix_parity'):
-            sys.modules.pop(name, None)
-            self.addCleanup(sys.modules.pop, name, None)
-        return importlib.import_module('datafix_worlds'), importlib.import_module('test_datafix_parity')
+        return fresh_tools(self, 'datafix_worlds', 'test_datafix_parity')
 
     def test_a_cut_short_download_is_fetched_again(self):
         worlds, _ = self.consumers()
@@ -178,11 +165,10 @@ class DatafixPaths(unittest.TestCase):
             fetched.append(url)
             return io.BytesIO(answers[url])
 
-        # What a full disk left behind: an empty jar and a version.json cut mid-write.
+        # What a full disk left behind: an empty jar.
         folder = self.checkout / '.local/datafix/servers/1.19'
         folder.mkdir(parents=True)
         (folder / 'server.jar').write_bytes(b'')
-        (folder / 'version.json').write_bytes(metadata[:10])
         with mock.patch.object(worlds.urllib.request, 'urlopen', urlopen):
             path, _, _ = worlds.server_jar('1.19')
             self.assertEqual(path.read_bytes(), body)
@@ -192,6 +178,15 @@ class DatafixPaths(unittest.TestCase):
             worlds.server_jar('1.19')
         self.assertEqual(len(fetched), 3)
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ['server.jar', 'version.json'])
+
+    def test_a_version_json_that_does_not_parse_is_an_error(self):
+        worlds, _ = self.consumers()
+        folder = self.checkout / '.local/datafix/servers/1.19'
+        folder.mkdir(parents=True)
+        (folder / 'version.json').write_bytes(b'{"downloads": {"ser')
+        with (mock.patch.object(worlds.urllib.request, 'urlopen', side_effect=AssertionError('must not fetch')),
+              self.assertRaises(ValueError)):
+            worlds.version_meta('1.19')
 
     def test_failed_download_replace_keeps_destination_and_removes_temp(self):
         worlds, _ = self.consumers()

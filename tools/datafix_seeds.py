@@ -54,16 +54,6 @@ SEED_KEEP_DAYS = 14
 STALE_STAGING_SECONDS = 86400
 _FICLONE = 0x40049409  # Linux ioctl(2) FICLONE
 
-# Every tracked source file that participates in seed world generation or snapshot layout.
-SOURCE_FILES = (
-    'tools/anvil_dump.py',
-    'tools/datafix_paths.py',
-    'tools/datafix_scene.py',
-    'tools/datafix_scene_12.py',
-    'tools/datafix_scene_old.py',
-    'tools/datafix_seeds.py',
-    'tools/datafix_worlds.py',
-)
 # tools/lab.py is shared by every harness and changes for reasons unrelated to seed worlds, so the key reads the text
 # of only the lab functions the seed tools import (lab_functions), not the whole file.
 LAB = 'tools/lab.py'
@@ -74,17 +64,38 @@ def _sibling(name):
     return importlib.import_module(f'{__package__}.{name}' if __package__ else name)
 
 
+def seed_modules():
+    """The tools/ modules that generate the seed worlds: datafix_worlds.py (the generator `_run_generator` runs) and the
+    tools/ modules it imports, transitively. lab is keyed by function (lab_functions), not as a module."""
+    lab = _sibling('lab')
+    tools = Path(__file__).resolve().parent
+    modules, pending = {}, [_sibling('datafix_worlds')]
+    while pending:
+        module = pending.pop()
+        path = Path(module.__file__).resolve()
+        if path in modules:
+            continue
+        modules[path] = module
+        pending.extend(value for value in vars(module).values()
+                       if inspect.ismodule(value) and value is not lab
+                       and Path(getattr(value, '__file__', None) or '/').resolve().parent == tools)
+    return modules
+
+
+def source_files():
+    """Sorted repo paths of every file whose text keys the seed cache: the seed modules and this file (snapshot layout)."""
+    paths = {*seed_modules(), Path(__file__).resolve()}
+    return sorted(path.relative_to(ROOT).as_posix() for path in paths)
+
+
 def lab_functions():
-    """Sorted names of the lab functions the seed tools import (`from lab import name`).
-    A seed tool that holds the lab module itself could call functions this cannot see, so it is refused."""
+    """Sorted names of the lab functions the seed modules import (`from lab import name`).
+    A seed module that holds the lab module itself could call functions this cannot see, so it is refused."""
     lab = _sibling('lab')
     names = set()
-    for rel in SOURCE_FILES:
-        if Path(rel).stem == Path(__file__).stem:
-            continue
-        module = _sibling(Path(rel).stem)
+    for path, module in seed_modules().items():
         if lab in vars(module).values():
-            raise ValueError(f'{rel} imports the lab module; import the functions it calls by name')
+            raise ValueError(f'{path.relative_to(ROOT).as_posix()} imports the lab module; import the functions it calls by name')
         names.update(value.__name__ for value in vars(module).values()
                      if inspect.isfunction(value) and value.__module__ == lab.__name__)
     return sorted(names)
@@ -123,8 +134,8 @@ def required_versions():
     return sorted({*worlds.VERSIONS, *(version for version, _ in worlds.VARIANTS.values())})
 
 
-def source_digests(root=ROOT, files=SOURCE_FILES):
-    digests = {rel: hashlib.sha256((Path(root) / rel).read_bytes()).hexdigest() for rel in sorted(files)}
+def source_digests(root=ROOT):
+    digests = {rel: hashlib.sha256((Path(root) / rel).read_bytes()).hexdigest() for rel in source_files()}
     source = (Path(root) / LAB).read_text(encoding='utf-8')
     names = lab_functions()
     functions = {node.name: ast.get_source_segment(source, node) for node in ast.parse(source).body
@@ -223,10 +234,7 @@ def snapshot_complete(root, expected=None, *, strict_top=False):
             meta = world / 'datafix-source.json'
             if not meta.is_file() or meta.is_symlink():
                 return False
-            try:
-                info = json.loads(meta.read_text(encoding='utf-8'))
-            except (OSError, ValueError):
-                return False
+            info = json.loads(meta.read_text(encoding='utf-8'))
             if (not isinstance(info, dict) or not isinstance(info.get('version'), str)
                     or type(info.get('data_version')) is not int):
                 return False
@@ -279,9 +287,8 @@ def copy_snapshot(snapshot_dir, dest_root):
             shutil.copytree(src, partial, symlinks=False, copy_function=copy_or_reflink)
             shutil.rmtree(dst, ignore_errors=True)
             partial.rename(dst)
-        except Exception:
+        finally:
             shutil.rmtree(partial, ignore_errors=True)
-            raise
 
 
 def stage_snapshot(src_root, staging_dir, expected):

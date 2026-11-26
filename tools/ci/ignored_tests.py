@@ -316,7 +316,7 @@ def workspace_features(workspace="."):
 
     `cargo test -p PACKAGE` alone resolves only that package's own needs, which leaves out a test behind a feature
     another member turns on (or a target's required-features), so a daily-rows run passes these explicitly."""
-    metadata = subprocess.run([*lab.CARGO, "metadata", "--format-version", "1"], capture_output=True, text=True,
+    metadata = subprocess.run(["cargo", "metadata", "--format-version", "1"], capture_output=True, text=True,
                               check=True, cwd=ROOT / workspace)
     data = json.loads(metadata.stdout)
     names = {package["id"]: package["name"] for package in data["packages"]}
@@ -342,7 +342,7 @@ def needs_commands(variable, jobs=None):
     """One exact `cargo test` command per test marked `needs variable`."""
     j = [f"-j{jobs}"] if jobs else []
     commands = [
-        [*lab.CARGO, "test", *j, "-p", row.package, "--lib", "--", *(["--ignored"] if row.mark == "needs" else []), "--exact", row.test]
+        ["cargo", "test", *j, "-p", row.package, "--lib", "--", *(["--ignored"] if row.mark == "needs" else []), "--exact", row.test]
         for row in listed_entries() if row.mark in {"needs", "needs-plain"} and row.reference == variable
     ]
     if not commands:
@@ -388,7 +388,7 @@ def run_windows_rows(report=None):
     """Run every Windows-only row alone. Report named failures separately from build or process failures."""
     verdict = {"windows_rows": True, "problems": [], "passed": [], "incomplete": []}
     for row in windows_rows():
-        command = [*lab.CARGO, "test", "--no-fail-fast", "--release", "--locked", "-p", row.package,
+        command = ["cargo", "test", "--no-fail-fast", "--release", "--locked", "-p", row.package,
                    "--test", row.reference.removeprefix("test:"), "--", "--ignored", "--exact", row.test]
         code, output = run_exact_command(command)
         entry = {"package": row.package, "test": safe_identity(row.test)}
@@ -899,7 +899,7 @@ def listed_result_records(line, expected, max_name_length):
 # binaries"): one feature resolution for every package, and the host compiler cache verify fills. `cargo test -p
 # PACKAGE` alone resolves its dependencies' features from its own graph, so each of the leg's 32 runs compiled its
 # own variant of the shared crates, and the leg outlasted its 60 minutes (#1619).
-WORKSPACE_TEST_BUILD = [*lab.CARGO, "test", "--profile", "test", "--workspace", "--lib", "--bins", "--tests", "--no-run"]
+WORKSPACE_TEST_BUILD = ["cargo", "test", "--profile", "test", "--workspace", "--lib", "--bins", "--tests", "--no-run"]
 # The client-lib rows build at opt-level 3 (run()), which the workspace build does not.
 OWN_BUILD = {"sunrise-client-lib"}
 # Each test thread's stack (RUST_MIN_STACK), the one the parity harnesses give the same game fixtures.
@@ -942,7 +942,7 @@ def run_binaries(package, executables, arguments, env):
     deps = Path(next(iter(executables.values()))).parent
     # The variable the platform's loader reads (Windows' environment names are case-insensitive: keep the spelling in env).
     library_path = next((key for key in env if key.upper() == LIBRARY_PATH.upper()), LIBRARY_PATH)
-    env = dict(env, CARGO=shutil.which(lab.CARGO[0]) or lab.CARGO[0], CARGO_MANIFEST_DIR=str(folder),
+    env = dict(env, CARGO=shutil.which("cargo") or "cargo", CARGO_MANIFEST_DIR=str(folder),
                CARGO_MANIFEST_PATH=str(folder / "Cargo.toml"), CARGO_PKG_NAME=package,
                **{library_path: os.pathsep.join(filter(None, [str(deps), str(deps.parent), env.get(library_path)]))})
     output, status = [], 0
@@ -1016,7 +1016,7 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
         # --no-fail-fast: a target with accepted known failures must not stop the targets after it.
         # Owner-approved stopgap; #2944 removes this when the legs run under 15 minutes.
         client_half = package == "sunrise-client" and count in (2, 2 * CLIENT_BATCHES)
-        command = [*lab.CARGO, "test", "-p", package, "--lib", *(["--bins", "--tests"] if package in INTEGRATION_TESTS else []), "--no-fail-fast"]
+        command = ["cargo", "test", "-p", package, "--lib", *(["--bins", "--tests"] if package in INTEGRATION_TESTS else []), "--no-fail-fast"]
         workspace = "."
         if only:
             targets = only[0]
@@ -1025,7 +1025,7 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
             features = workspace_features(workspace).get(package, [])
             # --no-fail-fast: the package's targets share one cargo run, and a failing one must not stop the targets
             # after it (their rows would read as tests that no longer run).
-            command = [*lab.CARGO, "test", *(["--locked"] if workspace != "." else []), "-p", package,
+            command = ["cargo", "test", *(["--locked"] if workspace != "." else []), "-p", package,
                        *(["--features", ",".join(features)] if features else []),
                        *(flag for target in targets for flag in
                          (["--lib"] if target == "lib" else [f"--{target.split(':')[0]}", target.split(":", 1)[1]])),
