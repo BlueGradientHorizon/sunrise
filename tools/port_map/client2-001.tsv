@@ -89,7 +89,7 @@ LevelRenderer.extractSectionDrawGroups	port	crates/sunrise-client-render/src/gfx
 LevelRenderer.prepareChunkRenders	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_frame	per-layer draw list built for the frame, reversed for translucent layers
 LevelRenderer.performTransientBlockRemovals	inline	crates/sunrise-client/src/game/blocks/transient_blocks.rs::add_transient_block	transient blocks are tracked and dropped by that list
 LevelRenderer.prepareChunkRendersIndirect	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_frame	indirect draw arguments written and multi-draw issued
-LevelRenderer.compileSections	port	crates/sunrise-client-render/src/streaming.rs::Streaming::update	section meshing jobs queued for dirty sections nearest the camera
+LevelRenderer.compileSections	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::update	section meshing jobs queued for dirty sections nearest the camera
 LevelRenderer.submitEntities	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_frame	entity models drawn with their batches
 LevelRenderer.submitBlockEntities	port	crates/sunrise-client-render/src/gfx.rs::Renderer::block_entities	block entity list submitted for drawing
 LevelRenderer.submitBlockDestroyAnimation	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_frame	crumbling overlay drawn on the block being broken

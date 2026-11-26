@@ -38,7 +38,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
         &settings,
         std::time::Instant::now(),
         false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
@@ -47,7 +47,9 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
     options.resources = root;
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -82,7 +84,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
         game.side.screen = Screen::Chat;
         game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
         game.side.chat_ui.chat_screen = Some(ChatScreen::new(
-            &Measure(&game.gui.atlas.font),
+            &Measure(&game.side.gui.atlas.font),
             &Commands {
                 dispatcher: chat_tree(&game.remote),
                 registries: &game.ui.registries,
@@ -103,7 +105,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
 
         // Click the suggestion's rendered text rather than assuming its coordinates.
         let draws = game.side.chat_ui.chat_screen.as_mut().unwrap().draw(
-            &Measure(&game.gui.atlas.font),
+            &Measure(&game.side.gui.atlas.font),
             (-1, -1),
             0,
             0,

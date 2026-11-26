@@ -10,16 +10,15 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize},
 };
-use sunrise_client::{
-    chunk::Chunk,
-    first_person::Hand,
-    items::ItemStack,
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    motion::PlayerMotion,
-};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use {
+    sunrise_client::chunk::Chunk, sunrise_client::items::ItemStack, sunrise_client::lan::Joined,
+    sunrise_client::lan::NetConfig, sunrise_client::lan::PlayerSender,
+    sunrise_client::lan::guest::Guest, sunrise_client::lan::hub::HubConfig,
+    sunrise_client::motion::PlayerMotion, sunrise_sim::first_person_sim::Hand,
+};
 
 #[path = "interaction_matrix_tests_server.rs"]
 pub(in crate::game) mod interaction_matrix_tests;

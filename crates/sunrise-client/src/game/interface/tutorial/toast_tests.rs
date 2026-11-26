@@ -8,8 +8,12 @@ fn tutorial_toast_bolds_only_the_rebound_key() {
         "game::client_side::tutorial::toast_tests::tutorial_toast_bolds_only_the_rebound_key",
         || {
             with_client_game(|game| {
-                game.settings.keys.set("key.inventory", "key.keyboard.z");
-                game.settings
+                game.side
+                    .settings
+                    .keys
+                    .set("key.inventory", "key.keyboard.z");
+                game.side
+                    .settings
                     .keys
                     .set("key.socialInteractions", "key.keyboard.x");
                 for (hint, key) in [(Hint::OpenInventory, 'Z'), (Hint::SocialInteractions, 'X')] {

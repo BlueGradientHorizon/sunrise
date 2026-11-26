@@ -183,7 +183,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None => (Players::default(), ChunkSend::default()),
         };
         let (mut generation, mut light) = {
-            let q = self.streaming.queue_census();
+            let q = self.side.streaming.queue_census();
             (q.generation, q.light)
         };
         for streaming in self.side.levels.0.parked_streamings() {
@@ -193,7 +193,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         ServerSide {
             chunks: self.census_chunks(),
-            generation: Generation::of(&self.streaming),
+            generation: Generation::of(&self.side.streaming),
             entities: self.entity_census(),
             players,
             chunk_send,
@@ -211,7 +211,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn server_memory_inputs(&self) -> MemoryInputs {
         MemoryInputs {
-            render_distance: self.streaming.radius,
+            render_distance: self.side.streaming.radius,
             client: None,
             renderer: None,
             far: None,

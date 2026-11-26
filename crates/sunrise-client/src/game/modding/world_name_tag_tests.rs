@@ -75,7 +75,7 @@ fn bytes(vertices: &[Vertex]) -> &[u8] {
 
 /// An opaque grey wall two blocks in front of the camera, in the white texel.
 fn wall(game: &crate::game::ClientGame<'_>) -> Vec<Vertex> {
-    let white = game.gui.atlas.sprites["sunrise/white"];
+    let white = game.side.gui.atlas.sprites["sunrise/white"];
     let uv = [(white.u0 + white.u1) * 0.5, (white.v0 + white.v1) * 0.5];
     // Counterclockwise as seen from the camera.
     [[4.0, -4.0], [-4.0, -4.0], [-4.0, 4.0], [4.0, 4.0]]
@@ -98,8 +98,8 @@ fn pixels(game: &crate::game::ClientGame<'_>, world: &[Vertex], see_through: &[V
     render_see_through_lit(
         world,
         see_through,
-        [game.gui.atlas.width, game.gui.atlas.height],
-        &game.gui.atlas.pixels(),
+        [game.side.gui.atlas.width, game.side.gui.atlas.height],
+        &game.side.gui.atlas.pixels(),
         view_proj(),
         &graded_lightmap(),
     )
@@ -288,10 +288,11 @@ fn a_see_through_label_is_lit_at_least_2_in_the_world_and_unlit_over_it() {
 fn the_text_background_opacity_sets_the_backdrop_and_the_faded_text() {
     with_client_game(|game| {
         use sunrise_client::options_file::V;
-        game.settings
+        game.side
+            .settings
             .file
             .set("backgroundForChatOnly", V::Bool(false));
-        game.settings.text_background_opacity = 0.5;
+        game.side.settings.text_background_opacity = 0.5;
         let text = Text::literal("Label");
         let at = [0.5, 70.0, 0.5];
         let (ok, [world, _]) = labels(game, at, &text, NameTagOptions::new(false, true, 0xF0));
@@ -302,7 +303,8 @@ fn the_text_background_opacity_sets_the_backdrop_and_the_faded_text() {
         assert_eq!(alphas(&world), (vec![0xFF], vec![]));
         assert_eq!(alphas(&through), (vec![159], vec![127]));
         // Chat only again: the default 0.25 whatever the slider says.
-        game.settings
+        game.side
+            .settings
             .file
             .set("backgroundForChatOnly", V::Bool(true));
         let (_, [world, _]) = labels(game, at, &text, NameTagOptions::new(false, true, 0xF0));
@@ -348,7 +350,7 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
             })
             .into(),
         );
-        let atlas = &mut game.gui.atlas;
+        let atlas = &mut game.side.gui.atlas;
         atlas.font = sunrise_client::font::Font::load(
             &source,
             &atlas.sprites,
@@ -389,7 +391,10 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
             queued.len(),
             "the glyphs were cached by the refused label"
         );
-        let size = [game.gui.atlas.width as f32, game.gui.atlas.height as f32];
+        let size = [
+            game.side.gui.atlas.width as f32,
+            game.side.gui.atlas.height as f32,
+        ];
         let glyphs: Vec<&[Vertex; 4]> = draw.labels()[0]
             .as_chunks::<4>()
             .0

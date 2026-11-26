@@ -872,7 +872,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 /// They stay continuous at pitch ±90, and in third-person front view they are
 /// the turned-round camera's, not the player's.
 pub(in crate::game) fn thrown_item_axes(
-    camera_type: sunrise_client::camera::CameraType,
+    camera_type: sunrise_level::camera_math::CameraType,
     yaw: f32,
     pitch: f32,
 ) -> (glam::Vec3, glam::Vec3) {

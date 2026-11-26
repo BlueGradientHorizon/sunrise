@@ -198,8 +198,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let Some(model) = frame_draw.prepare(
             mob,
-            self.res.client_mob_data(),
-            self.res.client_mob_models(),
+            self.client_res().client_mob_data(),
+            self.client_res().client_mob_models(),
         ) else {
             return true;
         };

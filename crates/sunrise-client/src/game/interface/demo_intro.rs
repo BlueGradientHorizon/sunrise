@@ -100,7 +100,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // DEMO_EVENT compares the raw float; signed zero matches, but rounded
         // neighbors, unknown phases and NaN do not.
         if param == 0.0 {
-            let intro = DemoIntro::new(&self.settings.keys);
+            let intro = DemoIntro::new(&self.side.settings.keys);
             if self.side.screen == Screen::DemoIntro {
                 self.side.demo_intro = Some(intro);
                 self.commit_screen_transition();
@@ -121,7 +121,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let args: Vec<_> = mappings
             .iter()
-            .map(|mapping| display_name(self.settings.keys.get(mapping)))
+            .map(|mapping| display_name(self.side.settings.keys.get(mapping)))
             .collect();
         let message = Text::translate(message, &args);
         self.add_chat_line(message.clone(), sunrise_client::chat::ChatSource::Client);
@@ -132,7 +132,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(intro) = &self.side.demo_intro else {
             return;
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         let layout = intro.layout(atlas, w, h);
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
@@ -190,7 +190,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         };
         let (w, h) = self.gui_size();
-        let layout = intro.layout(&self.gui.atlas, w, h);
+        let layout = intro.layout(&self.side.gui.atlas, w, h);
         let Some(button) = layout.button_x.into_iter().position(|x| {
             ui::hovered(
                 self.side.cursor,
@@ -295,7 +295,7 @@ mod tests {
                         game.remote.as_mut().unwrap().level_load.finish();
                         game.side.focused = true;
                         game.side.chat_ui.chat.set_abilities(
-                            &game.gui.atlas.font,
+                            &game.side.gui.atlas.font,
                             ChatAbilities::new(ChatVisibility::Hidden),
                         );
                         let spoken = Arc::new(Mutex::new(Vec::new()));
@@ -312,7 +312,7 @@ mod tests {
                             ("key.jump", "key.keyboard.q"),
                             ("key.inventory", "key.keyboard.r"),
                         ] {
-                            game.settings.keys.set(mapping, key);
+                            game.side.settings.keys.set(mapping, key);
                         }
                         let send = |game: &mut crate::game::ClientGame<'_>, param| {
                             game.handle_packet(Clientbound::GameEvent(GameEvent {
@@ -352,7 +352,7 @@ mod tests {
                             // Buy opens the trusted link confirmation on the HUD; closing
                             // it is `Gui.setScreen(null)` there, which grabs the mouse.
                             let (w, h) = game.gui_size();
-                            let layout = intro.layout(&game.gui.atlas, w, h);
+                            let layout = intro.layout(&game.side.gui.atlas, w, h);
                             game.side.cursor = (layout.button_x[0] + 1.0, layout.button_y + 1.0);
                             game.side.agent_pointer = true;
                             assert!(game.demo_intro_click());
@@ -369,7 +369,7 @@ mod tests {
                             assert_eq!(game.side.screen, Screen::DemoIntro);
                             let (w, h) = game.gui_size();
                             let layout = game.side.demo_intro.as_ref().unwrap().layout(
-                                &game.gui.atlas,
+                                &game.side.gui.atlas,
                                 w,
                                 h,
                             );
@@ -400,7 +400,10 @@ mod tests {
                             (104.0, "demo.day.6", &['Z'][..]),
                         ] {
                             if phase == 104.0 {
-                                game.settings.keys.set("key.screenshot", "key.keyboard.z");
+                                game.side
+                                    .settings
+                                    .keys
+                                    .set("key.screenshot", "key.keyboard.z");
                             }
                             let count = game.remote.as_ref().unwrap().chat_received;
                             send(game, phase);

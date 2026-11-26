@@ -74,7 +74,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .ok_or("no renderer yet")?;
         Ok(self.inventory_origin(&sunrise_client::hud::HudBatch::new(
             size,
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         )))
     }
     fn send_use_item_on_block(&mut self, pos: [i32; 3]) {

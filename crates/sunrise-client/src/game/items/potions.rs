@@ -733,7 +733,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(hud_overlays::EffectIcon::from)
             .collect();
         let draws = hud_overlays::effects(batch.width as i32, false, &icons);
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
     /// `EffectsInInventory`: panels to the right of survival/creative inventory.
     /// The caller draws the returned tooltip after every other tooltip.
@@ -753,7 +753,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let panels = self.effect_panels(&space, &layout);
         let hovered = inventory_effects::paint(
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             &panels,
             [self.side.cursor.0 as i32, self.side.cursor.1 as i32],
         )?;
@@ -815,7 +815,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             &self.potions.effects.list,
             self.clock.rate(),
             &|key| self.pack.names.display_get(key),
-            &|text| self.gui.atlas.font.width(text).ceil() as i32,
+            &|text| self.side.gui.atlas.font.width(text).ceil() as i32,
         )
     }
     /// Vanilla's layout, as `native_screen_render_inventory_mob_effects`
@@ -1811,7 +1811,7 @@ pub(in crate::game) mod tests {
                                 assert!(
                                     inventory_effects::paint(
                                         &mut batch,
-                                        &game.gui.atlas,
+                                        &game.side.gui.atlas,
                                         &panels,
                                         [game.side.cursor.0 as i32, game.side.cursor.1 as i32],
                                     )

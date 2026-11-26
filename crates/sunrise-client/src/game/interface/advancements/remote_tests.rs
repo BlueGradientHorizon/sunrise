@@ -229,7 +229,7 @@ fn remote_tab_updates_restore_pan_and_clear_hover_on_progress_only() {
                     show: false,
                 });
                 game.open_advancements(true);
-                let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
+                let mut batch = HudBatch::new([640, 480], game.side.settings.gui_scale_inputs());
                 game.draw_advancements(&mut batch);
                 assert_eq!(
                     game.side.adv_ui.0.tab_state().unwrap().scroll,
@@ -448,7 +448,7 @@ fn extreme_remote_positions_use_java_widget_coordinates_and_bounds() {
                     game.side.adv_ui.0.tab_state().unwrap().bounds,
                     TabBounds(i32::MAX, i32::MAX, -2_147_483_621, -2_147_483_622)
                 );
-                let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
+                let mut batch = HudBatch::new([640, 480], game.side.settings.gui_scale_inputs());
                 game.draw_advancements(&mut batch);
                 assert_eq!(
                     game.side.adv_ui.0.tab_state().unwrap().scroll,

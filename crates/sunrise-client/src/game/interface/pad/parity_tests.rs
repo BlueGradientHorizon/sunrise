@@ -36,7 +36,9 @@ fn playing(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     options.execution_role = ExecutionRole::Client;
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -67,7 +69,8 @@ impl crate::game::event_loop::EventLoopCtl for NoEventLoop {
 /// Hold `button` through the real press dispatcher, including its action ownership.
 fn pad_press(game: &mut crate::game::ClientGame<'_>, button: Button, action: &str) {
     assert!(
-        game.settings
+        game.side
+            .settings
             .controller
             .actions_of(button)
             .contains(&action)
@@ -95,7 +98,7 @@ fn pad_release(game: &mut crate::game::ClientGame<'_>, button: Button) {
 fn a_keyboard_release_keeps_the_sneak_the_pad_went_on_to_hold() {
     playing(|game| {
         // Hold mode: toggling, the pad's press would flip it.
-        game.settings.controller.toggle_sneak = false;
+        game.side.settings.controller.toggle_sneak = false;
         let shift = KeyCode::ShiftLeft;
         game.mapped_key(shift, true, false, shift, Source::Keyboard)
             .unwrap();
@@ -118,8 +121,12 @@ fn pad_smooth_camera_binding_toggles_the_cinematic_camera() {
     }
 
     playing(|game| {
-        game.settings.controller.bind("key.togglePerspective", None);
-        game.settings
+        game.side
+            .settings
+            .controller
+            .bind("key.togglePerspective", None);
+        game.side
+            .settings
             .controller
             .bind("key.smoothCamera", Some(Button::Select));
         assert!(!game.side.smooth_camera);
@@ -134,7 +141,10 @@ fn pad_smooth_camera_binding_toggles_the_cinematic_camera() {
         game.handle_play_keybinds();
         assert!(game.side.smooth_camera, "the pad click was consumed");
 
-        game.settings.keys.set("key.smoothCamera", "key.keyboard.k");
+        game.side
+            .settings
+            .keys
+            .set("key.smoothCamera", "key.keyboard.k");
         game.mapped_key_event(KeyCode::KeyK, true, false).unwrap();
         game.mapped_key_event(KeyCode::KeyK, false, false).unwrap();
         assert!(
@@ -261,7 +271,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         assert_eq!(game.side.keys.override_for(&KeyCode::KeyW), Some(false));
         game.side.pad.0.state.left = [0.0, 0.0];
         let before = game.pad_move();
-        game.side.pad.0.state.left = [0.0, game.settings.controller.move_deadzone + 0.01];
+        game.side.pad.0.state.left = [0.0, game.side.settings.controller.move_deadzone + 0.01];
         game.resume_stick_mappings(before);
         let after = game.sample_movement_keys(game.pad_move());
         assert!(!after.forward);
@@ -288,7 +298,7 @@ fn resolved_mapping_reads_live_state_and_binding() {
 
         let mut bindings = sunrise_client::keybinds::KeyBinds::default();
         bindings.set("key.forward", "key.keyboard.up");
-        game.settings.keys = bindings;
+        game.side.settings.keys = bindings;
         assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
         assert_eq!(forward.is_down(game), Ok(true));
 
@@ -303,7 +313,8 @@ fn resolved_mapping_reads_live_state_and_binding() {
 fn pad_number_actions_select_the_hotbar_as_their_keys_do() {
     playing(|game| {
         with_player(game);
-        game.settings
+        game.side
+            .settings
             .controller
             .bind("key.hotbar.3", Some(Button::DPadUp));
         // This tests the one-shot number action, not all actions sharing D-pad up
@@ -317,7 +328,8 @@ fn pad_number_actions_select_the_hotbar_as_their_keys_do() {
 #[ignore = "daily"]
 fn a_held_pad_toolbar_action_counts_as_the_toolbar_key() {
     playing(|game| {
-        game.settings
+        game.side
+            .settings
             .controller
             .bind("key.saveToolbarActivator", Some(Button::DPadUp));
         assert!(!game.mapped_key_down("key.saveToolbarActivator"));
@@ -381,7 +393,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
         // the keyboard source path, not the default attack/use path above.
         with_player(game);
         let binding = "key.mouse.left";
-        game.settings.keys.set("key.forward", binding);
+        game.side.settings.keys.set("key.forward", binding);
         let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
         for mouse_releases_first in [true, false] {
             game.mapped_mouse_event(MouseButton::Left, binding, true)

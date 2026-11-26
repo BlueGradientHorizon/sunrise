@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn drain_transient_block_queue(&mut self) {
         self.side
             .transient_blocks
-            .drain(Instant::now(), self.streaming.sequence());
+            .drain(Instant::now(), self.side.streaming.sequence());
     }
 
     /// `LevelRenderer.submitTransientBlocks`: each block whose time has not
@@ -44,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             !self.section_of(*pos).is_some_and(|section| {
                 shows_block(
                     block.created,
-                    self.streaming.compile_start(section),
+                    self.side.streaming.compile_start(section),
                     self.section_upload_pending(section),
                 )
             })

@@ -36,7 +36,8 @@ fn depart(game: &mut crate::game::ServerGame<'_>, id: u32, restart_waiting: bool
     let (cx, cz) = (plan.approximate.x >> 4, plan.approximate.z >> 4);
     for z in cz - 1..=cz + 1 {
         for x in cx - 1..=cx + 1 {
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }
     }

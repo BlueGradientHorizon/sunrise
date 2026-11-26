@@ -46,8 +46,7 @@ use mod_api::GameTests;
 pub use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
 use mod_api::{
     self, Answered, BlockTintSources, CauldronFluidContents, CauldronInteractions,
-    ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
-    ClientInputOptions, ClientMiningPrediction, ClientReloadListeners, ColorResolvers,
+    ClientGuiOptions, ClientMiningPrediction, ClientReloadListeners, ColorResolvers,
     EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers,
     GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
     InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
@@ -79,29 +78,6 @@ use std::{
 };
 #[cfg(test)]
 use sunrise_client::mobs::Damage;
-use sunrise_client::{
-    atlas_sources::qualified,
-    biome::{BiomeColors, SpawnEntry},
-    block_entities::Pos,
-    containers::{BlockEntity, MOD_MENUS, ModBlockEntityFields},
-    crafting::{Ingredient, recipe_result},
-    extras::Corner,
-    extras_hud::Corners,
-    fast_hash::FxHashMap,
-    first_person::Hand,
-    health::{
-        Attack, DamageContainer, DamageHooks, DamageLevel, HurtSource, Hurting, Knock, ShieldBlock,
-        Victim,
-    },
-    hud::{HudBatch, rgba},
-    items::ItemStack,
-    keybinds,
-    mobs::Who,
-    mod_list::{self},
-    music::{Music, MusicLayer},
-    particles::{ParticleOptions, ParticleType},
-    text::Text,
-};
 use sunrise_client_core::gamerules::Value as GameRuleValue;
 use sunrise_client_core::suggestion::Suggestion;
 use sunrise_core::{
@@ -113,6 +89,23 @@ use sunrise_core::{
 use sunrise_world::level::BonemealCheck;
 #[allow(unused_imports)]
 use winit::{event::MouseButton, keyboard::KeyCode};
+use {
+    sunrise_client::atlas_sources::qualified, sunrise_client::biome::BiomeColors,
+    sunrise_client::biome::SpawnEntry, sunrise_client::block_entities::Pos,
+    sunrise_client::containers::BlockEntity, sunrise_client::containers::MOD_MENUS,
+    sunrise_client::containers::ModBlockEntityFields, sunrise_client::crafting::Ingredient,
+    sunrise_client::crafting::recipe_result, sunrise_client::extras::Corner,
+    sunrise_client::extras_hud::Corners, sunrise_client::fast_hash::FxHashMap,
+    sunrise_client::health::Attack, sunrise_client::health::DamageContainer,
+    sunrise_client::health::DamageHooks, sunrise_client::health::DamageLevel,
+    sunrise_client::health::HurtSource, sunrise_client::health::Hurting,
+    sunrise_client::health::Knock, sunrise_client::health::ShieldBlock,
+    sunrise_client::health::Victim, sunrise_client::hud::HudBatch, sunrise_client::hud::rgba,
+    sunrise_client::items::ItemStack, sunrise_client::keybinds, sunrise_client::mobs::Who,
+    sunrise_client::mod_list, sunrise_client::music::Music, sunrise_client::music::MusicLayer,
+    sunrise_client::text::Text, sunrise_level::particle_options::ParticleOptions,
+    sunrise_level::particle_options::ParticleType, sunrise_sim::first_person_sim::Hand,
+};
 use {
     sunrise_core::{
         nbt::{Compound, Tag},
@@ -351,7 +344,6 @@ pub(in crate::game) mod client_chunk_load;
 pub(in crate::game) mod client_chunk_unload;
 pub(in crate::game) mod client_gui_state;
 pub(in crate::game) mod client_information_updated;
-pub(in crate::game) mod client_input_options;
 pub(in crate::game) mod client_input_reads;
 pub(in crate::game) mod client_input_reads_tests;
 pub(in crate::game) mod client_mining_predict;
@@ -404,7 +396,6 @@ pub(in crate::game) mod data_maps_updated;
 pub(in crate::game) mod death_source_tests;
 pub(in crate::game) mod default_components_bound;
 pub(in crate::game) mod dispense_method;
-pub(in crate::game) mod draw_measures;
 pub(in crate::game) mod effect_particle_modification;
 pub(in crate::game) mod empty_contents;
 pub(in crate::game) mod enchant_power_bonus;

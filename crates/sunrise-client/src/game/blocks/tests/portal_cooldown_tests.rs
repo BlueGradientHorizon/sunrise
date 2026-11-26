@@ -39,9 +39,8 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

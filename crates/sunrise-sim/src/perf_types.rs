@@ -1,15 +1,17 @@
 //! Portable performance DTOs, GPU timing serialization, profile request/reply
 //! parsing, and cross-crate perf test locks shared by `sunrise-sim` and `sunrise-client-lib`.
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::ops::RangeInclusive;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Instant;
-use sunrise_perf_format::Interner;
 use sunrise_perf_format::v1::{
     GpuBackend, GpuCounter, GpuCounts, GpuDevice, GpuFragmentUnit, GpuFrame, GpuFrames, GpuMode,
     GpuPart, GpuPartCounts, GpuPartsMode, GpuPass, GpuPassSplit, GpuPasses, GpuSource, Side,
+    StopReason, Trigger,
 };
+use sunrise_perf_format::{FieldSender, Interner};
 
 /// Block-entity static-cache counters reported per frame into `control::FrameStats`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -523,6 +525,27 @@ impl Default for StartOptions {
             file: None,
         }
     }
+}
+
+/// Where a client's captures go: `SUNRISE_PROFILE` when set, else `reports/` in the game home.
+pub fn reports_dir(profile: Option<&OsStr>, home: &Path) -> PathBuf {
+    match profile.filter(|p| !p.is_empty()) {
+        Some(dir) => PathBuf::from(dir),
+        None => home.join("reports"),
+    }
+}
+
+/// What a side on another thread needs to write into the running capture's file.
+#[derive(Clone)]
+pub struct Join {
+    pub sender: FieldSender,
+    pub path: PathBuf,
+    /// The instant every `t` of the capture counts from.
+    pub origin: Instant,
+    /// When the capture's window ends, and why it stops then.
+    pub ends: Option<(Instant, StopReason)>,
+    pub options: StartOptions,
+    pub trigger: Trigger,
 }
 
 #[derive(Clone, Debug, PartialEq)]

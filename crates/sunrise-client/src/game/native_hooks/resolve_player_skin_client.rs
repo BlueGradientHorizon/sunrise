@@ -19,7 +19,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let PlayerSkinOverride { texture, model, .. } = selection?;
         // The same packed atlas is sampled by the body, the hand, and the preview.
         // The pool is absent if the current atlas has no slots for live images.
-        if self.gui.atlas.dynamic_texture_pool.is_none()
+        if self.side.gui.atlas.dynamic_texture_pool.is_none()
             || self.side.dynamic_textures.size(&texture) != Some([64, 64])
         {
             return None;

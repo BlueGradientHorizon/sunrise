@@ -22,19 +22,22 @@ use crate::game::client_side::potions::splash_distance_sqr;
 use crate::game::client_side::potions::thrown_projectile;
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_client::health::Attack;
-use sunrise_client::{
-    brewing,
-    effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects, effect_modifier},
-    items::ItemStack,
-    mobs::{Damage, DamageKind, Mob, MobEffectAction, ModEffectTick, NamedDamage, Who},
-    particles::{ParticleOptions, ParticleType},
-    projectiles::{Projectile, ProjectileKind},
-    text::Text,
-};
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     random::{LegacyRandom, RandomSource},
+};
+use {
+    sunrise_client::brewing, sunrise_client::effects::EffectAction,
+    sunrise_client::effects::EffectInstance, sunrise_client::effects::OmenTick,
+    sunrise_client::effects::PlayerEffects, sunrise_client::effects::effect_modifier,
+    sunrise_client::items::ItemStack, sunrise_client::mobs::Damage,
+    sunrise_client::mobs::DamageKind, sunrise_client::mobs::Mob,
+    sunrise_client::mobs::MobEffectAction, sunrise_client::mobs::ModEffectTick,
+    sunrise_client::mobs::NamedDamage, sunrise_client::mobs::Who,
+    sunrise_client::projectiles::Projectile, sunrise_client::projectiles::ProjectileKind,
+    sunrise_client::text::Text, sunrise_level::particle_options::ParticleOptions,
+    sunrise_level::particle_options::ParticleType,
 };
 
 impl CloudSettings {
@@ -2714,9 +2717,8 @@ pub(in crate::game) mod mob_absorption_max_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -2886,9 +2888,8 @@ pub(in crate::game) mod mob_health_boost_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -3137,9 +3138,8 @@ pub(in crate::game) mod depleted_absorption_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -3465,9 +3465,8 @@ pub(in crate::game) mod arrow_contents {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

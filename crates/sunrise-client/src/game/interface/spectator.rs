@@ -113,9 +113,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (w, h) = (batch.width as i32, batch.height as i32);
         let now = self.spectator_now();
         let labels: Vec<Text> = (1..=9)
-            .map(|n| keybinds::display_name(self.settings.keys.get(&format!("key.hotbar.{n}"))))
+            .map(|n| {
+                keybinds::display_name(self.side.settings.keys.get(&format!("key.hotbar.{n}")))
+            })
             .collect();
-        let font = &self.gui.atlas.font;
+        let font = &self.side.gui.atlas.font;
         let mut draws =
             self.side
                 .spectator_gui
@@ -126,10 +128,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 h,
                 now,
                 font,
-                self.settings.text_background(0.0),
+                self.side.settings.text_background(0.0),
             ));
         }
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
 }
 

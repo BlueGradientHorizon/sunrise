@@ -113,7 +113,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let mut widgets = Vec::new();
             match cart {
                 None => {
-                    let m = Measure(&self.gui.atlas.font);
+                    let m = Measure(&self.side.gui.atlas.font);
                     let c = Commands {
                         dispatcher: sunrise_client::command::vanilla::game_dispatcher(),
                         registries: &self.ui.registries,

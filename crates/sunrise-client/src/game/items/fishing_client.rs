@@ -28,6 +28,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let Some(r) = self
+            .side
             .gui
             .atlas
             .sprites
@@ -195,7 +196,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// person, beside the body otherwise.
     pub(in crate::game) fn rod_hand_position(&self, alpha: f64) -> Option<glam::DVec3> {
         let p = self.player.as_ref()?;
-        let right_arm = self.main_hand_rod() != self.settings.main_hand_left;
+        let right_arm = self.main_hand_rod() != self.side.settings.main_hand_left;
         let invert: f32 = if right_arm { 1.0 } else { -1.0 };
         let swing = trig::sin(f64::from(
             self.swing.animation(alpha as f32).sqrt() * std::f32::consts::PI,
@@ -203,7 +204,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let feet = self.previous_position.lerp(p.position, alpha);
         let eye = glam::DVec3::new(feet.x, feet.y + f64::from(p.dimensions.eye_height), feet.z);
         if self.side.camera_type.is_first_person() {
-            let fov = self.settings.fov as i32 as f32;
+            let fov = self.side.settings.fov as i32 as f32;
             Some(eye + near_plane_hand(self.near_plane(), fov, invert, swing))
         } else {
             let model = self.side.player_model.as_ref()?;

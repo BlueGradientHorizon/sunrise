@@ -889,6 +889,9 @@ impl Settings {
             operator_items_tab: self.operator_items_tab,
             reduced_debug_info: self.reduced_debug_info,
             language: self.language.clone(),
+            mods: self.mods.clone(),
+            no_ai: self.extras.no_ai,
+            agent_control: self.extras.agent_control,
         }
     }
 
@@ -903,6 +906,9 @@ impl Settings {
         self.operator_items_tab = sim.operator_items_tab;
         self.reduced_debug_info = sim.reduced_debug_info;
         self.language.clone_from(&sim.language);
+        self.mods.clone_from(&sim.mods);
+        self.extras.no_ai = sim.no_ai;
+        self.extras.agent_control = sim.agent_control;
     }
 }
 

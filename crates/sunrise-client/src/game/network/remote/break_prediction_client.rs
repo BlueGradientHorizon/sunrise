@@ -289,10 +289,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // LevelChunk.setBlockState drops the old pot only when the block changes;
         // a new state of the same pot keeps its event-driven wobble.
-        if self.be_anims.pots.contains_key(&pos)
+        if self.side.be_anims.pots.contains_key(&pos)
             && self.res.facts().get(previous).name != self.res.facts().get(state).name
         {
-            self.be_anims.pots.remove(&pos);
+            self.side.be_anims.pots.remove(&pos);
         }
         if let Some(restored) = restored {
             let RemovedEntity {

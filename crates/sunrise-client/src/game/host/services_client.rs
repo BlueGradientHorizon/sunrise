@@ -9,7 +9,7 @@ impl RenderAssets for Game<'_, crate::game::client_side::ClientState> {
         let state = state
             .try_into_engine(&())
             .map_err(|_| ModelError::UnknownModel)?;
-        Ok(self.pack.render.block_state_models(state))
+        Ok(self.side.client_pack.render.block_state_models(state))
     }
     fn block_state_model(&self, state: BlockState) -> Result<ModelRef, ModelError> {
         let state = state
@@ -18,12 +18,12 @@ impl RenderAssets for Game<'_, crate::game::client_side::ClientState> {
         self.native_block_state_model(state)
     }
     fn baked_model(&self, key: BakedModelKey) -> Result<BakedModelView<'_>, ModelError> {
-        self.pack.render.baked_model(key)
+        self.side.client_pack.render.baked_model(key)
     }
     fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
-        self.pack.render.render_pipeline(id)
+        self.side.client_pack.render.render_pipeline(id)
     }
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
-        self.pack.render.animation(id)
+        self.side.client_pack.render.animation(id)
     }
 }

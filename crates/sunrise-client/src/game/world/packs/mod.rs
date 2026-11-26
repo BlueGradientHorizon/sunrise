@@ -1,8 +1,10 @@
 //! Resource pack selection bound to the game: the pack screen lists, and a
 //! full resource reload after a change, while playing.
-use super::{Game, PackResources, Resources, UiResources};
 #[cfg(feature = "client")]
-use super::{build_renderer, prepare_renderer_textures};
+use super::{
+    ClientPackResources, ClientResources, Game, PackResources, Resources, UiResources,
+    build_renderer, prepare_renderer_textures,
+};
 use mod_api::__private::game::*;
 use mod_api::{__private::reload::ReloadFiles, FileToIdConverter, Identifier};
 use std::{
@@ -11,19 +13,20 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_assets::resource_source::ResourceRoot;
+#[cfg(feature = "client")]
+use sunrise_client::gfx::PreparedTextures;
+#[cfg(feature = "client")]
 use sunrise_client::{
-    assets::Assets,
+    assets::Assets, hud::HudAtlas, lang, level_loading::OverlayFade, pack_browser,
+};
+use sunrise_client::{
     datapack::DataPack,
-    gfx::PreparedTextures,
-    hud::HudAtlas,
-    lang,
-    level_loading::OverlayFade,
-    pack_browser,
     pack_screen::{self, Compat, PackInfo, Source as PackSource},
     packs::{self, Pack, Position},
-    streaming::WorkerContext,
     text::{Style, Text},
 };
+#[cfg(feature = "client")]
+use sunrise_client_render::streaming::WorkerContext;
 
 /// Where overlay roots are built (beside options.txt).
 pub fn cache_dir() -> PathBuf {
@@ -271,7 +274,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let handled = self.side.screen == super::Screen::Options
             && self.side.chat_ui.options.drop_resource_pack(
                 path.to_path_buf(),
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 size,
             );
         if !handled
@@ -292,8 +295,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether all active packs preserve vanilla's block models. The server
     /// overlay sits above the local selection and must be included too.
     pub(in crate::game::client_side) fn model_packs_are_vanilla(&self) -> bool {
-        self.settings.sunrise.vanilla_models_with_server_packs(
-            self.settings.resource_packs.iter().map(String::as_str),
+        self.side.settings.sunrise.vanilla_models_with_server_packs(
+            self.side.settings.resource_packs.iter().map(String::as_str),
             self.side
                 .server_packs
                 .0
@@ -306,10 +309,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn effective_leaf_culling(
         &self,
     ) -> sunrise_client::graphics::LeafCullingMode {
-        self.settings
+        self.side
+            .settings
             .sunrise
             .leaf_culling_effective_with_server_packs(
-                self.settings.resource_packs.iter().map(String::as_str),
+                self.side.settings.resource_packs.iter().map(String::as_str),
                 self.side
                     .server_packs
                     .0
@@ -323,12 +327,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn refresh_pack_lists(&mut self) {
         let infos = self.resource_pack_infos();
         let configs = pack_configs(&self.vanilla_root());
-        let browsing = self.settings.extras.pack_browser;
+        let browsing = self.side.settings.extras.pack_browser;
         let o = &mut self.side.chat_ui.options;
         o.pack_browser = browsing;
         o.pack_infos = infos;
         o.pack_configs = configs;
-        o.pack_selection = self.settings.resource_packs.clone();
+        o.pack_selection = self.side.settings.resource_packs.clone();
         o.pack_screen = None;
     }
     /// `Minecraft.reloadResourcePacks`: rebuild the overlay and reload every
@@ -368,7 +372,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             log::info!("Sunrise: added the resource pack {name}");
             // Rebuilding the screen would shut the list; keep it and only
             // refresh what the lists read.
-            let selection = self.settings.resource_packs.clone();
+            let selection = self.side.settings.resource_packs.clone();
             let infos = self.resource_pack_infos();
             self.side.chat_ui.options.pack_infos = infos;
             self.side.chat_ui.options.pack_configs = pack_configs(&self.vanilla_root());
@@ -387,8 +391,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.vanilla_root(), &packs_dir());
         all.extend(self.discover_mod_packs(mod_api::PackType::ClientResources));
-        if packs::has_optional_pack(&packs::enabled(&all, &self.settings.resource_packs)) {
-            clear_selection(&mut self.settings);
+        if packs::has_optional_pack(&packs::enabled(&all, &self.side.settings.resource_packs)) {
+            clear_selection(&mut self.side.settings);
             if self.spawn_pack_reload(ReloadKind::Selection).is_ok() {
                 // addResourcePackLoadFailToast(null), SystemToast.addOrUpdate.
                 let title = sunrise_client::text::Text::translate("resourcePack.load_fail", &[]);
@@ -426,6 +430,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.pending_pack_reload = true;
             return Ok(());
         }
+        self.join_world_rest()
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
         self.clear_device_keys();
         self.side.physical_keys.clear();
         self.set_mapping_held("key.attack", false);
@@ -454,15 +460,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.mods.refused = Default::default();
         let mod_sources = self.mods.clone();
         let (selected, server) = (
-            self.settings.resource_packs.clone(),
+            self.side.settings.resource_packs.clone(),
             self.side.server_packs.0.active.clone(),
         );
         let (assets, res, context) = (
             self.pack.assets.clone(),
             self.res.clone(),
-            self.pack.context.clone(),
+            self.side.client_pack.context.clone(),
         );
-        let (unicode, japanese) = (self.settings.force_unicode, self.settings.japanese_glyphs);
+        let client_res_slot = self.side.client_res.clone();
+        let (unicode, japanese) = (
+            self.side.settings.force_unicode,
+            self.side.settings.japanese_glyphs,
+        );
         // The reload's mod listeners register here, on the thread that owns
         // the game, before the staging worker starts: each listener keeps its
         // registering mod for crash attribution.
@@ -470,6 +480,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let texture_atlases = super::client_reload::collect_texture_atlases();
         super::mods::register_fluid_models(self.options.execution_role);
         let stage = move |progress: &crate::game::Progress| {
+            let Some(client_res) = client_res_slot.get() else {
+                return Err("client resources not loaded".to_owned());
+            };
             stage_pack(
                 &vanilla,
                 &selected,
@@ -479,6 +492,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 &texture_atlases,
                 &assets,
                 &res,
+                client_res,
                 &context,
                 unicode,
                 japanese,
@@ -560,6 +574,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             client_applies,
             gui,
             pack,
+            client_pack,
             textures,
             cem,
             block_entity_shapes,
@@ -578,7 +593,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.join_world_rest()?;
         let tab_modifiers = sunrise_client::polytone_creative_tabs::TabModifier::read_all(&root);
         let standalone_geometry =
-            super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
+            super::native_block_entity_draw::StandaloneGeometry::new(&pack, &client_pack, &gui);
         // Keep the working GPU resources, and hand its window surface over.
         if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.release_surface();
@@ -593,21 +608,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     window,
                     self.options.offscreen,
                     &pack,
+                    &client_pack,
                     &gui,
                     self.side.renderer.0.as_deref(),
                     Some(textures),
-                    self.settings.sunrise.api,
-                    self.settings.sunrise.translucent_batching,
-                    self.settings.vsync,
-                    &self.settings.sunrise,
-                    super::shader_packs::picked_pack_shape(&self.settings),
+                    self.side.settings.sunrise.api,
+                    self.side.settings.sunrise.translucent_batching,
+                    self.side.settings.vsync,
+                    &self.side.settings.sunrise,
+                    super::shader_packs::picked_pack_shape(&self.side.settings),
                     self.side
                         .renderer
                         .0
                         .as_ref()
                         .map(|r| r.display_reading())
                         .unwrap_or_default(),
-                    self.settings.texture_atlas_settings(),
+                    self.side.settings.texture_atlas_settings(),
                 )
                 .and_then(|(renderer, clouds)| {
                     clouds?;
@@ -629,15 +645,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         };
         let skip = self
+            .side
             .settings
             .extras
             .skip_modded_splashes_if_vanilla_modified;
         let gui = gui.with_splashes(&pack.source, &self.vanilla_root(), skip);
         let has_renderer = renderer.is_some();
-        let upload = self.publish_client_atlases(&pack.render, gui, renderer);
+        let upload = self.publish_client_atlases(&client_pack.render, gui, renderer);
         // With the atlas visible, admit the models at the model manager's point
         // in the listener order. All renderer and model validation is finished.
-        self.apply_client_reload(client_applies, |game| {
+        self.apply_client_reload(client_applies, |game: &mut super::ClientGame<'_>| {
             // Refresh modifiers from the newly staged packs, including removals.
             game.side
                 .creative_screen
@@ -661,6 +678,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game.options.resources = root.clone();
             game.side.falling_vertices.get_mut().clear();
             game.pack = pack;
+            game.side.client_pack = client_pack;
             // The joined level's environment for the frame has the packs' layers over its type.
             game.build_level_environments();
             game.side.standalone_geometry = standalone_geometry;
@@ -686,13 +704,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if !game.is_logical_server() {
                 game.side.particles.0.reload(
                     &game.pack.source,
-                    &game.gui.atlas.sprites,
-                    &game.gui.atlas.translucent,
+                    &game.side.gui.atlas.sprites,
+                    &game.side.gui.atlas.translucent,
                 );
             }
             // Villager hats come from the pack's texture metadata (shared data, swapped in place).
             *game
-                .res
+                .client_res()
                 .client_mob_data()
                 .villager_hats
                 .write()
@@ -700,37 +718,37 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 sunrise_client::mobs::villager_hats::VillagerHats::load(&game.pack.source);
             game.install_client_professions(&professions);
             *game
-                .res
+                .client_res()
                 .client_mob_data()
                 .cem
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = cem;
-            game.res
+            game.client_res()
                 .block_entity_render()
                 .set_shapes(block_entity_shapes);
             // The random entity textures and emissive overlays the new atlas packs. A new scan is
             // a new generation: every mob chooses again on its next tick.
             *game
-                .res
+                .client_res()
                 .client_mob_data()
                 .random_textures
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                std::mem::take(&mut game.gui.atlas.random_textures);
+                std::mem::take(&mut game.side.gui.atlas.random_textures);
             *game
-                .res
+                .client_res()
                 .client_mob_data()
                 .emissive
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                game.gui.atlas.emissive.clone();
+                game.side.gui.atlas.emissive.clone();
             *game
-                .res
+                .client_res()
                 .client_mob_data()
                 .blinks
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                std::mem::take(&mut game.gui.atlas.blinks);
+                std::mem::take(&mut game.side.gui.atlas.blinks);
             // Read with the language in use when the reload started: one picked since then wins.
             let code = lang::code_snapshot();
             lang::set(if language.code == code {
@@ -745,9 +763,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game.clear_lod();
             // A pack that may replace leaf models falls back to `Off` before the
             // reload marks every section dirty.
-            game.streaming.leaf_culling = game.effective_leaf_culling();
+            game.side.streaming.leaf_culling = game.effective_leaf_culling();
             let context = game.worker_context();
-            game.streaming.reload_resources(&mut game.world, context);
+            game.side
+                .streaming
+                .reload_resources(&mut game.world, context);
             game.side.pending_uploads.0.clear();
             game.install_model_upload(upload);
             if has_renderer {
@@ -758,7 +778,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game.side.native_shaders = super::native_shaders::NativeShaders::picking(
                 &std::mem::take(&mut game.side.native_shaders.picked),
             );
-            game.side.chat_ui.chat.rescale(&game.gui.atlas);
+            game.side.chat_ui.chat.rescale(&game.side.gui.atlas);
             game.install_loop_context(loop_context);
             game.resolve_entity_renderers();
             game.native_model_baking_completed();
@@ -782,6 +802,7 @@ pub(in crate::game) fn stage_pack(
     texture_atlases: &[mod_api::TextureAtlasRegistration],
     assets: &Arc<Assets>,
     res: &Resources,
+    client_res: &ClientResources,
     context: &WorkerContext,
     force_unicode: bool,
     japanese: bool,
@@ -839,32 +860,33 @@ pub(in crate::game) fn stage_pack(
                 plain_texts: Default::default(),
             };
             progress.set(2);
-            let mut pack = PackResources::load(
+            let (mut pack, client_pack) = PackResources::load(
                 &resource_root,
                 assets.clone(),
                 render,
                 res.facts(),
-                context.biomes.clone(),
-                context.light.clone(),
+                context.chunk.biomes.clone(),
+                context.chunk.light.clone(),
                 &res.core.item_data,
             )?;
             pack.additional_data = super::pack_finders::data_packs(mod_sources).into();
-            let textures = prepare_renderer_textures(&pack);
+            let textures = prepare_renderer_textures(&client_pack);
             let cem = Arc::new(sunrise_client::mobs::cem::CemModels::load(
                 &source,
-                res.client_mob_models(),
+                client_res.client_mob_models(),
             ));
-            let block_entity_shapes = res.block_entity_render().shapes_for(&source);
+            let block_entity_shapes = client_res.block_entity_render().shapes_for(&source);
             let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);
             let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
             let frame_models =
-                super::frames::bake_frames(pack.render.model_library.as_deref().ok());
+                super::frames::bake_frames(client_pack.render.model_library.as_deref().ok());
             progress.set(3);
             Ok(move |client_applies| StagedPack {
                 root,
                 client_applies,
                 gui,
                 pack,
+                client_pack,
                 textures,
                 cem,
                 block_entity_shapes,
@@ -897,6 +919,7 @@ pub(in crate::game) struct StagedPack {
     pub client_applies: Vec<super::client_reload::PreparedClientReload>,
     pub gui: UiResources,
     pub pack: PackResources,
+    pub(in crate::game) client_pack: ClientPackResources,
     pub textures: PreparedTextures,
     /// The packs' custom entity models (OptiFine CEM).
     pub cem: Arc<sunrise_client::mobs::cem::CemModels>,
@@ -1120,14 +1143,14 @@ pub(in crate::game) mod tests {
                     |game| {
                         game.ui.vanilla_root = vanilla;
                         game.mods = sources;
-                        game.settings.mods.enabled = enabled;
+                        game.side.settings.mods.enabled = enabled;
                         // Drive the real entry point and join its CPU staging worker, without
                         // applying the staged textures (which would need a window/GPU).
                         let mut reload = |expected: Option<&str>| {
                             game.spawn_pack_reload(ReloadKind::Selection).unwrap();
                             let mut pending = game.side.pack_reload.0.take().unwrap();
                             let staged = pending.handle.take().unwrap().join().unwrap().unwrap();
-                            let layers = &staged.pack.render.sprite_layers;
+                            let layers = &staged.client_pack.render.sprite_layers;
                             for id in ["reload_boundary:block/oil_0", "reload_boundary:block/oil_1"]
                             {
                                 assert_eq!(layers.contains_key(id), expected == Some(id), "{id}");

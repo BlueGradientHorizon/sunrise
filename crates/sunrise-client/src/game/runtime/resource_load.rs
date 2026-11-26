@@ -1,7 +1,14 @@
 //! The startup's resource load: the stages the loading screen shows, the
 //! scoped threads each step runs on, and the core, gameplay and pack tables
 //! read from the prepared resources.
+#[cfg(feature = "client")]
+use super::client_side::resource_tables_client::ClientPackParts;
 use super::{resource_tables::PackParts, *};
+
+#[cfg(feature = "client")]
+pub(in crate::game) type UiPublishArg = UiResources;
+#[cfg(not(feature = "client"))]
+pub(in crate::game) type UiPublishArg = ();
 
 #[cfg(test)]
 #[path = "incoming_tests/resource_load_scope.rs"]
@@ -125,8 +132,12 @@ pub(in crate::game) struct CoreTables {
     pub(in crate::game) entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
     pub(in crate::game) item_defaults: Arc<sunrise_world::item_defaults::ItemDefaults>,
     pub(in crate::game) assets: Assets,
-    pub(in crate::game) render: RenderAssets,
-    pub(in crate::game) item_renderer: sunrise_client::item_render::ItemRenderer,
+    pub(in crate::game) item_models: Arc<sunrise_assets::item_model::ItemModels>,
+    pub(in crate::game) item_ids: Arc<HashMap<String, i32>>,
+    #[cfg(feature = "client")]
+    pub(in crate::game) render: Option<RenderAssets>,
+    #[cfg(feature = "client")]
+    pub(in crate::game) item_renderer: Option<sunrise_client::item_render::ItemRenderer>,
     pub(in crate::game) visibility: sunrise_world::block_render::FaceVisibility,
     pub(in crate::game) gameplay: GameplayTables,
     pub(in crate::game) biomes: Arc<Biomes>,
@@ -171,7 +182,8 @@ pub(in crate::game) fn load_core(
 ) -> std::result::Result<std::result::Result<CoreTables, String>, String> {
     let role = load_role.execution;
     let root = resources.prepared();
-    let headless = !role.is_client();
+    #[cfg(feature = "client")]
+    let is_client = role.is_client();
     // The model library reads every file under `assets/` and needs no
     // block registry, so it is parsed beside `Assets::load` rather than
     // after it. It used to sit inside `reload` behind both the registry
@@ -179,13 +191,15 @@ pub(in crate::game) fn load_core(
     // second on the critical path, and warm it is still ~30 ms.
     // A server draws nothing and parses no models, so it skips this.
     let (assets, parsed_models, entity_models) = std::thread::scope(|scope| {
-        let models = (parallel && !headless).then(|| {
+        #[cfg(feature = "client")]
+        let models = (parallel && is_client).then(|| {
             scope.spawn(|| {
                 let _step = startup::step("core.models_parse");
                 sunrise_client::model_library::ParsedModels::load(resources.source())
             })
         });
-        let entity_models = (!headless).then(|| {
+        #[cfg(feature = "client")]
+        let entity_models = is_client.then(|| {
             Step::spawn(scope, parallel, "entity_models", || {
                 startup::time("core.entity_models", || {
                     sunrise_client::mobs::EntityModelDocument::load(root).ok()
@@ -193,8 +207,14 @@ pub(in crate::game) fn load_core(
             })
         });
         let assets = startup::time("core.assets", || Assets::load(root));
+        #[cfg(feature = "client")]
         let models = models.map(|m| m.join().unwrap_or_else(|e| std::panic::resume_unwind(e)));
+        #[cfg(not(feature = "client"))]
+        let models = ();
+        #[cfg(feature = "client")]
         let entity_models = entity_models.and_then(|step| step.join()).map(Arc::new);
+        #[cfg(not(feature = "client"))]
+        let entity_models = None;
         (assets, models, entity_models)
     });
     let assets = match assets {
@@ -205,69 +225,74 @@ pub(in crate::game) fn load_core(
     let item_data =
         Arc::new(mods::load_item_data(root, role, load_role.owning).map_err(|e| e.to_string())?);
     let registry = assets.registry;
+    #[cfg(feature = "client")]
     let entity_models_for_render = entity_models.clone();
+    #[cfg(not(feature = "client"))]
+    let () = parsed_models;
     let (render, gameplay, visibility, biomes, environment, collision) = std::thread::scope(
         |scope| {
             let assets = &assets;
+            #[cfg(feature = "client")]
             let item_data = &item_data;
             let render = Step::spawn(scope, parallel, "render", move || {
-                // A server reads no block sprites' pixels, which only the
-                // renderer draws (32 MB).
-                let parsed_models = parsed_models;
-                let render = startup::time("core.block_models_sprites", || {
-                    if headless {
-                        sunrise_client::assets::RenderAssets::load_for_server(resources, assets)
-                    } else if let Some(parsed) = parsed_models {
-                        sunrise_client::assets::RenderAssets::load_with_models(
-                            resources, assets, parsed,
-                        )
-                    } else {
-                        sunrise_client::assets::RenderAssets::load(resources, assets)
-                    }
-                })
-                .map_err(|e| e.to_string())?;
-                let library = render.model_library.clone();
+                #[cfg(feature = "client")]
+                let render = if is_client {
+                    Some(
+                        startup::time("core.block_models_sprites", || {
+                            if let Some(parsed) = parsed_models {
+                                RenderAssets::load_with_models(resources, assets, parsed)
+                            } else {
+                                RenderAssets::load(resources, assets)
+                            }
+                        })
+                        .map_err(|e| e.to_string())?,
+                    )
+                } else {
+                    None
+                };
                 let item_defaults = startup::time("core.item_defaults", || {
                     sunrise_world::item_defaults::shared(root)
                 })
                 .map_err(|e| e.to_string())?;
-                let item_renderer = startup::time("core.item_models", || {
-                    if headless {
-                        sunrise_client::item_render::ItemRenderer::load_for_server(
-                            resources, library, item_data,
-                        )
-                    } else if let Some(document) = entity_models_for_render.as_deref() {
-                        sunrise_client::item_render::ItemRenderer::load_with_library_and_entity_models(
-                            resources, library, document, item_data,
-                        )
-                    } else {
-                        sunrise_client::item_render::ItemRenderer::load_with_library(
-                            resources, library, item_data,
-                        )
-                    }
-                })
-                .map_err(|e| e.to_string());
-                Ok((render, item_renderer, item_defaults))
+                #[cfg(feature = "client")]
+                let client = if let Some(render) = render {
+                    let library = render.model_library.clone();
+                    Some(startup::time("core.item_models", || {
+                        if let Some(document) = entity_models_for_render.as_deref() {
+                            sunrise_client::item_render::ItemRenderer::load_with_library_and_entity_models(
+                                resources, library, document, item_data,
+                            )
+                        } else {
+                            sunrise_client::item_render::ItemRenderer::load_with_library(
+                                resources, library, item_data,
+                            )
+                        }
+                    }).map(|renderer| (render, renderer)).map_err(|e| e.to_string()))
+                } else {
+                    None
+                };
+                #[cfg(not(feature = "client"))]
+                let client = ();
+                Ok((client, item_defaults))
             });
-            // Nor the face visibility the mesher and the block entity
-            // renderer cull with (19 MB).
             let visibility = Step::spawn(scope, parallel, "visibility", || {
-                if headless {
-                    return Ok(sunrise_world::block_render::FaceVisibility::empty());
+                #[cfg(feature = "client")]
+                if is_client {
+                    return startup::time("core.visibility", || {
+                        models::load_visibility(root, registry)
+                    })
+                    .map_err(|e| e.to_string());
                 }
-                startup::time("core.visibility", || {
-                    models::load_visibility(root, registry)
-                })
-                .map_err(|e| e.to_string())
+                Ok::<_, String>(sunrise_world::block_render::FaceVisibility::empty())
             });
             let biomes = Step::spawn(scope, parallel, "biomes", || {
                 let biomes = Arc::new(
                     startup::time("core.biomes", || {
-                        if headless {
-                            Biomes::load_for_server(resources)
-                        } else {
-                            Biomes::load(resources)
+                        #[cfg(feature = "client")]
+                        if is_client {
+                            return Biomes::load(resources);
                         }
+                        Biomes::load_for_server(resources)
                     })
                     .map_err(|e| e.to_string())?,
                 );
@@ -306,23 +331,57 @@ pub(in crate::game) fn load_core(
         },
     );
     // The packs' failure first: it rolls back whatever else failed.
-    let (render, item_renderer, item_defaults) = match render {
+    let (client, item_defaults) = match render {
         Ok(render) => render,
         Err(e) => return Ok(Err(e)),
     };
     let gameplay = gameplay?;
     progress.set(3);
+    let biomes = biomes?;
+    let environment = environment?;
+    let visibility = visibility?;
+    #[cfg(feature = "client")]
+    let (render, item_renderer) = match client {
+        Some(client) => {
+            let (render, item_renderer) = client?;
+            (Some(render), Some(item_renderer))
+        }
+        None => (None, None),
+    };
+    #[cfg(not(feature = "client"))]
+    let () = client;
+    let load_server_items = || -> std::result::Result<_, String> {
+        let models =
+            sunrise_sim::item_models::load_for_server(&item_data).map_err(|e| e.to_string())?;
+        let ids = Arc::new(sunrise_sim::item_models::load_item_ids(root));
+        Ok((models, ids))
+    };
+    #[cfg(feature = "client")]
+    let (item_models, item_ids) = if let Some(renderer) = &item_renderer {
+        (
+            Arc::clone(&renderer.models),
+            Arc::clone(renderer.item_ids()),
+        )
+    } else {
+        load_server_items()?
+    };
+    #[cfg(not(feature = "client"))]
+    let (item_models, item_ids) = load_server_items()?;
     Ok(Ok(CoreTables {
         item_data,
         item_defaults,
         entity_models,
         gameplay,
-        biomes: biomes?,
-        environment: environment?,
-        visibility: visibility?,
-        item_renderer: item_renderer?,
+        biomes,
+        environment,
+        visibility,
+        item_models,
+        item_ids,
+        #[cfg(feature = "client")]
+        item_renderer,
         collision: Arc::new(collision?),
         assets,
+        #[cfg(feature = "client")]
         render,
     }))
 }
@@ -572,7 +631,7 @@ pub(in crate::game) fn load_resources(
     menu: bool,
     role: impl Into<mods::LoadRole>,
     progress: &Progress,
-    publish: &mut dyn FnMut(UiResources, &std::path::Path),
+    publish: &mut dyn FnMut(UiPublishArg, &std::path::Path),
 ) -> Result<Loaded> {
     test_cache::load(
         roots.into(),
@@ -601,7 +660,7 @@ pub(in crate::game) fn load_resources_skip_lang(
     started: Instant,
     role: impl Into<mods::LoadRole>,
     progress: &Progress,
-    publish: &mut dyn FnMut(UiResources, &std::path::Path),
+    publish: &mut dyn FnMut(UiPublishArg, &std::path::Path),
 ) -> Result<Loaded> {
     test_cache::load(
         roots.into(),
@@ -631,11 +690,11 @@ pub(in crate::game) fn load_resources_uncached(
     menu: bool,
     role: impl Into<mods::LoadRole>,
     progress: &Progress,
-    publish: &mut dyn FnMut(UiResources, &std::path::Path),
+    publish: &mut dyn FnMut(UiPublishArg, &std::path::Path),
 ) -> Result<Loaded> {
     let _permit = test_cache::acquire_in_process_load_permit();
     let load_role: mods::LoadRole = role.into();
-    let mut loaded = with_skip_facts_memo(|| {
+    let loaded = with_skip_facts_memo(|| {
         load_resources_for_mods(
             roots.into(),
             additional_data,
@@ -651,12 +710,19 @@ pub(in crate::game) fn load_resources_uncached(
             &mods::ModsState::default(),
         )
     })?;
-    if !menu && load_role.execution.is_client() {
-        if let Some(gui) = loaded.gui.as_mut() {
-            gui.atlas.pack_pixels_sync();
+    #[cfg(feature = "client")]
+    let loaded = {
+        let mut loaded = loaded;
+        if !menu && load_role.execution.is_client() {
+            if let Some(gui) = loaded.gui.as_mut() {
+                gui.atlas.pack_pixels_sync();
+            }
+            if let Some(client_pack) = &loaded.client_pack {
+                client_pack.render.pixels.pack_sync();
+            }
         }
-        loaded.pack.render.pixels.pack_sync();
-    }
+        loaded
+    };
     Ok(loaded)
 }
 
@@ -715,7 +781,7 @@ pub(in crate::game) fn load_resources_for_mods(
     menu: bool,
     role: impl Into<mods::LoadRole>,
     progress: &Progress,
-    publish: &mut dyn FnMut(UiResources, &std::path::Path),
+    publish: &mut dyn FnMut(UiPublishArg, &std::path::Path),
     clear_pack_selection: &mut dyn FnMut() -> Result<()>,
     mod_sources: &mods::ModsState,
 ) -> Result<Loaded> {
@@ -740,15 +806,23 @@ pub(in crate::game) fn load_resources_for_mods(
         (Err(error), None) => return Err(error.into()),
     };
     let root = base.prepared().to_path_buf();
-    let headless = !role.is_client();
+    let is_client = role.is_client();
+    #[cfg(not(feature = "client"))]
+    let _ = publish;
     #[cfg(feature = "client")]
-    let texture_atlases = if headless {
-        Vec::new()
-    } else {
+    let texture_atlases = if is_client {
         client_reload::collect_texture_atlases()
+    } else {
+        Vec::new()
     };
     #[cfg(feature = "client")]
-    let stage = |root| client_reload::stage_texture_atlases(root, &texture_atlases);
+    let stage = |root| {
+        if is_client {
+            client_reload::stage_texture_atlases(root, &texture_atlases)
+        } else {
+            root
+        }
+    };
     #[cfg(not(feature = "client"))]
     let stage = |root: sunrise_assets::resource_source::ResourceRoot| root;
     let mut resolved = stage(resolved);
@@ -756,35 +830,31 @@ pub(in crate::game) fn load_resources_for_mods(
     // One pool of workers for every level's streaming, the client's and the
     // server thread's (sunrise_threads::jobs), sized before any world opens.
     sunrise_threads::jobs::configure(threads);
-    sunrise_client::sprites::set_texture_budget(settings.sunrise.texture_budget_mib);
     #[cfg(feature = "client")]
-    sunrise_client::sprites::set_labpbr_maps(shader_packs::picks_material_pack(settings));
+    if is_client {
+        sunrise_client::sprites::set_texture_budget(settings.sunrise.texture_budget_mib);
+        sunrise_client::sprites::set_labpbr_maps(shader_packs::picks_material_pack(settings));
+    }
     // Stage A: the menu bundle (atlas and panorama). With a loading screen it is
     // published at once so the title screen can appear while the world bundle
     // loads; the synchronous launch instead carries it in `Loaded`.
-    // A dedicated server has no font metrics or atlas; give its game only
-    // the shared empty UI structures.
+    #[cfg(feature = "client")]
     let load_ui = |source: &sunrise_assets::resource_source::ResourceSource| {
         let _step = startup::step("ui.load");
-        if role.is_dedicated_server() {
-            UiResources::server(&sunrise_assets::resource_source::ResourceSource::default())
-        } else if headless {
-            UiResources::server(source)
-        } else {
-            UiResources::load(source, vanilla_root).map(|ui| {
-                ui.with_splashes(
-                    source,
-                    vanilla_root,
-                    settings.extras.skip_modded_splashes_if_vanilla_modified,
-                )
-            })
-        }
+        UiResources::load(source, vanilla_root).map(|ui| {
+            ui.with_splashes(
+                source,
+                vanilla_root,
+                settings.extras.skip_modded_splashes_if_vanilla_modified,
+            )
+        })
     };
     // The menu bundle loads on this thread while workers build the world
     // bundle's core tables from the same root (`load_core`). A pack failure in
     // either clears the client selection, not required mod resources (NeoForge's
     // `Minecraft.rollbackResourcePacks`).
     let parallel = threads > 1;
+    #[cfg(feature = "client")]
     let mut offer = |ui: UiResources, root: &std::path::Path| {
         if menu {
             log::info!(
@@ -799,12 +869,11 @@ pub(in crate::game) fn load_resources_for_mods(
     };
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(&root)?;
     let conditions = super::load_conditions::conditions_for_mods(mod_sources, &inventory)?;
-    #[cfg_attr(not(feature = "client"), allow(unused_variables))]
-    let (core, loaded_gui, resolved, client_applies) = loop {
+    let (core, resolved, client_load) = loop {
         #[cfg(feature = "client")]
-        let listeners = (!headless)
+        let listeners = is_client
             .then(|| client_reload::register_startup_client_reload_listeners(Some(settings)));
-        let (ui, core) = std::thread::scope(|scope| {
+        let (client_ui, core) = std::thread::scope(|scope| {
             let core = |_unit: &()| {
                 // A failed pack starts core again from the game's own
                 // resources, which the world's preload must read: with packs
@@ -841,20 +910,30 @@ pub(in crate::game) fn load_resources_for_mods(
             #[cfg(test)]
             let core = mod_api::testing::inherit_mods(core);
             let core = Step::spawn(scope, parallel, "core", move || core(&()));
-            let ui = load_ui(resolved.source()).map(|ui| offer(ui, &root));
+            #[cfg(feature = "client")]
+            let ui = if is_client {
+                load_ui(resolved.source()).map(|ui| offer(ui, &root))
+            } else {
+                Ok(None)
+            };
+            #[cfg(not(feature = "client"))]
+            let ui = ();
             (ui, core.join())
         });
         // A cloud texture vanilla would read past fails its reload (`CloudRenderer.prepare`),
         // and so this load: checked here, where the packs can still be dropped, before the
         // pack tables read it again. A server draws no clouds.
-        let clouds = match headless {
-            true => Ok(()),
-            false => sunrise_client::clouds::load(resolved.source()).map(drop),
+        #[cfg(feature = "client")]
+        let clouds = if is_client {
+            sunrise_client::clouds::load(resolved.source()).map(drop)
+        } else {
+            Ok(())
         };
         // Core data is provisional: a selected world pack may replace an entry.
-        let (failure, required) = match (ui, core, clouds, rollback.take()) {
+        #[cfg(feature = "client")]
+        let (failure, required) = match (client_ui, core, clouds, rollback.take()) {
             (Ok(gui), Ok((core, applies)), Ok(()), _) => {
-                break (core, gui, resolved, applies);
+                break (core, resolved, (gui, applies));
             }
             (_, Err(CoreLoadError::Fatal(e)), _, _) => return Err(e.into()),
             (Err(e), _, _, Some(required)) => (e.to_string(), required),
@@ -869,9 +948,28 @@ pub(in crate::game) fn load_resources_for_mods(
             (Err(e), Ok(_), _, None) => return Err(e),
             (Ok(_), Ok(_), Err(e), None) => return Err(e.into()),
         };
+        #[cfg(not(feature = "client"))]
+        let (failure, required) = {
+            let () = client_ui;
+            match (core, rollback.take()) {
+                (Ok((core, ())), _) => break (core, resolved, ()),
+                (Err(CoreLoadError::Fatal(e)), _) => return Err(e.into()),
+                (Err(CoreLoadError::Pack(e)), Some(required)) => (e, required),
+                (Err(CoreLoadError::Pack(e)), None) => {
+                    return Err(format!(
+                        "{e}\nPrepare resources with the launcher, or: sunrise-prepare --prepare"
+                    )
+                    .into());
+                }
+            }
+        };
         resolved = stage(recover(&failure, &required)?);
         pack_error = Some(failure);
     };
+    #[cfg(feature = "client")]
+    let (loaded_gui, client_applies) = client_load;
+    #[cfg(not(feature = "client"))]
+    let () = client_load;
     // The same prepared gameplay root supplies entity keys and spawner facts,
     // regardless of which client resource layers loaded successfully.
     let spawner_types = mods::register_iterated_registries(&root)?;
@@ -881,9 +979,13 @@ pub(in crate::game) fn load_resources_for_mods(
         item_defaults,
         entity_models,
         assets,
+        #[cfg(feature = "client")]
         render,
+        #[cfg(feature = "client")]
         item_renderer,
         visibility,
+        item_models,
+        item_ids,
         gameplay:
             GameplayTables {
                 behaviour_json,
@@ -899,7 +1001,6 @@ pub(in crate::game) fn load_resources_for_mods(
     // The accepted suppliers and resolved entity keys belong to the same Parts installation.
     publish_entity_type_defaults(&motion.attributes);
     let assets = Arc::new(assets);
-    let render = Arc::new(render);
     // The namespaces of the mod block states registered now: what every level.dat saved from
     // here on records, and what a world is checked against before it opens (`level_mods`). A
     // launch world's data preload, which may already have started, reads no mod records; its
@@ -925,29 +1026,46 @@ pub(in crate::game) fn load_resources_for_mods(
     api_values::resolve_block_definitions(assets.registry)?;
     mods::extend_poi_types(assets.registry);
     mods::register_cauldron_fluid_contents(assets.registry);
-    let tables = Arc::new(startup::time("pack.mesh_tables", || {
-        MeshTables::new(
-            &assets,
-            &render,
-            &facts,
-            visibility,
-            api_values::mod_tint_values(assets.registry)?,
-        )
-        .map(|tables| tables.with_polytone_colormaps(resolved.source(), assets.registry))
-    })?);
     let pack_step = startup::step("pack.assemble");
     let mut pack = PackResources::assemble(
         &resolved,
         PackParts {
             assets: assets.clone(),
-            render,
-            tables,
-            item_renderer,
             biomes: biomes.clone(),
             light: Arc::new(light),
+            item_models,
+            item_ids,
         },
-        !role.is_dedicated_server(),
     )?;
+    #[cfg(feature = "client")]
+    let client_pack = if is_client {
+        let render = Arc::new(render.ok_or("missing client render assets")?);
+        let item_renderer = item_renderer.ok_or("missing client item renderer")?;
+        let tables = Arc::new(startup::time("pack.mesh_tables", || {
+            MeshTables::new(
+                &assets,
+                &render,
+                &facts,
+                visibility,
+                api_values::mod_tint_values(assets.registry)?,
+            )
+            .map(|tables| tables.with_polytone_colormaps(resolved.source(), assets.registry))
+        })?);
+        Some(ClientPackResources::assemble(
+            &resolved,
+            &pack,
+            ClientPackParts {
+                render,
+                tables,
+                item_renderer,
+            },
+            true,
+        )?)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "client"))]
+    let _ = visibility;
     pack.additional_data = additional_data.into();
     drop(pack_step);
     log::info!("load pack tables: {:.2}s", started.elapsed().as_secs_f32());
@@ -988,12 +1106,23 @@ pub(in crate::game) fn load_resources_for_mods(
     }
     // The block entity renderer's face visibility: the meshes' own, whose
     // shapes already hold their faces, not a second load of the same tables.
-    let visibility = pack.context.tables.visibility.clone();
+    #[cfg(feature = "client")]
+    let visibility = client_pack
+        .as_ref()
+        .map_or_else(sunrise_world::block_render::FaceVisibility::empty, |cp| {
+            cp.context.mesh.tables.visibility.clone()
+        });
+    #[cfg(not(feature = "client"))]
+    let visibility = sunrise_world::block_render::FaceVisibility::empty();
+    #[cfg(feature = "client")]
+    let client_res_slot = is_client.then(|| Arc::new(std::sync::OnceLock::new()));
     let rest_loader = if menu {
         let resources = resources.clone();
         let resource_root = resolved.clone();
         let vanilla_root = vanilla_root.to_owned();
         let entity_models = entity_models.clone();
+        #[cfg(feature = "client")]
+        let worker_client_res = client_res_slot.clone();
         let rest_progress = progress.clone();
         let progress = progress.clone();
         let handle = std::thread::Builder::new()
@@ -1014,13 +1143,16 @@ pub(in crate::game) fn load_resources_for_mods(
                     visibility,
                     &progress,
                     started,
-                    true,
+                    is_client,
                 )
                 .map_err(|error| error.to_string())?;
-                resources
-                    .rest
-                    .set(rest)
-                    .map_err(|_| "world resources already loaded".to_owned())?;
+                publish_world_rest(
+                    &resources,
+                    rest,
+                    #[cfg(feature = "client")]
+                    worker_client_res.as_deref(),
+                )
+                .map_err(str::to_owned)?;
                 progress.set(9);
                 log::info!(
                     "Sunrise: rest-ready after {} ms",
@@ -1047,41 +1179,51 @@ pub(in crate::game) fn load_resources_for_mods(
             visibility,
             progress,
             started,
-            !headless,
+            is_client,
         )?;
-        resources
-            .rest
-            .set(rest)
-            .map_err(|_| "world resources already loaded")?;
+        publish_world_rest(
+            &resources,
+            rest,
+            #[cfg(feature = "client")]
+            client_res_slot.as_deref(),
+        )?;
+        progress.set(9);
         None
     };
     // The world tables load (above) while the handoff's CPU work is done: the
     // world renderer's textures beside the game's own tables. A failure here
     // waits for the tail, so no tail worker outlives its pack-loader generation.
     let prepared_at = Instant::now();
-    let (game_cpu, renderer_cpu) = if menu {
-        #[cfg_attr(not(feature = "client"), allow(unused_variables))]
-        let (game_cpu, renderer_cpu) = std::thread::scope(|scope| {
+    let (game_cpu, textures_cpu) = if menu {
+        let (game_cpu, textures_cpu) = std::thread::scope(|_scope| {
             // A server read no sprite pixels (`reload_for_server`), so it has no window textures to mip.
             #[cfg(feature = "client")]
-            let textures = (!headless).then(|| {
-                Step::spawn(scope, parallel, "textures", || {
+            let textures = client_pack.as_ref().map(|cp| {
+                Step::spawn(_scope, parallel, "textures", || {
                     startup::time("handoff.renderer_textures", || {
-                        prepare_renderer_textures(&pack)
+                        prepare_renderer_textures(cp)
                     })
                 })
             });
+            #[cfg(feature = "client")]
+            let library = client_pack
+                .as_ref()
+                .and_then(|cp| cp.render.model_library.as_deref().ok());
             #[cfg(not(feature = "client"))]
-            let textures: Option<Step<'_, sunrise_client::gfx::PreparedTextures>> = None;
+            let library = None;
             let game_cpu = startup::time("handoff.game_cpu", || {
                 GameCpuResources::load(
                     &resolved,
                     entity_models.as_deref(),
-                    pack.render.model_library.as_deref().ok(),
-                    !role.is_dedicated_server(),
+                    library,
+                    cfg!(feature = "client") && is_client,
                 )
             });
-            (game_cpu, textures.map(Step::join))
+            #[cfg(feature = "client")]
+            let textures_cpu = textures.map(Step::join);
+            #[cfg(not(feature = "client"))]
+            let textures_cpu = ();
+            (game_cpu, textures_cpu)
         });
         let game_cpu = match game_cpu {
             Ok(game_cpu) => game_cpu,
@@ -1096,23 +1238,58 @@ pub(in crate::game) fn load_resources_for_mods(
             "Sunrise: handoff CPU resources prepared on worker in {} ms",
             prepared_at.elapsed().as_millis()
         );
-        (Some(game_cpu), renderer_cpu)
+        (Some(game_cpu), textures_cpu)
     } else {
-        (None, None)
+        (None, Default::default())
     };
+    #[cfg(not(feature = "client"))]
+    let () = textures_cpu;
     Ok(Loaded {
         game_cpu,
         entity_models,
-        renderer_cpu,
+        #[cfg(feature = "client")]
+        renderer_cpu: textures_cpu,
         root,
         pack_error,
         resources,
+        #[cfg(feature = "client")]
+        client_res: client_res_slot,
         rest_loader,
         #[cfg(feature = "client")]
         client_applies,
         pack,
+        #[cfg(feature = "client")]
+        client_pack,
+        #[cfg(feature = "client")]
         gui: loaded_gui,
     })
+}
+
+fn publish_world_rest(
+    resources: &Resources,
+    rest: world_rest::LoadedWorldRest,
+    #[cfg(feature = "client")] client_slot: Option<&std::sync::OnceLock<ClientResources>>,
+) -> std::result::Result<(), &'static str> {
+    if resources.rest.get().is_some() {
+        return Err("world resources already loaded");
+    }
+    #[cfg(feature = "client")]
+    let (rest, client_rest) = rest;
+    #[cfg(feature = "client")]
+    match (client_slot, &client_rest) {
+        (Some(slot), Some(_)) if slot.get().is_some() => {
+            return Err("client resources already loaded");
+        }
+        (Some(_), Some(_)) | (None, None) => {}
+        (Some(_), None) => return Err("client resources missing for client load"),
+        (None, Some(_)) => return Err("unexpected client resources for server load"),
+    }
+    let _ = resources.rest.set(rest);
+    #[cfg(feature = "client")]
+    if let (Some(slot), Some(client_rest)) = (client_slot, client_rest) {
+        let _ = slot.set(client_rest);
+    }
+    Ok(())
 }
 
 /// Write the prepared folder's `sunrise-data.bin` when it has none the game

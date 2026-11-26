@@ -10,11 +10,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The options `MouseHandler.turnPlayer` reads.
     pub(in crate::game::client_side) fn look_options(&self) -> LookOptions {
         LookOptions {
-            sensitivity: self.settings.sensitivity,
+            sensitivity: self.side.settings.sensitivity,
             smooth_camera: self.side.smooth_camera,
             scoping: self.scoping(),
-            invert_x: self.settings.invert_x,
-            invert_y: self.settings.invert_y,
+            invert_x: self.side.settings.invert_x,
+            invert_y: self.side.settings.invert_y,
         }
     }
     /// `MouseHandler.handleAccumulatedMovement` and `Entity.turn`, once per frame.
@@ -99,7 +99,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && !studio_suppresses_focus_pause(self.replay.playing(), self.side.studio.flying())
             && self.player.is_some()
             && !self.options.no_pause
-            && self.settings.file.bool("pauseOnLostFocus")
+            && self.side.settings.file.bool("pauseOnLostFocus")
             && !self.pad_keeps_playing_unfocused()
             && self.side.book.is_none()
             && self.side.sign_edit.is_none()
@@ -119,7 +119,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let options = self.toggle_options();
         for key in held {
             if let Some(name) = sunrise_client::keybinds::key_name(key) {
-                for slot in self.settings.keys.slots_for(name) {
+                for slot in self.side.settings.keys.slots_for(name) {
                     let option =
                         sunrise_client::keymapping::toggle_index(slot).is_some_and(|i| options[i]);
                     if self
@@ -132,7 +132,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
             }
-            for mapped in self.settings.keys.translate_all(key) {
+            for mapped in self.side.settings.keys.translate_all(key) {
                 match mapped {
                     Ok(KeyCode::ShiftLeft | KeyCode::ControlLeft) => {}
                     Ok(other) => {
@@ -368,7 +368,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let wanted = sunrise_client::widgets::take_cursor();
         // The widgets under the keyboard's hidden pointer aren't under the
         // mouse (`handleCursor` asks only for a hovered widget).
-        let effective = if self.settings.allow_cursor_changes && !self.key_focus_driving() {
+        let effective = if self.side.settings.allow_cursor_changes && !self.key_focus_driving() {
             wanted
         } else {
             Cursor::Arrow
@@ -452,7 +452,9 @@ mod tests {
         options.execution_role = execution_role::ExecutionRole::Client;
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,

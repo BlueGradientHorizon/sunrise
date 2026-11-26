@@ -77,7 +77,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     pub(in crate::game) fn creative_permissions(&self) -> CreativeTabPermissions {
-        if self.can_use_game_master_blocks() && self.settings.operator_items_tab {
+        if self.can_use_game_master_blocks() && self.side.operator_items_tab() {
             CreativeTabPermissions::Operator
         } else {
             CreativeTabPermissions::Normal

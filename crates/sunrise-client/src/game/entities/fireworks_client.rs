@@ -121,7 +121,7 @@ pub(in crate::game) mod tests {
             &settings,
             std::time::Instant::now(),
             false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
@@ -131,7 +131,9 @@ pub(in crate::game) mod tests {
         let res = loaded.resources;
         let mut game = crate::game::ClientGame::new(
             &res,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,

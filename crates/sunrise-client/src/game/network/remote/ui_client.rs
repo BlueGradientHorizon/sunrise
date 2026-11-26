@@ -56,7 +56,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 begin_loading_screen();
             }
             self.draw_level_loading_background(batch, r.level_load.reason);
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             match self.integrated.as_ref().map(|i| i.load_view()) {
                 Some(view) => {
                     let status = |x: i32, z: i32| view.status(x, z);
@@ -92,7 +92,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 sunrise_client::widgets::ScreenInfo::new("connect", "")
             }
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let status = sunrise_client::text::Text::untrusted(r.status.as_str());
         sunrise_client::level_loading::draw_connecting(
             batch,

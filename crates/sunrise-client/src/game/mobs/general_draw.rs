@@ -110,7 +110,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && !self.side.renderer.0.as_ref().is_some_and(|renderer| {
                 renderer.entity_section_visible(
                     section_block,
-                    self.settings.chunk_fade as f32,
+                    self.side.settings.chunk_fade as f32,
                     frame.now,
                 )
             })

@@ -207,7 +207,7 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
         let cancel = |cancel| state.lock().unwrap().cancel = cancel;
         let forward = VanillaMappingSlot::by_default_key(KeyCode::KeyW).unwrap();
         let jump = VanillaMappingSlot::by_default_key(KeyCode::Space).unwrap();
-        game.settings.keys.set("key.jump", "key.keyboard.w");
+        game.side.settings.keys.set("key.jump", "key.keyboard.w");
         game.insert_device_key(KeyCode::KeyW);
         game.insert_device_key(KeyCode::Space);
         assert!(
@@ -304,8 +304,8 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
         game.mod_screen_close("input_route");
         assert_eq!(game.side.screen, Screen::Playing);
         game.selected = 4;
-        game.settings.mouse_wheel_sensitivity = 1.0;
-        game.settings.discrete_scroll = false;
+        game.side.settings.mouse_wheel_sensitivity = 1.0;
+        game.side.settings.discrete_scroll = false;
         move_mouse(game, id, 100.0, 110.0);
         send_scroll(game, id, 0.25, 0.0);
         assert_eq!(game.selected, 4);
@@ -356,7 +356,7 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
                 Seen::GameWheel([0.0, 0.75], [0, 1], [false; 3], [100.0, 110.0], 0),
             ]
         );
-        game.settings.mouse_wheel_sensitivity = 2.0;
+        game.side.settings.mouse_wheel_sensitivity = 2.0;
         let pixel_wheel = |game: &mut crate::game::ClientGame<'_>| {
             send(
                 game,
@@ -379,7 +379,7 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
                 0
             )]
         );
-        game.settings.discrete_scroll = true;
+        game.side.settings.discrete_scroll = true;
         pixel_wheel(game);
         assert_eq!(
             take(state),

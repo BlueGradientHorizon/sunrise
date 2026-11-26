@@ -8,12 +8,12 @@ use crate::lan::server_effects::{
 };
 use mod_api::{SoundSource, client::particles::PositionSource};
 use sunrise_client::lan::{Body, containers::within_range, hub::Hub};
-use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 #[allow(unused_imports)]
 use sunrise_protocol::{
     entity_data::{Particle, ParticleData, PositionSource as NetworkPositionSource},
@@ -118,7 +118,7 @@ pub(in crate::game::server_side) fn powder_snow_velocity(
     known: Vec3,
     random: &mut impl RandomSource,
 ) -> Option<[f64; 3]> {
-    sunrise_client::powder_snow::particle_velocity(known, random)
+    sunrise_sim::powder_snow::particle_velocity(known, random)
 }
 
 pub(in crate::game::server_side) fn send_native_nearby(
@@ -414,7 +414,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.is_logical_server() || (known_movement.x == 0.0 && known_movement.z == 0.0) {
             return;
         }
-        let snow = sunrise_client::powder_snow::contacts(previous, position, bounds, living, |p| {
+        let snow = sunrise_sim::powder_snow::contacts(previous, position, bounds, living, |p| {
             &*self.res.facts().get(self.world.block(p.x, p.y, p.z)).name == "minecraft:powder_snow"
         });
         for block in snow {
@@ -781,8 +781,8 @@ pub(in crate::game) mod tests {
         guest::Guest,
         hub::{Hub, HubConfig},
     };
-    use sunrise_client::particles::{ParticleOptions, ParticleType};
     use sunrise_core::random::LegacyRandom;
+    use sunrise_level::particle_options::{ParticleOptions, ParticleType};
     use sunrise_protocol::packets::play;
 
     /// `PowderSnowBlock.entityInside`: vertical-only movement skips the roll;

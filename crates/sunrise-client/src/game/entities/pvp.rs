@@ -1,6 +1,6 @@
 //! The PvP & HUD page's options in the game (`sunrise_client::pvp`, `docs/pvp.md`). Each
 //! does nothing while it is off.
-use crate::game::{Dim, Game};
+use crate::game::{Dim, Game, Side};
 use std::sync::Arc;
 use sunrise_client::{
     extras::Corner,
@@ -80,7 +80,7 @@ const ARROWS: [&str; 3] = [
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the custom crosshair replaces vanilla's sprite.
     pub(in crate::game::client_side) fn custom_crosshair(&self) -> bool {
-        self.settings.extras.pvp.crosshair.custom
+        self.side.settings.extras.pvp.crosshair.custom
     }
     /// The custom crosshair, centred where vanilla's 15x15 sprite is (`Hud.extractCrosshair`):
     /// its outline in black, then the shape, inverting what is under it when its colour is
@@ -91,14 +91,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         w: i32,
         h: i32,
     ) {
-        let mut c = self.settings.extras.pvp.crosshair;
+        let mut c = self.side.settings.extras.pvp.crosshair;
         if let Some(hover) = c.hover
             && self.crosshair_living() == Some(true)
         {
             c.colour = hover;
         }
         let (cx, cy) = ((w - 15) / 2 + 7, (h - 15) / 2 + 7);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (shape, rim) = self.side.pvp.crosshair.runs(&c);
         let fill = |batch: &mut HudBatch, &(x0, y, x1): &(i32, i32, i32), colour: u32| {
             let (x, y) = ((cx + x0) as f32, (cy + y) as f32);
@@ -126,7 +126,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
     ) {
-        let Some(argb) = self.settings.extras.pvp.outline.fill() else {
+        let Some(argb) = self.side.settings.extras.pvp.outline.fill() else {
             return;
         };
         let Some(hit) = self.pick().filter(|_| !outline.is_empty()) else {
@@ -134,8 +134,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let [x, y, z] = hit.pos;
         let state = self.world.block(x, y, z);
-        let boxes = self.outline_boxes_iter(&self.world, state, &self.be_anims, hit.pos, true);
-        let uv = sunrise_client::gfx::lightning::white_uv(&self.gui.atlas.font.white());
+        let boxes =
+            self.outline_boxes_iter(&self.world, state, self.side.shulkers(), hit.pos, true);
+        let uv = sunrise_client::gfx::lightning::white_uv(&self.side.gui.atlas.font.white());
         let [a, r, g, b] = argb.to_be_bytes();
         let color = u32::from_le_bytes([r, g, b, a]);
         const OUT: f64 = 0.002;
@@ -173,7 +174,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Once per frame: the options that live outside the game's state.
     pub(in crate::game::client_side) fn pvp_frame(&mut self) {
-        let tweaks = self.settings.extras.pvp.tweaks;
+        let tweaks = self.side.settings.extras.pvp.tweaks;
         sunrise_client::enchant::set_numeric_levels(tweaks.numeric_enchants);
     }
     /// Whether this window may draw PvP & HUD's own time and weather: only a client of a server
@@ -184,13 +185,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The day time the frame draws (sky, sun, moon, the sky's light): PvP & HUD's time of day,
     /// else the world's. The world's own `day_time` and everything that plays by it stay.
     pub(in crate::game::client_side) fn view_day_time(&self) -> i64 {
-        let fixed = self.settings.extras.pvp.tweaks.time;
+        let fixed = self.side.settings.extras.pvp.tweaks.time;
         sunrise_client::pvp::view_day_time(self.world.day_time, fixed.filter(|_| self.own_view()))
     }
     /// The rain and thunder levels the frame draws (rain, the sky's colour and light, fog): PvP &
     /// HUD's weather, else the world's. Gameplay (riptide, mobs, crops) keeps the world's.
     pub(in crate::game::client_side) fn view_weather(&self, partial: f32) -> (f32, f32) {
-        match self.settings.extras.pvp.tweaks.weather {
+        match self.side.settings.extras.pvp.tweaks.weather {
             Some(w) if self.own_view() && self.can_have_weather() => w.levels(),
             _ => self.weather_levels(partial),
         }
@@ -201,49 +202,49 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Combat feel Legacy's pictures: 1.8.9's sword block, flat item pose and hand swing.
     pub(in crate::game::client_side) fn pvp_legacy_look(&self) -> bool {
-        self.settings.extras.pvp.combat.legacy
+        self.side.settings.extras.pvp.combat.legacy
     }
     /// Combat feel Legacy hides the attack indicator unless the player keeps it.
     pub(in crate::game::client_side) fn pvp_hides_attack_indicator(&self) -> bool {
-        let combat = self.settings.extras.pvp.combat;
+        let combat = self.side.settings.extras.pvp.combat;
         combat.legacy && !combat.indicator
     }
     /// A sound Combat feel Legacy keeps quiet.
     pub(in crate::game) fn pvp_mutes_sound(&self, name: &str) -> bool {
-        self.settings.extras.pvp.combat.mutes_sound(name)
+        self.side.settings.extras.pvp.combat.mutes_sound(name)
     }
     /// A particle Combat feel Legacy doesn't draw (sweeps, damage hearts).
     pub(in crate::game::client_side) fn pvp_hides_particle(&self, ty: ParticleType) -> bool {
-        self.settings.extras.pvp.combat.hides_particle(ty)
+        self.side.settings.extras.pvp.combat.hides_particle(ty)
     }
     /// The block outline, hurt overlay and glint colours the renderer draws with.
     pub(in crate::game::client_side) fn pvp_render_frame(&self) -> Frame {
-        self.settings.extras.pvp.frame()
+        self.side.settings.extras.pvp.frame()
     }
     /// The enchantment glint's colour texel, 0 for vanilla's.
     pub(in crate::game::client_side) fn pvp_glint_texel(&self) -> u32 {
-        self.settings.extras.pvp.tweaks.glint_texel()
+        self.side.settings.extras.pvp.tweaks.glint_texel()
     }
     /// The held shield's size in percent (100 is vanilla's).
     pub(in crate::game::client_side) fn pvp_shield_size(&self) -> u8 {
-        self.settings.extras.pvp.tweaks.shield_size
+        self.side.settings.extras.pvp.tweaks.shield_size
     }
     /// The totem animation's scale (1 is vanilla's).
     pub(in crate::game::client_side) fn pvp_totem_scale(&self) -> f32 {
-        f32::from(self.settings.extras.pvp.tweaks.totem_size) / 100.0
+        f32::from(self.side.settings.extras.pvp.tweaks.totem_size) / 100.0
     }
     /// How far the first-person fire overlay is lowered, as a fraction (0 is vanilla's).
     pub(in crate::game::client_side) fn pvp_fire_lower(&self) -> f32 {
-        f32::from(self.settings.extras.pvp.tweaks.fire_lower) / 100.0
+        f32::from(self.side.settings.extras.pvp.tweaks.fire_lower) / 100.0
     }
     /// Lava's fog as with fire resistance, and water's as fully adapted.
     pub(in crate::game::client_side) fn pvp_clear_fluids(&self) -> (bool, bool) {
-        let tweaks = self.settings.extras.pvp.tweaks;
+        let tweaks = self.side.settings.extras.pvp.tweaks;
         (tweaks.clear_lava, tweaks.clear_water)
     }
     /// The chat's options: Ctrl+F search, copy on click, and the rest (`ChatOptions::qol`).
     pub(in crate::game::client_side) fn pvp_chat(&self) -> ChatOptions {
-        self.settings.extras.pvp.chat
+        self.side.settings.extras.pvp.chat
     }
     /// This player attacked entity `id`, `distance` from the eyes to where the crosshair's
     /// ray met its box (the combo counter waits for the server's report; the reach widget
@@ -255,7 +256,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// A mouse press, counted for clicks per second while playing with a widget that shows them.
     pub(in crate::game::client_side) fn pvp_click(&mut self, button: MouseButton) {
-        let hud = &self.settings.extras.pvp.hud;
+        let hud = &self.side.settings.extras.pvp.hud;
         if !(hud.cps || hud.keys) || self.side.screen != crate::game::Screen::Playing {
             return;
         }
@@ -269,7 +270,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Whether the key `mapping` is bound to is held: a keyboard key or a mouse button.
     fn binding_held(&self, mapping: &str) -> bool {
-        let bound = self.settings.keys.get(mapping);
+        let bound = self.side.settings.keys.get(mapping);
         if let Some(button) = sunrise_client::keybinds::mouse_button(bound) {
             return self.side.physical_buttons.contains(&button);
         }
@@ -292,7 +293,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Whether the effects widget replaces vanilla's effect icons (`Hud.extractEffects`).
     pub(in crate::game::client_side) fn pvp_effects_shown(&self) -> bool {
-        self.settings.extras.pvp.hud.effects
+        self.side.settings.extras.pvp.hud.effects
     }
     /// The HUD widgets that are on, before mods' boxes. Each rebuilds its
     /// lines only when what it shows changed.
@@ -301,7 +302,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         batch: &mut HudBatch,
         corners: &mut Corners,
     ) {
-        let hud = self.settings.extras.pvp.hud;
+        let hud = self.side.settings.extras.pvp.hud;
         if self.player.is_none() || !hud.any() {
             // The editor frames only what was drawn.
             self.side.pvp.boxes.clear();
@@ -334,7 +335,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.pvp.keys.held = held;
             self.keystroke_labels();
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let width = |s: &str| HudBatch::text_width(atlas, s);
         let state = &mut self.side.pvp;
         if hud.armour {
@@ -530,7 +531,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             text: hud.text.argb(),
             shadow: hud.shadow,
         };
-        let layout = self.settings.extras.pvp.layout;
+        let layout = self.side.settings.extras.pvp.layout;
         let screen = (batch.width, batch.height);
         let mut boxes = std::mem::take(&mut self.side.pvp.boxes);
         boxes.clear();
@@ -622,7 +623,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 true if editing => {
                     let key = format!("sunrise.pvp.hud_{}", id.name());
                     let name = sunrise_client::lang::get_or(&key, id.name());
-                    let width = |s: &str| HudBatch::text_width(&self.gui.atlas, s);
+                    let width = |s: &str| HudBatch::text_width(&self.side.gui.atlas, s);
                     stand_in = vec![Line::new(Icon::None, name, &width)];
                     (&stand_in, pvp_hud::size(&stand_in))
                 }
@@ -665,7 +666,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The keystrokes' labels: each key's name, made again only when a binding changed.
     fn keystroke_labels(&mut self) {
-        let keys = &self.settings.keys;
+        let keys = &self.side.settings.keys;
         let k = &mut self.side.pvp.keys;
         let same = Key::ALL
             .iter()
@@ -674,7 +675,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if same && k.labels.len() == Key::ALL.len() {
             return;
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         k.labels.clear();
         for (i, key) in Key::ALL.into_iter().enumerate() {
             let bound = keys.get(key.mapping());
@@ -692,7 +693,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// and under each mouse button its clicks per second.
     fn paint_keys(&self, batch: &mut HudBatch, [x, y, sw, _]: [f32; 4], style: &Style) {
         let start = batch.vertices.len();
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let k = &self.side.pvp.keys;
         let colour = |c: u32| {
             let [a, r, g, b] = c.to_be_bytes();
@@ -767,7 +768,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         style: &Style,
     ) {
         let start = batch.vertices.len();
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         if let Some(background) = style.background {
             let [a, r, g, b] = background.to_be_bytes();
             batch.fill(atlas, x, y, w, h, rgba(r, g, b, a));

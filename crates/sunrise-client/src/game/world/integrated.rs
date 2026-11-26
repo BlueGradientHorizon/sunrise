@@ -9,7 +9,7 @@
 //! Every single-player world runs this way; LAN guests and dedicated servers
 //! use the same server code.
 use super::{
-    Dim, Game, Options, PackResources, Resources, UiResources,
+    Dim, Game, Options, PackResources, Resources,
     execution_role::ExecutionRole,
     lan::{
         LanSettings, Owner,
@@ -30,17 +30,17 @@ use std::{
     thread::JoinHandle,
     time::{Duration, Instant},
 };
-use sunrise_client::level_loading::{STATUS_RADIUS, Stage};
 use sunrise_client::spans::startup;
 use sunrise_client::{
     Result,
     chunk_io::Reports,
     lan::{Lan, MAX_PLAYERS, NetConfig, OwnerProfile, hub::HubConfig},
-    settings::Settings,
-    title::WorldOptions,
 };
+use sunrise_level::level_loading::{STATUS_RADIUS, ServerLoadView, Stage};
+use sunrise_level::sim_settings::SimSettings;
 use sunrise_protocol::connection::Pipe;
 use sunrise_protocol::text::translatable;
+use sunrise_sim::world_options::WorldOptions;
 
 #[path = "integrated/capture.rs"]
 pub(in crate::game) mod capture;
@@ -103,7 +103,7 @@ pub(in crate::game) struct Flags {
     >,
     /// What the server's `LevelLoadListener` reports, for the window's
     /// `LevelLoadingScreen` (`LevelLoadTracker.serverProgress/statusView`).
-    pub(in crate::game) load: Arc<sunrise_client::level_loading::ServerLoadView>,
+    pub(in crate::game) load: Arc<ServerLoadView>,
     /// What the world's upgrade has done (`UpgradeProgress`): the window shows it on
     /// `FileFixerProgressScreen` while the file fixers run, and its Cancel stops them.
     pub(in crate::game) upgrade: Arc<sunrise_world::datafix::progress::UpgradeProgress>,
@@ -187,7 +187,7 @@ impl Integrated {
         self.flags.terrain.lock().ok()?.get(dimension).cloned()
     }
     /// The server's load progress and chunk status map.
-    pub fn load_view(&self) -> &Arc<sunrise_client::level_loading::ServerLoadView> {
+    pub fn load_view(&self) -> &Arc<ServerLoadView> {
         &self.flags.load
     }
     /// The world's upgrade while the server opens it.
@@ -438,6 +438,7 @@ pub(in crate::game) struct Launch {
     pub(in crate::game) player: String,
     /// The signed-in account's profile, fetched while the world loads.
     pub(in crate::game) owner_profile: Option<Arc<OwnerProfile>>,
+    pub(in crate::game) online_auth: bool,
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -472,7 +473,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let ready = (-3..=3)
             .flat_map(|dz| (-3..=3).map(move |dx| (focus.0 + dx, focus.1 + dz)))
-            .filter(|&(x, z)| self.streaming.is_lit(x, z))
+            .filter(|&(x, z)| self.side.streaming.is_lit(x, z))
             .count();
         view.update(Stage::LoadPlayerChunks, ready, PLAYER_CHUNKS);
         let diameter = STATUS_RADIUS * 2 + 1;
@@ -480,7 +481,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             (0..diameter)
                 .flat_map(|x| (0..diameter).map(move |z| (x, z)))
                 .map(|(x, z)| {
-                    self.streaming.latest_status(
+                    self.side.streaming.latest_status(
                         &self.world,
                         focus.0 + x - STATUS_RADIUS,
                         focus.1 + z - STATUS_RADIUS,
@@ -544,7 +545,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .options
             .spikes
             .unwrap_or(super::dedicated::SLOW_TICK_MS);
-        self.profile
+        self.side
+            .profile
             .server
             .get_or_insert_with(|| capture::ServerSide::new(slow_ms));
         self.integrated_tick_loop(&flags)
@@ -698,7 +700,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.native_lifecycle_open_started();
         // `load_world`, with the world `serve` started preparing.
         startup::time("server.wait_rest", || self.join_world_rest())?;
-        self.perf.world_opening();
+        sunrise_level::spans::startup::arm("world.opening");
         let open_step = startup::step("server.open_world");
         self.finish_open_world(prepared)?;
         drop(open_step);
@@ -711,7 +713,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.refresh_loop_context()?;
         // Math.max(2, options.renderDistance): past vanilla's 32 when the
         // window's render distance is (Sunrise's options go to 64).
-        let view_distance = self.settings.render_distance.max(2);
+        let view_distance = self.side.settings.render_distance.max(2);
         let config = HubConfig {
             allow_flight: true,
             default_game_mode: self.level.mode(),
@@ -720,7 +722,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             force_game_mode: false,
             hardcore: self.level.hardcore,
             view_distance,
-            simulation_distance: self.settings.simulation_distance.max(2),
+            simulation_distance: self.side.settings.simulation_distance.max(2),
             dimension: self.dim.id().to_owned(),
             levels: self.side.level_shapes,
             level_seeds: self.side.levels.0.runtime.seeds(),
@@ -736,9 +738,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // is not compressed (`Connection.isMemoryConnection`).
             listen: false,
             online: sunrise_client::lan::OnlineMode::lan(
-                sunrise_client::auth::current().is_some(),
+                launch.online_auth,
                 Arc::new(|name, digest, ip| {
-                    sunrise_client::auth::has_joined(name, digest, ip)
+                    sunrise_server_profiles_http::has_joined(name, digest, ip)
                         .map(|opt| {
                             opt.map(|p| sunrise_client::lan::VerifiedSession {
                                 uuid: p.uuid,
@@ -819,7 +821,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         run_error: Option<&str>,
     ) -> Result<()> {
         // Abort background terrain generation/decoration on shutdown, matching vanilla behavior.
-        self.streaming.abort_generation();
+        self.side.streaming.abort_generation();
         self.side.levels.0.abort_parked_generation();
         // A failed open keeps its opening phase until the final save attempts finish.
         if run_error.is_none() || !self.native_lifecycle.is_opening() {
@@ -1075,7 +1077,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// and simulation distances when they change.
     pub(in crate::game::server_side) fn follow_distances(&mut self, flags: &Flags) {
         // IntegratedServer.getScaledTrackingDistance reads the option each time.
-        self.settings.entity_distance =
+        self.side.settings.entity_distance =
             f64::from_bits(flags.entity_distance.load(Ordering::Relaxed));
         let Some(host) = self.lan.as_mut() else {
             return;
@@ -1085,14 +1087,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if view != old {
             log::info!("Changing view distance to {view}, from {old}");
             host.hub.set_view_distance(view);
-            self.settings.render_distance = view;
+            self.side.settings.render_distance = view;
         }
         let simulation = flags.simulation_distance.load(Ordering::Relaxed).max(2);
         let old = host.hub.config.simulation_distance;
         if simulation != old {
             log::info!("Changing simulation distance to {simulation}, from {old}");
             host.hub.set_simulation_distance(simulation);
-            self.settings.simulation_distance = simulation;
+            self.side.settings.simulation_distance = simulation;
         }
     }
 
@@ -1204,7 +1206,7 @@ pub(in crate::game) fn serve(
     res: &Arc<Resources>,
     pack: PackResources,
     options: Options,
-    settings: Settings,
+    settings: SimSettings,
     launch: Launch,
     flags: Arc<Flags>,
     tasks: Receiver<OwnerRequest>,
@@ -1277,7 +1279,7 @@ pub(in crate::game) fn run_component_harness_on_server(
     res: Arc<Resources>,
     pack: PackResources,
     mut options: Options,
-    settings: Settings,
+    settings: SimSettings,
     fixture: ComponentHarness,
 ) -> Result<()> {
     options.execution_role = ExecutionRole::IntegratedServer;
@@ -1308,10 +1310,9 @@ pub(in crate::game::server_side) fn server_game(
     res: &Arc<Resources>,
     pack: PackResources,
     options: Options,
-    settings: Settings,
+    settings: SimSettings,
 ) -> Result<crate::game::ServerGame<'_>> {
-    let gui = UiResources::server(&pack.source)?;
-    crate::game::ServerGame::new(res, pack, gui, options, settings, None)
+    crate::game::ServerGame::new(res, pack, options, settings, None)
 }
 
 /// Who the integrated server turns away: anyone but the owner until it is opened to the LAN.
@@ -1558,7 +1559,7 @@ pub(in crate::game) mod tests {
                     &window.res,
                     window.pack.clone(),
                     options,
-                    window.settings.clone(),
+                    window.side.settings.sim_settings(),
                 )
                 .unwrap();
                 let result = server.run_server_lifecycle(false, |server, began| {

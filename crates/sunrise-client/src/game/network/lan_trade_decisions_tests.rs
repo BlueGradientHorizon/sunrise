@@ -316,7 +316,8 @@ pub(in crate::game) fn prepare_work(
     game.side.world_root = save.to_path_buf();
     game.enter_level(super::Dim::Overworld).unwrap();
     game.options.dedicated = Some(Vec::new());
-    game.streaming
+    game.side
+        .streaming
         .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
     assert!(game.entity_ticking_area()(0, 0));
     let composter = game

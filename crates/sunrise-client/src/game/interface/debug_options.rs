@@ -155,7 +155,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// centred in the header): the title's x, the row's top, the warning's
     /// lines with their y.
     fn debug_options_header(&self, w: f32) -> (f32, f32, Vec<(Text, f32)>) {
-        let font = &self.gui.atlas.font;
+        let font = &self.side.gui.atlas.font;
         let title = Text::translate("debug.options.title", &[]);
         let warning = Text::translate("debug.options.warning", &[]).with_color(WARNING);
         let lines = font.split(&warning, ROW_WIDTH);
@@ -174,7 +174,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `debugGuiScale`'s button: `GUI Scale: Unchanged`, `Auto` or the scale.
     fn debug_gui_scale_label(&self) -> Text {
-        let value = match self.settings.file.int("debugGuiScale") {
+        let value = match self.side.settings.file.int("debugGuiScale") {
             -1 => Text::translate("options.debugGuiScale.unchanged", &[]),
             0 => Text::translate("options.guiScale.auto", &[]),
             n => Text::literal(n.to_string()),
@@ -190,16 +190,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let size = self.side.renderer.0.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
         });
-        let max = sunrise_client::window::calculate_scale(size, 0, self.settings.force_unicode);
-        let current = self.settings.file.int("debugGuiScale").clamp(-1, max);
+        let max =
+            sunrise_client::window::calculate_scale(size, 0, self.side.settings.force_unicode);
+        let current = self.side.settings.file.int("debugGuiScale").clamp(-1, max);
         let next = match (back, current) {
             (false, c) if c >= max => -1,
             (false, c) => c + 1,
             (true, -1) => max,
             (true, c) => c - 1,
         };
-        self.settings.file.set("debugGuiScale", V::Int(next));
-        self.settings.save(&crate::game::options_path());
+        self.side.settings.file.set("debugGuiScale", V::Int(next));
+        self.side.settings.save(&crate::game::options_path());
     }
     pub(in crate::game::client_side) fn draw_debug_options(&mut self, batch: &mut HudBatch) {
         let Some(s) = self.side.debug_options.as_ref() else {
@@ -216,7 +217,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_ref()
             .map_or([w as u32, h as u32], |r| [r.config.width, r.config.height]);
         self.draw_debug_overlay_under(batch, size);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let in_world = self.player.is_some();
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, in_world);
         let reduced = self.reduced_debug_info();
@@ -393,7 +394,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         if s.search.focused {
             s.search
-                .click(&self.gui.atlas, self.side.cursor.0, shift, false);
+                .click(&self.side.gui.atlas, self.side.cursor.0, shift, false);
         }
         let inside = self.side.cursor.1 >= top && self.side.cursor.1 < bottom;
         let mut clicked = None;
@@ -669,7 +670,9 @@ pub(in crate::game) mod tests {
         let res = resources.insert(loaded.resources);
         let mut game = crate::game::ClientGame::new(
             res,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -704,7 +707,7 @@ pub(in crate::game) mod tests {
             "the ordinary F3 toggle already reaches the title"
         );
         assert!(ScreensClientHost::debug_overlay_visible(&game));
-        let mut overlay = HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
+        let mut overlay = HudBatch::new([1280, 720], game.side.settings.gui_scale_inputs());
         game.draw_debug_overlay_under(&mut overlay, [1280, 720]);
         assert!(
             !overlay.vertices.is_empty(),
@@ -713,7 +716,7 @@ pub(in crate::game) mod tests {
         assert!(game.side.title.0.is_some());
         // Gui treats the title as an open screen even when F1 hides the HUD.
         game.side.chat_ui.hide_gui = true;
-        let mut hidden_hud = HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
+        let mut hidden_hud = HudBatch::new([1280, 720], game.side.settings.gui_scale_inputs());
         game.draw_debug_overlay_under(&mut hidden_hud, [1280, 720]);
         assert!(!hidden_hud.vertices.is_empty());
         game.debug_key(KeyCode::F3, KeyAction::Press);

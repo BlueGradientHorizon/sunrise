@@ -143,7 +143,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return false;
         };
-        let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
+        let (_, oy) =
+            self.inventory_origin(&HudBatch::new(size, self.side.settings.gui_scale_inputs()));
         let cursor_y = self.side.cursor.1;
         let Some(l) = self.station.as_mut().map(|s| &mut s.loom) else {
             return false;
@@ -190,8 +191,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|l| (banners.banner_texture(&l.pattern), l.color.to_string()))
             .collect();
         sunrise_client::item_render::gui::draw_banner_result(
-            &self.pack.item_renderer,
-            &self.gui.atlas.sprites,
+            &self.side.client_pack.item_renderer,
+            &self.side.gui.atlas.sprites,
             batch,
             x,
             y,
@@ -209,7 +210,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         draws: &[ScreenDraw],
         background: bool,
     ) -> Option<Vec<(sunrise_client::text::Text, u32)>> {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let mut tooltip = None;
         let mut sheet: Option<String> = None;
         for d in draws {

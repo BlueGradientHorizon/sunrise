@@ -90,15 +90,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .side
             .standalone_geometry
             .instance_slot(fields.slot)
-            .and_then(|_| self.pack.render.model_catalog.model_by_slot(fields.slot))
+            .and_then(|_| {
+                self.side
+                    .client_pack
+                    .render
+                    .model_catalog
+                    .model_by_slot(fields.slot)
+            })
             .ok_or(Gui3dError::Model(ModelError::UnknownModel))?;
         let mut quads = Vec::with_capacity(model.faces.len());
         for face in &model.faces {
             let Some(sprite) = self
-                .pack
+                .side
+                .client_pack
                 .layer_names
                 .get(&face.layer)
-                .and_then(|name| self.gui.atlas.sprites.get(name))
+                .and_then(|name| self.side.gui.atlas.sprites.get(name))
             else {
                 continue;
             };

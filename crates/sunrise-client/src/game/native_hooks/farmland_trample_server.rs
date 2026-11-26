@@ -99,7 +99,8 @@ pub(in crate::game) mod tests {
                     || {
                         with_game(|game| {
                             game.options.dedicated = Some(Vec::new());
-                            game.streaming
+                            game.side
+                                .streaming
                                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
                             let registry = game.pack.assets.registry;
                             let farmland = registry.default_state("minecraft:farmland").unwrap();

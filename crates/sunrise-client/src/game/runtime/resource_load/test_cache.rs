@@ -1,5 +1,6 @@
 //! Process-wide cache of immutable loaded test resources, keyed by every load-affecting input.
 use super::*;
+#[cfg(feature = "client")]
 use crate::game::api_values::TryIntoApi;
 use std::{
     path::{Path, PathBuf},
@@ -27,8 +28,11 @@ struct CacheKey {
     role: execution_role::ExecutionRole,
     owning: mods::item_data_load::OwningLoad,
     worker_threads: usize,
+    #[cfg(feature = "client")]
     texture_budget_mib: u32,
+    #[cfg(feature = "client")]
     labpbr_maps: bool,
+    #[cfg(feature = "client")]
     skip_modded_splashes: bool,
     stamps: [FileStamp; STAMPED_FILES.len()],
 }
@@ -45,7 +49,13 @@ struct CachedEntry {
     resources: Arc<Resources>,
     entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
     pack: PackResources,
-    gui: Mutex<UiResources>,
+    #[cfg(feature = "client")]
+    client_res: Option<Arc<OnceLock<ClientResources>>>,
+    #[cfg(feature = "client")]
+    client_pack: Option<ClientPackResources>,
+    #[cfg(feature = "client")]
+    gui: Option<Mutex<UiResources>>,
+    #[cfg(feature = "client")]
     gui_with_pool: OnceLock<std::result::Result<Mutex<UiResources>, String>>,
     iterated: IteratedRegistries,
     mod_namespaces: Vec<String>,
@@ -224,8 +234,8 @@ fn build_cached_entry(
                 execution: key.role,
                 owning: key.owning,
             };
-            let mut loaded = with_skip_facts_memo(|| {
-                resource_tables::with_dynamic_texture_pool_override(false, || {
+            let load = || {
+                with_skip_facts_memo(|| {
                     load_resources_for_mods(
                         sunrise_assets::resource_source::ResourceRoot::directory(key.root.clone())
                             .into(),
@@ -242,16 +252,29 @@ fn build_cached_entry(
                         &mods::ModsState::default(),
                     )
                 })
-            })
-            .map_err(|e| e.to_string())?;
-            let mut gui = loaded
-                .gui
-                .take()
-                .ok_or_else(|| "cached build produced no GUI bundle".to_owned())?;
-            if key.role.is_client() {
+            };
+            #[cfg(feature = "client")]
+            let loaded = if key.role.is_client() {
+                resource_tables::with_dynamic_texture_pool_override(false, load)
+            } else {
+                load()
+            };
+            #[cfg(not(feature = "client"))]
+            let loaded = load();
+            let loaded = loaded.map_err(|e| e.to_string())?;
+            #[cfg(feature = "client")]
+            let gui = if key.role.is_client() {
+                let mut gui = loaded.gui.ok_or("cached build produced no GUI bundle")?;
+                let client_pack = loaded
+                    .client_pack
+                    .as_ref()
+                    .ok_or("cached build produced no client pack")?;
                 gui.atlas.pack_pixels_sync();
-                loaded.pack.render.pixels.pack_sync();
-            }
+                client_pack.render.pixels.pack_sync();
+                Some(Mutex::new(gui))
+            } else {
+                None
+            };
             let iterated = load_iterated_registries(&key.root)?;
             let registry = loaded.pack.assets.registry;
             let names = (0..registry.len() as u32)
@@ -264,7 +287,13 @@ fn build_cached_entry(
                 resources: loaded.resources,
                 entity_models: loaded.entity_models,
                 pack: loaded.pack,
-                gui: Mutex::new(gui),
+                #[cfg(feature = "client")]
+                client_pack: loaded.client_pack,
+                #[cfg(feature = "client")]
+                client_res: loaded.client_res,
+                #[cfg(feature = "client")]
+                gui,
+                #[cfg(feature = "client")]
                 gui_with_pool: OnceLock::new(),
                 iterated,
                 mod_namespaces,
@@ -391,17 +420,32 @@ fn replay_iterated_registries(iterated: &IteratedRegistries) -> std::result::Res
 fn hydrate_hit(
     cached: &CachedEntry,
     key: &CacheKey,
-    dynamic_texture_pool: bool,
+    #[cfg(feature = "client")] dynamic_texture_pool: bool,
     settings: &Settings,
     skip_lang: bool,
     progress: &Progress,
 ) -> std::result::Result<Option<Loaded>, String> {
-    let Some(item_renderer) = cached.pack.item_renderer.clone_for_tests() else {
-        return Ok(None);
+    #[cfg(feature = "client")]
+    let mut client_pack = if key.role.is_client() {
+        let mut client_pack = cached
+            .client_pack
+            .as_ref()
+            .ok_or("missing cached client pack")?
+            .clone();
+        let Some(item_renderer) = client_pack.item_renderer.clone_for_tests() else {
+            return Ok(None);
+        };
+        client_pack.item_renderer = Arc::new(item_renderer);
+        Some(client_pack)
+    } else {
+        None
     };
     sunrise_threads::jobs::configure(key.worker_threads);
-    sunrise_client::sprites::set_texture_budget(key.texture_budget_mib);
-    sunrise_client::sprites::set_labpbr_maps(key.labpbr_maps);
+    #[cfg(feature = "client")]
+    if key.role.is_client() {
+        sunrise_client::sprites::set_texture_budget(key.texture_budget_mib);
+        sunrise_client::sprites::set_labpbr_maps(key.labpbr_maps);
+    }
     sunrise_client::chunk::set_block_states(cached.pack.assets.registry.len());
     if !mod_api::__private::parts_installation::parts_installed() {
         mod_platform::__private::part_tests::install_parts_fixture(&[])
@@ -426,9 +470,10 @@ fn hydrate_hit(
     crate::game::machines::cauldron_contents::install(
         crate::game::machines::cauldron_contents::CauldronContents::vanilla(),
     );
-    if !key.role.is_dedicated_server() {
-        sunrise_client::pack_palette::set(&cached.pack.polytone_colors);
-        sunrise_client::brewing::set_pack_colors(cached.pack.polytone_colors.effects.clone());
+    #[cfg(feature = "client")]
+    if let Some(client_pack) = &client_pack {
+        sunrise_client::pack_palette::set(&client_pack.polytone_colors);
+        sunrise_client::brewing::set_pack_colors(client_pack.polytone_colors.effects.clone());
     }
     if !skip_lang {
         sunrise_client::lang::set_shared(cached_language(
@@ -442,7 +487,6 @@ fn hydrate_hit(
     sunrise_client::mobs::trial_spawner::load_registry(&cached.root);
 
     let mut pack = cached.pack.clone();
-    pack.item_renderer = Arc::new(item_renderer);
     if !std::ptr::eq(registry, cached.pack.assets.registry) {
         let assets = Arc::new(Assets {
             registry,
@@ -450,63 +494,85 @@ fn hydrate_hit(
             material_states: cached.pack.assets.material_states,
             blocks_fluid_flow: cached.pack.assets.blocks_fluid_flow.clone(),
         });
-        let old = &cached.pack.context;
-        pack.context = Arc::new(WorkerContext {
+        let old = &cached.pack.chunk_context;
+        pack.chunk_context = Arc::new(sunrise_level::chunk_streamer::ChunkWorkerContext {
             assets: assets.clone(),
-            render: old.render.clone(),
-            tables: old.tables.clone(),
             biomes: old.biomes.clone(),
             light: old.light.clone(),
-            hidden_states: old.hidden_states.clone(),
-            part_tables: old.part_tables.clone(),
         });
         pack.assets = assets;
-        pack.water_overlay_state = registry
-            .default_state("minecraft:water")
-            .ok_or_else(|| {
-                "block registry is missing the default minecraft:water state".to_owned()
-            })?
-            .try_into_api()
-            .map_err(|e| format!("cannot bind the default minecraft:water state: {e:?}"))?;
+        #[cfg(feature = "client")]
+        if let Some(client_pack) = &mut client_pack {
+            client_pack.context = Arc::new(sunrise_client_render::streaming::WorkerContext {
+                chunk: (*pack.chunk_context).clone(),
+                mesh: client_pack.context.mesh.clone(),
+            });
+            client_pack.water_overlay_state = registry
+                .default_state("minecraft:water")
+                .ok_or_else(|| {
+                    "block registry is missing the default minecraft:water state".to_owned()
+                })?
+                .try_into_api()
+                .map_err(|e| format!("cannot bind the default minecraft:water state: {e:?}"))?;
+        }
     }
-    let gui = if dynamic_texture_pool {
-        let built = cached.gui_with_pool.get_or_init(|| {
-            let source =
-                sunrise_assets::resource_source::ResourceSource::directory(cached.root.clone());
-            resource_tables::with_dynamic_texture_pool_override(true, || {
-                let mut ui = UiResources::load(&source, &cached.vanilla_root)
-                    .map_err(|e| e.to_string())?
-                    .with_splashes(&source, &cached.vanilla_root, key.skip_modded_splashes);
-                ui.atlas.pack_pixels_sync();
-                Ok(Mutex::new(ui))
-            })
-        });
-        match built {
-            Ok(ui) => ui
+    #[cfg(feature = "client")]
+    let (gui, client_res) = if key.role.is_client() {
+        let gui = if dynamic_texture_pool {
+            let built = cached.gui_with_pool.get_or_init(|| {
+                let source =
+                    sunrise_assets::resource_source::ResourceSource::directory(cached.root.clone());
+                resource_tables::with_dynamic_texture_pool_override(true, || {
+                    let mut ui = UiResources::load(&source, &cached.vanilla_root)
+                        .map_err(|e| e.to_string())?
+                        .with_splashes(&source, &cached.vanilla_root, key.skip_modded_splashes);
+                    ui.atlas.pack_pixels_sync();
+                    Ok(Mutex::new(ui))
+                })
+            });
+            match built {
+                Ok(ui) => ui
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone_for_tests(),
+                Err(error) => return Err(error.clone()),
+            }
+        } else {
+            cached
+                .gui
+                .as_ref()
+                .ok_or("missing cached GUI bundle")?
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .clone_for_tests(),
-            Err(error) => return Err(error.clone()),
-        }
+                .clone_for_tests()
+        };
+        let client_res = cached
+            .client_res
+            .as_ref()
+            .ok_or("missing cached client resource slot")?;
+        (Some(gui), Some(client_res.clone()))
     } else {
-        cached
-            .gui
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone_for_tests()
+        (None, None)
     };
     progress.set(8);
     Ok(Some(Loaded {
         game_cpu: None,
         entity_models: cached.entity_models.clone(),
+        #[cfg(feature = "client")]
         renderer_cpu: None,
         root: cached.root.clone(),
         pack_error: None,
         resources: cached.resources.clone(),
         rest_loader: None,
+        #[cfg(feature = "client")]
         client_applies: Vec::new(),
         pack,
-        gui: Some(gui),
+        #[cfg(feature = "client")]
+        client_pack,
+        #[cfg(feature = "client")]
+        client_res,
+        #[cfg(feature = "client")]
+        gui,
     }))
 }
 
@@ -522,7 +588,7 @@ pub(in crate::game) fn load(
     skip_lang: bool,
     load_role: mods::LoadRole,
     progress: &Progress,
-    publish: &mut dyn FnMut(UiResources, &Path),
+    publish: &mut dyn FnMut(UiPublishArg, &Path),
 ) -> Result<Loaded> {
     if menu || !additional_data.is_empty() || launch_world.is_some() {
         return load_resources_uncached(
@@ -583,6 +649,7 @@ pub(in crate::game) fn load(
             publish,
         );
     };
+    #[cfg(feature = "client")]
     let dynamic_texture_pool =
         load_role.execution.is_client() && resource_tables::dynamic_texture_pool();
     let key = CacheKey {
@@ -592,8 +659,11 @@ pub(in crate::game) fn load(
         role: load_role.execution,
         owning: load_role.owning,
         worker_threads: settings.sunrise.worker_threads(),
+        #[cfg(feature = "client")]
         texture_budget_mib: settings.sunrise.texture_budget_mib,
-        labpbr_maps: shader_packs::picks_material_pack(settings),
+        #[cfg(feature = "client")]
+        labpbr_maps: load_role.execution.is_client() && shader_packs::picks_material_pack(settings),
+        #[cfg(feature = "client")]
         skip_modded_splashes: settings.extras.skip_modded_splashes_if_vanilla_modified,
     };
     let slot = {
@@ -620,6 +690,7 @@ pub(in crate::game) fn load(
     match hydrate_hit(
         cached,
         &key,
+        #[cfg(feature = "client")]
         dynamic_texture_pool,
         settings,
         skip_lang,
@@ -678,13 +749,25 @@ mod tests {
             first.pack.assets.registry,
             second.pack.assets.registry
         ));
-        // Each hit gets its own `Arc<ItemRenderer>` so `Arc::get_mut` succeeds without aliasing.
-        assert!(!Arc::ptr_eq(
-            &first.pack.item_renderer,
-            &second.pack.item_renderer
+        assert!(Arc::ptr_eq(
+            &first.pack.item_models,
+            &second.pack.item_models
         ));
-        let mut owned = second;
-        assert!(Arc::get_mut(&mut owned.pack.item_renderer).is_some());
+        assert!(Arc::ptr_eq(&first.pack.item_ids, &second.pack.item_ids));
+        #[cfg(feature = "client")]
+        {
+            assert!(first.client_pack.is_none());
+            assert!(first.client_res.is_none());
+            assert!(first.gui.is_none());
+            let c1 = load_for(execution_role::ExecutionRole::Client);
+            let mut c2 = load_for(execution_role::ExecutionRole::Client);
+            assert!(Arc::ptr_eq(&c1.pack.item_models, &c2.pack.item_models));
+            assert!(Arc::ptr_eq(&c1.pack.item_ids, &c2.pack.item_ids));
+            let c1_pack = c1.client_pack.as_ref().unwrap();
+            let c2_pack = c2.client_pack.as_mut().unwrap();
+            assert!(!Arc::ptr_eq(&c1_pack.item_renderer, &c2_pack.item_renderer));
+            assert!(Arc::get_mut(&mut c2_pack.item_renderer).is_some());
+        }
 
         // Concurrent calls on separate threads all share the exact same `Arc<Resources>`.
         let others: Vec<_> = std::thread::scope(|scope| {

@@ -7,8 +7,10 @@
 //! (`attackVisualEffects`, `itemAttackInteraction`, `damageStatsAndHearts`,
 //! the exhaustion, and the hit's feedback) follows as the attacker again.
 use super::{Game, lan_pvp::Victim};
-use sunrise_client::{health::HurtSource, spear::Kinetic, text::Text};
 use sunrise_core::geometry::{Aabb, Vec3};
+use {
+    sunrise_client::health::HurtSource, sunrise_client::text::Text, sunrise_sim::spear_sim::Kinetic,
+};
 
 /// Another player a spear can reach in the acting player's turn, taken from
 /// the hub before it: `PiercingWeapon.canHitEntity` holds for them.

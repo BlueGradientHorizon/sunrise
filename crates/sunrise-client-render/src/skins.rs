@@ -9,6 +9,8 @@ pub use sunrise_level::profile_lookup::{
     nbt_text, parse_profile, profile_texture_nbt, profile_uuid_nbt, property_signature, sha1,
     skin_location, texture_hash, unpack, valid_player_name,
 };
+pub use sunrise_server_profiles_http::fetch_own_properties;
+use sunrise_server_profiles_http::{ProfileAnswer, http_get};
 
 /// `MinecraftServicesDiscoveryService`'s valid texture URIs: the discovery
 /// document's `profiles` / `getTexture` `validUris`, which
@@ -88,81 +90,11 @@ pub fn profile_skin_url_nbt(profile: &sunrise_core::nbt::Tag) -> Option<String> 
     sunrise_level::profile_lookup::profile_skin_url_nbt(profile, texture_uris())
 }
 
-/// `ProfileResolver.Cached`: resolves a `Dynamic` profile through the
-/// services — `profileCacheByName` asks `profiles`/`getByName` for the id,
-/// `profileCacheById` asks `session`/`getProfileById` for the profile —
-/// at most 256 entries kept 10 minutes after their last use, fetched on
-/// background threads.
+/// `ProfileResolver.Cached` with client head-profile caches (`HeadProfiles`).
 pub struct Resolver {
-    entries: std::collections::HashMap<NameOrId, Entry>,
-    done: std::sync::mpsc::Receiver<(NameOrId, Option<ResolvedProfile>)>,
-    send: std::sync::mpsc::Sender<(NameOrId, Option<ResolvedProfile>)>,
-    last_sweep: std::time::Instant,
+    cache: sunrise_server_profiles_http::ProfileCache,
     heads: HeadProfiles,
-    /// Starts the lookup of a key, answering on the sender when done: [`fetch_in_background`],
-    /// or a test's fake backend.
-    lookup: Lookup,
 }
-type ProfileAnswer = std::sync::mpsc::Sender<(NameOrId, Option<ResolvedProfile>)>;
-type Lookup = Box<dyn FnMut(NameOrId, ProfileAnswer) + Send>;
-struct Entry {
-    touched: std::time::Instant,
-    /// `None` while the fetch is in flight.
-    resolved: Option<Option<ResolvedProfile>>,
-}
-/// `ProfileResolver.Cached`'s cache bounds.
-const MAX_PROFILES: usize = 256;
-const PROFILE_TTL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-
-/// `fetchByNameOrId`: `getByName` answers `{id, name}`; `getProfileById`
-/// (`fetchProfile(id, requireSecure)`) answers `{id, name, properties}` —
-/// asked `unsigned=false` so the `textures` property is signed.
-fn resolve_profile(key: &NameOrId, doc: &serde_json::Value) -> Option<ResolvedProfile> {
-    let id = match key {
-        NameOrId::Id(id) => *id,
-        NameOrId::Name(name) => {
-            let url = crate::auth::endpoint(doc, "profiles", "getByName")?
-                .replace("{name}", &name.to_lowercase());
-            let body = http_get(&url)?;
-            let v: serde_json::Value = serde_json::from_slice(&body).ok()?;
-            crate::auth::parse_uuid(v.get("id")?.as_str()?)?
-        }
-    };
-    let url = crate::auth::endpoint(doc, "session", "getProfileById")?
-        .replace("{profileId}", &format!("{id:032x}"));
-    let separator = if url.contains('?') { '&' } else { '?' };
-    let body = http_get(&format!("{url}{separator}unsigned=false"))?;
-    let v: serde_json::Value = serde_json::from_slice(&body).ok()?;
-    Some(ResolvedProfile {
-        id: crate::auth::parse_uuid(v.get("id")?.as_str()?)?,
-        name: v.get("name")?.as_str()?.to_owned(),
-        properties: v
-            .get("properties")?
-            .as_array()?
-            .iter()
-            .map(|p| {
-                Some((
-                    p.get("name")?.as_str()?.to_owned(),
-                    p.get("value")?.as_str()?.to_owned(),
-                    p.get("signature")
-                        .and_then(|s| s.as_str())
-                        .map(str::to_owned),
-                ))
-            })
-            .collect::<Option<Vec<_>>>()?,
-    })
-}
-
-/// The services' lookup of `key` on a background thread, never waited on.
-fn fetch_in_background(key: NameOrId, send: ProfileAnswer) {
-    std::thread::spawn(move || {
-        let resolved = crate::auth::discovery()
-            .ok()
-            .and_then(|doc| resolve_profile(&key, &doc));
-        let _ = send.send((key, resolved));
-    });
-}
-
 impl Default for Resolver {
     fn default() -> Self {
         Self::new()
@@ -170,86 +102,23 @@ impl Default for Resolver {
 }
 impl Resolver {
     pub fn new() -> Self {
-        Self::with_lookup(fetch_in_background)
+        Self {
+            cache: sunrise_server_profiles_http::ProfileCache::new(),
+            heads: HeadProfiles::default(),
+        }
     }
     /// A resolver whose lookups `lookup` starts instead of the services.
     pub(crate) fn with_lookup(
         lookup: impl FnMut(NameOrId, ProfileAnswer) + Send + 'static,
     ) -> Self {
-        let (send, done) = std::sync::mpsc::channel();
         Self {
-            entries: Default::default(),
-            done,
-            send,
-            last_sweep: std::time::Instant::now(),
+            cache: sunrise_server_profiles_http::ProfileCache::with_lookup(lookup),
             heads: HeadProfiles::default(),
-            lookup: Box::new(lookup),
-        }
-    }
-    /// `CacheBuilder.expireAfterAccess` with `maximumSize`.
-    fn sweep(&mut self) {
-        if self.last_sweep.elapsed() < std::time::Duration::from_secs(30) {
-            return;
-        }
-        self.last_sweep = std::time::Instant::now();
-        self.entries
-            .retain(|_, e| e.touched.elapsed() < PROFILE_TTL);
-        while self.entries.len() > MAX_PROFILES
-            && let Some(oldest) = self
-                .entries
-                .iter()
-                .min_by_key(|(_, e)| e.touched)
-                .map(|(k, _)| k.clone())
-        {
-            self.entries.remove(&oldest);
         }
     }
     /// How the resolution of `key` stands, starting it the first time.
     pub fn state(&mut self, key: &NameOrId) -> Resolve {
-        while let Ok((key, resolved)) = self.done.try_recv() {
-            self.entries.insert(
-                key,
-                Entry {
-                    touched: std::time::Instant::now(),
-                    resolved: Some(resolved),
-                },
-            );
-        }
-        self.sweep();
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.touched = std::time::Instant::now();
-            return match &entry.resolved {
-                Some(resolved) => Resolve::Done(resolved.clone()),
-                None => Resolve::Pending,
-            };
-        }
-        // `fetchByName` refuses an invalid name without a fetch; like every
-        // other empty answer that is the cached result.
-        let resolved = matches!(key, NameOrId::Name(name) if !valid_player_name(name));
-        self.entries.insert(
-            key.clone(),
-            Entry {
-                touched: std::time::Instant::now(),
-                resolved: resolved.then_some(None),
-            },
-        );
-        if resolved {
-            return Resolve::Done(None);
-        }
-        (self.lookup)(key.clone(), self.send.clone());
-        Resolve::Pending
-    }
-}
-
-/// Synchronized adapter implementing portable [`ProfileResolver`] over [`Resolver`].
-pub struct SharedResolver(pub std::sync::Mutex<Resolver>);
-
-impl ProfileResolver for SharedResolver {
-    fn lookup(&self, query: &NameOrId) -> Resolve {
-        self.0
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .state(query)
+        self.cache.state(key)
     }
 }
 
@@ -529,17 +398,6 @@ fn read_offline_skin(path: &std::path::Path, model: &str) -> Result<(Vec<u8>, bo
     let (w, h, rgba) = crate::hud::decode_bytes(&bytes).map_err(|e| e.to_string())?;
     let skin = process_legacy_skin(w, h, &rgba).ok_or("not a 64x64 or 64x32 skin")?;
     Ok((skin, model == "slim"))
-}
-
-/// The signed-in account's own profile properties (`Minecraft.profileFuture`:
-/// `fetchProfile(id, true)`, so its `textures` property is signed), or empty
-/// without an answer. Blocks on the network.
-pub fn fetch_own_properties(id: u128) -> Vec<(String, String, Option<String>)> {
-    crate::auth::discovery()
-        .ok()
-        .and_then(|doc| resolve_profile(&NameOrId::Id(id), &doc))
-        .map(|p| p.properties)
-        .unwrap_or_default()
 }
 
 /// Where a texture download stands.
@@ -1140,26 +998,6 @@ impl SkinSlots {
     }
 }
 
-/// A GET over HTTP or HTTPS (textures.minecraft.net serves both; vanilla
-/// uses https): the body of a 2xx answer, 16 MiB at most, after redirects.
-fn http_get(url: &str) -> Option<Vec<u8>> {
-    use std::io::Read;
-    let response = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Java")
-        .build()
-        .get(url)
-        .call()
-        .ok()?;
-    let mut body = Vec::new();
-    response
-        .into_reader()
-        .take(16 << 20)
-        .read_to_end(&mut body)
-        .ok()?;
-    Some(body)
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1335,64 +1173,6 @@ mod tests {
             super::services_profile_textures(&serde_json::json!({})),
             super::Textures::default()
         );
-    }
-
-    /// `getByName` and `getProfileById` answer from the services the
-    /// discovery document names; a profile resolves through both.
-    #[test]
-    #[ignore = "daily"]
-    fn profiles_resolve_through_the_services() {
-        use std::io::{BufRead, BufReader, Write};
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        std::thread::spawn(move || {
-            let reply = |status: &str, body: &str| {
-                format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-            };
-            for stream in listener.incoming().take(3) {
-                let mut stream = stream.unwrap();
-                let mut line = String::new();
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                reader.read_line(&mut line).unwrap();
-                while reader.read_line(&mut String::new()).unwrap() > 2 {}
-                let body = if line.contains("/users/profiles/minecraft/") {
-                    r#"{"id":"069a79f444e94726a5befca90e38aaf5","name":"Notch"}"#
-                } else if line.contains("/session/minecraft/profile/")
-                    && line.contains("unsigned=false")
-                {
-                    r#"{"id":"069a79f444e94726a5befca90e38aaf5","name":"Notch","properties":[{"name":"textures","value":"dmFsdWU=","signature":"c2ln"}]}"#
-                } else {
-                    "{}"
-                };
-                stream.write_all(reply("200 OK", body).as_bytes()).unwrap();
-            }
-        });
-        let doc = serde_json::json!({"discovery": {
-            "profiles": {"endpoints": {"getByName": {"uri": format!("{base}/users/profiles/minecraft/{{name}}")}}},
-            "session": {"endpoints": {"getProfileById": {"uri": format!("{base}/session/minecraft/profile/{{profileId}}")}}},
-        }});
-        let resolved =
-            super::resolve_profile(&super::NameOrId::Name("Notch".into()), &doc).unwrap();
-        assert_eq!(resolved.id, 0x069a_79f4_44e9_4726_a5be_fca9_0e38_aaf5);
-        assert_eq!(resolved.name, "Notch");
-        assert_eq!(
-            resolved.properties,
-            vec![(
-                "textures".to_owned(),
-                "dmFsdWU=".to_owned(),
-                Some("c2ln".to_owned())
-            )]
-        );
-        let by_id = super::resolve_profile(&super::NameOrId::Id(resolved.id), &doc).unwrap();
-        assert_eq!(by_id.name, "Notch");
-        // A discovery without `profiles`/`getByName` resolves no name.
-        let doc = serde_json::json!({"discovery": {
-            "session": {"endpoints": {"getProfileById": {"uri": format!("{base}/session/minecraft/profile/{{profileId}}")}}},
-        }});
-        assert!(super::resolve_profile(&super::NameOrId::Name("Notch".into()), &doc).is_none());
     }
 
     /// More skins drawn every frame than there are slots (#3829): a frame's

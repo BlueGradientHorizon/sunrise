@@ -2,11 +2,11 @@
 use super::Game;
 use super::integrated::{
     NO_ANSWER,
-    capture::{Live, ServerSide, Target},
+    capture::{Live, Target},
 };
 use super::memory::{MEMORY_EVERY_S, PendingMemory};
 use super::owner_link::OwnerRequest;
-use super::perf_remote::Served;
+use super::profile_capture_server::{ENV_DIR, reply_text, reports_dir, shown};
 use super::profile_lines::{self as lines, Notice};
 use crate::Result;
 use std::collections::VecDeque;
@@ -36,8 +36,6 @@ use sunrise_perf_format::{
 /// How often a progress notice is set again so the action bar keeps it until the work is done.
 pub(in crate::game) const PROGRESS_EVERY: Duration = Duration::from_secs(2);
 
-/// The folder `SUNRISE_PROFILE` names; captures go there instead of the game home's `reports/`.
-pub(in crate::game) const ENV_DIR: &str = "SUNRISE_PROFILE";
 /// The file `SUNRISE_TRACE` names: a timeline-only capture written there.
 pub(in crate::game) const ENV_TRACE: &str = "SUNRISE_TRACE";
 
@@ -139,8 +137,6 @@ impl MemorySchedule {
 
 /// The game's capture state: the health history, the running capture and who is waiting on it.
 pub(in crate::game) struct Profile {
-    /// The server thread's health history and its side of a capture; set on its own Game only.
-    pub(in crate::game) server: Option<ServerSide>,
     pub(in crate::game) link: ServerLink,
     /// The server thread's side of the running or last window capture, once it was asked.
     pub(in crate::game) joined: Option<Arc<Live>>,
@@ -166,8 +162,6 @@ pub(in crate::game) struct Profile {
     pub(in crate::game) env_tried: bool,
     /// What the running capture asks the renderer to time.
     pub(in crate::game) gpu: GpuSwitch,
-    /// The guests' requests to this server and the capture they ask of it (perf_remote.rs).
-    pub(in crate::game) served: Served,
     /// This client's capture on the server it is connected to.
     pub(in crate::game) server_link: Link,
     /// `profile` waits for the server's answer to its start, or for its file after a stop.
@@ -181,6 +175,34 @@ pub(in crate::game) struct Profile {
 }
 
 impl Profile {
+    pub(in crate::game) fn new(slow_ms: f32) -> Self {
+        Self {
+            link: ServerLink::Off,
+            joined: None,
+            server_only: None,
+            perf: ClientPerf::new(slow_ms),
+            started_by: Trigger::Unspecified,
+            memory: MemorySchedule::default(),
+            chat_answer: None,
+            jobs: VecDeque::new(),
+            job: None,
+            last_capture: None,
+            stopped_after: None,
+            progress: None,
+            reply: None,
+            spans_were_on: false,
+            trace_file: None,
+            hardware_warmed: false,
+            env_tried: false,
+            gpu: GpuSwitch::Off,
+            server_link: Link::default(),
+            server_reply: None,
+            server_joined: false,
+            server_sink: None,
+            incoming: None,
+        }
+    }
+
     /// The GPU timing the running capture needs; off when none runs.
     pub(in crate::game::client_side) fn gpu(&self) -> GpuSwitch {
         self.gpu
@@ -285,31 +307,6 @@ impl Profile {
     }
 }
 
-pub(in crate::game) fn reports_dir() -> PathBuf {
-    client_perf::reports_dir(
-        std::env::var_os(ENV_DIR).as_deref(),
-        &sunrise_client::logging::game_home(),
-    )
-}
-
-/// The path as the player sees it: under the game home's folder when it is there.
-pub(in crate::game) fn shown(path: &Path) -> String {
-    shown_in(path, &sunrise_client::logging::game_home())
-}
-
-/// `path` under `home` as `reports/profile-….hzperf`, with `/` on every platform so replies and chat read the same
-/// everywhere; a path outside `home` as the platform writes it, ready to paste into its file manager.
-pub(in crate::game) fn shown_in(path: &Path, home: &Path) -> String {
-    match path.strip_prefix(home) {
-        Ok(inside) => inside
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/"),
-        Err(_) => path.display().to_string(),
-    }
-}
-
 pub(in crate::game) fn gpu_readout(
     wanted: GpuSwitch,
     renderer: Option<&sunrise_client::gfx::Renderer>,
@@ -326,10 +323,6 @@ pub(in crate::game) fn json_of<T: serde::Serialize>(
     reply: &T,
 ) -> Result<Option<serde_json::Value>> {
     Ok(Some(serde_json::to_value(reply)?))
-}
-
-pub(in crate::game) fn reply_text<T: serde::Serialize>(reply: &T) -> String {
-    serde_json::to_string(reply).unwrap_or_default()
 }
 
 /// The fields of a deferred `profile` reply that chat shows.
@@ -440,11 +433,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 json_of(&started)
             }
             Request::Stop { bench } => {
-                match self.profile.stop_route(parsed.side)? {
+                match self.side.profile.stop_route(parsed.side)? {
                     StopRoute::Window => {
                         let bench = bench.map(|path| read_bench(&path)).transpose()?;
                         self.stop_profile_with(StopReason::Normal, bench.into_iter().collect())?;
-                        self.profile.reply = Some(reply.clone());
+                        self.side.profile.reply = Some(reply.clone());
                     }
                     StopRoute::Remote => self.stop_remote_only(reply)?,
                     StopRoute::ServerOnly => {
@@ -460,7 +453,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 Ok(None)
             }
-            Request::Status => json_of(&self.profile.status()),
+            Request::Status => json_of(&self.side.profile.status()),
             Request::Open(file) => {
                 let captures = sunrise_hooks::engine::captures().ok_or_else(unavailable)?;
                 captures.open(&game_path(&file))?;
@@ -484,7 +477,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Ok(None)
             }
             Request::Mark(name) => {
-                let (client, server) = self.profile.mark(parsed.side, &name);
+                let (client, server) = self.side.profile.mark(parsed.side, &name);
                 let posted = server.filter(|_| {
                     self.integrated.as_ref().is_some_and(|integrated| {
                         let label = name.clone();
@@ -506,15 +499,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match parse_trace(words)? {
             Trace::Status => json_of(&Traced {
                 ok: true,
-                tracing: self.profile.trace_file.is_some(),
-                file: self.profile.trace_file.clone(),
+                tracing: self.side.profile.trace_file.is_some(),
+                file: self.side.profile.trace_file.clone(),
             }),
             Trace::Stop => {
-                if self.profile.trace_file.is_none() {
+                if self.side.profile.trace_file.is_none() {
                     return Err("no trace is being written".into());
                 }
                 self.stop_profile(StopReason::Normal)?;
-                self.profile.reply = Some(reply.clone());
+                self.side.profile.reply = Some(reply.clone());
                 Ok(None)
             }
             Trace::Start { file, seconds } => {
@@ -537,18 +530,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn profile_busy(&self) -> bool {
-        self.profile.perf.capturing()
-            || self.profile.perf.saving()
-            || self.profile.server_only_live()
-            || !self.profile.server_link.is_idle()
+        self.side.profile.perf.capturing()
+            || self.side.profile.perf.saving()
+            || self.side.profile.server_only_live()
+            || !self.side.profile.server_link.is_idle()
     }
 
     /// The client options a capture records: what sets how much world it keeps and draws.
     pub(in crate::game::client_side) fn perf_client_settings(&self) -> ClientSettings {
-        let s = &self.settings;
+        let s = &self.side.settings;
         ClientSettings {
             view_distance: Some(s.render_distance.max(0) as u32),
-            loaded_view_distance: Some(self.streaming.radius.max(0) as u32),
+            loaded_view_distance: Some(self.side.streaming.radius.max(0) as u32),
             simulation_distance: Some(s.simulation_distance.max(0) as u32),
             far_terrain_distance: Some(self.lod_distance()),
             far_terrain_active: Some(self.side.lod.0.is_some()),
@@ -573,26 +566,27 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             trigger
         };
-        self.profile.server_only = None;
-        self.profile.stopped_after = None;
+        self.side.profile.server_only = None;
+        self.side.profile.stopped_after = None;
         let mut start = client_perf::start_message(
             self.integrated.is_some(),
             sunrise_client::telemetry::gpu_name().as_deref(),
         );
         start.mods = self.perf_mods();
         start.client_settings = Some(self.perf_client_settings());
-        let t = self.profile.perf.now();
+        let t = self.side.profile.perf.now();
         let path =
-            self.profile
+            self.side
+                .profile
                 .perf
                 .start(t, &reports_dir(), trigger, options, start, Vec::new())?;
-        self.profile.started_by = trigger;
-        self.profile.gpu = options.gpu;
-        self.profile.trace_file = options.file.as_ref().map(|f| f.display().to_string());
-        self.profile.spans_were_on = spans::recording_here();
+        self.side.profile.started_by = trigger;
+        self.side.profile.gpu = options.gpu;
+        self.side.profile.trace_file = options.file.as_ref().map(|f| f.display().to_string());
+        self.side.profile.spans_were_on = spans::recording_here();
         spans::record_here(true);
-        self.profile.joined = None;
-        self.profile.link = if side.is_none() {
+        self.side.profile.joined = None;
+        self.side.profile.link = if side.is_none() {
             ServerLink::Pending
         } else {
             ServerLink::Off
@@ -605,7 +599,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         Ok(Started {
             ok: true,
             sides: [
-                self.profile.served().then_some(ProfileSide::Server),
+                self.side.profile.served().then_some(ProfileSide::Server),
                 Some(ProfileSide::Client),
             ]
             .into_iter()
@@ -628,12 +622,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .integrated
             .as_ref()
             .ok_or("profile server: no single-player world is open")?;
-        let began = self.profile.perf.now();
+        let began = self.side.profile.perf.now();
         let live = Live::new();
         let target = Target::Own {
             options: options.clone(),
             trigger,
             dir: reports_dir(),
+            viewer: Some(sunrise_client::client_perf::request::viewer),
         };
         let handoff = live.clone();
         let path = integrated
@@ -647,7 +642,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             samples: options.samples,
             gpu: GpuSwitch::Off,
         };
-        self.profile.server_only = Some(ServerOnly {
+        self.side.profile.server_only = Some(ServerOnly {
             live,
             path,
             since: Instant::now(),
@@ -658,10 +653,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Asks the server thread to write its side into the running capture, once there is a server thread to ask.
     pub(in crate::game::client_side) fn join_server_capture(&mut self) {
-        if !matches!(self.profile.link, ServerLink::Pending) {
+        if !matches!(self.side.profile.link, ServerLink::Pending) {
             return;
         }
-        let (Some(integrated), Some(join)) = (&self.integrated, self.profile.perf.join()) else {
+        let (Some(integrated), Some(join)) = (&self.integrated, self.side.profile.perf.join())
+        else {
             return;
         };
         let live = Live::new();
@@ -672,8 +668,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             None,
         ));
         if posted {
-            self.profile.joined = Some(live);
-            self.profile.link = ServerLink::Off;
+            self.side.profile.joined = Some(live);
+            self.side.profile.link = ServerLink::Off;
         }
     }
 
@@ -688,22 +684,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
         bench: Vec<BenchResult>,
     ) -> Result<()> {
         // Ending a capture never requests or waits for a final memory sample.
-        self.profile.memory.cancel();
-        let t = self.profile.perf.now();
-        if self.profile.stopped_after.is_none() {
-            self.profile.stopped_after = self.profile.perf.status(t).map(|s| s.elapsed_s);
+        self.side.profile.memory.cancel();
+        let t = self.side.profile.perf.now();
+        if self.side.profile.stopped_after.is_none() {
+            self.side.profile.stopped_after = self.side.profile.perf.status(t).map(|s| s.elapsed_s);
         }
         let gpu = self.gpu_readout();
-        let server = self.profile.server_live();
-        if !self.profile.perf.stop_with(t, reason, gpu, bench) {
+        let server = self.side.profile.server_live();
+        if !self.side.profile.perf.stop_with(t, reason, gpu, bench) {
             return Err("no capture is running".into());
         }
         if server && let Some(integrated) = &self.integrated {
             integrated.tell(OwnerRequest::StopServerCapture(reason, None));
         }
         self.stop_joined_server();
-        self.profile.link = ServerLink::Off;
-        self.profile.gpu = GpuSwitch::Off;
+        self.side.profile.link = ServerLink::Off;
+        self.side.profile.gpu = GpuSwitch::Off;
         Ok(())
     }
 
@@ -711,7 +707,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn gpu_readout(
         &self,
     ) -> Option<sunrise_client::gfx::pack_timing::GpuReadout> {
-        gpu_readout(self.profile.gpu, self.side.renderer.0.as_deref())
+        gpu_readout(self.side.profile.gpu, self.side.renderer.0.as_deref())
     }
 
     pub(in crate::game::client_side) fn client_syntax_failure(
@@ -765,7 +761,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Ok(parsed) => parsed,
             Err(e) => return self.notify(lines::error(&e.to_string())),
         };
-        let running = self.profile.status().capturing;
+        let running = self.side.profile.status().capturing;
         let idle_answer = match parsed.request {
             Request::Start(_) => running,
             Request::Stop { .. } | Request::Mark(_) => !running,
@@ -777,7 +773,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let stopping = matches!(parsed.request, Request::Stop { .. });
         if stopping {
-            self.profile.stopped_after = self.profile.status().elapsed_s;
+            self.side.profile.stopped_after = self.side.profile.status().elapsed_s;
         }
         let (reply, answer) = std::sync::mpsc::channel();
         match self.run_profile(&words, &reply, Trigger::Command) {
@@ -785,7 +781,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if stopping {
                     self.profiler_work(Working::Saving);
                 }
-                self.profile.chat_answer = Some(answer);
+                self.side.profile.chat_answer = Some(answer);
             }
             Ok(Some(_)) => match parsed.request {
                 Request::Start(_) => self.notify(lines::started(parsed.side)),
@@ -807,7 +803,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Shows the notice for `working` now and again every [`PROGRESS_EVERY`] until [`Game::profiler_done`].
     pub(in crate::game::client_side) fn profiler_work(&mut self, working: Working) {
-        self.profile.progress = Some(Progress {
+        self.side.profile.progress = Some(Progress {
             working,
             due: Instant::now() + PROGRESS_EVERY,
         });
@@ -823,17 +819,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn profiler_done(&mut self, working: Working) {
         if self
+            .side
             .profile
             .progress
             .as_ref()
             .is_some_and(|p| p.working == working)
         {
-            self.profile.progress = None;
+            self.side.profile.progress = None;
         }
     }
 
     pub(in crate::game::client_side) fn poll_progress(&mut self) {
-        let Some(progress) = &mut self.profile.progress else {
+        let Some(progress) = &mut self.side.profile.progress else {
             return;
         };
         if Instant::now() < progress.due {
@@ -845,7 +842,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn profiler_status(&mut self) {
-        let status = self.profile.status();
+        let status = self.side.profile.status();
         self.notify(lines::status(
             &status.sides,
             status.elapsed_s.filter(|_| status.capturing),
@@ -854,15 +851,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// A capture from chat that asked for both sides, told the server refused to join it.
     pub(in crate::game::client_side) fn profiler_client_only(&mut self, why: &str) {
-        if self.profile.started_by == Trigger::Command {
+        if self.side.profile.started_by == Trigger::Command {
             self.notify(lines::client_only(why));
         }
     }
 
     pub(in crate::game::client_side) fn profiler_saved(&mut self, path: &str) {
         let full = sunrise_client::logging::game_home().join(path);
-        self.profile.last_capture = Some(full.clone());
-        let secs = self.profile.stopped_after.take().unwrap_or_default();
+        self.side.profile.last_capture = Some(full.clone());
+        let secs = self.side.profile.stopped_after.take().unwrap_or_default();
         let can_open_and_share = sunrise_hooks::engine::captures().is_some();
         self.notify(lines::saved(secs, &full, path, can_open_and_share));
     }
@@ -871,12 +868,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         id: Option<&str>,
     ) -> std::result::Result<PathBuf, Notice> {
-        resolve_capture(self.profile.last_capture.as_deref(), &reports_dir(), id).map_err(
-            |missing| match missing {
-                Missing::Last => lines::share_missing(),
-                Missing::Named(id) => lines::not_found(&id),
-            },
+        resolve_capture(
+            self.side.profile.last_capture.as_deref(),
+            &reports_dir(),
+            id,
         )
+        .map_err(|missing| match missing {
+            Missing::Last => lines::share_missing(),
+            Missing::Named(id) => lines::not_found(&id),
+        })
     }
 
     /// `/profiler open|share [ID]`: runs the captures hook on a saved capture, off the game thread.
@@ -892,17 +892,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn queue_profile_job(&mut self, path: PathBuf, job: Job) {
         let queued = self
+            .side
             .profile
             .jobs
             .iter()
             .any(|(p, j)| *p == path && *j == job);
         let active = self
+            .side
             .profile
             .job
             .as_ref()
             .is_some_and(|(p, j, _)| *p == path && *j == job);
         if !queued && !active {
-            self.profile.jobs.push_back((path, job));
+            self.side.profile.jobs.push_back((path, job));
             if job == Job::Share {
                 self.profiler_work(Working::Uploading);
             }
@@ -910,7 +912,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn poll_profile_job(&mut self) {
-        if let Some((file, job, receiver)) = &self.profile.job {
+        if let Some((file, job, receiver)) = &self.side.profile.job {
             let (file, job) = (file.clone(), *job);
             let result = match receiver.try_recv() {
                 Ok(result) => result,
@@ -919,7 +921,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     Err(sunrise_client::lang::get("sunrise.perf.upload_interrupted"))
                 }
             };
-            self.profile.job = None;
+            self.side.profile.job = None;
             let shown = shown(&file);
             match (job, result) {
                 (Job::Open, Ok(_)) => self.notify(lines::opened()),
@@ -937,7 +939,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
         }
-        if let Some((path, job)) = self.profile.jobs.pop_front() {
+        if let Some((path, job)) = self.side.profile.jobs.pop_front() {
             let (send, receive) = std::sync::mpsc::channel();
             let file = path.clone();
             match std::thread::Builder::new()
@@ -945,7 +947,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .spawn(move || {
                     let _ = send.send(run_job(job, &file));
                 }) {
-                Ok(_) => self.profile.job = Some((path, job, receive)),
+                Ok(_) => self.side.profile.job = Some((path, job, receive)),
                 Err(error) => {
                     self.profiler_done(Working::Uploading);
                     self.notify(lines::error(&error.to_string()));
@@ -956,54 +958,55 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Start a memory census on schedule; publish it only if it finishes in this capture.
     pub(in crate::game::client_side) fn poll_memory_snapshot(&mut self) {
-        if let Some((label, t, pending)) = self.profile.memory.pending.take() {
+        if let Some((label, t, pending)) = self.side.profile.memory.pending.take() {
             match pending.poll() {
                 Poll::Pending => {
-                    self.profile.memory.pending = Some((label, t, pending));
+                    self.side.profile.memory.pending = Some((label, t, pending));
                     return;
                 }
                 Poll::Ready(Some(rows)) => {
-                    self.profile.perf.memory_snapshot(t, &label, &rows);
+                    self.side.profile.perf.memory_snapshot(t, &label, &rows);
                 }
                 Poll::Ready(None) => {}
             }
         }
-        let Some(cost) = self.profile.perf.memory_cost() else {
+        let Some(cost) = self.side.profile.perf.memory_cost() else {
             return;
         };
-        let now = self.profile.perf.now();
-        let label = match self.profile.memory.due {
+        let now = self.side.profile.perf.now();
+        let label = match self.side.profile.memory.due {
             None => {
-                self.profile.memory.due = Some((now + MEMORY_EVERY_S, 1));
+                self.side.profile.memory.due = Some((now + MEMORY_EVERY_S, 1));
                 "start".to_owned()
             }
             Some((due, period)) if now >= due => {
                 // A slow reply is not a reason to build a queue of stale samples.
                 let elapsed = ((now - due) / MEMORY_EVERY_S) as u32;
                 let period = period + elapsed;
-                self.profile.memory.due =
+                self.side.profile.memory.due =
                     Some((due + f64::from(elapsed + 1) * MEMORY_EVERY_S, period + 1));
                 format!("{}s", u64::from(period) * MEMORY_EVERY_S as u64)
             }
             Some(_) => return,
         };
-        self.profile.memory.pending = PendingMemory::start(self, cost).map(|job| (label, now, job));
+        self.side.profile.memory.pending =
+            PendingMemory::start(self, cost).map(|job| (label, now, job));
     }
 
     pub(in crate::game::client_side) fn poll_chat_answer(&mut self) {
-        let Some(answer) = &self.profile.chat_answer else {
+        let Some(answer) = &self.side.profile.chat_answer else {
             return;
         };
         let text = match answer.try_recv() {
             Ok(text) => text,
             Err(TryRecvError::Empty) => return,
             Err(TryRecvError::Disconnected) => {
-                self.profile.chat_answer = None;
+                self.side.profile.chat_answer = None;
                 self.profiler_done(Working::Saving);
                 return;
             }
         };
-        self.profile.chat_answer = None;
+        self.side.profile.chat_answer = None;
         self.profiler_done(Working::Saving);
         match serde_json::from_str::<ChatAnswer>(&text) {
             Ok(ChatAnswer { error: Some(e), .. }) => self.notify(lines::error(&e)),
@@ -1055,22 +1058,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
             cpu_ms: Some(cpu_ms),
             spans: frame_spans.to_vec(),
         });
-        let t = self.profile.perf.now();
-        if self.profile.gpu != GpuSwitch::Off
+        let t = self.side.profile.perf.now();
+        if self.side.profile.gpu != GpuSwitch::Off
             && let Some(renderer) = self.side.renderer.0.as_mut()
         {
             let frames = renderer.take_timed_frames();
-            self.profile.perf.gpu_frames(t, cpu_ms, &frames);
+            self.side.profile.perf.gpu_frames(t, cpu_ms, &frames);
         }
         let connection = self
             .remote
             .as_ref()
             .and_then(|r| r.session.counters.lock().unwrap().clone());
-        self.profile.perf.set_connection(connection);
-        let (wanted, renderer) = (self.profile.gpu, self.side.renderer.0.as_deref());
+        self.side.profile.perf.set_connection(connection);
+        let (wanted, renderer) = (self.side.profile.gpu, self.side.renderer.0.as_deref());
         let entities = self.client_perf_entity_count() as u32;
-        let memory = &mut self.profile.memory;
-        self.profile.perf.frame_with_gpu(
+        let memory = &mut self.side.profile.memory;
+        self.side.profile.perf.frame_with_gpu(
             t,
             wall_ms,
             cpu_ms,
@@ -1090,18 +1093,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 gpu_readout(wanted, renderer)
             },
         );
-        if !self.profile.perf.capturing() {
-            self.profile.gpu = GpuSwitch::Off;
+        if !self.side.profile.perf.capturing() {
+            self.side.profile.gpu = GpuSwitch::Off;
         }
-        if matches!(self.profile.link, ServerLink::Pending) {
+        if matches!(self.side.profile.link, ServerLink::Pending) {
             self.join_server_capture();
         }
-        if !self.profile.hardware_warmed {
-            self.profile.hardware_warmed = true;
+        if !self.side.profile.hardware_warmed {
+            self.side.profile.hardware_warmed = true;
             server_perf::warm_hardware();
         }
-        if !self.profile.env_tried && server_perf::hardware().is_some() {
-            self.profile.env_tried = true;
+        if !self.side.profile.env_tried && server_perf::hardware().is_some() {
+            self.side.profile.env_tried = true;
             let named = |var: &str| std::env::var_os(var).filter(|v| !v.is_empty());
             let gpu = client_perf::env_gpu(
                 std::env::var_os(client_perf::ENV_PASS_TIMING).as_deref(),
@@ -1138,7 +1141,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.poll_chat_answer();
         self.poll_progress();
         self.poll_memory_snapshot();
-        for saved in self.profile.perf.take_saved(false) {
+        for saved in self.side.profile.perf.take_saved(false) {
             self.profile_saved(saved);
         }
         self.poll_profile_job();
@@ -1146,7 +1149,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Ends the capture a closing game still has, and waits for its file.
     pub(in crate::game::client_side) fn finish_profile(&mut self) {
-        if self.profile.perf.capturing() {
+        if self.side.profile.perf.capturing() {
             let _ = self.stop_profile(StopReason::Shutdown);
         }
         self.abandon_part();
@@ -1154,7 +1157,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(integrated) = &self.integrated {
             integrated.request_stop();
         }
-        for saved in self.profile.perf.take_saved(true) {
+        for saved in self.side.profile.perf.take_saved(true) {
             self.profile_saved(saved);
         }
     }
@@ -1164,23 +1167,23 @@ impl Game<'_, crate::game::client_side::ClientState> {
         saved: std::io::Result<sunrise_client::server_perf::Saved>,
     ) {
         self.stop_joined_server();
-        spans::record_here(self.profile.spans_were_on);
-        self.profile.trace_file = None;
-        let reply = self.profile.reply.take();
-        let in_chat = self.profile.started_by == Trigger::Command && reply.is_none();
+        spans::record_here(self.side.profile.spans_were_on);
+        self.side.profile.trace_file = None;
+        let reply = self.side.profile.reply.take();
+        let in_chat = self.side.profile.started_by == Trigger::Command && reply.is_none();
         match saved {
             Ok(saved) => {
                 for path in &saved.deleted {
                     log::info!("Sunrise: removed the oldest capture {}", path.display());
                 }
                 log::info!("Sunrise: {}", files::saved_line(&saved.path));
-                self.profile.last_capture =
+                self.side.profile.last_capture =
                     Some(sunrise_client::logging::game_home().join(shown(&saved.path)));
                 if let Some(reply) = reply {
                     let _ = reply.send(reply_text(&Stopped {
                         ok: true,
                         sides: [
-                            self.profile.served().then_some(ProfileSide::Server),
+                            self.side.profile.served().then_some(ProfileSide::Server),
                             Some(ProfileSide::Client),
                         ]
                         .into_iter()
@@ -1216,18 +1219,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-
-    #[test]
-    fn a_capture_under_the_home_is_shown_with_slashes() {
-        let home = std::env::temp_dir().join("sunrise-home");
-        let inside = home.join("reports").join("profile-20261113-190003Z.hzperf");
-        assert_eq!(
-            shown_in(&inside, &home),
-            "reports/profile-20261113-190003Z.hzperf"
-        );
-        let elsewhere = std::env::temp_dir().join("captures").join("a.hzperf");
-        assert_eq!(shown_in(&elsewhere, &home), elsewhere.display().to_string());
-    }
 
     fn chat_request(line: &str) -> std::result::Result<request::Parsed, String> {
         let tree = Dispatcher::profiler();

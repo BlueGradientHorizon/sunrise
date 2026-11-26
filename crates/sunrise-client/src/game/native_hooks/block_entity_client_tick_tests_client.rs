@@ -58,7 +58,8 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
             sunrise_protocol::registry::Ids::from_names(types.map(str::to_owned).to_vec()),
         );
         for (x, z) in [CHUNK, (101, 100)] {
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }
         let registry = game.pack.assets.registry;

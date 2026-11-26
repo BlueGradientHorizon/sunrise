@@ -93,7 +93,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         component: &str,
     ) -> Option<Tag> {
         let item = mod_api::__private::item_key_id(item)?;
-        let prototype = self.pack.item_renderer.models.prototypes.get(item)?;
+        let prototype = self.pack.item_models.prototypes.get(item)?;
         Some(sunrise_client::scoreboard::json_to_tag(
             prototype.get(component)?,
         ))
@@ -141,8 +141,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         let Some(value) = self
             .pack
-            .item_renderer
-            .models
+            .item_models
             .prototypes
             .get(&*stack.item)
             .and_then(|item| item.get("minecraft:instrument"))
@@ -236,9 +235,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         id: &str,
     ) -> Option<serde_json::Value> {
         self.pack
-            .item_renderer
-            .models
-            .components_view(&sunrise_client::item_render::stack_view(stack))
+            .item_models
+            .components_view(&sunrise_sim::item_models::stack_view(stack))
             .get(id)
             .cloned()
     }
@@ -344,7 +342,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> Option<bool> {
         self.items().get(&stack.item)?;
         stack_can_be_hurt_by(
-            &self.pack.item_renderer.models,
+            &self.pack.item_models,
             &self.health_resources.damage,
             stack,
             name,
@@ -1038,10 +1036,7 @@ pub(in crate::game) mod combat_query_tests {
             let attacker = actor(game);
             let target = attacker.entity();
             let prototypes = std::sync::Arc::make_mut(
-                &mut std::sync::Arc::get_mut(&mut game.pack.item_renderer)
-                    .expect("fixture owns its renderer")
-                    .models
-                    .prototypes,
+                &mut std::sync::Arc::make_mut(&mut game.pack.item_models).prototypes,
             );
             let prototype = prototypes.get_mut("minecraft:diamond_sword").unwrap();
             prototype.insert(

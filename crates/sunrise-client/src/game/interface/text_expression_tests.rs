@@ -62,9 +62,9 @@ fn a_packs_text_draws_its_expression_uniforms() {
     let case = std::env::var(CASE).unwrap();
     let (loading, fullbright) = (case == "loading", case == "fullbright");
     with_client_game(|game| {
-        game.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
+        game.side.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
         let frame_context = sunrise_client::environment::Frame::default();
-        let text = &game.gui.atlas.text_shaders;
+        let text = &game.side.gui.atlas.text_shaders;
         for (expressions, value) in [
             (&text.expressions.gui, 0.2),
             (&text.expressions.world, 0.6),
@@ -83,7 +83,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
         }
         // A text display in front of the camera, as a server's would arrive.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
-        game.settings.chunk_fade = 0.0;
+        game.side.settings.chunk_fade = 0.0;
         game.side
             .renderer
             .0
@@ -131,8 +131,8 @@ fn the_loading_screen_draws_zeros(game: &mut crate::game::ClientGame<'_>) {
     assert_eq!(corner(game, frame), [51, 192, 0]);
     let renderer = game.side.renderer.0.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
-    let mut hud = sunrise_client::hud::HudBatch::new(size, game.settings.gui_scale_inputs());
-    sunrise_client::level_loading::draw_progress(&mut hud, &game.gui.atlas, "Loading", 0.5);
+    let mut hud = sunrise_client::hud::HudBatch::new(size, game.side.settings.gui_scale_inputs());
+    sunrise_client::level_loading::draw_progress(&mut hud, &game.side.gui.atlas, "Loading", 0.5);
     let loading = |game: &mut crate::game::ClientGame<'_>| {
         let frame = super::loading_frame(&hud);
         game.side.renderer.0.as_mut().unwrap().render(&frame)

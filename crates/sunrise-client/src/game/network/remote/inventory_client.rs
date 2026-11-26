@@ -127,7 +127,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn poll_stationary_client(&mut self) -> Result<()> {
         self.poll_remote()?;
         let loaded = self.player.as_ref().is_some_and(|p| {
-            self.streaming.is_lit(
+            self.side.streaming.is_lit(
                 (p.position.x.floor() as i32) >> 4,
                 (p.position.z.floor() as i32) >> 4,
             )

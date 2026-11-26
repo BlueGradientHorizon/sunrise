@@ -44,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (background, rest) = draws.split_at(2.min(draws.len()));
         self.paint_screen(batch, ox, oy, background, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let grey = rgba(64, 64, 64, 255);
         // A server's crafter menu has the title it was given.
         let title = self.remote_menu_title().unwrap_or_else(|| {

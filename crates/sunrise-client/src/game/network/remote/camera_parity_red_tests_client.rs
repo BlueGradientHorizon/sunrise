@@ -132,7 +132,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         game.side.avatar.walk_dist_o = 1.75;
         game.side.avatar.bob = 0.08;
         game.side.avatar.bob_o = 0.04;
-        game.settings.view_bobbing = true;
+        game.side.settings.view_bobbing = true;
         game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
         let profile = game.remote.as_ref().unwrap().profile;
         game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
@@ -313,7 +313,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         game.border.set_center([0.0, 0.0]);
         game.border.set_size(200.0);
         game.border.warning_distance = 10;
-        game.settings.vignette = true;
+        game.side.settings.vignette = true;
         game.side.chat_ui.hide_gui = false;
         let hand_proj = sunrise_client::camera::hand_projection(70.0, 1280.0, 800.0, 512.0);
         let quads_shown = game.screen_quads(1.0, [1280, 800], 1.0, hand_proj);
@@ -396,11 +396,11 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         // 1. Streaming center follows camera entity.
         game.client_update_world();
         assert_eq!(
-            game.streaming.center, want_chunk,
+            game.side.streaming.center, want_chunk,
             "streaming.center must follow camera"
         );
         assert_eq!(
-            game.streaming.center_y, want_block_y,
+            game.side.streaming.center_y, want_block_y,
             "streaming.center_y must follow camera"
         );
 
@@ -559,8 +559,8 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
                 .chunks
                 .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
             game.side.view_frustum = None;
-            game.settings.entity_shadows = false;
-            game.settings.extras.own_name_tag = false;
+            game.side.settings.entity_shadows = false;
+            game.side.settings.extras.own_name_tag = false;
             game.tick_player_model();
             game.sleeping = local_sleeping.then_some([0, 64, 0]);
 
@@ -691,7 +691,7 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
             // Local player own_name_tag must never show while camera is on another entity.
             if !camera_on_self && name == "creeper" {
                 game.side.camera_type = CameraType::ThirdPersonBack;
-                game.settings.extras.own_name_tag = true;
+                game.side.settings.extras.own_name_tag = true;
                 let own_name = game.own_profile_name();
                 let tags = game.shown_name_tags(glam::DVec3::new(0.5, 65.5, 4.5));
                 if tags.iter().any(|t| t == &own_name) {
@@ -717,8 +717,8 @@ pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_an
             .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
         game.world.set(5, 63, 5, stone).unwrap();
         game.side.view_frustum = None;
-        game.settings.entity_shadows = true;
-        game.settings.extras.own_name_tag = false;
+        game.side.settings.entity_shadows = true;
+        game.side.settings.extras.own_name_tag = false;
         game.tick_player_model();
 
         let stone_item = game
@@ -851,7 +851,10 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case("sprinting_speed_scale_1_0");
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.settings.file.set("fovEffectScale", OptV::Double(1.0));
+            game.side
+                .settings
+                .file
+                .set("fovEffectScale", OptV::Double(1.0));
             add_entity_with_data(game, 20, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             let attr = speed_attr_id(game);
             game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
@@ -908,7 +911,10 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case("speed_0_2_scale_0_5");
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.settings.file.set("fovEffectScale", OptV::Double(0.5));
+            game.side
+                .settings
+                .file
+                .set("fovEffectScale", OptV::Double(0.5));
             add_entity_with_data(game, 21, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             let attr = speed_attr_id(game);
             game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
@@ -945,7 +951,10 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case("bow_draw_mainhand");
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.settings.file.set("fovEffectScale", OptV::Double(1.0));
+            game.side
+                .settings
+                .file
+                .set("fovEffectScale", OptV::Double(1.0));
             add_entity_with_data(game, 22, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             let bow = WireStack::new(item_id(game, "minecraft:bow"), 1);
             game.handle_packet(C::SetEquipment(play::SetEquipment {
@@ -988,7 +997,10 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case(name);
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.settings.file.set("fovEffectScale", OptV::Double(0.5));
+            game.side
+                .settings
+                .file
+                .set("fovEffectScale", OptV::Double(0.5));
             game.side.camera_type = ct;
             add_entity_with_data(game, 23, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             let spyglass = WireStack::new(item_id(game, "minecraft:spyglass"), 1);
@@ -1038,7 +1050,10 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case(name);
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.settings.file.set("fovEffectScale", OptV::Double(1.0));
+            game.side
+                .settings
+                .file
+                .set("fovEffectScale", OptV::Double(1.0));
             let local = game.player.as_mut().unwrap();
             local.set_health(0.0, false).unwrap();
             local.speed = 0.3;
@@ -1073,7 +1088,10 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
         let tc = find_case("local_healthy_spectating_dying_sprinting_remote_player");
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
-            game.settings.file.set("fovEffectScale", OptV::Double(1.0));
+            game.side
+                .settings
+                .file
+                .set("fovEffectScale", OptV::Double(1.0));
             add_entity_with_data(game, 26, "minecraft:player", [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             let attr = speed_attr_id(game);
             game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
@@ -1359,9 +1377,9 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
         game.world.weather.raining = true;
         game.world.weather.rain_level = (1.0, 1.0);
         game.world.game_time = 1;
-        game.settings.particles = 0;
-        game.settings.weather_radius = 10;
-        game.settings.sunrise.weather = true;
+        game.side.settings.particles = 0;
+        game.side.settings.weather_radius = 10;
+        game.side.settings.sunrise.weather = true;
 
         add_entity(
             game,
@@ -2187,7 +2205,7 @@ pub(in crate::game) fn setup_remote_overworld(
         .unwrap(),
     );
     game.side.camera_type = CameraType::FirstPerson;
-    game.settings.fov = 70.0;
-    game.settings.render_distance = 8;
+    game.side.settings.fov = 70.0;
+    game.side.settings.render_distance = 8;
     server
 }

@@ -1220,8 +1220,8 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
-                    game.settings.simulation_distance = 4;
-                    game.settings.render_distance = 12;
+                    game.side.settings.simulation_distance = 4;
+                    game.side.settings.render_distance = 12;
                     game.player = Some(
                         sunrise_client::motion::PlayerMotion::new(
                             game.motion,

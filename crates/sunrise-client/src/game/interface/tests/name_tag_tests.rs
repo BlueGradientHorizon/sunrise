@@ -91,15 +91,9 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
-        res,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        None,
-    )
-    .unwrap();
+    let mut game =
+        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+            .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     game.world
@@ -141,7 +135,9 @@ fn client_game<'a>(
     let res = &*resources.insert(loaded.resources);
     let mut game = crate::game::ClientGame::new(
         res,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -287,13 +283,13 @@ fn a_trades_title_draws_the_names_style() {
     let mut resources = None;
     let mut game = client_game(&mut resources);
     // This test draws the merchant screen; load full UI resources for glyph metrics.
-    game.gui = UiResources::load(&game.pack.source, &game.options.resources).unwrap();
+    game.side.gui = UiResources::load(&game.pack.source, &game.options.resources).unwrap();
     // `MerchantScreen.extractLabels` draws the menu's title, the merchant's
     // `getDisplayName()`: a name with a colour keeps it, instead of coming out
     // in the screen's grey (-12566464).
     let session = sunrise_client::merchant::Session::new(Vec::new(), true);
     game.open_remote_merchant(session, Some(Text::colored("Bob", 0xFF_0000)));
-    let mut batch = HudBatch::new([854, 480], game.settings.gui_scale_inputs());
+    let mut batch = HudBatch::new([854, 480], game.side.settings.gui_scale_inputs());
     assert!(game.draw_merchant(&mut batch));
     let (_, oy) = game.inventory_origin(&batch);
     // The title's row: glyphs only, its own line (`oy + 6`, 8 px tall).

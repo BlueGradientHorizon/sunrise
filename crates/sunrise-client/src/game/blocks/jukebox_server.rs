@@ -2,15 +2,13 @@
 use super::Game;
 #[allow(unused_imports)]
 use crate::game::jukebox_common::{jukebox_playable, jukebox_signals, song_of_record};
-use sunrise_client::{
-    block_entity_item,
-    containers::{BlockEntity, Jukebox},
-    items::ItemStack,
-    mobs::Who,
-    particles::ParticleType,
-};
 use sunrise_core::{position::BlockPos, random::RandomSource};
 use sunrise_world::level::flags as level_flags;
+use {
+    sunrise_client::block_entity_item, sunrise_client::containers::BlockEntity,
+    sunrise_client::containers::Jukebox, sunrise_client::items::ItemStack,
+    sunrise_client::mobs::Who, sunrise_level::particle_options::ParticleType,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
@@ -360,9 +358,8 @@ pub(in crate::game) mod jukebox_play_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -664,9 +661,8 @@ pub(in crate::game) mod block_change_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

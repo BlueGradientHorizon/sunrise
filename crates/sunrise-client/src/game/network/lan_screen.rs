@@ -807,7 +807,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .rules
                         .as_ref()
                         .unwrap()
-                        .draw_background(batch, &self.gui.atlas);
+                        .draw_background(batch, &self.side.gui.atlas);
                     self.draw_screen_phase(
                         batch,
                         sunrise_client::screen_draw::RenderPhase::Background,
@@ -821,18 +821,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .rules
                         .as_mut()
                         .unwrap()
-                        .draw_contents(batch, &self.gui.atlas, self.side.cursor);
+                        .draw_contents(batch, &self.side.gui.atlas, self.side.cursor);
                     self.draw_screen_phase(
                         batch,
                         sunrise_client::screen_draw::RenderPhase::Foreground,
                     );
                     if let Some(tooltip) = tooltip {
-                        ui::tooltip(batch, &self.gui.atlas, &tooltip, self.side.cursor);
+                        ui::tooltip(batch, &self.side.gui.atlas, &tooltip, self.side.cursor);
                     }
                 } else {
                     ui::menu_background(
                         batch,
-                        &self.gui.atlas,
+                        &self.side.gui.atlas,
                         0.0,
                         0.0,
                         batch.width,
@@ -869,7 +869,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 &[&Text::translate("difficulty.lock.question", &[name]).plain()],
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         // Screen.extractTransparentBackground.
         batch.fill_gradient(
@@ -911,7 +911,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 super::screen_info::tr("restrictions_screen.title", &[]),
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
@@ -925,7 +925,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             u32::MAX,
             true,
         );
-        let r = Restrictions::new(&atlas.font, self.settings.chat_visibility, (w, h));
+        let r = Restrictions::new(&atlas.font, self.side.settings.chat_visibility, (w, h));
         let first = batch.vertices.len();
         for (line, x, y) in &r.lines {
             batch.text_styled(atlas, line, *x, *y, u32::MAX, true);
@@ -971,7 +971,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 super::screen_info::tr("options.worldOptions.title", &[]),
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         // extractMenuBackground: the in-world background, the list
         // background under the content, then the separators over it.
@@ -1249,7 +1249,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match o.view {
             View::Options => {}
             View::GameRules => {
-                let atlas = &self.gui.atlas;
+                let atlas = &self.side.gui.atlas;
                 let (exit, handled) = o.rules.as_mut().map_or((None, false), |rules| {
                     if rules.clicks_button(atlas, self.side.cursor, (w, h)) {
                         self.side.audio.0.play_button_click();
@@ -1263,7 +1263,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return handled;
             }
             View::LockQuestion => {
-                let p = Popup::lock_question(&self.gui.atlas.font, o.difficulty, (w, h));
+                let p = Popup::lock_question(&self.side.gui.atlas.font, o.difficulty, (w, h));
                 let hit = p.buttons.iter().position(|&(bx, by)| {
                     ui::hovered(self.side.cursor, bx, by, POPUP_BUTTON, 20.0)
                 });
@@ -1283,8 +1283,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return hit.is_some();
             }
             View::Restrictions => {
-                let r =
-                    Restrictions::new(&self.gui.atlas.font, self.settings.chat_visibility, (w, h));
+                let r = Restrictions::new(
+                    &self.side.gui.atlas.font,
+                    self.side.settings.chat_visibility,
+                    (w, h),
+                );
                 let in_body = self.side.cursor.1 >= r.area.0 && self.side.cursor.1 < r.area.1;
                 let action = r.action.is_some_and(|(ax, ay)| {
                     in_body && ui::hovered(self.side.cursor, ax, ay, 200.0, 20.0)
@@ -1391,7 +1394,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
         let (w, h) = self.gui_size();
-        let chat_vis = self.settings.chat_visibility;
+        let chat_vis = self.side.settings.chat_visibility;
         let Some(o) = self.side.world_options.0.as_mut() else {
             return false;
         };
@@ -1447,7 +1450,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         }
         if o.view == View::Restrictions {
-            let r = Restrictions::new(&self.gui.atlas.font, chat_vis, (w, h));
+            let r = Restrictions::new(&self.side.gui.atlas.font, chat_vis, (w, h));
             match key {
                 winit::keyboard::KeyCode::Tab => {
                     let reverse = shift;

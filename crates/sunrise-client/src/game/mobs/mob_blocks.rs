@@ -112,13 +112,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     fn elder_guardian_geometry(&self, left: i32, alpha: f64, out: &mut Vec<Vertex>) {
         let Some(model) = self
-            .res
+            .client_res()
             .client_mob_models()
             .model("minecraft:elder_guardian")
         else {
             return;
         };
-        let Some(r) = self.gui.atlas.sprites.get("entity/guardian_elder").copied() else {
+        let Some(r) = self
+            .side
+            .gui
+            .atlas
+            .sprites
+            .get("entity/guardian_elder")
+            .copied()
+        else {
             return;
         };
         let age = (ELDER_GUARDIAN_LIFETIME - left) as f32 + alpha as f32;
@@ -179,7 +186,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let m = banner_matrix(head);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let uv = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // BannerRenderer: the flag sways with a per-banner phase.
         let phase =
@@ -722,12 +729,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .map(|(_, t)| sunrise_client::scoreboard::tag_to_json(t))
                 .unwrap_or(serde_json::Value::Null);
             let has_foil = stack.data().is_some_and(|d| !d.enchantments.is_empty());
-            self.pack.item_renderer.submit_special(
+            self.side.client_pack.item_renderer.submit_special(
                 &special,
                 &profile,
                 has_foil,
                 pose,
-                &self.gui.atlas.sprites,
+                &self.side.gui.atlas.sprites,
                 &self.item_host(),
                 &mut sink,
             );

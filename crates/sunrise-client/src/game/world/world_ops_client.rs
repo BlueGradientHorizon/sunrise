@@ -138,6 +138,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let environment = self.res.environment_of(&self.dimension_type().id);
         let loot_storage = self.score.storage.snapshot();
 
+        let mut scratch_gateways = Default::default();
         let mut scratch_hoppers = HashMap::new();
         let mut scratch_rand_sequences =
             sunrise_client::random_sequences::RandomSequences::default();
@@ -175,7 +176,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             attachment_query_scopes: &self.transactions.attachment_query_scopes,
             command_block_transition: None,
             positions: piston_carry_state::PositionState {
-                gateways: &mut self.be_anims.gateway_servers,
+                gateways: &mut scratch_gateways,
                 hoppers: &mut scratch_hoppers,
             },
             border: self.border.geometry(),
@@ -204,7 +205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             building_player_boxes: None,
             player_collision,
             biomes: world_biomes!(self),
-            biome_zoom: self.streaming.biome_zoom,
+            biome_zoom: self.side.streaming.biome_zoom,
             seed: self.level.seed,
             behaviours: self.res.behaviours(),
             items,
@@ -269,7 +270,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 PositionChange::Carry { from, to, partner } => {
                     for at in [from, to] {
                         let p = [at.0, at.1, at.2];
-                        self.be_anims.remove_position(p);
+                        self.side.be_anims.remove_position(p);
                         self.world.shulkers.remove(&p);
                         self.world.chest_openers.remove(&at);
                     }
@@ -735,7 +736,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.res.clone(),
             self.pack.clone(),
             self.options.clone(),
-            self.settings.clone(),
+            self.side.settings.sim_settings(),
             fixture,
         )
     }

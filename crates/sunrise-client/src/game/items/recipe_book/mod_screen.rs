@@ -319,7 +319,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (open, filtering) = self.mod_book_flags()?;
         let (bx, by) = self.mod_book_button(batch);
         batch.sprite(
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             &sprite(if inside(self.side.cursor, bx, by, 20.0, 18.0) {
                 "button_highlighted"
             } else {
@@ -340,7 +340,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(edit) => {
                 edit.x = xo + 25.0;
                 edit.y = yo + 13.0;
-                let (display, blink_ms) = edit.view_state(&self.gui.atlas);
+                let (display, blink_ms) = edit.view_state(&self.side.gui.atlas);
                 Search {
                     value: edit.value.clone(),
                     cursor: edit.cursor,
@@ -367,7 +367,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|index| presentation.tabs[index].clone())
             .collect();
         let translate = |key: &str| self.translate_with_fallback(key, key);
-        let text_width = |s: &str| HudBatch::text_width(&self.gui.atlas, s) as i32;
+        let text_width = |s: &str| HudBatch::text_width(&self.side.gui.atlas, s) as i32;
         let layout = Layout {
             book: BookType::Crafting,
             origin: (xo as i32, yo as i32),
@@ -453,7 +453,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 search.focused = true;
                 search.reset_blink();
                 if cursor.0 >= search.x {
-                    let index = search.index_at(&self.gui.atlas, cursor.0);
+                    let index = search.index_at(&self.side.gui.atlas, cursor.0);
                     search.set_cursor(index, false);
                 }
                 return true;

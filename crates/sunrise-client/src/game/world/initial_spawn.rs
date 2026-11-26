@@ -31,7 +31,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // PlayerSpawnFinder.getLevelRespawnPos: a ceiling starts the walk
             // at the destination generator's spawn height.
             has_ceiling: self.dimension_type().height.has_ceiling,
-            spawn_height: self.streaming.spawn_height(),
+            spawn_height: self.side.streaming.spawn_height(),
         }
     }
     /// ChunkGenerator.getOrigin and getSpawnHeight of the overworld.
@@ -83,14 +83,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // getChunk(FULL) of the tested chunk alone: its 3x3 is decorated.
                     if !self.world.chunks.contains_key(&(cx, cz)) {
                         let area = [((cx, cz), -1)];
-                        if self.streaming.extra != area {
-                            self.streaming.extra = area.to_vec();
-                            self.streaming.rank_full_task(cx, cz);
+                        if self.side.streaming.extra != area {
+                            self.side.streaming.extra = area.to_vec();
+                            self.side.streaming.rank_full_task(cx, cz);
                         }
                         return Ok(None);
                     }
-                } else if !self.streaming.is_lit(cx, cz) {
-                    self.streaming.center = (cx, cz);
+                } else if !self.side.streaming.is_lit(cx, cz) {
+                    self.side.streaming.center = (cx, cz);
                     return Ok(None);
                 }
                 if let Some(pos) = spawn_pos_in_chunk(&self.spawn_columns(), cx, cz) {
@@ -118,7 +118,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ) else {
             return Ok(());
         };
-        if !self.streaming.is_lit(cx, cz) {
+        if !self.side.streaming.is_lit(cx, cz) {
             return Ok(());
         }
         // `level.getRandom()`. Util.toShuffledList of the chunk's x and z.
@@ -217,7 +217,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 SpawnCandidate::Column(x, z) => (x, z),
                 SpawnCandidate::Suggestion => (suggestion[0], suggestion[2]),
             };
-            if !self.streaming.is_lit(x >> 4, z >> 4) {
+            if !self.side.streaming.is_lit(x >> 4, z >> 4) {
                 finder.retry();
                 *state = Some(finder);
                 return Err((x >> 4, z >> 4));
@@ -244,7 +244,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match self.search_spawn(suggestion, &mut state) {
             Ok(feet) => Ok(Some(feet)),
             Err(chunk) => {
-                self.streaming.center = chunk;
+                self.side.streaming.center = chunk;
                 self.side.player_spawn = state;
                 Ok(None)
             }

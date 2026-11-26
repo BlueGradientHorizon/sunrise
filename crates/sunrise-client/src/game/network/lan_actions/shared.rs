@@ -41,7 +41,7 @@ pub(in crate::game) struct GuestPlay {
     pub(in crate::game) attack_ticks: u32,
     /// The main hand's item at the guest's last tick (`Game::attack_item`).
     pub(in crate::game) attack_item: Option<std::sync::Arc<str>>,
-    pub(in crate::game) swing: sunrise_client::first_person::SwingState,
+    pub(in crate::game) swing: sunrise_sim::first_person_sim::SwingState,
     /// The block being dug and the face the client aimed at.
     pub(in crate::game) digging: Option<([i32; 3], [i32; 3])>,
     /// The server tick the digging started (ServerPlayerGameMode.destroyProgressStart).
@@ -184,7 +184,7 @@ impl GuestPlay {
         self.using
     }
     /// `LivingEntity.getUsedItemHand` of the item in use, none when none is.
-    pub(in crate::game) fn used_hand(&self) -> Option<Hand> {
+    pub(in crate::game) fn used_hand(&self) -> Option<sunrise_sim::first_person_sim::Hand> {
         super::item_use::hand_of(self.using)
     }
     /// `LivingEntity.useItemRemaining` of the item in use, 0 when none is.
@@ -309,10 +309,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
 /// ClientboundSwingAnimationPacket: the hand and the animation (its type and
 /// base duration; each client applies the swinger's haste and fatigue).
-pub(in crate::game) fn swing_packet(id: i32, hand: Hand, animation: SwingAnimation) -> C {
+pub(in crate::game) fn swing_packet(
+    id: i32,
+    hand: sunrise_sim::first_person_sim::Hand,
+    animation: sunrise_sim::first_person_sim::SwingAnimation,
+) -> C {
     C::SwingAnimation(play::SwingAnimation {
         id,
-        hand: i32::from(hand == Hand::Off),
+        hand: i32::from(hand == sunrise_sim::first_person_sim::Hand::Off),
         kind: i32::from(animation.kind),
         duration: animation.duration,
     })
@@ -915,7 +919,11 @@ pub(in crate::game) mod tests {
                 TEST_POSTED_EVENTS.with(|posted| *posted.borrow_mut() = Some(Vec::new()));
                 let count = |game: &crate::game::ServerGame<'_>| {
                     if block == "shulker_box" {
-                        game.be_anims.shulkers.get(&at).map_or(0, |s| s.open_count)
+                        game.side
+                            .be_anims
+                            .shulkers
+                            .get(&at)
+                            .map_or(0, |s| s.open_count)
                     } else {
                         game.side.lid_openers.get(&pos).copied().unwrap_or(0)
                     }
@@ -1610,9 +1618,8 @@ pub(in crate::game) mod swing_echo_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1884,9 +1891,8 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

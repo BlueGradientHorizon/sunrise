@@ -606,6 +606,7 @@ pub(in crate::game) mod paintings_client;
 #[cfg(feature = "client")]
 #[path = "interface/particle_culling.rs"]
 pub(in crate::game) mod particle_culling;
+#[cfg(feature = "client")]
 #[path = "interface/perf_link.rs"]
 pub(in crate::game) mod perf_link;
 #[path = "interface/perspective.rs"]
@@ -636,6 +637,7 @@ pub(in crate::game) mod pointer_capture;
 pub(in crate::game) mod polytone_frame_tests;
 #[path = "items/potions.rs"]
 pub(in crate::game) mod potions;
+#[cfg(feature = "client")]
 #[path = "interface/profile_capture.rs"]
 pub(in crate::game) mod profile_capture;
 #[cfg(feature = "client")]
@@ -1179,6 +1181,7 @@ pub(in crate::game) mod raids_client;
 pub(in crate::game) mod remote_client;
 #[path = "runtime/resource_load_client.rs"]
 pub(in crate::game) mod resource_load_client;
+#[cfg(feature = "client")]
 #[path = "runtime/resource_tables_client.rs"]
 pub(in crate::game) mod resource_tables_client;
 #[cfg(feature = "client")]
@@ -1247,6 +1250,18 @@ pub(in crate::game) mod world_ops_client;
 
 #[cfg(feature = "client")]
 pub(in crate::game) struct ClientState {
+    pub(in crate::game) client_res: Arc<std::sync::OnceLock<crate::game::ClientResources>>,
+    pub(in crate::game) client_pack: crate::game::ClientPackResources,
+    /// The title and menu bundle (GUI atlas, font and panorama).
+    pub(in crate::game) gui: crate::game::UiResources,
+    pub(in crate::game) streaming: sunrise_client_render::streaming::MeshStreamer,
+    /// Client-ticked block-entity animation state.
+    pub(in crate::game) be_anims: sunrise_client_render::block_entity_anim::BlockEntityAnims,
+    pub(in crate::game) settings: sunrise_client_render::settings::Settings,
+    /// This play session's frame and tick times, for opt-in performance statistics.
+    pub(in crate::game) perf: sunrise_client::telemetry::Session,
+    /// The health history and client captures.
+    pub(in crate::game) profile: crate::game::client_side::profile_capture::Profile,
     pub(in crate::game::client_side) darkness_blend: (f32, f32),
     /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
     /// again only when the feet block (or the dimension) changes.
@@ -1937,6 +1952,13 @@ impl ClientState {
     #[inline(never)]
     #[allow(clippy::too_many_arguments, clippy::boxed_local)]
     pub(in crate::game) fn build(
+        client_res: Arc<std::sync::OnceLock<crate::game::ClientResources>>,
+        client_pack: crate::game::ClientPackResources,
+        gui: crate::game::UiResources,
+        streaming: sunrise_client_render::streaming::MeshStreamer,
+        be_anims: sunrise_client_render::block_entity_anim::BlockEntityAnims,
+        settings: sunrise_client_render::settings::Settings,
+        profile: crate::game::client_side::profile_capture::Profile,
         now: Instant,
         music_toast: u8,
         tutorial: tutorial::Tutorial,
@@ -1948,6 +1970,14 @@ impl ClientState {
         wr: Box<super::WrappedRendererInit>,
     ) -> Box<Self> {
         Box::new(Self {
+            client_res,
+            client_pack,
+            gui,
+            streaming,
+            be_anims,
+            settings,
+            perf: Default::default(),
+            profile,
             debug_density: RefCell::default(),
             pending_pack_reload: false,
             frame_attempted: render_settings::FrameAttempt::default(),
@@ -2302,6 +2332,48 @@ impl<T> ClientShared<T> {
 
 #[cfg(feature = "client")]
 impl crate::game::Side for ClientState {
+    #[inline(always)]
+    fn streaming_state(&self) -> &sunrise_level::chunk_streamer::ChunkState {
+        self.streaming.chunks().state()
+    }
+
+    #[inline(always)]
+    fn shulkers(
+        &self,
+    ) -> &sunrise_level::fast_hash::FxHashMap<[i32; 3], sunrise_level::shulker_box::Shulker> {
+        &self.be_anims.shulkers
+    }
+
+    #[inline(always)]
+    fn auto_jump(&self) -> bool {
+        self.settings.auto_jump
+    }
+
+    #[inline(always)]
+    fn main_hand_left(&self) -> bool {
+        self.settings.main_hand_left
+    }
+
+    #[inline(always)]
+    fn chat_visibility(&self) -> u8 {
+        self.settings.chat_visibility
+    }
+
+    #[inline(always)]
+    fn operator_items_tab(&self) -> bool {
+        self.settings.operator_items_tab
+    }
+
+    #[inline(always)]
+    fn mods_list(&self) -> &sunrise_mod_package::mod_list::ModList {
+        &self.settings.mods
+    }
+
+    #[inline(always)]
+    fn mods_list_mut(&mut self) -> &mut sunrise_mod_package::mod_list::ModList {
+        &mut self.settings.mods
+    }
+
     const IS_SERVER: bool = false;
     fn host_side<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> mod_api::HostSide<'g> {
         mod_api::HostSide::Client(game)

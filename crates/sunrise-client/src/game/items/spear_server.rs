@@ -1,17 +1,15 @@
 use super::{Game, view_vector};
 use crate::game::spear::OWN;
 use crate::game::spear::Target;
-use sunrise_client::spear::hits_in_reach;
-use sunrise_client::{
-    collisions::SceneCollisions,
-    first_person::Hand,
-    items::ItemStack,
-    mobs::Damage,
-    spear::{Kinetic, REACH},
-};
 use sunrise_core::{
     geometry::{Vec3, traverse_blocks},
     position::BlockPos,
+};
+use sunrise_sim::spear_sim::hits_in_reach;
+use {
+    sunrise_client::collisions::SceneCollisions, sunrise_client::items::ItemStack,
+    sunrise_client::mobs::Damage, sunrise_sim::first_person_sim::Hand,
+    sunrise_sim::spear_sim::Kinetic, sunrise_sim::spear_sim::REACH,
 };
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -52,7 +50,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
                 dimension: self.dim.id(),
                 particle: crate::lan::server_effects::ServerParticle::simple(
-                    sunrise_client::particles::ParticleType::DamageIndicator,
+                    sunrise_level::particle_options::ParticleType::DamageIndicator,
                 ),
                 at: [feet[0], feet[1] + height * 0.5, feet[2]],
                 spread: [0.1, 0.0, 0.1],

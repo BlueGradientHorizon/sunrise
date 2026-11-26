@@ -54,7 +54,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mapping: VanillaKeyMappingRef,
     ) -> Result<bool, MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
-        Ok(match self.settings.keys.physical_at(slot) {
+        Ok(match self.side.settings.keys.physical_at(slot) {
             Some(Ok(key)) => self.side.physical_keys.contains(&key),
             Some(Err(button)) => self.side.physical_buttons.contains(&button),
             None => false,
@@ -65,7 +65,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mapping: VanillaKeyMappingRef,
     ) -> Result<&str, MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
-        Ok(self.settings.keys.binding_at(slot))
+        Ok(self.side.settings.keys.binding_at(slot))
     }
     pub(in crate::game) fn vanilla_key_mapping_translated_key_message(
         &self,

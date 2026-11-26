@@ -114,7 +114,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Vec::new();
         }
         let focus = self.side.pad.0.menu.focus.filter(|_| self.pad_focus_mode());
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let glyph = |job| self.menu_glyph(job);
         let width = |glyph: Glyph| pad_glyph::width(atlas, glyph);
         let mut glyphs = Vec::new();
@@ -147,7 +147,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn draw_pad_action_glyphs(&self, batch: &mut HudBatch) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         for (glyph, x, y) in self.pad_glyphs((batch.width, batch.height)) {
             pad_glyph::draw(batch, atlas, glyph, x, y);
         }
@@ -157,7 +157,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// place, what it covers, and its sprite (none: the label on a key).
     pub(in crate::game::client_side) fn pad_glyphs_status(&self) -> Vec<serde_json::Value> {
         let view = self.gui_batch().map_or((0.0, 0.0), |b| (b.width, b.height));
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         self.pad_glyphs(view)
             .iter()
             .map(|&(glyph, x, y)| {

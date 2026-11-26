@@ -42,7 +42,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> bool {
         if sunrise_client::game_mode_switcher::release_applies(
             &keybinds::mouse_name(button),
-            self.settings.keys.get("key.debug.modifier"),
+            self.side.settings.keys.get("key.debug.modifier"),
         ) {
             self.close_gamemode_switcher(true);
             return true;
@@ -64,7 +64,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         switcher.hover(w, h, (self.side.cursor.0 as i32, self.side.cursor.1 as i32));
         let selected = switcher.selected;
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         batch.sprite_region(
             atlas,
             "gui/container/gamemode_switcher",
@@ -77,7 +77,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let help = Text::translate(
             "debug.gamemodes.select_next",
             &[
-                keybinds::display_name(self.settings.keys.get("key.debug.switchGameMode"))
+                keybinds::display_name(self.side.settings.keys.get("key.debug.switchGameMode"))
                     .with_color(0x55FFFF),
             ],
         );
@@ -88,14 +88,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for (index, mode) in MODES.into_iter().enumerate() {
             let (x, y) = slot_origin(w, h, index);
             batch.sprite(
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 "gamemode_switcher/slot",
                 x as f32,
                 y as f32,
             );
             if mode == selected {
                 batch.sprite(
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     "gamemode_switcher/selection",
                     x as f32,
                     y as f32,

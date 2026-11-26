@@ -10,7 +10,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         alpha: f64,
         out: &mut Vec<Vertex>,
     ) {
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         let partial = alpha as f32;
         for p in &self.paintings {
             if self.hides_as_camera(p.id) {

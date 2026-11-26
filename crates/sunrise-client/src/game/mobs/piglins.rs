@@ -2,20 +2,18 @@
 //! bartering when the admiring is over, and anger at players who open
 //! their chests or mine their gold.
 use super::Game;
-use sunrise_client::{
-    first_person::SwingAnimation,
-    items::ItemStack,
-    mobs::{
-        Mob, Species,
-        equip::{self, Slot},
-        finalize::{
-            OFFHAND, SLOT_NAMES, item_stack, set_drop_chance, set_item_stack,
-            set_slot_enchantments, stored_drop_chance,
-        },
-        piglin::{ADMIRE, eat, has_eaten_recently, is_idle},
-    },
-};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use {
+    sunrise_client::items::ItemStack, sunrise_client::mobs::Mob, sunrise_client::mobs::Species,
+    sunrise_client::mobs::equip, sunrise_client::mobs::equip::Slot,
+    sunrise_client::mobs::finalize::OFFHAND, sunrise_client::mobs::finalize::SLOT_NAMES,
+    sunrise_client::mobs::finalize::item_stack, sunrise_client::mobs::finalize::set_drop_chance,
+    sunrise_client::mobs::finalize::set_item_stack,
+    sunrise_client::mobs::finalize::set_slot_enchantments,
+    sunrise_client::mobs::finalize::stored_drop_chance, sunrise_client::mobs::piglin::ADMIRE,
+    sunrise_client::mobs::piglin::eat, sunrise_client::mobs::piglin::has_eaten_recently,
+    sunrise_client::mobs::piglin::is_idle, sunrise_sim::first_person_sim::SwingAnimation,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ZombifiedPiglin.alertOthers`: keep the source's player binding and

@@ -189,7 +189,7 @@ fn each_level_collides_with_its_own_colliders() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         let nether = stand(game, other);
         nether.set_collider(game, Some(deck())).unwrap();
         // The nether's items: one over its own collider, one over the overworld's place.
@@ -237,7 +237,7 @@ fn a_call_into_another_level_reads_that_levels_colliders_and_restores_the_caller
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         stand(game, other).set_collider(game, Some(deck())).unwrap();
         // Each level ticks once, so each has recorded its colliders.
         tick_level(game);
@@ -284,7 +284,7 @@ fn with_world(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         game.native_joins_skip();
         test(game);
     });
@@ -325,7 +325,7 @@ fn a_collider_travels_with_its_entity() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         game.arrive_vehicle(source, id, Vec3::new(1.5, 70.0, 1.5), 0.0);
         for _ in 0..3 {
             tick_level(game);

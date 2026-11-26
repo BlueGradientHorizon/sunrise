@@ -1,10 +1,12 @@
 //! `SignBlock.useWithoutItem`: the click it passes goes on to the item
 //! (`ServerPlayerGameMode.useItemOn`'s `useWithoutItem` then `ItemStack.useOn`),
 //! so an adventure player's `can_place_on` block places against the sign.
-use sunrise_client::{
-    command::args::GameMode, containers::BlockEntity, items::ItemStack, mobs::Who, signs::SignData,
-};
 use sunrise_core::nbt::Tag;
+use {
+    sunrise_client::command::args::GameMode, sunrise_client::containers::BlockEntity,
+    sunrise_client::items::ItemStack, sunrise_client::mobs::Who,
+    sunrise_level::signs_data::SignData,
+};
 
 type Posted = (&'static str, [f64; 3], Option<Who>);
 

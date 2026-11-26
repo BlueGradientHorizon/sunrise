@@ -312,7 +312,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
                     dimension: self.dim.id(),
                     particle: crate::lan::server_effects::ServerParticle::simple(
-                        sunrise_client::particles::ParticleType::DamageIndicator,
+                        sunrise_level::particle_options::ParticleType::DamageIndicator,
                     ),
                     at: [feet[0], feet[1] + height * 0.5, feet[2]],
                     spread: [0.1, 0.0, 0.1],
@@ -516,7 +516,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
             particle: crate::lan::server_effects::ServerParticle::simple(
-                sunrise_client::particles::ParticleType::SweepAttack,
+                sunrise_level::particle_options::ParticleType::SweepAttack,
             ),
             at,
             spread,

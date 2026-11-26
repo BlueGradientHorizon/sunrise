@@ -1612,7 +1612,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let spread = [width / 4.0, height / 4.0, width / 4.0];
         self.server_level_particles(
             &crate::lan::server_effects::ServerParticle::block(
-                sunrise_client::particles::ParticleType::Block,
+                sunrise_level::particle_options::ParticleType::Block,
                 state,
             ),
             centre,
@@ -1727,9 +1727,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let components = self
             .pack
-            .item_renderer
-            .models
-            .components(&sunrise_client::item_render::stack_view(stack));
+            .item_models
+            .components(&sunrise_sim::item_models::stack_view(stack));
         let Some(equippable) = components.get("minecraft:equippable") else {
             return false;
         };

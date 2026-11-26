@@ -97,9 +97,9 @@ PauseScreen.addCustomDialogButtons	port	crates/sunrise-client/src/game/interface
 PauseScreen.extractRenderState	port	crates/sunrise-client/src/game/interface/screens.rs::Game::draw_pause_menu	gap: minor: no draft-report badge; the now-playing song on the pause menu is drawn by music.rs::Game::draw_music_toast, not here
 PauseScreen.rendersNowPlayingToast	port	crates/sunrise-client/src/game/interface/music.rs::Game::draw_music_toast	on the pause menu the song name is drawn under the Pause and Pause and Toast settings while music is audible, instead of the toast; the Music Toast option still decides whether the toast exists
 PauseScreen.openScreenButton	inline	crates/sunrise-client/src/game/interface/screens.rs::Game::pause_click	the Advancements, Stats, Options and World Options actions
-PresetFlatWorldScreen.getLayerInfoFromString	inline	crates/sunrise-client/src/title/flat.rs::FlatSettings::parse	one layer of the share text, parsed in the same loop
-PresetFlatWorldScreen.getLayersInfoFromString	port	crates/sunrise-client/src/title/flat.rs::FlatSettings::parse	the share text's layers and biome; malformed text gives None
-PresetFlatWorldScreen.save	port	crates/sunrise-client/src/title/flat.rs::FlatSettings::to_share	the share text
+PresetFlatWorldScreen.getLayerInfoFromString	inline	crates/sunrise-sim/src/world_options.rs::FlatSettings::parse	one layer of the share text, parsed in the same loop
+PresetFlatWorldScreen.getLayersInfoFromString	port	crates/sunrise-sim/src/world_options.rs::FlatSettings::parse	the share text's layers and biome; malformed text gives None
+PresetFlatWorldScreen.save	port	crates/sunrise-sim/src/world_options.rs::FlatSettings::to_share	the share text
 PresetFlatWorldScreen.init	inline	crates/sunrise-client/src/title/flat.rs::buttons	the share box and Select and Cancel buttons
 PresetFlatWorldScreen.resize	skip:ui		layout only; the screen keeps its state
 PresetFlatWorldScreen.extractRenderState	port	crates/sunrise-client/src/title/flat.rs::draw_presets	title, labels and share box

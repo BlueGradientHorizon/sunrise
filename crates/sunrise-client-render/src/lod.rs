@@ -3798,7 +3798,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn slab_materials_survive_chunk_summaries_and_draw_far_faces() -> crate::Result<()> {
-        use crate::{assets::Assets, biome::Biomes, light::LightTables, mesher::MeshTables};
+        use crate::{
+            assets::Assets,
+            biome::Biomes,
+            light::LightTables,
+            mesher::MeshTables,
+            streaming::{ChunkWorkerContext, MeshWorkerContext},
+        };
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("SUNRISE_TEST_RESOURCES"),
         );
@@ -3807,19 +3813,23 @@ mod tests {
         let render = Arc::new(crate::assets::RenderAssets::load(&resource_root, &assets)?);
         let facts = BlockFacts::load(&root, assets.registry)?;
         let context = WorkerContext {
-            light: Arc::new(LightTables::load(&root, assets.registry, &facts)?),
-            tables: Arc::new(MeshTables::new(
-                &assets,
-                &render,
-                &facts,
-                crate::models::load_visibility(&root, assets.registry)?,
-                None,
-            )?),
-            assets: assets.clone(),
-            render,
-            biomes: Arc::new(Biomes::load(&resource_root)?),
-            hidden_states: Arc::from([]),
-            part_tables: Default::default(),
+            chunk: ChunkWorkerContext {
+                light: Arc::new(LightTables::load(&root, assets.registry, &facts)?),
+                assets: assets.clone(),
+                biomes: Arc::new(Biomes::load(&resource_root)?),
+            },
+            mesh: MeshWorkerContext {
+                tables: Arc::new(MeshTables::new(
+                    &assets,
+                    &render,
+                    &facts,
+                    crate::models::load_visibility(&root, assets.registry)?,
+                    None,
+                )?),
+                render,
+                hidden_states: Arc::from([]),
+                part_tables: Default::default(),
+            },
         };
         let kinds = state_kinds(&facts);
         let mut chunk = Chunk::empty(0, 0);
@@ -3870,7 +3880,11 @@ mod tests {
     #[ignore = "daily"]
     fn real_mesh_clips_near_chunks_and_preserves_water_and_edited_surfaces() -> crate::Result<()> {
         use crate::{
-            assets::Assets, biome::Biomes, light::LightTables, mesher::MeshTables,
+            assets::Assets,
+            biome::Biomes,
+            light::LightTables,
+            mesher::MeshTables,
+            streaming::{ChunkWorkerContext, MeshWorkerContext},
             testgen::TestTerrain,
         };
         let root = std::path::PathBuf::from(
@@ -3893,13 +3907,17 @@ mod tests {
             None,
         )?);
         let context = Arc::new(WorkerContext {
-            light: Arc::new(LightTables::load(&root, assets.registry, &facts)?),
-            tables,
-            assets: assets.clone(),
-            render,
-            biomes: biomes.clone(),
-            hidden_states: Arc::from([]),
-            part_tables: Default::default(),
+            chunk: ChunkWorkerContext {
+                light: Arc::new(LightTables::load(&root, assets.registry, &facts)?),
+                assets: assets.clone(),
+                biomes: biomes.clone(),
+            },
+            mesh: MeshWorkerContext {
+                tables,
+                render,
+                hidden_states: Arc::from([]),
+                part_tables: Default::default(),
+            },
         });
         let source = Arc::new(TestTerrain::new(assets.registry, &biomes)?);
         let mut lod = Lod::new(source, context);
@@ -5079,7 +5097,13 @@ mod tests {
     }
     /// The prepared resources' far-terrain worker context and block facts.
     fn test_context() -> crate::Result<(Arc<WorkerContext>, BlockFacts)> {
-        use crate::{assets::Assets, biome::Biomes, light::LightTables, mesher::MeshTables};
+        use crate::{
+            assets::Assets,
+            biome::Biomes,
+            light::LightTables,
+            mesher::MeshTables,
+            streaming::{ChunkWorkerContext, MeshWorkerContext},
+        };
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("SUNRISE_TEST_RESOURCES"),
         );
@@ -5100,13 +5124,17 @@ mod tests {
             None,
         )?);
         let context = Arc::new(WorkerContext {
-            light: Arc::new(LightTables::load(&root, assets.registry, &facts)?),
-            tables,
-            assets,
-            render,
-            biomes,
-            hidden_states: Arc::from([]),
-            part_tables: Default::default(),
+            chunk: ChunkWorkerContext {
+                light: Arc::new(LightTables::load(&root, assets.registry, &facts)?),
+                assets,
+                biomes,
+            },
+            mesh: MeshWorkerContext {
+                tables,
+                render,
+                hidden_states: Arc::from([]),
+                part_tables: Default::default(),
+            },
         });
         Ok((context, facts))
     }
@@ -5130,6 +5158,7 @@ mod tests {
         ) -> crate::Result<Self> {
             let (context, facts) = test_context()?;
             let stone = context
+                .chunk
                 .assets
                 .registry
                 .default_state("minecraft:stone")

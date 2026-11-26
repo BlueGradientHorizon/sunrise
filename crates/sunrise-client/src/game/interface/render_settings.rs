@@ -27,27 +27,29 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         window: Arc<Window>,
         pack: &PackResources,
+        client_pack: &ClientPackResources,
         gui: &UiResources,
     ) -> Result<Box<Renderer>> {
         build_renderer(
             window,
             self.options.offscreen,
             pack,
+            client_pack,
             gui,
             self.side.renderer.0.as_deref(),
             None,
-            self.settings.sunrise.api,
-            self.settings.sunrise.translucent_batching,
-            self.settings.vsync,
-            &self.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.settings),
+            self.side.settings.sunrise.api,
+            self.side.settings.sunrise.translucent_batching,
+            self.side.settings.vsync,
+            &self.side.settings.sunrise,
+            shader_packs::picked_pack_shape(&self.side.settings),
             self.side
                 .renderer
                 .0
                 .as_ref()
                 .map(|r| r.display_reading())
                 .unwrap_or_default(),
-            self.settings.texture_atlas_settings(),
+            self.side.settings.texture_atlas_settings(),
         )
         .and_then(|(renderer, clouds)| {
             clouds?;
@@ -62,7 +64,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !native_shaders::linear_frame_switch() {
             return;
         }
-        let picked = shader_packs::picked_pack(&self.settings);
+        let picked = shader_packs::picked_pack(&self.side.settings);
         let path = self.side.native_shaders.resolve_path(
             &Self::shader_packs_dir(),
             picked,
@@ -70,7 +72,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         let available = path.exists()
             && path.file_name().is_none_or(|f| {
-                !shader_packs::active_pack(&f.to_string_lossy(), &self.settings.mods).is_empty()
+                !shader_packs::active_pack(&f.to_string_lossy(), &self.side.settings.mods)
+                    .is_empty()
             });
         let outcome = if available {
             native_shaders::outcome(&path)
@@ -79,13 +82,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // The renderer's offer can change while the game runs (Vulkan's formats follow desktop
         // HDR and the window's output), and the frame with it.
-        let request = shader_packs::picked_pack_shape(&self.settings).frame();
+        let request = shader_packs::picked_pack_shape(&self.side.settings).frame();
         let wanted = self
             .side
             .renderer
             .0
             .as_ref()
-            .map(|r| r.requested_frame(&self.settings.sunrise, request));
+            .map(|r| r.requested_frame(&self.side.settings.sunrise, request));
         if !self.side.frame_attempted.changed((wanted, path, outcome)) {
             return;
         }
@@ -94,7 +97,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .renderer
             .0
             .as_ref()
-            .is_none_or(|r| r.frame_follows(&self.settings.sunrise, request))
+            .is_none_or(|r| r.frame_follows(&self.side.settings.sunrise, request))
         {
             return;
         }
@@ -114,15 +117,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.release_surface();
         }
-        let mut renderer = match self.renderer_for(window, &self.pack, &self.gui) {
-            Ok(renderer) => renderer,
-            Err(error) => {
-                if let Some(renderer) = &mut self.side.renderer.0 {
-                    renderer.recreate_surface()?;
+        let mut renderer =
+            match self.renderer_for(window, &self.pack, &self.side.client_pack, &self.side.gui) {
+                Ok(renderer) => renderer,
+                Err(error) => {
+                    if let Some(renderer) = &mut self.side.renderer.0 {
+                        renderer.recreate_surface()?;
+                    }
+                    return Err(error);
                 }
-                return Err(error);
-            }
-        };
+            };
         let mut world_kept = false;
         if let Some(old) = &mut self.side.renderer.0 {
             renderer.resize(old.config.width, old.config.height);
@@ -139,25 +143,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game) fn apply_settings(&mut self) {
-        if self.is_logical_server() {
-            self.apply_server_settings();
-        } else {
-            self.apply_client_settings();
-        }
+        self.apply_client_settings();
     }
 
     fn apply_streaming_settings(&mut self) {
         let streaming_target = crate::game::entity_culling::streaming_radius_for(
-            self.settings.render_distance,
+            self.side.settings.render_distance,
             self.remote.as_ref().map(|r| r.view_distance),
         );
-        let render_distance_changed = self.streaming.radius != streaming_target;
-        self.streaming.radius = streaming_target;
+        let render_distance_changed = self.side.streaming.radius != streaming_target;
+        self.side.streaming.radius = streaming_target;
         // Options.renderDistance, biomeBlendRadius, ambientOcclusion,
         // cutoutLeaves, Opaque Ice and the leaf-culling mode:
         // LevelExtractor.allChanged when they change.
         let leaf_culling = self.effective_leaf_culling();
-        let (s, st) = (&self.settings, &self.streaming);
+        let (s, st) = (&self.side.settings, &self.side.streaming);
         let reload = render_distance_changed
             || (
                 s.biome_blend,
@@ -172,18 +172,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 st.opaque_ice,
                 st.leaf_culling,
             );
-        self.streaming.biome_blend = self.settings.biome_blend;
-        self.streaming.smooth_lighting = self.settings.smooth_lighting;
-        self.streaming.cutout_leaves = self.settings.cutout_leaves;
-        self.streaming.opaque_ice = self.settings.sunrise.opaque_ice;
-        self.streaming.leaf_culling = leaf_culling;
+        self.side.streaming.biome_blend = self.side.settings.biome_blend;
+        self.side.streaming.smooth_lighting = self.side.settings.smooth_lighting;
+        self.side.streaming.cutout_leaves = self.side.settings.cutout_leaves;
+        self.side.streaming.opaque_ice = self.side.settings.sunrise.opaque_ice;
+        self.side.streaming.leaf_culling = leaf_culling;
         if reload {
             self.all_sections_changed();
         }
-    }
-
-    fn apply_server_settings(&mut self) {
-        self.apply_streaming_settings();
     }
 
     fn apply_client_settings(&mut self) {
@@ -193,11 +189,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side
             .chat_ui
             .chat
-            .set_abilities(&self.gui.atlas.font, abilities);
+            .set_abilities(&self.side.gui.atlas.font, abilities);
         self.apply_streaming_settings();
-        self.side.audio.0.master = self.settings.master_volume as f32;
-        if self.settings.sound_device != self.side.audio.0.device() {
-            let _ = self.side.audio.0.set_device(&self.settings.sound_device);
+        self.side.audio.0.master = self.side.settings.master_volume as f32;
+        if self.side.settings.sound_device != self.side.audio.0.device() {
+            let _ = self
+                .side
+                .audio
+                .0
+                .set_device(&self.side.settings.sound_device);
         }
         self.apply_ui_settings();
     }
@@ -205,8 +205,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The sprite layers a shader pack draws in the translucent pass: every section is meshed
     /// again when they change.
     pub(in crate::game::client_side) fn set_translucent_layers(&mut self, layers: Vec<bool>) {
-        if *layers != *self.streaming.translucent_layers {
-            self.streaming.translucent_layers = layers.into();
+        if *layers != *self.side.streaming.translucent_layers {
+            self.side.streaming.translucent_layers = layers.into();
             self.all_sections_changed();
         }
     }
@@ -214,7 +214,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// LOD Distance and Far Detail Reduced as the player chose them, the
     /// distance no farther than a server sampling far terrain for us allows.
     pub(in crate::game::client_side) fn far_terrain_choice(&self) -> (u32, bool) {
-        let g = &self.settings.sunrise;
+        let g = &self.side.settings.sunrise;
         let reduced = g.far_detail == sunrise_client::graphics::FarDetail::Reduced;
         let distance = match self.server_far_terrain() {
             Some(offer) => g.lod_distance.min(offer.distance),
@@ -273,7 +273,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game) fn new_renderer(&self, window: Arc<Window>) -> Result<Box<Renderer>> {
-        self.renderer_for(window, &self.pack, &self.gui)
+        self.renderer_for(window, &self.pack, &self.side.client_pack, &self.side.gui)
     }
 
     /// A renderer made again from the resources loaded takes over: what named the old one's
@@ -293,14 +293,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // And has no wall for the world border. Its sections' sources are kept as the meshes
         // on their way carry them.
         self.side.border_renderer.invalidate();
-        renderer.keep_pack_sources(self.streaming.shader_pack);
+        renderer.keep_pack_sources(self.side.streaming.shader_pack);
         self.side.renderer.0 = Some(renderer);
         self.forget_atlas_slots();
         if !world_kept {
             self.clear_lod();
             self.side.pending_uploads.0.clear();
             let context = self.worker_context();
-            self.streaming.reload_resources(&mut self.world, context);
+            self.side
+                .streaming
+                .reload_resources(&mut self.world, context);
         }
         self.side.native_shaders = native_shaders::NativeShaders::picking(&std::mem::take(
             &mut self.side.native_shaders.picked,
@@ -316,7 +318,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(renderer) = self.side.renderer.0.as_mut() {
             renderer.clear_sections(self.world.layout());
         }
-        self.streaming.reload_sections(&mut self.world);
+        self.side.streaming.reload_sections(&mut self.world);
     }
 }
 

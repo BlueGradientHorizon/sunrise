@@ -20,7 +20,7 @@ fn mod_open_chat_fills_the_box_only_over_the_world() {
         &settings,
         std::time::Instant::now(),
         false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!("no menu handoff"),
     )
@@ -30,7 +30,9 @@ fn mod_open_chat_fills_the_box_only_over_the_world() {
     options.execution_role = ExecutionRole::Client;
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,

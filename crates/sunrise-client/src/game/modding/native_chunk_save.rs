@@ -56,7 +56,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.is_logical_server() || mod_api::__private::mods().is_empty() {
             return;
         }
-        let access = self.streaming.proto_access();
+        let access = self.side.streaming.proto_access();
         let dimension = self.dim.id();
         for save in protos {
             let Some(status) = access.status(&save.proto) else {

@@ -95,7 +95,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                         };
                         let overworld = spawn("minecraft:overworld");
                         let nether = spawn(NETHER);
-                        game.settings.menu_blur = 5;
+                        game.side.settings.menu_blur = 5;
                         game.enter_remote_dimension(
                             &overworld,
                             RemoteDimensionEntry::Login,
@@ -112,7 +112,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
 
                             let mut vanilla = HudBatch::scratch([320, 240]);
                             game.draw_level_loading_background(&mut vanilla, Reason::NetherPortal);
-                            level_loading::draw(&mut vanilla, &game.gui.atlas, None, None);
+                            level_loading::draw(&mut vanilla, &game.side.gui.atlas, None, None);
                             assert!(!vanilla.vertices.is_empty());
                             if trip == 1 {
                                 assert_eq!(game.menu_blur(), None);

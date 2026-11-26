@@ -31,9 +31,8 @@ pub(in crate::game::server_side) fn run_falling_impacts_wear_the_helmet_before_n
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

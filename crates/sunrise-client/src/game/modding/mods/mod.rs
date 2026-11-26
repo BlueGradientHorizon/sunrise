@@ -1473,7 +1473,7 @@ pub(in crate::game) fn resolve_particle_providers(
         return Ok(());
     }
     // Resolve all particle providers once, alongside the other load-owned registries.
-    let mut particles: Vec<String> = sunrise_client::particles::ParticleType::ALL
+    let mut particles: Vec<String> = sunrise_level::particle_options::ParticleType::ALL
         .iter()
         .map(|ty| format!("minecraft:{}", ty.name()))
         .collect();
@@ -1490,7 +1490,7 @@ pub(in crate::game) fn resolve_particle_providers(
                 // A vanilla-namespace file the game has no particle for is a leftover of an
                 // older resource extraction, not a mod's declaration: skip it, never refuse startup.
                 if namespace == "minecraft"
-                    && sunrise_client::particles::ParticleType::from_name(&id).is_none()
+                    && sunrise_level::particle_options::ParticleType::from_name(&id).is_none()
                 {
                     log::warn!("Sunrise: ignoring {id}: no such vanilla particle in this version");
                     return None;
@@ -1499,7 +1499,7 @@ pub(in crate::game) fn resolve_particle_providers(
             }),
     );
     mod_api::__private::resolve_particles(particles.iter().map(String::as_str), |id| {
-        sunrise_client::particles::ParticleType::from_name(id)
+        sunrise_level::particle_options::ParticleType::from_name(id)
             .map(|ty| mod_api::__private::ParticleKind::Vanilla(ty as u32))
             .or_else(|| {
                 (!id.starts_with("minecraft:")).then_some(mod_api::__private::ParticleKind::Custom)
@@ -1535,13 +1535,13 @@ pub(in crate::game) mod particle_registry_reload_tests {
         );
         super::resolve_particle_providers(&source).unwrap();
         let first = mod_api::__private::particle_vanilla_key(
-            sunrise_client::particles::ParticleType::Smoke as u32,
+            sunrise_level::particle_options::ParticleType::Smoke as u32,
         )
         .unwrap();
         super::resolve_particle_providers(&source).unwrap();
         assert_eq!(
             mod_api::__private::particle_vanilla_key(
-                sunrise_client::particles::ParticleType::Smoke as u32
+                sunrise_level::particle_options::ParticleType::Smoke as u32
             ),
             Some(first)
         );
@@ -2193,7 +2193,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn sync_native_switches(&self) {
         let (effective, _) = self
             .mods
-            .reconcile_code_switches(&self.settings.mods.disabled);
+            .reconcile_code_switches(&crate::game::Side::mods_list(&self.side).disabled);
         self.side_retire_disabled_instance_groups(&effective);
         self.mods.apply_code_switches(&effective);
     }
@@ -2238,7 +2238,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         paths.extend(self.mods.dev.iter().cloned());
         let (mut content_ids, mut live_ids) = Default::default();
         let mut info = std::collections::BTreeMap::new();
-        self.settings.mods.installed = paths
+        let installed = paths
             .iter()
             .map(|path| {
                 let file = path.file_name().unwrap_or_default().to_string_lossy();
@@ -2277,20 +2277,21 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 }
             })
             .collect();
+        crate::game::Side::mods_list_mut(&mut self.side).installed = installed;
         for (id, info) in &mut info {
             info.warnings = mod_api::__private::registration_warnings(id)
                 .into_iter()
                 .map(|w| (w.key().to_owned(), w.args().to_vec()))
                 .collect();
         }
-        self.settings.mods.info = info;
+        crate::game::Side::mods_list_mut(&mut self.side).info = info;
         (self.mods.content_ids, self.mods.live_ids) = (content_ids, live_ids);
         if self.mods.applied.is_none() {
-            self.mods.applied = Some(self.settings.mods.enabled.clone());
+            self.mods.applied = Some(crate::game::Side::mods_list(&self.side).enabled.clone());
         }
         if self.mods.code_switches.is_none() {
             self.mods
-                .capture_code_switches(&self.settings.mods.disabled);
+                .capture_code_switches(&crate::game::Side::mods_list(&self.side).disabled);
         }
         // A mod with a native version built in says so instead, and isn't news.
         self.side_list_native_mods();
@@ -2302,11 +2303,17 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
 
         let native_dir = crate::game::game_dir().join(mod_list::NATIVE_DIR);
-        let unbuilt = not_built(&native_dir, built, &self.settings.mods.installed);
-        self.settings.mods.installed.extend(unbuilt);
-        self.mods.report_refusals(&mut self.settings.mods.installed);
-        self.settings
-            .mods
+        let unbuilt = not_built(
+            &native_dir,
+            built,
+            &crate::game::Side::mods_list(&self.side).installed,
+        );
+        crate::game::Side::mods_list_mut(&mut self.side)
+            .installed
+            .extend(unbuilt);
+        self.mods
+            .report_refusals(&mut crate::game::Side::mods_list_mut(&mut self.side).installed);
+        crate::game::Side::mods_list_mut(&mut self.side)
             .apply_dependency_notices(&self.mods.load_notices.lock().unwrap());
     }
 }

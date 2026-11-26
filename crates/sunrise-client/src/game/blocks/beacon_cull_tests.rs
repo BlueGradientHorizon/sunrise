@@ -46,7 +46,9 @@ pub(in crate::game) fn game_as_client<'a>(
     let res = &*resources.insert(loaded.resources);
     let mut game = crate::game::ClientGame::new(
         res,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -66,7 +68,8 @@ pub(in crate::game) fn game_as_client<'a>(
         w: 16,
         h: 16,
     };
-    game.gui
+    game.side
+        .gui
         .atlas
         .sprites
         .insert("entity/beacon/beacon_beam".into(), rect);
@@ -86,11 +89,11 @@ fn a_beam_draws_inside_the_render_distance_only_and_leaves_with_its_column() {
     let mut resources = None;
     let mut game = game(&mut resources);
     // The streaming radius keeps a chunk past the render distance, as a server's view distance can.
-    game.settings.render_distance = 4;
-    game.streaming.radius = 5;
-    game.settings.sunrise.lod_distance = 256;
+    game.side.settings.render_distance = 4;
+    game.side.streaming.radius = 5;
+    game.side.settings.sunrise.lod_distance = 256;
     game.side.lod.0 = Some(sunrise_client::lod::Lod::new(
-        game.streaming.lod_source(),
+        game.side.streaming.lod_source(),
         game.worker_context(),
     ));
     let beacon = || {

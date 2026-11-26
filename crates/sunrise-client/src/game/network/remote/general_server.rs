@@ -16,8 +16,11 @@ pub(in crate::game) mod tests {
         use crate::game::native_player_death::tests::add_guest;
         use mod_api::{Flow, HostSide, InteractionResult};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::{chunk::Chunk, first_person::Hand, motion::PlayerMotion};
         use sunrise_protocol::packets::play::Serverbound as S;
+        use {
+            sunrise_client::chunk::Chunk, sunrise_client::motion::PlayerMotion,
+            sunrise_sim::first_person_sim::Hand,
+        };
 
         const PACKAGE: &str = "mymod:package";
         const AT: [f64; 3] = [0.5, 65.0, 2.5];

@@ -49,7 +49,7 @@ impl<S: crate::game::Side> sunrise_world::level::weather::PrecipitationReads
         match precipitation_at(
             &game.world,
             world_biomes!(game),
-            game.streaming.biome_zoom,
+            game.side.streaming_state().biome_zoom,
             p,
             game.weather_sea_level(),
         ) {

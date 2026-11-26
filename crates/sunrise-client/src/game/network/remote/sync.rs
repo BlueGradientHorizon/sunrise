@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::tab_list::default_skin;
+use sunrise_level::profile_lookup::default_skin;
 
 impl Remote {
     /// `PlayerInfo.getSkin`: resolved skin or the profile's default, independent of listing.

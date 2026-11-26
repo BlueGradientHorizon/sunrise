@@ -1371,7 +1371,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.mark_translucent_entity(normal.len(), "minecraft:text_display");
         let angles = self.display_camera_angles();
         let scale = self.view_scale();
-        let background = self.settings.text_background(0.25);
+        let background = self.side.settings.text_background(0.25);
         let now = std::time::Instant::now();
         let mut inline_profiles = std::mem::take(&mut self.side.display_inline_profiles_scratch);
         inline_profiles.clear();
@@ -1414,10 +1414,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let mut cached = match lines {
                 Some(mut cached) => {
-                    cached.update(&self.gui.atlas, &d, background);
+                    cached.update(&self.side.gui.atlas, &d, background);
                     cached
                 }
-                None => CachedQuads::new(&self.gui.atlas, &d, background),
+                None => CachedQuads::new(&self.side.gui.atlas, &d, background),
             };
             self.side.map_patches.append(&mut cached.batch.patches);
             inline_profiles.append(&mut cached.batch.inline_profiles);

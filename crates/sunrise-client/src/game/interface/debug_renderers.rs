@@ -139,7 +139,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // A plain colour: the atlas's white pixel at the fill's colour
             // (the batch takes ABGR).
             white.vertices.clear();
-            white.fill(&self.gui.atlas, 0.0, 0.0, 1.0, 1.0, abgr(color));
+            white.fill(&self.side.gui.atlas, 0.0, 0.0, 1.0, 1.0, abgr(color));
             let Some(v) = white.vertices.first().copied() else {
                 continue;
             };

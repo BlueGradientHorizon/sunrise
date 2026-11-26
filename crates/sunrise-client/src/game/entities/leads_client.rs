@@ -20,7 +20,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         alpha: f64,
         out: &mut Vec<Vertex>,
     ) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let white = atlas.font.white();
         let uv = [
             [white.u0, white.v1],
@@ -265,7 +265,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         alpha: f64,
     ) -> glam::DVec3 {
         // Player.getRopeHoldPosition: `0.22 * (RIGHT ? -1 : 1)`.
-        let hand_dir = if self.settings.main_hand_left {
+        let hand_dir = if self.side.settings.main_hand_left {
             1.0
         } else {
             -1.0

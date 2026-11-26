@@ -52,7 +52,7 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
         game.tick_player_model();
         for (id, kind) in [
-            (60, game.res.player_type().clone().unwrap()),
+            (60, game.client_res().player_type().clone().unwrap()),
             (
                 61,
                 game.res
@@ -78,14 +78,16 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
                 .set_slot_stack(MAINHAND, Some(ItemStack::new("minecraft:stick", 1)));
             game.mobs.push(mob);
         }
-        let res = game.res.clone();
-        let models = res.client_mob_models();
-        let baseline: Vec<_> = game.mobs.iter().map(|m| arms(m, models)).collect();
+        let baseline: Vec<_> = {
+            let models = game.client_res().client_mob_models();
+            game.mobs.iter().map(|m| arms(m, models)).collect()
+        };
         mod_platform::testing::with_mods(
             vec![ModEntry::new("skillet", Box::new(Skillet(OnceLock::new())))].into(),
             || {
                 game.tick_remote_arm_poses();
                 game.tick_player_model();
+                let models = game.client_res().client_mob_models();
                 for mob in [
                     game.side.player_model.as_ref().unwrap(),
                     &game.mobs[0],
@@ -114,6 +116,7 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
             },
         );
         game.tick_remote_arm_poses();
+        let models = game.client_res().client_mob_models();
         assert_eq!(
             game.mobs
                 .iter()

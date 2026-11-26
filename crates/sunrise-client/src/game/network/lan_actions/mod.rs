@@ -11,18 +11,16 @@ use super::{
     lan::LanHost,
 };
 use mod_api::GameMode;
-#[allow(unused_imports)]
-use sunrise_client::{
-    entities::Experience,
-    first_person::{Hand, SwingAnimation},
-    items::ItemStack,
-    lan::{guest::SPECTATOR, menu::Slots},
-    motion::PlayerMotion,
-    pose::Dimensions,
-};
 use sunrise_core::geometry::Aabb;
 #[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+#[allow(unused_imports)]
+use {
+    sunrise_client::entities::Experience, sunrise_client::items::ItemStack,
+    sunrise_client::lan::guest::SPECTATOR, sunrise_client::lan::menu::Slots,
+    sunrise_client::motion::PlayerMotion, sunrise_client::pose::Dimensions,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation,
+};
 
 pub(in crate::game) mod attack_checks;
 pub(in crate::game) mod commands;

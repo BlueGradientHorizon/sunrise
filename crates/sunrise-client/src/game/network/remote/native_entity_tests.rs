@@ -22,7 +22,7 @@ pub(in crate::game) fn spawn(dimension: &str) -> play::SpawnInfo {
 impl super::Remote {
     /// Lists this client's own player with `latency`, as the server's player info update does.
     pub(in crate::game) fn list_self(&mut self, latency: i32) {
-        let mut me = sunrise_client::tab_list::TabPlayer::new(self.profile, "SessionReadTest");
+        let mut me = sunrise_level::profile_lookup::TabPlayer::new(self.profile, "SessionReadTest");
         me.latency = latency;
         self.tab_players.insert(self.profile, me);
         self.tab_game_modes

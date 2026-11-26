@@ -122,7 +122,7 @@ IOWorker.createOldDataForRegion	skip:java	-	cache of old-chunk data per region
 IOWorker.isOldChunk	inline	crates/sunrise-sim/src/save/dir.rs::SaveDir::old_chunk_bits	the per-record test: DataVersion below 4997, or a blending_data compound
 IOWorker.store	port	crates/sunrise-sim/src/save/region.rs::write_region_records	-
 IOWorker.loadAsync	port	crates/sunrise-level/src/chunk_streamer.rs::ChunkGenerator::load	gap: minor: the saved-chunk hook only; the disk read is in save/region.rs
-IOWorker.synchronize	skip:java	-	waits for queued async writes; Sunrise's save takes a wait flag (streaming.rs Streaming::save)
+IOWorker.synchronize	skip:java	-	waits for queued async writes; Sunrise's save takes a wait flag (chunk_streamer.rs ChunkStreamer::save)
 IOWorker.scanChunk	missing	-	minor: unsure: no chunk scan step found
 IOWorker.submitThrowingTask	skip:java	-	Java future wrapper around submitTask
 IOWorker.submitTask	port	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::submit	-

@@ -31,9 +31,8 @@ pub(in crate::game) fn run_discarded_mob_leaves_selectors_and_saves_while_frozen
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

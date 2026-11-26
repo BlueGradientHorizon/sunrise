@@ -352,7 +352,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.renderer.0.as_ref().map(|r| {
             HudBatch::new(
                 [r.config.width, r.config.height],
-                self.settings.gui_scale_inputs(),
+                self.side.settings.gui_scale_inputs(),
             )
         })
     }
@@ -840,8 +840,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Start cancels, and so does a button the action can't take (the radial menu's
             // opener under the selecting thumb or on B, `gamepad::opener_refused`): the binding
             // stays.
-            if button != Button::Start && self.settings.controller.can_bind(action, button) {
-                self.settings.controller.bind(action, Some(button));
+            if button != Button::Start && self.side.settings.controller.can_bind(action, button) {
+                self.side.settings.controller.bind(action, Some(button));
             }
             return self.handle_option_events(vec![Event::Changed]);
         }
@@ -1301,7 +1301,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .side
             .chat_ui
             .options
-            .reveal(&self.settings, size, target.rect)
+            .reveal(&self.side.settings, size, target.rect)
         {
             moved.rect[1] += dy;
             self.side.pad.0.menu.revealed = Some(widgets::generation());
@@ -1502,7 +1502,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.pad.0.menu.last_poll = Some(now);
         self.key_focus_frame();
         let in_menu = self.pad_in_menu()
-            && (self.settings.controller.enabled || self.side.pad.0.menu.keyboard);
+            && (self.side.settings.controller.enabled || self.side.pad.0.menu.keyboard);
         if !in_menu {
             let menu = &mut self.side.pad.0.menu;
             menu.keyboard = false;
@@ -1571,8 +1571,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.pad_follow_focus(event_loop, &targets);
         }
         let (move_deadzone, look_deadzone) = (
-            self.settings.controller.move_deadzone,
-            self.settings.controller.look_deadzone,
+            self.side.settings.controller.move_deadzone,
+            self.side.settings.controller.look_deadzone,
         );
         let state = self.side.pad.0.state;
         if focusing || self.side.pad.0.menu.osk.is_some() {
@@ -1602,7 +1602,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             self.side.pad.0.menu.stick = None;
             let tuning = &snap::TUNING;
-            let mut speed = seconds * self.settings.controller.pointer_speed;
+            let mut speed = seconds * self.side.settings.controller.pointer_speed;
             if tuning.over_target_speed != 1.0 && self.pad_over_target() {
                 speed *= tuning.over_target_speed;
             }
@@ -1653,8 +1653,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             gamepad::radial(state.right, look_deadzone)
         };
         let wheel = &mut self.side.pad.0.menu.wheel;
-        wheel[0] += scroll[0] * self.settings.controller.scroll_speed * seconds;
-        wheel[1] += scroll[1] * self.settings.controller.scroll_speed * seconds;
+        wheel[0] += scroll[0] * self.side.settings.controller.scroll_speed * seconds;
+        wheel[1] += scroll[1] * self.side.settings.controller.scroll_speed * seconds;
         if scroll == [0.0, 0.0] {
             *wheel = [0.0, 0.0];
         }
@@ -1667,9 +1667,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if let Some((button, since, repeating)) = self.side.pad.0.menu.repeat {
             let wait = if repeating {
-                self.settings.controller.repeat_interval
+                self.side.settings.controller.repeat_interval
             } else {
-                self.settings.controller.repeat_delay
+                self.side.settings.controller.repeat_delay
             };
             if now.duration_since(since).as_secs_f32() >= wait {
                 self.side.pad.0.menu.repeat = Some((button, now, true));
@@ -2607,7 +2607,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// the window like a real keyboard).
     fn pad_open_keyboard(&mut self) {
         // Without xdg-open (macOS, Windows), Sunrise's keyboard instead.
-        if gamepad::steam_keyboard(self.settings.controller.keyboard)
+        if gamepad::steam_keyboard(self.side.settings.controller.keyboard)
             && std::process::Command::new("xdg-open")
                 .arg("steam://open/keyboard")
                 .stdin(std::process::Stdio::null())
@@ -2765,7 +2765,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if self.side.screen == Screen::Options {
             let result = match text {
                 Some(t) => {
-                    self.side.chat_ui.options.type_text(&self.gui.atlas, t);
+                    self.side.chat_ui.options.type_text(&self.side.gui.atlas, t);
                     Ok(())
                 }
                 None => self.options_key(key.expect("a key"), None).map(|_| ()),
@@ -2831,7 +2831,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .is_some_and(|f| f.center().1 > batch.height / 2.0)
                 || self.side.screen == Screen::Chat;
             let mut ui =
-                sunrise_client::ui_theme::Ui::new(&self.gui.atlas, batch, self.side.cursor);
+                sunrise_client::ui_theme::Ui::new(&self.side.gui.atlas, batch, self.side.cursor);
             let options = &self.side.chat_ui.options;
             keyboard.draw(
                 &mut ui,
@@ -2861,7 +2861,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         use sunrise_client::pad_cursor;
         let (left, top) = pad_cursor::origin((x, y));
         batch.sprite_scaled(
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             pad_cursor::SPRITE,
             left,
             top,
@@ -2877,10 +2877,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// one-pixel outline (`AbstractSelectionList`'s focused selection,
     /// `EditBox`'s highlighted border).
     fn draw_pad_focus(&self, batch: &mut HudBatch, focus: Target) {
-        key_focus::draw_outline(&self.gui.atlas, batch, focus);
+        key_focus::draw_outline(&self.side.gui.atlas, batch, focus);
         // A slider in hand shows it: left and right do something else on one that isn't.
         if self.pad_holding_slider() {
-            key_focus::draw_white_outline(&self.gui.atlas, batch, focus.rect);
+            key_focus::draw_white_outline(&self.side.gui.atlas, batch, focus.rect);
         }
     }
 }

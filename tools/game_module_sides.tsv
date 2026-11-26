@@ -42,6 +42,7 @@ block_edits_common	game	common dual-role module	game/blocks/block_edits_common.r
 block_entity_anims	server	touches only ServerState fields	game/blocks/block_entity_anims.rs
 block_entity_anims_client	client	hand-authored client role-split module	game/blocks/block_entity_anims_client.rs
 block_entity_anims_common	game	common dual-role module	game/blocks/block_entity_anims_common.rs
+block_entity_anims_common_client	client	hand-authored client role-split module	game/blocks/block_entity_anims_common_client.rs
 block_entity_part_state_tests	server	touches only server-owned fields	game/modding/block_entity_part_state_tests.rs
 block_entity_reach_draw_tests	game	touches neither ClientState nor ServerState fields	game/blocks/block_entity_reach_draw_tests.rs
 block_entity_ticks	server	wave 3 role-split (game -> server)	game/blocks/block_entity_ticks.rs
@@ -111,6 +112,7 @@ client_cracks	client	touches only ClientState fields	game/modding/client_cracks.
 client_executor	client	touches only ClientState fields	game/modding/client_executor.rs
 client_item_extensions	client	touches only client-owned fields	game/modding/client_item_extensions.rs
 client_reload	client	touches only ClientState fields	game/interface/client_reload/mod.rs
+client_text_client	client	hand-authored client role-split module	game/native_hooks/client_text_client.rs
 client_tick_steps	client	touches only ClientState fields	game/runtime/client_tick_steps.rs
 clip_ray	game	touches neither ClientState nor ServerState fields	game/items/clip_ray.rs
 clipboard	client	touches only ClientState fields	game/interface/clipboard.rs
@@ -201,6 +203,7 @@ dragon_client	client	hand-authored client role-split module	game/mobs/dragon_cli
 dragon_common	game	common dual-role module	game/mobs/dragon_common.rs
 dragon_fireball_motion_tests	server	touches only ServerState fields	game/mobs/dragon_fireball_motion_tests.rs
 draw_boundary	client	role-reachability:client	game/modding/draw_boundary.rs
+draw_measures_client	client	hand-authored client role-split module	game/native_hooks/draw_measures_client.rs
 dropped_by_player_tests	game	touches neither ClientState nor ServerState fields	game/items/dropped_by_player_tests.rs
 dropped_item_setter	server	re-homed server module	game/modding/dropped_item_setter.rs
 durability	game	touches neither ClientState nor ServerState fields	game/items/durability.rs
@@ -934,6 +937,7 @@ piston_nbt	game	touches neither ClientState nor ServerState fields	game/world/pi
 piston_push	game	touches both ClientState and ServerState fields (opposite side in tests)	game/blocks/piston_push.rs
 piston_push_carrying_server	server	hand-authored server role-split module	game/blocks/piston_push/carrying_server.rs
 piston_push_client	client	hand-authored client role-split module	game/blocks/piston_push_client.rs
+piston_push_reaction_tests_client	client	hand-authored client role-split module	game/native_hooks/piston_push_reaction_tests_client.rs
 piston_push_server	server	hand-authored server role-split module	game/blocks/piston_push_server.rs
 piston_push_shoving_server	server	hand-authored server role-split module	game/blocks/piston_push/shoving_server.rs
 place_feature_tests	server	touches only ServerState fields	game/blocks/place_feature_tests.rs
@@ -969,6 +973,7 @@ powder_snow	game	wave 3 role-split (client -> game)	game/blocks/powder_snow.rs
 powder_snow_server	server	hand-authored server role-split module	game/blocks/powder_snow_server.rs
 primary_items	game	promote-for-common-fns:1	game/items/primary_items.rs
 profile_capture	client	touches only client-owned fields	game/interface/profile_capture.rs
+profile_capture_server	server	hand-authored server role-split module	game/interface/profile_capture_server.rs
 profile_lines	game	touches neither ClientState nor ServerState fields	game/interface/profile_lines.rs
 projectile_block_impacts	server	touches only ServerState fields	game/mobs/projectile_block_impacts.rs
 projectile_spawned	server	touches only server-owned fields (opposite-side functions moved to projectile_spawned_client)	game/items/projectile_spawned.rs
@@ -1017,6 +1022,7 @@ resident_state	game	touches neither ClientState nor ServerState fields	game/enti
 resource_load	game	touches neither ClientState nor ServerState fields	game/runtime/resource_load.rs
 resource_loader	client	touches only ClientState fields	game/runtime/resource_loader.rs
 resource_tables	game	touches neither ClientState nor ServerState fields	game/runtime/resource_tables.rs
+resource_tables_client	client	hand-authored client role-split module	game/runtime/resource_tables_client.rs
 respawn_anchor	server	touches only ServerState fields	game/blocks/respawn_anchor.rs
 respawn_position	server	role-reachability:server	game/world/respawn_position.rs
 respawn_position_tests	game	touches neither ClientState nor ServerState fields	game/blocks/respawn_position_tests.rs

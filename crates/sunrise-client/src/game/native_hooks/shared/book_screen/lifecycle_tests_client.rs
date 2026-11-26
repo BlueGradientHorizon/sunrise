@@ -39,7 +39,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                     "minecraft:menu".into(),
                     sunrise_protocol::registry::Ids::from_names(vec!["bound:menu".into()]),
                 );
-                game.settings.gui_scale = 1;
+                game.side.settings.gui_scale = 1;
                 game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
                 game.side.title.0 = None;
                 let open = |game: &mut crate::game::ClientGame<'_>| {
@@ -110,7 +110,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 assert_eq!(game.native_screen_slot(1), None);
                 let batch = sunrise_client::hud::HudBatch::new(
                     [1280, 720],
-                    game.settings.gui_scale_inputs(),
+                    game.side.settings.gui_scale_inputs(),
                 );
                 assert_eq!(game.slot_at(&batch, 582.0, 317.0), Some(MOD_MENU_SLOT_BASE));
                 assert_ne!(
@@ -218,7 +218,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
-            game.settings.gui_scale = 1;
+            game.side.settings.gui_scale = 1;
             game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
             game.side.screen = Screen::Inventory;
             game.side.title.0 = None;
@@ -263,8 +263,10 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
                 ),
             });
             game.build_screen();
-            let batch =
-                sunrise_client::hud::HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
+            let batch = sunrise_client::hud::HudBatch::new(
+                [1280, 720],
+                game.side.settings.gui_scale_inputs(),
+            );
             assert_eq!(game.slot_at(&batch, 560.0, 295.0), Some(300));
 
             // Hidden by a render hook: still there this frame, gone from the next build.
@@ -389,7 +391,7 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
-            game.settings.gui_scale = 1;
+            game.side.settings.gui_scale = 1;
             game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
             game.side.screen = Screen::Inventory;
             game.side.title.0 = None;
@@ -438,8 +440,10 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
             // Origin (552, 277): slot 0's 18 by 18 box starts one pixel up and left of it.
             assert_eq!(before.0, (552.0, 277.0));
             assert!(before.1.contains(&(300, [559.0, 294.0, 18.0, 18.0])));
-            let batch =
-                sunrise_client::hud::HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
+            let batch = sunrise_client::hud::HudBatch::new(
+                [1280, 720],
+                game.side.settings.gui_scale_inputs(),
+            );
             assert_eq!(game.slot_at(&batch, 600.0, 340.0), None);
 
             // A render hook moves it after this frame's build: drawing and
@@ -683,7 +687,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
             receive(game, Message::Ready);
             assert!(!game.native_net.book_ready);
             game.remote.as_mut().unwrap().custom_books = true;
-            game.settings.gui_scale = 1;
+            game.side.settings.gui_scale = 1;
             // The fixture has no renderer; layout still needs the same viewport
             // used by geometry() to evaluate toggle gutters and book placement.
             game.side.recipe_ui.0.test_viewport = Some([1280, 720]);

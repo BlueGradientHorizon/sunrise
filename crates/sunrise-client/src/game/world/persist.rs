@@ -537,7 +537,7 @@ impl From<mod_api::Transformation> for ItemDisplayTransformation {
 impl ItemDisplayTransformation {
     pub(in crate::game::server_side) fn from_tag(tag: Option<&Tag>) -> Option<Self> {
         let (translation, left_rotation, scale, right_rotation) = tag
-            .and_then(sunrise_client::text_display::transformation)
+            .and_then(sunrise_sim::text_display_data::transformation)
             .unwrap_or((
                 [0.0; 3],
                 [0.0, 0.0, 0.0, 1.0],
@@ -710,7 +710,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for tag in &mut extras.block_entities {
             let pos = [tag.get("x"), tag.get("y"), tag.get("z")]
                 .map(|v| sunrise_client::save::number(v).unwrap_or(0) as i32);
-            if let Some(g) = self.be_anims.gateway_servers.get(&pos)
+            if let Some(g) = self.side.be_anims.gateway_servers.get(&pos)
                 && let Some(age) = tag.get_mut("Age")
             {
                 *age = sunrise_core::nbt::Tag::Long(g.age);
@@ -2900,9 +2900,8 @@ mod interaction_saved_defaults_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -3115,9 +3114,8 @@ mod loaded_tag_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -3311,9 +3309,8 @@ mod item_display_saved_transform_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -4493,9 +4490,8 @@ mod h262_enderman_absolute_anger_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -4732,9 +4728,8 @@ mod sulfur_body_attribute_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -5013,9 +5008,8 @@ mod summoned_knot_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -5317,9 +5311,8 @@ mod camel_pose_saved_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -5739,9 +5732,8 @@ mod trader_llama_discard_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

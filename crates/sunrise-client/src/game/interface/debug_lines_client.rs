@@ -81,13 +81,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(r) = self.side.renderer.0.as_ref() else {
             return;
         };
-        let distance = self.settings.render_distance;
+        let distance = self.side.settings.render_distance;
         let side = (distance * 2 + 1) as usize;
         let total = side * side * (self.world.layout().height() / 16) as usize;
         d.line(format!(
             "C: {}/{total} (s) D: {distance}, pC: {:03}, aB: {:02}",
             r.drawn_sections,
-            self.streaming.pending(),
+            self.side.streaming.pending(),
             0
         ));
     }
@@ -106,7 +106,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let range = self
             .remote
             .as_ref()
-            .map_or(self.settings.render_distance, |r| r.view_distance);
+            .map_or(self.side.settings.render_distance, |r| r.view_distance);
         let side = (2 * (range.max(2) + 3) + 1) as usize;
         let loaded = self.world.chunks.len();
         d.line(format!(
@@ -128,7 +128,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let simulation = self
             .remote
             .as_ref()
-            .map_or(self.settings.simulation_distance, |r| r.simulation_distance);
+            .map_or(self.side.settings.simulation_distance, |r| {
+                r.simulation_distance
+            });
         d.line(format!(
             "E: {}/{}, SD: {simulation}",
             self.side.rendered_mobs.get(),
@@ -220,7 +222,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             cam.camera.y_rot,
                             cam.camera.x_rot,
                             self.dim.id(),
-                            self.streaming.forced.len(),
+                            self.side.streaming.forced.len(),
                         );
                         let section = lines.pop().unwrap_or_default();
                         if path == "player_position" {

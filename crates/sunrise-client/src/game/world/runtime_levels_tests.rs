@@ -264,13 +264,15 @@ fn place_block(game: &mut crate::game::ServerGame<'_>, id: &str, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     let dim = super::Dim::extra(id).unwrap();
     game.enter_level(dim).unwrap();
-    game.streaming.forced.insert((0, 0));
+    game.side.streaming.forced.insert((0, 0));
     for _ in 0..2000 {
         game.side_update_world();
         if game.world.chunks.contains_key(&(0, 0)) {
             break;
         }
-        game.streaming.wait(std::time::Duration::from_millis(5));
+        game.side
+            .streaming
+            .wait(std::time::Duration::from_millis(5));
     }
     assert!(
         game.world.chunks.contains_key(&(0, 0)),
@@ -287,13 +289,15 @@ fn block_at(
 ) -> sunrise_world::registry::BlockStateId {
     let dim = super::Dim::extra(id).unwrap();
     game.enter_level(dim).unwrap();
-    game.streaming.forced.insert((0, 0));
+    game.side.streaming.forced.insert((0, 0));
     for _ in 0..2000 {
         game.side_update_world();
         if game.world.chunks.contains_key(&(0, 0)) {
             break;
         }
-        game.streaming.wait(std::time::Duration::from_millis(5));
+        game.side
+            .streaming
+            .wait(std::time::Duration::from_millis(5));
     }
     assert!(game.world.chunks.contains_key(&(0, 0)), "the chunk loaded");
     let block = game.world.block(1, -50, 1);
@@ -529,7 +533,7 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         // Open the Nether only now and load its chunk (0, 0), then release it:
         // its first drain leaves the view it opened with, so that drain unloads
         // the chunk at once, in the tick the custom level's close is due.
-        game.settings.render_distance = 2;
+        game.side.settings.render_distance = 2;
         game.enter_level(super::Dim::Nether).unwrap();
         let nether = ChunkRef::new(game.level("minecraft:the_nether").unwrap(), [0, 0]);
         assert!(game.chunk_set_forced(nether, true));
@@ -770,13 +774,15 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
         game.apply_runtime_levels();
         let dim = super::Dim::extra("keep:a").unwrap();
         game.enter_level(dim).unwrap();
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         for _ in 0..2000 {
             game.side_update_world();
             if game.world.chunks.contains_key(&(0, 0)) {
                 break;
             }
-            game.streaming.wait(std::time::Duration::from_millis(5));
+            game.side
+                .streaming
+                .wait(std::time::Duration::from_millis(5));
         }
         assert!(
             game.world.chunks.contains_key(&(0, 0)),
@@ -796,13 +802,15 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
         game.apply_runtime_levels();
         let dim = super::Dim::extra("keep:a").unwrap();
         game.enter_level(dim).unwrap();
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         for _ in 0..2000 {
             game.side_update_world();
             if game.world.chunks.contains_key(&(0, 0)) {
                 break;
             }
-            game.streaming.wait(std::time::Duration::from_millis(5));
+            game.side
+                .streaming
+                .wait(std::time::Duration::from_millis(5));
         }
         assert_eq!(game.world.block(1, -50, 1), stone);
         game.enter_level(super::Dim::Overworld).unwrap();

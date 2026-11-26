@@ -93,7 +93,7 @@ fn the_limiter_roll_of_add_particle_moves_the_parts_random() {
             .registry
             .default_state("minecraft:glass")
             .unwrap();
-        game.settings.particles = 1;
+        game.side.settings.particles = 1;
         game.side.particles.0.particle_level = 1;
         let before = level_random(game);
         let mut expected = before.clone();
@@ -154,8 +154,8 @@ fn the_part_runs_inside_its_pick_before_the_fluid_the_next_pick_and_the_rain() {
         biomes.list[0].precipitation = true;
         biomes.list[0].temperature = 0.8;
         game.world_biomes = Some(Arc::new(biomes));
-        game.settings.particles = 0;
-        game.settings.sunrise.weather = true;
+        game.side.settings.particles = 0;
+        game.side.settings.sunrise.weather = true;
         // Run after a camera frame: tickWeatherEffects uses the camera position,
         // which is still the origin until the camera has aligned with its entity.
         game.camera_view(1.0).expect("camera over the rod floor");

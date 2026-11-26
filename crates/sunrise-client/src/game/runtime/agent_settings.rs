@@ -18,11 +18,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// At startup: open the socket if the game was started for an agent or Agent Control is on.
     pub(in crate::game::client_side) fn start_agent_control(&mut self) -> Result<()> {
-        self.side.agent_control_on = self.settings.extras.agent_control;
+        self.side.agent_control_on = self.side.settings.extras.agent_control;
         if self.options.benchmark.is_some() && self.options.control.is_none() {
             return Ok(());
         }
-        if self.settings.extras.no_ai {
+        if self.side.settings.extras.no_ai {
             if self.options.control.is_some() {
                 log::warn!(
                     "Sunrise: control socket not opened: {}",
@@ -59,14 +59,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// After a settings change: No AI closes the socket; Agent Control turned on or off opens or
     /// closes it.
     pub(in crate::game::client_side) fn sync_agent_control(&mut self) {
-        let wanted = self.settings.extras.agent_control;
+        let wanted = self.side.settings.extras.agent_control;
         let changed = wanted != self.side.agent_control_on;
         self.side.agent_control_on = wanted;
         let open = self
             .control
             .as_ref()
             .is_some_and(|c| !c.path().as_os_str().is_empty());
-        if self.settings.extras.no_ai || (changed && !wanted) {
+        if self.side.settings.extras.no_ai || (changed && !wanted) {
             if open {
                 log::info!("Sunrise: control socket closed");
                 self.control = None;

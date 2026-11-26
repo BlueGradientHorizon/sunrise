@@ -446,7 +446,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )
         });
         let (w, h) = (batch.width, batch.height);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         let (top, bottom) = (TAB_H, h - FOOTER);
         ui::separators(batch, atlas, top, bottom, true);
@@ -650,13 +650,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .child_of(list_key, i + 1)
                         .without_tooltip()
                     });
-                    batch.sprite(&self.gui.atlas, "container/slot", left + 1.0, y + 1.0);
+                    batch.sprite(&self.side.gui.atlas, "container/slot", left + 1.0, y + 1.0);
                     self.draw_item(batch, &stack, left + 2.0, y + 2.0);
                     // `ItemRowWidget.extractTooltip`: the item's tooltip at the slot's corner.
                     if ui::hovered(self.side.cursor, left + 1.0, y + 1.0, 18.0, 18.0) {
                         tip = Some((stack.clone(), left + 19.0, y + 19.0));
                     }
-                    let atlas = &self.gui.atlas;
+                    let atlas = &self.side.gui.atlas;
                     let color = if (i + 1) % 2 == 0 {
                         u32::MAX
                     } else {
@@ -695,7 +695,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         ui::scrollbar(
             batch,
             atlas,
@@ -712,7 +712,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // The empty tab's Tooltip.create(gui.stats.none_found).
         if tab_tip {
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             let tip = Text::translate("gui.stats.none_found", &[]);
             // Tooltip.splitTooltip: font.split(message, 170).
             ui::tooltip(
@@ -724,7 +724,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     fn draw_stats_footer(&self, batch: &mut HudBatch, w: f32, h: f32) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (bx, by) = ((w / 2.0 - 100.0).floor(), h - FOOTER + 6.0);
         let hover = ui::hovered(self.side.cursor, bx, by, 200.0, 20.0);
         ui::action_button(
@@ -761,7 +761,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.stats_press_scrollbar(size) {
             return true;
         }
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
         let (x0, tw) = tabs(w);
         for i in 0..3 {
@@ -831,7 +831,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A press on the statistics list's scrollbar holds it
     /// (`AbstractSelectionList.updateScrolling`).
     pub(in crate::game::client_side) fn stats_press_scrollbar(&mut self, size: [u32; 2]) -> bool {
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
         let content = self.stats_content();
         self.side.stats_ui.scroll.press(

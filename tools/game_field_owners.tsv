@@ -24,7 +24,7 @@ data_map_registries	Vec<String>	server	server (survey + review)	21	side	-
 pending_initial_models	Option<Box<initial_client_models::PendingClientStart>>	game	drop-order (client): Option<Box<PendingClientStart>> holds PreparedClientReload boxed mod closures and InitialModelGeneration PackResources; precedes pack (24) and streaming (36)	22	-	client_only
 stitching_block_atlas	Option<Arc<RenderAssets>>	game	drop-order (client): Option<Arc<RenderAssets>> retains ModelLibrary (archive AssetReader and mod LoaderProvider closures) while atlas callbacks run; precedes pack (24) and streaming (36)	23	-	client_only
 pack	PackResources	game	shared (survey + review)	24	-	-
-gui	UiResources	game	shared (survey + review)	25	-	-
+gui	crate::game::UiResources	client	client-only UI resources (H3 L9-1b)	25	game	-
 instance_groups	std::cell::RefCell<native_instance_groups::InstanceGroupStorage>	client	client (survey; review=common from unpruned BFS, group=modding-client)	26	side	-
 standalone_geometry	native_block_entity_draw::StandaloneGeometry	client	client (survey + review)	27	side	-
 fog	sunrise_client::fog::FogState	client	client (survey + review)	28	game	-
@@ -35,7 +35,8 @@ panorama_rotation	sunrise_client::gfx::panorama::Rotation	client	client (survey 
 world	World	game	shared (survey + review)	33	-	-
 world_biomes	Option<Arc<Biomes>>	game	shared (survey + review)	34	-	-
 world_biomes_base	Option<Arc<Biomes>>	game	shared (survey + review)	35	-	-
-streaming	Streaming	game	shared (survey + review)	36	-	-
+client::streaming	sunrise_client_render::streaming::MeshStreamer	client	client-side mesh streamer (H3 L9-1a)	36	game	-
+server::streaming	sunrise_level::chunk_streamer::ChunkStreamer	server	server-side portable chunk streamer (H3 L9-1a)	36	game	-
 lod	Option<sunrise_client::lod::Lod>	game	drop-order (client): Option<Lod> impl Drop stops & joins LOD worker/mesh threads; precedes remote (460), integrated (473), fangs (603)	37	-	client_only
 lod_source_attempted	bool	client	client (survey; review=common from unpruned BFS, group=lod)	38	side	-
 lod_observe	sunrise_client::fast_hash::FxHashSet<(i32, i32)>	client	client (survey; review=common from unpruned BFS, group=lod)	39	side	-
@@ -223,7 +224,8 @@ last_hurt_by_player	HashMap<u32, combat::PlayerCredit>	server	server (survey; re
 lead_killers	HashMap<u32, (u128, Dim)>	server	server (survey; review=common from unpruned BFS, group=mobs)	221	side	-
 love_cause	HashMap<u32, Option<u32>>	server	server (survey + review)	222	side	-
 died	sunrise_client::fast_hash::FxHashSet<u32>	server	server (survey; review=common from unpruned BFS, group=mobs)	223	side	-
-be_anims	sunrise_client::block_entity_anim::BlockEntityAnims	game	shared (survey + review)	224	-	-
+client::be_anims	sunrise_client_render::block_entity_anim::BlockEntityAnims	client	client-side block entity animations (H3 L9-1a)	224	game	-
+server::be_anims	sunrise_level::block_entity_ticks::BlockEntityTicks	server	server-side portable block entity ticks (H3 L9-1a)	224	game	-
 using	Option<(usize, u32)>	game	shared (survey + review)	225	-	-
 use_duration	i32	game	shared (survey + review)	226	-	-
 use_start	using_item::UseStart	game	shared (survey + review)	227	-	-
@@ -263,7 +265,8 @@ visible_hands	[(usize, Option<ItemStack>); 2]	client	client (survey + review)	26
 hands_replaced	[bool; 2]	client	client (survey + review)	261	side	-
 clicks	sunrise_client::first_person::Clicks<Option<ItemStack>>	game	shared (survey + review)	262	-	-
 hand_strength	sunrise_client::attack_strength::AttackStrength	client	client (survey; review=common from unpruned BFS, group=player-actions)	263	side	-
-settings	Settings	game	shared (survey + review)	264	-	-
+client::settings	sunrise_client_render::settings::Settings	client	client-side full player settings (H3 L9-1b)	264	game	-
+server::settings	sunrise_level::sim_settings::SimSettings	server	server-side portable simulation settings (H3 L9-1b)	264	game	-
 look	look::LookCache	client	client (survey + review)	265	side	-
 tutorial	tutorial::Tutorial	client	client (survey; review=common from unpruned BFS, group=hud)	266	side	-
 toast_manager	toast_manager::ToastManager	client	client (survey; review=common from unpruned BFS, group=hud)	267	game	-
@@ -410,7 +413,7 @@ agent_control_on	bool	client	client (survey + review)	408	side	-
 agent_last	Option<Instant>	client	client (survey + review)	409	side	-
 frame_stats	sunrise_client::control::FrameStats	client	client (survey + review)	410	side	-
 alloc_mark	Option<( sunrise_threads::alloc_count::Counts, sunrise_threads::alloc_count::Counts, )>	client	client (survey + review)	411	side	-
-perf	sunrise_client::telemetry::Session	game	shared (survey + review)	412	-	-
+perf	sunrise_client::telemetry::Session	client	client-only telemetry session (H3 L9-1b)	412	game	-
 pending_screenshot	Option<std::sync::mpsc::Sender<String>>	game	drop-order (client): Option<mpsc::Sender<String>> drops control-socket reply channel; precedes remote (460), fangs (603)	413	-	client_only
 screenshot_sequence	Option<screenshot_sequence::Sequence>	game	drop-order (client): Option<Sequence> holds reply mpsc::Sender<String>; precedes remote (460), fangs (603)	414	-	client_only
 pending_render_capture	Option<std::sync::mpsc::Sender<String>>	game	drop-order (client): Option<mpsc::Sender<String>> drops control-socket reply channel; precedes remote (460), fangs (603)	415	-	client_only
@@ -444,7 +447,8 @@ ui_wait	ui_control::UiWait	game	drop-order (client): UiWait owns queued control:
 events	events::Events	game	shared (survey; review=client, kept on Game conservatively)	443	-	-
 input_trace	input_trace::InputTrace	game	drop-order (client): InputTrace holds Option<Sender<String>> for inputs.jsonl; must precede repro (445) and later effectful Game fields	444	-	client_only
 repro	repro::Repro	game	drop-order (client): Repro holds inputs JoinHandle and reply/export channels; precedes profile (446), remote (460), fangs (603)	445	-	client_only
-profile	profile_capture::Profile	game	shared (survey + review)	446	-	-
+client::profile	crate::game::client_side::profile_capture::Profile	client	client-side profile capture state (H3 L9-1b)	446	game	-
+server::profile	crate::game::server_side::profile_capture_server::ServerProfile	server	server-side profile capture state (H3 L9-1b)	446	game	-
 tick_script	tick_script::TickScript	client	client (survey; review=common from unpruned BFS, group=extras-platform)	447	side	-
 sky_darken_memo	std::cell::Cell<Option<((Dim, i64, u32, u32), i32)>>	game	shared (survey + review)	448	-	-
 water_plane_memo	std::cell::Cell<Option<f32>>	client	client (survey + review)	449	side	-
@@ -622,3 +626,5 @@ mining_crack	Option<client_cracks::ClientCrack>	client	client-only mining crack 
 profile_resolver	Box<dyn sunrise_level::profile_lookup::ProfileResolver>	server	server-only profile lookup resolver (split from Game.skin_profiles in H2 L3-3)	621	side	-
 skin_profiles	RefCell<sunrise_client::skins::Resolver>	client	client-only skin profile resolver (split from Game.skin_profiles in H2 L3-3)	622	side	-
 chat_ui	chat::ChatUiState	client	client-only chat and death UI state (split from UiState in H2 L5-2)	623	side	-
+client_res	Arc<std::sync::OnceLock<crate::game::ClientResources>>	client	client-only world resources holder (H3 L6-2)	624	game	-
+client_pack	crate::game::ClientPackResources	client	client-only pack resources holder (H3 L7-1)	625	game	-

@@ -2144,6 +2144,7 @@ mod part_admission_tests;
 pub(in crate::game) use client_side::particle_culling;
 #[path = "game/modding/payload_transport.rs"]
 pub(in crate::game) mod payload_transport;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::perf_link;
 #[allow(unused_imports)]
@@ -2238,12 +2239,14 @@ mod portal_ticking_tests;
 pub(in crate::game) use client_side::potions;
 #[path = "game/blocks/powder_snow.rs"]
 pub(in crate::game) mod powder_snow;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::profile_capture;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::postprocess;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::potent_sulfur;
+pub(in crate::game) use server_side::profile_capture_server;
 #[path = "game/items/primary_items.rs"]
 pub(in crate::game) mod primary_items;
 #[path = "game/interface/profile_lines.rs"]
@@ -2820,6 +2823,7 @@ mod typed_payloads;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::ui_control;
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "game/runtime/ui_core_shader_tests.rs"]
 mod ui_core_shader_tests;
@@ -3050,48 +3054,6 @@ use sunrise_client::held::Source;
 #[allow(unused_imports)]
 use sunrise_client::spans::{startup, time as span};
 #[allow(unused_imports)]
-use sunrise_client::{
-    Result,
-    assets::{Assets, RenderAssets},
-    audio::Audio,
-    biome::Biomes,
-    block_entity_render::{
-        self, BlockEntityRenderer, CacheOptions, Scene as BlockEntityScene, StaticCacheFrameStats,
-        StaticSectionSnapshot,
-    },
-    blocks::{BlockFacts, Fluid},
-    clock::FixedStep,
-    collisions,
-    containers::{BlockEntity, Providers},
-    crafting::Recipes,
-    creative::Creative,
-    entities::{Experience, ExperienceOrb, ItemEntity},
-    environment::Environment,
-    first_person::{Hand, SwingAnimation},
-    furnace::FurnaceCooking,
-    gfx::{Frame, Renderer},
-    graphics::EntityCullingMode,
-    hud::{HudAtlas, HudBatch, rgba},
-    hud_layout, hud_overlays,
-    items::{ItemStack, Items},
-    keymapping::{KeyAction, SNEAK, SPRINT},
-    light::LightTables,
-    mesher::{MeshTables, Vertex},
-    mobs::{Mob, MobType, MobTypes},
-    models,
-    motion::{MotionResources, PlayerMotion},
-    mouse::{LookOptions, MouseLook},
-    particles::Particle,
-    save::{Level, Persistent, SaveDir},
-    settings::Settings,
-    spans,
-    sprint::Keys,
-    streaming::{Streaming, WorkerContext},
-    title::{Action, Title},
-    vanillagen::VanillaTerrain,
-    world::World,
-};
-#[allow(unused_imports)]
 use sunrise_core::{
     biome::{BiomeZoom, obfuscate_seed},
     geometry::{Aabb, Direction},
@@ -3111,6 +3073,38 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window, WindowId},
+};
+#[allow(unused_imports)]
+use {
+    sunrise_client::Result, sunrise_client::assets::Assets, sunrise_client::assets::RenderAssets,
+    sunrise_client::audio::Audio, sunrise_client::biome::Biomes,
+    sunrise_client::block_entity_render, sunrise_client::block_entity_render::BlockEntityRenderer,
+    sunrise_client::block_entity_render::CacheOptions,
+    sunrise_client::block_entity_render::Scene as BlockEntityScene,
+    sunrise_client::block_entity_render::StaticCacheFrameStats,
+    sunrise_client::block_entity_render::StaticSectionSnapshot, sunrise_client::blocks::BlockFacts,
+    sunrise_client::blocks::Fluid, sunrise_client::clock::FixedStep, sunrise_client::collisions,
+    sunrise_client::containers::BlockEntity, sunrise_client::containers::Providers,
+    sunrise_client::crafting::Recipes, sunrise_client::creative::Creative,
+    sunrise_client::entities::Experience, sunrise_client::entities::ExperienceOrb,
+    sunrise_client::entities::ItemEntity, sunrise_client::environment::Environment,
+    sunrise_client::furnace::FurnaceCooking, sunrise_client::gfx::Frame,
+    sunrise_client::gfx::Renderer, sunrise_client::graphics::EntityCullingMode,
+    sunrise_client::hud::HudAtlas, sunrise_client::hud::HudBatch, sunrise_client::hud::rgba,
+    sunrise_client::hud_layout, sunrise_client::hud_overlays, sunrise_client::items::ItemStack,
+    sunrise_client::items::Items, sunrise_client::keymapping::KeyAction,
+    sunrise_client::keymapping::SNEAK, sunrise_client::keymapping::SPRINT,
+    sunrise_client::light::LightTables, sunrise_client::mesher::MeshTables,
+    sunrise_client::mesher::Vertex, sunrise_client::mobs::Mob, sunrise_client::mobs::MobType,
+    sunrise_client::mobs::MobTypes, sunrise_client::models,
+    sunrise_client::motion::MotionResources, sunrise_client::motion::PlayerMotion,
+    sunrise_client::mouse::LookOptions, sunrise_client::mouse::MouseLook,
+    sunrise_client::particles::Particle, sunrise_client::save::Level,
+    sunrise_client::save::Persistent, sunrise_client::save::SaveDir,
+    sunrise_client::settings::Settings, sunrise_client::spans, sunrise_client::sprint::Keys,
+    sunrise_client::title::Action, sunrise_client::title::Title,
+    sunrise_client::vanillagen::VanillaTerrain, sunrise_client::world::World,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation,
 };
 #[allow(unused_imports)]
 use {
@@ -3688,27 +3682,30 @@ struct WorldRest {
     /// resources as each mob type's own key is ([`MobType::type_key`]).
     living_type_keys: sunrise_client::health::LivingTypeKeys,
     mob_data: sunrise_client::mobs::MobData,
-    #[cfg(feature = "client")]
-    client_mobs: Option<ClientMobTables>,
     /// Complete pre-creation facts for the registered entity types.
     spawner_types: HashMap<String, sunrise_client::mobs::spawner::SpawnerTypeFacts>,
     providers: Providers,
-    block_entity_render: BlockEntityRenderer,
-    animate: sunrise_client::animate_tick::AnimateTables,
-    fog: sunrise_client::fog::FogTables,
-    music: sunrise_client::music::MusicTables,
-    ambient: sunrise_client::ambience::AmbientTables,
     nether_environment: Environment,
     end_environment: Environment,
     behaviours: Arc<Behaviours>,
-    /// The player model's right and left arms.
-    player_arm: [Option<sunrise_client::mobs::Part>; 2],
-    /// The slim model's right and left arms (3 pixels wide).
-    player_arm_slim: [Option<sunrise_client::mobs::Part>; 2],
-    player_type: Option<Arc<sunrise_client::mobs::MobType>>,
-    /// `SpinAttackEffectModel` (Riptide's spinning boxes).
-    spin_attack: Option<sunrise_client::mobs::Part>,
     stations: sunrise_client::stations::StationData,
+}
+
+#[cfg(feature = "client")]
+pub(in crate::game) struct ClientResources {
+    pub(in crate::game) block_entity_render: BlockEntityRenderer,
+    pub(in crate::game) animate: sunrise_client::animate_tick::AnimateTables,
+    pub(in crate::game) fog: sunrise_client::fog::FogTables,
+    pub(in crate::game) music: sunrise_client::music::MusicTables,
+    pub(in crate::game) ambient: sunrise_client::ambience::AmbientTables,
+    /// The player model's right and left arms.
+    pub(in crate::game) player_arm: [Option<sunrise_client::mobs::Part>; 2],
+    /// The slim model's right and left arms (3 pixels wide).
+    pub(in crate::game) player_arm_slim: [Option<sunrise_client::mobs::Part>; 2],
+    pub(in crate::game) player_type: Option<Arc<MobType>>,
+    /// `SpinAttackEffectModel` (Riptide's spinning boxes).
+    pub(in crate::game) spin_attack: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) client_mobs: ClientMobTables,
 }
 
 /// The content tables a world's data packs change, loaded when the world
@@ -3780,6 +3777,7 @@ pub(super) fn armor_slot(index: usize) -> sunrise_core::equipment_slot::Equipmen
     }
 }
 
+#[cfg(feature = "client")]
 pub use resource_tables::UiResources;
 
 /// What a resource pack reload replaces (`Minecraft.reloadResourcePacks`):
@@ -3788,36 +3786,45 @@ pub use resource_tables::UiResources;
 /// cloning shares the loaded data.
 #[derive(Clone)]
 pub struct PackResources {
-    source: sunrise_assets::resource_source::ResourceSource,
-    data_source: sunrise_assets::resource_source::ResourceSource,
-    data_changes: sunrise_assets::resource_source::ResourceSource,
-    additional_data: Arc<[Arc<sunrise_client::datapack::DataPack>]>,
-    mod_layers: Arc<[sunrise_assets::resource_source::ResourceSource]>,
-    assets: Arc<Assets>,
+    pub(in crate::game) source: sunrise_assets::resource_source::ResourceSource,
+    pub(in crate::game) data_source: sunrise_assets::resource_source::ResourceSource,
+    pub(in crate::game) data_changes: sunrise_assets::resource_source::ResourceSource,
+    pub(in crate::game) additional_data: Arc<[Arc<sunrise_client::datapack::DataPack>]>,
+    pub(in crate::game) mod_layers: Arc<[sunrise_assets::resource_source::ResourceSource]>,
+    pub(in crate::game) assets: Arc<Assets>,
+    pub(in crate::game) block_registries: Arc<sunrise_client::command::args::Registries>,
+    pub(in crate::game) names: Arc<Names>,
+    pub(in crate::game) chunk_context: Arc<sunrise_level::chunk_streamer::ChunkWorkerContext>,
+    pub(in crate::game) item_models: Arc<sunrise_assets::item_model::ItemModels>,
+    pub(in crate::game) item_ids: Arc<HashMap<String, i32>>,
+}
+
+#[cfg(feature = "client")]
+#[derive(Clone)]
+pub(in crate::game) struct ClientPackResources {
     /// `Blocks.WATER.defaultBlockState()` for screen-effect extraction.
-    water_overlay_state: mod_api::BlockState,
-    block_registries: Arc<sunrise_client::command::args::Registries>,
-    render: Arc<RenderAssets>,
-    context: Arc<WorkerContext>,
-    layer_names: Arc<HashMap<u32, String>>,
+    pub(in crate::game) water_overlay_state: mod_api::BlockState,
+    pub(in crate::game) render: Arc<RenderAssets>,
+    pub(in crate::game) context: Arc<sunrise_client_render::streaming::WorkerContext>,
+    pub(in crate::game) layer_names: Arc<HashMap<u32, String>>,
     /// Item definitions, baked item models and special renderers.
-    item_renderer: Arc<sunrise_client::item_render::ItemRenderer>,
-    names: Arc<Names>,
+    pub(in crate::game) item_renderer: Arc<sunrise_client::item_render::ItemRenderer>,
     /// clouds.png: (width, height, filled cells).
-    clouds: Arc<(u32, u32, Vec<bool>)>,
+    pub(in crate::game) clouds: Arc<(u32, u32, Vec<bool>)>,
     /// misc/forcefield.png: (width, height, RGBA) for the world border wall.
-    forcefield: Arc<(u32, u32, Vec<u8>)>,
+    pub(in crate::game) forcefield: Arc<(u32, u32, Vec<u8>)>,
     /// Custom sky layers (OptiFine's `optifine/sky`) with their textures; none without them.
-    custom_sky: Arc<dyn sunrise_client::custom_sky::SkyLayers>,
+    pub(in crate::game) custom_sky: Arc<dyn sunrise_client::custom_sky::SkyLayers>,
     /// The overworld's, Nether's and End's attribute stacks with the packs' Polytone biome and
     /// dimension modifiers (#11486), when a pack has some: what the frame draws.
-    environments: Option<Arc<[Environment; 3]>>,
+    pub(in crate::game) environments: Option<Arc<[Environment; 3]>>,
     /// The packs' Polytone custom particles and block emitters (#11486), when a pack has some.
-    polytone_particles: Option<Arc<sunrise_client::particles::polytone::Registry>>,
+    pub(in crate::game) polytone_particles:
+        Option<Arc<sunrise_client::particles::polytone::Registry>>,
     /// The packs' Polytone post chains (#11486), when a pack has some.
-    polytone_post: Option<Arc<sunrise_client::polytone_post::PolytonePost>>,
+    pub(in crate::game) polytone_post: Option<Arc<sunrise_client::polytone_post::PolytonePost>>,
     /// The packs' Polytone custom colours (`polytone/colors.json`).
-    polytone_colors: Arc<sunrise_client::pack_palette::PackColors>,
+    pub(in crate::game) polytone_colors: Arc<sunrise_client::pack_palette::PackColors>,
 }
 
 /// A quick craft drag as the screen draws it: each dragged slot's count and
@@ -3944,6 +3951,16 @@ pub(in crate::game) trait Side:
     + crate::game::side_ops::world::SideOps
 {
     const IS_SERVER: bool;
+    fn streaming_state(&self) -> &sunrise_level::chunk_streamer::ChunkState;
+    fn shulkers(
+        &self,
+    ) -> &sunrise_level::fast_hash::FxHashMap<[i32; 3], sunrise_level::shulker_box::Shulker>;
+    fn auto_jump(&self) -> bool;
+    fn main_hand_left(&self) -> bool;
+    fn chat_visibility(&self) -> u8;
+    fn operator_items_tab(&self) -> bool;
+    fn mods_list(&self) -> &sunrise_mod_package::mod_list::ModList;
+    fn mods_list_mut(&mut self) -> &mut sunrise_mod_package::mod_list::ModList;
     fn is_server() -> bool {
         Self::IS_SERVER
     }
@@ -4067,15 +4084,12 @@ struct Game<'a, S> {
     pub(super) health_resources: sunrise_client::health::HealthResources,
     damage_tag_generation: u64,
     pack: PackResources,
-    /// The title and menu bundle (GUI atlas, font and panorama).
-    gui: UiResources,
     world: World,
     /// The biome table the world plays with: the game's own with the world's
     /// packs over it (`Biomes::with_packs`), `None` before a world opens.
     world_biomes: Option<Arc<Biomes>>,
     /// `world_biomes` as the biome files made it, before `native_biome_colors`.
     world_biomes_base: Option<Arc<Biomes>>,
-    streaming: Streaming,
     options: Options,
     player: Option<PlayerMotion>,
     spawn: Option<Vec3>,
@@ -4122,8 +4136,6 @@ struct Game<'a, S> {
     /// `mobs` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
     mob_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
-    /// Client-ticked block-entity animation state (`game/blocks/block_entity_anims.rs`).
-    be_anims: sunrise_client::block_entity_anim::BlockEntityAnims,
     /// Item being used (eaten): hotbar slot and ticks used.
     using: Option<(usize, u32)>,
     /// `getUseDuration` at the use's start, as a mod left it (`game/items/item_use.rs`).
@@ -4152,12 +4164,11 @@ struct Game<'a, S> {
     experience: Experience,
     orbs: sunrise_client::join_seq::JoinList<ExperienceOrb>,
     /// The arm swing (`LivingEntity.SwingState`) and how many swings started.
-    swing: sunrise_client::first_person::SwingState,
+    swing: sunrise_sim::first_person_sim::SwingState,
     swings_started: u32,
     /// `Minecraft`'s attack handling, attack clicks since the last tick and
     /// the attack strength tickers the hand reads.
-    clicks: sunrise_client::first_person::Clicks<Option<ItemStack>>,
-    settings: Settings,
+    clicks: sunrise_sim::first_person_sim::Clicks<Option<ItemStack>>,
     flash: u32,
     /// The head of the bed while sleeping; the visual timer also survives waking.
     sleeping: Option<[i32; 3]>,
@@ -4213,8 +4224,6 @@ struct Game<'a, S> {
     entity_initialization: entity_initialization::EntityInitialization,
     kinetic_feedback: HashMap<i32, i64>,
     control: Option<sunrise_client::control::Server>,
-    /// This play session's frame and tick times, for opt-in performance statistics.
-    perf: sunrise_client::telemetry::Session,
     /// Sunrise mods (`game/modding/mods/mod.rs`), none running unless turned on.
     mods: mods::ModsState,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
@@ -4230,8 +4239,6 @@ struct Game<'a, S> {
     agent: agent::Agent,
     /// What happened, for `events` and `wait-for` (game/runtime/events.rs).
     events: events::Events,
-    /// The health history and client captures (game/profile_capture.rs).
-    profile: profile_capture::Profile,
     /// The overworld's last `sky_darken` and its inputs (time, rain, thunder).
     sky_darken_memo: std::cell::Cell<Option<((Dim, i64, u32, u32), i32)>>,
     persist: persist::EntityMemory,
@@ -4549,12 +4556,12 @@ fn level_can_have_weather(sky_light: bool, has_ceiling: bool, is_end: bool) -> b
 /// `Camera.setRotation` (`rotationYXZ(π - yaw, -pitch, 0)`) for the player's
 /// view, turned round in third-person front view (`Camera.setup`).
 fn camera_rotation(
-    camera_type: sunrise_client::camera::CameraType,
+    camera_type: sunrise_level::camera_math::CameraType,
     yaw: f32,
     pitch: f32,
 ) -> glam::Quat {
     let (view_yaw, view_pitch) =
-        if camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
+        if camera_type == sunrise_level::camera_math::CameraType::ThirdPersonFront {
             (yaw + 180.0, -pitch)
         } else {
             (yaw, pitch)
@@ -4584,7 +4591,7 @@ mod billboard_axes_tests {
             [0x3f00_0002, 0xb180_0001, 0xbf5d_b3d7],
         ];
         let axes = super::billboard_axes(super::camera_rotation(
-            sunrise_client::camera::CameraType::FirstPerson,
+            sunrise_level::camera_math::CameraType::FirstPerson,
             30.0,
             -90.0,
         ));
@@ -4687,7 +4694,10 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         pos: [i32; 3],
         state: BlockStateId,
         player_context: bool,
-        anims: &sunrise_client::block_entity_anim::BlockEntityAnims,
+        shulkers: &sunrise_level::fast_hash::FxHashMap<
+            [i32; 3],
+            sunrise_level::shulker_box::Shulker,
+        >,
     ) -> Option<[f64; 6]> {
         let name = &self.res.facts().get(state).name;
         if matches!(&**name, "minecraft:light" | "minecraft:scaffolding") {
@@ -4697,7 +4707,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         if !name.ends_with("shulker_box") {
             return None;
         }
-        let progress = anims.shulkers.get(&pos).map_or(0.0, |s| s.progress);
+        let progress = shulkers.get(&pos).map_or(0.0, |s| s.progress);
         let facing = self
             .pack
             .assets
@@ -4720,19 +4730,22 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
     /// A block's outline boxes in world space (`getShape` plus the random offset).
     fn outline_boxes(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
-        self.outline_boxes_in_context(&self.world, &self.be_anims, pos, true)
+        self.outline_boxes_in_context(&self.world, self.side.shulkers(), pos, true)
     }
     fn outline_boxes_in_context(
         &self,
         world: &World,
-        anims: &sunrise_client::block_entity_anim::BlockEntityAnims,
+        shulkers: &sunrise_level::fast_hash::FxHashMap<
+            [i32; 3],
+            sunrise_level::shulker_box::Shulker,
+        >,
         pos: [i32; 3],
         player_context: bool,
     ) -> Vec<[f64; 6]> {
         self.outline_boxes_iter(
             world,
             world.block(pos[0], pos[1], pos[2]),
-            anims,
+            shulkers,
             pos,
             player_context,
         )
@@ -4753,7 +4766,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let cached = self.collision.cached_shapes();
         use native_state_shapes::Outline;
         let (outline, offset) =
-            self.selected_outline(&self.world, state, &self.be_anims, pos, true);
+            self.selected_outline(&self.world, state, self.side.shulkers(), pos, true);
         let boxes: Cow<'_, [Aabb]> = match outline {
             Outline::Published(shape) | Outline::Declared(shape, _) => Cow::Borrowed(shape.boxes()),
             Outline::Dynamic(b) => Cow::Owned(vec![Aabb::new(
@@ -4880,7 +4893,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         player.mobility_restricted = blind;
         player.yaw = self.yaw;
         player.pitch = self.pitch;
-        player.auto_jump_enabled = self.settings.auto_jump;
+        player.auto_jump_enabled = self.side.auto_jump();
         player.item_use_speed = item_use_speed;
         player.item_use_slows_sprint = item_use_slows_sprint;
         player.respiration = respiration;
@@ -5318,50 +5331,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.side_tick()
     }
 
-    fn draw_reload_overlay(
-        &self,
-        batch: &mut HudBatch,
-        bar: f32,
-        fade: sunrise_client::level_loading::OverlayFade,
-    ) {
-        sunrise_client::level_loading::draw_loading_overlay(
-            batch,
-            &self.gui.atlas,
-            bar,
-            fade,
-            self.settings.file.bool("darkMojangStudiosBackground"),
-        );
-    }
     /// An item frame's held item, apart from the frame (one id may mark one run).
     pub(super) const MOTION_FRAME_ITEM: u64 = 4 << 32;
     /// A block a piston moves, by the cell it moves to (`motion_at`).
     pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
     /// The local player's flame vertices are tracked separately from the body run.
     const MOTION_OWN_PLAYER_FIRE: u64 = crate::game::MOTION_OWN_PLAYER | 1;
-
-    /// The orb's sprite and the camera's axes, once a frame however many runs of orbs draw.
-    pub(super) fn orb_frame(&self) -> OrbFrame {
-        let sprite = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/experience/experience_orb")
-            .copied();
-        let (yaw, pitch) = (self.yaw.to_radians(), self.pitch.to_radians());
-        let forward = glam::Vec3::new(
-            -yaw.sin() * pitch.cos(),
-            -pitch.sin(),
-            yaw.cos() * pitch.cos(),
-        );
-        let right = forward.cross(glam::Vec3::Y).normalize_or_zero();
-        let up = right.cross(forward).normalize_or_zero();
-        OrbFrame {
-            sprite,
-            forward,
-            right,
-            up,
-        }
-    }
 
     /// The brush's `ProjectileUtil.getHitResultOnViewVector` excludes only the source entity.
     pub(super) fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
@@ -5749,6 +5724,49 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 }
 
 #[cfg(feature = "client")]
+impl Game<'_, ClientState> {
+    fn draw_reload_overlay(
+        &self,
+        batch: &mut HudBatch,
+        bar: f32,
+        fade: sunrise_client::level_loading::OverlayFade,
+    ) {
+        sunrise_client::level_loading::draw_loading_overlay(
+            batch,
+            &self.side.gui.atlas,
+            bar,
+            fade,
+            self.side.settings.file.bool("darkMojangStudiosBackground"),
+        );
+    }
+
+    /// The orb's sprite and the camera's axes, once a frame however many runs of orbs draw.
+    pub(super) fn orb_frame(&self) -> OrbFrame {
+        let sprite = self
+            .side
+            .gui
+            .atlas
+            .sprites
+            .get("entity/experience/experience_orb")
+            .copied();
+        let (yaw, pitch) = (self.yaw.to_radians(), self.pitch.to_radians());
+        let forward = glam::Vec3::new(
+            -yaw.sin() * pitch.cos(),
+            -pitch.sin(),
+            yaw.cos() * pitch.cos(),
+        );
+        let right = forward.cross(glam::Vec3::Y).normalize_or_zero();
+        let up = right.cross(forward).normalize_or_zero();
+        OrbFrame {
+            sprite,
+            forward,
+            right,
+            up,
+        }
+    }
+}
+
+#[cfg(feature = "client")]
 #[cfg(test)]
 impl crate::game::ClientGame<'_> {
     #[cfg(test)]
@@ -5777,6 +5795,7 @@ fn autosave_interval(rate: f32) -> i64 {
 /// winit loop and calls these from its own.
 impl<__Side: crate::game::Side> Game<'_, __Side> {}
 /// misc/forcefield.png for the world border wall (square, power of two).
+#[cfg(feature = "client")]
 fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u32, u32, Vec<u8>) {
     root.read("assets/minecraft/textures/misc/forcefield.png")
         .map_err(Into::into)
@@ -5794,10 +5813,9 @@ struct ServerConstructPrep {
     world: World,
     now: Instant,
     pack: PackResources,
-    gui: UiResources,
     options: Options,
-    settings: Settings,
-    streaming: Streaming,
+    settings: sunrise_level::sim_settings::SimSettings,
+    streaming: sunrise_level::chunk_streamer::ChunkStreamer,
 }
 
 #[cfg(feature = "client")]
@@ -5813,12 +5831,14 @@ struct ClientConstructPrep {
     now: Instant,
     particles: sunrise_client::particles::ParticleEngine,
     resource_source: sunrise_assets::resource_source::ResourceSource,
+    client_res: Arc<std::sync::OnceLock<ClientResources>>,
     pack: PackResources,
+    client_pack: ClientPackResources,
     gui: UiResources,
     options: Options,
     settings: Settings,
     audio: Audio,
-    streaming: Streaming,
+    streaming: sunrise_client_render::streaming::MeshStreamer,
     standalone_geometry: native_block_entity_draw::StandaloneGeometry,
 }
 
@@ -5827,7 +5847,7 @@ struct ServerConstructEffects {
     clock: FixedStep,
     tick: sunrise_client::parallel::TickThread,
     profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
-    profile: profile_capture::Profile,
+    profile: profile_capture_server::ServerProfile,
     ui: chat_common::WorldCommandState,
 }
 
@@ -5964,13 +5984,9 @@ struct WrappedPrepInit {
     world: World,
     now: Instant,
     pack: PackResources,
-    gui: UiResources,
     options: Options,
-    settings: Settings,
-    streaming: Streaming,
     clock: FixedStep,
     tick: sunrise_client::parallel::TickThread,
-    profile: profile_capture::Profile,
     ui: chat_common::WorldCommandState,
 }
 
@@ -6040,10 +6056,19 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
         })
     }
     #[inline(never)]
-    fn build_be_anims(
+    fn build_server_be_ticks(
         registry: &'static sunrise_world::registry::BlockRegistry,
-    ) -> sunrise_client::block_entity_anim::BlockEntityAnims {
-        let mut anims = sunrise_client::block_entity_anim::BlockEntityAnims::default();
+    ) -> sunrise_level::block_entity_ticks::BlockEntityTicks {
+        let mut anims = sunrise_level::block_entity_ticks::BlockEntityTicks::default();
+        anims.classify(registry);
+        anims
+    }
+    #[cfg(feature = "client")]
+    #[inline(never)]
+    fn build_client_be_anims(
+        registry: &'static sunrise_world::registry::BlockRegistry,
+    ) -> sunrise_client_render::block_entity_anim::BlockEntityAnims {
+        let mut anims = sunrise_client_render::block_entity_anim::BlockEntityAnims::default();
         anims.classify(registry);
         anims
     }
@@ -6090,6 +6115,12 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     ) -> (Box<WrappedPrepInit>, Box<ServerState>) {
         let ws = Self::build_wrapped_server();
         let server = ServerState::build(
+            (
+                prep.streaming,
+                Self::build_server_be_ticks(prep.pack.assets.registry),
+                prep.settings,
+                effects.profile,
+            ),
             effects.structure_spawns,
             effects.profile_resolver,
             server_side::ServerShared::new(prep.save),
@@ -6103,18 +6134,13 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             world: prep.world,
             now: prep.now,
             pack: prep.pack,
-            gui: prep.gui,
             options: prep.options,
-            settings: prep.settings,
-            streaming: prep.streaming,
             clock: effects.clock,
             tick: effects.tick,
-            profile: effects.profile,
             ui: effects.ui,
         });
         (wp, server)
     }
-    #[cfg(feature = "client")]
     #[cfg(feature = "client")]
     #[inline(never)]
     fn wrap_client_prep_and_effects(
@@ -6136,6 +6162,13 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             debug_entries: client_side::ClientOnly::new(effects.debug_entries),
         });
         let client = ClientState::build(
+            prep.client_res,
+            prep.client_pack,
+            prep.gui,
+            prep.streaming,
+            Self::build_client_be_anims(prep.pack.assets.registry),
+            prep.settings,
+            effects.profile,
             prep.now,
             music_toast,
             prep.tutorial,
@@ -6153,13 +6186,9 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             world: prep.world,
             now: prep.now,
             pack: prep.pack,
-            gui: prep.gui,
             options: prep.options,
-            settings: prep.settings,
-            streaming: prep.streaming,
             clock: effects.clock,
             tick: effects.tick,
-            profile: effects.profile,
             ui: effects.ui,
         });
         (wp, client)
@@ -6173,7 +6202,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     ) -> Game<'a, S> {
         let loop_side = wp.options.execution_role.loop_side();
         let mod_sources = wp.options.mods.clone();
-        let registry = wp.pack.assets.registry;
         let creative = wp.options.creative;
         let inventory = vec![None; 36];
         let look = wp.options.look;
@@ -6190,9 +6218,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             health_resources: res.motion().health.clone(),
             damage_tag_generation: 1,
             pack: wp.pack,
-            gui: wp.gui,
             world: wp.world,
-            streaming: wp.streaming,
             options: wp.options,
             player: None,
             spawn: None,
@@ -6231,7 +6257,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             mobs: Default::default(),
             mob_index: Default::default(),
             creatures: Default::default(),
-            be_anims: Self::build_be_anims(registry),
             using: None,
             use_duration: 0,
             use_start: Default::default(),
@@ -6246,7 +6271,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             swing: Default::default(),
             swings_started: 0,
             clicks: Default::default(),
-            settings: wp.settings,
             flash: 0,
             sleeping: None,
             sleep_timer: 0,
@@ -6286,9 +6310,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             entity_initialization: Default::default(),
             kinetic_feedback: HashMap::new(),
             control: None,
-            perf: Default::default(),
             events: Default::default(),
-            profile: wp.profile,
             agent: agent::Agent::default(),
             mods: mod_sources,
             recipe_tables: Default::default(),
@@ -6334,13 +6356,12 @@ impl<'a> ServerGame<'a> {
     pub(in crate::game) fn new(
         res: &'a Arc<Resources>,
         pack: PackResources,
-        gui: UiResources,
         options: Options,
-        settings: Settings,
+        settings: sunrise_level::sim_settings::SimSettings,
         prepared: Option<GameCpuResources>,
     ) -> Result<Self> {
         debug_assert!(options.execution_role.is_logical_server());
-        let prep = Self::prepare_construct(res, pack, gui, options, settings, prepared)?;
+        let prep = Self::prepare_construct(res, pack, options, settings, prepared)?;
         let effects = Self::prepare_effects(&prep);
         Ok(Self::finish_construct(res, prep, effects))
     }
@@ -6349,9 +6370,8 @@ impl<'a> ServerGame<'a> {
     fn prepare_construct(
         res: &'a Arc<Resources>,
         pack: PackResources,
-        gui: UiResources,
         options: Options,
-        settings: Settings,
+        settings: sunrise_level::sim_settings::SimSettings,
         prepared: Option<GameCpuResources>,
     ) -> Result<Box<ServerConstructPrep>> {
         #[cfg(test)]
@@ -6376,16 +6396,16 @@ impl<'a> ServerGame<'a> {
                     pack.source.clone(),
                 ),
                 None,
-                pack.render.model_library.as_deref().ok(),
-                !options.execution_role.is_dedicated_server(),
+                None,
+                false,
             )
         })?;
         let world = crate::game::authoritative_world_for_mods(res, 0);
         let now = Instant::now();
         // Until a world is opened the streamer is idle.
-        let mut streaming = Streaming::new(
+        let mut streaming = sunrise_level::chunk_streamer::ChunkStreamer::new(
             Arc::new(TestTerrain::new(registry, res.biomes())?),
-            pack.context.clone(),
+            pack.chunk_context.clone(),
             1,
         );
         streaming.paused = true;
@@ -6401,7 +6421,6 @@ impl<'a> ServerGame<'a> {
             world,
             now,
             pack,
-            gui,
             options,
             settings,
             streaming,
@@ -6410,10 +6429,6 @@ impl<'a> ServerGame<'a> {
 
     #[inline(never)]
     fn prepare_effects(prep: &ServerConstructPrep) -> Box<ServerConstructEffects> {
-        let slow_frame_ms = prep
-            .options
-            .spikes
-            .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
         #[cfg(not(test))]
         let structure_spawns =
             sunrise_client::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
@@ -6422,10 +6437,8 @@ impl<'a> ServerGame<'a> {
         let clock = FixedStep::default();
         let tick = sunrise_client::parallel::TickThread::mint();
         let profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver> =
-            Box::new(sunrise_client::skins::SharedResolver(
-                std::sync::Mutex::new(sunrise_client::skins::Resolver::new()),
-            ));
-        let profile = profile_capture::Profile::new(slow_frame_ms);
+            Box::new(sunrise_server_profiles_http::CachedProfileResolver::new());
+        let profile = profile_capture_server::ServerProfile::default();
         let ui = chat_common::WorldCommandState::default();
         Box::new(ServerConstructEffects {
             structure_spawns,
@@ -6456,20 +6469,35 @@ impl<'a> ClientGame<'a> {
     #[allow(dead_code)]
     pub(in crate::game) fn new(
         res: &'a Arc<Resources>,
+        client_res: Arc<std::sync::OnceLock<ClientResources>>,
         pack: PackResources,
+        client_pack: ClientPackResources,
         gui: UiResources,
         options: Options,
         settings: Settings,
         audio: Audio,
         prepared: Option<GameCpuResources>,
     ) -> Result<Self> {
-        Self::construct(res, pack, gui, options, settings, audio, prepared, None)
+        Self::construct(
+            res,
+            client_res,
+            pack,
+            client_pack,
+            gui,
+            options,
+            settings,
+            audio,
+            prepared,
+            None,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
     pub(in crate::game) fn construct(
         res: &'a Arc<Resources>,
+        client_res: Arc<std::sync::OnceLock<ClientResources>>,
         pack: PackResources,
+        client_pack: ClientPackResources,
         gui: UiResources,
         options: Options,
         settings: Settings,
@@ -6479,8 +6507,18 @@ impl<'a> ClientGame<'a> {
     ) -> Result<Self> {
         debug_assert!(!options.execution_role.is_logical_server());
         // Preparation, effectful init, and struct assembly live in separate out-of-line frames to keep unoptimised stack small.
-        let prep =
-            Self::prepare_construct(res, pack, gui, options, settings, audio, prepared, initial)?;
+        let prep = Self::prepare_construct(
+            res,
+            client_res,
+            pack,
+            client_pack,
+            gui,
+            options,
+            settings,
+            audio,
+            prepared,
+            initial,
+        )?;
         let effects = Self::prepare_effects(&prep);
         Ok(Self::finish_construct(res, prep, effects))
     }
@@ -6489,7 +6527,9 @@ impl<'a> ClientGame<'a> {
     #[allow(clippy::too_many_arguments)]
     fn prepare_construct(
         res: &'a Arc<Resources>,
+        client_res: Arc<std::sync::OnceLock<ClientResources>>,
         pack: PackResources,
+        client_pack: ClientPackResources,
         gui: UiResources,
         options: Options,
         settings: Settings,
@@ -6512,7 +6552,7 @@ impl<'a> ClientGame<'a> {
                     pack.source.clone(),
                 ),
                 None,
-                pack.render.model_library.as_deref().ok(),
+                client_pack.render.model_library.as_deref().ok(),
                 true,
             )
         })?;
@@ -6528,34 +6568,37 @@ impl<'a> ClientGame<'a> {
         );
         particles.set_block_state_source(crate::game::particle_block_states);
         let resource_source = pack.source.clone();
-        let (pack, gui) = if let Some(initial) = initial {
-            let mut unpublished = pack.clone();
+        let (client_pack, gui) = if let Some(initial) = initial {
+            let mut unpublished = client_pack.clone();
             unpublished.render = Arc::new(RenderAssets::unpublished());
-            let context = &pack.context;
-            unpublished.context = Arc::new(WorkerContext {
-                assets: context.assets.clone(),
-                render: unpublished.render.clone(),
-                tables: context.tables.clone(),
-                biomes: context.biomes.clone(),
-                light: context.light.clone(),
-                hidden_states: context.hidden_states.clone(),
-                part_tables: context.part_tables.clone(),
+            let context = &client_pack.context;
+            unpublished.context = Arc::new(sunrise_client_render::streaming::WorkerContext {
+                chunk: context.chunk.clone(),
+                mesh: sunrise_client_render::streaming::MeshWorkerContext {
+                    render: unpublished.render.clone(),
+                    ..context.mesh.clone()
+                },
             });
             unpublished.layer_names = Default::default();
-            let metrics = UiResources::server(&pack.source)?;
-            *initial = Some(initial_client_models::InitialModelGeneration { pack, gui });
+            let metrics = UiResources::fonts_only(&pack.source)?;
+            *initial = Some(initial_client_models::InitialModelGeneration {
+                pack: pack.clone(),
+                client_pack,
+                gui,
+            });
             (unpublished, metrics)
         } else {
-            (pack, gui)
+            (client_pack, gui)
         };
         // Until a world is opened the streamer is idle.
-        let mut streaming = Streaming::new(
+        let mut streaming = sunrise_client_render::streaming::MeshStreamer::new(
             Arc::new(TestTerrain::new(registry, res.biomes())?),
-            pack.context.clone(),
+            client_pack.context.clone(),
             1,
         );
         streaming.paused = true;
-        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
+        let standalone_geometry =
+            native_block_entity_draw::StandaloneGeometry::new(&pack, &client_pack, &gui);
         let GameCpuResources {
             painting_variants,
             frame_model,
@@ -6604,7 +6647,9 @@ impl<'a> ClientGame<'a> {
             now,
             particles,
             resource_source,
+            client_res,
             pack,
+            client_pack,
             gui,
             options,
             settings,
@@ -6954,16 +6999,14 @@ pub(crate) fn run_with(
         &Progress::new(),
         &options.mods,
     )?;
-    let gui = loaded.gui.ok_or("missing menu bundle")?;
     options.resources = loaded.root.clone();
     let resources = loaded.resources;
     if options.execution_role.is_dedicated_server() {
         return start_dedicated_game(
             &resources,
             loaded.pack,
-            gui,
             options,
-            early_settings,
+            early_settings.sim_settings(),
             started,
             None,
         );
@@ -6972,9 +7015,8 @@ pub(crate) fn run_with(
     {
         let _ = (
             resources,
-            gui,
             options,
-            early_settings,
+            early_settings.sim_settings(),
             vanilla_root,
             started,
         );
@@ -6989,8 +7031,10 @@ pub(crate) fn run_with(
         };
         let game = start_client_game(
             &resources,
+            loaded.client_res.ok_or("missing client resource slot")?,
             loaded.pack,
-            gui,
+            loaded.client_pack.ok_or("missing client pack")?,
+            loaded.gui.ok_or("missing menu bundle")?,
             options,
             loaded.pack_error,
             audio,
@@ -7006,11 +7050,11 @@ pub(crate) fn run_with(
         if let Some(mut game) = game {
             // Minecraft.onGameLoadFinished: a start that made it this far is clean.
             if game.options.is_client_start() && game.options.headless {
-                game.settings.file.set(
+                game.side.settings.file.set(
                     "startedCleanly",
                     sunrise_client::options_file::V::Bool(true),
                 );
-                game.settings.save(&crate::game::options_path());
+                game.side.settings.save(&crate::game::options_path());
             }
             run_event_loop(game)?;
         }

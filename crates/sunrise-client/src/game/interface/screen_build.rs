@@ -604,7 +604,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             },
             |renderer| [renderer.config.width, renderer.config.height],
         );
-        let inputs = self.settings.gui_scale_inputs();
+        let inputs = self.side.settings.gui_scale_inputs();
         (
             framebuffer,
             GuiSize::new(framebuffer, inputs.requested, inputs.unicode),
@@ -620,7 +620,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let shown = self.side.screen != Screen::Playing
             || self.side.title.0.is_some()
             || self.screen_over_playing();
-        let inputs = self.settings.gui_scale_inputs();
+        let inputs = self.side.settings.gui_scale_inputs();
         let gui = GuiSize::new(framebuffer, inputs.requested, inputs.unicode);
         let identity = self
             .side
@@ -645,7 +645,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .then(|| {
                 let batch = sunrise_client::hud::HudBatch::new(
                     framebuffer,
-                    self.settings.gui_scale_inputs(),
+                    self.side.settings.gui_scale_inputs(),
                 );
                 self.container_layout_inputs(&batch)
             });
@@ -678,7 +678,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.build_container_layout(
                     &sunrise_client::hud::HudBatch::new(
                         framebuffer,
-                        self.settings.gui_scale_inputs(),
+                        self.side.settings.gui_scale_inputs(),
                     ),
                     inputs,
                 )
@@ -863,7 +863,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Re-makes the shown chat or command box at `(w, h)` when it was made at
     /// another size; at its own size it compares and changes nothing.
     fn resize_text_screens(&mut self, w: f32, h: f32) {
-        let m = sunrise_client::screen_draw::Measure(&self.gui.atlas.font);
+        let m = sunrise_client::screen_draw::Measure(&self.side.gui.atlas.font);
         let c = sunrise_client::chat::Commands {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -955,8 +955,8 @@ mod tests {
             use sunrise_client::chat::{ChatAbilities, ChatScreen, ChatVisibility, Commands};
             game.side.title.0 = None;
             // 1280x720 at GUI scale 3 is 427x240.
-            game.settings.gui_scale = 3;
-            let m = sunrise_client::screen_draw::Measure(&game.gui.atlas.font);
+            game.side.settings.gui_scale = 3;
+            let m = sunrise_client::screen_draw::Measure(&game.side.gui.atlas.font);
             let c = Commands {
                 dispatcher: sunrise_client::command::vanilla::game_dispatcher(),
                 registries: &game.ui.registries,
@@ -982,7 +982,7 @@ mod tests {
                 "an unchanged frame"
             );
             // GUI scale 1: the build re-makes the box, keeping its text.
-            game.settings.gui_scale = 1;
+            game.side.settings.gui_scale = 1;
             game.build_screen();
             assert_eq!(game.side.screen_state.0.build.builds, builds + 1);
             assert_eq!(input(game), [4, 708, 1276, 12]);
@@ -1078,7 +1078,7 @@ mod tests {
                     positions
                 );
             };
-            game.settings.gui_scale = 1;
+            game.side.settings.gui_scale = 1;
             check(game);
             game.side.screen = Screen::Inventory;
             check(game);
@@ -1565,10 +1565,10 @@ mod tests {
                 game.container = None;
                 game.craft_size = 2;
                 game.level.recipe_book.open.fill(false);
-                game.settings.gui_scale = 3;
+                game.side.settings.gui_scale = 3;
                 game.side.frames = 11;
                 game.build_screen();
-                let batch = HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
+                let batch = HudBatch::new([1280, 720], game.side.settings.gui_scale_inputs());
                 assert_eq!(game.inventory_origin(&batch), (51.0, 37.0));
                 assert_eq!(
                     game.screen_view(&batch, Screen::Inventory).rect,
@@ -1632,7 +1632,7 @@ mod tests {
                     game.side.screen = Screen::Inventory;
                     game.container = None;
                     game.craft_size = 2;
-                    game.settings.gui_scale = 1;
+                    game.side.settings.gui_scale = 1;
                     for (width, closed_x, open_x, book_x) in [
                         (378, 101.0, 101.0, 115.0),
                         (379, 101.0, 178.0, 30.0),
@@ -1642,7 +1642,7 @@ mod tests {
                             game.side.frames += 1;
                             game.level.recipe_book.open[BookType::Crafting.index()] = open;
                             let batch =
-                                HudBatch::new([width, 240], game.settings.gui_scale_inputs());
+                                HudBatch::new([width, 240], game.side.settings.gui_scale_inputs());
                             let layout = game.container_layout(&batch);
                             let x = if open { open_x } else { closed_x };
                             assert_eq!(layout.origin, (x, 37.0));
@@ -1758,8 +1758,8 @@ mod tests {
                 game.container = None;
                 game.craft_size = 2;
                 game.side.screen = Screen::Inventory;
-                game.settings.gui_scale = 1;
-                game.settings.force_unicode = false;
+                game.side.settings.gui_scale = 1;
+                game.side.settings.force_unicode = false;
                 let crafting = sunrise_client::recipe_book::BookType::Crafting.index();
                 game.level.recipe_book.recipes.clear();
                 game.level.recipe_book.open[crafting] = false;
@@ -1787,7 +1787,7 @@ mod tests {
                 // is Search. At 427 x 240 the book and shifted compact effect
                 // fit on opposite sides of the inventory.
                 let wide = [854, 480];
-                game.settings.gui_scale = 2;
+                game.side.settings.gui_scale = 2;
                 game.build_screen_at(wide);
                 game.level.recipe_book.open[crafting] = true;
                 game.build_screen_at(wide);
@@ -1806,7 +1806,7 @@ mod tests {
                 observer.canceled.store(false, Ordering::Relaxed);
 
                 // The narrow book covers the inventory, so its panel is not a side region.
-                game.settings.gui_scale = 1;
+                game.side.settings.gui_scale = 1;
                 game.build_screen_at(small);
                 assert_eq!(
                     render(game, small),
@@ -1822,7 +1822,7 @@ mod tests {
                 game.potions.effects.list.clear();
                 game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
                 game.ui.registries.permission = 2;
-                game.settings.operator_items_tab = true;
+                game.side.settings.operator_items_tab = true;
                 game.side.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 game.build_screen_at(small);

@@ -102,7 +102,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let clock = default_clock(r, &r.dimension);
         let mut kept = ViewedWorld::new(r.level.clone(), r.chunk_format.clone(), clock, world, cap);
-        kept.nether_shading = self.streaming.nether_shading;
+        kept.nether_shading = self.side.streaming.nether_shading;
         r.viewed.hold_left(slot, kept);
     }
 
@@ -122,7 +122,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         columns.sort_unstable();
         for key in &columns {
             if let Some(chunk) = world.chunks.remove(key) {
-                self.streaming
+                self.side
+                    .streaming
                     .insert_remote(&mut self.world, Arc::unwrap_or_clone(chunk));
             }
         }
@@ -354,7 +355,7 @@ mod tests {
         assert_eq!(r.level, NETHER);
         assert!(!loading(&game), "no loading screen");
         assert_eq!(own(&game), vec![(5, 5), (6, 5)]);
-        assert!(game.streaming.is_lit(5, 5) && game.streaming.is_lit(6, 5));
+        assert!(game.side.streaming.is_lit(5, 5) && game.side.streaming.is_lit(6, 5));
         assert_eq!(game.world.block(83, 70, 85), AIR);
         assert_eq!(game.world.block(83, 71, 85), STONE);
         // The `swap` bound the Overworld to the Nether's slot, 1.

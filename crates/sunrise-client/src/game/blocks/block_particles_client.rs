@@ -34,7 +34,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.addDestroyBlockEffect`: decide using the destroyed state, not the block
     /// that now occupies `pos`, then add the default burst per outline box unless handled.
     pub(in crate::game) fn destroy_particles(&mut self, pos: [i32; 3], state: BlockStateId) {
-        if self.settings.extras.hide_block_particles || self.res.facts().is_air(state) {
+        if self.side.settings.extras.hide_block_particles || self.res.facts().is_air(state) {
             return;
         }
         let spawn = self.res.facts().get(state).spawn_terrain_particles;

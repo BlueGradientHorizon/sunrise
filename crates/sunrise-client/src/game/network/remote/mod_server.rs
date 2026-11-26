@@ -6,8 +6,6 @@ use crate::game::client_side::remote_client::RemoteUseWorld;
 use crate::game::remote::Remote;
 use std::sync::Arc;
 #[allow(unused_imports)]
-use sunrise_client::first_person::Hand;
-#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     motion::{MotionWorld, PlayerMotion},
@@ -21,6 +19,8 @@ use sunrise_protocol::packets::{
     Empty,
     play::{self, Clientbound as C, Serverbound as S},
 };
+#[allow(unused_imports)]
+use sunrise_sim::first_person_sim::Hand;
 
 #[path = "general_server.rs"]
 pub(in crate::game) mod general;

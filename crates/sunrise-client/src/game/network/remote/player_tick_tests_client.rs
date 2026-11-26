@@ -54,7 +54,8 @@ fn client_player_ticks_on_the_death_screen_too() {
             };
             assert_eq!(phases(), [("pre", "client", 789), ("post", "client", 789)]);
             game.remote.as_mut().unwrap().loaded_sent = true;
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             // The other player's tick ends before the local player's starts.
             game.tick_remote().unwrap();

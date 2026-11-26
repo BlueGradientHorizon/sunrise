@@ -153,7 +153,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // (`BlockEntityTicker` of the registered type): never a vanilla animation.
             let animated = match self.world.block_entities.get(&key) {
                 Some(BlockEntity::Mod(_)) => None,
-                _ => self.be_anims.ticker(self.world.block(x, y, z).0),
+                _ => self.side.be_anims.ticker(self.world.block(x, y, z).0),
             };
             // One outside the border waits (`LevelChunk.isTicking`).
             if !self.border.contains(f64::from(x), f64::from(z)) {
@@ -260,7 +260,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         }
                         // Chests, shulker boxes, bells, conduits, the enchanting table, the
                         // gateway and dragon and piglin heads.
-                        _ if self.be_anims.ticker(i as u32).is_some() => Ticking::Yes,
+                        _ if self.side.be_anims.ticker(i as u32).is_some() => Ticking::Yes,
                         _ => Ticking::No,
                     };
                 }

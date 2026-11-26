@@ -39,7 +39,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::camera::{FovPlayer, field_of_view_modifier};
+    use {sunrise_client::camera::field_of_view_modifier, sunrise_level::camera_math::FovPlayer};
 
     fn fov(walking: f32, movement: f64) -> f32 {
         let player = FovPlayer {

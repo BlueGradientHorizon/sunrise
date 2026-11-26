@@ -178,13 +178,14 @@ fn client_handle_reads_answer_from_the_clients_copy() {
     use crate::game::native_entity_refs::tests::{with_client_game, with_game};
     use mod_api::{EntityRef, EquipmentSlot, GlobalPos};
     use std::sync::Arc;
-    use sunrise_client::{
-        chunk::Chunk, first_person::Hand, level_loading::Reason, motion::PlayerMotion,
-    };
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
         connection::Pipe,
         packets::play::{self, Clientbound as C, SpawnInfo},
+    };
+    use {
+        sunrise_client::chunk::Chunk, sunrise_client::level_loading::Reason,
+        sunrise_client::motion::PlayerMotion, sunrise_sim::first_person_sim::Hand,
     };
 
     let mut untracked_out = None;

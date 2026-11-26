@@ -54,6 +54,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let Some(uv) = self
+            .side
             .gui
             .atlas
             .sprites
@@ -64,13 +65,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // The texture's OptiFine emissive overlay, drawn again full bright.
         let glow = self
-            .res
+            .client_res()
             .client_mob_data()
             .emissive
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .overlay("entity/trident/trident")
-            .and_then(|e| self.gui.atlas.sprites.get(e))
+            .and_then(|e| self.side.gui.atlas.sprites.get(e))
             .map(|r| [r.u0, r.v0, r.u1, r.v1]);
         for (t, at) in tridents {
             let p = glam::DVec3::from_array(at) - camera;
@@ -97,7 +98,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     0.5,
                     camera,
                     fire_yaw,
-                    &self.gui.atlas.sprites,
+                    &self.side.gui.atlas.sprites,
                     l,
                     out,
                 );

@@ -11,7 +11,7 @@ use sunrise_core::nbt::{Compound, Tag};
 pub(in crate::game) struct PositionState<'a> {
     pub(in crate::game) gateways: &'a mut sunrise_client::fast_hash::FxHashMap<
         [i32; 3],
-        sunrise_client::block_entity_anim::EndGateway,
+        sunrise_level::block_entity_ticks::EndGateway,
     >,
     pub(in crate::game) hoppers:
         &'a mut std::collections::HashMap<Pos, super::machines::HopperState>,
@@ -99,7 +99,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 PositionChange::Carry { from, to, partner } => {
                     for at in [from, to] {
                         let p = [at.0, at.1, at.2];
-                        self.be_anims.remove_position(p);
+                        self.side.be_anims.remove_position(p);
                         self.world.shulkers.remove(&p);
                         self.world.chest_openers.remove(&at);
                         self.side.lid_openers.remove(&at);

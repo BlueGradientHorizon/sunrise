@@ -392,7 +392,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "loaded": self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4)),
         });
         // How far a chest's or a shulker box's lid is open, 0..1, as drawn.
-        match self.be_anims.ticker(state.0) {
+        match self.side.be_anims.ticker(state.0) {
             Some(Ticker::Lid) => v["lid"] = json!(self.chest_lid(pos, 1.0)),
             Some(Ticker::Shulker { .. }) => v["lid"] = json!(self.block_anim(pos, 1.0).shulker.0),
             _ => {}
@@ -668,7 +668,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "focus": match focus { 0 => "name", 1 => "seed", _ => "none" },
                 "creative": creative,
                 "hardcore": options.hardcore,
-                "difficulty": sunrise_client::title::DIFFICULTIES[options.difficulty()],
+                "difficulty": sunrise_sim::world_options::DIFFICULTIES[options.difficulty()],
                 "allow_commands": options.commands(*creative),
                 "world_type": options.preset_id(),
                 "generate_structures": options.structures,

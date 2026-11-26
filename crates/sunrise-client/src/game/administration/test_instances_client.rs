@@ -66,7 +66,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for (pos, text, color) in markers {
             // A plain colour: the atlas's white pixel at the fill's colour.
             let mut fill = HudBatch::scratch([1, 1]);
-            fill.fill(&self.gui.atlas, 0.0, 0.0, 1.0, 1.0, color);
+            fill.fill(&self.side.gui.atlas, 0.0, 0.0, 1.0, 1.0, color);
             let Some(v) = fill.vertices.first().copied() else {
                 continue;
             };

@@ -28,7 +28,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ((x, y, w, h), top, bottom)
         };
         let abgr = sunrise_client::hud_layout::abgr;
-        batch.fill_gradient(&self.gui.atlas, (x, y, w, h), abgr(top), abgr(bottom));
+        batch.fill_gradient(&self.side.gui.atlas, (x, y, w, h), abgr(top), abgr(bottom));
     }
     /// Vanilla's nine-slice widget rendering. `color` is ARGB, as `fill` uses.
     pub(in crate::game) fn native_gui_nine_slice(
@@ -41,7 +41,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let [a, r, g, b] = color.to_be_bytes();
         sunrise_client::ui::nine_slice(
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             sprite,
             rect[0],
             rect[1],
@@ -57,7 +57,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         lines: &[Text],
         at: [f32; 2],
     ) {
-        sunrise_client::ui::tooltip(batch, &self.gui.atlas, lines, (at[0], at[1]));
+        sunrise_client::ui::tooltip(batch, &self.side.gui.atlas, lines, (at[0], at[1]));
     }
 
     /// Draw an item stack with custom count/decoration text (or None) at `at` in GUI units.

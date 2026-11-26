@@ -1,4 +1,5 @@
 use super::Game;
+use sunrise_core::bounding_box::BoundingBox;
 use sunrise_gameplay::test_entities::{Aabb, intersects, standing};
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -62,5 +63,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let p = at(o.position);
             !(0..3).all(|i| p[i] >= bounds.0[i] && p[i] < bounds.1[i])
         });
+    }
+
+    /// `ServerLevel.setChunkForced(x, z, true)` for the chunks of `area`
+    /// (`TestInstanceBlockEntity.forceLoadChunks`).
+    pub(in crate::game) fn force_load_test_chunks(&mut self, area: &BoundingBox) {
+        let (x0, x1) = (area.min[0] >> 4, area.max[0] >> 4);
+        let (z0, z1) = (area.min[2] >> 4, area.max[2] >> 4);
+        self.side
+            .streaming
+            .set_forced_area((x0, z0), (x1, z1), true, |_, _, _| {});
     }
 }

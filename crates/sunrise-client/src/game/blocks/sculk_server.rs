@@ -5,13 +5,6 @@ use super::{Game, Result};
 use mod_api::client::particles::PositionSource;
 use std::collections::HashSet;
 use sunrise_client::join_seq::ListStamp;
-use sunrise_client::{
-    containers::BlockEntity,
-    fast_hash::{FxHashMap, FxHashSet},
-    mobs::{Mob, MovementEmission as Steps, Species, Who, allay, warden},
-    particles::ParticleType,
-    sculk::{self, Context, Info, SculkEntity, SculkKind, WardenSpawnTracker},
-};
 use sunrise_client_core::who::EventSource;
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
@@ -19,6 +12,15 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_world::registry::BlockStateId;
+use {
+    sunrise_client::containers::BlockEntity, sunrise_client::fast_hash::FxHashMap,
+    sunrise_client::fast_hash::FxHashSet, sunrise_client::mobs::Mob,
+    sunrise_client::mobs::MovementEmission as Steps, sunrise_client::mobs::Species,
+    sunrise_client::mobs::Who, sunrise_client::mobs::allay, sunrise_client::mobs::warden,
+    sunrise_client::sculk, sunrise_client::sculk::Context, sunrise_client::sculk::Info,
+    sunrise_client::sculk::SculkEntity, sunrise_client::sculk::SculkKind,
+    sunrise_client::sculk::WardenSpawnTracker, sunrise_level::particle_options::ParticleType,
+};
 
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -2864,9 +2866,8 @@ pub(in crate::game) mod command_damage_listener_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

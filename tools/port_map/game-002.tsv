@@ -10,13 +10,13 @@ ServerBossEvent.addPlayer	inline	crates/sunrise-client/src/game/interface/bossba
 ServerBossEvent.removePlayer	inline	crates/sunrise-client/src/game/interface/bossbars.rs::Game::diff_boss_events	a Remove goes out once the viewer no longer wants the bar
 ServerBossEvent.removeAllPlayers	inline	crates/sunrise-client/src/game/interface/bossbars.rs::Game::diff_boss_events	every viewer gets its Remove from the same diff
 ServerBossEvent.setVisible	inline	crates/sunrise-client/src/game/interface/bossbars.rs::Game::boss_events_for	a hidden bar is left out of the wanted list, so the diff sends Remove or Add
-ServerChunkCache.<init>	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::new	builds the chunk map and workers per level; forced chunks are loaded in world_loading, no ticket storage object
+ServerChunkCache.<init>	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::new	builds the chunk map and workers per level; forced chunks are loaded in world_loading, no ticket storage object
 ServerChunkCache.storeInCache	skip:java		4-entry last-chunk lookup cache
-ServerChunkCache.getChunk	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	chunks load and generate asynchronously around tickets; callers read World::chunks and skip an absent column, nothing waits for a target status
+ServerChunkCache.getChunk	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::update	chunks load and generate asynchronously around tickets; callers read World::chunks and skip an absent column, nothing waits for a target status
 ServerChunkCache.getChunkNow	port	crates/sunrise-level/src/world.rs::World::loaded	World::chunks.get is the lookup itself
 ServerChunkCache.clearCache	skip:java		clears the 4-entry lookup cache
-ServerChunkCache.getChunkFuture	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	no futures; the worker pool delivers columns to the game thread
-ServerChunkCache.getChunkFutureMainThread	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	no futures or per-request tickets; streaming loads by distance
+ServerChunkCache.getChunkFuture	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::update	no futures; the worker pool delivers columns to the game thread
+ServerChunkCache.getChunkFutureMainThread	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::update	no futures or per-request tickets; streaming loads by distance
 ServerChunkCache.hasChunk	port	crates/sunrise-level/src/world.rs::World::loaded
 ServerChunkCache.getChunkForLighting	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::light_region	the 3x3 region handed to the light workers
 ServerChunkCache.runDistanceManagerUpdates	inline	crates/sunrise-client/src/game.rs::Game::update_chunk_tickets	ticket levels are recomputed once a tick from players and forced chunks
@@ -26,8 +26,8 @@ ServerChunkCache.broadcastChangedChunks	port	crates/sunrise-client/src/lan/hub.r
 ServerChunkCache.getFullChunk	inline	crates/sunrise-client/src/game/mobs/natural_spawning.rs::Game::spawn_natural	the spawn pass reads World::chunks directly
 ServerChunkCache.blockChanged	inline	crates/sunrise-level/src/world.rs::World::set	World::set pushes the position onto block_log, which the hub drains
 ServerChunkCache.onLightUpdate	port	crates/sunrise-client/src/lan/hub.rs::Hub::broadcast_light_changes	light_log read once a tick; sent to players for whom the column is on the tracked border
-ServerChunkCache.addTicketAndLoadWithRadius	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	spawn search and guest placement wait for streaming to produce the columns; no ticket-with-radius future
-ServerChunkCache.MainThreadExecutor.pollTask	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	chunk-system updates run once per tick (streaming and ticket levels); there is no task queue to poll
+ServerChunkCache.addTicketAndLoadWithRadius	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::update	spawn search and guest placement wait for streaming to produce the columns; no ticket-with-radius future
+ServerChunkCache.MainThreadExecutor.pollTask	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::update	chunk-system updates run once per tick (streaming and ticket levels); there is no task queue to poll
 ServerEntity.isFullPrecisionEncodingRequired	port	crates/sunrise-sim/src/lan/entity.rs::full_precision_required	an item's box against a wall after a vertical or horizontal collision decides the full position sync; primed TNT and a happy ghast take the precise branch before it
 ServerEntity.handleMinecartPosRot	skip:other		only for the experimental minecart_improvements movement; Sunrise has the old minecart movement only
 ServerEntity.addPairing	inline	crates/sunrise-sim/src/lan/entity.rs::Entities::tick	a viewer that starts tracking an entity gets ServerEntity::pairing bundled, and the entity is remembered per viewer

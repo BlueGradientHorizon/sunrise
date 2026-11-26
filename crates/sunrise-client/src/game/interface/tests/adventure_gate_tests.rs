@@ -22,6 +22,7 @@ fn game<'a>(
 }
 
 /// A client's game with nobody playing, or `None` without prepared resources.
+#[cfg(feature = "client")]
 fn client_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> Option<crate::game::ClientGame<'a>> {
@@ -47,7 +48,9 @@ fn client_game<'a>(
     let res = &*resources.insert(loaded.resources);
     let mut game = crate::game::ClientGame::new(
         res,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -167,6 +170,7 @@ fn an_adventure_click_primes_tnt_only_with_a_can_break_that_names_it() {
 /// `ItemStack.useOn` passes in adventure mode unless the stack's
 /// `can_place_on` names the clicked block, so only then does the client run
 /// `BlockItem.place` and predict where the block goes.
+#[cfg(feature = "client")]
 #[test]
 fn an_adventure_placement_is_predicted_when_can_place_on_names_the_clicked_block() {
     let mut resources = None;

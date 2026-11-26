@@ -248,7 +248,7 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                         game.container = Some(pos);
                         game.side.title.0 = None;
                         game.side.chat_ui.hide_gui = true;
-                        game.settings.gui_scale = 2;
+                        game.side.settings.gui_scale = 2;
                         game.level.recipe_book.open = [false; 4];
                         game.world
                             .block_entities

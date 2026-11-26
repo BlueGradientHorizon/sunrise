@@ -11,13 +11,13 @@ ClientAdvancements.setSelectedTab	port	crates/sunrise-client/src/game/interface/
 ClientAdvancements.setListener	skip:ui		the open screen handles update callbacks directly; packet-backed opening clears the screen tab and replays roots so the first tab is selected
 ClientAdvancements.get	port	crates/sunrise-sim/src/advancements.rs::Tree::get	returns the advancement by id; holder wrapper is not needed
 ClientChunkCache.isValidChunk	skip:other		chunks are stored by position, so there is no ring slot to check
-ClientChunkCache.drop	port	crates/sunrise-client-render/src/streaming.rs::Streaming::forget_columns	Game::client_chunk_unload tells mods (client_chunk_unload) before the column is freed; block entities and renderer columns are cleared in Game::apply_forget_level_chunk_packet
+ClientChunkCache.drop	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::forget_columns	Game::client_chunk_unload tells mods (client_chunk_unload) before the column is freed; block entities and renderer columns are cleared in Game::apply_forget_level_chunk_packet
 ClientChunkCache.getChunk	skip:java		lookup of a loaded chunk; Sunrise reads world.chunks directly
 ClientChunkCache.replaceBiomes	port	crates/sunrise-client/src/game/network/remote_chunks.rs::Game::remote_chunks_biomes	each loaded column takes the packet's biomes per section, then it and its neighbours are marked dirty so their sections are drawn again (/fillbiome reaches the client)
 ClientChunkCache.flipUpdateTrackingSets	skip:other		double-buffered change lists for LevelRenderer; Sunrise hands changed columns to the renderer directly
 ClientChunkCache.Storage.getIndex	skip:java		ring-buffer index into the view range; Sunrise keys chunks by position
-ClientChunkCache.Storage.replace	port	crates/sunrise-client/src/game/network/remote_chunks.rs::Game::remote_chunk	gap: minor: old chunk unload is in Streaming::forget, not here
-ClientChunkCache.Storage.drop	port	crates/sunrise-client-render/src/streaming.rs::Streaming::forget_columns	forgets the chunk at the index
+ClientChunkCache.Storage.replace	port	crates/sunrise-client/src/game/network/remote_chunks.rs::Game::remote_chunk	gap: minor: old chunk unload is in MeshStreamer::forget, not here
+ClientChunkCache.Storage.drop	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::forget_columns	forgets the chunk at the index
 ClientChunkCache.Storage.onSectionEmptinessChanged	skip:java		empty-section sets for the renderer's culling; Sunrise's mesher works from block data
 ClientChunkCache.Storage.onChunkRemoved	skip:java		empty-section bookkeeping when a chunk leaves; see Storage.onSectionEmptinessChanged
 ClientChunkCache.Storage.onChunkAdded	skip:java		empty-section bookkeeping when a chunk arrives; see Storage.onSectionEmptinessChanged

@@ -12,11 +12,11 @@ use super::native_entity_refs::tests::{
 };
 use mod_api::{Hooks, Host, IsPiglinCurrencyEvent, ItemPart, Registrar, RegistrationContext};
 use std::sync::Arc;
-use sunrise_client::first_person::Hand;
 use sunrise_client::items::ItemStack;
 use sunrise_client::mobs::{Mob, Species, piglin};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_core::position::ChunkPos;
+use sunrise_sim::first_person_sim::Hand;
 
 /// An emerald is currency when it carries `minecraft:custom_data`.
 #[derive(Clone)]

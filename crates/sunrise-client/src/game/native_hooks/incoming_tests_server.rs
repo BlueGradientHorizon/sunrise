@@ -28,9 +28,8 @@ fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

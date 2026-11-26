@@ -42,7 +42,9 @@ fn game<'a>(
     let res = &*resources.insert(loaded.resources);
     let mut game = crate::game::ClientGame::new(
         res,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -54,7 +56,7 @@ fn game<'a>(
     .unwrap();
     let server = crate::game::native_client_session::tests::logged_client(&mut game);
     // The atlas the game bakes at startup: `mob_geometry` finds a body's texture in it.
-    game.gui.atlas = sunrise_client::hud::HudAtlas::build(
+    game.side.gui.atlas = sunrise_client::hud::HudAtlas::build(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
     )
     .unwrap();

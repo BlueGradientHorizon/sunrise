@@ -727,9 +727,8 @@ pub(in crate::game) use crate::game::server_side::commands_server::execute::term
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

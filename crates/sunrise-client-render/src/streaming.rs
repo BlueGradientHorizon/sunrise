@@ -5,7 +5,6 @@ use crate::fast_hash::{FxHashMap, FxHashSet};
 use crate::{
     chunk::Chunk,
     graphics::LeafCullingMode,
-    light::LightTables,
     mesher::{MeshScratch, MeshTables, Region, SectionMesh},
     world::World,
 };
@@ -24,52 +23,32 @@ pub use sunrise_level::chunk_streamer::{
 };
 
 /// Render-side resources needed by section meshing workers.
+#[derive(Clone)]
 pub struct MeshWorkerContext {
     pub render: Arc<crate::assets::RenderAssets>,
     pub tables: Arc<MeshTables>,
-    pub hidden_states: Arc<[bool]>,
-    pub part_tables: Arc<crate::mesher::part_tables::PartTables>,
-}
-
-/// Combined chunk and mesh worker resources; retains its seven flat `pub` fields in H2.
-pub struct WorkerContext {
-    pub assets: Arc<crate::assets::Assets>,
-    pub render: Arc<crate::assets::RenderAssets>,
-    pub tables: Arc<MeshTables>,
-    pub biomes: Arc<crate::biome::Biomes>,
-    pub light: Arc<LightTables>,
     /// The block states a mod hides from the mesher, by state id (`Mesher::hidden_states`); empty
     /// for none.
     pub hidden_states: Arc<[bool]>,
     /// The client `BlockPart` answers the mesher reads (`Mesher::part_tables`); empty for none.
     pub part_tables: Arc<crate::mesher::part_tables::PartTables>,
 }
+
+/// Combined chunk and mesh worker resources.
+#[derive(Clone)]
+pub struct WorkerContext {
+    pub chunk: ChunkWorkerContext,
+    pub mesh: MeshWorkerContext,
+}
 impl WorkerContext {
     pub fn chunk_context(&self) -> ChunkWorkerContext {
-        ChunkWorkerContext {
-            assets: self.assets.clone(),
-            biomes: self.biomes.clone(),
-            light: self.light.clone(),
-        }
+        self.chunk.clone()
     }
     pub fn mesh_context(&self) -> MeshWorkerContext {
-        MeshWorkerContext {
-            render: self.render.clone(),
-            tables: self.tables.clone(),
-            hidden_states: self.hidden_states.clone(),
-            part_tables: self.part_tables.clone(),
-        }
+        self.mesh.clone()
     }
     pub fn from_parts(chunk: ChunkWorkerContext, mesh: MeshWorkerContext) -> Self {
-        Self {
-            assets: chunk.assets,
-            render: mesh.render,
-            tables: mesh.tables,
-            biomes: chunk.biomes,
-            light: chunk.light,
-            hidden_states: mesh.hidden_states,
-            part_tables: mesh.part_tables,
-        }
+        Self { chunk, mesh }
     }
 }
 
@@ -359,9 +338,6 @@ pub struct MeshStreamer {
     chunks: ChunkStreamer<MeshJobs>,
 }
 
-/// Compatibility alias during H2 until H3 (`L9-1`) moves `MeshStreamer` onto `ClientState`.
-pub type Streaming = MeshStreamer;
-
 impl std::ops::Deref for MeshStreamer {
     type Target = ChunkStreamer<MeshJobs>;
     fn deref(&self) -> &Self::Target {
@@ -396,7 +372,7 @@ impl MeshStreamer {
         });
         let chunks = ChunkStreamer::with_auxiliary(
             generator,
-            Arc::new(context.chunk_context()),
+            Arc::new(context.chunk.clone()),
             MeshJobs {
                 shared: mesh_shared.clone(),
             },
@@ -538,31 +514,6 @@ impl MeshStreamer {
                 && !self.waiting.contains(&upload.key)
                 && !world.dirty_sections.contains(&upload.key)
                 && self.section_visibility.halo_current(world, upload))
-    }
-    /// `ChunkMap.getLatestStatus` for the loading screen's chunk map: the
-    /// furthest step this column has reached, `None` before it is asked for.
-    pub fn latest_status(
-        &self,
-        world: &World,
-        x: i32,
-        z: i32,
-    ) -> Option<crate::level_loading::Status> {
-        use crate::level_loading::Status;
-        use sunrise_world::chunk_status::ChunkStatus;
-        self.chunks
-            .latest_chunk_status(world, x, z)
-            .map(|s| match s {
-                ChunkStatus::Empty => Status::Empty,
-                ChunkStatus::StructureStarts => Status::StructureStarts,
-                ChunkStatus::StructureReferences => Status::StructureReferences,
-                ChunkStatus::Biomes => Status::Biomes,
-                ChunkStatus::Terrain => Status::Terrain,
-                ChunkStatus::Features => Status::Features,
-                ChunkStatus::InitializeLight => Status::InitializeLight,
-                ChunkStatus::Light => Status::Light,
-                ChunkStatus::Spawn => Status::Spawn,
-                ChunkStatus::Full => Status::Full,
-            })
     }
     /// When the section's latest accepted mesh started compiling, on the
     /// `sequence` clock (`CompiledSectionMesh.getCompileTaskStartTime`).
@@ -1184,7 +1135,7 @@ mod reload_tests {
         world.chunks.insert((4, 5), Arc::new(Chunk::empty(4, 5)));
         let lit = FxHashSet::from_iter([(2, -3), (99, 99)]);
 
-        Streaming::mark_loaded_sections_dirty(&mut world, &lit);
+        MeshStreamer::mark_loaded_sections_dirty(&mut world, &lit);
 
         let sections = world.layout().sections() as i32;
         assert_eq!(world.dirty_sections.len(), sections as usize);
@@ -1201,7 +1152,7 @@ mod reload_tests {
         world.dirty_sections.insert((4, 3, 5));
         let lit = FxHashSet::from_iter([(99, 99)]);
 
-        Streaming::mark_loaded_sections_dirty(&mut world, &lit);
+        MeshStreamer::mark_loaded_sections_dirty(&mut world, &lit);
 
         assert_eq!(world.dirty_sections.len(), 1);
         assert!(world.dirty_sections.contains(&(4, 3, 5)));

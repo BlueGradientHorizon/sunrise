@@ -39,7 +39,8 @@ fn a_riders_move_takes_the_look_of_the_tick_and_leaves_it_off_the_ground() {
             remote.entity_id = 42;
             remote.level_load.finish();
             game.side.screen = Screen::Playing;
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             let stone = game
                 .pack

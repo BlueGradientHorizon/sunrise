@@ -190,7 +190,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Reject obsolete mesh entries even if an old asynchronous upload arrives after a move.
     pub(in crate::game) fn live_block_entity_render(&self, pos: [i32; 3], state: u32) -> bool {
         self.world.block(pos[0], pos[1], pos[2]).0 == state
-            && self.res.block_entity_render().renders(state)
+            && self.client_res().block_entity_render().renders(state)
     }
     /// Route a winit key event and its text independently (`KeyboardHandler.charTyped`).
     pub(in crate::game) fn dispatch_window_keyboard(
@@ -237,7 +237,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             view: falling_view,
             forward: falling_forward,
         } = *setup;
-        let tables = &self.pack.context.tables;
+        let tables = &self.side.client_pack.context.mesh.tables;
         for f in &self.falling[run] {
             if self.hides_as_camera(f.id) {
                 continue;
@@ -247,7 +247,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Only rear-origin models pay for the envelope/depth check before full frustum culling.
             if falling_forward.dot(o) < 0.0
                 && falling_view.is_some_and(|view| {
-                    self.pack
+                    self.side
+                        .client_pack
                         .render
                         .model_catalog
                         .render_bounds(f.state)
@@ -295,7 +296,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         framebuffer: [u32; 2],
     ) -> sunrise_client::window::PointerProjection {
         use sunrise_client::window::{GuiSize, PointerProjection};
-        let inputs = self.settings.gui_scale_inputs();
+        let inputs = self.side.settings.gui_scale_inputs();
         PointerProjection {
             gui: GuiSize::new(framebuffer, inputs.requested, inputs.unicode),
             window: self.pointer_space(framebuffer),
@@ -337,7 +338,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Particles (ParticleEngine.extract): camera-facing quads.
         self.mark_stage(out.len(), "PARTICLES");
         let world = &self.world;
-        let particle_mode = self.settings.sunrise.particle_culling;
+        let particle_mode = self.side.settings.sunrise.particle_culling;
         let mut providers = providers;
         if particle_mode == sunrise_client::graphics::ParticleCullingMode::Off {
             self.side.particles.0.render_world(
@@ -597,7 +598,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     0.25,
                     camera,
                     fire_yaw,
-                    &self.gui.atlas.sprites,
+                    &self.side.gui.atlas.sprites,
                     self.world.light(
                         at.x.floor() as i32,
                         at.y.floor() as i32,
@@ -624,7 +625,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     1.975 * scale,
                     camera,
                     fire_yaw,
-                    &self.gui.atlas.sprites,
+                    &self.side.gui.atlas.sprites,
                     self.world.light(
                         at.x.floor() as i32,
                         at.y.floor() as i32,
@@ -769,7 +770,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     m.height(),
                     camera,
                     fire_yaw,
-                    &self.gui.atlas.sprites,
+                    &self.side.gui.atlas.sprites,
                     self.world.light(
                         at.x.floor() as i32,
                         at.y.floor() as i32,
@@ -800,7 +801,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     p.dimensions.height,
                     camera,
                     fire_yaw,
-                    &self.gui.atlas.sprites,
+                    &self.side.gui.atlas.sprites,
                     self.world.light(
                         feet.x.floor() as i32,
                         feet.y.floor() as i32,
@@ -833,9 +834,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let pack_shadows = self.side.renderer.0.as_ref().is_some_and(|r| {
             r.pack_entity_shadows() || (self.overworld_skybox() && r.native_shadow())
         });
-        let shadows = self.settings.entity_shadows && self.pack.polytone_colors.entity_shadows();
+        let shadows = self.side.settings.entity_shadows
+            && self.side.client_pack.polytone_colors.entity_shadows();
         let shadow_sprite = (shadows && !pack_shadows)
-            .then(|| self.gui.atlas.sprites.get("misc/shadow").copied())
+            .then(|| self.side.gui.atlas.sprites.get("misc/shadow").copied())
             .flatten();
         if let Some(sprite) = shadow_sprite {
             let ambient = self.dimension_type().ambient_light;
@@ -852,7 +854,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let mut casters: Vec<(glam::DVec3, glam::DVec3, f32, f32)> =
                 sunrise_client::shadows::mob_casters(
                     self.mobs.iter().filter(|m| !self.hides_as_camera(m.id)),
-                    self.res.client_mob_models(),
+                    self.client_res().client_mob_models(),
                     a,
                 )
                 .map(|(pos, r, s)| (pos, pos, r, s))
@@ -960,7 +962,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // so nothing warms it.
             let warm_cache = self.side.pack_ids.is_none();
             for entity in r.block_entities_in_range(
-                self.settings.chunk_fade as f32,
+                self.side.settings.chunk_fade as f32,
                 camera,
                 view,
                 self.effective_render_distance(),
@@ -1005,7 +1007,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 {
                     return false;
                 }
-                if self.settings.sunrise.entity_culling == EntityCullingMode::Off
+                if self.side.settings.sunrise.entity_culling == EntityCullingMode::Off
                     || self.side.occlusion.0.shadow_casters.0
                     || self.block_entity_reach_entry(state).1
                     || hi.y - lo.y > 2.0
@@ -1023,13 +1025,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.with_block_entity_scene(camera, alpha as f32, &dynamic_visible, |scene| {
                 let visible = camera_list.into_iter().chain(shadow_only.iter().copied());
                 let block_entity_cache = CacheOptions {
-                    shulker_boxes: self.settings.sunrise.cache_shulker_boxes,
-                    signs: self.settings.sunrise.cache_signs,
-                    decorated_pots: self.settings.sunrise.cache_decorated_pots,
-                    bells: self.settings.sunrise.cache_bells,
-                    chests: self.settings.sunrise.cache_chests,
-                    banners: self.settings.sunrise.cache_banners,
-                    copper_golem_statues: self.settings.sunrise.cache_copper_golem_statues,
+                    shulker_boxes: self.side.settings.sunrise.cache_shulker_boxes,
+                    signs: self.side.settings.sunrise.cache_signs,
+                    decorated_pots: self.side.settings.sunrise.cache_decorated_pots,
+                    bells: self.side.settings.sunrise.cache_bells,
+                    chests: self.side.settings.sunrise.cache_chests,
+                    banners: self.side.settings.sunrise.cache_banners,
+                    copper_golem_statues: self.side.settings.sunrise.cache_copper_golem_statues,
                 };
                 // Entity occlusion is for ordinary entity meshes. Block entities
                 // already have section and per-block frustum culling; routing them
@@ -1039,7 +1041,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if self.side.pack_ids.is_some() {
                     let section_revision = |pos| r.block_entity_section_revision(pos);
                     static_block_entity_stats = self
-                        .res
+                        .client_res()
                         .block_entity_render()
                         .render_with_cache_options_and_callbacks(
                             scene,
@@ -1064,7 +1066,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         visible_static_block_entity_sections,
                         static_block_entity_stats,
                     ) = self
-                        .res
+                        .client_res()
                         .block_entity_render()
                         .render_with_gpu_cache_options(
                             scene,
@@ -1088,12 +1090,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .has_mods()
                     .then(|| {
                         r.visible_block_entities(
-                            self.settings.chunk_fade as f32,
+                            self.side.settings.chunk_fade as f32,
                             camera,
                             view,
                             radius,
                         )
-                        .filter(|((_, state), _)| !self.res.block_entity_render().renders(*state))
+                        .filter(|((_, state), _)| {
+                            !self.client_res().block_entity_render().renders(*state)
+                        })
                     })
                     .into_iter()
                     .flatten();
@@ -1112,7 +1116,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.mark_stage(out.len(), "DESTROY");
                 for &(pos, stage) in &cracks {
                     let state = self.world.block(pos[0], pos[1], pos[2]);
-                    self.res
+                    self.client_res()
                         .block_entity_render()
                         .render_breaking(scene, pos, state.0, stage, &mut out);
                 }
@@ -1151,14 +1155,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if self.res.facts().get(state).render_shape
                 == sunrise_client::blocks::RenderShape::Model
                 && let Ok(models) = self
-                    .pack
+                    .side
+                    .client_pack
                     .render
                     .model_catalog
                     .collect(state, BlockPos::new(pos[0], pos[1], pos[2]))
             {
                 let offset = self
-                    .pack
+                    .side
+                    .client_pack
                     .context
+                    .mesh
                     .tables
                     .offset(state, pos[0], pos[2])
                     .unwrap_or([0.0; 3]);
@@ -1234,7 +1241,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.item_activation.reset();
         self.side.kept_block_entities.get_mut().clear();
         self.side.mod_view_distances.take();
-        self.streaming.paused = true;
+        self.side.streaming.paused = true;
         self.world = crate::game::world_for_mods(self.res.facts().air, 0);
         self.player = None;
         // `LocalPlayer`'s constructor: `KeyMapping.resetToggleKeys`, so a sneak or sprint toggled
@@ -1256,8 +1263,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut title = self
             .new_title(std::env::current_dir().unwrap_or_default().join("saves"))
             .with_user(|| self.options.player_name());
-        title.last_server = self.settings.file.string("lastServer");
-        title.skip_multiplayer_warning = self.settings.file.bool("skipMultiplayerWarning");
+        title.last_server = self.side.settings.file.string("lastServer");
+        title.skip_multiplayer_warning = self.side.settings.file.bool("skipMultiplayerWarning");
         self.show_title(title);
         self.capture(false);
         Ok(())
@@ -1304,7 +1311,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let result: Result<()> = (|| {
             match event {
                 WindowEvent::CloseRequested => {
-                    if !self.settings.quit_shortcuts
+                    if !self.side.settings.quit_shortcuts
                         && sunrise_client::input::is_quit_shortcut_down(
                             self.side.modifiers,
                             &self.side.physical_keys,
@@ -1419,8 +1426,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         MouseScrollDelta::PixelDelta(p) => (p.x / 30.0, p.y / 30.0),
                     };
                     // MouseHandler.onScroll: discrete scrolling and the wheel sensitivity.
-                    let discrete = self.settings.discrete_scroll;
-                    let wheel_sensitivity = self.settings.mouse_wheel_sensitivity;
+                    let discrete = self.side.settings.discrete_scroll;
+                    let wheel_sensitivity = self.side.settings.mouse_wheel_sensitivity;
                     let scaled = |v: f64| {
                         (if discrete {
                             sunrise_client::mouse::java_signum(v)
@@ -1518,7 +1525,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             .unwrap_or_default();
                         let batch = HudBatch::new(
                             [size.width, size.height],
-                            self.settings.gui_scale_inputs(),
+                            self.side.settings.gui_scale_inputs(),
                         );
                         let gui = (batch.width, batch.height);
                         if step_scroll {
@@ -1787,7 +1794,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         return Ok(());
                     }
                     self.extras_mouse(button, pressed);
-                    if pressed && self.settings.keys.get("key.smoothCamera") == input {
+                    if pressed && self.side.settings.keys.get("key.smoothCamera") == input {
                         self.smooth_camera_action();
                     }
                     self.mapped_mouse_event(button, &input, pressed)?;
@@ -1885,7 +1892,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         if rendered {
                             let ms = |d: Duration| d.as_secs_f32() * 1000.0;
                             perf_times = Some((ms(cpu), r.gpu_times.last().copied()));
-                            let g = &self.settings.sunrise;
+                            let g = &self.side.settings.sunrise;
                             // The scale while Dynamic Resolution moves it on its own.
                             let dynamic_scale = g
                                 .dynamic_resolution
@@ -1902,9 +1909,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                     f64::from(gpu) * 100.0 / f64::from(ms(cpu).max(0.001));
                             }
                             let settled = self.side.screen == Screen::Playing
-                                && !self.streaming.terrain_loading();
+                                && !self.side.streaming.terrain_loading();
                             frame_autotune::observe(
-                                &self.settings.sunrise,
+                                &self.side.settings.sunrise,
                                 settled,
                                 (
                                     &mut self.side.gpu_culling_auto,
@@ -1948,9 +1955,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     if let Some(server) = &self.integrated {
                         server.set_paused(self.pause);
                         server.set_distances(
-                            self.settings.render_distance,
-                            self.settings.simulation_distance,
-                            self.settings.entity_distance,
+                            self.side.settings.render_distance,
+                            self.side.settings.simulation_distance,
+                            self.side.settings.entity_distance,
                         );
                     }
                     self.clock.end_frame(self.pause);
@@ -2027,17 +2034,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             );
                         }
                         if self.side.title.0.is_some() {
-                            self.perf.title_shown();
+                            self.side.perf.title_shown();
                         }
                         if self.side.title.0.is_none()
                             && self.side.screen == Screen::Playing
                             && self.player.is_some()
                         {
-                            self.perf
+                            self.side
+                                .perf
                                 .frame(elapsed.as_secs_f32() * 1000.0, &frame_spans);
                             if startup::filling() {
                                 let mut fill: Vec<(&'static str, usize)> =
-                                    self.streaming.stages().to_vec();
+                                    self.side.streaming.stages().to_vec();
                                 fill.push(("resident", self.world.chunks.len()));
                                 fill.push(("uploads", self.side.pending_uploads.0.len()));
                                 fill.push(("backlog", self.remote_backlog()));
@@ -2046,10 +2054,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             if startup::on() {
                                 startup::view_filled(
                                     self.world.chunks.len(),
-                                    self.streaming.pending()
+                                    self.side.streaming.pending()
                                         + self.side.pending_uploads.0.len()
                                         + self.remote_backlog(),
-                                    self.streaming.radius.max(0) as u32,
+                                    self.side.streaming.radius.max(0) as u32,
                                 );
                             }
                             self.side.world_frames += 1;
@@ -2094,7 +2102,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
         self.input_hud_begin();
         self.side.subtitles.deferred.set(false);
-        let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let mut batch = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         batch.glint_colour = self.pvp_glint_texel();
         // GlobalSettingsUniform's GameTime, for a resource pack's text shader.
         batch.game_time = ((self.world.game_time.rem_euclid(24000)) as f32
@@ -2130,11 +2138,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && std::mem::take(&mut title.onboarding_finished)
         {
             // Options.onboardingAccessibilityFinished.
-            self.settings.file.set(
+            self.side.settings.file.set(
                 "onboardAccessibility",
                 sunrise_client::options_file::V::Bool(false),
             );
-            self.settings.save(&crate::game::options_path());
+            self.side.settings.save(&crate::game::options_path());
         }
         if let Some(title) = &self.side.title.0 {
             for found in title.lan_found_narrations((w, h)) {
@@ -2162,19 +2170,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // resource-reload failure still shows on the title (#4428).
             // The buttons crates add show by what is installed now: the Mods
             // page's list changes while the title is open.
-            let mods = self.settings.mods.installed.len();
+            let mods = self.side.settings.mods.installed.len();
             if let Some(title) = &mut self.side.title.0 {
                 title.mods = mods;
             }
             let drawn = self.draw_title_screen_with_pre_hook(&mut batch);
             if drawn && let Some(title) = &self.side.title.0 {
                 title.draw_with_items(
-                    &self.gui.atlas,
-                    Some(&self.pack.item_renderer),
+                    &self.side.gui.atlas,
+                    Some(&self.side.client_pack.item_renderer),
                     &mut batch,
                     self.side.cursor,
-                    self.settings.file.bool("hideSplashTexts"),
-                    self.settings.file.bool("hideServerAddress"),
+                    self.side.settings.file.bool("hideSplashTexts"),
+                    self.side.settings.file.bool("hideServerAddress"),
                     &mut |phase, batch| self.draw_screen_phase(batch, phase),
                 );
                 self.draw_preset_editor(&mut batch);
@@ -2186,7 +2194,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.draw_title_screen_with_post_hook(&mut batch);
             return batch;
         }
-        let atlas_ptr: *const HudAtlas = &self.gui.atlas;
+        let atlas_ptr: *const HudAtlas = &self.side.gui.atlas;
         let _ = atlas_ptr;
         // The ToastManager draws over every screen: a server's packs
         // download while the connection screen shows.
@@ -2232,7 +2240,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // Combat feel Legacy hides the attack indicator unless the player keeps it.
             let indicator = if show_hud && !self.pvp_hides_attack_indicator() {
-                self.settings.attack_indicator
+                self.side.settings.attack_indicator
             } else {
                 0
             };
@@ -2265,9 +2273,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     // attack indicator stays.
                     if g.custom_crosshair() {
                         g.draw_custom_crosshair(batch, wi, hi);
-                        hud_layout::paint(batch, &g.gui.atlas, &draws[1..]);
+                        hud_layout::paint(batch, &g.side.gui.atlas, &draws[1..]);
                     } else {
-                        hud_layout::paint(batch, &g.gui.atlas, &draws);
+                        hud_layout::paint(batch, &g.side.gui.atlas, &draws);
                     }
                 }
             });
@@ -2281,7 +2289,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let mut draws = hud_layout::hotbar(wi, hi, &inputs);
                     // `extractSlot` for each item, in order, on the path `gui_paint` takes.
                     let mut items = crate::game::gui_paint_items::HotbarItems { game: g, source };
-                    hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
+                    hud_layout::paint_items(batch, &g.side.gui.atlas, &draws, &mut items);
                     if indicator == 2 {
                         // Items and arm follow the camera; the charge belongs to the local player.
                         let mut progress =
@@ -2299,7 +2307,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             progress,
                             &mut draws,
                         );
-                        hud_layout::paint(batch, &g.gui.atlas, &draws[start..]);
+                        hud_layout::paint(batch, &g.side.gui.atlas, &draws[start..]);
                     }
                 }
             });
@@ -2357,7 +2365,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         &mut status_heights,
                         &mut status_rows,
                     );
-                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                    hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
                 },
             );
             self.gui_layer(VanillaGuiLayer::ArmorLevel, &mut batch, &mut |g, batch| {
@@ -2369,7 +2377,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 status_rows.clear();
                 hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
-                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
             });
             self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
                 if !show_survival_status || mount.is_some_and(|(hearts, _)| hearts != 0) {
@@ -2386,7 +2394,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     &mut status_heights,
                     &mut status_rows,
                 );
-                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
             });
             self.gui_layer(
                 VanillaGuiLayer::VehicleHealth,
@@ -2404,7 +2412,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         &mut status_heights,
                         &mut status_rows,
                     );
-                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                    hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
                 },
             );
             self.gui_layer(VanillaGuiLayer::AirLevel, &mut batch, &mut |g, batch| {
@@ -2422,7 +2430,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     &mut status_heights,
                     &mut status_rows,
                 );
-                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                hud_layout::paint(batch, &g.side.gui.atlas, &status_rows);
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard by this
                 // client only, so another player's bubbles pop silently.
                 if let Some((volume, pitch)) = pop_sound
@@ -2459,7 +2467,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             sunrise_client::locator_bar::background(wi, hi);
                         sunrise_client::ui::nine_slice(
                             batch,
-                            &g.gui.atlas,
+                            &g.side.gui.atlas,
                             sprite,
                             x as f32,
                             y as f32,
@@ -2469,10 +2477,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         );
                     }
                     if has_experience && g.player.is_some() {
-                        let atlas = &g.gui.atlas;
+                        let atlas = &g.side.gui.atlas;
                         let width = |s: &str| HudBatch::text_width(atlas, s) as i32;
                         let draws = hud_layout::experience_colored(
-                            g.pack.polytone_colors.xp_bar,
+                            g.side.client_pack.polytone_colors.xp_bar,
                             wi,
                             hi,
                             g.experience.progress,
@@ -2484,7 +2492,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                     if contextual == ContextualBar::Locator {
                         let draws = g.locator_bar_draws(wi, hi);
-                        hud_layout::paint(batch, &g.gui.atlas, &draws);
+                        hud_layout::paint(batch, &g.side.gui.atlas, &draws);
                     }
                 },
             );
@@ -2503,7 +2511,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 &mut batch,
                 &mut |g, batch| {
                     let draws = hud_overlays::sleep_overlay(wi, hi, g.sleep_timer as i32);
-                    hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    hud_layout::paint(batch, &g.side.gui.atlas, &draws);
                 },
             );
             self.gui_layer(
@@ -2538,7 +2546,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     Subtitles::Deferred => g.side.subtitles.deferred.set(true),
                 },
             );
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             if show_hud
                 && let Some((text, at)) = &self.side.message
                 && at.elapsed() < Duration::from_secs(3)
@@ -2592,9 +2600,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 sunrise_client::widgets::begin_screen(|| {
                     sunrise_client::widgets::ScreenInfo::new("paused", title.clone())
                 });
-                let tw = HudBatch::text_width(&self.gui.atlas, &title);
+                let tw = HudBatch::text_width(&self.side.gui.atlas, &title);
                 batch.text(
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     &title,
                     ((batch.width / 2.0).floor() - (tw / 2.0).floor()).floor(),
                     10.0,
@@ -2670,7 +2678,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // Off a world (title, options, Win, a prompt before joining) the HUD shows nothing to
         // keep clear of; `hud_layers` fills it in once the world's HUD draws.
-        let gui = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let gui = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         self.side.chat_ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
         // The pack prompt replaces the connecting screen (setScreen), but
         // in game it opens over the world.
@@ -2706,7 +2714,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         sunrise_client::extras_hud::draw_top_layers(
             sunrise_hooks::hud::engine::all(),
             &mut batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
         );
         self.draw_pad_over_hud(&mut batch);
         if let Some(pointer) = pointer {
@@ -2717,7 +2725,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             );
             self.side.cursor = pointer.subpixel();
         }
-        self.pack.item_renderer.end_gui_frame();
+        self.side.client_pack.item_renderer.end_gui_frame();
         batch
     }
     /// `LeverBlock.makeParticle` at full scale: a powered lever puffs one red
@@ -2844,7 +2852,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && event.state == ElementState::Pressed
             && let PhysicalKey::Code(key) = event.physical_key
             && sunrise_client::keybinds::key_name(key)
-                == Some(self.settings.keys.get("key.fullscreen"))
+                == Some(self.side.settings.keys.get("key.fullscreen"))
             && !(self.side.screen == Screen::Options && self.options_waiting_for_key())
         {
             self.side.last_input = Instant::now();
@@ -2950,7 +2958,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     && event.physical_key == PhysicalKey::Code(KeyCode::Escape))
         {
             self.side.pending_entry.0 = None;
-            self.perf.cancel_world_opening();
+            self.side.perf.cancel_world_opening();
             return true;
         }
         if (self.side.pending_entry.0.is_some() || self.integrated_starting.is_some())
@@ -2979,7 +2987,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.side.pending_save.0.is_some() {
             match event {
                 WindowEvent::CloseRequested => {
-                    if (self.settings.quit_shortcuts
+                    if (self.side.settings.quit_shortcuts
                         || !sunrise_client::input::is_quit_shortcut_down(
                             self.side.modifiers,
                             &self.side.physical_keys,
@@ -3539,7 +3547,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn process_level_events_portal_travel_client(&mut self) {
         let pitch = self.side.particles.0.level_random().next_float() * 0.4 + 0.8;
         self.side.audio.0.play_on(
-            sunrise_client::sound_engine::AMBIENT,
+            sunrise_client_core::sound_source::AMBIENT,
             "minecraft:block.portal.travel",
             None,
             0.25,
@@ -3657,16 +3665,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             window,
             self.options.offscreen,
             &self.pack,
-            &self.gui,
+            &self.side.client_pack,
+            &self.side.gui,
             None,
             None,
-            self.settings.sunrise.api,
-            self.settings.sunrise.translucent_batching,
-            self.settings.vsync,
-            &self.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.settings),
+            self.side.settings.sunrise.api,
+            self.side.settings.sunrise.translucent_batching,
+            self.side.settings.vsync,
+            &self.side.settings.sunrise,
+            shader_packs::picked_pack_shape(&self.side.settings),
             display,
-            self.settings.texture_atlas_settings(),
+            self.side.settings.texture_atlas_settings(),
         )?;
         clouds?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
@@ -3733,14 +3742,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The window's GPU holds the atlas: its copy in memory is kept
         // compressed (a no-op once it is).
         if self.side.renderer.0.is_some() {
-            self.gui.atlas.pack_pixels();
-            self.pack.render.pixels.pack();
+            self.side.gui.atlas.pack_pixels();
+            self.side.client_pack.render.pixels.pack();
         }
         // Before any text of this frame: a full glyph region starts over.
-        self.gui.atlas.font.begin_frame();
+        self.side.gui.atlas.font.begin_frame();
         if self.clock.still() {
             // Obfuscated text picks the same glyphs in a frame of the same world tick.
-            self.gui.atlas.font.reseed(self.visual_ticks() as i64);
+            self.side.gui.atlas.font.reseed(self.visual_ticks() as i64);
         }
         self.side.glint_frame = self.capture_glint_frame();
         if self
@@ -3779,10 +3788,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .map_or(self.side.cursor, |p| p.pixel());
                 if let Some(renderer) = &mut self.side.renderer.0 {
                     let size = [renderer.config.width, renderer.config.height];
-                    let mut hud = HudBatch::new(size, self.settings.gui_scale_inputs());
+                    let mut hud = HudBatch::new(size, self.side.settings.gui_scale_inputs());
                     sunrise_client::level_loading::draw_file_fixer(
                         &mut hud,
-                        &self.gui.atlas,
+                        &self.side.gui.atlas,
                         upgrade,
                         cursor,
                     );
@@ -3802,12 +3811,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let Some(renderer) = &mut self.side.renderer.0 {
                 let mut hud = HudBatch::new(
                     [renderer.config.width, renderer.config.height],
-                    self.settings.gui_scale_inputs(),
+                    self.side.settings.gui_scale_inputs(),
                 );
                 let (w, h) = (hud.width, hud.height);
                 sunrise_client::ui::menu_background(
                     &mut hud,
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     0.0,
                     0.0,
                     w,
@@ -3826,7 +3835,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .then_some(self.side.loading_progress);
                 sunrise_client::level_loading::draw(
                     &mut hud,
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     Some(&status),
                     progress,
                 );
@@ -3843,11 +3852,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 });
                 let mut hud = HudBatch::new(
                     [renderer.config.width, renderer.config.height],
-                    self.settings.gui_scale_inputs(),
+                    self.side.settings.gui_scale_inputs(),
                 );
                 sunrise_client::level_loading::draw_progress(
                     &mut hud,
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     loader.progress.line(),
                     loader.progress.fraction(),
                 );
@@ -3870,10 +3879,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // ToastManager still draws in front of it.
         let reload_overlay = self.reload_overlay_frame();
         if let Some((bar, fade)) = reload_overlay.filter(|(_, fade)| fade.opaque()) {
-            let mut hud = HudBatch::new(size, self.settings.gui_scale_inputs());
+            let mut hud = HudBatch::new(size, self.side.settings.gui_scale_inputs());
             self.draw_reload_overlay(&mut hud, bar, fade);
             self.draw_every_toast(&mut hud);
-            self.pack.item_renderer.end_gui_frame();
+            self.side.client_pack.item_renderer.end_gui_frame();
             pr.lap("pr_loading");
             drop(prepare);
             return self
@@ -3938,7 +3947,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             sunrise_core::mth::floor(camera.z),
         ];
         // Camera.extractRenderState: only spectator inside a solidRender block disables smartCull.
-        let cave_culling = self.settings.sunrise.cave_culling
+        let cave_culling = self.side.settings.sunrise.cave_culling
             && !(self.spectator()
                 && self
                     .res
@@ -4014,9 +4023,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (rain, thunder) = self.view_weather(alpha as f32);
         // What the packs' attribute expressions read (only a pack's stack has any).
         let mut polytone_frame = None;
-        if self.pack.environments.is_some()
-            || self.pack.polytone_particles.is_some()
-            || self.pack.polytone_post.is_some()
+        if self.side.client_pack.environments.is_some()
+            || self.side.client_pack.polytone_particles.is_some()
+            || self.side.client_pack.polytone_post.is_some()
             || pack_expressions
         {
             let light = self.world.light(block[0], block[1], block[2]);
@@ -4064,7 +4073,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             *in_water = underwater;
             *frame_camera = camera.to_array();
             (*sky_light, *block_light) = (i32::from(light >> 4), i32::from(light & 15));
-            if let Some(particles) = &self.pack.polytone_particles
+            if let Some(particles) = &self.side.client_pack.polytone_particles
                 && let Ok(mut f) = particles.frame.write()
             {
                 f.clone_from(&frame);
@@ -4082,7 +4091,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             post_biome: Some(post_of(biome)),
         });
         self.end_flash_sky(&mut sky, alpha);
-        if self.flash > 0 && !self.settings.file.bool("hideLightningFlashes") {
+        if self.flash > 0 && !self.side.settings.file.bool("hideLightningFlashes") {
             // ClientLevel's flash layer while skyFlashTime > 0: the sky colour
             // moves 22% of the way to (0.8, 0.8, 1.0).
             let flash = [0.8, 0.8, 1.0];
@@ -4109,10 +4118,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.native_emissive(&mut requests);
             // Native mods' overlays first, then the packs' OptiFine emissive blocks.
             sunrise_client::native_emissive::table(
-                &self.pack.render.sprite_layers,
-                &self.pack.render.file_layers,
+                &self.side.client_pack.render.sprite_layers,
+                &self.side.client_pack.render.file_layers,
                 requests,
-                &self.pack.render.emissive,
+                &self.side.client_pack.render.emissive,
             )
         } else {
             Vec::new()
@@ -4133,7 +4142,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.shows_panorama(),
             self.overlay_holds_view(),
         ) {
-            let scale = HudBatch::new(size, self.settings.gui_scale_inputs()).scale;
+            let scale = HudBatch::new(size, self.side.settings.gui_scale_inputs()).scale;
             crosshair.debug_crosshair(at, view_pitch, view_yaw, scale);
         }
         let debug_lines = sunrise_client::gizmos::camera_relative(&lines, at, view);
@@ -4158,7 +4167,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|h| {
                 let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
                 outline_after_terrain = self
-                    .pack
+                    .side
+                    .client_pack
                     .render
                     .model_catalog
                     .collect(state, BlockPos::new(h.pos[0], h.pos[1], h.pos[2]))
@@ -4177,7 +4187,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (
                 self.side.panorama_rotation.update(
                     self.side.started.elapsed().as_secs_f32(),
-                    self.settings.file.double("panoramaScrollSpeed") as f32,
+                    self.side.settings.file.double("panoramaScrollSpeed") as f32,
                 ),
                 10.0,
             )
@@ -4192,7 +4202,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let cull_fov_degrees = if title {
             85.0
         } else {
-            sunrise_client::gfx::cull_fov(fov_degrees, (self.settings.fov as i32) as f32)
+            sunrise_client::gfx::cull_fov(fov_degrees, (self.side.settings.fov as i32) as f32)
         };
         let camera_effects = fov::camera_effects_enabled(title, self.side.studio.flying());
         let bob = if !camera_effects {
@@ -4208,7 +4218,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let terrain_distance = self.terrain_distance();
         let distance = (terrain_distance * 16) as f32;
         let depth_far =
-            sunrise_client::camera::depth_far(terrain_distance, self.settings.cloud_range);
+            sunrise_client::camera::depth_far(terrain_distance, self.side.settings.cloud_range);
         let mods_read_camera = !mod_api::__private::mods().is_empty();
         self.side.screen_blur_requested.set(false);
         self.side.native_camera_frame = (mods_read_camera && !title).then(|| {
@@ -4261,13 +4271,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let delta_ticks = (game_ticks - self.side.polytone_post_ticks).clamp(0.0, 20.0) as f32;
         self.side.polytone_post_ticks = game_ticks;
         self.evaluate_pack_expressions(polytone_frame);
-        let (polytone_effects, polytone_extras) = match (&self.pack.polytone_post, polytone_frame) {
-            (Some(post), Some(frame)) => {
-                let (effects, extras) = post.frame(frame);
-                (effects, Some(extras))
-            }
-            _ => (Vec::new(), None),
-        };
+        let (polytone_effects, polytone_extras) =
+            match (&self.side.client_pack.polytone_post, polytone_frame) {
+                (Some(post), Some(frame)) => {
+                    let (effects, extras) = post.frame(frame);
+                    (effects, Some(extras))
+                }
+                _ => (Vec::new(), None),
+            };
         let mut requested_post_effects = std::mem::take(&mut self.side.requested_post_effects_buf);
         self.sync_requested_post_effects(
             &mut requested_post_effects,
@@ -4308,7 +4319,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             glam::Mat4::IDENTITY,
             depth_far,
         );
-        let billboard_frustum = if self.settings.sunrise.taa {
+        let billboard_frustum = if self.side.settings.sunrise.taa {
             self.side.renderer.0.as_ref().map(|r| {
                 r.camera_frustum_with_jitter(
                     cull_fov_degrees,
@@ -4373,7 +4384,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if self.overworld_skybox() && !sky_effect_blocked {
             // Camera.doesMobEffectBlockSky: no sun, moon or stars.
             self.celestial_geometry(&sky, rain)
-        } else if self.end_skybox() && self.settings.sunrise.sky {
+        } else if self.end_skybox() && self.side.settings.sunrise.sky {
             let (flash, bodies) = self.end_flash_geometry();
             (flash, bodies, None)
         } else {
@@ -4416,7 +4427,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.outline_fill(&outline, camera, &mut entities);
         pr.lap("pr_screen_end");
-        let weather = if !title && self.can_have_weather() && self.settings.sunrise.weather {
+        let weather = if !title && self.can_have_weather() && self.side.settings.sunrise.weather {
             sunrise_client::spans::time("weather", || self.weather_geometry(camera, alpha))
         } else {
             Vec::new()
@@ -4452,7 +4463,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     camera,
                     [yaw, pitch],
                     size,
-                    self.settings.fov,
+                    self.side.settings.fov,
                     fov_degrees,
                     depth_far,
                 )
@@ -4516,7 +4527,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             spin,
             sky,
             shadow_scene_revision: (self.world.revision, self.world.chunks.membership_revision()),
-            shadow_cache: self.settings.sunrise.shadow_cache,
+            shadow_cache: self.side.settings.sunrise.shadow_cache,
             distance,
             detail_distance: effective_detail_distance,
             shadow_distance: Some(effective_detail_distance),
@@ -4541,9 +4552,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 sky_effect_blocked,
                 self.side.boss_overlay.should_create_world_fog(),
             ),
-            skybox: self.overworld_skybox() && self.settings.sunrise.sky,
-            end_sky: self.end_skybox() && self.settings.sunrise.sky,
+            skybox: self.overworld_skybox() && self.side.settings.sunrise.sky,
+            end_sky: self.end_skybox() && self.side.settings.sunrise.sky,
             end_sky_sprite: self
+                .side
                 .gui
                 .atlas
                 .sprites
@@ -4557,7 +4569,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             dark_disc: self.dark_disc(camera),
             outline,
             outline_after_terrain,
-            outline_high_contrast: self.settings.file.bool("highContrastBlockOutline"),
+            outline_high_contrast: self.side.settings.file.bool("highContrastBlockOutline"),
             pvp: self.pvp_render_frame(),
             debug_lines: &debug_lines,
             debug_lines_on_top: &debug_lines_on_top,
@@ -4568,13 +4580,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             clouds: self
                 .frame_cloud_uv(title, &sky)
                 .map(|uv| sunrise_client::clouds::Input {
-                    texture: &self.pack.clouds,
+                    texture: &self.side.client_pack.clouds,
                     uv,
                     camera,
                     time: self.world.game_time,
                     partial_tick: alpha,
-                    range: self.settings.cloud_range,
-                    fast: self.settings.clouds == "fast",
+                    range: self.side.settings.cloud_range,
+                    fast: self.side.settings.clouds == "fast",
                     color: sky.cloud_color,
                     height: sky.cloud_height,
                 }),
@@ -4593,20 +4605,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
             emissive_layers: &emissive_layers,
             lightning: sunrise_client::gfx::lightning::Input {
                 bolts: &bolts,
-                uv: sunrise_client::gfx::lightning::white_uv(&self.gui.atlas.font.white()),
+                uv: sunrise_client::gfx::lightning::white_uv(&self.side.gui.atlas.font.white()),
             },
             additive: &additive,
             see_through: &see_through,
-            world_primitives: world_geometry.batch_with(&self.pack.render.mod_pipelines),
+            world_primitives: world_geometry
+                .batch_with(&self.side.client_pack.render.mod_pipelines),
             shadow_only: &shadow_only,
-            celestial: if self.settings.sunrise.sky || title {
+            celestial: if self.side.settings.sunrise.sky || title {
                 &celestial
             } else {
                 &[]
             },
             // With `celestial` left empty, these have no quad to draw.
             celestial_bodies: &celestial_bodies,
-            stars: stars.filter(|_| self.settings.sunrise.sky || title),
+            stars: stars.filter(|_| self.side.settings.sunrise.sky || title),
             hand: &hand,
             hand_items: &hand_items,
             hand_fov_degrees: hud_fov,
@@ -4616,11 +4629,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game_time: self.world.game_time as f32,
             shader_game_time: ((self.world.game_time % 24000) as f32 + alpha as f32) / 24000.0,
             crumbling_sprite: frame_geometry::crumbling_sprite(
-                &self.gui.atlas.sprites,
-                self.settings.improved_transparency,
+                &self.side.gui.atlas.sprites,
+                self.side.settings.improved_transparency,
             ),
             end_portal_sprites: ["environment/end_sky", "entity/end_portal/end_portal"].map(|n| {
-                self.gui
+                self.side
+                    .gui
                     .atlas
                     .sprites
                     .get(n)
@@ -4640,7 +4654,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 root: &self.pack.source,
                 extras: polytone_extras.as_ref(),
                 poly_globals: Some(&post_globals),
-                menu_blur_radius: self.settings.menu_blur as f32,
+                menu_blur_radius: self.side.settings.menu_blur as f32,
                 // GlobalSettingsUniform.update.
                 globals: sunrise_client::post_chain::Globals {
                     camera_block_pos: [
@@ -4657,7 +4671,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     ..Default::default()
                 },
             },
-            chunk_fade: self.settings.chunk_fade as f32,
+            chunk_fade: self.side.settings.chunk_fade as f32,
         };
         pr.lap("pr_frame");
         // Renderer encoding and GPU waiting belong to render, not prepare.
@@ -4668,7 +4682,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let result = match self.side.renderer.0.as_mut() {
             Some(renderer) => {
                 use sunrise_client::client_perf::request::GpuSwitch;
-                let capture_gpu = self.profile.gpu();
+                let capture_gpu = self.side.profile.gpu();
                 let recording = capture_gpu != GpuSwitch::Off;
                 renderer.set_pass_timing(debug_passes || self.side.gpu_passes || recording);
                 renderer.set_lightmap_readback(lightmap_chart);
@@ -4790,7 +4804,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
-            let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+            let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
             if button == MouseButton::Middle {
                 // The world list takes any button; middle selects without joining.
                 return Ok(self.preset_editor_mouse_clicked(code, double_click)
@@ -4802,7 +4816,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         )
                     }));
             }
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             let shift = self.has_shift_down();
             let (action, sound, widget) =
                 self.side
@@ -4856,6 +4870,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if matches!(self.side.screen, Screen::Inventory | Screen::Creative)
             && let Some(key) = self
+                .side
                 .settings
                 .keys
                 .container_mouse_key(button, self.creative)
@@ -4878,7 +4893,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Screen::Inventory | Screen::Creative
                 if !matches!(button, MouseButton::Left | MouseButton::Right) =>
             {
-                if self.settings.keys.get("key.pickItem")
+                if self.side.settings.keys.get("key.pickItem")
                     != sunrise_client::keybinds::mouse_name(button)
                 {
                     return Ok(pressed);
@@ -4971,7 +4986,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return Ok(left
                 && (title.drag(self.side.cursor, gui)
-                    || title.drag_field(&self.gui.atlas, self.side.cursor.0)));
+                    || title.drag_field(&self.side.gui.atlas, self.side.cursor.0)));
         }
         Ok(match self.side.screen {
             Screen::BlockEditor if left => self.block_editor_drag(),
@@ -4982,7 +4997,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Screen::WorldOptions if left => self.world_options_drag(),
             Screen::Options if left => self.options_drag()?,
             Screen::Creative => {
-                let batch = HudBatch::new(framebuffer, self.settings.gui_scale_inputs());
+                let batch = HudBatch::new(framebuffer, self.side.settings.gui_scale_inputs());
                 let (_, oy) = Self::creative_origin(&batch);
                 (left
                     && self
@@ -5034,7 +5049,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.side.screen == Screen::Advancements
             && self.observed_overlay_now().is_none()
             && sunrise_client::keybinds::key_name(key)
-                == Some(self.settings.keys.get("key.advancements"))
+                == Some(self.side.settings.keys.get("key.advancements"))
         {
             self.close_advancements();
             return Ok(true);
@@ -5256,7 +5271,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let lid = |p: [i32; 3]| self.chest_lid(p, partial);
         let anim = |p: [i32; 3]| self.block_anim(p, partial);
         let substitute = |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
-        let inline_sprite = |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
+        let inline_sprite =
+            |atlas: &str, sprite: &str| self.side.gui.atlas.inline_sprite(atlas, sprite);
         use block_entity_render::SignOutline;
         let sign_outline =
             if self.player.is_some() && self.side.camera_type.is_first_person() && self.scoping() {
@@ -5276,10 +5292,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game_time: self.world.game_time,
             max_y: self.world.shape.max_y() - 1,
             world: &self.world,
-            sprites: &self.gui.atlas.sprites,
-            emissive: &self.gui.atlas.emissive,
-            translucent_sprites: &self.gui.atlas.translucent,
-            atlas_revision: self.gui.atlas.revision,
+            sprites: &self.side.gui.atlas.sprites,
+            emissive: &self.side.gui.atlas.emissive,
+            translucent_sprites: &self.side.gui.atlas.translucent,
+            atlas_revision: self.side.gui.atlas.revision,
             nether: self.nether_lighting(),
             lid: &lid,
             sign: &|p| match self.world.block_entities.get(&(p[0], p[1], p[2])) {
@@ -5295,9 +5311,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }),
             banner: &|p| self.banner_layers_at(p),
             skull: &|p| self.skull_skin_at(p),
-            glyph: &|c| self.gui.atlas.glyph_cell(c),
-            glyphs: self.gui.atlas.font.epoch(),
-            font: Some(&self.gui.atlas.font),
+            glyph: &|c| self.side.gui.atlas.glyph_cell(c),
+            glyphs: self.side.gui.atlas.font.epoch(),
+            font: Some(&self.side.gui.atlas.font),
             dynamic_visible: Some(dynamic_visible),
         };
         draw(&scene);

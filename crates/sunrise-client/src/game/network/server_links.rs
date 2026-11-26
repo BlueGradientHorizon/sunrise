@@ -152,7 +152,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 super::screen_info::tr("menu.server_links.title", &[]),
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
@@ -268,7 +268,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Ok(true);
         }
         let title = Text::translate("menu.server_links.title", &[]);
-        let tw = self.gui.atlas.font.width_text(&title);
+        let tw = self.side.gui.atlas.font.width_text(&title);
         let (wx, wy) = warning_button(w, h, tw);
         if ui::hovered(self.side.cursor, wx, wy, WARNING_BUTTON, WARNING_BUTTON) {
             self.side.audio.0.play_button_click();
@@ -286,10 +286,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `Screen.clickUrlAction`: "Web Links" off ignores the click; "Prompt on
     /// Links" asks with ConfirmLinkScreen, else the browser opens directly.
     fn click_link(&mut self, url: &str) {
-        if !self.settings.chat_links {
+        if !self.side.settings.chat_links {
             return;
         }
-        if self.settings.chat_links_prompt {
+        if self.side.settings.chat_links_prompt {
             self.side.links_ui.confirm = Some(url.to_owned());
             self.side.links_ui.trusted = false;
             self.side.links_ui.back = None;
@@ -346,7 +346,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// following website?", the link, the red warning, and Yes / Copy Link to
     /// Clipboard / No.
     pub(in crate::game::client_side) fn draw_confirm_link(&mut self, batch: &mut HudBatch) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
@@ -398,7 +398,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn confirm_link_click(&mut self) -> bool {
         let (w, h) = self.gui_size();
         let url = self.side.links_ui.confirm.clone().unwrap_or_default();
-        let layout = confirm_link_layout(&self.gui.atlas, (w, h), &url, self.side.links_ui.trusted);
+        let layout = confirm_link_layout(
+            &self.side.gui.atlas,
+            (w, h),
+            &url,
+            self.side.links_ui.trusted,
+        );
         for (i, (x, y)) in layout.buttons.iter().enumerate() {
             if !ui::hovered(self.side.cursor, *x, *y, 100.0, 20.0) {
                 continue;
@@ -426,7 +431,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 &super::screen_info::tr("menu.custom_screen_info.contents", &[]),
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
@@ -465,7 +470,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// WarningScreen's answer: disconnect, or back to Server Links.
     pub(in crate::game::client_side) fn dialog_warning_click(&mut self) -> Result<bool> {
         let (w, h) = self.gui_size();
-        let layout = dialog_warning_layout(&self.gui.atlas, (w, h));
+        let layout = dialog_warning_layout(&self.side.gui.atlas, (w, h));
         for (i, (x, y)) in layout.buttons.iter().enumerate() {
             if !ui::hovered(self.side.cursor, *x, *y, 150.0, 20.0) {
                 continue;

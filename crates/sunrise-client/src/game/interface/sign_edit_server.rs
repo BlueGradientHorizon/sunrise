@@ -2,12 +2,12 @@ use super::{
     Game,
     commands::{Target, execute::Source},
 };
-use sunrise_client::{
-    containers::BlockEntity,
-    items::ItemStack,
-    signs::{ClickAction, DYE_TEXT, click_action},
-};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use {
+    sunrise_client::containers::BlockEntity, sunrise_client::items::ItemStack,
+    sunrise_level::signs_data::ClickAction, sunrise_level::signs_data::DYE_TEXT,
+    sunrise_level::signs_data::click_action,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `WallHangingSignBlock.shouldTryToChainAnotherHangingSign` and

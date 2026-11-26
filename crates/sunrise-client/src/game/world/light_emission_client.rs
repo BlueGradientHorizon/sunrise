@@ -7,15 +7,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         key: (i32, i32),
         sections: &[usize],
     ) {
-        if sections.is_empty() || !self.pack.context.light.any_dynamic() {
+        if sections.is_empty() || !self.side.client_pack.context.chunk.light.any_dynamic() {
             return;
         }
         let Some(chunk) = self.world.chunks.get(&key) else {
             return;
         };
         let cells = self
-            .pack
+            .side
+            .client_pack
             .context
+            .chunk
             .light
             .dynamic_cells(chunk, |s| sections.contains(&s));
         let dimension = self.current_light_emission_dimension();

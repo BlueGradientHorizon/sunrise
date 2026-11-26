@@ -247,7 +247,8 @@ impl ItemEnv for Env<'_, '_> {
     }
     fn grass_color(&self, temperature: f64, downfall: f64) -> i32 {
         self.game
-            .pack
+            .side
+            .client_pack
             .item_renderer
             .grass_color(temperature, downfall)
     }
@@ -259,7 +260,7 @@ impl ItemEnv for Env<'_, '_> {
         else {
             return 0.0;
         };
-        let prototypes = &self.game.pack.item_renderer.models.prototypes;
+        let prototypes = &self.game.pack.item_models.prototypes;
         let mut total = 0.0f64;
         for item in items {
             let id = item["id"].as_str().unwrap_or("");
@@ -475,7 +476,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn item_host(&self) -> Host<'_> {
         Host {
             banners: &self.stations().banners,
-            sprites: &self.gui.atlas.sprites,
+            sprites: &self.side.gui.atlas.sprites,
             skins: &self.side.skin_downloads.0,
             profiles: &self.side.skin_profiles,
         }
@@ -534,7 +535,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
         let mut owner = owner_at(position, self.yaw, "minecraft:player");
-        owner.main_arm_left = self.settings.main_hand_left;
+        owner.main_arm_left = self.side.settings.main_hand_left;
         owner.is_local_player = true;
         owner.is_view_entity = true;
         owner.last_death_location = self
@@ -545,8 +546,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let (Some((slot, ticks)), Some(stack)) = (self.using, stack)
             && self.stack_in(slot) == Some(stack)
         {
-            let view = item_render::stack_view(stack);
-            let mut duration = use_duration(self.pack.item_renderer.models.components_view(&view));
+            let view = sunrise_sim::item_models::stack_view(stack);
+            let mut duration = use_duration(self.pack.item_models.components_view(&view));
             self.native_use_duration(stack, &mut duration);
             owner.using_this_item = true;
             owner.use_duration = duration;
@@ -628,7 +629,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         seed: i32,
         hand: CitHand,
     ) -> ItemRenderState {
-        let renderer = &self.pack.item_renderer;
+        let renderer = &self.side.client_pack.item_renderer;
         let (rule, glint) = renderer.cit.as_ref().map_or((None, None), |cit| {
             let item_max = self
                 .res
@@ -643,7 +644,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )
         });
         let mut state = renderer.resolve_with_rule(
-            &item_render::stack_view(stack),
+            &sunrise_sim::item_models::stack_view(stack),
             display,
             owner,
             level,
@@ -698,8 +699,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let state = self.resolve_item(stack, DisplayContext::Gui, owner, 0);
         item_render::gui::draw_with_frame(
             &state,
-            &self.pack.item_renderer,
-            &self.gui.atlas.sprites,
+            &self.side.client_pack.item_renderer,
+            &self.side.gui.atlas.sprites,
             &self.item_host(),
             batch,
             x,
@@ -721,8 +722,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         item_render::gui::draw_posed(
             &state,
             &item_render::gui::GuiItemEnv {
-                renderer: &self.pack.item_renderer,
-                sprites: &self.gui.atlas.sprites,
+                renderer: &self.side.client_pack.item_renderer,
+                sprites: &self.side.gui.atlas.sprites,
                 host: &host,
             },
             batch,
@@ -735,9 +736,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn capture_glint_frame(&self) -> item_render::GlintFrame {
         item_render::GlintFrame {
             millis: self.visual_millis(),
-            speed: self.settings.file.double("glintSpeed"),
-            alpha: self.settings.file.double("glintStrength") as f32,
+            speed: self.side.settings.file.double("glintSpeed"),
+            alpha: self.side.settings.file.double("glintStrength") as f32,
             sprite: self
+                .side
                 .gui
                 .atlas
                 .sprites
@@ -777,8 +779,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             tier: state.hdr_tier,
         };
         state.submit_joml(
-            &self.pack.item_renderer,
-            &self.gui.atlas.sprites,
+            &self.side.client_pack.item_renderer,
+            &self.side.gui.atlas.sprites,
             &self.item_host(),
             pose,
             &mut sink,
@@ -802,8 +804,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             tier: state.hdr_tier,
         };
         state.submit(
-            &self.pack.item_renderer,
-            &self.gui.atlas.sprites,
+            &self.side.client_pack.item_renderer,
+            &self.side.gui.atlas.sprites,
             &self.item_host(),
             pose,
             &mut sink,
@@ -825,8 +827,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             tier: state.hdr_tier,
         };
         state.submit(
-            &self.pack.item_renderer,
-            &self.gui.atlas.sprites,
+            &self.side.client_pack.item_renderer,
+            &self.side.gui.atlas.sprites,
             &self.item_host(),
             pose,
             &mut sink,
@@ -870,8 +872,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (state.hdr_light == 0).then_some(lights),
             state.hdr_tier,
         );
-        let renderer = &self.pack.item_renderer;
-        state.submit_skinned(renderer, &self.gui.atlas.sprites, pose, sink, skin)
+        let renderer = &self.side.client_pack.item_renderer;
+        state.submit_skinned(renderer, &self.side.gui.atlas.sprites, pose, sink, skin)
     }
     /// [`Self::submit_item_world`] of `state` under `pose` on the GPU path, its draws counted
     /// with an entity's (`skinned`: its mark and bounds, `cull_skinned`'s); false, with
@@ -1048,7 +1050,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let culling = entity.then(|| {
                 // The posed envelope walks every model point in every copy;
                 // with culling off the decision is `Bypass` whatever it holds.
-                if self.settings.sunrise.entity_culling == EntityCullingMode::Off {
+                if self.side.settings.sunrise.entity_culling == EntityCullingMode::Off {
                     return EntityCullDecision::Bypass;
                 }
                 state
@@ -1856,7 +1858,8 @@ pub(in crate::game) mod tests {
                     root,
                     super::super::execution_role::ExecutionRole::Client,
                     |game| {
-                        game.pack
+                        game.side
+                            .client_pack
                             .item_renderer
                             .prepare_glint_atlas(16384, (0, 2))
                             .unwrap();
@@ -1895,8 +1898,8 @@ pub(in crate::game) mod tests {
                         assert!(world_out.iter().all(|v| (v.layer & 0xFFFF) == 7));
                         let mut world_quads = Vec::new();
                         state_gui.submit(
-                            &game.pack.item_renderer,
-                            &game.gui.atlas.sprites,
+                            &game.side.client_pack.item_renderer,
+                            &game.side.gui.atlas.sprites,
                             &game.item_host(),
                             eid_pose,
                             &mut world_quads,
@@ -1921,8 +1924,8 @@ pub(in crate::game) mod tests {
                         );
                         let mut unlit_quads = Vec::new();
                         state_ground.submit(
-                            &game.pack.item_renderer,
-                            &game.gui.atlas.sprites,
+                            &game.side.client_pack.item_renderer,
+                            &game.side.gui.atlas.sprites,
                             &game.item_host(),
                             glam::Mat4::IDENTITY,
                             &mut unlit_quads,

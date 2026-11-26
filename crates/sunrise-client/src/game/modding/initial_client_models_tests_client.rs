@@ -47,7 +47,9 @@ pub(in crate::game) fn with_loading_client(run: impl FnOnce(&mut crate::game::Cl
     options.game_dir = Some(saves.path().to_path_buf());
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         gui.or(loaded.gui).unwrap(),
         options,
         settings,

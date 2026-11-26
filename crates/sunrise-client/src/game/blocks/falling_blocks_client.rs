@@ -185,7 +185,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         // `FallingBlockRenderer`: the model is picked by the block's starting position.
         let seed = sunrise_core::random::position_seed(start_pos);
-        let Ok(models) = self.pack.render.model_catalog.collect_seeded(state, seed) else {
+        let Ok(models) = self
+            .side
+            .client_pack
+            .render
+            .model_catalog
+            .collect_seeded(state, seed)
+        else {
             return;
         };
         // Baked models live at stable addresses until the pack is replaced.
@@ -207,10 +213,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .faces
                     .iter()
                     .filter(|face| {
-                        self.pack
+                        self.side
+                            .client_pack
                             .layer_names
                             .get(&face.layer)
-                            .is_some_and(|name| self.gui.atlas.sprites.contains_key(name))
+                            .is_some_and(|name| self.side.gui.atlas.sprites.contains_key(name))
                     })
                     .flat_map(|face| face.quad.positions)
             });

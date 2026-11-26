@@ -68,7 +68,9 @@ fn drawing_game<'a>(
     let res = &*resources.insert(loaded.resources);
     let mut game = crate::game::ClientGame::new(
         res,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -129,7 +131,8 @@ fn drawn_sprite(game: &crate::game::ClientGame<'_>, vertices: &[Vertex]) -> Opti
     if vertices.is_empty() {
         return None;
     }
-    game.gui
+    game.side
+        .gui
         .atlas
         .sprites
         .iter()

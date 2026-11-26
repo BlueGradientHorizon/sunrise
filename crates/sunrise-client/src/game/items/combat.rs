@@ -5,15 +5,15 @@ use super::{Game, commands_common::Target};
 #[cfg(test)]
 #[path = "tests/infested_roll_tests.rs"]
 pub(in crate::game) mod infested_roll_tests;
-use sunrise_client::{
-    health::{Attack, HealthEvent},
-    mobs::{Damage, Mob, Species, Who, stuck::Stuck},
-    motion::MotionEvent,
-    particles::ParticleType,
-    text::Text,
-};
 #[cfg(test)]
 use sunrise_core::random::RandomSource;
+use {
+    sunrise_client::health::Attack, sunrise_client::health::HealthEvent,
+    sunrise_client::mobs::Damage, sunrise_client::mobs::Mob, sunrise_client::mobs::Species,
+    sunrise_client::mobs::Who, sunrise_client::mobs::stuck::Stuck,
+    sunrise_client::motion::MotionEvent, sunrise_client::text::Text,
+    sunrise_level::particle_options::ParticleType,
+};
 
 /// `EntityEvent.DROWN_PARTICLES`: broadcast with the drowning damage.
 pub(in crate::game) const DROWN_EVENT: i8 = 67;

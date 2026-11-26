@@ -35,7 +35,7 @@ pub(in crate::game) mod tests {
             let entity = game.entity(12).unwrap();
             assert!(entity.teleport_to(game, [8.0, 0.0, 0.0], None));
             let metadata =
-                sunrise_client::text_display::display_data(&game.persist.raw[&12], false);
+                sunrise_sim::text_display_data::display_data(&game.persist.raw[&12], false);
             let mut client = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
             client.metadata(&metadata);
             client.move_to(entity.position(game).unwrap(), None);

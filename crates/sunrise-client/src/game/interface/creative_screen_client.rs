@@ -14,7 +14,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return false;
         };
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let batch = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let (ox, oy) = Self::creative_origin(&batch);
         let (cx, cy) = self.side.cursor;
         // NeoForge's page buttons, when mods add tabs.
@@ -150,7 +150,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         search.x = x;
         search.y = y;
         search.width = w;
-        search.click(&self.gui.atlas, mx, shift, false);
+        search.click(&self.side.gui.atlas, mx, shift, false);
         true
     }
     /// An item tab of the creative screen (its ItemPickerMenu).
@@ -250,7 +250,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for (i, t) in tabs.iter().enumerate() {
             if i != selected && self.side.creative_screen.0.on_page(t) {
                 let (tx, ty) = Creative::tab_position(t);
-                batch.sprite(&self.gui.atlas, &tab_sprite(t, false), ox + tx, oy + ty);
+                batch.sprite(
+                    &self.side.gui.atlas,
+                    &tab_sprite(t, false),
+                    ox + tx,
+                    oy + ty,
+                );
                 let mouse = (self.side.cursor.0 - ox, self.side.cursor.1 - oy);
                 if Creative::tab_wants_hand(t, false, mouse) {
                     sunrise_client::widgets::request_cursor(
@@ -266,13 +271,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             "gui/container/creative_inventory/tab_items"
         };
-        if let Some(mut r) = self.gui.atlas.sprites.get(background).copied() {
+        if let Some(mut r) = self.side.gui.atlas.sprites.get(background).copied() {
             r.u1 = r.u0 + (r.u1 - r.u0) * Creative::WIDTH / r.w as f32;
             r.v1 = r.v0 + (r.v1 - r.v0) * Creative::HEIGHT / r.h as f32;
             batch.rect_uv(ox, oy, Creative::WIDTH, Creative::HEIGHT, r, u32::MAX);
         }
         let (tx, ty) = Creative::tab_position(tab);
-        batch.sprite(&self.gui.atlas, &tab_sprite(tab, true), ox + tx, oy + ty);
+        batch.sprite(
+            &self.side.gui.atlas,
+            &tab_sprite(tab, true),
+            ox + tx,
+            oy + ty,
+        );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         for t in tabs
             .iter()
@@ -292,7 +302,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 oy + ty + if t.top { 9.0 } else { 7.0 },
             );
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         if !tab.inventory {
             let title = self.creative_tab_title(tab);
             batch.text(
@@ -390,7 +400,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "container/creative_inventory/scroller_disabled"
             };
             batch.sprite(
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 scroller,
                 ox + Creative::SCROLL_X,
                 oy + Creative::SCROLL_Y + self.side.creative_screen.0.scroller_offset(),
@@ -465,7 +475,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if pages <= 1 {
             return;
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let y = oy - 50.0;
         for (x, label, step) in [(ox, "<", -1), (ox + Creative::WIDTH - 20.0, ">", 1)] {
             let hover = Self::creative_page_button(ox, oy, self.side.cursor, pages) == Some(step);

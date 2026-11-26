@@ -316,7 +316,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The parsed dialog's screen, its inputs at their initial values.
     fn open_dialog(&mut self, dialog: Dialog, configuration: Option<Arc<Dynamic>>) {
         let values = dialog.inputs.iter().map(|i| i.control.initial()).collect();
-        let font = &self.gui.atlas.font;
+        let font = &self.side.gui.atlas.font;
         let fields = dialog
             .inputs
             .iter()
@@ -426,9 +426,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // the dialog stays unless the confirmation takes over (Web Links off,
         // or Prompt on Links off, opens nothing or the browser behind it).
         if let Some(Click::OpenUrl(url)) = &click
-            && !(self.settings.chat_links && self.settings.chat_links_prompt)
+            && !(self.side.settings.chat_links && self.side.settings.chat_links_prompt)
         {
-            if self.settings.chat_links {
+            if self.side.settings.chat_links {
                 super::packs::open_uri(url);
             }
             return Ok(());
@@ -502,7 +502,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Only the chat screen (opened under the dialog) takes text.
             Some(Click::SuggestCommand(command)) => {
                 if !self.dialog_open() && self.side.chat_ui.chat_screen.is_some() {
-                    let m = sunrise_client::screen_draw::Measure(&self.gui.atlas.font);
+                    let m = sunrise_client::screen_draw::Measure(&self.side.gui.atlas.font);
                     let c = sunrise_client::chat::Commands {
                         dispatcher: super::chat::chat_tree(&self.remote),
                         registries: &self.ui.registries,
@@ -585,7 +585,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let open = self.side.dialogs.0.open.as_ref()?;
         Some(Layout::new(
             &open.dialog,
-            &self.gui.atlas.font,
+            &self.side.gui.atlas.font,
             self.gui_size(),
         ))
     }
@@ -597,7 +597,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         widgets::cover_frame();
         let (w, h) = (batch.width, batch.height);
         let cursor = self.side.cursor;
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         draw_background(batch, atlas, self.player.is_some());
         if self.side.dialogs.0.warning {
             let (title, message, [disconnect, back]) = self.warning_texts();
@@ -662,7 +662,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(mut open) = self.side.dialogs.0.open.take() else {
             return;
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let [ax, ay, aw, ah] = layout.area;
         open.scroll.clamp(ay, ay + ah, layout.content);
         // DialogScreen: titled by its dialog; a new dialog is a new screen.
@@ -955,7 +955,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let cursor = self.side.cursor;
         if self.side.dialogs.0.warning {
             let (title, message, _) = self.warning_texts();
-            let answer = Confirm::new(&self.gui.atlas.font, self.gui_size(), &title, &message)
+            let answer = Confirm::new(&self.side.gui.atlas.font, self.gui_size(), &title, &message)
                 .answer_at(cursor);
             match answer {
                 Some(true) => {
@@ -1028,13 +1028,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     match open.fields.get_mut(input) {
                         Some(Some(Field::Line(edit))) => {
                             edit.focused = true;
-                            edit.click(&self.gui.atlas, cursor.0, false, false);
+                            edit.click(&self.side.gui.atlas, cursor.0, false, false);
                             open.selecting = Some(input);
                         }
                         Some(Some(Field::Multi(edit))) => {
                             [edit.x, edit.y, edit.width, edit.height] = [x, y, w, h];
                             edit.set_focused(true);
-                            edit.click(&self.gui.atlas.font, cursor, shift, false);
+                            edit.click(&self.side.gui.atlas.font, cursor, shift, false);
                             open.selecting = Some(input);
                         }
                         _ => {}
@@ -1077,7 +1077,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // of the styled text under a centred message line.
                 Part::Line(line, x, y) if text_click.is_none() => {
                     text_click = sunrise_client::dialog_screen::line_style_at(
-                        &self.gui.atlas.font,
+                        &self.side.gui.atlas.font,
                         &line,
                         x,
                         y,
@@ -1206,8 +1206,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && let Some(Some(field)) = open.selecting.and_then(|i| open.fields.get_mut(i))
         {
             match field {
-                Field::Line(edit) => edit.drag_to(&self.gui.atlas, cursor.0),
-                Field::Multi(edit) => edit.drag(&self.gui.atlas.font, cursor, shift),
+                Field::Line(edit) => edit.drag_to(&self.side.gui.atlas, cursor.0),
+                Field::Multi(edit) => edit.drag(&self.side.gui.atlas.font, cursor, shift),
             }
             return true;
         }
@@ -1321,7 +1321,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(Some(edit)) = open.focus.and_then(|f| open.fields.get_mut(f)) else {
             return Ok(false);
         };
-        let font = &self.gui.atlas.font;
+        let font = &self.side.gui.atlas.font;
         if let Some(shortcut) = shortcut {
             edit.shortcut(font, shortcut, &mut self.side.clipboard.0);
             return Ok(true);
@@ -1352,7 +1352,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         };
         open.focus = focus;
-        edit.insert_text(&self.gui.atlas.font, text);
+        edit.insert_text(&self.side.gui.atlas.font, text);
         true
     }
 

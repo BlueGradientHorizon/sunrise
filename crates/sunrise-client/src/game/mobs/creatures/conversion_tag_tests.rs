@@ -25,9 +25,8 @@ fn converted_mobs_keep_command_tags_at_the_new_id_and_on_save() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

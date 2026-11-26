@@ -144,7 +144,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// name, while that model shows in third person. Vanilla never names the
     /// camera entity (`LivingEntityRenderer.shouldShowName`).
     pub(in crate::game::client_side) fn own_name_tag(&self) -> Option<(&Mob, String)> {
-        if !self.settings.extras.own_name_tag
+        if !self.side.settings.extras.own_name_tag
             || !self.controls_camera()
             || self.side.camera_type.is_first_person()
             || self.sleeping.is_some()
@@ -617,9 +617,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let mut patches = Vec::new();
         let mut layouts = std::mem::take(&mut self.side.name_tag_layouts);
-        layouts.begin_frame(&self.gui.atlas);
-        let background = self.settings.text_background(0.25);
-        let faded = self.settings.faded_text_alpha(0.25);
+        layouts.begin_frame(&self.side.gui.atlas);
+        let background = self.side.settings.text_background(0.25);
+        let faded = self.side.settings.faded_text_alpha(0.25);
         for tag in self.collect_name_tags(
             camera,
             alpha,
@@ -754,14 +754,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let behind = match layouts.as_deref_mut() {
                 Some(layouts) => layouts.name_tag(
                     &mut batch,
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     text,
                     y0,
                     text_alpha,
                     background,
                 ),
                 None => batch.name_tag(
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     text,
                     y0,
                     text_alpha << 24 | 0xFF_FFFF,

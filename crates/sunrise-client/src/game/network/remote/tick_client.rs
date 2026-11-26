@@ -120,7 +120,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let camera = cam_pos.map(|v| v.floor() as i32);
         let camera_y = camera[1];
         // `Util.toMillis(chunkSectionFadeInTime)`.
-        let fade_ms = sunrise_client::gfx::fade_millis(self.settings.chunk_fade as f32);
+        let fade_ms = sunrise_client::gfx::fade_millis(self.side.settings.chunk_fade as f32);
         // `LevelRenderer`'s playerCompiledSectionCallback, run once
         // `isSectionCompiledAndVisible(camera)`: the renderer's own mesh and fade
         // for the camera's section. Without a renderer, the section counts as
@@ -137,7 +137,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let neighbours_lit = shown.is_none()
             && (-1..=1).all(|dx| {
                 (-1..=1).all(|dz| {
-                    self.streaming
+                    self.side
+                        .streaming
                         .is_lit(cx.wrapping_add(dx), cz.wrapping_add(dz))
                 })
             });
@@ -1612,7 +1613,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let entity_collisions = self.entity_collisions(Mover::Player);
         // Those added before it tick before it: their pushes reach this move.
         let pushed = self.remote_pushes(true);
-        let sprint_window = self.settings.sprint_window;
+        let sprint_window = self.side.settings.sprint_window;
         // The hook endpoints bracket Player.tick only, not the level pass before it.
         let player = (mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
             || mod_api::__private::listened(mod_api::HookId::PlayerTickPost))

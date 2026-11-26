@@ -248,7 +248,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !silent {
             self.server_play_sound("minecraft:entity.shulker_bullet.hurt", at, 1.0, 1.0);
         }
-        if let Some(ty) = sunrise_client::particles::ParticleType::from_name("crit") {
+        if let Some(ty) = sunrise_level::particle_options::ParticleType::from_name("crit") {
             self.server_level_particles(
                 &crate::lan::server_effects::ServerParticle::simple(ty),
                 at,

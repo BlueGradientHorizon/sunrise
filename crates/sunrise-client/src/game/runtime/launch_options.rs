@@ -103,36 +103,39 @@ impl Options {
         }
         // The launcher's account: online-mode servers need it. A bad file
         // only leaves the game offline.
-        let session = if o.developer_single_player {
-            Ok(None)
-        } else if o.session_stdin {
-            let mut text = String::new();
-            std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
-                .map_err(|e| e.to_string())
-                .and_then(|_| sunrise_client::auth::AuthSession::parse(&text))
-                .map(Some)
-        } else {
-            o.session_file
-                .take()
-                .filter(|p| !p.is_empty())
-                .map(|path| sunrise_client::auth::AuthSession::load(path.as_ref()))
-                .transpose()
-        };
-        match session {
-            Ok(Some(session)) => {
-                o.player_name = Some(session.name.clone());
-                sunrise_client::auth::set_current(session);
-                // The chat key pair, ready before the first join.
-                sunrise_client::auth::prepare_chat_keys(true);
-            }
-            Ok(None) => {
-                o.offline_reason = std::env::var("SUNRISE_OFFLINE_REASON")
-                    .ok()
-                    .filter(|reason| !reason.is_empty());
-            }
-            Err(e) => {
-                eprintln!("Sunrise: not signed in: {e}");
-                o.offline_reason = Some(e);
+        #[cfg(feature = "client")]
+        if !o.execution_role.is_dedicated_server() {
+            let session = if o.developer_single_player {
+                Ok(None)
+            } else if o.session_stdin {
+                let mut text = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                    .map_err(|e| e.to_string())
+                    .and_then(|_| sunrise_client::auth::AuthSession::parse(&text))
+                    .map(Some)
+            } else {
+                o.session_file
+                    .take()
+                    .filter(|p| !p.is_empty())
+                    .map(|path| sunrise_client::auth::AuthSession::load(path.as_ref()))
+                    .transpose()
+            };
+            match session {
+                Ok(Some(session)) => {
+                    o.player_name = Some(session.name.clone());
+                    sunrise_client::auth::set_current(session);
+                    // The chat key pair, ready before the first join.
+                    sunrise_client::auth::prepare_chat_keys(true);
+                }
+                Ok(None) => {
+                    o.offline_reason = std::env::var("SUNRISE_OFFLINE_REASON")
+                        .ok()
+                        .filter(|reason| !reason.is_empty());
+                }
+                Err(e) => {
+                    eprintln!("Sunrise: not signed in: {e}");
+                    o.offline_reason = Some(e);
+                }
             }
         }
         if let Some(dir) = o.game_dir.take() {

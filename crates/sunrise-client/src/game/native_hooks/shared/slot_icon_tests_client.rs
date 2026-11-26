@@ -13,7 +13,7 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let icon = "minecraft:container/slot/shield";
             let Some(sunrise_client::hud::GuiSprite::Present { rect, .. }) =
-                game.gui.atlas.gui_lookup(icon)
+                game.side.gui.atlas.gui_lookup(icon)
             else {
                 panic!("the shield icon must resolve to a real GUI sprite");
             };
@@ -149,13 +149,14 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
                         let mut actual = HudBatch::scratch([128, 128]);
                         game.draw_slot_item(&mut actual, None, 300, &None, 8.0, 18.0);
                         let missing = game
+                            .side
                             .gui
                             .atlas
                             .gui_sprite_or_missing("icon_open:missing")
                             .expect("missing sprite in atlas");
                         assert_eq!(
                             missing,
-                            game.gui.atlas.sprites[sunrise_client::hud::MISSING_SPRITE]
+                            game.side.gui.atlas.sprites[sunrise_client::hud::MISSING_SPRITE]
                         );
                         let mut expected = HudBatch::scratch([128, 128]);
                         expected.rect_uv(8.0, 18.0, 16.0, 16.0, missing, 0xFFFF_FFFF);

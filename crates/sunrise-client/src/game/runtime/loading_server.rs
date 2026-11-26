@@ -1,6 +1,7 @@
 //! Dedicated server startup (`start_dedicated_game`) and server-side agent control socket setup.
 use super::*;
 use sunrise_client::control;
+use sunrise_level::sim_settings::SimSettings;
 
 /// The post-load setup for a dedicated server run: builds `ServerGame` with no window,
 /// renderer, client reload, or audio device, runs `run_dedicated`, and shuts down.
@@ -8,9 +9,8 @@ use sunrise_client::control;
 pub(in crate::game) fn start_dedicated_game(
     res: &Arc<Resources>,
     pack: PackResources,
-    gui: UiResources,
     options: Options,
-    mut settings: Settings,
+    mut settings: SimSettings,
     started: Instant,
     prepared: Option<GameCpuResources>,
 ) -> Result<()> {
@@ -26,15 +26,12 @@ pub(in crate::game) fn start_dedicated_game(
                 pack.source.clone(),
             ),
             None,
-            pack.render.model_library.as_deref().ok(),
+            None,
             false,
         )?),
     };
-    let mut game = crate::game::ServerGame::new(res, pack, gui, options, settings, prepared)?;
+    let mut game = crate::game::ServerGame::new(res, pack, options, settings, prepared)?;
     if game.options.benchmark.is_some() {
-        game.settings.vsync = false;
-        game.settings.max_fps = 260;
-        game.settings.inactivity_fps_limit = "minimized".into();
         game.options.no_pause = true;
     }
     if game.options.benchmark.is_none() {
@@ -57,7 +54,7 @@ pub(in crate::game) fn start_dedicated_game(
                     commit: option_env!("SUNRISE_COMMIT").map(str::to_owned),
                     mods: Vec::new(),
                 },
-                simulation_distance: game.settings.simulation_distance as u32,
+                simulation_distance: game.side.settings.simulation_distance as u32,
                 vsync: false,
                 fps_cap: None,
                 offscreen: game.options.offscreen,
@@ -73,13 +70,12 @@ pub(in crate::game) fn start_dedicated_game(
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// Server-side startup control socket setup: preserves `--control`, benchmark, No AI, and
-    /// `settings.extras.agent_control` without touching client state.
+    /// Open the server control socket according to the startup options and simulation settings.
     pub(in crate::game::server_side) fn start_server_agent_control(&mut self) -> Result<()> {
         if self.options.benchmark.is_some() && self.options.control.is_none() {
             return Ok(());
         }
-        if self.settings.extras.no_ai {
+        if self.side.settings.no_ai {
             if self.options.control.is_some() {
                 log::warn!(
                     "Sunrise: control socket not opened: {}",
@@ -93,7 +89,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map_err(|e| format!("control socket {}: {e}", path.display()))?;
             log::info!("Sunrise: control socket {}", server.path().display());
             self.control = Some(server);
-        } else if self.settings.extras.agent_control {
+        } else if self.side.settings.agent_control {
             let path = control::default_path();
             match control::Server::start(&path) {
                 Ok(server) => {

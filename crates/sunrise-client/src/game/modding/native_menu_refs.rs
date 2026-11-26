@@ -72,7 +72,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let renderer = self.side.renderer.0.as_ref()?;
         let batch = super::HudBatch::new(
             [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         self.inventory_menu_slot_boxes(menu.fields().window, name, &batch)
     }
@@ -375,7 +375,8 @@ pub(in crate::game) mod tests {
     fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
         with_panel(0, |game, opening| {
             game.side.screen = super::super::Screen::Inventory;
-            let batch = super::super::HudBatch::new([800, 600], game.settings.gui_scale_inputs());
+            let batch =
+                super::super::HudBatch::new([800, 600], game.side.settings.gui_scale_inputs());
             let boxes = game
                 .inventory_menu_slot_boxes(0, "inventory", &batch)
                 .unwrap();
@@ -451,7 +452,7 @@ pub(in crate::game) mod tests {
         let config = &game.side.renderer.0.as_ref().unwrap().config;
         super::super::HudBatch::new(
             [config.width, config.height],
-            game.settings.gui_scale_inputs(),
+            game.side.settings.gui_scale_inputs(),
         )
     }
 

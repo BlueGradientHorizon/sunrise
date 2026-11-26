@@ -1,6 +1,6 @@
 //! `profile` against the server this window is connected to (docs/perf-platform.md §4.2): the request over `sunrise:perf`, its answer, and the warnings a refusal leaves in the client's capture.
 use super::Game;
-use super::profile_capture::{reply_text, reports_dir, shown};
+use super::profile_capture_server::{reply_text, reports_dir, shown};
 use crate::Result;
 use std::fs::File;
 use std::io::Write;
@@ -132,17 +132,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.profiles_remote_server() {
             return Err("profile server: no server to reach; open a world or join a server".into());
         }
-        if self.profile.perf.capturing() || self.profile.perf.saving() {
+        if self.side.profile.perf.capturing() || self.side.profile.perf.saving() {
             return Err("a capture is already running or still being saved".into());
         }
         let brand = self.server_brand().to_owned();
-        self.profile
+        self.side
+            .profile
             .server_link
             .ask(&brand, Instant::now())
             .map_err(unsent_text)?;
         self.send_perf(&Request::Start(Wanted::from(options)));
-        self.profile.server_reply = Some(reply.clone());
-        self.profile.server_joined = false;
+        self.side.profile.server_reply = Some(reply.clone());
+        self.side.profile.server_joined = false;
         Ok(None)
     }
 
@@ -152,10 +153,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let brand = self.server_brand().to_owned();
-        match self.profile.server_link.ask(&brand, Instant::now()) {
+        match self.side.profile.server_link.ask(&brand, Instant::now()) {
             Ok(()) => {
                 self.send_perf(&Request::Start(Wanted::from(options)));
-                self.profile.server_joined = true;
+                self.side.profile.server_joined = true;
             }
             Err(Unsent::NotSunrise) => self.warn_server(WarningCode::ServerNotSunrise),
             Err(_) => {}
@@ -163,8 +164,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     fn warn_server(&mut self, code: WarningCode) {
-        let t = self.profile.perf.now();
-        self.profile.perf.warn(t, code);
+        let t = self.side.profile.perf.now();
+        self.side.profile.perf.warn(t, code);
     }
 
     /// `profile server stop` on a server: the file's name comes back through `reply`.
@@ -172,18 +173,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         reply: &Sender<String>,
     ) -> Result<()> {
-        self.profile
+        self.side
+            .profile
             .server_link
             .stop(Instant::now())
             .map_err(unsent_text)?;
         self.send_perf(&Request::Stop);
-        self.profile.server_reply = Some(reply.clone());
+        self.side.profile.server_reply = Some(reply.clone());
         Ok(())
     }
 
     /// The window capture ends: so does the server's side that asked with it.
     pub(in crate::game::client_side) fn stop_joined_server(&mut self) {
-        if self.profile.server_joined && self.profile.server_link.stop(Instant::now()).is_ok() {
+        if self.side.profile.server_joined
+            && self.side.profile.server_link.stop(Instant::now()).is_ok()
+        {
             self.send_perf(&Request::Stop);
         }
     }
@@ -198,18 +202,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.part_chunk(&chunk);
             return;
         }
-        let waiting = self.profile.server_reply.take();
-        let joined = self.profile.server_joined;
-        match self.profile.server_link.answer(reply, Instant::now()) {
+        let waiting = self.side.profile.server_reply.take();
+        let joined = self.side.profile.server_joined;
+        match self.side.profile.server_link.answer(reply, Instant::now()) {
             Outcome::Started {
                 path,
                 seconds,
                 samples,
             } => {
                 if joined {
-                    let t = self.profile.perf.now();
-                    self.profile.perf.mark(t, MARK_SERVER_STARTED);
-                    self.profile.server_sink = self.profile.perf.join().map(|j| Sink {
+                    let t = self.side.profile.perf.now();
+                    self.side.profile.perf.mark(t, MARK_SERVER_STARTED);
+                    self.side.profile.server_sink = self.side.profile.perf.join().map(|j| Sink {
                         sender: j.sender,
                         origin: j.origin,
                     });
@@ -227,9 +231,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Outcome::Finished { path, bytes, .. } => {
                 log::info!("Sunrise: the server saved its profile to {path}");
-                self.profile.server_joined = false;
+                self.side.profile.server_joined = false;
                 if bytes == 0 {
-                    self.profile.server_reply = waiting;
+                    self.side.profile.server_reply = waiting;
                     self.abandon_part();
                 } else {
                     self.begin_part(waiting);
@@ -237,8 +241,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Outcome::TooLarge { bytes } => {
                 log::warn!("Sunrise: the server announced a {bytes}-byte profile; it is not taken");
-                self.profile.server_joined = false;
-                self.profile.server_reply = waiting;
+                self.side.profile.server_joined = false;
+                self.side.profile.server_reply = waiting;
                 self.abandon_part();
             }
             Outcome::Refused(why) => {
@@ -246,11 +250,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     if let Some(code) = warning_of(why) {
                         self.warn_server(code);
                     }
-                    self.profile.server_joined = false;
+                    self.side.profile.server_joined = false;
                     self.profiler_client_only(&refusal_text(why));
                 }
-                if self.profile.incoming.is_some() || self.profile.server_sink.is_some() {
-                    self.profile.server_reply = waiting;
+                if self.side.profile.incoming.is_some() || self.side.profile.server_sink.is_some() {
+                    self.side.profile.server_reply = waiting;
                     self.abandon_part();
                     return;
                 }
@@ -264,13 +268,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }));
                 }
             }
-            Outcome::Stray => self.profile.server_reply = waiting,
+            Outcome::Stray => self.side.profile.server_reply = waiting,
         }
     }
 
     /// The server's file is about to arrive: into the window's capture if it still holds the file open, else into one of its own.
     fn begin_part(&mut self, waiting: Option<Sender<String>>) {
-        let dest = match self.profile.server_sink.take() {
+        let dest = match self.side.profile.server_sink.take() {
             Some(sink) => Ok(Dest::Window {
                 sink,
                 held: Vec::new(),
@@ -280,7 +284,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         match dest {
             Ok(dest) => {
-                self.profile.incoming = Some(Incoming {
+                self.side.profile.incoming = Some(Incoming {
                     merger: PartMerger::new(),
                     dest,
                     reply: waiting,
@@ -289,7 +293,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Err(e) => {
                 log::warn!("Sunrise: the server's profile cannot be saved: {e}");
-                self.profile.server_link.reset();
+                self.side.profile.server_link.reset();
                 if let Some(waiting) = waiting {
                     let _ = waiting.send(reply_text(&Failed {
                         error: e.to_string(),
@@ -302,10 +306,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The next bytes of the server's file.
     fn part_chunk(&mut self, chunk: &[u8]) {
         use sunrise_client::perf_net::Received;
-        if self.profile.incoming.is_none() {
+        if self.side.profile.incoming.is_none() {
             return;
         }
-        let received = self.profile.server_link.chunk(chunk.len(), Instant::now());
+        let received = self
+            .side
+            .profile
+            .server_link
+            .chunk(chunk.len(), Instant::now());
         let step = match received {
             Received::Stray => return,
             Received::TooMuch => Err("the server sent more than it announced".to_owned()),
@@ -318,7 +326,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     fn take_part(&mut self, chunk: &[u8], last: bool) -> std::result::Result<(), String> {
-        let Some(incoming) = &mut self.profile.incoming else {
+        let Some(incoming) = &mut self.side.profile.incoming else {
             return Ok(());
         };
         let fields = incoming.merger.push(chunk).map_err(|e| e.to_string())?;
@@ -335,7 +343,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Hands the window's writer what the server's file has yielded, and completes the transfer once all of it is in.
     fn settle_part(&mut self) -> std::result::Result<(), String> {
-        let Some(incoming) = &mut self.profile.incoming else {
+        let Some(incoming) = &mut self.side.profile.incoming else {
             return Ok(());
         };
         if let Dest::Window { sink, held } = &mut incoming.dest
@@ -359,7 +367,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The server's file is whole: the window's capture can finish, or the file of its own is kept.
     fn part_done(&mut self) {
-        let Some(Incoming { dest, reply, .. }) = self.profile.incoming.take() else {
+        let Some(Incoming { dest, reply, .. }) = self.side.profile.incoming.take() else {
             return;
         };
         let Dest::Own { file, path } = dest else {
@@ -392,14 +400,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The server's part will not arrive whole: what did arrive stays in the window's capture, with the warning, or the file of its own is removed.
     pub(in crate::game::client_side) fn abandon_part(&mut self) {
-        let waiting = self.profile.server_reply.take();
-        let sink = self.profile.server_sink.take();
+        let waiting = self.side.profile.server_reply.take();
+        let sink = self.side.profile.server_sink.take();
         if let Some(Incoming {
             dest,
             reply,
             merger,
             ..
-        }) = self.profile.incoming.take()
+        }) = self.side.profile.incoming.take()
         {
             match dest {
                 Dest::Window { sink, held } => {
@@ -427,24 +435,24 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Once per loop turn: a request the server never answered, or a connection that ended under one.
     pub(in crate::game::client_side) fn poll_server_link(&mut self) {
-        if self.profile.incoming.is_some() && self.settle_part().is_err() {
+        if self.side.profile.incoming.is_some() && self.settle_part().is_err() {
             self.abandon_part();
         }
         let now = Instant::now();
-        let lost = self.remote.is_none() && !self.profile.server_link.is_idle();
-        let silent = self.profile.server_link.timed_out(now);
-        let stalled = self.profile.server_link.stalled(now);
+        let lost = self.remote.is_none() && !self.side.profile.server_link.is_idle();
+        let silent = self.side.profile.server_link.timed_out(now);
+        let stalled = self.side.profile.server_link.stalled(now);
         if !lost && !silent && !stalled {
             return;
         }
         if lost {
-            self.profile.server_link.reset();
+            self.side.profile.server_link.reset();
         }
         if lost || stalled {
             self.abandon_part();
         }
-        self.profile.server_joined = false;
-        if let Some(waiting) = self.profile.server_reply.take() {
+        self.side.profile.server_joined = false;
+        if let Some(waiting) = self.side.profile.server_reply.take() {
             let error = if lost {
                 "the connection to the server ended".to_owned()
             } else {

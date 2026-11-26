@@ -18,7 +18,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
-use sunrise_perf_format::FieldSender;
 use sunrise_perf_format::v1::{
     BenchResult, Machine, Side, Start, StopReason, Trigger, WarningCode,
 };
@@ -47,26 +46,7 @@ pub fn env_gpu(timing: Option<&OsStr>, detail: Option<&OsStr>) -> GpuSwitch {
     }
 }
 
-/// Where a client's captures go: `SUNRISE_PROFILE` when set, else `reports/` in the game home.
-pub fn reports_dir(profile: Option<&OsStr>, home: &Path) -> PathBuf {
-    match profile.filter(|p| !p.is_empty()) {
-        Some(dir) => PathBuf::from(dir),
-        None => home.join("reports"),
-    }
-}
-
-/// What a side on another thread needs to write into the running capture's file.
-#[derive(Clone)]
-pub struct Join {
-    pub sender: FieldSender,
-    pub path: PathBuf,
-    /// The instant every `t` of the capture counts from.
-    pub origin: Instant,
-    /// When the capture's window ends, and why it stops then.
-    pub ends: Option<(Instant, StopReason)>,
-    pub options: StartOptions,
-    pub trigger: Trigger,
-}
+pub use sunrise_sim::perf_types::{Join, reports_dir};
 
 /// The client's health history, always on, and the capture running from it, if any.
 pub struct ClientPerf {

@@ -71,7 +71,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn close_hud_editor(&mut self) {
         let from_options = self.side.pvp.editor.take().is_some_and(|e| e.from_options);
-        self.settings.save(&crate::game::options_path());
+        self.side.settings.save(&crate::game::options_path());
         if from_options {
             self.open_options_at(false, sunrise_client::options_ui::Page::Pvp);
         } else {
@@ -83,7 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The editor key, from the game.
     pub(in crate::game::client_side) fn hud_editor_key_press(&mut self, name: &str) -> bool {
         if self.side.screen != Screen::Playing
-            || self.settings.extras.pvp.editor_key != name
+            || self.side.settings.extras.pvp.editor_key != name
             || name == "key.keyboard.unknown"
         {
             return false;
@@ -96,7 +96,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.screen == Screen::HudEditor
     }
     fn style_label(&self, opt: Opt) -> Text {
-        let p = &self.settings.extras.pvp;
+        let p = &self.side.settings.extras.pvp;
         let value = match opt.switch(p) {
             Some(true) => Text::translate("options.on", &[]),
             Some(false) => Text::translate("options.off", &[]),
@@ -117,7 +117,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn draw_hud_editor(&mut self, batch: &mut HudBatch) {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         let colour = |c: u32| {
             let [a, r, g, b] = c.to_be_bytes();
@@ -158,7 +158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Text::translate("gui.done", &[]),
         ];
         // Opacity does nothing without the boxes.
-        let boxes = self.settings.extras.pvp.hud.background;
+        let boxes = self.side.settings.extras.pvp.hud.background;
         for (i, (label, &(x, y))) in labels.iter().chain(&rest).zip(&places).enumerate() {
             let active = i != 3 || boxes;
             let hover = active && ui::hovered(self.side.cursor, x, y, BUTTON_W, BUTTON_H);
@@ -174,7 +174,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 continue;
             }
             let back = self.has_shift_down();
-            let pvp = &mut self.settings.extras.pvp;
+            let pvp = &mut self.side.settings.extras.pvp;
             match i {
                 3 if !pvp.hud.background => return false,
                 0..4 => STYLE[i].cycle(pvp, back),
@@ -186,15 +186,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
             self.side.audio.0.play_button_click();
-            self.settings.save(&crate::game::options_path());
+            self.side.settings.save(&crate::game::options_path());
             return true;
         }
         let Some((id, [x, y, _, _])) = self.widget_under_cursor() else {
             return false;
         };
         if right {
-            *self.settings.extras.pvp.layout.get_mut(id) = Place::default();
-            self.settings.save(&crate::game::options_path());
+            *self.side.settings.extras.pvp.layout.get_mut(id) = Place::default();
+            self.side.settings.save(&crate::game::options_path());
             return true;
         } else if let Some(e) = &mut self.side.pvp.editor {
             e.drag = Some((id, self.side.cursor.0 - x, self.side.cursor.1 - y));
@@ -217,7 +217,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (x, gx) = pvp_hud::snap(self.side.cursor.0 - dx, w, screen.0, &xs);
         let (y, gy) = pvp_hud::snap(self.side.cursor.1 - dy, h, screen.1, &ys);
         let at = pvp_hud::to_fractions((x, y), (w, h), screen);
-        self.settings.extras.pvp.layout.get_mut(id).at = Some(at);
+        self.side.settings.extras.pvp.layout.get_mut(id).at = Some(at);
         if let Some(e) = &mut self.side.pvp.editor {
             e.guides = (gx, gy);
         }
@@ -228,7 +228,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && e.drag.take().is_some()
         {
             e.guides = (None, None);
-            self.settings.save(&crate::game::options_path());
+            self.side.settings.save(&crate::game::options_path());
             return true;
         }
         false
@@ -238,14 +238,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some((id, _)) = self.widget_under_cursor() else {
             return false;
         };
-        let place = self.settings.extras.pvp.layout.get_mut(id);
+        let place = self.side.settings.extras.pvp.layout.get_mut(id);
         let (lo, hi) = pvp_hud::SCALES;
         place.scale = if amount > 0.0 {
             place.scale.saturating_add(10).min(hi)
         } else {
             place.scale.saturating_sub(10).max(lo)
         };
-        self.settings.save(&crate::game::options_path());
+        self.side.settings.save(&crate::game::options_path());
         true
     }
 }

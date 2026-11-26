@@ -218,8 +218,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         };
         let offset = self
-            .pack
+            .side
+            .client_pack
             .context
+            .mesh
             .tables
             .offset(tip_state, pos.x, pos.z)
             .unwrap_or([0.0; 3]);
@@ -252,7 +254,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side
             .particles
             .0
-            .enderman_teleportation(pos, data, self.settings.particles);
+            .enderman_teleportation(pos, data, self.side.settings.particles);
     }
     /// `LevelEventHandler.globalLevelEvent`: the sound two blocks from the
     /// camera towards the event, so it is heard from anywhere.

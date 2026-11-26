@@ -54,7 +54,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let (fuel, total_fuel, brew, total_brew) =
                 (b.fuel, b.total_fuel, b.brew_time, b.total_brew_time);
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             Self::part(
                 batch,
                 atlas,
@@ -132,7 +132,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if self.slot_mut(i).is_none() {
                     let (sx, sy) = self.station_slot_position(i).unwrap_or_default();
                     batch.sprite(
-                        &self.gui.atlas,
+                        &self.side.gui.atlas,
                         &format!("container/slot/{icon}"),
                         ox + sx,
                         oy + sy,
@@ -146,7 +146,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             });
             crate::game::screen_info::name_container(|| title.plain());
             {
-                let atlas = &self.gui.atlas;
+                let atlas = &self.side.gui.atlas;
                 Self::part(
                     batch,
                     atlas,
@@ -166,7 +166,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if kind == Kind::Loom {
                 tooltip = self.draw_loom(batch, ox, oy, local);
             }
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             let Some(s) = self.station.as_ref() else {
                 return false;
             };
@@ -179,7 +179,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Kind::Enchanting => {
                     let (open, flip) = ui.book.at(self.clock.camera_fraction() as f32);
                     sunrise_client::item_render::gui::draw_enchanting_book(
-                        &self.pack.item_renderer,
+                        &self.side.client_pack.item_renderer,
                         &atlas.sprites,
                         batch,
                         ox + 14.0,
@@ -280,7 +280,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             );
                             -8323296
                         };
-                        let atlas = &self.gui.atlas;
+                        let atlas = &self.side.gui.atlas;
                         let cw = HudBatch::text_width(atlas, &cost_text);
                         batch.text(
                             atlas,
@@ -404,7 +404,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             )
                         };
                         if let Some(line) = line {
-                            let atlas = &self.gui.atlas;
+                            let atlas = &self.side.gui.atlas;
                             let tw = HudBatch::text_width(atlas, &line);
                             let tx = 176.0 - 8.0 - tw - 2.0;
                             batch.fill(
@@ -497,7 +497,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     if let Some(text) = onboarding {
                         // font.split(component, 115).
                         tooltip = Some(
-                            self.gui
+                            self.side
+                                .gui
                                 .atlas
                                 .font
                                 .split_lines(&sunrise_client::text::Text::literal(text), 115.0)
@@ -555,7 +556,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 "recipe"
                             };
                             batch.sprite_scaled(
-                                &self.gui.atlas,
+                                &self.side.gui.atlas,
                                 &format!("container/stonecutter/{sprite}"),
                                 ox + x,
                                 oy + y - 1.0,

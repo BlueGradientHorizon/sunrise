@@ -3445,7 +3445,7 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
-            game.streaming.forced.insert((0, 0));
+            game.side.streaming.forced.insert((0, 0));
             let rail = game
                 .pack
                 .assets

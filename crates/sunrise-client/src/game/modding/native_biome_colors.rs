@@ -29,13 +29,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let biomes = base
                 .with_colors(|biome, colors| self.native_biome_colors(biome, colors))
                 .map_or_else(|| base.clone(), Arc::new);
-            if Arc::ptr_eq(&biomes, &self.pack.context.biomes) {
+            if Arc::ptr_eq(&biomes, &self.side.client_pack.context.chunk.biomes) {
                 return;
             }
-            self.pack.context = self.pack.context_with(biomes);
+            self.side.client_pack.context = self.side.client_pack.context_with(biomes);
         }
         let context = self.worker_context();
         self.side_clear_lod();
-        self.streaming.reload_resources(&mut self.world, context);
+        self.side
+            .streaming
+            .reload_resources(&mut self.world, context);
     }
 }

@@ -25,7 +25,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let pending = chunk.dynamic_pending;
-        let cells = self.pack.context.light.dynamic_cells(chunk, |_| true);
+        let cells = self.pack.chunk_context.light.dynamic_cells(chunk, |_| true);
         if cells.is_empty() && !pending {
             return;
         }

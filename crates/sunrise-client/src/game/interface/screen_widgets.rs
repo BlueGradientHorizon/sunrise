@@ -723,7 +723,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             let label: Text = state.label.try_into_engine(&()).unwrap_or_default();
                             ui::button_focused_as(
                                 batch,
-                                &self.gui.atlas,
+                                &self.side.gui.atlas,
                                 state.rect,
                                 &label,
                                 ui::ButtonVisualState {
@@ -747,7 +747,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         if *visible {
                             edit_box.focused = focused && *active;
                             let mark = widgets::frame_mark();
-                            edit_box.draw_at(batch, &self.gui.atlas, None, now);
+                            edit_box.draw_at(batch, &self.side.gui.atlas, None, now);
                             widgets::mark_mounted(mark, entry.id.raw(), true);
                             if let Some(hint) = hint
                                 && edit_box.value.is_empty()
@@ -759,7 +759,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                     edit_box.text_color_uneditable
                                 };
                                 batch.text_styled(
-                                    &self.gui.atlas,
+                                    &self.side.gui.atlas,
                                     hint,
                                     edit_box.text_x(),
                                     edit_box.text_y(),
@@ -978,7 +978,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         if let Some(Some(entry)) = inner.entries.get_mut(idx)
                             && let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind
                         {
-                            edit_box.click(&self.gui.atlas, mouse[0], shift, double_click);
+                            edit_box.click(&self.side.gui.atlas, mouse[0], shift, double_click);
                         }
                         inner.dragging = Some((idx, button));
                     }
@@ -1081,7 +1081,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if !*active || !*visible {
                     return false;
                 }
-                edit_box.drag_to(&game.gui.atlas, mouse[0]);
+                edit_box.drag_to(&game.side.gui.atlas, mouse[0]);
                 true
             }
             MountedWidgetKind::Custom(widget) => call_owner(

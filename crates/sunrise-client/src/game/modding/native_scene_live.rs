@@ -391,8 +391,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let mut engine = ParticleEngine::new(
             &self.pack.source,
-            &self.gui.atlas.sprites,
-            &self.gui.atlas.translucent,
+            &self.side.gui.atlas.sprites,
+            &self.side.gui.atlas.translucent,
         );
         engine.set_block_state_source(crate::game::particle_block_states);
         engine.live_limit = Some(SCENE_MAX_PARTICLES);
@@ -446,9 +446,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if restart {
             engine.clear();
         }
-        engine.particle_level = self.settings.particles;
+        engine.particle_level = self.side.settings.particles;
         let facts = self.res.facts();
-        let tables = &self.pack.context.tables;
+        let tables = &self.side.client_pack.context.mesh.tables;
         let model_offset = |state, x, z| tables.offset(state, x, z);
         let ctx = AnimateContext {
             enchant_power: &self.side.ambience.enchant_power,
@@ -480,7 +480,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
             if clock.animate_blocks {
-                animate_scene(self.res.animate(), engine, &ctx, picks, SCENE_ANIMATE_PICKS);
+                animate_scene(
+                    self.client_res().animate(),
+                    engine,
+                    &ctx,
+                    picks,
+                    SCENE_ANIMATE_PICKS,
+                );
             }
             engine.tick(&ParticleLevel {
                 world,

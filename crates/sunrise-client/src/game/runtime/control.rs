@@ -178,7 +178,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn render_capture_settings(
         &self,
     ) -> sunrise_client::gfx::capture::Settings {
-        let s = &self.settings;
+        let s = &self.side.settings;
         sunrise_client::gfx::capture::Settings {
             graphics_api: format!("{:?}", s.sunrise.api),
             translucent_batching: s.sunrise.translucent_batching,
@@ -189,10 +189,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             fxaa: s.sunrise.fxaa,
             taa: s.sunrise.taa,
             upscale: s.sunrise.upscaling.ratio(),
-            render_distance: self.streaming.radius,
+            render_distance: self.side.streaming.radius,
             lod_distance: self.far_terrain_choice().0,
             resources: self.options.resources.clone(),
-            atlas: sunrise_client::gfx::capture::AtlasCheck::of(&self.pack.render),
+            atlas: sunrise_client::gfx::capture::AtlasCheck::of(&self.side.client_pack.render),
         }
     }
     /// The frame summary, with Sunrise's own passes' median GPU times while they are timed.
@@ -415,7 +415,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Screen::Options
                 if self.side.chat_ui.options.typing() && !self.options_waiting_for_key() =>
             {
-                self.side.chat_ui.options.type_text(&self.gui.atlas, text)
+                self.side
+                    .chat_ui
+                    .options
+                    .type_text(&self.side.gui.atlas, text)
             }
             // The port, or the game rules' search and number boxes.
             Screen::WorldOptions if self.world_options_typing() => {
@@ -681,12 +684,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     None => {}
                     Some(mode @ ("off" | "auto" | "on")) => {
                         // The setting, as its switch sets it; not saved here (as `gpu-culling`).
-                        self.settings.sunrise.parallel_tick = match mode {
+                        self.side.settings.sunrise.parallel_tick = match mode {
                             "on" => Mode::On,
                             "auto" => Mode::Auto,
                             _ => Mode::Off,
                         };
-                        sunrise_client::parallel::set_setting(self.settings.sunrise.parallel_tick);
+                        sunrise_client::parallel::set_setting(
+                            self.side.settings.sunrise.parallel_tick,
+                        );
                     }
                     Some(other) => return Err(format!("unknown parallel tick mode {other}").into()),
                 }
@@ -709,7 +714,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         r.set_gpu_culling(mode == "on")?;
                         // The setting, as its switch sets it; not saved here (as
                         // `lod-distance`): settings changes and new renderers keep it.
-                        self.settings.sunrise.gpu_culling = match mode {
+                        self.side.settings.sunrise.gpu_culling = match mode {
                             "on" => sunrise_client::graphics::GpuCullingMode::On,
                             "auto" => sunrise_client::graphics::GpuCullingMode::Auto,
                             _ => sunrise_client::graphics::GpuCullingMode::Off,
@@ -720,7 +725,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Ok(Some(json!({
                     "ok": true,
                     "gpu_culling": r.gpu_culling(),
-                    "mode": self.settings.sunrise.gpu_culling.name(),
+                    "mode": self.side.settings.sunrise.gpu_culling.name(),
                     "auto": self.side.gpu_culling_auto.state(),
                 })))
             }
@@ -1060,7 +1065,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if !(2..=max).contains(&n) {
                     return Err(format!("render distance must be 2..{max}").into());
                 }
-                self.settings.render_distance = n;
+                self.side.settings.render_distance = n;
                 self.apply_settings();
                 ok()
             }
@@ -1073,7 +1078,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     )
                     .into());
                 }
-                self.settings.sunrise.lod_distance = n;
+                self.side.settings.sunrise.lod_distance = n;
                 self.apply_settings();
                 ok()
             }
@@ -1278,7 +1283,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.open_options(self.side.title.0.is_some());
                 self.side.chat_ui.options.show(page);
                 if page == Page::ShaderPacks {
-                    self.settings.shader_packs =
+                    self.side.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
                     self.open_shader_options();
                 }
@@ -1460,6 +1465,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         physical: KeyCode,
     ) {
         for key in self
+            .side
             .settings
             .keys
             .translate_all(physical)
@@ -1589,14 +1595,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "section_draw_calls": r.section_draw_calls,
                 "culled_sections": r.culled_sections(),
                 "gpu_culling": r.gpu_culling(),
-                "gpu_culling_mode": self.settings.sunrise.gpu_culling.name(),
+                "gpu_culling_mode": self.side.settings.sunrise.gpu_culling.name(),
                 "gpu_culling_auto": self.side.gpu_culling_auto.state(),
                 // The world's resolution scale in percent, Dynamic Resolution's where it is on.
                 "resolution_scale": super::frame_autotune::world_scale(
-                    &self.settings.sunrise,
+                    &self.side.settings.sunrise,
                     &self.side.dynamic_resolution
                 ),
-                "dynamic_resolution": self.settings.sunrise.dynamic_resolution,
+                "dynamic_resolution": self.side.settings.sunrise.dynamic_resolution,
                 "gpu_frame": r.gpu_frame(),
                 "gpu_fading": r.gpu_fading(),
                 "gpu_culling_offer": format!("{:?}", r.gpu_culling_offer()),
@@ -1621,14 +1627,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .collect();
         physical_keys.sort();
         let lod = json!({
-            "distance": self.settings.sunrise.lod_distance,
+            "distance": self.side.settings.sunrise.lod_distance,
             "effective_distance": self.lod_distance(),
             "terrain_distance": self.terrain_distance(),
             "source": if self.side.lod.0.is_none() { "none" } else if self.integrated.is_some() { "integrated" } else if self.server_far_terrain().is_some() { "server" } else if self.remote.is_some() { "server-terrain" } else { "local" },
             "source_attempted": self.side.lod_source_attempted,
             "active_tiles": self.side.lod.0.as_ref().map_or(0, |lod| lod.stats().0),
             "cached_tiles": self.side.lod.0.as_ref().map_or(0, |lod| lod.stats().1),
-            "far_detail": self.settings.sunrise.far_detail.name(),
+            "far_detail": self.side.settings.sunrise.far_detail.name(),
             "resident_quads": self.side.renderer.0.as_ref().map_or(0, |r| r.lod_quads()),
             "levels": self.side.renderer.0.as_ref().map_or_else(Vec::new, |r| r.lod_levels()),
             "pending_observations": self.side.lod_observe.len(),
@@ -1648,8 +1654,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "hitboxes": self.debug_entry("entity_hitboxes"),
                 "chunk_borders": self.debug_entry("chunk_borders"),
                 "pause_menu": self.side.pause_menu,
-                "advanced_tooltips": self.settings.file.bool("advancedItemTooltips"),
-                "pause_on_lost_focus": self.settings.file.bool("pauseOnLostFocus"),
+                "advanced_tooltips": self.side.settings.file.bool("advancedItemTooltips"),
+                "pause_on_lost_focus": self.side.settings.file.bool("pauseOnLostFocus"),
                 "clipboard": self.side.clipboard.0.copied(),
             },
             "dimension": self.dim.id(),
@@ -1676,14 +1682,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "carts": self.remote_carts().unwrap_or_else(|| self.carts.iter().map(|c| serde_json::json!({"kind": c.kind.id(), "position": [c.position.x, c.position.y, c.position.z], "velocity": [c.velocity.x, c.velocity.y, c.velocity.z]})).collect::<Vec<_>>()),
             "riding": self.riding,
             "using": self.using,
-            "render_distance": self.streaming.radius,
+            "render_distance": self.side.streaming.radius,
             "chunks": self.world.chunks.len(),
             "mobs": self.mobs.len(),
             "block_entities": self.world.block_entities.len(),
-            "pending_chunks": self.streaming.pending() + self.side.pending_uploads.0.len() + self.remote_backlog(),
-            "generated_chunks": self.streaming.generated_total,
-            "meshed_sections": self.streaming.meshed_total,
-            "streaming": self.streaming.stages().into_iter().map(|(k, v)| (k.to_string(), v.into())).collect::<serde_json::Map<_, _>>(),
+            "pending_chunks": self.side.streaming.pending() + self.side.pending_uploads.0.len() + self.remote_backlog(),
+            "generated_chunks": self.side.streaming.generated_total,
+            "meshed_sections": self.side.streaming.meshed_total,
+            "streaming": self.side.streaming.stages().into_iter().map(|(k, v)| (k.to_string(), v.into())).collect::<serde_json::Map<_, _>>(),
             "dirty_light": self.world.dirty_light.len(),
             "renderer": renderer,
             "display": self.side.window.0.as_deref().and_then(sunrise_client::monitor::of).map(|m| json!({

@@ -2,7 +2,7 @@ use super::mob_effect_instance;
 use super::thrown_item_axes;
 use super::thrown_item_quad;
 use super::{ProjectileKind, is_item_billboard};
-use sunrise_client::camera::CameraType;
+use sunrise_level::camera_math::CameraType;
 
 /// The component-wise lowest and highest corner of the quad.
 pub(in crate::game) fn bounds(corners: &[glam::Vec3; 4]) -> (glam::Vec3, glam::Vec3) {

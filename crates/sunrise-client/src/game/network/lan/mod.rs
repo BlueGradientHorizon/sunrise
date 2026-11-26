@@ -1148,7 +1148,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // has generated or loaded so far.
                 "world": {
                     "chunks": self.world.chunks.len(),
-                    "generated": self.streaming.generated_total,
+                    "generated": self.side.streaming.generated_total,
                 },
                 "guests": h.hub.guests.iter().map(|g| json!({
                     "name": g.name,
@@ -1343,7 +1343,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.side.lan_songs.clear();
         self.side.lan_critical_hits.clear();
         self.side.lan_cushion_breaks.clear();
-        self.streaming.extra.clear();
+        self.side.streaming.extra.clear();
         if announce {
             self.server_system_message(Text::translate(
                 "menu.multiplayerOptions.publish.stopped",
@@ -2563,7 +2563,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 tick_steps: self.clock.step_state(),
                 collision: Some(self.collision),
                 border: &self.border,
-                streaming: Some(&self.streaming),
+                streaming: Some(&self.side.streaming),
             };
             host.hub.movement_checks = (
                 self.ui
@@ -2929,7 +2929,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut idle_states = std::mem::take(&mut host.idle_states);
                 let mut kept = if self.side.level_pass.packets_drained {
                     let percent = if host.hub.config.integrated {
-                        (self.settings.entity_distance * 100.0).round() as i32
+                        (self.side.settings.entity_distance * 100.0).round() as i32
                     } else {
                         host.hub.entity_range_percent
                     };
@@ -3031,7 +3031,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     tick_steps: self.clock.step_state(),
                     collision: Some(self.collision),
                     border: &self.border,
-                    streaming: Some(&self.streaming),
+                    streaming: Some(&self.side.streaming),
                 };
                 host.hub.movement_checks = (
                     self.ui
@@ -3046,7 +3046,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // dedicated one keeps its entity-broadcast-range-percentage).
                 if host.hub.config.integrated {
                     host.hub.entity_range_percent =
-                        (self.settings.entity_distance * 100.0).round() as i32;
+                        (self.side.settings.entity_distance * 100.0).round() as i32;
                 }
                 host.hub.set_immediate_respawn(
                     self.ui
@@ -3316,7 +3316,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             tick_steps: self.clock.step_state(),
             collision: Some(self.collision),
             border: &self.border,
-            streaming: Some(&self.streaming),
+            streaming: Some(&self.side.streaming),
         };
         let Some(host) = self.lan.as_mut() else {
             return;
@@ -3618,7 +3618,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         // The held players are sent the level, so their chunks are kept as the placed ones'.
-        self.streaming.extra = host
+        self.side.streaming.extra = host
             .hub
             .loading_chunks(|g| super::game_mode::loads_chunks(rule, g.spectator()))
             .map(|chunk| (chunk, radius))
@@ -4380,15 +4380,9 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
-        let mut game = crate::game::ServerGame::new(
-            &res,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            None,
-        )
-        .unwrap();
+        let mut game =
+            crate::game::ServerGame::new(&res, loaded.pack, options, settings.sim_settings(), None)
+                .unwrap();
         let render = sunrise_client::assets::RenderAssets::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
             &game.pack.assets,
@@ -5436,10 +5430,13 @@ pub(in crate::game) mod tests {
         };
         use sunrise_client::effects::EffectInstance;
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::entity_data::{Particle, ParticleData};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use {
+            sunrise_level::particle_options::ParticleOptions,
+            sunrise_level::particle_options::ParticleType,
+        };
         const ZOMBIE: i32 = 40;
         const PLAYER: i32 = 12;
         // What the first mod was asked: the entity, the effect's name and
@@ -6240,9 +6237,9 @@ pub(in crate::game) mod mob_pickup_sync_tests {
 pub(in crate::game) mod mob_swing_sync_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
-        first_person::SwingAnimation,
-        lan::{Joined, Out, PlayerSender, guest::Guest},
+    use {
+        sunrise_client::lan::Joined, sunrise_client::lan::Out, sunrise_client::lan::PlayerSender,
+        sunrise_client::lan::guest::Guest, sunrise_sim::first_person_sim::SwingAnimation,
     };
 
     /// A server with one placed guest beside the mobs.

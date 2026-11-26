@@ -344,7 +344,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // ServerChunkCache.tick doesn't purge in a frozen level, nor
             // does pause-when-empty tick the cache (it only polls chunk work).
             if running {
-                let streaming = &self.streaming;
+                let streaming = &self.side.streaming;
                 self.side
                     .tickets
                     .0

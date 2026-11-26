@@ -382,7 +382,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn command_prompt_layout(&self, prompt: &CommandPrompt, size: (f32, f32)) -> Choice {
         let command = Text::untrusted(&prompt.command).with_color(0xFF_FF55);
         let mut choice = Choice::new(
-            &self.gui.atlas.font,
+            &self.side.gui.atlas.font,
             size,
             &Text::translate("multiplayer.confirm_command.title", &[]),
             &Text::translate(prompt.message, &[command]),
@@ -405,7 +405,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 &prompt.command,
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         sunrise_client::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         let labels = [

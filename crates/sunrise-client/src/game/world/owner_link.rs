@@ -368,7 +368,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         wanted: &Snapshot,
     ) -> (bool, Option<u16>) {
         if wanted.difficulty != before.difficulty {
-            let name = sunrise_client::title::DIFFICULTIES[usize::from(wanted.difficulty) & 3];
+            let name = sunrise_sim::world_options::DIFFICULTIES[usize::from(wanted.difficulty) & 3];
             self.as_console(|g| g.run_command(&format!("difficulty {name}")));
         }
         if wanted.locked && !before.locked {

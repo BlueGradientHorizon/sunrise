@@ -1,15 +1,18 @@
 use super::*;
+use crate::game::api_values::TryIntoApi;
 use crate::game::resource_tables::PackParts;
 use crate::game::resource_tables::PlainTexts;
 use crate::game::resource_tables::UiResources;
 use crate::game::resource_tables::dynamic_texture_pool;
 use std::path::Path;
+use sunrise_client_render::streaming::{MeshWorkerContext, WorkerContext};
+use sunrise_level::chunk_streamer::ChunkWorkerContext;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A title screen over the current resources and their splash pool.
     pub(crate) fn new_title(&self, saves: PathBuf) -> Title {
-        Title::new(saves, &self.options.resources, &self.gui.splashes)
+        Title::new(saves, &self.options.resources, &self.side.gui.splashes)
     }
 }
 
@@ -24,7 +27,7 @@ impl PackResources {
         biomes: Arc<Biomes>,
         light: Arc<LightTables>,
         item_data: &sunrise_world::item_defaults::ItemData,
-    ) -> Result<Self> {
+    ) -> Result<(PackResources, ClientPackResources)> {
         let visibility = models::load_visibility(root.prepared(), assets.registry)?;
         api_values::resolve_block_definitions(assets.registry)?;
         mods::extend_poi_types(assets.registry);
@@ -44,18 +47,27 @@ impl PackResources {
             render.model_library.clone(),
             item_data,
         )?;
-        Self::assemble(
+        let pack = Self::assemble(
             root,
             PackParts {
                 assets,
+                biomes,
+                light,
+                item_models: Arc::clone(&item_renderer.models),
+                item_ids: Arc::clone(item_renderer.item_ids()),
+            },
+        )?;
+        let client_pack = ClientPackResources::assemble(
+            root,
+            &pack,
+            ClientPackParts {
                 render,
                 tables,
                 item_renderer,
-                biomes,
-                light,
             },
             true,
-        )
+        )?;
+        Ok((pack, client_pack))
     }
 }
 
@@ -77,36 +89,48 @@ impl PlainTexts {
     }
 }
 
-impl Resources {
+impl ClientResources {
     pub(in crate::game) fn ambient(&self) -> &sunrise_client::ambience::AmbientTables {
-        &self.rest().ambient
+        &self.ambient
     }
     pub(in crate::game) fn animate(&self) -> &sunrise_client::animate_tick::AnimateTables {
-        &self.rest().animate
+        &self.animate
     }
     pub(in crate::game) fn block_entity_render(&self) -> &BlockEntityRenderer {
-        &self.rest().block_entity_render
+        &self.block_entity_render
     }
-    pub(in crate::game::client_side) fn fog(&self) -> &sunrise_client::fog::FogTables {
-        &self.rest().fog
+    pub(in crate::game) fn fog(&self) -> &sunrise_client::fog::FogTables {
+        &self.fog
     }
     pub(in crate::game) fn music(&self) -> &sunrise_client::music::MusicTables {
-        &self.rest().music
+        &self.music
     }
-    pub(in crate::game::client_side) fn player_arm(
+    pub(in crate::game) fn player_arm(
         &self,
         slim: bool,
         left: bool,
     ) -> &Option<sunrise_client::mobs::Part> {
         let arms = if slim {
-            &self.rest().player_arm_slim
+            &self.player_arm_slim
         } else {
-            &self.rest().player_arm
+            &self.player_arm
         };
         &arms[usize::from(left)]
     }
-    pub(in crate::game::client_side) fn spin_attack(&self) -> &Option<sunrise_client::mobs::Part> {
-        &self.rest().spin_attack
+    pub(in crate::game) fn spin_attack(&self) -> &Option<sunrise_client::mobs::Part> {
+        &self.spin_attack
+    }
+    pub(in crate::game) fn player_type(&self) -> &Option<Arc<sunrise_client::mobs::MobType>> {
+        &self.player_type
+    }
+    pub(in crate::game) fn client_mob_models(
+        &self,
+    ) -> &sunrise_client::mobs_render::ClientMobModels {
+        &self.client_mobs.models
+    }
+
+    pub(in crate::game) fn client_mob_data(&self) -> &sunrise_client::mobs_render::ClientMobData {
+        &self.client_mobs.data
     }
 }
 
@@ -151,5 +175,217 @@ impl UiResources {
     ) -> Self {
         self.splashes = sunrise_client::splashes::pool(stack, vanilla, skip_if_modified).into();
         self
+    }
+}
+
+impl UiResources {
+    pub(in crate::game) fn fonts_only(
+        root: &sunrise_assets::resource_source::ResourceSource,
+    ) -> Result<Self> {
+        Ok(Self {
+            atlas: HudAtlas::fonts(root)?,
+            panorama: Arc::new(sunrise_client::gfx::panorama::Faces::colour([0; 4])),
+            splashes: Arc::from(""),
+            plain_texts: PlainTexts::default(),
+        })
+    }
+}
+
+pub(in crate::game) fn load_animate_tables(
+    root: &Path,
+    registry: &sunrise_world::registry::BlockRegistry,
+    biomes: &Biomes,
+) -> Result<(
+    sunrise_client::animate_tick::AnimateTables,
+    sunrise_client::fog::FogTables,
+)> {
+    let _step = startup::step("rest.animate_fog");
+    let animate = sunrise_client::animate_tick::AnimateTables::load(root, registry)?;
+    Ok((animate, sunrise_client::fog::FogTables::load(root, biomes)))
+}
+
+pub(in crate::game) struct ClientPackParts {
+    pub(in crate::game) render: Arc<RenderAssets>,
+    pub(in crate::game) tables: Arc<MeshTables>,
+    pub(in crate::game) item_renderer: sunrise_client::item_render::ItemRenderer,
+}
+
+impl ClientPackResources {
+    pub(in crate::game) fn assemble(
+        root: &sunrise_assets::resource_source::ResourceRoot,
+        pack: &PackResources,
+        parts: ClientPackParts,
+        draws: bool,
+    ) -> Result<Self> {
+        let ClientPackParts {
+            render,
+            tables,
+            item_renderer,
+        } = parts;
+        let assets = &pack.assets;
+        let water_overlay_state = assets
+            .registry
+            .default_state("minecraft:water")
+            .ok_or("block registry is missing the default minecraft:water state")?
+            .try_into_api()
+            .map_err(|e| format!("cannot bind the default minecraft:water state: {e:?}"))?;
+        let (clouds, forcefield, custom_sky, environments, polytone_particles) =
+            std::thread::scope(|scope| -> Result<_> {
+                let (clouds, forcefield, custom_sky, environments, particles) = if draws {
+                    let clouds = named_scope(scope, "pack.clouds", || {
+                        sunrise_client::clouds::load(root.source())
+                    });
+                    let forcefield =
+                        named_scope(scope, "pack.forcefield", || load_forcefield(root.source()));
+                    let custom_sky = named_scope(scope, "pack.custom_sky", || {
+                        sunrise_client::custom_sky::load(root.source())
+                    });
+                    let environments =
+                        named_scope(scope, "pack.environments", || pack_environments(root));
+                    let particles = named_scope(scope, "pack.particles", || {
+                        pack_particles(root, assets.registry)
+                    });
+                    (
+                        clouds.join().unwrap().map_err(|e| e.to_string())?,
+                        forcefield.join().unwrap(),
+                        custom_sky.join().unwrap(),
+                        environments.join().unwrap(),
+                        particles.join().unwrap(),
+                    )
+                } else {
+                    (
+                        Default::default(),
+                        Default::default(),
+                        sunrise_client::custom_sky::empty(),
+                        None,
+                        None,
+                    )
+                };
+                Ok((clouds, forcefield, custom_sky, environments, particles))
+            })?;
+        let polytone_post = if draws {
+            sunrise_client::polytone_post::PolytonePost::read(
+                root.source(),
+                sunrise_client::packs::polytone_configs(&sunrise_client::packs::Source::Opened(
+                    root.source().clone(),
+                )),
+            )
+            .map(Arc::new)
+        } else {
+            None
+        };
+        Ok(Self {
+            layer_names: Arc::new(sunrise_client::block_sprites::texture_names(
+                &render.sprite_layers,
+            )),
+            context: Arc::new(WorkerContext {
+                chunk: (*pack.chunk_context).clone(),
+                mesh: MeshWorkerContext {
+                    render: render.clone(),
+                    tables,
+                    hidden_states: Default::default(),
+                    part_tables: Default::default(),
+                },
+            }),
+            water_overlay_state,
+            render,
+            item_renderer: Arc::new(item_renderer),
+            clouds: Arc::new(clouds),
+            forcefield: Arc::new(forcefield),
+            custom_sky,
+            environments,
+            polytone_particles,
+            polytone_post,
+            polytone_colors: if draws {
+                Arc::new(read_colors(root))
+            } else {
+                Arc::default()
+            },
+        })
+    }
+
+    pub(in crate::game) fn context_with(&self, biomes: Arc<Biomes>) -> Arc<WorkerContext> {
+        let old = &self.context;
+        if Arc::ptr_eq(&old.chunk.biomes, &biomes) {
+            return old.clone();
+        }
+        Arc::new(WorkerContext {
+            chunk: ChunkWorkerContext {
+                assets: old.chunk.assets.clone(),
+                biomes,
+                light: old.chunk.light.clone(),
+            },
+            mesh: old.mesh.clone(),
+        })
+    }
+}
+
+/// The overworld's, Nether's and End's attribute stacks with the Polytone biome and dimension
+/// modifiers of the packs merged at `root` (#11486); `None` when no pack has any. The overlay
+/// root links the vanilla data the stacks start from.
+pub(in crate::game) fn pack_environments(
+    root: &sunrise_assets::resource_source::ResourceRoot,
+) -> Option<Arc<[Environment; 3]>> {
+    let modifiers = sunrise_client::environment::PackModifiers::read(root.source());
+    if modifiers.is_empty() {
+        return None;
+    }
+    let modifiers = modifiers.with_configs(sunrise_client::packs::polytone_configs(
+        &sunrise_client::packs::Source::Opened(root.source().clone()),
+    ));
+    let load = |d: &str| Environment::load_dimension_with(root.data(), d, &modifiers);
+    match (load("overworld"), load("the_nether"), load("the_end")) {
+        (Ok(o), Ok(n), Ok(e)) => Some(Arc::new([o, n, e])),
+        (o, n, e) => {
+            for error in [o.err(), n.err(), e.err()].into_iter().flatten() {
+                log::warn!("pack environment: {error}");
+            }
+            None
+        }
+    }
+}
+
+/// The custom particles and block emitters of the packs merged at `root` (#11486); `None` when
+/// no pack has any.
+pub(in crate::game) fn pack_particles(
+    root: &sunrise_assets::resource_source::ResourceRoot,
+    blocks: &'static sunrise_world::registry::BlockRegistry,
+) -> Option<Arc<sunrise_client::particles::polytone::Registry>> {
+    let configs = sunrise_client::packs::polytone_configs(&sunrise_client::packs::Source::Opened(
+        root.source().clone(),
+    ));
+    let registry =
+        sunrise_client::particles::polytone::Registry::read(root.source(), configs, blocks);
+    (!registry.is_empty()).then(|| Arc::new(registry))
+}
+
+/// The packs' custom colours; their dye and sheep colours go to the draw paths' table.
+pub(in crate::game) fn read_colors(
+    root: &sunrise_assets::resource_source::ResourceRoot,
+) -> sunrise_client::pack_palette::PackColors {
+    let colors = sunrise_client::pack_palette::read(root.source());
+    sunrise_client::pack_palette::set(&colors);
+    sunrise_client::brewing::set_pack_colors(colors.effects.clone());
+    colors
+}
+
+impl crate::game::client_side::ClientState {
+    #[inline]
+    pub(in crate::game) fn expect_client_res(
+        slot: &std::sync::OnceLock<crate::game::ClientResources>,
+    ) -> &crate::game::ClientResources {
+        slot.get().expect("world resources joined before entry")
+    }
+
+    #[inline]
+    pub(in crate::game) fn client_res(&self) -> &crate::game::ClientResources {
+        Self::expect_client_res(&self.client_res)
+    }
+}
+
+impl Game<'_, crate::game::client_side::ClientState> {
+    #[inline]
+    pub(in crate::game) fn client_res(&self) -> &crate::game::ClientResources {
+        self.side.client_res()
     }
 }

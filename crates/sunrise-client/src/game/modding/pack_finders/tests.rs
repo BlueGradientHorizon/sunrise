@@ -498,7 +498,7 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
         assert!(packs::has_optional_pack(&packs::enabled(&all, &reordered)));
 
         let data = data_packs(&sources);
-        let mut options = sunrise_client::title::WorldOptions::default();
+        let mut options = sunrise_sim::world_options::WorldOptions::default();
         options.data_packs.push("file/already_installed".into());
         options.set_additional_data_packs(data.clone().into());
         assert!(options.data_packs.contains(&fixture.data_id()));
@@ -526,7 +526,7 @@ fn contributed_experiments_supply_the_chosen_world_flags() {
         let features = sunrise_client::datapack::feature_repository(&fixture.root, &data);
         assert_eq!(features.len(), 1);
         assert_eq!(features[0].id, fixture.data_id());
-        let mut options = sunrise_client::title::WorldOptions::default();
+        let mut options = sunrise_sim::world_options::WorldOptions::default();
         options.set_additional_data_packs(data.into());
         assert_eq!(
             options.enabled_features(&fixture.root),
@@ -630,7 +630,8 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                 &[],
                 &game.pack.assets,
                 &game.res,
-                &game.worker_context(),
+                game.client_res(),
+                &game.side.client_pack.context,
                 false,
                 false,
                 &crate::game::Progress::new(),
@@ -653,19 +654,20 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                     .iter()
                     .any(|info| info.id == fixture.asset_id())
             );
-            game.settings.resource_packs = vec![fixture.asset_id()];
+            game.side.settings.resource_packs = vec![fixture.asset_id()];
             for expected in ["first", "second"] {
                 let listeners = game.register_client_reload_listeners();
                 let staged = crate::game::packs::stage_pack(
                     &game.vanilla_root(),
-                    &game.settings.resource_packs,
+                    &game.side.settings.resource_packs,
                     &[],
                     &game.mods,
                     listeners,
                     &[],
                     &game.pack.assets,
                     &game.res,
-                    &game.worker_context(),
+                    game.client_res(),
+                    &game.side.client_pack.context,
                     false,
                     false,
                     &crate::game::Progress::new(),

@@ -158,7 +158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             const OFFLINE: &str = "sunrise/offline_skin";
             if !self.side.skin_slots.contains(OFFLINE)
-                || !self.gui.atlas.sprites.contains_key(OFFLINE)
+                || !self.side.gui.atlas.sprites.contains_key(OFFLINE)
             {
                 self.store_skin(OFFLINE.into(), rgba.clone());
             }
@@ -170,7 +170,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             const OFFLINE: &str = "capes/offline";
             if !self.side.skin_slots.contains(OFFLINE)
-                || !self.gui.atlas.sprites.contains_key(OFFLINE)
+                || !self.side.gui.atlas.sprites.contains_key(OFFLINE)
             {
                 // Kept for `again`, which finds no download or disk file for this cape.
                 self.side
@@ -207,7 +207,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if self.side.player_model.is_some() {
             // Avatar.isModelPartShown(CAPE): the Skin Customization option.
-            let show_cape = self.settings.file.bool("modelPart_cape");
+            let show_cape = self.side.settings.file.bool("modelPart_cape");
             let (skin, is_slim, cape) =
                 skins::drawable_skin(local, skins.get(&local), show_cape, |sprite| {
                     self.again_skin(sprite)

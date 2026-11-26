@@ -480,7 +480,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         if self.side.player_model.is_none() {
-            let Some(kind) = self.res.player_type().clone() else {
+            let Some(kind) = self.client_res().player_type().clone() else {
                 return;
             };
             let mut m = Mob::new(0, kind, p.position, self.yaw);
@@ -515,7 +515,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // currentSwing.hand().asArm(mainArm).
         let swing_right_arm = swinging.then(|| {
             (self.swing.attack_hand() == mod_api::client::first_person::Hand::Main)
-                != self.settings.main_hand_left
+                != self.side.settings.main_hand_left
         });
         // LivingEntity.isVisuallySwimming and Entity.isInWater.
         let visually_swimming =
@@ -641,8 +641,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .remote
             .as_ref()
             .map_or([None, None], |r| r.own_shoulders);
-        m.extra.main_hand_left = self.settings.main_hand_left;
-        m.extra.hidden_model_parts = !self.settings.file.model_customisation() & 0x7F;
+        m.extra.main_hand_left = self.side.settings.main_hand_left;
+        m.extra.hidden_model_parts = !self.side.settings.file.model_customisation() & 0x7F;
         m.extra.spectator = spectator;
         m.extra.using_item = using;
         m.extra.using_off_hand = using_off_hand;
@@ -812,7 +812,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let probe = entity_light_block(m.position, m.extra.crouching, eye);
         let light = self.world.light(probe[0], probe[1], probe[2]);
         let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         let start = out.len();
         let body = self.own_body_visible();
@@ -980,7 +980,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         m.position.y += 0.125 * f64::from(u8::from(m.extra.crouching));
         m.previous = m.position;
         let camera = glam::DVec3::new(m.position.x, m.position.y, m.position.z);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         let mut verts = Vec::new();
         // A spectator preview still draws its own model: the poses'
@@ -1156,7 +1156,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return;
         };
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         let rule = stack.and_then(|s| self.cit_worn_rule(sunrise_client::cit::Kind::Elytra, s));
         let rect = sunrise_client::cit_armor::wings(rule, cape, |s| sprites.get(s));
         let (Some(model), Some(rect)) = (
@@ -1194,7 +1194,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .is_none()
             .then(|| {
                 let emissive = self
-                    .res
+                    .client_res()
                     .client_mob_data()
                     .emissive
                     .read()
@@ -1231,7 +1231,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(rect) = m
             .cape
             .as_deref()
-            .and_then(|c| self.gui.atlas.sprites.get(c))
+            .and_then(|c| self.side.gui.atlas.sprites.get(c))
         else {
             return;
         };
@@ -1283,10 +1283,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if name != "deadmau5" {
             return;
         }
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         // The body's own fallback: a skin with no sprite draws the default.
         let Some(rect) = m.skin.as_deref().and_then(|s| sprites.get(s)).or_else(|| {
-            self.res
+            self.client_res()
                 .client_mob_models()
                 .texture(&m.kind.id)
                 .and_then(|t| sprites.get(t))
@@ -1387,7 +1387,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         light: u32,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         let layers = [
             (
                 m.extra.stuck.arrows,
@@ -1431,10 +1431,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         light: u32,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let Some(parrot) = self.res.client_mob_models().get("minecraft:parrot") else {
+        let Some(parrot) = self
+            .client_res()
+            .client_mob_models()
+            .get("minecraft:parrot")
+        else {
             return;
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         let base = sunrise_client::mobs::render::base_transform(m, partial, camera);
         for left in [true, false] {
@@ -1459,8 +1463,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let (Some(model), Some(rect)) = (
-            self.res.spin_attack().as_ref(),
-            self.gui.atlas.sprites.get("entity/trident/trident_riptide"),
+            self.client_res().spin_attack().as_ref(),
+            self.side
+                .gui
+                .atlas
+                .sprites
+                .get("entity/trident/trident_riptide"),
         ) else {
             return;
         };

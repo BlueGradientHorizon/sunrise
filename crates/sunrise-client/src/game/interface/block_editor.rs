@@ -313,7 +313,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         batch.fill_gradient(
             atlas,
@@ -438,13 +438,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let cursor = self.side.cursor;
         let shift = self.has_shift_down();
         let alt = self.side.keys.raw(&KeyCode::AltLeft);
         let atlas_click = |game: &Game<'_, crate::game::client_side::ClientState>,
                            edit: &mut EditBox| {
-            edit.click(&game.gui.atlas, cursor.0, false, false);
+            edit.click(&game.side.gui.atlas, cursor.0, false, false);
         };
         let Some(items) = self.with_block_editor(|s, e| s.editor.items(e, b.width, b.height))
         else {
@@ -537,7 +537,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         match key {
             KeyCode::Escape => {
                 let outcome = self

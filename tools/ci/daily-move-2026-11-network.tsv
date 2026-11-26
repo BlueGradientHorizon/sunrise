@@ -47,7 +47,7 @@ sunrise-client-lib	test:datapack_join	a_required_registry_refuses_a_client_witho
 sunrise-client-render	lib	pack_screen::click_sound_tests::the_browsers_search_button_submits_what_was_typed	crates/sunrise-client-render/src/pack_screen.rs:2147	network
 sunrise-client-render	lib	skins::tests::a_failed_download_is_retried_after_the_wait	crates/sunrise-client-render/src/skins.rs:2033	network
 sunrise-client-render	lib	skins::tests::http_get_reads_2xx_bodies	crates/sunrise-client-render/src/skins.rs:1817	network
-sunrise-client-render	lib	skins::tests::profiles_resolve_through_the_services	crates/sunrise-client-render/src/skins.rs:1640	network
+sunrise-server-profiles-http	lib	tests::profiles_resolve_through_the_services	crates/sunrise-server-profiles-http/src/lib.rs:554	network
 sunrise-friends	lib	crypto::tests::a_wrong_secret_is_refused_on_both_ends	crates/sunrise-friends/src/crypto.rs:329	network
 sunrise-friends	lib	crypto::tests::same_code_same_key_and_frames_flow	crates/sunrise-friends/src/crypto.rs:300	network
 sunrise-friends	lib	crypto::tests::the_session_is_part_of_the_key	crates/sunrise-friends/src/crypto.rs:341	network

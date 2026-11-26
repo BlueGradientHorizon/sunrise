@@ -331,7 +331,8 @@ pub(in crate::game) mod tests {
                 } else {
                     game.options.dedicated = Some(Vec::new());
                 }
-                game.streaming
+                game.side
+                    .streaming
                     .insert_remote(&mut game.world, Chunk::empty(0, 0));
                 let reg = game.pack.assets.registry;
                 let [farmland, dirt, wheat, air] = [

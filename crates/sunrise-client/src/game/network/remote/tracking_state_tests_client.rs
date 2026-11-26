@@ -22,7 +22,7 @@ fn tracking_emitters_follow_the_packet_target() {
         &settings,
         std::time::Instant::now(),
         false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
@@ -32,7 +32,9 @@ fn tracking_emitters_follow_the_packet_target() {
     options.execution_role = ExecutionRole::Client;
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,

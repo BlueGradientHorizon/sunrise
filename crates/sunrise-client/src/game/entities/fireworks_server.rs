@@ -6,17 +6,15 @@ use crate::game::fireworks::fireworks_of;
 use crate::game::fireworks::rocket_draws;
 use crate::game::fireworks::use_on_passes;
 use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_client::{
-    collisions::SceneCollisions,
-    items::ItemStack,
-    mobs::{Damage, Species, Who},
-    particles::FireworkExplosion,
-    projectiles::{Hit as ProjectileHit, ProjectileWorld},
-    random_source,
-    text::Text,
-};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+#[allow(unused_imports)]
+use {
+    sunrise_client::collisions::SceneCollisions, sunrise_client::items::ItemStack,
+    sunrise_client::mobs::Damage, sunrise_client::mobs::Species, sunrise_client::mobs::Who,
+    sunrise_client::projectiles::Hit as ProjectileHit,
+    sunrise_client::projectiles::ProjectileWorld, sunrise_client::random_source,
+    sunrise_client::text::Text, sunrise_items::firework::FireworkExplosion,
+};
 
 #[path = "fireworks/impact_server.rs"]
 pub(in crate::game) mod impact;

@@ -38,7 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .then(|| &t.recipes[t.displayed_recipe(fully_for, multiplier)]);
         if let Some((station, item)) = recipe {
             // RecipeToast: black description under a purple title, station scaled 0.6 over result.
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             batch.sprite(atlas, "toast/recipe", x, y);
             batch.text_styled(atlas, title, x + 30.0, y + 7.0, 0xFF50_0050, false);
             batch.text_styled(atlas, description, x + 30.0, y + 18.0, 0xFF00_0000, false);
@@ -48,7 +48,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.draw_item_model(batch, item, x + 8.0, y + 8.0);
             return;
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         batch.sprite(atlas, "toast/advancement", x, y);
         let (_, color) = toast_label(frame);
         // AdvancementToast.extractRenderState: single line sits under label; longer wraps at 125.

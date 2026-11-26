@@ -43,7 +43,7 @@ fn client_humanoid_setup_reaches_body_skinned_and_layer_routes() {
                 "minecraft:enderman",
             ] {
                 let ty = if kind == "minecraft:player" {
-                    game.res.player_type().clone().unwrap()
+                    game.client_res().player_type().clone().unwrap()
                 } else {
                     game.res.mob_types().get(kind).unwrap().clone()
                 };
@@ -106,8 +106,8 @@ fn client_humanoid_setup_reaches_body_skinned_and_layer_routes() {
                             &lookup,
                             0xf0f0,
                             &sunrise_client::mobs_render::ClientMobRender {
-                                models: game.res.client_mob_models(),
-                                data: game.res.client_mob_data(),
+                                models: game.client_res().client_mob_models(),
+                                data: game.client_res().client_mob_data(),
                             },
                             &[],
                             &mut render::FrameDraw::default(),

@@ -12,7 +12,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn command_chunk_loaded(&self, x: i32, z: i32) -> bool {
         self.side.tickets.0.levels().loaded_entity_ticking(x, z)
             && self.world.chunks.contains_key(&(x, z))
-            && self.streaming.is_lit(x, z)
+            && self.side.streaming.is_lit(x, z)
             // Streaming queues the saved tags before making the column resident;
             // spawn_loaded_entities applies them before this chunk's entities run.
             && !self.world.loaded_entities.iter().any(|(key, _)| *key == (x, z))

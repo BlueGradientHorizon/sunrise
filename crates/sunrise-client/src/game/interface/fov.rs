@@ -49,11 +49,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `options.fovEffectScale`.
     pub(in crate::game::client_side) fn fov_effect_scale(&self) -> f32 {
-        self.settings.file.double("fovEffectScale") as f32
+        self.side.settings.file.double("fovEffectScale") as f32
     }
     /// `options.screenEffectScale` (Distortion Effects).
     pub(in crate::game) fn screen_effect_scale(&self) -> f32 {
-        self.settings.file.double("screenEffectScale") as f32
+        self.side.settings.file.double("screenEffectScale") as f32
     }
     /// `LocalPlayer.getEffectBlendFactor(NAUSEA, partial)`: 0 without the effect.
     pub(in crate::game::client_side) fn nausea_blend(&self, partial: f32) -> f32 {
@@ -182,7 +182,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let fov = self.side.view.calculate_fov(
             partial,
-            self.settings.fov as i32,
+            self.side.settings.fov as i32,
             self.fov_effect_scale(),
             self.camera_death_time(),
             self.camera_fluid(camera),
@@ -206,7 +206,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// narrows the field of view through `native_compute_fov`.
     pub(in crate::game::client_side) fn zoom_magnification(&self, camera: [f64; 3]) -> f32 {
         let now = self.fov_degrees(1.0, camera);
-        let base = self.settings.fov.clamp(1.0, 179.0);
+        let base = self.side.settings.fov.clamp(1.0, 179.0);
         if now.is_finite() && now > 0.5 {
             (base / now).max(1.0)
         } else {
@@ -219,7 +219,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         camera: [f64; 3],
     ) -> Option<sunrise_client::lod::ZoomAim> {
-        if !self.settings.extras.lod_zoom_detail {
+        if !self.side.settings.extras.lod_zoom_detail {
             return None;
         }
         let yaw = self.camera_subject().map_or(self.yaw, |c| c.camera.y_rot);
@@ -257,8 +257,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 )
             }),
         };
-        let tilt = self.settings.file.double("damageTiltStrength");
-        glam::Mat4::from_cols_array(&bob_matrix(&state, tilt, self.settings.view_bobbing).m)
+        let tilt = self.side.settings.file.double("damageTiltStrength");
+        glam::Mat4::from_cols_array(&bob_matrix(&state, tilt, self.side.settings.view_bobbing).m)
             * self.native_shake_matrix(partial)
     }
     /// `AbstractClientPlayer.tick` and `aiStep` (`ClientAvatarState.tick`,
@@ -307,7 +307,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             batch.height as i32,
             self.side.scope_scale,
         );
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
 }
 

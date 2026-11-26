@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let batch = HudBatch::new(
             [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         let mut areas = self.screen_own_exclusion(&batch);
         self.native_screen_exclusion_areas(&view, &mut areas);

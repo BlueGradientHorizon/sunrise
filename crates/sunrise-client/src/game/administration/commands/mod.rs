@@ -2662,9 +2662,8 @@ pub(in crate::game) mod selector_bounds_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -2735,7 +2734,8 @@ pub(in crate::game) mod forced_respawn_tests {
                 game.build_registries();
                 for x in -2..=2 {
                     for z in -2..=2 {
-                        game.streaming
+                        game.side
+                            .streaming
                             .insert_remote(&mut game.world, Chunk::empty(x, z));
                     }
                 }
@@ -2965,9 +2965,8 @@ pub(in crate::game) mod fill_note_instrument_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

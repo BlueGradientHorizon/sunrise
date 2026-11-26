@@ -25,8 +25,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.border_section = Some(section);
         }
         // Camera.depthFar, as the renderer's far plane.
-        let depth_far =
-            sunrise_client::camera::depth_far(self.terrain_distance(), self.settings.cloud_range);
+        let depth_far = sunrise_client::camera::depth_far(
+            self.terrain_distance(),
+            self.side.settings.cloud_range,
+        );
         if !self
             .side
             .border_renderer
@@ -83,7 +85,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         reason: sunrise_client::level_loading::Reason,
     ) {
         use sunrise_client::level_loading::Reason;
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         match reason {
             // The panorama and its blur are drawn by the renderer.
@@ -192,7 +194,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     || self.dialog_open()
                     || (self.side.screen == Screen::Win && self.win_screen_pauses())))
             || self.side.screen_blur_requested.get();
-        let radius = self.settings.menu_blur as f32;
+        let radius = self.side.settings.menu_blur as f32;
         let mut radius = (blurred && radius >= 1.0).then_some(radius);
         self.native_menu_background(&mut radius);
         radius.filter(|r| r.is_finite() && (1.0..=64.0).contains(r))
@@ -208,7 +210,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut canceled = false;
         self.native_screen_transparent_background(screen, batch, &mut canceled);
         if !canceled {
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             batch.fill(
                 atlas,
                 0.0,

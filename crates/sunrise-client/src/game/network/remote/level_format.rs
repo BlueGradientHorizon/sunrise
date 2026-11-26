@@ -25,60 +25,6 @@ pub(in crate::game) struct LevelFormat {
     pub(in crate::game) synced_type: Option<(String, serde_json::Value)>,
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The environment attributes of the level the player is in, from its synchronized dimension
-    /// type, as `EnvironmentAttributeSystem.addDimensionLayer` takes `level.dimensionType()`'s
-    /// attributes (and `addDynamicLayers` its timelines): the type's attributes and timelines over
-    /// the client's own environment of that type, for gameplay, and over the packs' Polytone stack
-    /// of that type, whose modifiers then apply over them, for the frame. A built-in level is
-    /// included, so a data pack's Overworld reaches the frame; the base is the client's
-    /// environment of the same type, so the Nether and the End keep their own file's layers (no
-    /// weather) instead of the Overworld's. Only the three vanilla type IDs have a pack stack: a
-    /// mod's type is drawn without the packs' layers. Run again when the packs change.
-    ///
-    /// Building one reads every biome file, so both are kept by type name with the JSON and the
-    /// packs' stacks they were built from (`LevelEnvironments`): entering a level of an unchanged
-    /// type again (a respawn, a travel back) reuses them as kept, without cloning the JSON, and a
-    /// pack reload, which makes new stacks, builds only the frame's again, in the same entry.
-    pub(in crate::game) fn build_level_environments(&mut self) {
-        let stacks = self.pack.environments.as_ref();
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        let Some((name, json)) = &r.synced_type else {
-            r.level_environment = None;
-            r.level_pack_environment = None;
-            return;
-        };
-        if let Some(e) = r
-            .level_environments
-            .get_mut(name)
-            .filter(|e| e.json == *json)
-        {
-            if !same_stacks(e.stacks.as_ref(), stacks) {
-                e.pack = pack_environment(name, json, stacks);
-                e.stacks = stacks.map(Arc::downgrade);
-            }
-            r.level_environment = e.own.clone();
-            r.level_pack_environment = e.pack.clone();
-            return;
-        }
-        let own = Environment::with_type(self.res.environment_of(name), json).map(Arc::new);
-        let pack = pack_environment(name, json, stacks);
-        r.level_environments.insert(
-            name.clone(),
-            LevelEnvironments {
-                json: json.clone(),
-                own: own.clone(),
-                stacks: stacks.map(Arc::downgrade),
-                pack: pack.clone(),
-            },
-        );
-        r.level_environment = own;
-        r.level_pack_environment = pack;
-    }
-}
-
 /// The environments `Game::build_level_environments` built from one synchronized dimension type,
 /// and what they were built from.
 pub(in crate::game) struct LevelEnvironments {

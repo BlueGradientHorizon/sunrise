@@ -347,7 +347,7 @@ pub(in crate::game) mod tests {
                 );
             }
 
-            game.settings.language = "fr_fr".into();
+            game.side.settings.language = "fr_fr".into();
             let _publication = lang::isolate_publication(Language::of("es_es", []));
             let outer = game.client_session().client_language().unwrap();
             assert_eq!(outer.as_ref(), "es_es");

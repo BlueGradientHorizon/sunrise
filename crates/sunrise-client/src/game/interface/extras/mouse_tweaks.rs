@@ -65,7 +65,7 @@ struct Drag {
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The open screen is one the tweaks run in, with the extra on.
     pub(in crate::game::client_side) fn tweaks_on(&self) -> bool {
-        if !self.settings.extras.mouse_tweaks
+        if !self.side.settings.extras.mouse_tweaks
             || self.side.screen != Screen::Inventory
             || self.station.is_some()
             || self.mount_active()
@@ -209,7 +209,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         delta: f32,
         slot: Option<usize>,
     ) -> bool {
-        if !self.settings.extras.mouse_tweaks_wheel || !self.tweaks_on() || self.carried.is_some() {
+        if !self.side.settings.extras.mouse_tweaks_wheel
+            || !self.tweaks_on()
+            || self.carried.is_some()
+        {
             return false;
         }
         let Some(slot) = slot else {

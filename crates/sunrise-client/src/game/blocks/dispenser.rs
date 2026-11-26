@@ -14,17 +14,6 @@ use mod_api::SoundSource;
 #[allow(unused_imports)]
 use std::ops::ControlFlow;
 #[allow(unused_imports)]
-use sunrise_client::{
-    Result,
-    block_entities::BlockEntityIdentity,
-    collisions::SceneCollisions,
-    containers::BlockEntity,
-    items::{ItemStack, Items},
-    mobs::{Species, equip::equippable, sulfur_cube},
-    particles::{ParticleOptions, ParticleType},
-    projectiles::{Projectile, ProjectileKind},
-};
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
@@ -45,6 +34,16 @@ use sunrise_world::{
     fluid::FluidKind,
     level::{PlaceContext, PlacementSource},
     registry::BlockStateId,
+};
+#[allow(unused_imports)]
+use {
+    sunrise_client::Result, sunrise_client::block_entities::BlockEntityIdentity,
+    sunrise_client::collisions::SceneCollisions, sunrise_client::containers::BlockEntity,
+    sunrise_client::items::ItemStack, sunrise_client::items::Items, sunrise_client::mobs::Species,
+    sunrise_client::mobs::equip::equippable, sunrise_client::mobs::sulfur_cube,
+    sunrise_client::projectiles::Projectile, sunrise_client::projectiles::ProjectileKind,
+    sunrise_level::particle_options::ParticleOptions,
+    sunrise_level::particle_options::ParticleType,
 };
 
 /// A behaviour returns a detached stack; the dispenser applies the slot limit afterwards.

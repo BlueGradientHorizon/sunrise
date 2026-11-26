@@ -25,9 +25,8 @@ fn teleport_and_rotate_resolve_pitch_at_their_own_boundary() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

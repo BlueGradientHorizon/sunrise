@@ -6,12 +6,11 @@
 //! and each tick and the release of a use (`native_living_entity_use_item_tick`,
 //! `native_on_use_tick`, `native_living_entity_use_item_stop`, `native_release_using`).
 use super::{Game, shield::OFFHAND_SLOT};
-use sunrise_client::{
-    first_person::Hand,
-    items::{ItemInfo, ItemStack},
-    mobs::spear_use,
-};
 use sunrise_core::use_animation::UseAnimation;
+use {
+    sunrise_client::items::ItemInfo, sunrise_client::items::ItemStack,
+    sunrise_client::mobs::spear_use, sunrise_sim::first_person_sim::Hand,
+};
 
 thread_local! {
     /// The items whose `use_animation` Part is being asked on this thread, innermost last: one
@@ -34,7 +33,7 @@ impl Drop for AskingUseAnimation {
 
 #[derive(Clone, Copy)]
 pub(in crate::game) enum ItemUseState {
-    Spear(sunrise_client::spear::UseTiming),
+    Spear(sunrise_sim::spear_sim::UseTiming),
     Other(UseAnimation),
 }
 
@@ -984,9 +983,8 @@ pub(in crate::game) mod interact_vibration_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

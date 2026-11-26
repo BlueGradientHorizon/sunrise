@@ -5,7 +5,7 @@ use sunrise_client::fast_hash::FxHashMap;
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Query dynamic light emission for chunks newly loaded into this level.
     pub(in crate::game) fn ask_loaded_light_emission(&mut self) {
-        if !self.pack.context.light.any_dynamic() {
+        if !self.pack.chunk_context.light.any_dynamic() {
             return;
         }
         for i in 0..self.world.loaded_chunks.len() {
@@ -21,7 +21,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             return;
         };
         let pending = chunk.dynamic_pending;
-        let cells = self.pack.context.light.dynamic_cells(chunk, |_| true);
+        let cells = self.pack.chunk_context.light.dynamic_cells(chunk, |_| true);
         if cells.is_empty() && !pending {
             return;
         }
@@ -57,14 +57,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Query dynamic-light cells affected by this update's light edits before relighting.
     pub(in crate::game) fn ask_edited_light_emission(&mut self) {
         self.world.light_checks.clear();
-        if self.world.light_edits.is_empty() || !self.pack.context.light.any_dynamic() {
+        if self.world.light_edits.is_empty() || !self.pack.chunk_context.light.any_dynamic() {
             return;
         }
         let dimension = self.current_light_emission_dimension();
         for i in 0..self.world.light_edits.len() {
             let ((x, y, z), _, _) = self.world.light_edits[i];
             let state = self.world.block(x, y, z).0;
-            if !self.pack.context.light.is_dynamic(state) {
+            if !self.pack.chunk_context.light.is_dynamic(state) {
                 continue;
             }
             let emission = self.ask_light_emission(dimension, x, y, z, state);

@@ -20,7 +20,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             listened,
             now,
         } = *frame;
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // LevelRenderer: the entity the view looks out of is not drawn
         // in first person.
@@ -88,7 +88,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             let Some(bounds) = super::super::entity_client::mob_render_bounds(
                 mob,
-                self.res.client_mob_models(),
+                self.client_res().client_mob_models(),
                 alpha,
             ) else {
                 return;

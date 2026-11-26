@@ -263,7 +263,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let modded =
             self.mod_living_renderer_geometry(mob, partial, camera, FULL_BRIGHT, false, out);
         let mut frame_draw = FrameDraw::new(!modded && added.is_some());
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // A screen's entity: custom entity model animations see is_in_gui = 1.
         sunrise_client::mobs::cem_anim::in_gui(|| {

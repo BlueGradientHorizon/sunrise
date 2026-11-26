@@ -29,7 +29,7 @@ pub(in crate::game) mod tests {
             &settings,
             std::time::Instant::now(),
             false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!("no menu handoff"),
         )
@@ -40,7 +40,9 @@ pub(in crate::game) mod tests {
         let res = &*resources.insert(loaded.resources);
         let mut game = crate::game::ClientGame::new(
             res,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,

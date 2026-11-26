@@ -45,7 +45,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.add_server_report_toasts();
         self.add_hook_panic_toasts();
         self.update_tutorial_toasts();
-        let multiplier = self.settings.notification_display_time;
+        let multiplier = self.side.settings.notification_display_time;
         let (visibility_sound, challenge_sound) = self.side.toast_manager.update(multiplier);
         if let Some(show) = visibility_sound {
             let event = if show {
@@ -61,7 +61,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .0
                 .play("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         for entry in &self.side.toast_manager.visible {
             let y = entry.slot as f32 * 32.0;
             match &entry.toast {

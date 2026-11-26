@@ -26,7 +26,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         self.set_view_distance(distance);
-        self.settings.render_distance = distance;
+        self.side.settings.render_distance = distance;
         true
     }
     /// `PlayerList.setSimulationDistance` on a dedicated server.
@@ -35,7 +35,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         self.set_simulation_distance(distance);
-        self.settings.simulation_distance = distance;
+        self.side.settings.simulation_distance = distance;
         true
     }
 }
@@ -68,7 +68,7 @@ mod tests {
             assert!(!game.server_set_simulation_distance(33));
             assert_eq!(game.server_view_distance(), Some(6));
             assert_eq!(game.server_simulation_distance(), Some(5));
-            assert_eq!(game.settings.simulation_distance, 5);
+            assert_eq!(game.side.settings.simulation_distance, 5);
         });
     }
 

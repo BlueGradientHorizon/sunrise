@@ -16,7 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.mods
             .applied
             .clone()
-            .unwrap_or_else(|| self.settings.mods.enabled.clone())
+            .unwrap_or_else(|| self.side.settings.mods.enabled.clone())
     }
 
     pub(in crate::game) fn client_set_audio_loop_context(
@@ -72,7 +72,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(applied) = self.mods.applied.clone() else {
             return;
         };
-        let wanted = self.settings.mods.enabled.clone();
+        let wanted = self.side.settings.mods.enabled.clone();
         // Ordinary native mods' `mod.<id>` lines switch live (`sync_native_switches`);
         // a serving host bound to active or withheld `served_by` packages, and any content
         // mod with blocks, items, worldgen, or `served_by`, keep their startup state until
@@ -95,7 +95,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let (_, host_waiting) = self
             .mods
-            .reconcile_code_switches(&self.settings.mods.disabled);
+            .reconcile_code_switches(&self.side.settings.mods.disabled);
         for id in host_waiting {
             log::info!("Sunrise: serving host mod {id} needs a restart to switch");
             if !waiting.contains(&id) {

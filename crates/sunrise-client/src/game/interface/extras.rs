@@ -110,7 +110,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let layers = sunrise_hooks::hud::engine::all();
         if !layers.is_empty() {
             let shown = Corner::ALL.map(|corner| !(self.side.debug && corner == Corner::TopLeft));
-            extras_hud::draw_layers(layers, batch, &self.gui.atlas, corners, shown);
+            extras_hud::draw_layers(layers, batch, &self.side.gui.atlas, corners, shown);
         }
     }
     /// The height the status effect icons take at the top right

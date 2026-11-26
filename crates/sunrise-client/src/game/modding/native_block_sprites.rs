@@ -21,7 +21,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         blocks
             .iter()
             .map(|state| {
-                self.pack.context.assets.registry.state(*state)?;
+                self.side
+                    .client_pack
+                    .context
+                    .chunk
+                    .assets
+                    .registry
+                    .state(*state)?;
                 Some(lookup.state(*state))
             })
             .collect()
@@ -34,7 +40,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .stitching_block_atlas
             .0
             .as_ref()
-            .unwrap_or(&self.pack.render);
+            .unwrap_or(&self.side.client_pack.render);
         let split = self
             .side
             .renderer
@@ -59,8 +65,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             resolver,
             &self.tint_region(pos),
             self.mesh_biomes(),
-            self.streaming.biome_zoom,
-            self.streaming.biome_blend,
+            self.side.streaming.biome_zoom,
+            self.side.streaming.biome_blend,
         ))
     }
 
@@ -80,31 +86,33 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let region = self.tint_region(pos);
         let biomes = self.mesh_biomes();
         let block = self
-            .pack
+            .side
+            .client_pack
             .context
+            .chunk
             .assets
             .registry
             .state(state)
             .map_or("", |s| s.name.as_str());
         if let Some((_, tint, _)) = sunrise_client::block_sprites::fluid_faces(block) {
             return (tint.is_some() && tint_index == 0).then(|| {
-                self.pack.context.tables.water_tint(
+                self.side.client_pack.context.mesh.tables.water_tint(
                     pos,
                     &region,
                     biomes,
-                    self.streaming.biome_zoom,
-                    self.streaming.biome_blend,
+                    self.side.streaming.biome_zoom,
+                    self.side.streaming.biome_blend,
                 )
             });
         }
-        let tints = self.pack.context.tables.block_tints(
+        let tints = self.side.client_pack.context.mesh.tables.block_tints(
             state,
             pos,
             &region,
             biomes,
-            self.streaming.biome_zoom,
-            self.streaming.biome_blend,
-            self.streaming.nether_shading,
+            self.side.streaming.biome_zoom,
+            self.side.streaming.biome_blend,
+            self.side.streaming.nether_shading,
         );
         tints(tint_index)
     }
@@ -129,7 +137,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .stitching_block_atlas
             .0
             .as_ref()
-            .unwrap_or(&self.pack.render)
+            .unwrap_or(&self.side.client_pack.render)
             .generation
     }
     /// For a client mod: where GUI sprite `sprite` lies in the GUI atlas and its size, none for one the atlas lacks
@@ -137,9 +145,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// sprites by GUI id: `container/slot` or `minecraft:container/slot`, a mod's `mymod:panel`.
     pub(in crate::game) fn gui_sprite(&self, sprite: &Identifier) -> Option<AtlasRegion> {
         let found = if sprite.namespace() == "minecraft" {
-            self.gui.atlas.gui_lookup(sprite.path())
+            self.side.gui.atlas.gui_lookup(sprite.path())
         } else {
-            self.gui.atlas.gui_lookup(&sprite.to_string())
+            self.side.gui.atlas.gui_lookup(&sprite.to_string())
         };
         let Some(sunrise_client::hud::GuiSprite::Present { rect: r, .. }) = found else {
             return None;
@@ -154,7 +162,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or(u32::MAX, |r| r.sprite_split());
-        Lookup::new(&self.pack.context, split, &self.pack.layer_names)
+        Lookup::new(
+            &self.side.client_pack.context,
+            split,
+            &self.side.client_pack.layer_names,
+        )
     }
 }
 
@@ -614,7 +626,7 @@ mod biome_tint_tests {
                     }
                 }
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
-                game.streaming.biome_blend = 1;
+                game.side.streaming.biome_blend = 1;
 
                 // Stock server biome definitions do not install a world-specific table.
                 assert!(game.world_biomes.is_none());
@@ -644,7 +656,10 @@ mod biome_tint_tests {
             );
 
             let worker = game.worker_context();
-            let plains = worker.biomes.get(worker.biomes.id("minecraft:plains"));
+            let plains = worker
+                .chunk
+                .biomes
+                .get(worker.chunk.biomes.id("minecraft:plains"));
             assert_eq!((plains.grass, plains.foliage), (GRASS, FOLIAGE));
         });
     }
@@ -677,7 +692,7 @@ mod block_tint_color_tests {
     #[ignore = "daily"]
     fn a_tinted_face_takes_its_colour_where_it_stands() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            let registry = game.pack.context.assets.registry;
+            let registry = game.side.client_pack.context.chunk.assets.registry;
             let grass = registry.default_state("minecraft:grass_block").unwrap();
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();
@@ -744,27 +759,32 @@ mod block_tint_color_tests {
                     .unwrap(),
             );
             let source = ResourceSource::directory(root.clone());
-            let old = &game.pack.context;
+            let old = &game.side.client_pack.context;
             let tables = sunrise_client::mesher::MeshTables::new(
-                &old.assets,
-                &old.render,
+                &old.chunk.assets,
+                &old.mesh.render,
                 game.res.facts(),
                 sunrise_client::models::load_visibility(&game.options.resources, registry).unwrap(),
                 None,
             )
             .unwrap()
             .with_polytone_colormaps(&source, registry);
-            game.pack.context = Arc::new(sunrise_client::streaming::WorkerContext {
-                assets: old.assets.clone(),
-                render: old.render.clone(),
-                tables: Arc::new(tables),
-                biomes: biomes.clone(),
-                light: old.light.clone(),
-                hidden_states: old.hidden_states.clone(),
-                part_tables: old.part_tables.clone(),
-            });
+            game.side.client_pack.context =
+                Arc::new(sunrise_client_render::streaming::WorkerContext {
+                    chunk: sunrise_level::chunk_streamer::ChunkWorkerContext {
+                        assets: old.chunk.assets.clone(),
+                        biomes: biomes.clone(),
+                        light: old.chunk.light.clone(),
+                    },
+                    mesh: sunrise_client_render::streaming::MeshWorkerContext {
+                        render: old.mesh.render.clone(),
+                        tables: Arc::new(tables),
+                        hidden_states: old.mesh.hidden_states.clone(),
+                        part_tables: old.mesh.part_tables.clone(),
+                    },
+                });
             game.world_biomes = Some(biomes.clone());
-            game.streaming.biome_blend = 0;
+            game.side.streaming.biome_blend = 0;
             game.world.chunks.clear();
             for (cx, name) in [(0, "minecraft:plains"), (4, "minecraft:cool")] {
                 for dz in -1..=1 {

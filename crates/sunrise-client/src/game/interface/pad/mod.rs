@@ -273,7 +273,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn glyph(&self, of: impl Into<GlyphOf>) -> Option<Glyph> {
         Glyph::of(
             of.into(),
-            &self.settings.controller,
+            &self.side.settings.controller,
             self.side.chat_ui.options.pad_glyphs,
         )
     }
@@ -290,7 +290,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             focused: self.side.focused,
             osk: self.pad_keyboard_captures(),
             dialog: self.dialog_open() || self.side.code_of_conduct.is_some(),
-            enabled: self.settings.controller.enabled,
+            enabled: self.side.settings.controller.enabled,
         }
     }
 
@@ -305,7 +305,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.pad_cancel_inputs(event_loop);
         }
         self.side.pad.0.context = Some(context);
-        if !self.settings.controller.enabled {
+        if !self.side.settings.controller.enabled {
             self.pad_output_off();
             self.pad_cancel_inputs(event_loop);
             // The radial menu closed with the pad: its overlay fades out, as for a cancel.
@@ -327,7 +327,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             self.side.pad.0.read()
         };
-        let hardware = if self.side.pad.0.by_letter(&self.settings.controller) {
+        let hardware = if self.side.pad.0.by_letter(&self.side.settings.controller) {
             hardware.by_letter()
         } else {
             hardware
@@ -348,7 +348,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.pad_connection_notice(change);
         }
         self.side.chat_ui.options.pad_glyphs =
-            Glyphs::of(&self.settings.controller, self.side.pad.0.style);
+            Glyphs::of(&self.side.settings.controller, self.side.pad.0.style);
         self.side.chat_ui.options.pad_driving = self.side.pad.0.in_use && self.pad_focus_mode();
         let mut state = hardware.merge(&self.side.pad.0.injected);
         let activity = self
@@ -356,10 +356,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .pad
             .0
             .activity
-            .observe(&state, &self.settings.controller);
+            .observe(&state, &self.side.settings.controller);
         for (i, (stick, deadzone)) in [
-            (&mut state.left, self.settings.controller.move_deadzone),
-            (&mut state.right, self.settings.controller.look_deadzone),
+            (&mut state.left, self.side.settings.controller.move_deadzone),
+            (
+                &mut state.right,
+                self.side.settings.controller.look_deadzone,
+            ),
         ]
         .into_iter()
         .enumerate()
@@ -375,7 +378,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for button in std::mem::take(&mut self.side.pad.0.taps) {
             self.side.pad.0.injected.set(button, false);
         }
-        let threshold = self.settings.controller.trigger_threshold;
+        let threshold = self.side.settings.controller.trigger_threshold;
         let edges = self.side.pad.0.edges.update(&state, threshold);
         if activity && self.pad_focused() {
             self.side.last_input = Instant::now();
@@ -476,11 +479,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let held_sticks = [
             gamepad::radial(
                 self.side.pad.0.state.left,
-                self.settings.controller.move_deadzone,
+                self.side.settings.controller.move_deadzone,
             ) != [0.0; 2],
             gamepad::radial(
                 self.side.pad.0.state.right,
-                self.settings.controller.look_deadzone,
+                self.side.settings.controller.look_deadzone,
             ) != [0.0; 2],
         ];
         for (blocked, held) in self.side.pad.0.blocked_sticks.iter_mut().zip(held_sticks) {
@@ -529,13 +532,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The window has focus, or the player lets the pad play without it (Play in Background).
     pub(in crate::game::client_side) fn pad_has_window(&self) -> bool {
-        self.side.focused || self.settings.controller.play_in_background
+        self.side.focused || self.side.settings.controller.play_in_background
     }
 
     /// Losing focus doesn't pause a game the pad is playing in the background.
     pub(in crate::game::client_side) fn pad_keeps_playing_unfocused(&self) -> bool {
-        self.settings.controller.enabled
-            && self.settings.controller.play_in_background
+        self.side.settings.controller.enabled
+            && self.side.settings.controller.play_in_background
             && self.side.pad.0.in_use
     }
 
@@ -576,7 +579,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Releases always reach the mappings, so nothing stays held when a
         // screen opened in between.
         let actions = if down {
-            let mut actions = self.settings.controller.actions_of(button);
+            let mut actions = self.side.settings.controller.actions_of(button);
             // An opener sharing its button (marked in the binds list) has it to
             // itself wherever it can open, and gives it up elsewhere.
             if actions.contains(&gamepad::RADIAL) {
@@ -624,7 +627,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Ok(())
             }
             Route::Sneak
-                if self.settings.controller.toggle_sneak && !self.settings.toggle_crouch =>
+                if self.side.settings.controller.toggle_sneak
+                    && !self.side.settings.toggle_crouch =>
             {
                 // A stick click flips sneaking instead of holding it, as
                 // vanilla's toggle crouch does: a screen opening releases it
@@ -698,7 +702,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Route::Key(KeyCode::KeyQ) => {
                 self.side.pad.0.drop_stack = false;
                 self.side.pad.0.held_drop = down.then(|| {
-                    let delay = self.settings.controller.repeat_delay;
+                    let delay = self.side.settings.controller.repeat_delay;
                     gamepad::HeldDrop::new(Instant::now(), Duration::from_secs_f32(delay))
                 });
                 self.mapped_key(KeyCode::KeyQ, down, false, KeyCode::KeyQ, Source::Pad)
@@ -712,7 +716,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.pad_in_menu() || self.screen_over_playing() || self.pad_radial_captures() {
             return;
         }
-        let interval = Duration::from_secs_f32(self.settings.controller.repeat_interval);
+        let interval = Duration::from_secs_f32(self.side.settings.controller.repeat_interval);
         let step = self
             .side
             .pad
@@ -769,7 +773,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The left stick as the move vector, while playing.
     pub(in crate::game::client_side) fn pad_move(&self) -> Option<[f32; 2]> {
-        let settings = &self.settings.controller;
+        let settings = &self.side.settings.controller;
         if !settings.enabled
             || self.pad_in_menu()
             || !self.pad_focused()
@@ -806,7 +810,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The right stick turns the view, once per frame (`Entity.turn`).
     pub(in crate::game::client_side) fn pad_look(&mut self, seconds: f32) {
-        let settings = &self.settings.controller;
+        let settings = &self.side.settings.controller;
         if !settings.enabled
             || self.pad_in_menu()
             || self.player.is_none()
@@ -839,7 +843,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Vibrate the active pad, when vibration is on and the pad is the one
     /// playing (a pad lying idle while the mouse plays stays still).
     pub(in crate::game::client_side) fn pad_rumble(&mut self, rumble: Rumble) {
-        let settings = &self.settings.controller;
+        let settings = &self.side.settings.controller;
         if !settings.enabled || !settings.vibration || !self.side.pad.0.in_use {
             return;
         }
@@ -856,7 +860,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if matches!(change, Connection::Disconnected { active: true }) {
             self.side.pad.0.in_use = false;
         }
-        if !self.settings.controller.enabled {
+        if !self.side.settings.controller.enabled {
             return;
         }
         let label = sunrise_client::lang::get;
@@ -868,7 +872,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // In the new pad's own glyphs, its letters included: pressed, it plays.
             .with_glyph(Glyph::menu(
                 MenuJob::Confirm,
-                Glyphs::of(&self.settings.controller, family),
+                Glyphs::of(&self.side.settings.controller, family),
             )),
             Connection::Disconnected { .. } => Notice::new(
                 label("sunrise.controller.notice.controller_disconnected"),
@@ -880,10 +884,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Connection notices sit below the boss bars and last as long as a toast.
     pub(in crate::game::client_side) fn draw_controller_notice(&mut self, batch: &mut HudBatch) {
-        let shown_for = Duration::from_secs_f64(5.0 * self.settings.notification_display_time);
+        let shown_for = Duration::from_secs_f64(5.0 * self.side.settings.notification_display_time);
         self.side.controller_notice.draw(
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             self.side.chat_ui.room.below_top(18.0),
             shown_for,
         );
@@ -914,7 +918,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .map(Button::name)
                     .collect();
                 let mut status = json!({
-                    "enabled": self.settings.controller.enabled,
+                    "enabled": self.side.settings.controller.enabled,
                     "glyphs": self.side.pad.0.style.name(),
                     "last_rumble": self.side.pad.0.last_rumble.map(|(why, p)| json!({
                         "reason": why, "strong": p.strong, "weak": p.weak, "ms": p.millis,

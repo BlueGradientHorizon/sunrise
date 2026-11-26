@@ -12,11 +12,10 @@ use mod_api::{
     CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
     ItemStackView, LivingRef, MenuSlotBacking, TransactionContext,
 };
-use sunrise_client::{
-    first_person::Hand,
-    items::{ItemStack, Items},
-    menu::Menu,
-    mobs::finalize::{self, EquipmentRead},
+use {
+    sunrise_client::items::ItemStack, sunrise_client::items::Items, sunrise_client::menu::Menu,
+    sunrise_client::mobs::finalize, sunrise_client::mobs::finalize::EquipmentRead,
+    sunrise_sim::first_person_sim::Hand,
 };
 
 /// An occupied inventory cell, addressed within the resolved player's own storage.

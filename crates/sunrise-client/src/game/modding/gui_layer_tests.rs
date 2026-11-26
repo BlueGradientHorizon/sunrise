@@ -464,7 +464,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             .into(),
         );
         mods::register_gui_layers(ExecutionRole::Client);
-        let mut batch = HudBatch::new([320, 240], game.settings.gui_scale_inputs());
+        let mut batch = HudBatch::new([320, 240], game.side.settings.gui_scale_inputs());
 
         // Simulate the HUD paint sites with the crosshair skipped (third person).
         // Its wrapper doesn't draw, but both neighboring layers still do.
@@ -605,13 +605,13 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
             let green = rgba(0, 255, 0, 255);
             let yellow = rgba(255, 255, 0, 255);
             let mut paint_calls = 0;
-            batch.fill(&game.gui.atlas, 0.0, 0.0, 4.0, 4.0, white);
+            batch.fill(&game.side.gui.atlas, 0.0, 0.0, 4.0, 4.0, white);
             game.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |g, batch| {
                 log("vanilla paint");
                 let start = batch.vertices.len();
                 let color = [green, yellow][paint_calls];
                 paint_calls += 1;
-                batch.fill(&g.gui.atlas, 0.0, 0.0, 4.0, 4.0, color);
+                batch.fill(&g.side.gui.atlas, 0.0, 0.0, 4.0, 4.0, color);
                 batch.invert_since(start);
             });
             assert_eq!(
@@ -893,7 +893,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
     with_client_game(|game| {
         mods::register_gui_layers(ExecutionRole::Client);
         enter_test_world(game);
-        game.settings.main_hand_left = false;
+        game.side.settings.main_hand_left = false;
         game.selected = 0;
         game.inventory[1] = Some(ItemStack::new("minecraft:stick", 1));
         game.clock
@@ -973,7 +973,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
             // A client of a server takes its mode from the server: only its local mode changes.
             game.set_local_mode(mode);
             game.side.chat_ui.hide_gui = frame.variant == Variant::Hidden;
-            game.settings.attack_indicator = match frame.variant {
+            game.side.settings.attack_indicator = match frame.variant {
                 Variant::Off => 0,
                 Variant::Crosshair => 1,
                 _ => 2,
@@ -1025,7 +1025,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
             // Read screen and source rectangles, keyed by the sprite atlas coordinates.
             type Quad = ([[f32; 2]; 2], [[i32; 2]; 2]);
             let assert_sprite = |sprite, expected: Option<Quad>| {
-                let r = *game.gui.atlas.gui_rect(sprite).unwrap();
+                let r = *game.side.gui.atlas.gui_rect(sprite).unwrap();
                 // Integer atlas pixels come back exactly once the f32 UV quantisation is rounded off.
                 let source = |[u, v]: [f32; 2]| {
                     [
@@ -1189,7 +1189,7 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
             assert_eq!(take(), screen_events, "title Options has no HUD walk");
 
             enter_test_world(game);
-            let rect = game.gui.atlas.gui_rect("hud/hotbar").unwrap();
+            let rect = game.side.gui.atlas.gui_rect("hud/hotbar").unwrap();
             let hotbar_uv = [rect.u0, rect.v0];
             let has_hotbar = |frame: &HudBatch| {
                 frame
@@ -1339,11 +1339,12 @@ fn f1_subtitles_paint_in_the_container_background_without_redispatch() {
                     vec![ModEntry::new("observer", Box::new(Observer))].into(),
                 );
                 enter_test_world(game);
-                game.settings.show_subtitles = true;
-                game.settings
+                game.side.settings.show_subtitles = true;
+                game.side
+                    .settings
                     .file
                     .set("backgroundForChatOnly", V::Bool(false));
-                game.settings.text_background_opacity = 0.4;
+                game.side.settings.text_background_opacity = 0.4;
                 let size = [640, 480];
                 game.hud(size); // Start listening before the sound plays.
                 assert_eq!(take(), ["subtitle pre", "subtitle post"]);
@@ -1539,6 +1540,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                     panic!("one shared error toast per panicking listener");
                 };
                 let rect = *game
+                    .side
                     .gui
                     .atlas
                     .sprites
@@ -1662,6 +1664,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             assert_ne!(ordinary_y, error_y);
             toast.slide.origin = Some(slide_started);
             let rect = *game
+                .side
                 .gui
                 .atlas
                 .sprites

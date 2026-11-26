@@ -62,7 +62,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }) {
             return own;
         }
-        match (&self.pack.environments, self.dim) {
+        match (&self.side.client_pack.environments, self.dim) {
             (Some(e), Dim::Overworld) => &e[0],
             (Some(e), Dim::Nether) => &e[1],
             (Some(e), Dim::End) => &e[2],
@@ -74,11 +74,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// any, with what it is.
     pub(in crate::game) fn end_flash_geometry(&self) -> (Vec<Vertex>, Vec<CelestialBody>) {
         // The old combined sky/flash draw also skipped the flash without a sky sprite.
-        if !self.gui.atlas.sprites.contains_key("environment/end_sky") {
+        if !self
+            .side
+            .gui
+            .atlas
+            .sprites
+            .contains_key("environment/end_sky")
+        {
             return (Vec::new(), Vec::new());
         }
         let intensity = self.end.flash.intensity(self.clock.fraction() as f32);
         let sprite = self
+            .side
             .gui
             .atlas
             .sprites
@@ -163,7 +170,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// ThrownItemRenderer: the ender eye item facing the camera.
     pub(in crate::game) fn eye_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
-        let Some(r) = self.gui.atlas.sprites.get("item/ender_eye").copied() else {
+        let Some(r) = self.side.gui.atlas.sprites.get("item/ender_eye").copied() else {
             return;
         };
         let alpha = self.clock.fraction();
@@ -191,6 +198,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let model = self.side.crystal_model.as_ref()?;
         let r = self
+            .side
             .gui
             .atlas
             .sprites
@@ -210,7 +218,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         partial: f64,
     ) {
         if self.dimension_type().skybox == sunrise_world::dimension_type::Skybox::End
-            && !self.settings.file.bool("hideLightningFlashes")
+            && !self.side.settings.file.bool("hideLightningFlashes")
         {
             let intensity = self.end.flash.intensity(partial as f32);
             sky.sky_light_factor += if self.side.boss_overlay.should_create_world_fog() {
@@ -300,7 +308,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let flash = &self.end.flash;
             let instance = sunrise_client::sound_engine::SoundInstance::directional(
                 "minecraft:weather.end_flash",
-                sunrise_client::sound_engine::WEATHER,
+                sunrise_client_core::sound_source::WEATHER,
                 sunrise_client::random_source::create(),
                 self.side.audio.0.listener,
                 flash.x_angle,

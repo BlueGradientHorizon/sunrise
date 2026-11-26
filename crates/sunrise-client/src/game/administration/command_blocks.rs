@@ -82,7 +82,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )
         });
         let block = self.command_block(pos).cloned();
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -123,7 +123,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         conditional: bool,
     ) {
         let (w, h) = self.gui_size();
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -135,7 +135,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (pos, cart),
             &block,
             (mode, conditional),
-            self.settings.auto_suggestions,
+            self.side.settings.auto_suggestions,
             std::time::Instant::now(),
         );
         self.side.command_block_screen.0 = Some(screen);
@@ -170,7 +170,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 None => info,
             }
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         let mid = (w / 2.0).floor();
         // Screen.extractBackground of an isInGameUi screen: the dimmed world,
@@ -283,7 +283,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(mut s) = self.side.command_block_screen.0.take() else {
             return;
         };
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -297,7 +297,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // CommandSuggestions.mouseClicked first, then the command box.
         {
-            let m = Measure(&self.gui.atlas.font);
+            let m = Measure(&self.side.gui.atlas.font);
             let c = Commands {
                 dispatcher: super::chat::chat_tree(&self.remote),
                 registries: &self.ui.registries,
@@ -315,7 +315,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let fallback;
         let buttons = match self.built_command_block(b.width, b.height) {
             Some(layout) => &layout.buttons,
@@ -372,7 +372,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(mut s) = self.side.command_block_screen.0.take() else {
             return false;
         };
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -424,7 +424,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(mut s) = self.side.command_block_screen.0.take() else {
             return;
         };
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -483,7 +483,7 @@ pub(in crate::game) mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.side.title.0 = None;
             // 1280x720 at GUI scale 3 is 427x240.
-            game.settings.gui_scale = 3;
+            game.side.settings.gui_scale = 3;
             let block = CommandBlock::default;
             game.open_edit_screen((0, 0, 0), None, block(), Mode::Redstone, false);
             assert_eq!(game.side.screen, Screen::CommandBlock);
@@ -522,7 +522,7 @@ pub(in crate::game) mod tests {
                 ])
             );
             // GUI scale 1 (1280x720): the build moves both boxes and the buttons.
-            game.settings.gui_scale = 1;
+            game.side.settings.gui_scale = 1;
             game.build_screen();
             assert_eq!(
                 boxes(game),

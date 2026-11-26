@@ -2555,7 +2555,11 @@ pub(in crate::game) mod fake_action_tests {
             let shulker = [1, 64, 0];
             place(game, shulker, "minecraft:shulker_box");
             let count = |game: &crate::game::ServerGame<'_>| {
-                game.be_anims.shulkers.get(&shulker).map(|s| s.open_count)
+                game.side
+                    .be_anims
+                    .shulkers
+                    .get(&shulker)
+                    .map(|s| s.open_count)
             };
             assert_eq!(
                 game.player_perform_action(player, on_top(shulker)),

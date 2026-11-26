@@ -58,12 +58,12 @@ mod typed_state_range_read_tests {
         // Use actual streaming and forced-ticket paths, never a lit/status override.
         game.world.chunks.remove(&(0, 0));
         // Game::new pauses its placeholder streamer until world opening.
-        game.streaming.paused = false;
+        game.side.streaming.paused = false;
         assert!(game.run_command("forceload add 0 0 15 15"));
         game.update_chunk_tickets();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-        while !game.streaming.is_lit(0, 0) || !game.world.chunks.contains_key(&(0, 0)) {
-            let _ = game.streaming.update(&mut game.world);
+        while !game.side.streaming.is_lit(0, 0) || !game.world.chunks.contains_key(&(0, 0)) {
+            let _ = game.side.streaming.update(&mut game.world);
             game.spawn_loaded_entities();
             assert!(
                 std::time::Instant::now() < deadline,
@@ -222,12 +222,12 @@ mod typed_state_range_read_tests {
         // Use actual streaming and forced-ticket paths, never a lit/status override.
         game.world.chunks.remove(&(0, 0));
         // Game::new pauses its placeholder streamer until world opening.
-        game.streaming.paused = false;
+        game.side.streaming.paused = false;
         assert!(game.run_command("forceload add 0 0 15 15"));
         game.update_chunk_tickets();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-        while !game.streaming.is_lit(0, 0) || !game.world.chunks.contains_key(&(0, 0)) {
-            let _ = game.streaming.update(&mut game.world);
+        while !game.side.streaming.is_lit(0, 0) || !game.world.chunks.contains_key(&(0, 0)) {
+            let _ = game.side.streaming.update(&mut game.world);
             game.spawn_loaded_entities();
             assert!(
                 std::time::Instant::now() < deadline,

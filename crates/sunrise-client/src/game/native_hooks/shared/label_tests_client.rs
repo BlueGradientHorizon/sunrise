@@ -52,7 +52,7 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                 assert!(game.draw_native_screen(&mut actual, ox, oy));
                 let mut expected = HudBatch::scratch([512, 512]);
                 expected.text(
-                    &game.gui.atlas,
+                    &game.side.gui.atlas,
                     &game.translate_with_fallback("container.inventory", "Inventory"),
                     ox + 8.0,
                     oy + label_y,
@@ -96,7 +96,7 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                 let mut expected = HudBatch::scratch([512, 512]);
                 if !own_labels {
                     expected.text_styled(
-                        &game.gui.atlas,
+                        &game.side.gui.atlas,
                         &title,
                         ox + title_expected[0],
                         oy + title_expected[1],
@@ -104,7 +104,7 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                         false,
                     );
                     expected.text(
-                        &game.gui.atlas,
+                        &game.side.gui.atlas,
                         &game.translate_with_fallback("container.inventory", "Inventory"),
                         ox + inventory_expected[0],
                         oy + inventory_expected[1],

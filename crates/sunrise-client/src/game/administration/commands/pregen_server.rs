@@ -72,7 +72,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 let (progress, dim) = (task.progress(), task.dim);
                 if pause && self.dim == dim {
-                    self.streaming.set_band(None);
+                    self.side.streaming.set_band(None);
                 }
                 self.feedback(
                     Text::literal(if pause { "Paused. " } else { "Continuing. " }).append(progress),
@@ -88,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .take()
                     .ok_or_else(|| failure("No pregeneration is running"))?;
                 if self.dim == task.dim {
-                    self.streaming.set_band(None);
+                    self.side.streaming.set_band(None);
                 }
                 self.feedback(Text::literal("Cancelled. ").append(task.progress()));
                 Ok(task.pregen.done as i32)
@@ -144,13 +144,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let viewed = self.viewed_level(self.dim).is_some();
         let mut idle = Duration::ZERO;
         while self.pregen_runs_here()
-            || ((players || viewed || !self.streaming.forced.is_empty()) && self.streaming.busy())
+            || ((players || viewed || !self.side.streaming.forced.is_empty())
+                && self.side.streaming.busy())
         {
             let now = Instant::now();
             if now >= until {
                 break;
             }
             idle += self
+                .side
                 .streaming
                 .wait((until - now).min(Duration::from_millis(5)));
             self.server_update_world();
@@ -171,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A row is done once its chunks are lit and post-processed
         // (`postprocess_chunks`, on the tick), as vanilla's are by the time
         // they are FULL: then they may unload and be saved.
-        let (streaming, chunks) = (&mut self.streaming, &self.world.chunks);
+        let (streaming, chunks) = (&mut self.side.streaming, &self.world.chunks);
         if task.pregen.advance(|x, z| {
             streaming.is_lit(x, z)
                 && chunks

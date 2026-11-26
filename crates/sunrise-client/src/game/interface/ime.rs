@@ -244,7 +244,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// input method's candidate window to the caret
     /// (`TextInputManager.setTextInputArea`, in window pixels).
     pub(in crate::game::client_side) fn flush_ime(&mut self, hud: &mut HudBatch) {
-        preedit::draw_overlay(hud, &self.gui.atlas);
+        preedit::draw_overlay(hud, &self.side.gui.atlas);
         let Some([x0, y0, x1, y1]) = preedit::take_text_input_area() else {
             return;
         };
@@ -315,7 +315,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Screen::CommandBlock => self.command_block_type(text),
                 Screen::Social => self.social_type(text),
                 Screen::DebugOptions => self.debug_options_type(text),
-                Screen::Options => self.side.chat_ui.options.type_text(&self.gui.atlas, text),
+                Screen::Options => self
+                    .side
+                    .chat_ui
+                    .options
+                    .type_text(&self.side.gui.atlas, text),
                 Screen::WorldOptions => self.world_options_text(Some(text)),
                 Screen::BlockEditor => self.block_editor_type(text),
                 Screen::Inventory | Screen::Creative if self.mod_browser_typing() => {

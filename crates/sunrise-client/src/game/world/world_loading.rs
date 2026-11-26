@@ -1,6 +1,7 @@
 //! Prepare local worlds without blocking the window's event loop.
 use super::*;
 use sunrise_client::vanillagen::TerrainResources;
+use sunrise_level::{chunk_streamer::ChunkStreamer, sim_settings::SimSettings};
 
 pub(in crate::game) struct WorldRequest {
     pub save_root: PathBuf,
@@ -8,7 +9,7 @@ pub(in crate::game) struct WorldRequest {
     pub name: Option<String>,
     pub seed: Option<i64>,
     pub creative: bool,
-    pub create: Option<sunrise_client::title::WorldOptions>,
+    pub create: Option<sunrise_sim::world_options::WorldOptions>,
     pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
     /// Where the server's region workers send their notices.
     pub(in crate::game) chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
@@ -24,7 +25,7 @@ pub(in crate::game) struct PreparedWorld {
     pub level: Level,
     pub world: World,
     pub biomes: Arc<Biomes>,
-    pub streaming: Streaming,
+    pub streaming: ChunkStreamer,
     pub save: Arc<SaveDir>,
     pub session_lock: sunrise_client::save::SessionLock,
     pub rand_sequences: sunrise_client::random_sequences::RandomSequences,
@@ -111,7 +112,7 @@ impl WorldRequest {
         name: Option<&str>,
         seed: Option<i64>,
         creative: bool,
-        create: Option<&sunrise_client::title::WorldOptions>,
+        create: Option<&sunrise_sim::world_options::WorldOptions>,
         rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
     ) -> Result<Self> {
         Ok(Self {
@@ -140,7 +141,7 @@ impl WorldRequest {
         res: &Resources,
         pack: &PackResources,
         options: &Options,
-        settings: &Settings,
+        settings: &SimSettings,
         upgrade: &sunrise_world::datafix::progress::UpgradeProgress,
     ) -> Result<PreparedWorld> {
         let _prepare_step = startup::step("world.prepare");
@@ -225,7 +226,7 @@ impl WorldRequest {
         // CreateWorldScreen's choices, before streaming reads the generator.
         if created && let Some(o) = create {
             level.hardcore = o.hardcore;
-            level.difficulty = sunrise_client::title::DIFFICULTIES[o.difficulty()].into();
+            level.difficulty = sunrise_sim::world_options::DIFFICULTIES[o.difficulty()].into();
             level.allow_commands = Some(o.commands(creative));
             o.write_world_gen(&save_root, level.seed)?;
             // The DataPackConfig the screen chose: the picked packs on,
@@ -418,7 +419,7 @@ impl WorldLoader {
         res: Arc<Resources>,
         pack: PackResources,
         options: Options,
-        settings: Settings,
+        settings: SimSettings,
         upgrade: Arc<sunrise_world::datafix::progress::UpgradeProgress>,
     ) -> Result<Self> {
         let handle = std::thread::Builder::new()
@@ -998,7 +999,7 @@ pub(in crate::game::server_side) fn make_streaming(
     res: &Resources,
     pack: &PackResources,
     options: &Options,
-    settings: &Settings,
+    settings: &SimSettings,
     world_root: &std::path::Path,
     dim: Dim,
     shape: sunrise_client::chunk::LevelShape,
@@ -1008,7 +1009,7 @@ pub(in crate::game::server_side) fn make_streaming(
     runtime: Option<&super::runtime_levels::Generate>,
     chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
     save_reporter: Arc<sunrise_client::chunk_io::SaveFailureReporter>,
-) -> Result<(Streaming, Arc<SaveDir>, Option<Arc<VanillaTerrain>>)> {
+) -> Result<(ChunkStreamer, Arc<SaveDir>, Option<Arc<VanillaTerrain>>)> {
     use sunrise_client::save::WorldGen;
     let enabled_features = &level.enabled_features;
     let generator = level.generator.as_ref().map(|g| g.settings());
@@ -1122,25 +1123,25 @@ pub(in crate::game::server_side) fn make_streaming(
         )
         .ok_or("a runtime level's layers use a block the game lacks")?;
         register_sea_level(-63);
-        Streaming::new(
+        ChunkStreamer::new(
             Arc::new(Persistent {
                 inner: Arc::new(inner),
                 save: save.clone(),
                 registry: pack.assets.clone(),
                 biomes: biomes.clone(),
             }),
-            pack.context_with(biomes.clone()),
+            pack.chunk_context_with(biomes.clone()),
             res.threads(),
         )
     } else if let Some(inner) = debug {
-        Streaming::new(
+        ChunkStreamer::new(
             Arc::new(Persistent {
                 inner: Arc::new(inner),
                 save: save.clone(),
                 registry: pack.assets.clone(),
                 biomes: biomes.clone(),
             }),
-            pack.context_with(biomes.clone()),
+            pack.chunk_context_with(biomes.clone()),
             res.threads(),
         )
     } else if let Some(inner) = flat_vanilla
@@ -1153,40 +1154,40 @@ pub(in crate::game::server_side) fn make_streaming(
         }
         keep_structure_references(&inner, world_root, dim, &save);
         locator = Some(inner.clone());
-        Streaming::new(
+        ChunkStreamer::new(
             Arc::new(Persistent {
                 inner,
                 save: save.clone(),
                 registry: pack.assets.clone(),
                 biomes: biomes.clone(),
             }),
-            pack.context_with(biomes.clone()),
+            pack.chunk_context_with(biomes.clone()),
             res.threads(),
         )
     } else if let Some(inner) = flat {
         // A superflat world that neither decorates nor generates structures: its
         // layers alone. Only manual commands use the locator.
         locator = flat_vanilla;
-        Streaming::new(
+        ChunkStreamer::new(
             Arc::new(Persistent {
                 inner: Arc::new(inner),
                 save: save.clone(),
                 registry: pack.assets.clone(),
                 biomes: biomes.clone(),
             }),
-            pack.context_with(biomes.clone()),
+            pack.chunk_context_with(biomes.clone()),
             res.threads(),
         )
     } else if options.test_terrain && dim == Dim::Overworld {
         let inner = Arc::new(TestTerrain::new(pack.assets.registry, res.biomes())?);
-        Streaming::new(
+        ChunkStreamer::new(
             Arc::new(Persistent {
                 inner,
                 save: save.clone(),
                 registry: pack.assets.clone(),
                 biomes: biomes.clone(),
             }),
-            pack.context_with(biomes.clone()),
+            pack.chunk_context_with(biomes.clone()),
             res.threads(),
         )
     } else if let Some(level) = mod_terrain(
@@ -1209,14 +1210,14 @@ pub(in crate::game::server_side) fn make_streaming(
     .transpose()?
     {
         match level {
-            ModLevel::Terrain(inner) => Streaming::new(
+            ModLevel::Terrain(inner) => ChunkStreamer::new(
                 Arc::new(Persistent {
                     inner: Arc::new(inner),
                     save: save.clone(),
                     registry: pack.assets.clone(),
                     biomes: biomes.clone(),
                 }),
-                pack.context_with(biomes.clone()),
+                pack.chunk_context_with(biomes.clone()),
                 res.threads(),
             ),
             ModLevel::Staged(mut inner) => {
@@ -1226,14 +1227,14 @@ pub(in crate::game::server_side) fn make_streaming(
                 inner.load_structure_mobs_behind();
                 keep_structure_references(&inner, world_root, dim, &save);
                 locator = Some(inner.clone());
-                Streaming::new(
+                ChunkStreamer::new(
                     Arc::new(Persistent {
                         inner,
                         save: save.clone(),
                         registry: pack.assets.clone(),
                         biomes: biomes.clone(),
                     }),
-                    pack.context_with(biomes.clone()),
+                    pack.chunk_context_with(biomes.clone()),
                     res.threads(),
                 )
             }
@@ -1291,41 +1292,23 @@ pub(in crate::game::server_side) fn make_streaming(
         }
         keep_structure_references(&inner, world_root, dim, &save);
         locator = Some(inner.clone());
-        Streaming::new(
+        ChunkStreamer::new(
             Arc::new(Persistent {
                 inner,
                 save: save.clone(),
                 registry: pack.assets.clone(),
                 biomes: biomes.clone(),
             }),
-            pack.context_with(biomes.clone()),
+            pack.chunk_context_with(biomes.clone()),
             res.threads(),
         )
     };
-    if options.execution_role.is_client() {
-        streaming.load_forced(
-            save.load_forced_chunks(),
-            save.load_mod_tickets(|id| mod_api::TicketController::from_id(id).map(|c| c.slot())),
-        );
-    }
     streaming.radius = settings.render_distance;
-    streaming.biome_blend = settings.biome_blend;
-    streaming.smooth_lighting = settings.smooth_lighting;
-    streaming.cutout_leaves = settings.cutout_leaves;
-    streaming.opaque_ice = settings.sunrise.opaque_ice;
-    streaming.leaf_culling = settings
-        .sunrise
-        .leaf_culling_effective(&settings.resource_packs);
     streaming.biome_zoom = BiomeZoom::new(obfuscate_seed(seed));
     let facts = sunrise_world::dimension_type::DimensionFacts::of_builtin_level(
         sunrise_core::LevelKey::builtin_or_overworld(dim.id()),
     );
     streaming.sky_light = facts.height.has_skylight;
-    streaming.nether_shading =
-        facts.cardinal_light == sunrise_world::dimension_type::CardinalLight::Nether;
-    // A server draws nothing: neither the integrated server nor the
-    // dedicated one meshes sections.
-    streaming.mesh = options.execution_role.is_client();
     Ok((streaming, save, locator))
 }
 
@@ -1587,7 +1570,7 @@ mod tests {
         };
         let registry =
             Arc::new(RuleRegistry::with_mod_rules(&["example:machines".into()], &[rule]).unwrap());
-        let mut create = sunrise_client::title::WorldOptions {
+        let mut create = sunrise_sim::world_options::WorldOptions {
             rules: GameRules::with_registry(registry.clone(), &[]),
             ..Default::default()
         };
@@ -1698,7 +1681,8 @@ mod tests {
             request.save_root = root.clone();
             game.load_world(request).unwrap();
             assert!(world_biomes!(game).contains("test:present"));
-            game.streaming
+            game.side
+                .streaming
                 .set_forced_loaded(&mut game.world, 8, 8, true);
             let chunk = &game.world.chunks[&(8, 8)];
             let id = chunk.biome(4, 16, 8);
@@ -2180,7 +2164,7 @@ mod unused_feature_startup_tests {
                 &loaded.resources,
                 &loaded.pack,
                 &options,
-                &settings,
+                &settings.sim_settings(),
                 &sunrise_world::datafix::progress::UpgradeProgress::new(),
             );
             if height == 0 {
@@ -2298,7 +2282,7 @@ mod unused_feature_preservation_tests {
                     &loaded.resources,
                     &loaded.pack,
                     &options,
-                    &settings,
+                    &settings.sim_settings(),
                     &sunrise_world::datafix::progress::UpgradeProgress::new(),
                 )
                 .is_ok(),

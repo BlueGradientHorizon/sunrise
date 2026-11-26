@@ -19,7 +19,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Option<mod_api::MainHand> {
         let target = self.native_client_entity_target(entity)?;
         let left = match target {
-            Target::Player => self.settings.main_hand_left,
+            Target::Player => self.side.settings.main_hand_left,
             Target::Mob(id) => self
                 .mobs
                 .iter()

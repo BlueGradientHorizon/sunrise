@@ -53,7 +53,7 @@ fn each_mod_block_entity_of_an_unloading_chunk_is_told_once() {
         }
         // A few more streaming rounds tell nothing again.
         for _ in 0..20 {
-            game.streaming.wait(Duration::from_millis(5));
+            game.side.streaming.wait(Duration::from_millis(5));
             game.server_update_world();
         }
         assert!(CALLS.lock().unwrap().is_empty(), "told twice");

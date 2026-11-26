@@ -21,7 +21,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let search = creative && self.side.creative_screen.0.tab().search;
         self.side.creative_ignore_text = false;
         let binding = sunrise_client::keybinds::key_name(raw);
-        let chat = binding == Some(self.settings.keys.get("key.chat"));
+        let chat = binding == Some(self.side.settings.keys.get("key.chat"));
         if creative
             && !search
             && chat
@@ -85,7 +85,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return Ok(true);
             }
         }
-        if binding == Some(self.settings.keys.get("key.inventory")) {
+        if binding == Some(self.side.settings.keys.get("key.inventory")) {
             self.direct_craft_stop();
             self.close_inventory_key();
             return Ok(true);
@@ -93,12 +93,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.sort_key_press(raw) {
             return Ok(true);
         }
-        if let Some(key) = self.settings.keys.container_hotbar_key(raw) {
+        if let Some(key) = self.side.settings.keys.container_hotbar_key(raw) {
             self.inventory_hotkey(key);
         }
-        if binding == Some(self.settings.keys.get("key.pickItem")) {
+        if binding == Some(self.side.settings.keys.get("key.pickItem")) {
             self.inventory_pick_key();
-        } else if binding == Some(self.settings.keys.get("key.drop")) {
+        } else if binding == Some(self.side.settings.keys.get("key.drop")) {
             self.inventory_hotkey(KeyCode::KeyQ);
         }
         Ok(false)
@@ -127,7 +127,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !numeric {
             return false;
         }
-        let Some(key) = self.settings.keys.container_hotbar_key(code) else {
+        let Some(key) = self.side.settings.keys.container_hotbar_key(code) else {
             return false;
         };
         let Some(size) = self
@@ -139,7 +139,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return false;
         };
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let batch = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let hover = match self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1) {
             None => Hover::Nothing,
             Some(slot) if slot >= Creative::DISPLAY => Hover::Display {
@@ -163,7 +163,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return false;
         };
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let batch = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let Some(slot) = self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1) else {
             return false;
         };
@@ -200,7 +200,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return;
         };
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let batch = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let Some(slot) = self
             .slot_at(&batch, self.side.cursor.0, self.side.cursor.1)
             .filter(|_| menu)
@@ -366,7 +366,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         if let Some(slot) = self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1)
             && slot != 200
@@ -398,7 +398,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         self.target_at(&batch)
     }

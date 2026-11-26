@@ -351,7 +351,7 @@ fn render_glyphs(
     cached: bool,
     character: char,
 ) -> Vec<(u32, u32, u32)> {
-    let renderer = game.res.block_entity_render();
+    let renderer = game.client_res().block_entity_render();
     let blocks = [block];
     let mut out: Vec<Vertex> = Vec::new();
     game.with_block_entity_scene(visual, partial, &|_, _, _, _| true, |scene| {
@@ -382,6 +382,7 @@ fn render_glyphs(
         }
     });
     let glyph = game
+        .side
         .gui
         .atlas
         .font

@@ -27,7 +27,8 @@ fn put_guest_in_end_exit(game: &mut crate::game::ServerGame<'_>) {
         g.seen_credits = true;
     });
     game.enter_level(Dim::End).unwrap();
-    game.streaming
+    game.side
+        .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     assert!(
         game.set_state_named([0, 100, 0], "minecraft:end_portal", &[])
@@ -318,7 +319,7 @@ fn a_travel_veto_can_refuse_a_spectators_resolved_end_exit() {
 fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
     with_end_travel(Some(Dim::Overworld), |game, rx, heard| {
         // The saved Nether point is missing, and the fallback Overworld column is cold.
-        assert!(!game.streaming.is_lit(0, 0));
+        assert!(!game.side.streaming.is_lit(0, 0));
         game.enter_level(Dim::Nether).unwrap();
         light_spawn_chunks(game);
         put_guest_in_end_exit(game);
@@ -382,7 +383,7 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
 fn cold_legacy_end_exit(point: [f64; 3], floor: [i32; 3], landing: [f64; 3]) {
     with_end_travel(None, move |game, rx, heard| {
         game.level.world_spawn_angle = [20.0, 5.0];
-        assert!(!game.streaming.is_lit(0, 0));
+        assert!(!game.side.streaming.is_lit(0, 0));
         put_guest_in_end_exit(game);
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.respawn_elsewhere = None;

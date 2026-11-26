@@ -128,7 +128,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side
                 .chat_ui
                 .chat
-                .delete_message(&self.gui.atlas, &signature, ticks);
+                .delete_message(&self.side.gui.atlas, &signature, ticks);
         }
         Ok(())
     }
@@ -144,7 +144,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let focused = self.side.screen == Screen::Chat;
         if source == ChatSource::Player {
             self.side.chat_ui.chat.add_signed(
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 content,
                 signature,
                 tag,
@@ -156,7 +156,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // GuiMessageTag.systemSinglePlayer: the grey bar at the line's left.
             let indicator = Some(sunrise_client::chat::SYSTEM_INDICATOR);
             self.side.chat_ui.chat.add(
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 content,
                 indicator,
                 source,

@@ -1236,6 +1236,10 @@ pub(in crate::game) mod world_fluids_tests;
 pub(in crate::game) mod world_ops_server;
 
 pub(in crate::game) struct ServerState {
+    pub(in crate::game) streaming: sunrise_level::chunk_streamer::ChunkStreamer,
+    pub(in crate::game) be_anims: sunrise_level::block_entity_ticks::BlockEntityTicks,
+    pub(in crate::game) settings: sunrise_level::sim_settings::SimSettings,
+    pub(in crate::game) profile: crate::game::server_side::profile_capture_server::ServerProfile,
     /// The registries native mods registered data map types for, as of the
     /// server tables' last build: what `data_maps_updated` fires for.
     pub(in crate::game::server_side) data_map_registries: Vec<String>,
@@ -1633,6 +1637,12 @@ impl ServerState {
     // Kept out-of-line so its field temporaries do not bloat `ServerGame::new`'s unoptimised frame.
     #[inline(never)]
     pub(in crate::game) fn build(
+        (streaming, be_anims, settings, profile): (
+            sunrise_level::chunk_streamer::ChunkStreamer,
+            sunrise_level::block_entity_ticks::BlockEntityTicks,
+            sunrise_level::sim_settings::SimSettings,
+            crate::game::server_side::profile_capture_server::ServerProfile,
+        ),
         structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
         profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
         save: ServerShared<Arc<SaveDir>>,
@@ -1640,6 +1650,10 @@ impl ServerState {
         ws: Box<super::WrappedServerInit>,
     ) -> Box<Self> {
         Box::new(Self {
+            streaming,
+            be_anims,
+            settings,
+            profile,
             structure_spawns,
             data_map_registries: Vec::new(),
             craft_table: None,
@@ -1835,6 +1849,48 @@ impl<T> ServerShared<T> {
 }
 
 impl crate::game::Side for ServerState {
+    #[inline(always)]
+    fn streaming_state(&self) -> &sunrise_level::chunk_streamer::ChunkState {
+        self.streaming.state()
+    }
+
+    #[inline(always)]
+    fn shulkers(
+        &self,
+    ) -> &sunrise_level::fast_hash::FxHashMap<[i32; 3], sunrise_level::shulker_box::Shulker> {
+        &self.be_anims.shulkers
+    }
+
+    #[inline(always)]
+    fn auto_jump(&self) -> bool {
+        self.settings.auto_jump
+    }
+
+    #[inline(always)]
+    fn main_hand_left(&self) -> bool {
+        self.settings.main_hand_left
+    }
+
+    #[inline(always)]
+    fn chat_visibility(&self) -> u8 {
+        self.settings.chat_visibility
+    }
+
+    #[inline(always)]
+    fn operator_items_tab(&self) -> bool {
+        self.settings.operator_items_tab
+    }
+
+    #[inline(always)]
+    fn mods_list(&self) -> &sunrise_mod_package::mod_list::ModList {
+        &self.settings.mods
+    }
+
+    #[inline(always)]
+    fn mods_list_mut(&mut self) -> &mut sunrise_mod_package::mod_list::ModList {
+        &mut self.settings.mods
+    }
+
     const IS_SERVER: bool = true;
     fn host_side<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> mod_api::HostSide<'g> {
         mod_api::HostSide::Server(game)

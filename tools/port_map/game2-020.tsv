@@ -139,7 +139,7 @@ TreeDecorator.Context.placeVine	port	crates/sunrise-world/src/worldgen/tree/deco
 TreeDecorator.Context.isWaterOrWaterNearby	inline	crates/sunrise-world/src/worldgen/tree/decorator.rs::Decorate::mushroom_replaceable	the water test over the centre and four sides
 TrunkPlacer.placeBelowTrunkBlock	port	crates/sunrise-world/src/worldgen/tree/trunk.rs::TrunkPlacer::place_below_trunk	places the block below the trunk when the provider gives one
 FlatLevelGeneratorSettings.validateHeight	skip:java		codec check that layers total at most 4064; flat.rs clamps each layer to that instead
-FlatLevelGeneratorSettings.withBiomeAndLayers	port	crates/sunrise-client/src/title/flat.rs::FlatSettings::parse	gap: minor: builds the layers and biome from the preset text; structure overrides and decorations come from the base
+FlatLevelGeneratorSettings.withBiomeAndLayers	port	crates/sunrise-sim/src/world_options.rs::FlatSettings::parse	gap: minor: builds the layers and biome from the preset text; structure overrides and decorations come from the base
 FlatLevelGeneratorSettings.adjustGenerationSettings	port	crates/sunrise-sim/src/flatgen.rs::decoration_features	the world's biome features by step, without the structure steps and the lakes step when they are excluded
 FlatLevelGeneratorSettings.updateLayers	port	crates/sunrise-sim/src/flatgen.rs::FlatTerrain::from_settings	the layers expand into block ids and an all-air list is the void generator
 MaterialRuleContext.getBiome	port	crates/sunrise-world/src/worldgen/material_condition.rs::Context::biome	the biome at the position, cached per column

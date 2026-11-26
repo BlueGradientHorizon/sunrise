@@ -69,7 +69,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.client_logging_out();
         if let Err(error) = self.join_server(address, name, None, cookies, lan, realm, list_name) {
             log::warn!("Sunrise: could not join server: {error}");
-            let skip = self.settings.file.bool("skipMultiplayerWarning");
+            let skip = self.side.settings.file.bool("skipMultiplayerWarning");
             match &mut self.side.title.0 {
                 Some(title) => {
                     title.skip_multiplayer_warning = skip;
@@ -256,7 +256,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.world_biomes_base = Some(table.clone());
         self.world_biomes = Some(table);
         let context = self.worker_context();
-        self.streaming.reload_resources(&mut self.world, context);
+        self.side
+            .streaming
+            .reload_resources(&mut self.world, context);
         let biomes: Vec<u16> = registries
             .registries
             .get(BIOME_REGISTRY)

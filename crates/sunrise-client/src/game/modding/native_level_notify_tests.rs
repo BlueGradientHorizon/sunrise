@@ -226,7 +226,7 @@ fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
         // LevelReader.getBiome reads the cell its fuzzy zoom selects, which for a block on a
         // cell's edge such as `pos` can be a neighbour in an unloaded chunk: read back through a
         // block whose zoomed cell is `pos`'s own.
-        let zoom = game.streaming.biome_zoom;
+        let zoom = game.side.streaming.biome_zoom;
         let probe = (0..16)
             .flat_map(|x| (64..68).flat_map(move |y| (0..16).map(move |z| [x, y, z])))
             .find(|&[x, y, z]| {

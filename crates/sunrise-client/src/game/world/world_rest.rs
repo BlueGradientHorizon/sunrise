@@ -1,6 +1,11 @@
 use super::*;
 use sunrise_client::mobs::spawner::SpawnerTypeFacts;
 
+#[cfg(feature = "client")]
+pub(in crate::game) type LoadedWorldRest = (WorldRest, Option<ClientResources>);
+#[cfg(not(feature = "client"))]
+pub(in crate::game) type LoadedWorldRest = WorldRest;
+
 pub(in crate::game) fn load_world_rest(
     resource_root: &sunrise_assets::resource_source::ResourceRoot,
     conditions: &sunrise_world::conditions::LoadConditions,
@@ -14,16 +19,17 @@ pub(in crate::game) fn load_world_rest(
     visibility: sunrise_world::block_render::FaceVisibility,
     progress: &Progress,
     started: Instant,
-    // False on a dedicated server, which draws nothing: no block entity
-    // renderer or animate tables (client-side display ticks).
     draws: bool,
-) -> Result<WorldRest> {
+) -> Result<LoadedWorldRest> {
+    #[cfg(not(feature = "client"))]
+    let _ = (entity_models, item_defaults, visibility, draws);
     let root = resource_root.prepared();
     let facts = resources.facts();
     let biomes = resources.biomes();
     let threads = resources.threads();
     let registry = assets.registry;
-    let builtin = super::remote::builtin_registries(root).unwrap_or_default();
+    #[cfg(feature = "client")]
+    let builtin = draws.then(|| super::remote::builtin_registries(root).unwrap_or_default());
     let content = sunrise_client::datapack::DataPack::from_source(
         "sunrise-content".into(),
         resource_root.data_changes().clone(),
@@ -71,11 +77,9 @@ pub(in crate::game) fn load_world_rest(
             Behaviours::load_with_gameplay(registry, root, behaviour_json, gameplay_projection)
         })
     };
+    #[cfg(feature = "client")]
     let load_block_entity_render = || -> Result<_> {
         let _step = startup::step("rest.block_entity_render");
-        if !draws {
-            return Ok(Default::default());
-        }
         let mut renderer = BlockEntityRenderer::load_with_visibility(
             resource_root,
             registry,
@@ -85,15 +89,20 @@ pub(in crate::game) fn load_world_rest(
         renderer.add_mod_signs(facts, registry);
         Ok(renderer)
     };
-    let load_animate = || resource_tables::load_animate_tables(root, registry, draws, biomes);
+    #[cfg(feature = "client")]
+    let load_animate =
+        || client_side::resource_tables_client::load_animate_tables(root, registry, biomes);
     let load_mobs = || -> Result<_> {
         let _step = startup::step("rest.mobs");
         let catalog = &resources.motion().attributes;
+        #[cfg(feature = "client")]
         let mut types = if draws {
             MobTypes::load_with_defaults(root, item_defaults.entries(), catalog)?
         } else {
             MobTypes::load_for_server(root, catalog)?
         };
+        #[cfg(not(feature = "client"))]
+        let mut types = MobTypes::load_for_server(root, catalog)?;
         // #845: the declared sets take their types' rows — the merged rows
         // the live attribute map's catalog took in core (the template's with
         // the declared set on top) — as their attribute map and spawn
@@ -170,23 +179,26 @@ pub(in crate::game) fn load_world_rest(
     let load_transformers = || -> Result<_> {
         let _step = startup::step("rest.transformers_models");
         let transformers = sunrise_client::block_transform::Transformers::load(root, registry)?;
-        if !draws {
-            return Ok((transformers, (None, [None, None], [None, None], None)));
-        }
-        let player_type = match entity_models {
-            Some(document) => perspective::player_type_with_document(root, document),
-            None => perspective::player_type(root),
-        };
-        let models = (
-            player_type,
-            player_arms(root, "minecraft:player#main", entity_models),
-            player_arms(root, "minecraft:player_slim#main", entity_models),
-            match entity_models {
-                Some(document) => document.model("minecraft:spin_attack#main"),
-                None => sunrise_client::mobs::load_model(root, "minecraft:spin_attack#main"),
-            },
-        );
-        Ok((transformers, models))
+        #[cfg(feature = "client")]
+        let models = draws.then(|| {
+            let player_type = match entity_models {
+                Some(document) => perspective::player_type_with_document(root, document),
+                None => perspective::player_type(root),
+            };
+            (
+                player_type,
+                player_arms(root, "minecraft:player#main", entity_models),
+                player_arms(root, "minecraft:player_slim#main", entity_models),
+                match entity_models {
+                    Some(document) => document.model("minecraft:spin_attack#main"),
+                    None => sunrise_client::mobs::load_model(root, "minecraft:spin_attack#main"),
+                },
+            )
+        });
+        #[cfg(feature = "client")]
+        return Ok((transformers, models));
+        #[cfg(not(feature = "client"))]
+        Ok(transformers)
     };
     // The errors cross threads as text.
     fn text<T, E: std::fmt::Display>(
@@ -197,37 +209,20 @@ pub(in crate::game) fn load_world_rest(
     let (
         items,
         behaviours,
-        block_entity_render,
-        animate,
         mobs,
         transformers,
         providers,
-        music,
-        ambient,
         nether_environment,
         end_environment,
+        client_tables,
     ) = if threads > 1 {
         std::thread::scope(|scope| {
             let items = named_scope(scope, "items", || text(load_items()));
             let behaviours = named_scope(scope, "behaviours", || text(load_behaviours()));
-            let block_entity_render = named_scope(scope, "block_entity_render", || {
-                text(load_block_entity_render())
-            });
-            let animate = named_scope(scope, "animate", || text(load_animate()));
             let mobs = named_scope(scope, "mobs", || text(load_mobs()));
             let transformers = named_scope(scope, "transformers", || text(load_transformers()));
             let providers = named_scope(scope, "providers", || {
                 startup::time("rest.providers", || Providers::load(root))
-            });
-            let music = named_scope(scope, "music", || {
-                startup::time("rest.music", || {
-                    sunrise_client::music::MusicTables::load(root, builtin.clone())
-                })
-            });
-            let ambient = named_scope(scope, "ambient", || {
-                startup::time("rest.ambient", || {
-                    sunrise_client::ambience::AmbientTables::load(root, builtin.clone())
-                })
             });
             let nether_environment = named_scope(scope, "nether_environment", || {
                 startup::time("rest.nether_environment", || {
@@ -249,35 +244,49 @@ pub(in crate::game) fn load_world_rest(
                     ))
                 })
             });
+            #[cfg(feature = "client")]
+            let client_tables = builtin.as_ref().map(|builtin| {
+                let block_entity_render = named_scope(scope, "block_entity_render", || {
+                    text(load_block_entity_render())
+                });
+                let animate = named_scope(scope, "animate", || text(load_animate()));
+                let music = named_scope(scope, "music", move || {
+                    startup::time("rest.music", || {
+                        sunrise_client::music::MusicTables::load(root, builtin.clone())
+                    })
+                });
+                let ambient = named_scope(scope, "ambient", move || {
+                    startup::time("rest.ambient", || {
+                        sunrise_client::ambience::AmbientTables::load(root, builtin.clone())
+                    })
+                });
+                (
+                    block_entity_render.join().unwrap(),
+                    animate.join().unwrap(),
+                    music.join().unwrap(),
+                    ambient.join().unwrap(),
+                )
+            });
+            #[cfg(not(feature = "client"))]
+            let client_tables = ();
             (
                 items.join().unwrap(),
                 behaviours.join().unwrap(),
-                block_entity_render.join().unwrap(),
-                animate.join().unwrap(),
                 mobs.join().unwrap(),
                 transformers.join().unwrap(),
                 providers.join().unwrap(),
-                music.join().unwrap(),
-                ambient.join().unwrap(),
                 nether_environment.join().unwrap(),
                 end_environment.join().unwrap(),
+                client_tables,
             )
         })
     } else {
         (
             text(load_items()),
             text(load_behaviours()),
-            text(load_block_entity_render()),
-            text(load_animate()),
             text(load_mobs()),
             text(load_transformers()),
             Providers::load(root),
-            startup::time("rest.music", || {
-                sunrise_client::music::MusicTables::load(root, builtin.clone())
-            }),
-            startup::time("rest.ambient", || {
-                sunrise_client::ambience::AmbientTables::load(root, builtin.clone())
-            }),
             startup::time("rest.nether_environment", || {
                 text(Environment::load_dimension(
                     &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
@@ -290,16 +299,37 @@ pub(in crate::game) fn load_world_rest(
                     "the_end",
                 ))
             }),
+            {
+                #[cfg(feature = "client")]
+                {
+                    builtin.as_ref().map(|builtin| {
+                        (
+                            text(load_block_entity_render()),
+                            text(load_animate()),
+                            startup::time("rest.music", || {
+                                sunrise_client::music::MusicTables::load(root, builtin.clone())
+                            }),
+                            startup::time("rest.ambient", || {
+                                sunrise_client::ambience::AmbientTables::load(root, builtin.clone())
+                            }),
+                        )
+                    })
+                }
+                #[cfg(not(feature = "client"))]
+                {}
+            },
         )
     };
     // World staging checks conditions after the selected packs have supplied their winners.
     let (items, recipes, stations) = items?;
-    let (animate, fog) = animate?;
     #[cfg(feature = "client")]
     let (mob_types, mob_data, client_mobs) = mobs?;
     #[cfg(not(feature = "client"))]
     let (mob_types, mob_data) = mobs?;
-    let (transformers, (player_type, player_arm, player_arm_slim, spin_attack)) = transformers?;
+    #[cfg(feature = "client")]
+    let (transformers, models) = transformers?;
+    #[cfg(not(feature = "client"))]
+    let transformers = transformers?;
     let nether_environment = nether_environment?;
     let end_environment = end_environment?;
     log::info!(
@@ -311,29 +341,51 @@ pub(in crate::game) fn load_world_rest(
         threads
     );
     progress.set(8);
-    Ok(WorldRest {
+    let world_rest = WorldRest {
         stations,
         items: Arc::new(items),
         recipes,
         transformers,
         providers,
-        block_entity_render: block_entity_render?,
-        animate,
-        fog,
-        music,
-        ambient,
         nether_environment,
         end_environment,
         behaviours: Arc::new(behaviours?),
         mob_types,
         living_type_keys: sunrise_client::health::LivingTypeKeys::resolve(),
         mob_data,
-        #[cfg(feature = "client")]
-        client_mobs,
         spawner_types,
-        player_type,
-        player_arm,
-        player_arm_slim,
-        spin_attack,
-    })
+    };
+    #[cfg(feature = "client")]
+    {
+        let client_res = match (client_tables, client_mobs, models) {
+            (
+                Some((block_entity_render, animate, music, ambient)),
+                Some(client_mobs),
+                Some(models),
+            ) => {
+                let (animate, fog) = animate?;
+                let (player_type, player_arm, player_arm_slim, spin_attack) = models;
+                Some(ClientResources {
+                    block_entity_render: block_entity_render?,
+                    animate,
+                    fog,
+                    music,
+                    ambient,
+                    player_type,
+                    player_arm,
+                    player_arm_slim,
+                    spin_attack,
+                    client_mobs,
+                })
+            }
+            (None, None, None) => None,
+            _ => return Err("inconsistent client world resource tables".into()),
+        };
+        Ok((world_rest, client_res))
+    }
+    #[cfg(not(feature = "client"))]
+    {
+        let () = client_tables;
+        Ok(world_rest)
+    }
 }

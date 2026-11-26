@@ -132,7 +132,7 @@ fn expected_frame(
     f: &ItemFrame,
     camera: glam::DVec3,
 ) -> Vec<Vertex> {
-    let sprites = &game.gui.atlas.sprites;
+    let sprites = &game.side.gui.atlas.sprites;
     let s = f.step();
     let (x_rot, y_rot) = if s[1] == 0 {
         let to_y = match f.facing {

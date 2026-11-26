@@ -125,7 +125,7 @@ mod tests {
             &settings,
             std::time::Instant::now(),
             false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
@@ -135,7 +135,9 @@ mod tests {
         options.execution_role = ExecutionRole::Client;
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -225,7 +227,9 @@ mod tests {
         options.execution_role = ExecutionRole::Client;
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -305,7 +309,7 @@ mod tests {
             &settings,
             std::time::Instant::now(),
             false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
@@ -315,7 +319,9 @@ mod tests {
         options.execution_role = ExecutionRole::Client;
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,

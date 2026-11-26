@@ -1,5 +1,7 @@
 use super::*;
+use crate::game::remote::level_format::{LevelEnvironments, pack_environment, same_stacks};
 pub(in crate::game::client_side) use crate::game::remote::session::RemoteOpening;
+use sunrise_client::environment::Environment;
 use sunrise_protocol::packets::configuration::Transfer;
 
 #[cfg(feature = "client")]
@@ -66,7 +68,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.jukebox_sounds.clear();
         self.side.mod_sounds.clear();
         self.update_window_title();
-        self.gui.atlas.clear_object_skins();
+        self.side.gui.atlas.clear_object_skins();
         before_pack_cleanup(&mut self.side.server_packs.0);
         self.server_packs_disconnect();
         self.side.code_of_conduct = None;
@@ -100,8 +102,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.refresh_recipe_property_context();
         self.world_biomes = None;
         self.world_biomes_base = None;
-        self.streaming = Streaming::new(Arc::new(NoTerrain), self.worker_context(), 1);
-        self.streaming.paused = true;
+        self.side.streaming = MeshStreamer::new(Arc::new(NoTerrain), self.worker_context(), 1);
+        self.side.streaming.paused = true;
         self.reset_client_world(0);
         self.remove_local_player_body();
         self.side.post_effects.clear();
@@ -127,8 +129,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut title = self
             .new_title(saves.clone())
             .with_user(|| self.options.player_name());
-        title.last_server = self.settings.file.string("lastServer");
-        title.skip_multiplayer_warning = self.settings.file.bool("skipMultiplayerWarning");
+        title.last_server = self.side.settings.file.string("lastServer");
+        title.skip_multiplayer_warning = self.side.settings.file.bool("skipMultiplayerWarning");
         if let Err(err) = stop_result {
             // Always restore the title screen before reporting an integrated-server stop failure.
             title.failed(err.to_string());
@@ -281,16 +283,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|d| (d.dimension.clone(), d.pos));
         if !same {
             self.clock.reset_client_level_tick_state();
-            let mut streaming = Streaming::new(
+            let mut streaming = MeshStreamer::new(
                 Arc::new(NoTerrain),
                 self.worker_context(),
                 self.res.threads(),
             );
             streaming.remote = true;
-            streaming.radius = self.streaming.radius;
+            streaming.radius = self.side.streaming.radius;
             // SpawnInfo already carries the hashed seed the client's BiomeManager holds.
             streaming.biome_zoom = sunrise_core::biome::BiomeZoom::new(spawn.seed);
-            self.streaming = streaming;
+            self.side.streaming = streaming;
             let (time, day, weather) = (
                 self.world.game_time,
                 self.world.day_time,
@@ -355,13 +357,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.stop_sounds_for_new_level();
         }
         self.side.audio.0.set_world(&spawn.dimension);
-        self.streaming.relight_resent = relight_resent;
+        self.side.streaming.relight_resent = relight_resent;
         let has_sky = self
             .remote
             .as_ref()
             .is_none_or(|r| r.dimension.has_skylight);
-        self.streaming.sky_light = has_sky;
-        self.streaming.nether_shading = self.nether_lighting();
+        self.side.streaming.sky_light = has_sky;
+        self.side.streaming.nether_shading = self.nether_lighting();
         let player = self.player.as_ref();
         self.side
             .particles
@@ -424,13 +426,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.realm_session = false;
         self.lan_session = false;
         self.reset_tutorial();
-        self.perf.world_opening();
+        self.side.perf.world_opening();
         self.world_biomes = None;
         self.world_biomes_base = None;
-        let lang = Arc::new(sunrise_client::net::load_language(&root));
+        let lang = Arc::new(sunrise_sim::lang_load::load_language(&root));
         let info = self
+            .side
             .settings
-            .client_information(client_view_distance(self.settings.render_distance));
+            .client_information(client_view_distance(self.side.settings.render_distance));
         let auth = self.auth();
         let name = auth.as_ref().map_or("ReplayPlayer", |a| a.name.as_str());
         let user = auth.as_ref().map_or_else(
@@ -445,14 +448,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.server_packs_connect(None, None, user);
         let session = Session::replay(name);
         let player_type = super::super::perspective::player_type(&root);
-        let mut streaming = Streaming::new(
+        let mut streaming = MeshStreamer::new(
             Arc::new(NoTerrain),
             self.worker_context(),
             self.res.threads(),
         );
         streaming.remote = true;
-        streaming.radius = self.settings.render_distance;
-        self.streaming = streaming;
+        streaming.radius = self.side.settings.render_distance;
+        self.side.streaming = streaming;
         self.reset_client_world(0);
         let group_count = sunrise_client::chunk_map::ConnectionGroupCount::default();
         self.world
@@ -555,8 +558,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 7,
             )),
             decoder: ChunkDecoder::new(),
-            view_distance: self.settings.render_distance,
-            simulation_distance: self.settings.simulation_distance,
+            view_distance: self.side.settings.render_distance,
+            simulation_distance: self.side.settings.simulation_distance,
             sequence: 0,
             last_teleport_sequence: -1,
             position_sender: Default::default(),
@@ -704,7 +707,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.realm_session = realm;
         self.lan_session = lan;
         self.reset_tutorial();
-        self.perf.world_opening();
+        self.side.perf.world_opening();
         if !local {
             // A server's own biomes come over the connection, not from the last local world.
             self.world_biomes = None;
@@ -721,14 +724,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         let root = self.options.resources.clone();
         let player_type = super::super::perspective::player_type(&root);
-        let mut streaming = Streaming::new(
+        let mut streaming = MeshStreamer::new(
             Arc::new(NoTerrain),
             self.worker_context(),
             self.res.threads(),
         );
         streaming.remote = true;
-        streaming.radius = self.settings.render_distance;
-        self.streaming = streaming;
+        streaming.radius = self.side.settings.render_distance;
+        self.side.streaming = streaming;
         self.reset_client_world(0);
         let group_count = sunrise_client::chunk_map::ConnectionGroupCount::default();
         self.world
@@ -839,8 +842,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 7,
             )),
             decoder: ChunkDecoder::new(),
-            view_distance: self.settings.render_distance,
-            simulation_distance: self.settings.simulation_distance,
+            view_distance: self.side.settings.render_distance,
+            simulation_distance: self.side.settings.simulation_distance,
             sequence: 0,
             last_teleport_sequence: -1,
             position_sender: Default::default(),
@@ -998,10 +1001,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let root = &self.options.resources;
         let item_data = Arc::clone(&self.res.core.item_data);
         let builtin = builtin_registries(root).ok_or("Resources are incomplete: registries.json is missing or invalid. Click \"Prepare again\" in the launcher (or run sunrise-prepare), then try again.")?;
-        let lang = Arc::new(sunrise_client::net::load_language(root));
+        let lang = Arc::new(sunrise_sim::lang_load::load_language(root));
         let info = self
+            .side
             .settings
-            .client_information(client_view_distance(self.settings.render_distance));
+            .client_information(client_view_distance(self.side.settings.render_distance));
         // A signed-in account always plays under its own name.
         let auth = self.auth();
         let name = auth.as_ref().map_or(name, |a| a.name.as_str());
@@ -1122,5 +1126,56 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let cookies = remote.session.cookies.clone();
         self.open_remote_session(&address, &name, None, Some(cookies), false, false, None)
             .map(Some)
+    }
+    /// The environment attributes of the level the player is in, from its synchronized dimension
+    /// type, as `EnvironmentAttributeSystem.addDimensionLayer` takes `level.dimensionType()`'s
+    /// attributes (and `addDynamicLayers` its timelines): the type's attributes and timelines over
+    /// the client's own environment of that type, for gameplay, and over the packs' Polytone stack
+    /// of that type, whose modifiers then apply over them, for the frame. A built-in level is
+    /// included, so a data pack's Overworld reaches the frame; the base is the client's
+    /// environment of the same type, so the Nether and the End keep their own file's layers (no
+    /// weather) instead of the Overworld's. Only the three vanilla type IDs have a pack stack: a
+    /// mod's type is drawn without the packs' layers. Run again when the packs change.
+    ///
+    /// Building one reads every biome file, so both are kept by type name with the JSON and the
+    /// packs' stacks they were built from (`LevelEnvironments`): entering a level of an unchanged
+    /// type again (a respawn, a travel back) reuses them as kept, without cloning the JSON, and a
+    /// pack reload, which makes new stacks, builds only the frame's again, in the same entry.
+    pub(in crate::game) fn build_level_environments(&mut self) {
+        let stacks = self.side.client_pack.environments.as_ref();
+        let Some(r) = self.remote.as_mut() else {
+            return;
+        };
+        let Some((name, json)) = &r.synced_type else {
+            r.level_environment = None;
+            r.level_pack_environment = None;
+            return;
+        };
+        if let Some(e) = r
+            .level_environments
+            .get_mut(name)
+            .filter(|e| e.json == *json)
+        {
+            if !same_stacks(e.stacks.as_ref(), stacks) {
+                e.pack = pack_environment(name, json, stacks);
+                e.stacks = stacks.map(Arc::downgrade);
+            }
+            r.level_environment = e.own.clone();
+            r.level_pack_environment = e.pack.clone();
+            return;
+        }
+        let own = Environment::with_type(self.res.environment_of(name), json).map(Arc::new);
+        let pack = pack_environment(name, json, stacks);
+        r.level_environments.insert(
+            name.clone(),
+            LevelEnvironments {
+                json: json.clone(),
+                own: own.clone(),
+                stacks: stacks.map(Arc::downgrade),
+                pack: pack.clone(),
+            },
+        );
+        r.level_environment = own;
+        r.level_pack_environment = pack;
     }
 }

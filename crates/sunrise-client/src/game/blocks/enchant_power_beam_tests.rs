@@ -342,7 +342,7 @@ pub(in crate::game::client_side) fn enchant_particles(game: &crate::game::Client
         block_parts: None,
     };
     for _ in 0..4096 {
-        animate_tick(game.res.animate(), &mut engine, &ctx, TABLE);
+        animate_tick(game.client_res().animate(), &mut engine, &ctx, TABLE);
     }
     engine
         .created_requests

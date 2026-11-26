@@ -162,13 +162,14 @@ impl StartupMenu {
                 let mut title = game
                     .new_title(std::env::current_dir().unwrap_or_default().join("saves"))
                     .with_user(|| game.options.player_name());
-                title.last_server = game.settings.file.string("lastServer");
-                title.skip_multiplayer_warning = game.settings.file.bool("skipMultiplayerWarning");
+                title.last_server = game.side.settings.file.string("lastServer");
+                title.skip_multiplayer_warning =
+                    game.side.settings.file.bool("skipMultiplayerWarning");
                 game.show_title(title);
             }
         }
         game.side.pending_entry.0 = self.pending.take();
-        game.perf = std::mem::take(&mut self.perf);
+        game.side.perf = std::mem::take(&mut self.perf);
         game.side.mod_jobs.0 = std::mem::take(&mut self.mod_jobs);
         game.side.cursor = self.cursor;
         if self.key_focus.is_none() {
@@ -1504,7 +1505,7 @@ impl Loading {
                 sunrise_narrator::say_system_queued(&found.plain());
             }
             let items = match &self.loaded {
-                Some(Ok(loaded)) => Some(&*loaded.pack.item_renderer),
+                Some(Ok(loaded)) => loaded.client_pack.as_ref().map(|p| &*p.item_renderer),
                 _ => None,
             };
             title.draw_with_items(
@@ -1728,7 +1729,7 @@ mod tests {
         assert_eq!(view(&first), (3.0, 320.0, 240.0));
         assert_eq!(view(&second), (4.0, 240.0, 180.0));
         super::super::native_entity_refs::tests::with_client_game(|server| {
-            server.settings.gui_scale = 1;
+            server.side.settings.gui_scale = 1;
             server.apply_ui_settings();
             assert_eq!(view(&first), (3.0, 320.0, 240.0));
             assert_eq!(view(&second), (4.0, 240.0, 180.0));
@@ -1848,8 +1849,8 @@ mod tests {
             assert!(!packs::packs_dir().join("Game pack").exists());
             let size = game.gui_size();
             let events = game.side.chat_ui.options.click(
-                &mut game.settings,
-                &game.gui.atlas,
+                &mut game.side.settings,
+                &game.side.gui.atlas,
                 size.0 / 2.0 - 150.0,
                 size.1 / 2.0 + 20.0,
                 size,
@@ -1868,7 +1869,7 @@ mod tests {
                     .iter()
                     .any(|p| p.id == "file/Game pack")
             );
-            assert!(game.settings.resource_packs.is_empty());
+            assert!(game.side.settings.resource_packs.is_empty());
         });
         std::env::set_current_dir(previous_dir).unwrap();
     }

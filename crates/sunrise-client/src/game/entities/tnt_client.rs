@@ -162,7 +162,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Option<[Option<sunrise_client_render::hud::Rect>; 6]> {
         let state = self.pack.assets.registry.default_state("minecraft:tnt")?;
         let Ok(models) = self
-            .pack
+            .side
+            .client_pack
             .render
             .model_catalog
             .collect(state, BlockPos::new(0, 0, 0))
@@ -182,10 +183,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             if sprites[index].is_none() {
                 sprites[index] = self
-                    .pack
+                    .side
+                    .client_pack
                     .layer_names
                     .get(&face.layer)
-                    .and_then(|name| self.gui.atlas.sprites.get(name).copied());
+                    .and_then(|name| self.side.gui.atlas.sprites.get(name).copied());
             }
         }
         Some(sprites)

@@ -234,8 +234,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
         self.side.debug_entries.0.invalidate();
-        self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
-            self.settings.render_distance,
+        self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+            self.side.settings.render_distance,
             Some(p.chunk_radius),
         );
 
@@ -349,7 +349,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // trust evaluated and shown when the queue accepts the message
         // (`showMessageToPlayer`): a component translates when it is read
         // (`TranslatableContents.decompose`), in the language of that moment.
-        let only_show_secure = self.settings.file.bool("onlyShowSecureChat");
+        let only_show_secure = self.side.settings.file.bool("onlyShowSecureChat");
         let displayed = if only_show_secure {
             serde_json::Value::from(p.content.as_str())
         } else {

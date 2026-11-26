@@ -1,7 +1,7 @@
 //! Server-side entity-bound player sound broadcast and entity sound state lookup.
 use super::Game;
 use crate::game::client_side::entity_sounds::saved_silent;
-use sunrise_client::sound_engine::SoundEntityState;
+use sunrise_client_core::sound_source::SoundEntityState;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_play_player_bound_sound(

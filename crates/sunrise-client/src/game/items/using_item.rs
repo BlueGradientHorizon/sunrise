@@ -183,7 +183,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         // ItemStack.onUseTick: a spear stabs what its speed allows, until released.
-        if sunrise_client::spear::Kinetic::of(&stack.item).is_some() {
+        if sunrise_sim::spear_sim::Kinetic::of(&stack.item).is_some() {
             self.spear_tick(stack, ticks);
             self.using = Some((slot, ticks + 1));
             return;

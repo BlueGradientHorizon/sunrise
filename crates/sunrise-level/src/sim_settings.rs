@@ -18,6 +18,9 @@ pub struct SimSettings {
     pub operator_items_tab: bool,
     pub reduced_debug_info: bool,
     pub language: String,
+    pub mods: sunrise_mod_package::mod_list::ModList,
+    pub no_ai: bool,
+    pub agent_control: bool,
 }
 
 impl Default for SimSettings {
@@ -33,6 +36,9 @@ impl Default for SimSettings {
             operator_items_tab: false,
             reduced_debug_info: false,
             language: "en_us".into(),
+            mods: Default::default(),
+            no_ai: false,
+            agent_control: false,
         }
     }
 }

@@ -43,7 +43,7 @@ fn delayed_player_chat_checks_block_filter_and_visibility_on_accept() {
             assert!(lines[0].contains("h##lo"));
 
             let hidden = deliver_signed(game, &key, player_chat(BOB, 3, "hide with Chat option"));
-            let font = &game.gui.atlas.font;
+            let font = &game.side.gui.atlas.font;
             game.side
                 .chat_ui
                 .chat
@@ -106,7 +106,7 @@ fn validation_error_acks_on_accept_and_checks_the_current_block_list() {
             assert_eq!(game.side.chat_ui.chat.recent_lines(1).len(), 1);
             assert_ne!(sunrise_narrator::recent(), prior_speech);
             let chat = &mut game.side.chat_ui.chat;
-            let font = &game.gui.atlas.font;
+            let font = &game.side.gui.atlas.font;
             chat.options = ChatOptions::default();
             chat.smooth = false;
             chat.hide_indicator = false;

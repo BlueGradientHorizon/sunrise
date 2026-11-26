@@ -110,7 +110,7 @@ const CAMERA: glam::DVec3 = glam::DVec3::new(0.5, 64.0, -4.5);
 /// A mob of `kind` with id `id`, standing `x` blocks east of the camera's line.
 fn mob(game: &crate::game::ClientGame<'_>, kind: &str, id: u32, x: f64) -> Mob {
     let kind = if kind == "minecraft:player" {
-        game.res.player_type().clone().unwrap()
+        game.client_res().player_type().clone().unwrap()
     } else {
         game.res.mob_types().get(kind).unwrap().clone()
     };
@@ -597,7 +597,7 @@ fn zombie_frame(game: &mut crate::game::ClientGame<'_>, burning: bool, shadows: 
     zombie.fire_ticks = if burning { 100 } else { 0 };
     game.mobs.clear();
     game.mobs.push(zombie);
-    game.settings.entity_shadows = shadows;
+    game.side.settings.entity_shadows = shadows;
     entity_frame(game)
 }
 
@@ -641,7 +641,7 @@ fn a_canceled_pre_keeps_the_local_players_flames() {
     with_pair(&heard, |game| {
         place_stone_floor(game);
         admit_own_player(game, false);
-        game.settings.entity_shadows = false;
+        game.side.settings.entity_shadows = false;
         let expected = 20; // FlameFeatureRenderer submits five quads for a standing player.
         let added = |game: &mut crate::game::ClientGame<'_>| {
             game.player.as_mut().unwrap().fire_ticks = 0;

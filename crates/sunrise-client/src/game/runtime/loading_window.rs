@@ -4,15 +4,15 @@ use super::*;
 
 /// CPU mip chains for the block sprites and world border.
 pub(in crate::game) fn prepare_renderer_textures(
-    pack: &PackResources,
+    client_pack: &ClientPackResources,
 ) -> sunrise_client::gfx::PreparedTextures {
-    let assets = &pack.render;
+    let assets = &client_pack.render;
     sunrise_client::gfx::PreparedTextures::new(
         &assets.pixels.get(),
         assets.sprite_size,
         assets.texture_layers,
         &assets.sprite_mips,
-        (&pack.forcefield.2, pack.forcefield.0),
+        (&client_pack.forcefield.2, client_pack.forcefield.0),
     )
     .with_pbr(
         &assets.pbr_normals,
@@ -27,6 +27,7 @@ pub(in crate::game) fn build_renderer(
     window: Arc<Window>,
     offscreen: bool,
     pack: &PackResources,
+    client_pack: &ClientPackResources,
     gui: &UiResources,
     previous: Option<&Renderer>,
     prepared: Option<sunrise_client::gfx::PreparedTextures>,
@@ -40,7 +41,7 @@ pub(in crate::game) fn build_renderer(
     display: sunrise_client::gfx::DisplayReading,
     filtering: (i32, i32, i32),
 ) -> Result<(Renderer, std::result::Result<(), String>)> {
-    let assets = &pack.render;
+    let assets = &client_pack.render;
     let atlas = &gui.atlas;
     // The new renderer's atlas texture starts from `HudAtlas.pixels`, which
     // holds the textures but never a glyph rasterized at run time. The font's
@@ -51,7 +52,7 @@ pub(in crate::game) fn build_renderer(
     // over to the game.
     atlas.font.reset_cache();
     // Made here when the worker did not: the renderer's own fallback has no LabPBR maps.
-    let prepared = Some(prepared.unwrap_or_else(|| prepare_renderer_textures(pack)));
+    let prepared = Some(prepared.unwrap_or_else(|| prepare_renderer_textures(client_pack)));
     let atlas_pixels = atlas.pixels();
     let mut renderer = pollster::block_on(Renderer::new(
         window,
@@ -69,7 +70,7 @@ pub(in crate::game) fn build_renderer(
             atlas.glint_armor.1,
             atlas.glint_armor.2,
         ),
-        (&pack.forcefield.2, pack.forcefield.0),
+        (&client_pack.forcefield.2, client_pack.forcefield.0),
         gui.panorama.clone(),
         prepared,
         previous,
@@ -81,9 +82,9 @@ pub(in crate::game) fn build_renderer(
         display,
     ))?;
     let (prepared_vertices, prepared_ranges) =
-        native_block_entity_draw::StandaloneGeometry::new(pack, gui).prepared_upload();
+        native_block_entity_draw::StandaloneGeometry::new(pack, client_pack, gui).prepared_upload();
     renderer.install_prepared_models(
-        pack.render.generation,
+        client_pack.render.generation,
         &prepared_vertices,
         prepared_ranges,
     )?;
@@ -96,7 +97,7 @@ pub(in crate::game) fn build_renderer(
         let text = &atlas.text_shaders;
         (text.gui.as_deref()).map(|p| (p, &text.expressions.gui[..]))
     });
-    pack.item_renderer.prepare_glint_atlas_with_mips(
+    client_pack.item_renderer.prepare_glint_atlas_with_mips(
         renderer.device.limits().max_texture_dimension_2d,
         (filtering.0, filtering.1),
         filtering.2,
@@ -114,15 +115,19 @@ pub(in crate::game) fn build_renderer(
         &atlas.lightmap_expressions,
     );
     let clouds = renderer.set_clouds_shader(atlas.clouds_shader.as_deref());
-    renderer.set_custom_sky(&*pack.custom_sky);
+    renderer.set_custom_sky(&*client_pack.custom_sky);
     renderer.set_shared_material_maps(&atlas.material_maps);
-    let cit_glints = pack.item_renderer.cit.as_ref().map(|c| &c.glint_textures);
+    let cit_glints = client_pack
+        .item_renderer
+        .cit
+        .as_ref()
+        .map(|c| &c.glint_textures);
     renderer
         .hud
         .set_cit_glints(&renderer.device, &renderer.queue, cit_glints);
     // Last, so a renderer that fails before this marks none of the pack's pipelines invalid.
     // Textured pipelines' sprites are looked up in the atlas the renderer was built with.
-    renderer.build_mod_pipelines(&pack.render.mod_pipelines, &|name| {
+    renderer.build_mod_pipelines(&client_pack.render.mod_pipelines, &|name| {
         let r = atlas.sprites.get(name)?;
         Some([r.u0, r.v0, r.u1, r.v1])
     })?;
@@ -284,7 +289,9 @@ pub(in crate::game) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
 #[allow(clippy::too_many_arguments)]
 pub(in crate::game) fn start_client_game<'a>(
     res: &'a Arc<Resources>,
+    client_res: Arc<std::sync::OnceLock<ClientResources>>,
     pack: PackResources,
+    client_pack: ClientPackResources,
     gui: UiResources,
     options: Options,
     pack_error: Option<String>,
@@ -313,14 +320,24 @@ pub(in crate::game) fn start_client_game<'a>(
                 pack.source.clone(),
             ),
             entity_models.as_deref(),
-            pack.render.model_library.as_deref().ok(),
+            client_pack.render.model_library.as_deref().ok(),
             true,
         )?),
     };
     let mut initial = None;
     let stage = options.is_client_start().then_some(&mut initial);
-    let mut game =
-        super::ClientGame::construct(res, pack, gui, options, settings, audio, prepared, stage)?;
+    let mut game: super::ClientGame<'a> = super::ClientGame::construct(
+        res,
+        client_res,
+        pack,
+        client_pack,
+        gui,
+        options,
+        settings,
+        audio,
+        prepared,
+        stage,
+    )?;
     // `new DebugRenderer()` refreshes its list.
     game.refresh_debug_renderers();
     game.rest_loader = rest_loader;
@@ -328,9 +345,9 @@ pub(in crate::game) fn start_client_game<'a>(
     if game.options.benchmark.is_some() {
         // The same conditions on every machine: no VSync, no frame cap, no
         // pause or idle limit without focus. In memory only, never saved.
-        game.settings.vsync = false;
-        game.settings.max_fps = 260;
-        game.settings.inactivity_fps_limit = "minimized".into();
+        game.side.settings.vsync = false;
+        game.side.settings.max_fps = 260;
+        game.side.settings.inactivity_fps_limit = "minimized".into();
         game.options.no_pause = true;
     }
     game.apply_settings();
@@ -357,7 +374,7 @@ pub(in crate::game) fn start_client_game<'a>(
                     commit: option_env!("SUNRISE_COMMIT").map(str::to_owned),
                     mods: Vec::new(),
                 },
-                simulation_distance: game.settings.simulation_distance as u32,
+                simulation_distance: game.side.settings.simulation_distance as u32,
                 vsync: false,
                 fps_cap: None,
                 offscreen: game.options.offscreen,
@@ -427,8 +444,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     serde_json::json!({
                         "view_distance": remote.view_distance,
                         "simulation_distance": remote.simulation_distance,
-                        "render_setting": self.settings.render_distance,
-                        "simulation_setting": self.settings.simulation_distance,
+                        "render_setting": self.side.settings.render_distance,
+                        "simulation_setting": self.side.settings.simulation_distance,
                         "logged_in": remote.logged_in, "joined": remote.joined,
                     })
                     .to_string(),
@@ -451,7 +468,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     fn finish_start_game(&mut self, pack_error: Option<String>, handoff: bool) -> Result<bool> {
-        let game = self;
+        let game: &mut super::ClientGame<'_> = self;
         if let Some(directory) = std::env::var_os("SUNRISE_NATIVE_CLIENT_PARTICLES_FIXTURE") {
             game.run_native_client_particles_fixture(std::path::Path::new(&directory))?;
             return Ok(false);
@@ -505,7 +522,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     // Client options reject simulationDistance2 (their UI starts at5),
                     // so an options.txt value cannot establish this prerequisite.
                     if std::env::var_os("SUNRISE_HARNESS_LOADED_FIXTURE").is_some() {
-                        game.settings.simulation_distance = 2;
+                        game.side.settings.simulation_distance = 2;
                     }
                     // Headless, but with the same server and memory connection as play.
                     game.open_integrated(&folder, None, Some(seed), creative, None)?;
@@ -530,10 +547,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let mut title = game
                     .new_title(std::env::current_dir()?.join("saves"))
                     .with_user(|| game.options.player_name());
-                title.last_server = game.settings.file.string("lastServer");
-                title.skip_multiplayer_warning = game.settings.file.bool("skipMultiplayerWarning");
+                title.last_server = game.side.settings.file.string("lastServer");
+                title.skip_multiplayer_warning =
+                    game.side.settings.file.bool("skipMultiplayerWarning");
                 // Gui.addInitialScreens: the accessibility onboarding comes first.
-                if game.settings.file.bool("onboardAccessibility") {
+                if game.side.settings.file.bool("onboardAccessibility") {
                     title.start_onboarding();
                 }
                 game.show_title(title);

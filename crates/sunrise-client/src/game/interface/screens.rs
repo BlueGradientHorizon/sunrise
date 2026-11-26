@@ -401,7 +401,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn draw_pause_menu(&mut self, batch: &mut HudBatch) {
         let friends = self.friends_shown();
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
@@ -581,7 +581,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
-            let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+            let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
             (b.width, b.height)
         };
         let fallback;
@@ -640,7 +640,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
-            let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+            let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
             (b.width, b.height)
         };
         let fallback;
@@ -765,7 +765,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// DeathScreen: gradient, the title at double size, the cause and score.
     pub(in crate::game::client_side) fn draw_death_screen(&mut self, batch: &mut HudBatch) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         // fillGradient(0x60500000 -> 0xA0803030).
         let rows = h.ceil() as i32;
@@ -916,7 +916,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             let (title, _) = death_confirm_texts();
             let confirm = Confirm::new(
-                &self.gui.atlas.font,
+                &self.side.gui.atlas.font,
                 self.gui_size(),
                 &title,
                 &Text::literal(""),
@@ -931,7 +931,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // DeathScreen.mouseClicked first looks for a click event on the
         // cause line: an open_url link goes through the chat link flow.
         if let Some(cause) = &self.side.chat_ui.death_text {
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             let mid = self.gui_size().0;
             if let Some(text::Style {
                 click: Some(ClickEvent::OpenUrl(url)),
@@ -952,7 +952,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let hit = death_buttons(b.width, b.height, self.level.hardcore)
             .into_iter()
             .find(|d| ui::hovered(self.side.cursor, d.0, d.1, 200.0, 20.0))

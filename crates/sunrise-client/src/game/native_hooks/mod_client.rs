@@ -91,6 +91,9 @@ pub(in crate::game) mod client_options;
 #[path = "client_pick_client.rs"]
 pub(in crate::game) mod client_pick;
 
+#[path = "client_text_client.rs"]
+pub(in crate::game) mod client_text;
+
 #[path = "creative_tabs_read_client.rs"]
 pub(in crate::game) mod creative_tabs_read;
 
@@ -99,6 +102,9 @@ pub(in crate::game) mod customize_boss_event_progress;
 
 #[path = "customize_chat_overlay_client.rs"]
 pub(in crate::game) mod customize_chat_overlay;
+
+#[path = "draw_measures_client.rs"]
+pub(in crate::game) mod draw_measures;
 
 #[path = "fluid_draw_client.rs"]
 pub(in crate::game) mod fluid_draw;
@@ -463,7 +469,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(s) = self.shown_native_screen() else {
             return false;
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         if !s.layout().own_background {
             let (w, h) = (s.layout().width, s.layout().height);
             batch.fill(atlas, ox, oy, w, h, rgba(0, 0, 0, 255));
@@ -671,7 +677,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         self.native_screen_press_at(&batch, right)
     }
@@ -1086,7 +1092,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(renderer) => self.screen_rect(
                 &HudBatch::new(
                     [renderer.config.width, renderer.config.height],
-                    self.settings.gui_scale_inputs(),
+                    self.side.settings.gui_scale_inputs(),
                 ),
                 screen,
             ),
@@ -1403,7 +1409,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let rect = self.side.renderer.0.as_ref().map_or([0.0; 4], |renderer| {
             let batch = HudBatch::new(
                 [renderer.config.width, renderer.config.height],
-                self.settings.gui_scale_inputs(),
+                self.side.settings.gui_scale_inputs(),
             );
             [0.0, 0.0, batch.width, batch.height]
         });
@@ -1473,7 +1479,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let renderer = self.side.renderer.0.as_ref()?;
         let batch = HudBatch::new(
             [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         if self.side.screen != Screen::Playing {
             return Some(self.screen_view(&batch, self.side.screen));
@@ -1949,6 +1955,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         let native = self.mods.native.clone();
         let mut rows: Vec<_> = self
+            .side
             .settings
             .mods
             .installed
@@ -1961,7 +1968,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .collect();
         rows.extend(native.packages().iter().map(|package| {
             let m = &package.manifest;
-            self.settings
+            self.side
+                .settings
                 .mods
                 .info
                 .insert(m.id.clone(), sunrise_client::mod_list::ModInfo::of(m, None));
@@ -1974,7 +1982,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 native: None,
             }
         }));
-        self.settings
+        self.side
+            .settings
             .mods
             .installed
             .retain(|row| !rows.iter().any(|code| code.id == row.id));
@@ -1997,7 +2006,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 })
                 .collect();
             row.native = Some(NativePage { mappings, settings });
-            self.settings.mods.installed.push(row);
+            self.side.settings.mods.installed.push(row);
         }
     }
     /// The settings mod `mod_id` registered, with their kept values, as its page shows them.
@@ -2039,7 +2048,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Persists a changed setting on native mod `i`'s page and fires `setting_changed`.
     pub(in crate::game::client_side) fn native_setting_event(&mut self, i: usize, j: usize) {
-        let Some(row) = self.settings.mods.installed.get(i) else {
+        let Some(row) = self.side.settings.mods.installed.get(i) else {
             return;
         };
         let Some(setting) = row.native.as_ref().and_then(|page| page.settings.get(j)) else {
@@ -2062,11 +2071,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Native mod `i`'s page opened: its settings' kept values read again.
     pub(in crate::game::client_side) fn native_settings_refresh(&mut self, i: usize) {
-        let Some(id) = self.settings.mods.installed.get(i).map(|m| m.id.clone()) else {
+        let Some(id) = self
+            .side
+            .settings
+            .mods
+            .installed
+            .get(i)
+            .map(|m| m.id.clone())
+        else {
             return;
         };
         let settings = self.native_page_settings(&id);
-        let row = self.settings.mods.installed.get_mut(i);
+        let row = self.side.settings.mods.installed.get_mut(i);
         if let Some(page) = row.and_then(|m| m.native.as_mut()) {
             page.settings = settings;
         }
@@ -2154,6 +2170,10 @@ pub(in crate::game) mod block_entity_client_tick_tests;
 #[cfg(test)]
 #[path = "block_particle_effects_tests_client.rs"]
 pub(in crate::game) mod block_particle_effects_tests;
+
+#[cfg(test)]
+#[path = "piston_push_reaction_tests_client.rs"]
+pub(in crate::game) mod piston_push_reaction_tests;
 
 #[cfg(test)]
 #[path = "shared/particle_count_tests_client.rs"]

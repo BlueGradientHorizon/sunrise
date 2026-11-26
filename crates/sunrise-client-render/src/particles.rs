@@ -27,6 +27,7 @@ use sunrise_core::{
 pub use sunrise_level::particle_options::{
     Burst, ParticleOptions, around_self, entity_event_burst, item_use_particles,
 };
+pub use sunrise_level::potent_sulfur_level::SulfurLevel;
 use sunrise_world::block_collision::BlockCollisionRegistry;
 
 pub use sunrise_client_core::particle_type::ParticleType;
@@ -852,22 +853,11 @@ pub struct ParticleLevel<'a> {
 }
 impl<'a> ParticleLevel<'a> {
     pub(crate) fn block_at(p: [f64; 3]) -> [i32; 3] {
-        [
-            p[0].floor() as i32,
-            p[1].floor() as i32,
-            p[2].floor() as i32,
-        ]
+        sunrise_level::potent_sulfur_level::SulfurLevel::block_at(p)
     }
     #[inline]
     pub(crate) fn chunk(&self, cx: i32, cz: i32) -> Option<&'a crate::chunk::Chunk> {
-        match self.cached_chunk.get() {
-            Some(((ccx, ccz), c)) if ccx == cx && ccz == cz => c,
-            _ => {
-                let c = self.world.chunks.get(&(cx, cz)).map(|c| c.as_ref());
-                self.cached_chunk.set(Some(((cx, cz), c)));
-                c
-            }
-        }
+        sunrise_level::potent_sulfur_level::cached_chunk(self.world, &self.cached_chunk, cx, cz)
     }
     pub fn block(&self, x: i32, y: i32, z: i32) -> sunrise_world::registry::BlockStateId {
         self.chunk(x >> 4, z >> 4)
@@ -889,8 +879,25 @@ impl<'a> ParticleLevel<'a> {
     }
     /// The fluid at a block and whether it is a source (`FluidState.isSource`).
     pub(crate) fn fluid_source(&self, b: [i32; 3]) -> (Fluid, bool) {
-        let s = self.facts.get(self.block(b[0], b[1], b[2]));
-        (s.fluid, s.fluid_level == 8 && !s.fluid_falling)
+        sunrise_level::potent_sulfur_level::fluid_source_of(
+            self.facts,
+            self.block(b[0], b[1], b[2]),
+        )
+    }
+    #[inline]
+    pub fn with_sulfur_level<R>(
+        &self,
+        f: impl FnOnce(&sunrise_level::potent_sulfur_level::SulfurLevel<'a>) -> R,
+    ) -> R {
+        let view = sunrise_level::potent_sulfur_level::SulfurLevel {
+            world: self.world,
+            facts: self.facts,
+            collision: self.collision,
+            cached_chunk: std::cell::Cell::new(self.cached_chunk.get()),
+        };
+        let out = f(&view);
+        self.cached_chunk.set(view.cached_chunk.get());
+        out
     }
     /// `getCollisionShape(...).max(Y, x, z)` for cached shapes.
     fn collision_top(&self, b: [i32; 3], fx: f64, fz: f64) -> f64 {

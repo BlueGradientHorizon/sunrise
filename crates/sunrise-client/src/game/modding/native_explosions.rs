@@ -11,12 +11,12 @@ use super::{
 };
 use crate::lan::server_effects::{ServerExplosionParticle, ServerParticle, server_particle_ok};
 use mod_api::{EntityRef, ExplodeError, ExplosionInteraction, ExplosionSettings};
-use sunrise_client::particles::ParticleType;
 use sunrise_client::projectiles::ProjectileKind;
 use sunrise_client::{
     gamerules::vanilla,
     mobs::{NamedDamage, Who},
 };
+use sunrise_level::particle_options::ParticleType;
 
 /// Whether `native_explode` takes this centre and radius. Vanilla bounds
 /// neither: any finite radius goes, one of 0 or below finding no blocks. A

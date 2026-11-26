@@ -495,7 +495,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         sunrise_client::widgets::cover_frame();
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         if self.player.is_none() {
             // In place of the connecting screen, on its background.
@@ -585,7 +585,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Ok(false);
         };
         let answer = prompt
-            .layout(&self.gui.atlas, self.gui_size())
+            .layout(&self.side.gui.atlas, self.gui_size())
             .answer_at(self.side.cursor);
         match answer {
             Some(yes) => {
@@ -880,6 +880,7 @@ mod tests {
                             error_toast.slide.origin = Some(past);
 
                             let rect = *game
+                                .side
                                 .gui
                                 .atlas
                                 .sprites

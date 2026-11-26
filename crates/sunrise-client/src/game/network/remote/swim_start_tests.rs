@@ -97,7 +97,8 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                     remote.entity_id = 42;
                     remote.profile = 42;
                     remote.level_load.finish();
-                    game.streaming
+                    game.side
+                        .streaming
                         .insert_remote(&mut game.world, Chunk::empty(0, 0));
                     water_column(game);
                     let mut player =
@@ -198,7 +199,8 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
             mod_platform::testing::with_mods(mods, || {
                 with_game(|game| {
                     open_to_lan(game);
-                    game.streaming
+                    game.side
+                        .streaming
                         .insert_remote(&mut game.world, Chunk::empty(0, 0));
                     water_column(game);
                     let mut ids = Vec::new();

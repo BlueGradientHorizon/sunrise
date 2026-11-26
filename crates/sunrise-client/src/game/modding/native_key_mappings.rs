@@ -23,7 +23,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.options.execution_role,
             mod_api::__private::key_mappings(),
         );
-        let settings = &self.settings;
+        let settings = &self.side.settings;
         self.side
             .mod_keys
             .bind(mappings.iter().map(|(owner, mapping)| {
@@ -118,7 +118,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "key.keyboard.left.alt" | "key.keyboard.right.alt" => ALT,
             _ => 0,
         };
-        self.settings
+        self.side
+            .settings
             .mods
             .set_binding(owner, id, key, modifiers.bits & !own);
         self.mod_keys_changed();
@@ -135,7 +136,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .get(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)?
             .identity();
-        self.settings.mods.reset_binding(owner, id);
+        self.side.settings.mods.reset_binding(owner, id);
         self.mod_keys_changed();
         Ok(())
     }
@@ -143,7 +144,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// settings are saved as Controls saves them.
     fn mod_keys_changed(&mut self) {
         self.bind_mod_mappings();
-        self.settings.save(&crate::game::options_path());
+        self.side.settings.save(&crate::game::options_path());
     }
     /// One key event, the window's after it handled it or the control socket's: the mods'
     /// mappings bound to it hear it (`KeyMapping.set`, `KeyMapping.click`), then `input_key`

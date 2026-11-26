@@ -4,12 +4,11 @@
 use super::Game;
 use super::level_sounds::LevelSound;
 use mod_api::SoundSource;
-use sunrise_client::{
-    first_person::Hand,
-    items::ItemStack,
-    mobs::{Species, allay},
-};
 use sunrise_gameplay::allays::{AllayLevel, AllayPlayer, SightView};
+use {
+    sunrise_client::items::ItemStack, sunrise_client::mobs::Species, sunrise_client::mobs::allay,
+    sunrise_sim::first_person_sim::Hand,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Allay.mobInteract`'s `level().playSound(player, this, sound, NEUTRAL,

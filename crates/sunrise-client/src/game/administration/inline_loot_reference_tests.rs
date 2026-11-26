@@ -38,15 +38,9 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
-        res,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        None,
-    )
-    .unwrap();
+    let mut game =
+        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+            .unwrap();
     game.set_allow_commands(true);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 100.0, 8.5)).unwrap());
     game.world

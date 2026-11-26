@@ -219,7 +219,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         friends_screen::draw(
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             self.side.cursor,
             &view,
             true,
@@ -228,9 +228,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn friends_screen_click(&mut self) -> bool {
         let view = self.friends_view();
-        let Some(action) =
-            friends_screen::click(&self.gui.atlas, self.gui_size(), self.side.cursor, &view)
-        else {
+        let Some(action) = friends_screen::click(
+            &self.side.gui.atlas,
+            self.gui_size(),
+            self.side.cursor,
+            &view,
+        ) else {
             return false;
         };
         self.side.audio.0.play_button_click();

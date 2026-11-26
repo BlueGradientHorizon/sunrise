@@ -23,7 +23,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// (chest-like ones only) sits by its title, the main inventory's by
     /// the "Inventory" label's line.
     fn sort_buttons(&self) -> Vec<((f32, f32), Vec<usize>)> {
-        if !self.settings.extras.sort
+        if !self.side.settings.extras.sort
             || self.side.screen != Screen::Inventory
             || self.station.is_some()
             || self.mount_active()
@@ -64,7 +64,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         ox: f32,
         oy: f32,
     ) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         for ((x, y), _) in self.sort_buttons() {
             let (x, y) = (ox + x, oy + y);
             let (cx, cy) = self.side.cursor;
@@ -96,7 +96,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         let (ox, oy) = self.inventory_origin(&batch);
         let (cx, cy) = self.side.cursor;
@@ -119,7 +119,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.sort_input(&keybinds::mouse_name(button))
     }
     fn sort_input(&mut self, name: &str) -> bool {
-        let e = &self.settings.extras;
+        let e = &self.side.settings.extras;
         if !e.sort || e.sort_key != name || self.recipe_search_focused() {
             return false;
         }

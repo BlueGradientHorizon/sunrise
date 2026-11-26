@@ -275,7 +275,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn loaded(&self) -> bool {
         self.side.title.0.is_none()
             && self.player.is_some()
-            && self.streaming.pending() + self.side.pending_uploads.0.len() == 0
+            && self.side.streaming.pending() + self.side.pending_uploads.0.len() == 0
     }
 
     /// Once per event loop turn: record what changed, answer the waits that hold.

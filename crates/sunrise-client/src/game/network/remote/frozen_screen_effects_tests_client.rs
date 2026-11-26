@@ -47,7 +47,7 @@ fn a_frozen_level_eases_the_vignette_as_vanillas_does() {
         game.world.day_time = 6000;
         let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
         chunk.lit = true;
-        game.streaming.insert_remote(&mut game.world, chunk);
+        game.side.streaming.insert_remote(&mut game.world, chunk);
         let ticking = |frozen| C::TickingState(play::TickingState { rate: 20.0, frozen });
         let bits =
             |game: &crate::game::ClientGame<'_>| game.side.screen_fx.vignette_brightness.to_bits();

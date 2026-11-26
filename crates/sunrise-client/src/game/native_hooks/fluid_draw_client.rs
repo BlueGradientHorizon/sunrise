@@ -56,7 +56,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             let [a, r, g, b] = tint.to_be_bytes();
             batch.fill(
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 dst[0],
                 dst[1],
                 dst[2],

@@ -11,7 +11,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         alpha: f64,
         out: &mut Vec<Vertex>,
     ) {
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         // Each with its frame's type: a pack tells a glow frame and what it holds apart by its
         // `entityId` (`glow_item_frame` in entity.properties), the item drawn within its frame.
         let mut maps: Vec<(i32, glam::Mat4, u32, bool, &'static str)> = Vec::new();

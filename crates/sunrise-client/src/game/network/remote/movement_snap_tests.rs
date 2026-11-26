@@ -32,7 +32,9 @@ fn plugin_player_stack_follows_network_moves_and_local_carriers() {
     options.execution_role = ExecutionRole::Client;
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,

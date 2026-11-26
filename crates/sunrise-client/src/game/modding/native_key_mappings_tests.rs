@@ -166,7 +166,8 @@ fn a_control_socket_key_counts_as_a_window_key() {
         assert_eq!(clicks, [true, true, false]);
 
         // Rebound in Controls to X: Z no longer counts, X does.
-        game.settings
+        game.side
+            .settings
             .mods
             .set_binding("keys", "zoom", "key.keyboard.x", 0);
         game.apply_settings();

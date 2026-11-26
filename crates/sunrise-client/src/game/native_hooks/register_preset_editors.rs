@@ -25,7 +25,8 @@ pub(in crate::game) mod tests {
         Mutex,
         atomic::{AtomicUsize, Ordering},
     };
-    use sunrise_client::title::{Mode, WorldOptions};
+    use sunrise_client::title::Mode;
+    use sunrise_sim::world_options::WorldOptions;
     use winit::{
         event::{DeviceId, ElementState, WindowEvent},
         keyboard::PhysicalKey,
@@ -380,9 +381,9 @@ pub(in crate::game) mod tests {
                     assert_eq!(title.mode.id(), "world_preset_editor");
 
                     let size = [640, 480];
-                    let mut stock = HudBatch::new(size, game.settings.gui_scale_inputs());
+                    let mut stock = HudBatch::new(size, game.side.settings.gui_scale_inputs());
                     title.draw(
-                        &game.gui.atlas,
+                        &game.side.gui.atlas,
                         &mut stock,
                         game.side.cursor,
                         false,
@@ -536,9 +537,10 @@ pub(in crate::game) mod tests {
                     *game.test_title_mut() = Some(title);
                     game.side.screen = Screen::Playing;
                     game.settle_title_mode();
-                    let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
+                    let mut batch =
+                        HudBatch::new([640, 480], game.side.settings.gui_scale_inputs());
                     game.test_title().unwrap().draw(
-                        &game.gui.atlas,
+                        &game.side.gui.atlas,
                         &mut batch,
                         (0.0, 0.0),
                         false,

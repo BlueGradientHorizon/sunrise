@@ -287,12 +287,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 })
                 .map(|(_, t)| self.side.skin_profiles.borrow_mut().head_profile_nbt(t))
                 .unwrap_or_else(|| std::sync::Arc::new(serde_json::Value::Null));
-            self.pack.item_renderer.submit_special(
+            self.side.client_pack.item_renderer.submit_special(
                 &special,
                 &profile,
                 false,
                 pose,
-                &self.gui.atlas.sprites,
+                &self.side.gui.atlas.sprites,
                 &self.item_host(),
                 &mut sink,
             );
@@ -329,13 +329,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         use sunrise_client::mobs::render::put;
         let assets = &self.side.armor_stand_assets.0;
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         let uv_of = |name: &str| sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // A texture's OptiFine emissive overlay. The lock is read per lookup and let go:
         // `wings_geometry` below reads it too.
         let glow_of = |texture: &str| {
             let emissive = self
-                .res
+                .client_res()
                 .client_mob_data()
                 .emissive
                 .read()
@@ -523,9 +523,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let components = self
             .pack
-            .item_renderer
-            .models
-            .components(&sunrise_client::item_render::stack_view(stack));
+            .item_models
+            .components(&sunrise_sim::item_models::stack_view(stack));
         let Some(equippable) = components.get("minecraft:equippable") else {
             return false;
         };
@@ -592,7 +591,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         kind: Kind,
         stack: &ItemStack,
     ) -> Option<&Rule> {
-        let rules = &self.pack.item_renderer.cit.as_ref()?.rules;
+        let rules = &self.side.client_pack.item_renderer.cit.as_ref()?.rules;
         let item_max = self.items().get(&stack.item).map_or(0, |i| i.max_damage);
         sunrise_client::item_render::cit::worn_rule(rules, kind, stack, item_max)
             .and_then(|i| rules.rules.get(i))
@@ -634,8 +633,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 * glam::Mat4::from_rotation_z(std::f32::consts::PI);
         let glints =
             super::perspective::preview_glint_quads(&verts, gui, 0..0, self.side.glint_frame);
-        let quads =
-            super::perspective::player_preview_quads(verts, gui, None, &self.gui.atlas.sprites);
+        let quads = super::perspective::player_preview_quads(
+            verts,
+            gui,
+            None,
+            &self.side.gui.atlas.sprites,
+        );
         super::perspective::emit_preview(batch, quads, glints, [x0, y0, x1, y1]);
     }
     /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
@@ -711,7 +714,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.trim_slots.prepare(
             wanted,
             &assets.root,
-            &mut self.gui.atlas,
+            &mut self.side.gui.atlas,
             &mut self.side.map_patches,
         );
     }

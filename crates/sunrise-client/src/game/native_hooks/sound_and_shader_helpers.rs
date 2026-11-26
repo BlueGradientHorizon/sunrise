@@ -36,7 +36,7 @@ pub(in crate::game) fn mod_sound_ok(
     pitch: f32,
 ) -> bool {
     sound_id(sound)
-        && source < sunrise_client::settings::SOUND_SOURCES.len()
+        && source < sunrise_level::sim_settings::SOUND_SOURCES.len()
         && level_sound_playable(at, volume, pitch)
 }
 

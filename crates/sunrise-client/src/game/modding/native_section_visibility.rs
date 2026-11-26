@@ -8,26 +8,28 @@ use sunrise_client::mesher::{SectionPlanBuilder, capture_input};
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Ask mods about the admitted requests and submit their combined answers to the workers.
     pub(in crate::game::client_side) fn prepare_section_visibility(&mut self) {
-        let requests = self.streaming.take_visibility_requests();
+        let requests = self.side.streaming.take_visibility_requests();
         if requests.is_empty() {
             return;
         }
         let Ok(index) = crate::game::api_values::block_state::current() else {
             for request in requests {
-                self.streaming
+                self.side
+                    .streaming
                     .submit_visibility_answer(&mut self.world, request, None);
             }
             return;
         };
         let Ok(air) = index.to_api(self.world.air) else {
             for request in requests {
-                self.streaming
+                self.side
+                    .streaming
                     .submit_visibility_answer(&mut self.world, request, None);
             }
             return;
         };
         let poisoned = mod_api::__private::poisoned_listeners(mod_api::HookId::SectionVisibility);
-        let mut refusals = std::mem::take(&mut self.streaming.section_visibility.refusals);
+        let mut refusals = std::mem::take(&mut self.side.streaming.section_visibility.refusals);
         for request in requests {
             let input = capture_input(&request.region, request.key.1, |raw| {
                 index
@@ -58,13 +60,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
                      the session and sections are asked again without it",
                     SectionVisibilityRefusal::Failed
                 );
-                self.streaming
+                self.side
+                    .streaming
                     .refresh_section_visibility(&mut self.world, true);
                 return;
             }
-            self.streaming
+            self.side
+                .streaming
                 .submit_visibility_answer(&mut self.world, request, plan.finish());
         }
-        self.streaming.section_visibility.refusals = refusals;
+        self.side.streaming.section_visibility.refusals = refusals;
     }
 }

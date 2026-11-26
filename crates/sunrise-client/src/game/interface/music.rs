@@ -19,14 +19,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.native_music_layers(&mut layers);
         self.side.music_layers.tick(&layers, &mut self.side.audio.0);
         // Options.musicFrequency's listener: MusicManager.setMinutesBetweenSongs.
-        let frequency = MusicFrequency::parse(&self.settings.file.name("musicFrequency"));
+        let frequency = MusicFrequency::parse(&self.side.settings.file.name("musicFrequency"));
         if frequency != self.side.music.frequency {
             self.side.music.set_frequency(frequency, music.as_ref());
         }
         // The Music page's off tracks leave every pool they play in (the
         // extra off: nothing is filtered, vanilla's pools play as they are).
-        let off = if self.settings.extras.music_page {
-            &self.settings.extras.music_off[..]
+        let off = if self.side.settings.extras.music_page {
+            &self.side.settings.extras.music_off[..]
         } else {
             &[][..]
         };
@@ -45,7 +45,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .music
             .tick(music.as_ref(), volume, loading, &mut self.side.audio.0);
         // Options.musicToast's listener: ToastManager.setMusicToastDisplayState.
-        let state = self.settings.file.int("musicToast").clamp(0, 2) as u8;
+        let state = self.side.settings.file.int("musicToast").clamp(0, 2) as u8;
         if state != self.side.music_toast_state {
             self.side.music_toast_state = state;
             self.set_music_toast_state(state);
@@ -72,7 +72,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `Options.getFinalSoundSourceVolume(SoundSource.MUSIC)`.
     fn final_music_volume(&self) -> f32 {
-        (self.settings.master_volume * self.settings.volumes[1]) as f32
+        (self.side.settings.master_volume * self.side.settings.volumes[1]) as f32
     }
     /// `ToastManager.setMusicToastDisplayState`: Pause and Pause and Toast make
     /// the toast (the second one shows it at once while music is audible),
@@ -97,7 +97,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             toast.title = title;
             toast.description = description;
-            toast.show(self.settings.notification_display_time);
+            toast.show(self.side.settings.notification_display_time);
         }
     }
 
@@ -151,7 +151,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if self.side.pause_menu && self.final_music_volume() > 0.0 {
                 self.side.music_notes.tick();
                 sunrise_client::toasts::draw_now_playing(
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     batch,
                     0.0,
                     &song,
@@ -162,7 +162,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && self.side.music_toast_state == 2
             && let Some(toast) = &self.side.now_playing
         {
-            toast.draw(&self.gui.atlas, batch, &self.side.music_notes);
+            toast.draw(&self.side.gui.atlas, batch, &self.side.music_notes);
         }
     }
     /// `Minecraft.tick` -> `SoundManager.tick(pause)`, after the music, with
@@ -216,7 +216,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side
             .audio
             .0
-            .set_listener_reserve(self.settings.extras.ui_sound_reserve);
+            .set_listener_reserve(self.side.settings.extras.ui_sound_reserve);
         // Client mods' sounds asked for since the last update start with it, then their stops
         // and fades apply.
         self.apply_mod_sounds();
@@ -241,7 +241,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && (self.player.is_some() || self.remote.as_ref().is_some_and(|r| r.has_level()));
         let (background, probe_volume) = if in_world {
             let biome = self.biome_at(self.side.view.position);
-            self.res
+            self.client_res()
                 .music()
                 .at(self.dim.id(), biome, world_biomes!(self).pack_file(biome))
         } else {
@@ -304,10 +304,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let feet = [p.position.x, p.position.y, p.position.z];
         let eye_y = feet[1] + f64::from(p.dimensions.eye_height);
         let biome = self.biome_at(feet);
-        let sounds =
-            self.res
-                .ambient()
-                .at(self.dim.id(), biome, world_biomes!(self).pack_file(biome));
+        let sounds = self.client_res().ambient().at(
+            self.dim.id(),
+            biome,
+            world_biomes!(self).pack_file(biome),
+        );
         let underwater = self.eye_in_water(feet[0], eye_y, feet[2]);
         let world = &self.world;
         let light = |b: [i32; 3]| {
@@ -355,9 +356,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// Resolve each live entity once per sound tick, even when several sounds name it.
 fn update_bound_entities(
     entities: Vec<sunrise_client::sound_engine::SoundEntity>,
-    mut resolve: impl FnMut(u32) -> Option<sunrise_client::sound_engine::SoundEntityState>,
+    mut resolve: impl FnMut(u32) -> Option<sunrise_client_core::sound_source::SoundEntityState>,
 ) {
-    use sunrise_client::sound_engine::SoundEntityState;
+    use sunrise_client_core::sound_source::SoundEntityState;
     let mut states = std::collections::HashMap::new();
     for entity in entities {
         let previous = entity.state();
@@ -381,7 +382,8 @@ mod audio_music_tests;
 #[cfg(test)]
 mod bound_lookup_tests {
     use super::update_bound_entities;
-    use sunrise_client::sound_engine::{SoundEntity, SoundEntityState};
+    use sunrise_client::sound_engine::SoundEntity;
+    use sunrise_client_core::sound_source::SoundEntityState;
 
     #[test]
     fn simultaneous_sounds_share_a_lookup_but_follow_each_new_tick() {

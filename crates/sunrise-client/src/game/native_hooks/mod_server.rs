@@ -26,22 +26,19 @@ use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
 use sunrise_client::health::mob_source;
 #[cfg(test)]
 use sunrise_client::mobs::Damage;
-use sunrise_client::{
-    block_entities::Pos,
-    containers::{BlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks},
-    fast_hash::FxHashMap,
-    first_person::Hand,
-    health::{Attack, HurtSource},
-    items::ItemStack,
-    merchant::MerchantOffer,
-    mobs::Who,
-    text::Text,
-};
 use sunrise_client_core::gamerules::Value as GameRuleValue;
 use sunrise_client_core::suggestion::Suggestion;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::level::PlaceContext;
 use sunrise_world::level::flags;
+use {
+    sunrise_client::block_entities::Pos, sunrise_client::containers::BlockEntity,
+    sunrise_client::containers::ModContainer, sunrise_client::containers::ModEnergyBuffer,
+    sunrise_client::containers::ModFluidTanks, sunrise_client::fast_hash::FxHashMap,
+    sunrise_client::health::Attack, sunrise_client::health::HurtSource,
+    sunrise_client::items::ItemStack, sunrise_client::merchant::MerchantOffer,
+    sunrise_client::mobs::Who, sunrise_client::text::Text, sunrise_sim::first_person_sim::Hand,
+};
 use {sunrise_core::nbt::Compound, sunrise_world::registry::BlockStateId};
 
 #[path = "base_server.rs"]

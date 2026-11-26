@@ -43,7 +43,7 @@ pub(in crate::game) fn attach_offscreen_window(
     let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([640, 480]);
     let id = window.id();
     game.options.offscreen = true;
-    game.settings.gui_scale = 1;
+    game.side.settings.gui_scale = 1;
     game.side.window.0 = Some(window.clone());
     game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
     game.side.title.0 = None;
@@ -297,7 +297,7 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
     with_mods(mods, || {
         with_client_game(|game| {
             let (_event_loop, win_id) = attach_offscreen_window(game);
-            game.settings.controller.keyboard = TextKeyboard::Sunrise;
+            game.side.settings.controller.keyboard = TextKeyboard::Sunrise;
             assert!(game.mod_screen_open("controller_mounts"));
             let targets = game.mounted_widget_targets();
             game.side.pad.0.menu.focus = Some(targets[1]);
@@ -880,7 +880,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
         || {
             with_client_game(|game| {
                 let (_event_loop, _win_id) = attach_offscreen_window(game);
-                let atlas = &mut game.gui.atlas;
+                let atlas = &mut game.side.gui.atlas;
                 let [ox, oy] = atlas.dynamic_texture_pool.as_ref().unwrap().origin(0, 0);
                 let (aw, ah) = (atlas.width as f32, atlas.height as f32);
                 let mut palette = Vec::new();
@@ -919,7 +919,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                     let [x, y, w, h] = bounds(i);
                     sunrise_client::ui::button(
                         &mut stock,
-                        &game.gui.atlas,
+                        &game.side.gui.atlas,
                         x,
                         y,
                         w,
@@ -930,7 +930,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                     );
                 }
                 widgets::end_frame(1);
-                let stock = render_hud(&stock, &game.gui.atlas, SIZE).unwrap();
+                let stock = render_hud(&stock, &game.side.gui.atlas, SIZE).unwrap();
                 assert!(game.mod_screen_open("sprite_fixture"));
                 let frame = |game: &mut crate::game::ClientGame<'_>, at, serial| {
                     game.side.cursor = at;
@@ -939,7 +939,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                     widgets::begin_screen(|| ScreenInfo::new("fixture", "Mounted sprite buttons"));
                     game.draw_mounted_screen_widgets(&mut batch);
                     widgets::end_frame(serial);
-                    render_hud(&batch, &game.gui.atlas, SIZE).unwrap()
+                    render_hud(&batch, &game.side.gui.atlas, SIZE).unwrap()
                 };
                 let custom = frame(game, (1.0, 1.0), 2);
                 for i in 0..COUNT {
@@ -1059,7 +1059,7 @@ fn mounted_widgets_draw_as_the_games_own() {
                 let mut stock = HudBatch::scratch([320, 240]);
                 sunrise_client::ui::button(
                     &mut stock,
-                    &game.gui.atlas,
+                    &game.side.gui.atlas,
                     10.0,
                     10.0,
                     100.0,
@@ -1080,7 +1080,7 @@ fn mounted_widgets_draw_as_the_games_own() {
                 stock_field.set_value(LONG);
                 stock_field.focused = true;
                 stock_field.reset_blink_at(focus_time);
-                stock_field.draw_at(&mut stock, &game.gui.atlas, None, visible_at);
+                stock_field.draw_at(&mut stock, &game.side.gui.atlas, None, visible_at);
                 assert_eq!(
                     bytemuck::cast_slice::<_, u8>(&ours.vertices),
                     bytemuck::cast_slice::<_, u8>(&stock.vertices)
@@ -2047,7 +2047,10 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             );
 
             game.set_screen(Screen::Advancements);
-            game.settings.keys.set("key.advancements", "key.keyboard.u");
+            game.side
+                .settings
+                .keys
+                .set("key.advancements", "key.keyboard.u");
             take_log(&log);
             send_key_control(game, "key l down");
             assert_eq!(game.side.screen, Screen::Advancements);
@@ -2064,7 +2067,10 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 take_log(&log),
                 ["key_press_pre:advancements:key.keyboard.u"]
             );
-            game.settings.keys.set("key.advancements", "key.keyboard.l");
+            game.side
+                .settings
+                .keys
+                .set("key.advancements", "key.keyboard.l");
             cancel_key_post.store(false, Ordering::SeqCst);
 
             // 8) Advancements blank-space press/release and no-tab scroll report unhandled.
@@ -2193,7 +2199,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             game.show_dialog(&dialog);
             let layout = Layout::new(
                 &game.decode_dialog(&dialog, None).unwrap(),
-                &game.gui.atlas.font,
+                &game.side.gui.atlas.font,
                 game.gui_size(),
             );
             let slider = layout
@@ -2309,7 +2315,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             send_mouse_button(game, win_id, MouseButton::Left, false);
             let (_, (no_x, no_y)) = {
                 let layout = Confirm::new(
-                    &game.gui.atlas.font,
+                    &game.side.gui.atlas.font,
                     game.gui_size(),
                     &Text::translate("multiplayer.texturePrompt.line1", &[]),
                     &Text::translate("multiplayer.texturePrompt.line2", &[]),
@@ -2338,8 +2344,14 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             let saved_player = game.player.take();
             let _pipe = crate::game::native_client_session::tests::logged_client(game);
             game.player = saved_player;
-            game.settings.keys.set("key.inventory", "key.keyboard.j");
-            game.settings.keys.set("key.hotbar.1", "key.keyboard.k");
+            game.side
+                .settings
+                .keys
+                .set("key.inventory", "key.keyboard.j");
+            game.side
+                .settings
+                .keys
+                .set("key.hotbar.1", "key.keyboard.k");
             game.open_player_inventory();
             assert_eq!(game.side.screen, Screen::Inventory);
             game.inventory[9] = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 2));
@@ -2421,10 +2433,13 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 .menu
                 .set(Some((1, "minecraft:generic_9x3".to_owned())));
             game.container = Some(pos);
-            game.settings.keys.set("key.hotbar.1", "key.keyboard.1");
-            game.settings.keys.set("key.drop", "key.keyboard.k");
-            game.settings.extras.sort = true;
-            game.settings.extras.sort_key = "key.keyboard.q".into();
+            game.side
+                .settings
+                .keys
+                .set("key.hotbar.1", "key.keyboard.1");
+            game.side.settings.keys.set("key.drop", "key.keyboard.k");
+            game.side.settings.extras.sort = true;
+            game.side.settings.extras.sort_key = "key.keyboard.q".into();
             game.open_player_inventory();
             let batch = game.gui_batch().unwrap();
             let layout = game.built_container(&batch).unwrap();

@@ -304,7 +304,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// player allowed it (`craft_on_servers`).
     fn direct_craft_allowed(&self) -> bool {
         self.remote.is_some()
-            && (!self.direct_craft_elsewhere() || self.settings.controller.craft_on_servers)
+            && (!self.direct_craft_elsewhere() || self.side.settings.controller.craft_on_servers)
     }
 
     /// The pad can direct-craft here, with nothing carried: the inventory's guide says so on a
@@ -340,7 +340,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// a time); a refused press is plain A's.
     pub(in crate::game::client_side) fn direct_craft_start(&mut self, entry: usize) -> bool {
         let now = Instant::now();
-        let repeat_delay = self.settings.controller.repeat_delay;
+        let repeat_delay = self.side.settings.controller.repeat_delay;
         let repeat_at = now + Duration::from_secs_f32(repeat_delay);
         let Some(recipe) = self.recipe_stable_key(entry) else {
             return false;

@@ -841,12 +841,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn batch_for_size(&self) -> Option<HudBatch> {
         #[cfg(test)]
         if let Some(size) = self.side.recipe_ui.0.test_viewport {
-            return Some(HudBatch::new(size, self.settings.gui_scale_inputs()));
+            return Some(HudBatch::new(size, self.side.settings.gui_scale_inputs()));
         }
         let r = self.side.renderer.0.as_ref()?;
         Some(HudBatch::new(
             [r.config.width, r.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         ))
     }
 
@@ -978,7 +978,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 search.focused = true;
                 search.reset_blink();
                 if !magnifier {
-                    let idx = search.index_at(&self.gui.atlas, cursor.0);
+                    let idx = search.index_at(&self.side.gui.atlas, cursor.0);
                     search.set_cursor(idx, false);
                 }
                 return true;
@@ -1086,7 +1086,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(search) = self.side.recipe_ui.0.search.as_mut()
             && search.focused
         {
-            search.drag_to(&self.gui.atlas, x);
+            search.drag_to(&self.side.gui.atlas, x);
             return true;
         }
         false
@@ -1904,7 +1904,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (bx, by) = self.book_button_pos(book_type, ox, batch);
         let hover = inside(cursor, bx, by, 20.0, 18.0);
         batch.sprite(
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             &sprite(if hover {
                 "button_highlighted"
             } else {
@@ -2081,7 +2081,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Option<Vec<(Text, u32)>> {
         let (xo, yo) = self.book_origin(batch);
         let cursor = self.side.cursor;
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let search = match self.side.recipe_ui.0.search.as_mut() {
             Some(edit) => {
                 // The box's place, for clicks and typing.
@@ -2215,7 +2215,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut tooltip: Option<Vec<(sunrise_client::text::Text, u32)>> = None;
         for d in calls {
             let start = batch.vertices.len();
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             match &d.call {
                 Call::Blit {
                     x, y, w, h, u, v, ..
@@ -2432,9 +2432,9 @@ pub(in crate::game) mod screen_room_tests {
                 game.side.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
-                game.settings.gui_scale = 1;
+                game.side.settings.gui_scale = 1;
                 game.level.recipe_book.open[BookType::Crafting.index()] = true;
-                let batch = HudBatch::new([640, 240], game.settings.gui_scale_inputs());
+                let batch = HudBatch::new([640, 240], game.side.settings.gui_scale_inputs());
                 let (x, y) = game.book_origin(&batch);
                 assert_eq!((x, y), (110.0, 37.0));
                 assert_eq!(game.tab_pos(x, y, 0), (80.0, 40.0));
@@ -2468,7 +2468,7 @@ pub(in crate::game) mod screen_room_tests {
                 assert!(calls.iter().any(|c| matches!(&c.call, Call::Sprite { id, x: 78, y: 40, .. } if id == "recipe_book/tab_selected")));
                 assert!(calls.iter().any(|c| matches!(&c.call, Call::Sprite { id, x: 220, y: 49, .. } if id == "recipe_book/filter_disabled_highlighted")));
                 // A panel-only fit at 510 must be refused because the selected tab would clip.
-                let batch = HudBatch::new([510, 240], game.settings.gui_scale_inputs());
+                let batch = HudBatch::new([510, 240], game.side.settings.gui_scale_inputs());
                 room.store(180, Ordering::Relaxed);
                 game.side.frames += 1;
                 assert_eq!(game.open_book_left(&batch), Some(63.0));

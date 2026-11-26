@@ -54,7 +54,7 @@ fn early_server_game_rules_saved_and_creation_values() {
         for saved in [false, true] {
             let scratch = tempfile::tempdir().unwrap();
             let registry = Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
-            let mut create = sunrise_client::title::WorldOptions::default();
+            let mut create = sunrise_sim::world_options::WorldOptions::default();
             assert!(create.rules.set("keep_inventory", Value::Bool(true)));
             assert!(create.rules.set("random_tick_speed", Value::Int(7)));
             if saved {
@@ -92,7 +92,7 @@ fn early_server_game_rules_saved_and_creation_values() {
                                 game.res.clone(),
                                 game.pack.clone(),
                                 game.options.clone(),
-                                game.settings.clone(),
+                                game.side.settings.clone(),
                                 Arc::new(sunrise_world::datafix::progress::UpgradeProgress::new()),
                             )
                             .unwrap();

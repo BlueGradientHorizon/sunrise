@@ -57,44 +57,48 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         if let Some(pos) = camera_pos {
-            self.streaming.center = ((pos[0].floor() as i32) >> 4, (pos[2].floor() as i32) >> 4);
-            self.streaming.center_y = pos[1].floor() as i32;
+            self.side.streaming.center =
+                ((pos[0].floor() as i32) >> 4, (pos[2].floor() as i32) >> 4);
+            self.side.streaming.center_y = pos[1].floor() as i32;
         }
         // A headless game has nothing to draw sections with: like a server's, they aren't
         // meshed while it has no renderer.
         if self.options.headless {
-            self.streaming.mesh = self.side.renderer.0.is_some();
+            self.side.streaming.mesh = self.side.renderer.0.is_some();
         }
-        let areas = self.streaming.extra.len();
+        let areas = self.side.streaming.extra.len();
         // `Level.getChunk`'s tickets keep their columns until they expire.
-        self.streaming.hold_unknown_tickets();
-        self.streaming.upload_backlog = self.side.pending_uploads.0.len();
+        self.side.streaming.hold_unknown_tickets();
+        self.side.streaming.upload_backlog = self.side.pending_uploads.0.len();
         let plan = sunrise_client::spans::time("streaming_plan", || {
-            let mut step = self.streaming.begin_plan_update(&mut self.world);
+            let mut step = self.side.streaming.begin_plan_update(&mut self.world);
             loop {
                 match step {
-                    sunrise_client::streaming::PlanStep::Ready(plan) => break plan,
-                    sunrise_client::streaming::PlanStep::Save { chunk, resume } => {
-                        self.streaming.save_finished(chunk);
-                        step = self.streaming.resume_plan_update(&mut self.world, resume);
+                    sunrise_client_render::streaming::PlanStep::Ready(plan) => break plan,
+                    sunrise_client_render::streaming::PlanStep::Save { chunk, resume } => {
+                        self.side.streaming.save_finished(chunk);
+                        step = self
+                            .side
+                            .streaming
+                            .resume_plan_update(&mut self.world, resume);
                     }
                 }
             }
         });
-        let (commit, protos) = self.streaming.prepare_commit(&mut self.world, plan);
-        self.streaming.submit_protos(protos);
+        let (commit, protos) = self.side.streaming.prepare_commit(&mut self.world, plan);
+        self.side.streaming.submit_protos(protos);
         let (mut uploads, unloaded) = sunrise_client::spans::time("streaming", || {
-            self.streaming.complete_commit(&mut self.world, commit)
+            self.side.streaming.complete_commit(&mut self.world, commit)
         });
         // Sections chosen to mesh wait for the mods' `section_visibility` (none without a mod).
         self.prepare_section_visibility();
-        self.streaming.extra.truncate(areas);
+        self.side.streaming.extra.truncate(areas);
         // The viewed levels' meshing, queued after the player's level's (nothing while no view
         // names one).
-        if self.streaming.mesh
+        if self.side.streaming.mesh
             && let Some(remote) = &mut self.remote
         {
-            let streaming = &self.streaming;
+            let streaming = &self.side.streaming;
             remote
                 .viewed
                 .mesh_frame(|| streaming.viewed_mesh_source(), std::time::Instant::now());
@@ -153,10 +157,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // too): the view's outermost columns not all in, or its events not all handled.
         let radius = match &self.remote {
             // As far as the server fills it: its view distance and one.
-            Some(r) => self.streaming.radius.min(r.view_distance + 1),
-            None => self.streaming.radius,
+            Some(r) => self.side.streaming.radius.min(r.view_distance + 1),
+            None => self.side.streaming.radius,
         };
-        let view = (self.streaming.center, radius);
+        let view = (self.side.streaming.center, radius);
         let has = |column: (i32, i32)| self.world.chunks.contains_key(&column);
         let now = Instant::now();
         let arriving = {
@@ -169,7 +173,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // view is not zoomed.
         let lod_aim = camera_pos.and_then(|camera| self.lod_aim(camera));
         if let Some(renderer) = self.side.renderer.0.as_mut() {
-            let g = &self.settings.sunrise;
+            let g = &self.side.settings.sunrise;
             let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
             let mut raw_flight = self.side.flight.0.as_mut().filter(|flight| flight.raw);
             let vertex_bytes = |mesh: &sunrise_client::mesher::SectionMesh| {
@@ -177,14 +181,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     * std::mem::size_of::<sunrise_client::mesher::TerrainVertex>())
                     as u64
             };
-            // The meshes, once copied, are freed by a worker (`Streaming::free`).
+            // The meshes, once copied, are freed by a worker (`MeshStreamer::free`).
             if !budgeted
                 && self.side.pending_uploads.0.is_empty()
                 && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
                 sunrise_client::spans::time("upload", || {
                     for upload in &uploads {
-                        if self.streaming.can_publish_mesh(&self.world, upload) {
+                        if self.side.streaming.can_publish_mesh(&self.world, upload) {
                             renderer.upload(upload.key, &upload.mesh);
                             if let Some(flight) = raw_flight.as_deref_mut() {
                                 flight.note_mesh_uploads(1, vertex_bytes(&upload.mesh));
@@ -192,7 +196,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         }
                     }
                 });
-                self.streaming.free(uploads);
+                self.side.streaming.free(uploads);
             } else {
                 // Sunrise's chunk-update and upload budgets: the nearest
                 // sections go first, the rest wait for later frames; a newer
@@ -202,24 +206,24 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let order_span = sunrise_client::spans::guard("order_uploads");
                 let fresh: sunrise_client::fast_hash::FxHashSet<(i32, i32, i32)> =
                     uploads.iter().map(|upload| upload.key).collect();
-                let current = |upload: &sunrise_client::streaming::MeshUpload| {
+                let current = |upload: &sunrise_client_render::streaming::MeshUpload| {
                     self.world
                         .chunks
                         .contains_key(&(upload.key.0, upload.key.2))
-                        && self.streaming.can_publish_mesh(&self.world, upload)
+                        && self.side.streaming.can_publish_mesh(&self.world, upload)
                 };
                 // Filtering leaves the surviving waiting run in the same order.
                 let mut spent: Vec<_> = pending
                     .extract_if(.., |upload| fresh.contains(&upload.key) || !current(upload))
                     .collect();
                 spent.extend(uploads.extract_if(.., |upload| !current(upload)));
-                let centre = self.streaming.center;
+                let centre = self.side.streaming.center;
                 // Section keys count from the world's bottom (`origin`'s min_y + y * 16).
                 let bottom = f64::from(self.world.bottom_y());
                 let cam_y = camera_pos.map_or(4, |pos| ((pos[1] - bottom) / 16.0).floor() as i32);
                 let far = |k: &(i32, i32, i32)| section_distance_sq(*k, centre, cam_y);
                 let order = Some((centre, cam_y));
-                let priority = |upload: &sunrise_client::streaming::MeshUpload| {
+                let priority = |upload: &sunrise_client_render::streaming::MeshUpload| {
                     std::cmp::Reverse(far(&upload.key))
                 };
                 let work = order_uploads(
@@ -270,11 +274,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     flight.note_upload_queue_work(work);
                     flight.note_mesh_uploads(count, bytes);
                 }
-                self.streaming.free(spent);
+                self.side.streaming.free(spent);
             }
             renderer.remove_columns(unloaded.iter().map(|c| (c.x, c.z)));
             // Meshes in the works are the view's terrain while it is new, then edits'.
-            let meshing = self.streaming.busy() || !self.side.pending_uploads.0.is_empty();
+            let meshing = self.side.streaming.busy() || !self.side.pending_uploads.0.is_empty();
             let sampling = self.side.lod.0.as_ref().is_some_and(|lod| lod.sampling());
             renderer.set_terrain_loading(
                 arriving || (meshing && self.side.view_arrival.recent(now)) || sampling,
@@ -282,14 +286,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let (Some(lod), Some(player)) = (&mut self.side.lod.0, &self.player) {
                 let lod_distance =
                     sunrise_client::graphics::lod_distance_capped(far_distance, &renderer.info);
-                lod.set_near_loading(self.streaming.terrain_loading());
+                lod.set_near_loading(self.side.streaming.terrain_loading());
                 lod.set_reduced_detail(far_reduced);
                 // The covered columns change only with the complete ones and
                 // the render area: rebuilt then, not every frame.
                 let at = (
                     renderer.lod_detail_revision(),
-                    self.streaming.center,
-                    self.streaming.radius,
+                    self.side.streaming.center,
+                    self.side.streaming.radius,
                 );
                 let covered = (self.side.lod_covered_at != Some(at)).then(|| {
                     self.side.lod_covered_at = Some(at);
@@ -306,9 +310,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // ends: on a server, where it stops sending chunks, often well
                 // inside the render distance. Thousands of chunk-sized tiles
                 // between the two filled in long after the coarser ones.
-                let detail = self.remote.as_ref().map_or(self.streaming.radius, |r| {
-                    self.streaming.radius.min(r.sent_radius())
-                });
+                let detail = self
+                    .remote
+                    .as_ref()
+                    .map_or(self.side.streaming.radius, |r| {
+                        self.side.streaming.radius.min(r.sent_radius())
+                    });
                 let camera =
                     camera_pos.unwrap_or([player.position.x, player.position.y, player.position.z]);
                 let meshes = sunrise_client::spans::time("lod_update", || {
@@ -464,7 +471,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.side.lod_level = Some(remote.level.clone());
                 // Past them, the server's BlueMap, if the player named it.
                 let maps = root.join(terrain::server_folder(address)).join("BlueMap");
-                let settings = &self.settings.sunrise.blue_map;
+                let settings = &self.side.settings.sunrise.blue_map;
                 let blue_map = settings.server(address).map(|server| {
                     use sunrise_client::bluemap;
                     // The map's address only at debug: logs land in crash reports.

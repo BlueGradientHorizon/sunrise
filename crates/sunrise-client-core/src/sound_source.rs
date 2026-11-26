@@ -6,6 +6,17 @@ pub const SOUND_SOURCES: [&str; 11] = [
     "voice", "ui",
 ];
 
+/// `SoundSource` indices (vanilla order).
+pub const MASTER: usize = 0;
+pub const MUSIC: usize = 1;
+pub const RECORDS: usize = 2;
+pub const WEATHER: usize = 3;
+pub const BLOCKS: usize = 4;
+pub const NEUTRAL: usize = 6;
+pub const PLAYERS: usize = 7;
+pub const AMBIENT: usize = 8;
+pub const UI: usize = 10;
+
 /// The SoundSource an event plays on. Vanilla callers pick the source; this
 /// follows their conventions by event family.
 pub fn sound_source_for_event(event: &str) -> usize {
@@ -111,4 +122,11 @@ impl ServerSound {
             except_entity: None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SoundEntityState {
+    pub position: [f64; 3],
+    pub silent: bool,
+    pub removed: bool,
 }

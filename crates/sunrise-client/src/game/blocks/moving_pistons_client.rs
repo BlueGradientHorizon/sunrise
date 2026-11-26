@@ -25,16 +25,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .map(|c| &**c)
             })
         });
-        let tint = self.pack.context.tables.block_tints(
+        let tint = self.side.client_pack.context.mesh.tables.block_tints(
             state,
             [seed.x, seed.y, seed.z],
             &region,
             world_biomes!(self),
-            self.streaming.biome_zoom,
-            self.streaming.biome_blend,
-            self.streaming.nether_shading,
+            self.side.streaming.biome_zoom,
+            self.side.streaming.biome_blend,
+            self.side.streaming.nether_shading,
         );
-        let tables = &self.pack.context.tables;
+        let tables = &self.side.client_pack.context.mesh.tables;
         let light = |quad: &sunrise_assets::bake::ModelQuad| {
             let coords = tables.flat_light(state, [seed.x, seed.y, seed.z], quad, |p| {
                 self.world.light(p[0], p[1], p[2])
@@ -160,7 +160,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// [`Self::section_mesh_pending`] for a section already found.
     pub(in crate::game) fn section_mesh_pending_in(&self, section: (i32, i32, i32)) -> bool {
         self.world.dirty_sections.contains(&section)
-            || self.streaming.is_meshing(section)
+            || self.side.streaming.is_meshing(section)
             || self.section_upload_pending(section)
     }
     /// Whether a mesh of the section waits for its upload.

@@ -748,9 +748,10 @@ pub(in crate::game) mod connected_spawnpoint_rotation_tests {
         // Fixture setup through the existing column insertion API; admit every lit column below.
         for x in -2..=2 {
             for z in -2..=2 {
-                game.streaming
+                game.side
+                    .streaming
                     .insert_remote(&mut game.world, Chunk::empty(x, z));
-                assert!(game.streaming.is_lit(x, z));
+                assert!(game.side.streaming.is_lit(x, z));
             }
         }
         let stone = game

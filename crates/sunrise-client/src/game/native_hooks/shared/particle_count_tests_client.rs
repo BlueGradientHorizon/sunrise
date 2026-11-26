@@ -103,9 +103,9 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
             let motion = game.side.entity_motion.borrow().clone();
             // An actual picked-up item resolves a conditional model while the
             // preceding ordinary-particle pass has already produced geometry.
-            std::sync::Arc::get_mut(&mut game.pack.item_renderer)
-                .unwrap()
-                .models
+            let renderer =
+                std::sync::Arc::get_mut(&mut game.side.client_pack.item_renderer).unwrap();
+            std::sync::Arc::make_mut(&mut renderer.models)
                 .definitions
                 .insert(
                     "minecraft:stick".into(),
@@ -118,6 +118,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
                     )
                     .unwrap(),
                 );
+            game.pack.item_models = std::sync::Arc::clone(&renderer.models);
             let at = game.side.particles.0.camera;
             let item = sunrise_client::entities::ItemEntity::new(
                 1,
@@ -207,8 +208,9 @@ pub(in crate::game) fn frame_scene(
     game.options.offscreen = true;
     game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
     game.side.title.0 = None;
-    game.settings.extras.dynamic_lights = true;
-    game.settings.sunrise.particle_culling = sunrise_client::graphics::ParticleCullingMode::Off;
+    game.side.settings.extras.dynamic_lights = true;
+    game.side.settings.sunrise.particle_culling =
+        sunrise_client::graphics::ParticleCullingMode::Off;
     let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
     chunk.lit = true;
     game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
@@ -227,9 +229,8 @@ pub(in crate::game) fn frame_scene(
     ));
     // Only the picked-up stick resolves this custom property. The torch's
     // ordinary model must survive the clear unchanged.
-    std::sync::Arc::get_mut(&mut game.pack.item_renderer)
-        .unwrap()
-        .models
+    let renderer = std::sync::Arc::get_mut(&mut game.side.client_pack.item_renderer).unwrap();
+    std::sync::Arc::make_mut(&mut renderer.models)
         .definitions
         .insert(
             "minecraft:stick".into(),
@@ -242,6 +243,7 @@ pub(in crate::game) fn frame_scene(
             )
             .unwrap(),
         );
+    game.pack.item_models = std::sync::Arc::clone(&renderer.models);
     event_loop
 }
 

@@ -5,6 +5,7 @@ use sunrise_client::gfx::PreparedModels;
 
 pub(in crate::game) struct InitialModelGeneration {
     pub(in crate::game) pack: PackResources,
+    pub(in crate::game) client_pack: super::ClientPackResources,
     pub(in crate::game) gui: UiResources,
 }
 
@@ -34,8 +35,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.side.stitching_block_atlas.0 = Some(atlas.clone());
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Blocks);
-        self.gui = gui;
-        let (pool, mut names) = self.gui.atlas.dynamic_names();
+        self.side.gui = gui;
+        let (pool, mut names) = self.side.gui.atlas.dynamic_names();
         self.side.dynamic_textures.rebind(pool, &mut names);
         sunrise_client::ui_theme::reset_atlas();
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
@@ -59,17 +60,25 @@ impl Game<'_, crate::game::client_side::ClientState> {
         renderer: Option<Box<Renderer>>,
     ) -> sunrise_client::Result<()> {
         self.join_world_rest()?;
-        let InitialModelGeneration { pack, gui } = models;
+        let InitialModelGeneration {
+            pack,
+            client_pack,
+            gui,
+        } = models;
         let item_extensions = Self::prepare_client_item_extensions(&gui)?;
-        let geometry = super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
+        let geometry =
+            super::native_block_entity_draw::StandaloneGeometry::new(&pack, &client_pack, &gui);
         // The atlas listener applies before the model manager. Both use the same
         // prepared atlas/model bundle, but each publishes only its own store.
-        let upload = self.publish_client_atlases(&pack.render, gui, renderer);
+        let upload = self.publish_client_atlases(&client_pack.render, gui, renderer);
         self.apply_client_reload(client_applies, |game| {
             game.pack = pack;
+            game.side.client_pack = client_pack;
             game.side.standalone_geometry = geometry;
             let context = game.worker_context();
-            game.streaming.reload_resources(&mut game.world, context);
+            game.side
+                .streaming
+                .reload_resources(&mut game.world, context);
             game.install_model_upload(upload);
             game.side.armor_stand_assets.0.extensions = item_extensions;
             game.resolve_entity_renderers();
@@ -86,10 +95,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         client_applies: Vec<client_reload::PreparedClientReload>,
     ) -> sunrise_client::Result<()> {
         let pack = self.pack.clone();
-        let metrics = UiResources::server(&pack.source)?;
-        let gui = std::mem::replace(&mut self.gui, metrics);
+        let client_pack = self.side.client_pack.clone();
+        let metrics = UiResources::fonts_only(&pack.source)?;
+        let gui = std::mem::replace(&mut self.side.gui, metrics);
         self.apply_initial_model_generation(
-            InitialModelGeneration { pack, gui },
+            InitialModelGeneration {
+                pack,
+                client_pack,
+                gui,
+            },
             client_applies,
             None,
         )

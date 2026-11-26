@@ -118,7 +118,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.page_lines(&Text::untrusted(page))
     }
     pub(in crate::game::client_side) fn page_lines(&self, page: &Text) -> Vec<Text> {
-        self.gui.atlas.font.split(page, 114.0)
+        self.side.gui.atlas.font.split(page, 114.0)
     }
     /// `BookViewScreen.mouseClicked`: the click event of the text under the
     /// cursor on the page.
@@ -148,7 +148,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return None;
         }
         for (c, style) in line.chars() {
-            x -= self.gui.atlas.font.advance(c, style);
+            x -= self.side.gui.atlas.font.advance(c, style);
             if x < 0.0 {
                 return Some(style.clone());
             }
@@ -617,7 +617,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let chars: Vec<char> = text.chars().collect();
         let slice: String = chars[start..end].iter().collect();
         // MultilineTextField.LINE_SEEK_PIXEL_BIAS: vanilla biases this seek, not the drawn caret.
-        let pos = start + self.gui.atlas.font.fit(&slice, x + 2.0);
+        let pos = start + self.side.gui.atlas.font.fit(&slice, x + 2.0);
         if let Some(BookScreen::Edit { page_edit, .. }) = self.side.book.as_mut() {
             page_edit.set_cursor(pos, shift);
         }
@@ -644,7 +644,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Wrapped rows of a page as character ranges, the same breaks as `font.split`.
     pub(in crate::game::client_side) fn page_rows(&self, page: &str) -> Vec<(usize, usize)> {
-        let font = &self.gui.atlas.font;
+        let font = &self.side.gui.atlas.font;
         let chars: Vec<char> = page.chars().collect();
         let mut rows = Vec::new();
         let mut start = 0;
@@ -699,7 +699,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if cursor <= end || i + 1 == rows.len() {
                 let take = cursor.saturating_sub(start).min(end.saturating_sub(start));
                 let prefix: String = chars.iter().skip(start).take(take).collect();
-                return (self.gui.atlas.font.width(&prefix), i);
+                return (self.side.gui.atlas.font.width(&prefix), i);
             }
         }
         (0.0, 0)
@@ -716,7 +716,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (start, end) = rows[line];
         let chars: Vec<char> = page.chars().collect();
         let slice: String = chars[start..end].iter().collect();
-        start + self.gui.atlas.font.fit(&slice, local_x.max(0.0))
+        start + self.side.gui.atlas.font.fit(&slice, local_x.max(0.0))
     }
     /// A click on the centred title (`EditBox.onClick`).
     pub(in crate::game::client_side) fn book_title_click(&mut self, field_x: f32, mx: f32) {
@@ -727,9 +727,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return;
         };
-        let tx = field_x + ((114.0 - self.gui.atlas.font.width(title)) / 2.0).floor();
+        let tx = field_x + ((114.0 - self.side.gui.atlas.font.width(title)) / 2.0).floor();
         let rel = (mx - tx).max(0.0);
-        let pos = self.gui.atlas.font.fit(title, rel);
+        let pos = self.side.gui.atlas.font.fit(title, rel);
         title_edit.set_cursor(pos, shift);
     }
     /// A click on the open page (`MultiLineEditBox.onClick`): a double click
@@ -945,7 +945,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     pub(in crate::game::client_side) fn book_click(&mut self, size: [u32; 2]) -> bool {
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let (w, left) = (b.width, ((b.width - 192.0) / 2.0).floor());
         let (mx, my) = self.side.cursor;
         // MouseHandler: a click within 250 ms of the last one on this screen is a double click.
@@ -1045,7 +1045,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(book) = &self.side.book else {
             return;
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let w = batch.width;
         let (mx, my) = self.side.cursor;
         let hover =

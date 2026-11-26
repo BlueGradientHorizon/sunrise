@@ -22,10 +22,13 @@ use mod_api::{
     UseOnEvent, UsePhase,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, first_person::Hand, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::connection::Pipe;
+use {
+    sunrise_client::chunk::Chunk, sunrise_client::items::ItemStack,
+    sunrise_client::motion::PlayerMotion, sunrise_sim::first_person_sim::Hand,
+};
 
 impl<S: crate::game::Side> Game<'_, S> {
     pub(in crate::game) fn set_sent_sneak_for_test(&mut self) {

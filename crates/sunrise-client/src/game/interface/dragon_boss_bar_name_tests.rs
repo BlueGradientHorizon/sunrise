@@ -31,15 +31,9 @@ fn end_game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
-        res,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        None,
-    )
-    .unwrap();
+    let mut game =
+        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+            .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     assert_eq!(game.enter_command_level(Dim::End), Some(Dim::Overworld));
@@ -56,7 +50,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     // The chunks `EnderDragonFight.isArenaLoaded` waits for, lit as received
     // chunks are, so the fight's next player scan adopts or makes its dragon.
     {
-        let streaming = &mut game.streaming;
+        let streaming = &mut game.side.streaming;
         let world = &mut game.world;
         for z in -2..=1 {
             for x in -2..=1 {

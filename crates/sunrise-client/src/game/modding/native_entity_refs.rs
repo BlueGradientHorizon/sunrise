@@ -908,14 +908,21 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         kind: BlockShapeKind,
     ) -> Option<Vec<[f64; 6]>> {
         if !self.is_logical_server() {
-            return (self.native_client_level() == Some(level))
-                .then(|| self.state_shape_boxes(&self.world, &self.be_anims, state, pos, kind));
+            return (self.native_client_level() == Some(level)).then(|| {
+                self.state_shape_boxes(
+                    &self.world,
+                    crate::game::Side::shulkers(&self.side),
+                    state,
+                    pos,
+                    kind,
+                )
+            });
         }
         if !self.level_handle_current(level) {
             return None;
         }
-        let (world, anims) = if self.dim.key() == level.dimension() {
-            (&self.world, &self.be_anims)
+        let (world, shulkers) = if self.dim.key() == level.dimension() {
+            (&self.world, crate::game::Side::shulkers(&self.side))
         } else {
             let dim = crate::game::Side::levels(&self.side)?
                 .parked_dims()
@@ -923,10 +930,12 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                 .find(|dim| dim.key() == level.dimension())?;
             (
                 crate::game::Side::levels(&self.side)?.parked_world(dim)?,
-                crate::game::Side::levels(&self.side)?.parked_anims(dim)?,
+                &crate::game::Side::levels(&self.side)?
+                    .parked_anims(dim)?
+                    .shulkers,
             )
         };
-        Some(self.state_shape_boxes(world, anims, state, pos, kind))
+        Some(self.state_shape_boxes(world, shulkers, state, pos, kind))
     }
 
     /// The local face support in an open server level or the current client level,
@@ -1823,9 +1832,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1881,7 +1889,7 @@ pub(in crate::game) mod tests {
                 &settings,
                 std::time::Instant::now(),
                 false,
-                role,
+                super::super::execution_role::ExecutionRole::Client,
                 &Progress::new(),
                 &mut |_, _| unreachable!(),
             )
@@ -1895,7 +1903,7 @@ pub(in crate::game) mod tests {
                 &settings,
                 std::time::Instant::now(),
                 false,
-                role,
+                super::super::execution_role::ExecutionRole::Client,
                 &Progress::new(),
                 &mut |_, _| unreachable!(),
             )
@@ -1916,7 +1924,9 @@ pub(in crate::game) mod tests {
         options.game_dir = Some(saves.path().to_path_buf());
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -3743,13 +3753,15 @@ pub(in crate::game) mod tests {
             }
             game.lan_update_streaming();
             assert!(
-                game.streaming
+                game.side
+                    .streaming
                     .extra
                     .iter()
                     .any(|(chunk, _)| *chunk == (0, 0))
             );
             assert!(
                 !game
+                    .side
                     .streaming
                     .extra
                     .iter()
@@ -4435,12 +4447,12 @@ pub(in crate::game) mod tests {
                 .default_state("minecraft:shulker_box")
                 .unwrap();
             game.world.set(0, 64, 0, shulker).unwrap();
-            use sunrise_client::block_entity_anim::{Shulker, ShulkerStatus};
+            use sunrise_level::shulker_box::{Shulker, ShulkerStatus};
             // The early guest packet pass changes opener status before entity
             // hooks run, and before tick_block_entities synchronizes animations.
             // Exercise that producer with both an absent and a closed snapshot.
             for had_snapshot in [false, true] {
-                game.be_anims.shulkers.remove(&[0, 64, 0]);
+                game.side.be_anims.shulkers.remove(&[0, 64, 0]);
                 game.world.shulkers.remove(&[0, 64, 0]);
                 if had_snapshot {
                     game.world.shulkers.insert([0, 64, 0], Shulker::default());
@@ -4453,7 +4465,7 @@ pub(in crate::game) mod tests {
                 }
                 assert!(game.container_openers_changed((0, 64, 0), true));
                 assert_eq!(
-                    game.be_anims.shulkers[&[0, 64, 0]].status,
+                    game.side.be_anims.shulkers[&[0, 64, 0]].status,
                     ShulkerStatus::Opening
                 );
                 for parked in [false, true] {
@@ -4490,7 +4502,7 @@ pub(in crate::game) mod tests {
                     );
                 }
             }
-            game.be_anims.shulkers.remove(&[0, 64, 0]);
+            game.side.be_anims.shulkers.remove(&[0, 64, 0]);
             for status in [
                 ShulkerStatus::Closed,
                 ShulkerStatus::Opening,
@@ -4795,9 +4807,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -4934,9 +4945,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

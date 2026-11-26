@@ -63,7 +63,7 @@ impl Hooks for Probe {
 
 pub(in crate::game) fn request(world: &Path, create: bool) -> WorldRequest {
     let rules = std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
-    let options = sunrise_client::title::WorldOptions {
+    let options = sunrise_sim::world_options::WorldOptions {
         world_type: sunrise_client::save::WorldPreset::Flat,
         rules: sunrise_client::gamerules::GameRules::with_registry(rules.clone(), &[]),
         ..Default::default()
@@ -94,9 +94,9 @@ pub(in crate::game) fn prepared_root() -> std::path::PathBuf {
 /// nothing is left on its way (a ticket removed mid-generation is another matter).
 pub(in crate::game) fn pump_until(game: &mut crate::game::ServerGame<'_>, resident: bool) {
     let deadline = Instant::now() + Duration::from_secs(120);
-    while game.world.chunks.contains_key(&CHUNK) != resident || game.streaming.busy() {
+    while game.world.chunks.contains_key(&CHUNK) != resident || game.side.streaming.busy() {
         assert!(Instant::now() < deadline, "chunk {CHUNK:?} did not change");
-        game.streaming.wait(Duration::from_millis(5));
+        game.side.streaming.wait(Duration::from_millis(5));
         game.side_update_world();
     }
 }
@@ -126,7 +126,8 @@ fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
         game.remote.as_mut().unwrap().logged_in = true;
         let other = [1620, 64, 1600];
         for (x, z) in [CHUNK, (101, 100)] {
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }
         for [x, y, z] in POTS.into_iter().chain([other]) {

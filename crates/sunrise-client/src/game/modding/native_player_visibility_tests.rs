@@ -319,8 +319,6 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
     use sunrise_world::entity_move::MoverType::SelfMovement;
 
     fn setup<S>(game: &mut crate::game::Game<'_, S>) {
-        game.streaming
-            .insert_remote(&mut game.world, Chunk::empty(0, 0));
         let slab = game
             .pack
             .assets
@@ -337,6 +335,9 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
     }
 
     with_guests(|game| {
+        game.side
+            .streaming
+            .insert_remote(&mut game.world, Chunk::empty(0, 0));
         setup(game);
         let player = game.player(12).unwrap();
         assert!(game.command_guest(12).unwrap().motion.is_none());
@@ -398,6 +399,9 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
         let mut body = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
         body.entity_id = player.entity().id() as i32;
         game.player = Some(body);
+        game.side
+            .streaming
+            .insert_remote(&mut game.world, Chunk::empty(0, 0));
         setup(game);
         land(game);
 

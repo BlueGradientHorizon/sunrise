@@ -187,7 +187,7 @@ macro_rules! server_ctx {
             tick_steps: $s.clock.step_state(),
             collision: Some($s.collision),
             border: &$s.border,
-            streaming: Some(&$s.streaming),
+            streaming: Some(&$s.side.streaming),
         }
     }};
 }
@@ -306,7 +306,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             (target.x.floor() as i32) >> 4,
             (target.z.floor() as i32) >> 4,
         );
-        if (-2..=2).all(|dz| (-2..=2).all(|dx| self.streaming.is_lit(cx + dx, cz + dz))) {
+        if (-2..=2).all(|dz| (-2..=2).all(|dx| self.side.streaming.is_lit(cx + dx, cz + dz))) {
             return;
         }
         self.side.server_trips.push(Trip {
@@ -1101,12 +1101,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     fn trip_destination_ready(&self, trip: &Trip) -> bool {
         let (cx, cz) = Self::chunk_of(trip.target);
-        (-2..=2).all(|dz| (-2..=2).all(|dx| self.streaming.is_lit(cx + dx, cz + dz)))
+        (-2..=2).all(|dz| (-2..=2).all(|dx| self.side.streaming.is_lit(cx + dx, cz + dz)))
             && trip
                 .spawn_search
                 .as_ref()
                 .and_then(|search| search.waiting_for)
-                .is_none_or(|(x, z)| self.streaming.is_lit(x, z))
+                .is_none_or(|(x, z)| self.side.streaming.is_lit(x, z))
     }
 
     fn resolve_spawn_trip(&mut self, mut trip: Trip, action: SpawnAction) -> Option<Trip> {
@@ -1711,7 +1711,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             tick_steps: self.clock.step_state(),
             collision: Some(self.collision),
             border: &self.border,
-            streaming: Some(&self.streaming),
+            streaming: Some(&self.side.streaming),
         }
     }
 }
@@ -2505,7 +2505,8 @@ mod credits_respawn_tests {
     pub(super) fn light_spawn_chunks(game: &mut crate::game::ServerGame<'_>) {
         for x in -2..=2 {
             for z in -2..=2 {
-                game.streaming
+                game.side
+                    .streaming
                     .insert_remote(&mut game.world, Chunk::empty(x, z));
             }
         }
@@ -2589,7 +2590,8 @@ mod credits_respawn_tests {
             g.dimension = "minecraft:the_end".into();
         });
         game.enter_level(super::Dim::End).unwrap();
-        game.streaming
+        game.side
+            .streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         let portal = [0, 100, 0];
         assert!(

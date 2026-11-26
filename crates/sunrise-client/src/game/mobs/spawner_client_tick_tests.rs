@@ -110,7 +110,7 @@ fn run_in_child(test: &str) -> bool {
 /// A client of a server with the block entity types of `TYPES`, for `test`.
 fn with_remote_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
-        game.settings.render_distance = 32;
+        game.side.settings.render_distance = 32;
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "ClientTick").unwrap();
         let remote = game.remote.as_mut().unwrap();
@@ -406,7 +406,7 @@ fn start_case(
 ) -> Vec<(Pos, BlockStateId, i32, BlockEntity)> {
     game.forget_all_remote_columns();
     // The last case's animation state: a level starts with none.
-    game.be_anims.retain_present(&[]);
+    game.side.be_anims.retain_present(&[]);
     let entities: Vec<_> = case["entities"]
         .as_array()
         .unwrap()
@@ -435,7 +435,7 @@ fn start_case(
         .0
         .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
     // `EnchantingTableBlockEntity.RANDOM`, shared by every table: one stream per case.
-    game.be_anims.book_random =
+    game.side.be_anims.book_random =
         sunrise_core::random::LegacyRandom::new(case["seed"].as_i64().unwrap());
     game.world.game_time = case["gameTime"].as_i64().unwrap();
     // The columns arrive in the order their first block entity is listed, each listing its
@@ -463,7 +463,7 @@ fn animation_states(game: &crate::game::ClientGame<'_>) -> Vec<serde_json::Value
         .into_iter()
         .filter_map(|(k, e)| {
             let pos = [k.0, k.1, k.2];
-            let anims = &game.be_anims;
+            let anims = &game.side.be_anims;
             let colour = |sections: &[(u32, i32)]| -> Vec<_> {
                 sections
                     .iter()

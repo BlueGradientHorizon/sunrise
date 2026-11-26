@@ -150,7 +150,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if matches!(step, PreparedStep::Mod { .. }) {
                 APPLY_GENERATIONS.with_borrow_mut(|trace| {
                     if let Some(trace) = trace {
-                        trace.push(self.pack.render.generation);
+                        trace.push(self.side.client_pack.render.generation);
                     }
                 });
             }

@@ -93,7 +93,8 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
         with_client_game(|game| {
             let _server = logged_client(game);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.0, 64.0, 1.0)).unwrap());
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let old = game
                 .pack

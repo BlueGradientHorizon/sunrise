@@ -32,7 +32,9 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     options.resources = root.clone();
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -315,7 +317,9 @@ fn a_villager_raid_sweat_event_draws_particles() {
     options.resources = root.clone();
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,

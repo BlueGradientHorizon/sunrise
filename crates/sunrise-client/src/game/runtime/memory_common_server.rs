@@ -14,7 +14,7 @@ impl Drop for ServerMemoryRequest {
 }
 
 impl Generation {
-    pub(in crate::game) fn of(streaming: &sunrise_client::streaming::Streaming) -> Self {
+    pub(in crate::game) fn of(streaming: &sunrise_level::chunk_streamer::ChunkStreamer) -> Self {
         let c = streaming.proto_census();
         let [blocks, lists, heightmaps, other, biomes, records] = c.bytes;
         let protos: usize = c.bytes.iter().sum();

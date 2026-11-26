@@ -32,7 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // NeoForge's `CustomizeGuiOverlayEvent.BossEventProgress`, asked per
         // bar only while a mod listens.
         let customized = mod_api::__private::listened(mod_api::HookId::CustomizeBossEventProgress);
-        hud_overlays::boss_overlay(w, h, &bars, &self.gui.atlas.font, |index, at| {
+        hud_overlays::boss_overlay(w, h, &bars, &self.side.gui.atlas.font, |index, at| {
             let Some(bar) = customized
                 .then(|| self.side.boss_overlay.mod_bar(index, now))
                 .flatten()
@@ -71,7 +71,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let a = alpha as f32;
         let sprite = |n: &str| {
-            self.gui
+            self.side
+                .gui
                 .atlas
                 .sprites
                 .get(n)
@@ -219,7 +220,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // The skin's OptiFine emissive overlay, full bright.
         let glow = self
-            .res
+            .client_res()
             .client_mob_data()
             .emissive
             .read()
@@ -276,6 +277,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         out: &mut Vec<Vertex>,
     ) {
         let Some(s) = self
+            .side
             .gui
             .atlas
             .sprites
@@ -343,6 +345,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         out: &mut Vec<Vertex>,
     ) {
         let Some(s) = self
+            .side
             .gui
             .atlas
             .sprites
@@ -593,12 +596,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// (or a server's packets) put on this client's overlay.
     pub(in crate::game) fn draw_boss_bars(&self, batch: &mut HudBatch) {
         let draws = self.boss_bar_draws(batch.width as i32, batch.height as i32);
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
 
     /// `EnderDragonRenderer.submitRays`: untextured, additive death rays.
     pub(in crate::game) fn dragon_rays(&self, base: glam::Mat4, t: f32, out: &mut Vec<Vertex>) {
-        dragon_rays(base, t, self.gui.atlas.font.white(), out);
+        dragon_rays(base, t, self.side.gui.atlas.font.white(), out);
     }
 
     pub(in crate::game) fn client_resident_dragon_part_index(&self, id: u32) -> Option<usize> {

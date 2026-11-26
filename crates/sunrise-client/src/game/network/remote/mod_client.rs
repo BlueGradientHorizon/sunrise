@@ -92,7 +92,7 @@ use sunrise_client::{
     particles::TrackingTarget,
     random_source, screen_effects,
     sprint::Keys,
-    streaming::Streaming,
+    streaming::MeshStreamer,
     tab_list::SPECTATOR,
     text::Text,
 };
@@ -693,7 +693,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         batch: &mut HudBatch,
         since: u64,
     ) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         sunrise_client::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
         let title = sunrise_client::text::Text::translate("connect.reconfiguring", &[]);
@@ -883,7 +883,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         (w, h): (f32, f32),
     ) -> ((f32, f32), (f32, f32)) {
         let title = sunrise_client::text::Text::translate("connect.reconfiguring", &[]);
-        let title_w = self.gui.atlas.font.width_text(&title).ceil() as i32;
+        let title_w = self.side.gui.atlas.font.width_text(&title).ceil() as i32;
         let width = (title_w + 20).max(170);
         let left = ((w as i32 - width) as f32 * 0.5) as i32;
         let top = ((h as i32 - 69) as f32 * 0.5) as i32;

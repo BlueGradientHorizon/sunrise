@@ -72,7 +72,7 @@ pub(in crate::game) fn exercise_blank_inventory_presses() {
                     let renderer = game.side.renderer.0.as_ref().unwrap();
                     let batch = HudBatch::new(
                         [renderer.config.width, renderer.config.height],
-                        game.settings.gui_scale_inputs(),
+                        game.side.settings.gui_scale_inputs(),
                     );
                     let (x, y) = game.inventory_origin(&batch);
                     game.side.cursor = (x + 3.0, y + 3.0);

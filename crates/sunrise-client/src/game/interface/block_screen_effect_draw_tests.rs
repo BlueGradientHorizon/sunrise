@@ -631,7 +631,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         game.side.camera_type = CameraType::FirstPerson;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
         let chunk = Chunk::with_layout(0, 0, game.world.layout());
-        game.streaming.insert_remote(&mut game.world, chunk);
+        game.side.streaming.insert_remote(&mut game.world, chunk);
         let water = game
             .pack
             .assets
@@ -740,7 +740,7 @@ fn camera_submersion_can_force_or_clear_the_first_person_water_overlay() {
 fn pack_assembly_reports_a_missing_water_default() {
     with_client_game(|game| {
         let root = sunrise_assets::resource_source::ResourceRoot::directory(fixture_root());
-        let pack = &game.pack;
+        let client_pack = &game.side.client_pack;
         let registry = sunrise_world::registry::BlockRegistry::from_facts_json(
             br#"{"states":[["minecraft:air",true,false,"","minecraft:air"]],"defaults":{"minecraft:air":0}}"#
                 .as_slice(),
@@ -756,19 +756,28 @@ fn pack_assembly_reports_a_missing_water_default() {
         };
         let items = sunrise_client::item_render::ItemRenderer::load_for_server(
             &root,
-            pack.render.model_library.clone(),
+            client_pack.render.model_library.clone(),
             &game.res.core.item_data,
         )
         .unwrap();
-        let Err(error) = PackResources::assemble(
+        let assembled_pack = PackResources::assemble(
             &root,
             super::resource_tables::PackParts {
                 assets: Arc::new(assets),
-                render: pack.render.clone(),
-                tables: pack.context.tables.clone(),
+                biomes: game.pack.chunk_context.biomes.clone(),
+                light: game.pack.chunk_context.light.clone(),
+                item_models: Arc::clone(&items.models),
+                item_ids: Arc::clone(items.item_ids()),
+            },
+        )
+        .unwrap();
+        let Err(error) = super::ClientPackResources::assemble(
+            &root,
+            &assembled_pack,
+            super::resource_tables_client::ClientPackParts {
+                render: client_pack.render.clone(),
+                tables: client_pack.context.mesh.tables.clone(),
                 item_renderer: items,
-                biomes: pack.context.biomes.clone(),
-                light: pack.context.light.clone(),
             },
             true,
         ) else {

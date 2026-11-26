@@ -180,14 +180,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // arriving makes the built page again at its next draw.
         let (installed, changed) = self.side.mod_jobs.0.poll(
             &mut self.side.chat_ui.options.mod_browser,
-            &mut self.settings.mods,
+            &mut self.side.settings.mods,
             self.player.is_some(),
         );
         if changed {
             self.side.chat_ui.options.layout_changed();
         }
         if installed {
-            self.settings.save(&crate::game::options_path());
+            self.side.settings.save(&crate::game::options_path());
             self.start_mods();
             self.switch_mods();
             // A mod with blocks, items or worldgen waits for a restart: the

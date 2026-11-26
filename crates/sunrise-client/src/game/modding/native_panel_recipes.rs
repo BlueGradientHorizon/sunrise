@@ -395,7 +395,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     fn back_button(&self, layout: &Layout) -> ([f32; 4], String) {
         let label = self.translate_with_fallback("gui.back", "Back");
-        let w = HudBatch::text_width(&self.gui.atlas, &label) + 8.0;
+        let w = HudBatch::text_width(&self.side.gui.atlas, &label) + 8.0;
         ([layout.grid.0, layout.grid.1, w, 14.0], label)
     }
     /// What a slot of a shown recipe holds now: its stacks cycle once a second.
@@ -472,7 +472,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let page = pages.page.min(starts.len() - 1);
         let (title, pages_n) = (pages.title.clone(), starts.len());
         let (back, label) = self.back_button(layout);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let hover = inside(cursor, back);
         sunrise_client::widgets::declare_action(sunrise_client::widgets::Action::Back, back, true);
         let sprite = if hover {
@@ -516,7 +516,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.translate_with_fallback("gui.recipebook.next_page", "Next Page"),
             ];
             let visible = [page > 0, page + 1 < pages_n];
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             for (((x, y), name), (label, visible)) in layout
                 .arrows()
                 .into_iter()
@@ -549,7 +549,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let inputs = r.slots.len() - r.chances.len();
             let staggered = r.result_step(layout.width()).1 > 1.0;
             let (wells_in, wells_out, wells_h) = r.fluid_places(layout.width());
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             for &(sx, sy) in at.iter().filter(|p| p.0.is_finite()) {
                 batch.sprite(atlas, "container/slot", x + sx, y + sy);
             }
@@ -611,7 +611,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.draw_item(batch, &stack, x + sx + 1.0, y + sy + 1.0);
                 let chance = k.checked_sub(inputs).and_then(|j| r.chances[j].as_deref());
                 if let Some(text) = chance {
-                    let atlas = &self.gui.atlas;
+                    let atlas = &self.side.gui.atlas;
                     let w = HudBatch::text_width(atlas, text);
                     let line = if staggered && (k - inputs) % 2 == 1 {
                         CHANCE_TEXT
@@ -626,7 +626,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 if inside(cursor, [x + sx, y + sy, SLOT, SLOT]) {
                     batch.fill(
-                        &self.gui.atlas,
+                        &self.side.gui.atlas,
                         x + sx + 1.0,
                         y + sy + 1.0,
                         16.0,
@@ -663,7 +663,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A fluid's well, no clicks: its slot, the sprite or colour in it and
     /// its amount under it.
     fn draw_fluid_well(&self, batch: &mut HudBatch, well: &Well, x: f32, y: f32) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         batch.sprite(atlas, "container/slot", x, y);
         let dst = [x + 1.0, y + 1.0, 16.0, 16.0];
         let sprite = well
@@ -710,7 +710,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let tabs: Vec<Option<ItemStack>> = pages.tabs.iter().map(|t| t.1.clone()).collect();
         let selected = pages.tab;
         for (i, (&(x, y), stack)) in places.iter().zip(tabs).enumerate() {
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             batch.sprite(atlas, "container/slot", x, y);
             let Some(stack) = stack else {
                 continue;
@@ -719,7 +719,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // The selected tab: a white frame around its slot.
             if i == selected {
                 let white = rgba(255, 255, 255, 255);
-                let atlas = &self.gui.atlas;
+                let atlas = &self.side.gui.atlas;
                 batch.fill(atlas, x - 1.0, y - 1.0, SLOT + 2.0, 1.0, white);
                 batch.fill(atlas, x - 1.0, y + SLOT, SLOT + 2.0, 1.0, white);
                 batch.fill(atlas, x - 1.0, y, 1.0, SLOT, white);
@@ -727,7 +727,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             if inside(self.side.cursor, [x, y, SLOT, SLOT]) {
                 batch.fill(
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     x + 1.0,
                     y + 1.0,
                     16.0,

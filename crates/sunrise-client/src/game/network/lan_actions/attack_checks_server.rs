@@ -67,9 +67,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn holds_piercing_weapon(&self) -> bool {
         self.held().is_some_and(|stack| {
             self.pack
-                .item_renderer
-                .models
-                .components_view(&sunrise_client::item_render::stack_view(stack))
+                .item_models
+                .components_view(&sunrise_sim::item_models::stack_view(stack))
                 .contains_key("minecraft:piercing_weapon")
         })
     }
@@ -117,9 +116,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

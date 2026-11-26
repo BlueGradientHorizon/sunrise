@@ -140,7 +140,8 @@ fn two_hits_of_a_mob_without_uuid_share_one() {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.build_registries();
-        game.streaming
+        game.side
+            .streaming
             .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
         game.mobs.clear();
         let fish = game

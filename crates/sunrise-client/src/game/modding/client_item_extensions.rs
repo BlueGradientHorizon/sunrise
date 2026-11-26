@@ -405,12 +405,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         };
         let bind = |name: &str| {
-            self.gui.atlas.sprites.get_key_value(name).map(|(name, r)| {
-                super::equipment_piece::MaterialBinding {
+            self.side
+                .gui
+                .atlas
+                .sprites
+                .get_key_value(name)
+                .map(|(name, r)| super::equipment_piece::MaterialBinding {
                     name,
                     uv: [r.u0, r.v0, r.u1, r.v1],
-                }
-            })
+                })
         };
         let materials = dispatch_equipment(
             self,

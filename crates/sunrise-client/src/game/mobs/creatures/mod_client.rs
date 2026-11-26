@@ -141,7 +141,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> MobDrawFrame<'_> {
         // The coarse mob bounds pay off only in dense async scenes; otherwise,
         // keep the existing exact mesh-culling path.
-        let precheck = self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
+        let precheck = self.side.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
                 .side
                 .occlusion
@@ -149,8 +149,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .async_culler
                 .as_ref()
                 .is_some_and(|culler| culler.camera_is_stationary())
-            && self.settings.sunrise.entity_culling_precheck != 0
-            && self.mobs.len() >= self.settings.sunrise.entity_culling_precheck as usize
+            && self.side.settings.sunrise.entity_culling_precheck != 0
+            && self.mobs.len() >= self.side.settings.sunrise.entity_culling_precheck as usize
             && !self.side.occlusion.0.shadow_casters.0
             && mod_api::__private::mods().is_empty();
         self.side.rendered_mobs.set(0);
@@ -197,7 +197,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let mut models = self.side.skin_models.0.borrow_mut();
                 // Reuse helps CPU-bound crowds, but regressed TAA frame tails in
                 // windowed measurements. Keep the original arithmetic with TAA on.
-                models.set_rotation_cache_enabled(!self.settings.sunrise.taa);
+                models.set_rotation_cache_enabled(!self.side.settings.sunrise.taa);
                 models.begin(&mut self.side.skin_frame.borrow_mut(), stored);
                 models.tagged = renderer.is_some_and(|r| r.skins_tagged());
             }
@@ -495,7 +495,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         projectiles: impl Iterator<Item = (&'a Projectile, [f64; 3])>,
         out: &mut Vec<Vertex>,
     ) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (right, up) = thrown_item_axes(self.side.camera_type, self.yaw, self.pitch);
         // A glowing projectile's outline: what it drew up to the next one.
         let mut glowing = None;

@@ -642,9 +642,9 @@ fn integrated_scene(test: &str, place: fn(&mut crate::game::ServerGame<'_>, [f64
                 );
                 drop(registration);
                 game.resolve_entity_renderers();
-                game.settings.render_distance = 2;
-                game.settings.simulation_distance = 2;
-                let options = sunrise_client::title::WorldOptions {
+                game.side.settings.render_distance = 2;
+                game.side.settings.simulation_distance = 2;
+                let options = sunrise_sim::world_options::WorldOptions {
                     world_type: sunrise_client::save::WorldPreset::Flat,
                     ..Default::default()
                 };

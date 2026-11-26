@@ -120,7 +120,8 @@ fn receive(rx: &mpsc::Receiver<Out>) -> Vec<C> {
 
 fn credits(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     game.enter_level(Dim::End).unwrap();
-    game.streaming
+    game.side
+        .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     assert!(
         game.set_state_named([0, 100, 0], "minecraft:end_portal", &[])
@@ -678,7 +679,8 @@ fn resend(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>)
 
 fn crystal_round_trip(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     let key = (1, 0);
-    game.streaming
+    game.side
+        .streaming
         .insert_remote(&mut game.world, Chunk::empty(key.0, key.1));
     let tag = nbt::parse_snbt(
         r#"{id:"minecraft:end_crystal",UUID:[I;0,0,0,130],Pos:[18.5d,100d,0.5d],Rotation:[-132.25f,31.5f],Invulnerable:1b,beam_target:[I;0,128,0],Fire:120s,data:{marker:42}}"#,
@@ -807,7 +809,8 @@ fn run_witness() {
                 },
             )
             .unwrap();
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let rx = join(game, VIEWER, true);
             let mut rows = Map::new();

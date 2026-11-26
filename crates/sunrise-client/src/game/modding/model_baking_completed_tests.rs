@@ -137,7 +137,7 @@ fn a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles
                 first
             };
             assert!(
-                game.pack.render.resolve_model(first).is_ok(),
+                game.side.client_pack.render.resolve_model(first).is_ok(),
                 "the handle is of the store the hook published"
             );
             {
@@ -167,9 +167,9 @@ fn a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles
                 [Ok(first), Ok(first)],
                 "stitch still reads the old model store"
             );
-            assert!(game.pack.render.resolve_model(second).is_ok());
+            assert!(game.side.client_pack.render.resolve_model(second).is_ok());
             assert_eq!(
-                game.pack.render.resolve_model(first).err(),
+                game.side.client_pack.render.resolve_model(first).err(),
                 Some(ModelError::StaleModel),
                 "the first load's handle is superseded"
             );
@@ -200,10 +200,21 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
                 panic!("baker results not published atomically");
             };
             assert_eq!(
-                game.pack.render.resolve_model(turned).unwrap().faces.len(),
+                game.side
+                    .client_pack
+                    .render
+                    .resolve_model(turned)
+                    .unwrap()
+                    .faces
+                    .len(),
                 6
             );
-            let model = game.pack.render.resolve_model(assembly).unwrap();
+            let model = game
+                .side
+                .client_pack
+                .render
+                .resolve_model(assembly)
+                .unwrap();
             assert_eq!(model.faces.len(), 12);
             // Both original geometries survive one ModelRef, not two draws or two copies
             // of the first part. The full block and the bottom slab have distinct tops.
@@ -226,15 +237,16 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
                 panic!("baker results not republished");
             };
             assert_eq!(
-                game.pack.render.resolve_model(turned).err(),
+                game.side.client_pack.render.resolve_model(turned).err(),
                 Some(ModelError::StaleModel)
             );
             assert_eq!(
-                game.pack.render.resolve_model(assembly).err(),
+                game.side.client_pack.render.resolve_model(assembly).err(),
                 Some(ModelError::StaleModel)
             );
             assert_eq!(
-                game.pack
+                game.side
+                    .client_pack
                     .render
                     .resolve_model(second_turned)
                     .unwrap()
@@ -243,7 +255,8 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
                 6
             );
             assert_eq!(
-                game.pack
+                game.side
+                    .client_pack
                     .render
                     .resolve_model(second_assembly)
                     .unwrap()
@@ -395,7 +408,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
                     // A clean registration snapshot for each candidate.
                     game.mods.profession_declarations = Default::default();
                     trace.lock().unwrap().clear();
-                    let previous = game.pack.render.clone();
+                    let previous = game.side.client_pack.render.clone();
                     let staged = stage_pack(
                         &game.vanilla_root(),
                         &[],
@@ -405,9 +418,10 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
                         &[],
                         &game.pack.assets,
                         &game.res,
-                        &game.pack.context,
-                        game.settings.force_unicode,
-                        game.settings.japanese_glyphs,
+                        game.client_res(),
+                        &game.side.client_pack.context,
+                        game.side.settings.force_unicode,
+                        game.side.settings.japanese_glyphs,
                         &Progress::new(),
                     )
                     .unwrap();
@@ -423,7 +437,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
                         );
                         assert!(error.contains("duplicate"), "{error}");
                         assert!(
-                            Arc::ptr_eq(&game.pack.render, &previous),
+                            Arc::ptr_eq(&game.side.client_pack.render, &previous),
                             "old model generation remains installed"
                         );
                         assert_eq!(
@@ -433,7 +447,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
                         continue;
                     }
                     game.apply_staged_pack(staged).unwrap();
-                    assert!(!Arc::ptr_eq(&game.pack.render, &previous));
+                    assert!(!Arc::ptr_eq(&game.side.client_pack.render, &previous));
                     assert_eq!(
                         *trace.lock().unwrap(),
                         [
@@ -474,9 +488,10 @@ fn a_failed_reload_fires_no_model_baking_completed() {
                 &[],
                 &game.pack.assets,
                 &game.res,
-                &game.pack.context,
-                game.settings.force_unicode,
-                game.settings.japanese_glyphs,
+                game.client_res(),
+                &game.side.client_pack.context,
+                game.side.settings.force_unicode,
+                game.side.settings.japanese_glyphs,
                 &Progress::new(),
             )
             .unwrap();
@@ -494,7 +509,7 @@ fn a_failed_reload_fires_no_model_baking_completed() {
             std::fs::remove_dir_all(root).unwrap();
             assert!(kept.lock().unwrap().heard.is_empty(), "nothing fired");
             assert!(
-                game.pack.render.resolve_model(first).is_ok(),
+                game.side.client_pack.render.resolve_model(first).is_ok(),
                 "the last successful load's handle stays right"
             );
         });

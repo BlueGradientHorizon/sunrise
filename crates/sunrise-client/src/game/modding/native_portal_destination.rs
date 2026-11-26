@@ -309,7 +309,8 @@ mod tests {
         for z in -3..=3 {
             for x in -3..=3 {
                 if Some((x, z)) != skip && !game.world.chunks.contains_key(&(x, z)) {
-                    game.streaming
+                    game.side
+                        .streaming
                         .insert_remote(&mut game.world, Chunk::empty(x, z));
                 }
             }
@@ -416,7 +417,8 @@ mod tests {
                 game.level_portal_destination(overworld, entry, SIZE),
                 Err(PortalError::ChunksNotLoaded)
             );
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(1, 0));
             for y in 70..73 {
                 set(game, "minecraft:nether_portal", [16, y, 8]);

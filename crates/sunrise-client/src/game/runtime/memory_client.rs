@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (tiles, kept_bytes)
         });
         MemoryInputs {
-            render_distance: self.streaming.radius,
+            render_distance: self.side.streaming.radius,
             client: self
                 .options
                 .dedicated

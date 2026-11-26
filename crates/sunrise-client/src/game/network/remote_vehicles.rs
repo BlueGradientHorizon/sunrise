@@ -349,7 +349,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 let message = Text::translate(
                     key,
-                    &[keybinds::display_name(self.settings.keys.get("key.sneak"))],
+                    &[keybinds::display_name(
+                        self.side.settings.keys.get("key.sneak"),
+                    )],
                 );
                 self.say_system_now(&message);
                 self.side.titles.set_overlay(message, false);
@@ -521,7 +523,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // The offset belongs to the cart, so switching vehicles cannot
             // transfer the previous vehicle's pending turn.
             let rotate =
-                self.minecart_improvements() && self.settings.file.bool("rotateWithMinecart");
+                self.minecart_improvements() && self.side.settings.file.bool("rotateWithMinecart");
             if let Some(i) = self.carts.iter().position(|c| c.id == id) {
                 self.carts.update(i, |c| {
                     c.passenger_yaw_delta = 0.0;
@@ -1110,7 +1112,7 @@ pub(in crate::game) mod tests {
             &settings,
             std::time::Instant::now(),
             false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!("no menu handoff"),
         )
@@ -1120,7 +1122,9 @@ pub(in crate::game) mod tests {
         options.execution_role = ExecutionRole::Client;
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -1209,9 +1213,8 @@ pub(in crate::game) mod tests {
         let mut server = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1348,7 +1351,7 @@ pub(in crate::game) mod tests {
             &settings,
             std::time::Instant::now(),
             false,
-            ExecutionRole::IntegratedServer,
+            ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!("no menu handoff"),
         )
@@ -1358,7 +1361,9 @@ pub(in crate::game) mod tests {
         options.execution_role = ExecutionRole::Client;
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -1526,7 +1531,9 @@ mod plugin_seat_tests {
         options.execution_role = crate::game::execution_role::ExecutionRole::Client;
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -1555,7 +1562,7 @@ mod plugin_seat_tests {
         game.armor_stands[0].small = false;
         game.remote_ride(Keys::default());
         close(game.player.as_ref().unwrap().position.y, 65.375);
-        let kind = game.res.player_type().clone().unwrap();
+        let kind = game.client_res().player_type().clone().unwrap();
         game.mobs
             .push(Mob::new(43, kind, Vec3::new(5.0, 70.0, 6.0), 0.0));
         game.armor_stands[0].marker = true;

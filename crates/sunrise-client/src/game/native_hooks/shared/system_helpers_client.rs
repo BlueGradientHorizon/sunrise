@@ -27,7 +27,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let focused = self.side.screen == Screen::Chat;
         let line = Text::literal(text);
         let ticks = self.visual_ticks();
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         self.side
             .chat_ui
             .chat

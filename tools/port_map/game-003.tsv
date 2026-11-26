@@ -30,11 +30,11 @@ WorldGenRegion.hasChunk	port	crates/sunrise-world/src/worldgen/feature_region.rs
 WorldGenRegion.warnIfReadOutsideWriteZone	skip:debug		logs an unsafe terrain read
 WorldGenRegion.findBlocksIn	skip:debug		only adds the read-zone warnings to the default scan
 WorldGenRegion.isWithinWriteZone	port	crates/sunrise-world/src/worldgen/write_zone.rs::GenerationWriteZone::contains_block	Chebyshev distance to the centre chunk within the write radius
-LevelLoadProgressTracker.start	inline	crates/sunrise-client-render/src/level_loading.rs::progress	weights 10 + player chunks; no persistent (forced) chunk stage
-LevelLoadProgressTracker.update	inline	crates/sunrise-client-render/src/level_loading.rs::progress	player chunks ready out of 49
-LevelLoadProgressTracker.finishSegment	inline	crates/sunrise-client-render/src/level_loading.rs::progress	the 10 weight prepare segment counts as finished
-LevelLoadProgressTracker.tracksStage	inline	crates/sunrise-client-render/src/level_loading.rs::progress	both stages tracked, player chunks included
-LevelLoadProgressTracker.updateProgress	port	crates/sunrise-client-render/src/level_loading.rs::progress
+LevelLoadProgressTracker.start	inline	crates/sunrise-level/src/level_loading.rs::progress	weights 10 + player chunks; no persistent (forced) chunk stage
+LevelLoadProgressTracker.update	inline	crates/sunrise-level/src/level_loading.rs::progress	player chunks ready out of 49
+LevelLoadProgressTracker.finishSegment	inline	crates/sunrise-level/src/level_loading.rs::progress	the 10 weight prepare segment counts as finished
+LevelLoadProgressTracker.tracksStage	inline	crates/sunrise-level/src/level_loading.rs::progress	both stages tracked, player chunks included
+LevelLoadProgressTracker.updateProgress	port	crates/sunrise-level/src/level_loading.rs::progress
 LoggingLevelLoadListener	skip:server		console progress log of a dedicated server or integrated server start
 CompoundContainer.isEmpty	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::is_empty	a View of both halves is empty when every slot is
 CompoundContainer.contains	inline	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::container_openers_changed	an opener of a chest counts on both halves (chest_other_half)

@@ -180,7 +180,8 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
 
             with_game(|game| {
                 open_to_lan(game);
-                game.streaming
+                game.side
+                    .streaming
                     .insert_remote(&mut game.world, Chunk::empty(0, 0));
                 let snow = game
                     .pack
@@ -314,7 +315,8 @@ pub(in crate::game) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i3
         || {
             with_game(|game| {
                 open_to_lan(game);
-                game.streaming
+                game.side
+                    .streaming
                     .insert_remote(&mut game.world, Chunk::empty(0, 0));
                 let mut guest = online_guest(1);
                 guest.loaded = true;

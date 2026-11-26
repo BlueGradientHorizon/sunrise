@@ -55,7 +55,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The guide shows while the pad plays: not over a menu, a prompt, the debug screen or a sleeping
     /// or missing player, not once the mouse or keyboard took over, and not when the setting is off.
     fn pad_guide_shows(&self) -> bool {
-        let settings = &self.settings.controller;
+        let settings = &self.side.settings.controller;
         settings.enabled
             && settings.guide_detail != GuideDetail::Off
             && self.side.pad.0.in_use
@@ -93,8 +93,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 facts
             }
         };
-        let guide = gameplay_guide::resolve(&facts, &self.settings.controller)
-            .at_detail(self.settings.controller.guide_detail);
+        let guide = gameplay_guide::resolve(&facts, &self.side.settings.controller)
+            .at_detail(self.side.settings.controller.guide_detail);
         let mut taken = Self::guide_taken(batch, from);
         // The right column first: the left has the rows it can better do without.
         self.draw_guide_columns(batch, false, &guide, &mut taken);
@@ -149,7 +149,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         batch: &mut HudBatch,
         from: usize,
     ) {
-        let settings = &self.settings.controller;
+        let settings = &self.side.settings.controller;
         if !settings.enabled
             || settings.guide_detail == GuideDetail::Off
             || !self.side.pad.0.in_use
@@ -161,8 +161,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let facts = self.pad_menu_guide_facts(batch);
-        let guide =
-            gameplay_guide::resolve_menu(&facts).at_detail(self.settings.controller.guide_detail);
+        let guide = gameplay_guide::resolve_menu(&facts)
+            .at_detail(self.side.settings.controller.guide_detail);
         let mut taken = Self::guide_taken(batch, from);
         self.draw_guide_columns(batch, true, &guide, &mut taken);
     }
@@ -243,7 +243,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             side: if left { Side::Leading } else { Side::Trailing },
             ..hint::GUIDE
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let widths: Vec<f32> = hints
             .iter()
             .map(|h| hint::plated_width(atlas, h, &look))
@@ -255,7 +255,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             gameplay_guide::place_column(view, left, &widths, room, taken)
         };
         // The player's text background (Accessibility), as chat's: black at its opacity.
-        let alpha = (self.settings.text_background(0.4) >> 24) as u8;
+        let alpha = (self.side.settings.text_background(0.4) >> 24) as u8;
         let mut widest = 0.0_f32;
         for ((row, line), place) in rows.iter().zip(&hints).zip(places) {
             let Some(rect) = place else {
@@ -282,7 +282,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The rows last drawn, for `pad status`.
     pub(in crate::game::client_side) fn pad_guide_status(&self) -> Value {
-        let pad = &self.settings.controller;
+        let pad = &self.side.settings.controller;
         let column = |left: bool| -> Vec<Value> {
             self.side
                 .pad
@@ -314,7 +314,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let vehicle_jumps = self.jumpable_mount().is_some();
         let using = self.pad_guide_active();
         let blind = self.potions.effects.get("blindness").is_some();
-        let latching = self.settings.controller.toggle_sneak || self.settings.toggle_crouch;
+        let latching =
+            self.side.settings.controller.toggle_sneak || self.side.settings.toggle_crouch;
         let main_hand_item = self.stack_in(self.selected).is_some();
         let off_hand_item = self.offhand.is_some();
         let (target, block, can_pick) = self.pad_guide_target(spectator);

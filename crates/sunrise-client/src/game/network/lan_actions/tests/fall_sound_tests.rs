@@ -11,7 +11,8 @@ fn run(distance: f64, expected: usize) {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_game(|game| {
             open_to_lan(game);
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let stone = game
                 .pack

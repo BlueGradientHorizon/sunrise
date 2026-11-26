@@ -733,7 +733,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         tag: &Tag,
         e: &mut EntityState,
     ) -> Option<sunrise_client::items::ItemStack> {
-        use sunrise_client::text_display::{display_data, text_display_data};
+        use {
+            sunrise_sim::text_display_data::display_data,
+            sunrise_sim::text_display_data::text_display_data,
+        };
         let mut item_stack = None;
         let empty = Tag::Compound(Default::default());
         let (meta, defaults) = match e.kind.as_str() {
@@ -1240,8 +1243,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // DATA_WAITING for its 20-tick wait, and DATA_PARTICLE): the
         // client draws them from these (`tick_remote_clouds`).
         let breath = hub.particle(
-            &sunrise_client::particles::ParticleOptions::simple(
-                sunrise_client::particles::ParticleType::DragonBreath,
+            &sunrise_level::particle_options::ParticleOptions::simple(
+                sunrise_level::particle_options::ParticleType::DragonBreath,
             ),
             None,
         );

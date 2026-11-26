@@ -3,14 +3,14 @@
 #[ignore = "daily"]
 fn client_option_snapshots_follow_settings() {
     super::native_entity_refs::tests::with_client_game(|game| {
-        game.settings.fov = 90.0;
-        game.settings.render_distance = 12;
-        game.settings.gamma = 0.75;
-        game.settings.gui_scale = 3;
-        game.settings.show_subtitles = true;
-        game.settings.chat_visibility = 1;
-        game.settings.chat_delay = 1.5;
-        game.settings.master_volume = 0.25;
+        game.side.settings.fov = 90.0;
+        game.side.settings.render_distance = 12;
+        game.side.settings.gamma = 0.75;
+        game.side.settings.gui_scale = 3;
+        game.side.settings.show_subtitles = true;
+        game.side.settings.chat_visibility = 1;
+        game.side.settings.chat_delay = 1.5;
+        game.side.settings.master_volume = 0.25;
         let host: &dyn mod_api::ClientHost = game;
         let (graphics, gui, chat, audio) = (
             host.graphics_options(),
@@ -27,7 +27,7 @@ fn client_option_snapshots_follow_settings() {
         assert_eq!(chat.delay, 1.5);
         assert_eq!(audio.master_volume, 0.25);
 
-        game.settings.fov = 70.0;
+        game.side.settings.fov = 70.0;
         let host: &dyn mod_api::ClientHost = game;
         assert_eq!(host.graphics_options().fov, 70.0);
         assert_eq!(graphics.fov, 90.0, "an older snapshot stays unchanged");
@@ -38,14 +38,14 @@ fn client_option_snapshots_follow_settings() {
 #[ignore = "daily"]
 fn client_input_options_follow_settings() {
     super::native_entity_refs::tests::with_client_game(|game| {
-        game.settings.sensitivity = 0.25;
-        game.settings.invert_x = true;
-        game.settings.invert_y = false;
-        game.settings.mouse_wheel_sensitivity = 0.75;
-        game.settings.discrete_scroll = true;
-        game.settings.toggle_crouch = false;
-        game.settings.toggle_sprint = true;
-        game.settings.auto_jump = false;
+        game.side.settings.sensitivity = 0.25;
+        game.side.settings.invert_x = true;
+        game.side.settings.invert_y = false;
+        game.side.settings.mouse_wheel_sensitivity = 0.75;
+        game.side.settings.discrete_scroll = true;
+        game.side.settings.toggle_crouch = false;
+        game.side.settings.toggle_sprint = true;
+        game.side.settings.auto_jump = false;
         let host: &dyn mod_api::ClientHost = game;
         let first = host.input_options();
         assert_eq!(first.sensitivity, 0.25);
@@ -57,14 +57,14 @@ fn client_input_options_follow_settings() {
         assert!(first.toggle_sprint);
         assert!(!first.auto_jump);
 
-        game.settings.sensitivity = 0.5;
-        game.settings.invert_x = false;
-        game.settings.invert_y = true;
-        game.settings.mouse_wheel_sensitivity = 1.5;
-        game.settings.discrete_scroll = false;
-        game.settings.toggle_crouch = true;
-        game.settings.toggle_sprint = false;
-        game.settings.auto_jump = true;
+        game.side.settings.sensitivity = 0.5;
+        game.side.settings.invert_x = false;
+        game.side.settings.invert_y = true;
+        game.side.settings.mouse_wheel_sensitivity = 1.5;
+        game.side.settings.discrete_scroll = false;
+        game.side.settings.toggle_crouch = true;
+        game.side.settings.toggle_sprint = false;
+        game.side.settings.auto_jump = true;
         let host: &dyn mod_api::ClientHost = game;
         let second = host.input_options();
         assert_eq!(second.sensitivity, 0.5);
@@ -997,9 +997,8 @@ pub(in crate::game) mod wind_charge_burst_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

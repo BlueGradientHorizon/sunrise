@@ -154,7 +154,7 @@ pub(in crate::game) fn set_up(
 
     // The viewer's own state: what the local hotbar and bars would show.
     game.selected = case["selected"].as_u64().unwrap() as usize;
-    game.settings.main_hand_left = !case["rightHanded"].as_bool().unwrap();
+    game.side.settings.main_hand_left = !case["rightHanded"].as_bool().unwrap();
     for (i, pop) in case["slots"].as_array().unwrap().iter().enumerate() {
         if let Some(pop) = pop.as_u64() {
             game.inventory[i] = Some(ItemStack::new("minecraft:stone", 1));
@@ -255,6 +255,6 @@ pub(in crate::game) fn set_up(
         other => panic!("camera kind {other}"),
     }
     if case["attackIndicator"] == "HOTBAR" {
-        game.settings.attack_indicator = 2;
+        game.side.settings.attack_indicator = 2;
     }
 }

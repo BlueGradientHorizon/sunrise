@@ -87,13 +87,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(());
         }
         self.side.save.0.save_chunk_tickets(
-            self.streaming.commanded(),
+            self.side.streaming.commanded(),
             self.side.tickets.0.portal_tickets(),
         )?;
         self.side
             .save
             .0
-            .save_mod_tickets(self.streaming.mod_tickets(), |slot| {
+            .save_mod_tickets(self.side.streaming.mod_tickets(), |slot| {
                 mod_api::TicketController::from_slot(slot).map(|c| c.id())
             })
     }
@@ -106,14 +106,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.save_chunk_tickets()?;
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            match self.streaming.prepare_save(&mut self.world, wait, deadline) {
+            match self
+                .side
+                .streaming
+                .prepare_save(&mut self.world, wait, deadline)
+            {
                 sunrise_level::chunk_streamer::SaveStep::Full(chunk) => {
                     self.native_late_full_chunk_snapshot(&chunk);
-                    self.streaming.save_finished(chunk);
+                    self.side.streaming.save_finished(chunk);
                 }
                 sunrise_level::chunk_streamer::SaveStep::Protos(protos) => {
                     self.native_proto_snapshots(&protos);
-                    self.streaming.finish_save(protos, wait);
+                    self.side.streaming.finish_save(protos, wait);
                     break;
                 }
                 sunrise_level::chunk_streamer::SaveStep::Pending => unreachable!(),
@@ -192,15 +196,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                     let deadline = Instant::now() + budget;
                     loop {
-                        match self.streaming.prepare_poll_save(&mut self.world, deadline) {
+                        match self
+                            .side
+                            .streaming
+                            .prepare_poll_save(&mut self.world, deadline)
+                        {
                             sunrise_level::chunk_streamer::SaveStep::Pending => break,
                             sunrise_level::chunk_streamer::SaveStep::Full(chunk) => {
                                 self.native_late_full_chunk_snapshot(&chunk);
-                                self.streaming.save_finished(chunk);
+                                self.side.streaming.save_finished(chunk);
                             }
                             sunrise_level::chunk_streamer::SaveStep::Protos(protos) => {
                                 self.native_proto_snapshots(&protos);
-                                if self.streaming.submit_protos(protos) {
+                                if self.side.streaming.submit_protos(protos) {
                                     save.stage = Stage::Chunks(
                                         self.world.modified.iter().copied().collect(),
                                     );

@@ -59,7 +59,8 @@ struct Gui { atlas: Atlas }
 struct Colors { shadows: bool }
 impl Colors { fn entity_shadows(&self) -> bool { self.shadows } }
 struct Pack { polytone_colors: Colors }
-struct Game { dim: Dim, renderer: (Option<Renderer>,), settings: Settings, gui: Gui, pack: Pack }
+struct ClientState { renderer: (Option<Renderer>,), settings: Settings, gui: Gui, client_pack: Pack }
+struct Game { dim: Dim, side: ClientState }
 impl Game {
     fn overworld_skybox(&self) -> bool { self.dim == Dim::Overworld }
     fn selected_blob(&self) -> Option<usize> { __GUARD__ shadow_sprite }
@@ -85,15 +86,17 @@ fn scene(kind: &str, dim: Dim, enabled: bool, sprite: bool) -> Game {
     };
     Game {
         dim,
-        renderer: ((kind != "no_renderer").then_some(Renderer {
-            pack_post,
-            native: (kind == "native").then_some(Native { shadow: Some(()) }),
-        }),),
-        settings: Settings { entity_shadows: enabled },
-        pack: Pack { polytone_colors: Colors { shadows: kind != "pack_hides" } },
-        gui: Gui { atlas: Atlas { sprites: if sprite {
-            [("misc/shadow", 73)].into_iter().collect()
-        } else { Default::default() } } },
+        side: ClientState {
+            renderer: ((kind != "no_renderer").then_some(Renderer {
+                pack_post,
+                native: (kind == "native").then_some(Native { shadow: Some(()) }),
+            }),),
+            settings: Settings { entity_shadows: enabled },
+            client_pack: Pack { polytone_colors: Colors { shadows: kind != "pack_hides" } },
+            gui: Gui { atlas: Atlas { sprites: if sprite {
+                [("misc/shadow", 73)].into_iter().collect()
+            } else { Default::default() } } },
+        },
     }
 }
 '''

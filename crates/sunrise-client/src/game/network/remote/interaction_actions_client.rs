@@ -332,7 +332,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The server's death message; chat uses the shared ChatComponent.
     pub(in crate::game::client_side) fn remote_hud(&self, batch: &mut HudBatch) {
         let Some(r) = &self.remote else { return };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let w = batch.width;
         if self.side.screen == Screen::Dead
             && let Some(message) = &r.death_message

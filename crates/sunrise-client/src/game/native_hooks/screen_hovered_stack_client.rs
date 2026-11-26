@@ -34,7 +34,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])?;
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let batch = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         self.hovered_stack_at(&batch, self.side.cursor.0, self.side.cursor.1)
     }
 }

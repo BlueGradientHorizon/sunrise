@@ -330,8 +330,8 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         let key = (80, 80);
         let pos = (1283, 100, 1283);
         // The test game starts with streaming paused, which never unloads.
-        game.streaming.paused = false;
-        assert!(game.streaming.set_forced(key.0, key.1, true));
+        game.side.streaming.paused = false;
+        assert!(game.side.streaming.set_forced(key.0, key.1, true));
         game.world
             .chunks
             .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
@@ -351,7 +351,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         // The ticket goes and the residency owner (`update_world`) unloads the column: it
         // saves it, then drops its block entities and their live bindings. Its sweep runs every
         // eighth update.
-        assert!(game.streaming.set_forced(key.0, key.1, false));
+        assert!(game.side.streaming.set_forced(key.0, key.1, false));
         for _ in 0..9 {
             game.side_update_world();
         }
@@ -581,8 +581,8 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
     const NAME: &str = "game::server_side::block_entity_part_state_tests::a_save_or_unload_during_a_transaction_writes_only_committed_state";
     with_state_mod(NAME, |game| {
         let (key, pos) = ((80, 80), (1283, 100, 1283));
-        game.streaming.paused = false;
-        assert!(game.streaming.set_forced(key.0, key.1, true));
+        game.side.streaming.paused = false;
+        assert!(game.side.streaming.set_forced(key.0, key.1, true));
         game.world
             .chunks
             .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
@@ -619,7 +619,7 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         // committed value.
         game.storage_scope(|game, _| {
             assert_eq!(Press::edit_state(game, entity, |_, n| *n = 11), Ok(()));
-            assert!(game.streaming.set_forced(key.0, key.1, false));
+            assert!(game.side.streaming.set_forced(key.0, key.1, false));
             for _ in 0..9 {
                 game.side_update_world();
             }
@@ -744,8 +744,8 @@ fn part_state_counts_ticks_across_chunk_reload() {
             super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
                 game.options.dedicated = Some(Vec::new());
                 let (key, pos) = ((80, 80), (1283, 100, 1283));
-                game.streaming.paused = false;
-                assert!(game.streaming.set_forced(key.0, key.1, true));
+                game.side.streaming.paused = false;
+                assert!(game.side.streaming.set_forced(key.0, key.1, true));
                 game.world
                     .chunks
                     .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
@@ -773,7 +773,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 assert_eq!(saved_value(game, pos, "part_state_count"), Some(3));
 
                 // Unloaded by the owner, then loaded back from the region file.
-                assert!(game.streaming.set_forced(key.0, key.1, false));
+                assert!(game.side.streaming.set_forced(key.0, key.1, false));
                 for _ in 0..9 {
                     game.side_update_world();
                 }

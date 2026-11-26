@@ -57,14 +57,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     // Animated block-entity bell hooks.
 
-    pub(in crate::game) fn side_bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
-        <__Side as SideOps>::side_bell_gather(self, pos)
-    }
-
-    pub(in crate::game) fn side_bell_heard(&mut self, pos: [i32; 3], time: i64) {
-        <__Side as SideOps>::side_bell_heard(self, pos, time)
-    }
-
     #[allow(dead_code)]
     pub(in crate::game) fn side_tick_bell(
         &mut self,
@@ -147,8 +139,6 @@ pub(in crate::game) trait SideOps: Sized {
         ctx: SculkContext,
     );
     fn side_sculk_actor(game: &crate::game::Game<'_, Self>) -> Option<Who>;
-    fn side_bell_gather(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Vec<u64>;
-    fn side_bell_heard(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], time: i64);
     fn side_tick_bell(
         game: &mut crate::game::Game<'_, Self>,
         pos: [i32; 3],
@@ -219,14 +209,6 @@ impl SideOps for crate::game::server_side::ServerState {
     }
     fn side_sculk_actor(game: &crate::game::Game<'_, Self>) -> Option<Who> {
         game.server_sculk_actor()
-    }
-    fn side_bell_gather(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Vec<u64> {
-        game.server_bell_gather(pos)
-    }
-    fn side_bell_heard(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], time: i64) {
-        {
-            game.server_bell_heard(pos, time);
-        }
     }
     fn side_tick_bell(
         game: &mut crate::game::Game<'_, Self>,
@@ -335,14 +317,6 @@ impl SideOps for crate::game::client_side::ClientState {
     }
     fn side_sculk_actor(game: &crate::game::Game<'_, Self>) -> Option<Who> {
         game.client_sculk_actor()
-    }
-    fn side_bell_gather(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Vec<u64> {
-        game.client_bell_gather(pos)
-    }
-    fn side_bell_heard(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], time: i64) {
-        {
-            game.client_bell_heard(pos, time);
-        }
     }
     fn side_tick_bell(
         game: &mut crate::game::Game<'_, Self>,

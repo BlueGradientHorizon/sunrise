@@ -196,7 +196,7 @@ fn quads(out: &[Vertex]) -> Vec<f32> {
 /// A mob of `kind` (a player of the slim model when `slim`), standing at [`FEET`].
 fn mob(game: &crate::game::ClientGame<'_>, kind: &str, slim: bool) -> Mob {
     let kind = if kind == "minecraft:player" {
-        game.res.player_type().clone().unwrap()
+        game.client_res().player_type().clone().unwrap()
     } else {
         game.res.mob_types().get(kind).unwrap().clone()
     };

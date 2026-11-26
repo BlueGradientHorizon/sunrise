@@ -286,6 +286,7 @@ impl<G: ChunkGenerator> Saves for G {
 }
 
 /// Portable worker resources needed for chunk generation and lighting.
+#[derive(Clone)]
 pub struct ChunkWorkerContext {
     pub assets: Arc<crate::assets::Assets>,
     pub biomes: Arc<crate::biome::Biomes>,
@@ -1555,6 +1556,29 @@ impl ChunkState {
             ChunkStatus::Empty
         } else {
             return None;
+        })
+    }
+    /// `ChunkMap.getLatestStatus` for the loading screen's chunk map: the
+    /// furthest step this column has reached, `None` before it is asked for.
+    pub fn latest_status(
+        &self,
+        world: &World,
+        x: i32,
+        z: i32,
+    ) -> Option<crate::level_loading::Status> {
+        use crate::level_loading::Status;
+        use sunrise_world::chunk_status::ChunkStatus;
+        self.latest_chunk_status(world, x, z).map(|s| match s {
+            ChunkStatus::Empty => Status::Empty,
+            ChunkStatus::StructureStarts => Status::StructureStarts,
+            ChunkStatus::StructureReferences => Status::StructureReferences,
+            ChunkStatus::Biomes => Status::Biomes,
+            ChunkStatus::Terrain => Status::Terrain,
+            ChunkStatus::Features => Status::Features,
+            ChunkStatus::InitializeLight => Status::InitializeLight,
+            ChunkStatus::Light => Status::Light,
+            ChunkStatus::Spawn => Status::Spawn,
+            ChunkStatus::Full => Status::Full,
         })
     }
     /// The sequence the next mesh job will be dispatched after: a clock for

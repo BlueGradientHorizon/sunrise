@@ -140,11 +140,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         sunrise_client::widgets::begin_screen(|| {
             sunrise_client::widgets::ScreenInfo::new("social", social_screen::TITLE)
         });
-        social_screen::draw_background(batch, &self.gui.atlas, true);
+        social_screen::draw_background(batch, &self.side.gui.atlas, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         let tooltip = social_screen::draw_contents(
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             self.side.cursor,
             &view,
             &mut self.side.social.search,
@@ -152,7 +152,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         if let Some(tooltip) = tooltip {
-            sunrise_client::ui::tooltip(batch, &self.gui.atlas, &[tooltip], self.side.cursor);
+            sunrise_client::ui::tooltip(batch, &self.side.gui.atlas, &[tooltip], self.side.cursor);
         }
     }
     pub(in crate::game::client_side) fn social_click(&mut self) -> bool {
@@ -169,7 +169,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side
                 .social
                 .search
-                .click(&self.gui.atlas, cursor.0, shift, false);
+                .click(&self.side.gui.atlas, cursor.0, shift, false);
             return true;
         }
         let social_screen::Click::Action(action) = kind else {

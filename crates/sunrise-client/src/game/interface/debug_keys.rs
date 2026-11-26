@@ -107,13 +107,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let pressed = action != KeyAction::Release;
         let switcher_open = self.side.screen == Screen::GameModeSwitcher;
         if switcher_open && pressed {
-            if name == self.settings.keys.get("key.debug.switchGameMode") {
+            if name == self.side.settings.keys.get("key.debug.switchGameMode") {
                 if let Some(switcher) = &mut self.side.gamemode_switcher {
                     switcher.cycle();
                 }
             } else if key == KeyCode::Escape {
                 self.close_gamemode_switcher(false);
-            } else if name == self.settings.keys.get("key.debug.debugOptions") {
+            } else if name == self.side.settings.keys.get("key.debug.debugOptions") {
                 // The debug options screen interrupts the switcher too
                 // (`canInterruptScreen`): it closes, then F6 opens over the game.
                 self.close_gamemode_switcher(false);
@@ -171,12 +171,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if pressed && (typing || screen_key) {
             return false;
         }
-        let crash_down = keybinds::key_code(self.settings.keys.get("key.debug.crash"))
+        let crash_down = keybinds::key_code(self.side.settings.keys.get("key.debug.crash"))
             .is_some_and(|k| self.side.physical_keys.contains(&k));
         let shift = self.side.physical_keys.contains(&KeyCode::ShiftLeft)
             || self.side.physical_keys.contains(&KeyCode::ShiftRight);
         let now = self.debug_millis();
-        let binds = self.settings.keys.clone();
+        let binds = self.side.settings.keys.clone();
         let mut keys = std::mem::take(&mut self.side.debug_keys);
         let modifier_was_down = keys.modifier_down;
         let to_game = keys.key_press(
@@ -291,7 +291,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The overlay's chart lines (`DebugScreenOverlay`'s "Debug charts").
     pub(in crate::game::client_side) fn debug_chart_lines(&self) -> [String; 3] {
-        let keys = &self.settings.keys;
+        let keys = &self.side.settings.keys;
         let modifier = keys.get("key.debug.modifier");
         let key = |mapping: &str| {
             let prefix = if modifier == "key.keyboard.unknown" {
@@ -387,7 +387,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let layout = (
             size,
             batch.scale.to_bits(),
-            self.gui.atlas.font.epoch(),
+            self.side.gui.atlas.font.epoch(),
             lightmap.is_some(),
         );
         if let Some(vertices) = self.side.debug_paint.borrow().fresh(now, layout) {
@@ -399,8 +399,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (scale, [width, height]) = debug_overlay::scale(
             framebuffer,
             batch.scale as i32,
-            self.settings.file.int("debugGuiScale"),
-            self.settings.force_unicode,
+            self.side.settings.file.int("debugGuiScale"),
+            self.side.settings.force_unicode,
             [batch.width as i32, batch.height as i32],
         );
         let mut d = debug_overlay::Displayer::default();
@@ -412,14 +412,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Vec::new()
         };
         let (left, right) = d.columns(&footer);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let mut draws = debug_overlay::draw(&atlas.font, [&left, &right], scale, width);
         if self.side.debug {
             let charts = self.side.debug_charts.draw(
                 &atlas.font,
                 width,
                 height,
-                self.settings.max_fps,
+                self.side.settings.max_fps,
                 &self.clock,
                 !self.has_singleplayer_server(),
             );
@@ -516,7 +516,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         d: &mut debug_overlay::Displayer,
     ) {
-        let s = &self.settings;
+        let s = &self.side.settings;
         d.line(format!(
             "{}{}B: {}",
             if s.improved_transparency {
@@ -585,9 +585,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 );
             }
             // Dynamic Resolution's scale, which moves on its own.
-            if self.settings.sunrise.dynamic_resolution {
+            if self.side.settings.sunrise.dynamic_resolution {
                 let scale = super::frame_autotune::world_scale(
-                    &self.settings.sunrise,
+                    &self.side.settings.sunrise,
                     &self.side.dynamic_resolution,
                 );
                 d.group("system", [format!("Resolution Scale: {scale}% (dynamic)")]);
@@ -617,7 +617,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Sunrise's own: HDR's output while the setting is on, under the GPU (a group of its
         // own would move others to the other column).
         if let Some(r) = self.side.renderer.0.as_ref()
-            && r.output().requests_hdr(self.settings.sunrise.hdr)
+            && r.output().requests_hdr(self.side.settings.sunrise.hdr)
         {
             d.group("system", [r.hdr_line()]);
         }
@@ -660,7 +660,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `KeyMapping.getTranslatedKeyMessage`.
     fn key_text(&self, mapping: &str) -> Text {
-        keybinds::display_name(self.settings.keys.get(mapping))
+        keybinds::display_name(self.side.settings.keys.get(mapping))
     }
     /// `KeyboardHandler.decorateDebugComponent`: `[Debug]:` in bold, a space,
     /// the message, shown with `Minecraft.showDebugChat`.
@@ -691,7 +691,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `LocalPlayer.isReducedDebugInfo`: the server's rule or the option.
     pub(in crate::game::client_side) fn reduced_debug_info(&self) -> bool {
-        self.settings.reduced_debug_info
+        self.side.settings.reduced_debug_info
             || self
                 .ui
                 .rules
@@ -716,11 +716,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.ui.registries.permission >= 2
     }
     fn toggle_option(&mut self, key: &str) -> bool {
-        let on = !self.settings.file.bool(key);
-        self.settings
+        let on = !self.side.settings.file.bool(key);
+        self.side
+            .settings
             .file
             .set(key, sunrise_client::options_file::V::Bool(on));
-        self.settings.save(&crate::game::options_path());
+        self.side.settings.save(&crate::game::options_path());
         on
     }
     /// One matching mapping of `handleDebugKeys`; whether it counts.
@@ -765,7 +766,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             DebugAction::AdvancedTooltips => {
                 // The message comes before Options.save here.
-                let on = !self.settings.file.bool("advancedItemTooltips");
+                let on = !self.side.settings.file.bool("advancedItemTooltips");
                 self.debug_translated(if on {
                     "debug.advanced_tooltips.on"
                 } else {
@@ -838,10 +839,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 true
             }
             DebugAction::ImprovedTransparency => {
-                self.settings.improved_transparency = !self.settings.improved_transparency;
-                self.settings.save(&crate::game::options_path());
+                self.side.settings.improved_transparency =
+                    !self.side.settings.improved_transparency;
+                self.side.settings.save(&crate::game::options_path());
                 self.apply_settings();
-                self.debug_translated(if self.settings.improved_transparency {
+                self.debug_translated(if self.side.settings.improved_transparency {
                     "debug.improvedTransparency.on"
                 } else {
                     "debug.improvedTransparency.off"
@@ -880,8 +882,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // Sunrise's own: a repro recording for a bug report (game/runtime/repro.rs).
             // Off unless the AI Agent page enables the shortcuts.
-            DebugAction::RecordSession if !self.settings.extras.repro_keys => false,
-            DebugAction::ExportRepro if !self.settings.extras.repro_keys => false,
+            DebugAction::RecordSession if !self.side.settings.extras.repro_keys => false,
+            DebugAction::ExportRepro if !self.side.settings.extras.repro_keys => false,
             DebugAction::RecordSession => {
                 self.toggle_recording_key();
                 true
@@ -898,6 +900,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .join("screenshots")
                     .join("debug");
                 match self
+                    .side
                     .gui
                     .atlas
                     .dump_contents(&dir, "minecraft_textures_atlas_gui")

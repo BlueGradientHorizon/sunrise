@@ -38,7 +38,7 @@ fn a_part_names_the_selected_stick_while_its_name_shows() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 crate::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
-                    game.settings.notification_display_time = 1.0;
+                    game.side.settings.notification_display_time = 1.0;
                     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
                     game.selected = 0;
                     game.tick_hud();

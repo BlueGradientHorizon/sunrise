@@ -1,10 +1,9 @@
 //! Shape queries for a supplied state without replacing the block in the world.
 use super::Game;
 use mod_api::BlockShapeKind;
-use sunrise_client::{
-    block_entity_anim::BlockEntityAnims, collisions::SceneCollisions, world::World,
-};
+use sunrise_client::{collisions::SceneCollisions, world::World};
 use sunrise_core::{geometry::VoxelShape, position::BlockPos};
+use sunrise_level::{fast_hash::FxHashMap, shulker_box::Shulker};
 use sunrise_world::{
     block_collision::BlockCollisionRegistry,
     collision::ShapeChannel,
@@ -78,7 +77,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &'a self,
         world: &'a World,
         state: BlockStateId,
-        anims: &BlockEntityAnims,
+        shulkers: &FxHashMap<[i32; 3], Shulker>,
         pos: [i32; 3],
         player_context: bool,
     ) -> (Outline<'a>, [f64; 3]) {
@@ -111,7 +110,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 cached.shape_offset(state, ShapeChannel::ContextOutline, pos),
             );
         }
-        if let Some(bounds) = self.context_outline(pos, state, player_context, anims) {
+        if let Some(bounds) = self.context_outline(pos, state, player_context, shulkers) {
             return (Outline::Dynamic(bounds), [0.0; 3]);
         }
         (Outline::Default(facts), default_offset())
@@ -122,11 +121,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &'a self,
         world: &'a World,
         state: BlockStateId,
-        anims: &BlockEntityAnims,
+        shulkers: &FxHashMap<[i32; 3], Shulker>,
         pos: [i32; 3],
         player_context: bool,
     ) -> impl Iterator<Item = [f64; 6]> + 'a {
-        let (outline, offset) = self.selected_outline(world, state, anims, pos, player_context);
+        let (outline, offset) = self.selected_outline(world, state, shulkers, pos, player_context);
         let base = std::array::from_fn(|i| f64::from(pos[i]) + offset[i]);
         outline_boxes(outline, base)
     }
@@ -134,14 +133,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn state_shape_boxes(
         &self,
         world: &World,
-        anims: &BlockEntityAnims,
+        shulkers: &FxHashMap<[i32; 3], Shulker>,
         state: BlockStateId,
         pos: [i32; 3],
         kind: BlockShapeKind,
     ) -> Vec<[f64; 6]> {
         match kind {
             BlockShapeKind::Outline => {
-                let (outline, offset) = self.selected_outline(world, state, anims, pos, false);
+                let (outline, offset) = self.selected_outline(world, state, shulkers, pos, false);
                 // Stay block-local: adding world coordinates and subtracting them again
                 // would lose precision in offsets used to sample debris.
                 outline_boxes(outline, offset).collect()

@@ -489,7 +489,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `AdvancementWidget`'s title lines, description lines and width.
     fn adv_widget_text(&self, i: usize) -> (Vec<Text>, Vec<Text>, f32) {
-        let font = &self.gui.atlas.font;
+        let font = &self.side.gui.atlas.font;
         let a = &self.adv.tree.list[i];
         let Some(d) = &a.display else {
             return (Vec::new(), Vec::new(), 0.0);
@@ -559,7 +559,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             });
         let (sx, sy) = (sx.floor() as i32, sy.floor() as i32);
         self.adv_tick_hover(&view, sx, sy, left, top);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         let tree = self.adv.tree.clone();
         let tab = view.tab;
@@ -699,7 +699,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                     let (x, y) = pos(i);
                     let (x, y) = (sx.wrapping_add(x), sy.wrapping_add(y));
-                    let atlas = &self.gui.atlas;
+                    let atlas = &self.side.gui.atlas;
                     batch.sprite_scaled(
                         atlas,
                         frame_sprite(d.frame, done),
@@ -730,7 +730,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     sunrise_client::widgets::Kind::Tab(Some(t) == tab),
                 );
                 batch.sprite_scaled(
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     &sprite,
                     left + x,
                     top + y,
@@ -748,14 +748,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let title = tab.and_then(|t| tree.list[t].display.as_ref()).map_or_else(
             || Text::translate("gui.advancements", &[]),
             |d| text_of(&d.title),
         );
         batch.text_styled(atlas, &title, left + 8.0, top + 6.0, 0xFF40_4040, false);
         // Done.
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (bx, by) = ((w / 2.0 - 100.0).floor(), h - FOOTER + 6.0);
         let hover = ui::hovered(self.side.cursor, bx, by, 200.0, 20.0);
         ui::action_button(
@@ -790,7 +790,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     if let Some(d) = &tree.list[t].display {
                         ui::tooltip(
                             batch,
-                            &self.gui.atlas,
+                            &self.side.gui.atlas,
                             &[text_of(&d.title)],
                             self.side.cursor,
                         );
@@ -893,7 +893,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 ],
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let progress_w = progress.as_ref().map_or(0.0, |t| atlas.font.width_text(t)) as i32;
         let top_side = title_bottom.wrapping_add(desc_h) >= INSIDE_H;
         let amount = if total == 0 {
@@ -1049,7 +1049,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.adv_ui.0.scrolling = false;
             return false;
         }
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
         if ui::hovered(
             self.side.cursor,

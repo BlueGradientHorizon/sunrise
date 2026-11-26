@@ -151,13 +151,13 @@ ListBackedContainer	skip:java		slot helpers over a plain list
 PotDecorations.addSideDetailsToTooltip	port	crates/sunrise-client/src/item_tooltip.rs::TooltipDisplay::detail_lines	sherd lines of the decorated pot tooltip
 PotDecorations.allBrick	skip:data		constant brick decoration set
 PotentSulfurBlockEntity.applyNauseaEffect	port	crates/sunrise-client/src/game/blocks/potent_sulfur.rs::apply_nausea_effect_to_mob	ticked in #3516; `PotentSulfurBlockEntity.applyNauseaEffect` is cited at crates/sunrise-client/src/game/blocks/potent_sulfur.rs:86
-PotentSulfurBlockEntity.canBeReachedByNoxiousGas	port	crates/sunrise-client-render/src/potent_sulfur.rs::can_be_reached_by_noxious_gas	ticked in #3516; `PotentSulfurBlockEntity.canBeReachedByNoxiousGas` is cited at crates/sunrise-client-render/src/potent_sulfur.rs:73
-PotentSulfurBlockEntity.findNoxiousGasSourceBlock	port	crates/sunrise-client-render/src/potent_sulfur.rs::find_noxious_gas_source_block	the first block above the sulfur that the gas can leave through, capped at the geyser's reach
+PotentSulfurBlockEntity.canBeReachedByNoxiousGas	port	crates/sunrise-level/src/potent_sulfur_level.rs::can_be_reached_by_noxious_gas	ticked in #3516; `PotentSulfurBlockEntity.canBeReachedByNoxiousGas` is cited at crates/sunrise-level/src/potent_sulfur_level.rs:153
+PotentSulfurBlockEntity.findNoxiousGasSourceBlock	port	crates/sunrise-level/src/potent_sulfur_level.rs::find_noxious_gas_source_block	the first block above the sulfur that the gas can leave through, capped at the geyser's reach
 PotentSulfurBlockEntity.getNearbyLivingEntities	inline	crates/sunrise-gameplay/src/potent_sulfur.rs::nearby_living_area	the source block's box grown 2.5 blocks sideways, which the nausea and launch tickers ask for entities in
-PotentSulfurBlockEntity.getUnobstructedBlockCount	port	crates/sunrise-client-render/src/potent_sulfur.rs::unobstructed_block_count	how many blocks of the column above the source the gas is unobstructed through
+PotentSulfurBlockEntity.getUnobstructedBlockCount	port	crates/sunrise-level/src/potent_sulfur_level.rs::unobstructed_block_count	how many blocks of the column above the source the gas is unobstructed through
 PotentSulfurBlockEntity.geyserPositional	port	crates/sunrise-gameplay/src/potent_sulfur.rs::geyser_positional	ticked in #3516; `PotentSulfurBlockEntity.geyserPositional` is cited at crates/sunrise-client/src/game/blocks/potent_sulfur.rs:55
-PotentSulfurBlockEntity.haveLineOfSight	port	crates/sunrise-client-render/src/potent_sulfur.rs::have_line_of_sight	a clip over the collider shapes between the two points, water and passable blocks let through
-PotentSulfurBlockEntity.isGeyserPassableBlock	port	crates/sunrise-client-render/src/potent_sulfur.rs::is_geyser_passable_block	air, water, or a block the gas passes through
+PotentSulfurBlockEntity.haveLineOfSight	port	crates/sunrise-level/src/potent_sulfur_level.rs::have_line_of_sight	a clip over the collider shapes between the two points, water and passable blocks let through
+PotentSulfurBlockEntity.isGeyserPassableBlock	port	crates/sunrise-level/src/potent_sulfur_level.rs::is_geyser_passable_block	air, water, or a block the gas passes through
 PotentSulfurBlockEntity.loadAdditional	port	crates/sunrise-sim/src/save/block_entity_decode.rs::decode_block_entity	the countdown is read back, the only field vanilla's tag carries (eruptionTick is transient, and saveAdditional writes countdown alone)
 PotentSulfurBlockEntity.setLevel	inline	crates/sunrise-client/src/game/blocks/potent_sulfur_client.rs::client_tick_potent_sulfur	the eruption tick is set to the level's game time while it is still -1, as setLevel does when the entity learns its level
 PotentSulfurBlockEntity.spawnGeyserParticle	port	crates/sunrise-client/src/game/blocks/potent_sulfur_client.rs::Game::spawn_geyser_particle	ticked in #3516; `PotentSulfurBlockEntity.spawnGeyserParticle` is cited at crates/sunrise-client/src/game/blocks/potent_sulfur.rs:380
@@ -218,8 +218,8 @@ ChunkStatusTasks.generateStructureReferences	port	crates/sunrise-world/src/world
 ChunkStatusTasks.generateStructureStarts	port	crates/sunrise-world/src/worldgen/generator_structures.rs::StructureState::starts_at
 ChunkStatusTasks.initializeLight	port	crates/sunrise-level/src/light.rs::light_chunk
 ChunkStatusTasks.isLighted	skip:other		status check; streaming tracks which chunks are lit
-ChunkStep.apply	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	stage advance
-ChunkStep.completeChunkGeneration	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	final stage hand-over
+ChunkStep.apply	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::update	stage advance
+ChunkStep.completeChunkGeneration	inline	crates/sunrise-level/src/chunk_streamer.rs::ChunkStreamer::update	final stage hand-over
 ChunkStep.getAccumulatedRadiusOf	inline	crates/sunrise-level/src/chunk_streamer.rs::Ranges::margins	fixed margins
 ChunkStep.Builder	skip:java		builder for chunk steps
 ChunkIOErrorReporter.createMisplacedChunkReport	skip:other		report text for a chunk saved at another position; Sunrise logs its own load error

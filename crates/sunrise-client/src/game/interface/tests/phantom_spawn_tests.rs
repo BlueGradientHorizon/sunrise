@@ -46,15 +46,9 @@ fn game<'a>(
     options.resources = root.to_path_buf();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
-        res,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        None,
-    )
-    .unwrap();
+    let mut game =
+        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+            .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     assert!(game.run_command("difficulty hard"));

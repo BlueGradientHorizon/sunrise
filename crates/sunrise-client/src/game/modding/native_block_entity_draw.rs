@@ -82,8 +82,12 @@ fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
 }
 
 impl StandaloneGeometry {
-    pub(in crate::game) fn new(pack: &super::PackResources, gui: &super::UiResources) -> Self {
-        let catalog = &pack.render.model_catalog;
+    pub(in crate::game) fn new(
+        pack: &super::PackResources,
+        client_pack: &super::ClientPackResources,
+        gui: &super::UiResources,
+    ) -> Self {
+        let catalog = &client_pack.render.model_catalog;
         let mut slots = Vec::new();
         let mut translucent = Vec::new();
         let mut bounds = Vec::new();
@@ -100,7 +104,7 @@ impl StandaloneGeometry {
                 .faces
                 .iter()
                 .filter_map(|face| {
-                    let sprite = pack
+                    let sprite = client_pack
                         .layer_names
                         .get(&face.layer)
                         .and_then(|name| gui.atlas.sprites.get(name))?;
@@ -114,7 +118,7 @@ impl StandaloneGeometry {
             slots[index] = Some(prepared);
         }
         Self {
-            generation: pack.render.generation,
+            generation: client_pack.render.generation,
             slots,
             translucent,
             bounds,
@@ -1311,7 +1315,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 dim: self.dim,
                 state,
                 light,
-                glyphs: self.gui.atlas.font.epoch(),
+                glyphs: self.side.gui.atlas.font.epoch(),
             };
             let id = BlockStateId(state);
             let block = || &*self.res.facts().get(id).name;
@@ -1512,7 +1516,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         uv: [f32; 4],
         tint: u32,
     ) -> bool {
-        let Some(rect) = self.gui.atlas.sprites.get(sprite).copied() else {
+        let Some(rect) = self.side.gui.atlas.sprites.get(sprite).copied() else {
             return false;
         };
         let [u0, v0, u1, v1] = uv.map(|t| t / 16.0);
@@ -1552,7 +1556,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> f32 {
         let opaque =
             |c: u32| sunrise_client::hud::rgba((c >> 16) as u8, (c >> 8) as u8, c as u8, 255);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let mut batch = sunrise_client::hud::HudBatch::scratch([1, 1]);
         let (width, front) = match outline {
             Some(ring) => batch.text_styled_outline_world(
@@ -1615,7 +1619,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         _draw: &BlockEntityDraw,
         text: &Text,
     ) -> f32 {
-        self.gui.atlas.font.width_text(text)
+        self.side.gui.atlas.font.width_text(text)
     }
 
     /// Draws a box from `from` to `to` (texels of 16 per block, as a block
@@ -1637,7 +1641,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let ambient = draw.element_ambient();
         for (direction, face) in Direction::ALL.into_iter().zip(faces) {
             let Some(face) = face else { continue };
-            let Some(rect) = self.gui.atlas.sprites.get(face.sprite).copied() else {
+            let Some(rect) = self.side.gui.atlas.sprites.get(face.sprite).copied() else {
                 all = false;
                 continue;
             };
@@ -1718,7 +1722,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 use sunrise_client::models::catalog::BakedFace;
                 // An unknown state resolves to no faces, which `state_slot` refuses.
                 let Ok(models) = self
-                    .pack
+                    .side
+                    .client_pack
                     .render
                     .model_catalog
                     .collect_seeded(id, Self::BLOCK_MODEL_SEED)
@@ -1755,7 +1760,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         slot: u32,
     ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
-        let catalog = &self.pack.render.model_catalog;
+        let catalog = &self.side.client_pack.render.model_catalog;
         match catalog.model_by_slot(slot) {
             Some(model) => Some(&model.faces),
             None => self.side.standalone_geometry.state_faces(slot),
@@ -1766,7 +1771,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `client_resources_reloaded`, not each frame. Resource-pack overrides and other
     /// namespaces use the normal shared model store; no resource is read or baked here.
     pub(in crate::game) fn native_model(&self, id: &Identifier) -> Result<ModelRef, ModelError> {
-        self.pack.render.model(id)
+        self.side.client_pack.render.model(id)
     }
 
     /// Draws the resolved standalone model under `draw`'s pose: unturned, from
@@ -1818,7 +1823,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         sprite: &str,
         tint: u32,
     ) -> bool {
-        let Some(rect) = self.gui.atlas.sprites.get(sprite).copied() else {
+        let Some(rect) = self.side.gui.atlas.sprites.get(sprite).copied() else {
             return false;
         };
         draw_model_part(draw, part, rect, tint);
@@ -1839,7 +1844,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Some(definition.bake_root());
         }
         let key = layer.strip_prefix("minecraft:")?;
-        if let Some(part) = self.res.client_mob_models().layer_any(key) {
+        if let Some(part) = self.client_res().client_mob_models().layer_any(key) {
             return Some(model_layers::from_part(part));
         }
         let models = sunrise_client::mobs::EntityModelDocument::load(&self.vanilla_root()).ok()?;
@@ -2221,15 +2226,16 @@ mod tests {
                 .unwrap();
             let vertices = &surface.vertices[face_index * 4..face_index * 4 + 4];
             assert!(vertices.iter().all(|v| v.light == 0x7030));
-            let atlas = &game.gui.atlas;
+            let atlas = &game.side.gui.atlas;
             let mut pixels = vec![255; (atlas.width * atlas.height * 4) as usize];
             // Prepared indices exclude baked faces without an atlas sprite.
-            let source = game.pack.render.resolve_model(model).unwrap();
+            let source = game.side.client_pack.render.resolve_model(model).unwrap();
             let sprite = source
                 .faces
                 .iter()
                 .filter_map(|face| {
-                    game.pack
+                    game.side
+                        .client_pack
                         .layer_names
                         .get(&face.layer)
                         .and_then(|name| atlas.sprites.get(name))
@@ -2415,7 +2421,7 @@ mod tests {
             let instance = super::prepared_instance(local, origin, camera, 0xFF80_C040, 0xF030);
             assert_eq!(instance.matrix(), pose);
             let (vertices, ranges) = game.side.standalone_geometry.prepared_upload();
-            let atlas = &game.gui.atlas;
+            let atlas = &game.side.gui.atlas;
             let mut pixels = atlas.pixels().to_vec();
             let face_index = game.side.standalone_geometry.slots[slot as usize]
                 .as_ref()
@@ -2424,14 +2430,16 @@ mod tests {
                 .position(|face| face.facing == Direction::South && face.tint_index >= 0)
                 .unwrap();
             let sprite = game
-                .pack
+                .side
+                .client_pack
                 .render
                 .resolve_model(model)
                 .unwrap()
                 .faces
                 .iter()
                 .filter_map(|face| {
-                    game.pack
+                    game.side
+                        .client_pack
                         .layer_names
                         .get(&face.layer)
                         .and_then(|name| atlas.sprites.get(name))
@@ -2539,7 +2547,8 @@ mod tests {
             let mut expected = Vec::new();
             game.baked_model_vertices(
                 [game
-                    .pack
+                    .side
+                    .client_pack
                     .render
                     .model_catalog
                     .standalone("minecraft:block/grass_block")
@@ -2561,13 +2570,14 @@ mod tests {
             assert!(surface.vertices.iter().all(|v| v.light == 0x7030));
             // An explicitly emissive tinted face and its untinted twin exercise both
             // branches independently of the vanilla grass model's current contents.
-            let source = game.pack.render.resolve_model(model).unwrap();
+            let source = game.side.client_pack.render.resolve_model(model).unwrap();
             let face = &source.faces[0];
             let sprite = game
-                .pack
+                .side
+                .client_pack
                 .layer_names
                 .get(&face.layer)
-                .and_then(|name| game.gui.atlas.sprites.get(name))
+                .and_then(|name| game.side.gui.atlas.sprites.get(name))
                 .copied()
                 .unwrap();
             let mut tinted = face.quad.clone();
@@ -2626,8 +2636,10 @@ mod tests {
                 start.elapsed()
             );
             let before = bytes(&surface.vertices);
-            let invalid =
-                mod_api::__private::built::model_ref(game.pack.render.generation, u32::MAX);
+            let invalid = mod_api::__private::built::model_ref(
+                game.side.client_pack.render.generation,
+                u32::MAX,
+            );
             assert_eq!(
                 game.native_draw_model(&mut surface, invalid, 0xFFFF_FFFF),
                 Err(ModelError::UnknownModel)
@@ -2647,7 +2659,8 @@ mod tests {
                     &[],
                     &game.pack.assets,
                     &game.res,
-                    &game.pack.context,
+                    game.client_res(),
+                    &game.side.client_pack.context,
                     false,
                     false,
                     &super::super::Progress::new(),
@@ -2660,7 +2673,7 @@ mod tests {
             );
             let before = bytes(&surface.vertices);
             // Identical texture bytes still produce a new model generation.
-            let old_generation = game.pack.render.generation;
+            let old_generation = game.side.client_pack.render.generation;
             let listeners = game.register_client_reload_listeners();
             let staged = super::super::packs::stage_pack(
                 &game.options.resources,
@@ -2671,14 +2684,15 @@ mod tests {
                 &[],
                 &game.pack.assets,
                 &game.res,
-                &game.pack.context,
+                game.client_res(),
+                &game.side.client_pack.context,
                 false,
                 false,
                 &super::super::Progress::new(),
             )
             .unwrap();
             game.apply_staged_pack(staged).unwrap();
-            assert_ne!(game.pack.render.generation, old_generation);
+            assert_ne!(game.side.client_pack.render.generation, old_generation);
             assert_eq!(
                 game.native_draw_model(&mut surface, model, 0xFF12_3456),
                 Err(ModelError::StaleModel)
@@ -2820,7 +2834,7 @@ mod tests {
             let alpha = 0x40 as f32 / 255.0;
             assert!((deferred_instance.tint[3] - alpha).abs() < 1e-6);
             assert!((batch_instance.tint[3] - alpha).abs() < 1e-6);
-            let atlas = &game.gui.atlas;
+            let atlas = &game.side.gui.atlas;
             let pixels = atlas.pixels();
             let uploaded = game.side.standalone_geometry.generation();
             let (vertices, ranges) = game.side.standalone_geometry.prepared_upload();
@@ -3038,7 +3052,7 @@ mod tests {
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
             // The server fixture only measures fonts; this test needs drawable glyphs.
-            game.gui.atlas = sunrise_client::hud::HudAtlas::build(
+            game.side.gui.atlas = sunrise_client::hud::HudAtlas::build(
                 &sunrise_assets::resource_source::ResourceSource::directory(
                     game.options.resources.to_path_buf(),
                 ),
@@ -3141,7 +3155,7 @@ mod tests {
                     br#"{"providers":[{"type":"space","advances":{"X":2.25}}]}"#.to_vec(),
                 ),
             )]));
-            game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+            game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
             let mut surface = draw();
             let mut drawn = GameBlockEntityDrawContext {
                 game,
@@ -3238,7 +3252,8 @@ mod tests {
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
             // A server-side game holds only the font, so the sprite is given its place.
-            game.gui
+            game.side
+                .gui
                 .atlas
                 .sprites
                 .insert("mymod:block/casing".into(), sprite());
@@ -3577,7 +3592,8 @@ mod tests {
     #[ignore = "daily"]
     fn an_unlit_item_draws_the_same_in_the_dark_as_at_full_light() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.gui
+            game.side
+                .gui
                 .atlas
                 .sprites
                 .insert("misc/missingno".into(), sprite());

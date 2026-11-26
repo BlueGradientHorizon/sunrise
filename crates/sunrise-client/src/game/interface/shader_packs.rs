@@ -149,7 +149,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn shader_pack_key_press(&mut self, name: &str) -> bool {
         if self.side.screen != Screen::Playing
             || name == "key.keyboard.unknown"
-            || self.settings.extras.shader_pack_key != name
+            || self.side.settings.extras.shader_pack_key != name
         {
             return false;
         }
@@ -321,14 +321,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .pack_ids
             .as_ref()
             .is_some_and(|ids| !ids.old_lighting);
-        if self.streaming.shader_pack_lighting != pack_lighting {
-            self.streaming.shader_pack_lighting = pack_lighting;
+        if self.side.streaming.shader_pack_lighting != pack_lighting {
+            self.side.streaming.shader_pack_lighting = pack_lighting;
             self.all_sections_changed();
         }
         // Any `shaders/` pack (its `oldLighting` too) draws fluid tops split as Iris does.
         let shader_pack = self.side.pack_ids.is_some();
-        if self.streaming.shader_pack != shader_pack {
-            self.streaming.shader_pack = shader_pack;
+        if self.side.streaming.shader_pack != shader_pack {
+            self.side.streaming.shader_pack = shader_pack;
             self.all_sections_changed();
         }
         // The renderer keeps the meshes' sources while they carry them, and frees them after.
@@ -340,22 +340,23 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .pack_ids
             .as_ref()
             .is_some_and(|ids| ids.separate_ao);
-        if self.streaming.separate_ao != separate_ao {
-            self.streaming.separate_ao = separate_ao;
+        if self.side.streaming.separate_ao != separate_ao {
+            self.side.streaming.separate_ao = separate_ao;
             self.all_sections_changed();
         }
-        let selected = picked_pack(&self.settings).to_owned();
+        let selected = picked_pack(&self.side.settings).to_owned();
         let path = self.side.native_shaders.resolve_path(
             &Self::shader_packs_dir(),
             &selected,
             dev_pack().is_some(),
         );
         let file = path.file_name().unwrap_or_default().to_string_lossy();
-        let picked = if selected.is_empty() || active_pack(&file, &self.settings.mods).is_empty() {
-            String::new()
-        } else {
-            path.to_string_lossy().into_owned()
-        };
+        let picked =
+            if selected.is_empty() || active_pack(&file, &self.side.settings.mods).is_empty() {
+                String::new()
+            } else {
+                path.to_string_lossy().into_owned()
+            };
         if self.side.native_shaders.picked != picked {
             self.side.native_shaders.select(&picked);
             self.set_translucent_layers(Vec::new());
@@ -449,7 +450,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 .iter()
                                 .filter_map(|f| {
                                     let name = format!("minecraft:block/{f}");
-                                    self.pack.render.sprite_layers.get(&name).map(|&l| l as u16)
+                                    self.side
+                                        .client_pack
+                                        .render
+                                        .sprite_layers
+                                        .get(&name)
+                                        .map(|&l| l as u16)
                                 })
                                 .collect(),
                         );
@@ -579,7 +585,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             blindness: f32::from(u8::from(self.potions.effects.get("blindness").is_some())),
             eye_light: [i32::from(light & 15), i32::from(light >> 4)],
             hide_gui: self.side.chat_ui.hide_gui,
-            brightness: self.settings.gamma as f32,
+            brightness: self.side.settings.gamma as f32,
             biome: info.map_or(-1, |b| {
                 let names = world_biomes!(self).list.iter().map(|b| b.name.as_str());
                 sunrise_shaders::biome_pack_id(&b.name, names)
@@ -593,7 +599,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             rainfall: info.map_or(0.0, |b| b.downfall),
             held_items,
             held_light,
-            right_handed: !self.settings.main_hand_left,
+            right_handed: !self.side.settings.main_hand_left,
             on_ground: self.player.as_ref().is_some_and(|p| p.ground.on_ground),
             min_y: self.world.shape.min_y,
             height: self.world.shape.height,
@@ -606,7 +612,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             cloud_time: sunrise_client::clouds::drift(
                 self.world.game_time,
                 f64::from(partial),
-                self.pack.clouds.0,
+                self.side.client_pack.clouds.0,
             ) as f32
                 * 0.030_000_001,
             mod_params: self.native_shader_params_now(partial),
@@ -737,13 +743,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(renderer) = &self.side.renderer.0 {
             renderer.define_pack_macros(&mut macros);
         }
-        let name = &self.settings.sunrise.shader_pack;
-        self.settings.shader_options = read_shader_options(name, &self.settings.language, &macros);
+        let name = &self.side.settings.sunrise.shader_pack;
+        self.side.settings.shader_options =
+            read_shader_options(name, &self.side.settings.language, &macros);
     }
 
     /// The Shader Options page closed with changes: they are saved, and the pack loads again.
     pub(in crate::game::client_side) fn save_shader_options(&mut self) {
-        let Some(options) = self.settings.shader_options.take() else {
+        let Some(options) = self.side.settings.shader_options.take() else {
             return;
         };
         write_shader_options(&options);
@@ -771,9 +778,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // a pack this can't fail).
             let _ = renderer.set_shader_pack(dimension, None, &[]);
         }
-        if self.settings.sunrise.shader_pack == name {
-            self.settings.sunrise.shader_pack.clear();
-            self.settings.save(&crate::game::options_path());
+        if self.side.settings.sunrise.shader_pack == name {
+            self.side.settings.sunrise.shader_pack.clear();
+            self.side.settings.save(&crate::game::options_path());
         }
         self.client_system_message(Text::colored(
             format!("Shader pack {name} could not be loaded and was turned off"),
@@ -783,7 +790,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Whether the game's vignette draws: the option, unless the loaded pack turns it off.
     pub(in crate::game::client_side) fn vignette_shown(&self) -> bool {
-        self.settings.vignette && self.side.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
+        self.side.settings.vignette && self.side.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
     }
 
     /// `currentRenderedItemId` of a held `item`, [`rendered_item_id`]'s; 0 without a pack.
@@ -1192,15 +1199,16 @@ pub(in crate::game) mod block_id_tests {
 /// y is 1 for the fluid sprites, 0 otherwise (`fluid_pairs`).
 pub(in crate::game::client_side) fn block_id_table(
     pack: &super::PackResources,
+    client_pack: &super::ClientPackResources,
     ids: &BlockIds,
 ) -> Vec<i32> {
-    let layers = pack
+    let layers = client_pack
         .render
         .sprite_layers
         .values()
         .max()
         .map_or(0, |l| l + 1) as usize;
-    let sprite = |name: &str| pack.render.sprite_layers.get(name).copied();
+    let sprite = |name: &str| client_pack.render.sprite_layers.get(name).copied();
     let fluids = ["water_still", "water_flow", "lava_still", "lava_flow"]
         .map(|f| sprite(&format!("minecraft:block/{f}")));
     let mut table = fluid_pairs(layers, fluids.into_iter().flatten());
@@ -1208,7 +1216,7 @@ pub(in crate::game::client_side) fn block_id_table(
         return table;
     }
     let registry = pack.assets.registry;
-    let catalog = &pack.render.model_catalog;
+    let catalog = &client_pack.render.model_catalog;
     // (layer, id) -> (a block named like the sprite, the blocks).
     let mut votes = BlockIdVotes::default();
     for i in 0..registry.len() {
@@ -1225,7 +1233,7 @@ pub(in crate::game::client_side) fn block_id_table(
                 layer,
                 id,
                 &state.name,
-                pack.layer_names.get(&layer).map(String::as_str),
+                client_pack.layer_names.get(&layer).map(String::as_str),
             );
         };
         // Fluids draw from their own sprites.

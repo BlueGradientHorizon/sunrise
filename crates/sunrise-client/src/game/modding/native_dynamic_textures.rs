@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         rgba: &[u8],
     ) -> Result<(), DynamicTextureError> {
         let owner = mod_api::content::crash::current_native_mod();
-        let (pool, mut names) = self.gui.atlas.dynamic_names();
+        let (pool, mut names) = self.side.gui.atlas.dynamic_names();
         self.side
             .dynamic_textures
             .create(pool, &mut names, owner, id, [width, height], rgba)
@@ -32,7 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         rgba: &[u8],
     ) -> Result<(), DynamicTextureError> {
         let owner = mod_api::content::crash::current_native_mod();
-        let (pool, mut names) = self.gui.atlas.dynamic_names();
+        let (pool, mut names) = self.side.gui.atlas.dynamic_names();
         self.side
             .dynamic_textures
             .update(pool, &mut names, owner, id, [width, height], rgba)
@@ -43,7 +43,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         id: &Identifier,
     ) -> Result<(), DynamicTextureError> {
         let owner = mod_api::content::crash::current_native_mod();
-        let (pool, mut names) = self.gui.atlas.dynamic_names();
+        let (pool, mut names) = self.side.gui.atlas.dynamic_names();
         self.side.dynamic_textures.free(pool, &mut names, owner, id)
     }
     /// What the calling mod may still create.
@@ -53,13 +53,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let owner = mod_api::content::crash::current_native_mod();
         self.side
             .dynamic_textures
-            .budget(self.gui.atlas.dynamic_texture_pool.as_ref(), owner)
+            .budget(self.side.gui.atlas.dynamic_texture_pool.as_ref(), owner)
     }
     /// The images created, updated or lost by a rebuilt atlas texture since the last frame, as
     /// patches into their slots for this frame's batch.
     pub(in crate::game) fn dynamic_texture_patches(&mut self, patches: &mut Vec<ImagePatch>) {
         self.side
             .dynamic_textures
-            .patches(self.gui.atlas.dynamic_texture_pool.as_ref(), patches);
+            .patches(self.side.gui.atlas.dynamic_texture_pool.as_ref(), patches);
     }
 }

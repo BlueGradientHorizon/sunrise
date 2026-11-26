@@ -28,9 +28,8 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

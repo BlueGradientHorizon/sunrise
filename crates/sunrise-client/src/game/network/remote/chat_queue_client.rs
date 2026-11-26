@@ -6,7 +6,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ChatListener.messageDelay`: Chat Delay in milliseconds, as Java
     /// truncates it.
     pub(in crate::game) fn chat_delay_ms(&self) -> i64 {
-        (self.settings.chat_delay * 1000.0) as i64
+        (self.side.settings.chat_delay * 1000.0) as i64
     }
     /// `ChatListener.queueSize`: the messages Chat Delay holds, for the chat's
     /// `chat.queue` row.

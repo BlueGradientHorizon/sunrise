@@ -61,7 +61,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.pack.data_source = reload.data_source;
         self.pack.data_changes = reload.data_changes;
         self.pack.additional_data = reload.additional_data;
-        self.settings.mods.enabled = reload.enabled.clone();
+        self.side.settings.mods.enabled = reload.enabled.clone();
         self.mods.applied = Some(reload.enabled);
         self.mods.selected = reload.selected;
         self.mods.refused = reload.refused;

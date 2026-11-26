@@ -1,7 +1,6 @@
 //! Special item renderers in the real game: dropped-item draw and outline submission, and when
 //! the renderer is called (on the client's frame, outside lifted passes and action transactions).
 //! Each test runs in its own process and changes the game's stick into a special model.
-use crate::game::Game;
 use mod_api::{
     ClientHost, SpecialModelCollector, SpecialModelContext, SpecialModelFactory,
     SpecialModelGeometry, SpecialModelQuad, SpecialModelRenderer, SpecialModelStack,
@@ -38,7 +37,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                 game.connect_local(client, "SpecialOutlineTest").unwrap();
                 game.remote.as_mut().unwrap().glowing.insert(ID as i32);
                 install_special_stick(game);
-                game.gui.atlas.sprites.insert(
+                game.side.gui.atlas.sprites.insert(
                     "block/stone".into(),
                     Rect {
                         u0: 0.0,
@@ -152,10 +151,7 @@ pub(in crate::game) fn asked(count: u32) -> usize {
 
 /// Installs a special renderer for sticks in this game's item definitions. The fixture submits
 /// its own quad and needs no display transforms from a client-only model library.
-pub(in crate::game) fn install_special_stick<S: crate::game::Side>(game: &mut Game<'_, S>)
-where
-    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
-{
+pub(in crate::game) fn install_special_stick(game: &mut crate::game::ClientGame<'_>) {
     let factories = BTreeMap::from([(
         mod_api::Identifier::parse("test:stick").unwrap(),
         OwnedSpecialModelFactory::new(
@@ -178,18 +174,19 @@ where
             ),
         ),
     )]);
-    let definition = game.pack.item_renderer.decode_definition(
+    let definition = game.side.client_pack.item_renderer.decode_definition(
         r#"{"model":{"type":"minecraft:special","base":"minecraft:builtin/missing","model":{"type":"test:stick"}}}"#,
         &sunrise_client::item_render::ItemProviderTables {
             special: Some(&factories),
             ..Default::default()
         },
     ).unwrap();
-    Arc::get_mut(&mut game.pack.item_renderer)
-        .expect("the game's item renderer is shared")
-        .models
+    let renderer = Arc::get_mut(&mut game.side.client_pack.item_renderer)
+        .expect("the game's item renderer is shared");
+    Arc::make_mut(&mut renderer.models)
         .definitions
         .insert("minecraft:stick".into(), definition);
+    game.pack.item_models = Arc::clone(&renderer.models);
 }
 
 /// A stick of `count` resolved as a frame resolves a held item (`ItemModelResolver.updateForTopItem`).
@@ -232,15 +229,25 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
         );
         *ASKED_IN_PASS.lock().unwrap() = Some(asked(COUNT));
     }
+    let mut stick_definition = None;
     crate::game::native_entity_refs::tests::with_client_game(|client| {
         install_special_stick(client);
+        stick_definition = client
+            .pack
+            .item_models
+            .definitions
+            .get("minecraft:stick")
+            .cloned();
         let before = asked(COUNT);
         draw_stick(client, COUNT);
         assert_eq!(asked(COUNT), before + 1, "the frame's resolve didn't ask");
     });
+    let stick_definition = stick_definition.unwrap();
     crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
         const ZOMBIE: u32 = 1_900_000_100;
-        install_special_stick(game);
+        Arc::make_mut(&mut game.pack.item_models)
+            .definitions
+            .insert("minecraft:stick".into(), stick_definition.clone());
         let asked_by_the_frame = asked(COUNT);
         balance.drain_balanced();
         let kind = game

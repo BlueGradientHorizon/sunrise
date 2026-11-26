@@ -195,7 +195,7 @@ pub(in crate::game) fn ticked(ticks: &[([i32; 3], i32)]) -> Vec<String> {
 
 pub(in crate::game) fn request(world: &Path) -> WorldRequest {
     let rules = std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
-    let options = sunrise_client::title::WorldOptions {
+    let options = sunrise_sim::world_options::WorldOptions {
         world_type: sunrise_client::save::WorldPreset::Flat,
         rules: sunrise_client::gamerules::GameRules::with_registry(rules.clone(), &[]),
         ..Default::default()
@@ -235,9 +235,9 @@ fn a_server_never_ticks_a_client_ticker() {
         game.set_allow_commands(true);
         assert!(game.run_command("forceload add 1600 1600"));
         let deadline = Instant::now() + Duration::from_secs(120);
-        while !game.world.chunks.contains_key(&CHUNK) || game.streaming.busy() {
+        while !game.world.chunks.contains_key(&CHUNK) || game.side.streaming.busy() {
             assert!(Instant::now() < deadline, "chunk {CHUNK:?} did not load");
-            game.streaming.wait(Duration::from_millis(5));
+            game.side.streaming.wait(Duration::from_millis(5));
             game.side_update_world();
         }
         game.tick_world(true).unwrap();

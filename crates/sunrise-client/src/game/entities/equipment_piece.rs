@@ -160,7 +160,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ) else {
                 continue;
             };
-            let Some(key) = render::equipment_model_key(mob, layer, self.res.client_mob_models())
+            let Some(key) =
+                render::equipment_model_key(mob, layer, self.client_res().client_mob_models())
             else {
                 continue;
             };
@@ -215,7 +216,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         stack: Option<&ItemStack>,
         pass: EquipmentPass,
     ) -> Vec<EquipmentMaterial<'a>> {
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         let bind = |name: &str| {
             sprites
                 .get_key_value(name)
@@ -234,7 +235,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             })
             .and_then(|t| bind(&t.sprite()));
         let emissive = self
-            .res
+            .client_res()
             .client_mob_data()
             .emissive
             .read()

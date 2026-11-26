@@ -72,7 +72,8 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
                 // player and skips its body, #15727), yet chunk 1 is not loaded for the edge test.
                 for x in -2..=2 {
                     for z in -2..=2 {
-                        game.streaming
+                        game.side
+                            .streaming
                             .insert_remote(&mut game.world, Chunk::empty(x, z));
                     }
                 }

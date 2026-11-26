@@ -77,7 +77,8 @@ pub(in crate::game) fn with_player(
             },
         )
         .unwrap();
-        game.streaming
+        game.side
+            .streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         let mut guest = online_guest(1);
         guest.loaded = true;

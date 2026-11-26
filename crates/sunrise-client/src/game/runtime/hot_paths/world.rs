@@ -60,7 +60,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // own columns and leaves streaming paused; the outer ring has no complete 3x3.
         for cx in -radius..=radius {
             for cz in -radius..=radius {
-                self.streaming.set_forced(cx, cz, true);
+                self.side.streaming.set_forced(cx, cz, true);
             }
         }
         for rule in ["spawn_mobs", "advance_time", "advance_weather"] {

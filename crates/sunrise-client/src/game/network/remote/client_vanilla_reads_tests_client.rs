@@ -7,7 +7,8 @@ pub(in crate::game) fn stand(
     game: &mut Game<'_, crate::game::client_side::ClientState>,
     teleport: i32,
 ) {
-    game.streaming
+    game.side
+        .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     let stone = game
         .pack

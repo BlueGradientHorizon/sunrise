@@ -1692,7 +1692,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let plan = self.portals.arrivals[i].plan;
             let (cx, cz) = (plan.approximate.x >> 4, plan.approximate.z >> 4);
             let ready = plan.dim == self.dim
-                && (-1..=1).all(|dz| (-1..=1).all(|dx| self.streaming.is_lit(cx + dx, cz + dz)));
+                && (-1..=1)
+                    .all(|dz| (-1..=1).all(|dx| self.side.streaming.is_lit(cx + dx, cz + dz)));
             if !ready {
                 i += 1;
                 continue;
@@ -2059,7 +2060,8 @@ pub(in crate::game) mod tests {
             let target = game.portals.arrivals[0].plan.approximate;
             for z in (target.z >> 4) - 1..=(target.z >> 4) + 1 {
                 for x in (target.x >> 4) - 1..=(target.x >> 4) + 1 {
-                    game.streaming
+                    game.side
+                        .streaming
                         .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(x, z));
                 }
             }

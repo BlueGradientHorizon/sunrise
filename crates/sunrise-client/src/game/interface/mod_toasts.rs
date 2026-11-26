@@ -73,7 +73,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             let layout = request
                 .toast
-                .layout(&self.gui.atlas, request.icon.is_some());
+                .layout(&self.side.gui.atlas, request.icon.is_some());
             if let Some(kind) = &request.kind
                 && let Some(entry) = self.side.toast_manager.find_mut(|entry| match entry {
                     Toast::Mod(entry) if entry.request.kind.as_ref() == Some(kind) => Some(entry),
@@ -98,7 +98,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         entry: &Entry,
         slot: usize,
     ) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let [x, y] = entry
             .request
             .toast

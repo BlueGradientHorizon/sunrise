@@ -33,7 +33,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let bars = self.side.boss_overlay.bars(boss_overlay::now_millis());
         let drawn = hud_overlays::boss_bars_drawn(hi, bars.len());
         if drawn > 0 {
-            let font = &self.gui.atlas.font;
+            let font = &self.side.gui.atlas.font;
             let half = bars[..drawn]
                 .iter()
                 .map(|b| (hud_layout::width(font, &b.name.resolve_legacy()) + 1) / 2)

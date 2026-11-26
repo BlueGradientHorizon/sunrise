@@ -370,7 +370,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn chat_ui_and_font_for_test(
         &mut self,
     ) -> (&mut ChatUiState, &sunrise_client::font::Font) {
-        (&mut self.side.chat_ui, &self.gui.atlas.font)
+        (&mut self.side.chat_ui, &self.side.gui.atlas.font)
     }
     pub(in crate::game) fn client_sound_event_names(&self) -> Vec<String> {
         self.side.audio.0.event_names()
@@ -482,8 +482,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or([1280, 720], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let m = Measure(&self.gui.atlas.font);
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -498,7 +498,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             b.height as i32,
             self.chat_abilities(),
         );
-        screen.auto_suggestions = self.settings.auto_suggestions;
+        screen.auto_suggestions = self.side.settings.auto_suggestions;
         self.side.chat_ui.chat_screen = Some(screen);
         self.side.chat_ui.chat_opened = Some(std::time::Instant::now());
         self.set_screen(Screen::Chat);
@@ -548,7 +548,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .chat_draft
                 .as_ref()
                 .is_some_and(|d| d.text == text);
-        if should_discard_draft(reason, self.settings.file.bool("saveChatDrafts"))
+        if should_discard_draft(reason, self.side.settings.file.bool("saveChatDrafts"))
             || text.trim().is_empty()
         {
             self.side.chat_ui.chat_draft = None;
@@ -675,7 +675,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let focused = self.side.screen == Screen::Chat;
         self.side.chat_ui.chat.add(
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             text,
             indicator,
             source,
@@ -690,7 +690,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
     ) -> bool {
         if let Some(shortcut) = shortcut {
-            let m = Measure(&self.gui.atlas.font);
+            let m = Measure(&self.side.gui.atlas.font);
             let c = Commands {
                 dispatcher: chat_tree(&self.remote),
                 registries: &self.ui.registries,
@@ -747,7 +747,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(mut screen) = self.side.chat_ui.chat_screen.take() else {
             return false;
         };
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -815,7 +815,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         range: (usize, usize),
         list: Vec<(String, Option<String>)>,
     ) {
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -826,7 +826,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Text typed into the chat box (control socket `chat`).
     pub(in crate::game::client_side) fn chat_type(&mut self, text: &str) {
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -873,7 +873,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             );
             let focused = self.side.screen == Screen::Chat;
             self.side.chat_ui.chat.add(
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 line,
                 None,
                 ChatSource::Player,
@@ -900,11 +900,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let height = self.side.renderer.0.as_ref().map_or(720.0, |r| {
             HudBatch::new(
                 [r.config.width, r.config.height],
-                self.settings.gui_scale_inputs(),
+                self.side.settings.gui_scale_inputs(),
             )
             .height
         });
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -913,7 +913,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let width = self.side.renderer.0.as_ref().map_or(1280.0, |r| {
                 HudBatch::new(
                     [r.config.width, r.config.height],
-                    self.settings.gui_scale_inputs(),
+                    self.side.settings.gui_scale_inputs(),
                 )
                 .width
             });
@@ -940,14 +940,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .chat_ui
             .chat
             .style_at(
-                &self.gui.atlas.font,
+                &self.side.gui.atlas.font,
                 height as i32,
                 cursor.0 as f64,
                 cursor.1 as f64,
             )
             .or_else(|| {
                 self.side.chat_ui.chat.queue_style_at(
-                    &self.gui.atlas.font,
+                    &self.side.gui.atlas.font,
                     height as i32,
                     cursor.0 as f64,
                     cursor.1 as f64,
@@ -1049,10 +1049,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link
     /// opens, after the confirmation unless Prompt on Links is off.
     pub(in crate::game::client_side) fn click_url(&mut self, url: String) {
-        if !self.settings.chat_links {
+        if !self.side.settings.chat_links {
             return;
         }
-        if self.settings.chat_links_prompt {
+        if self.side.settings.chat_links_prompt {
             self.open_screen_overlay("link_prompt", |game| game.side.link_prompt = Some(url));
         } else {
             super::packs::open_uri(&url);
@@ -1071,7 +1071,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .append(warning);
         // ConfirmLinkScreen.addButtons: yes, copy and no, 100 wide each.
         sunrise_client::confirm_screen::Choice::new(
-            &self.gui.atlas.font,
+            &self.side.gui.atlas.font,
             size,
             &Text::translate("chat.link.confirm", &[]),
             &message,
@@ -1093,7 +1093,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 url,
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         sunrise_client::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         let labels = [
@@ -1163,7 +1163,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             String::new()
         };
         self.side.pvp.chat_search = !self.side.pvp.chat_search;
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
             registries: &self.ui.registries,
@@ -1179,7 +1179,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side
             .chat_ui
             .chat
-            .set_qol(&self.gui.atlas, options.qol());
+            .set_qol(&self.side.gui.atlas, options.qol());
         // A search ends with its option; a chat closed some other way ends it in keep_chat_draft.
         if self.side.pvp.chat_search && self.side.chat_ui.chat_screen.is_none() {
             // The chat went without closing (leaving the world): nothing to give back.
@@ -1195,7 +1195,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_ref()
             .filter(|_| focused && self.side.pvp.chat_search)
             .map(|s| s.value());
-        self.side.chat_ui.chat.set_search(&self.gui.atlas, query);
+        self.side
+            .chat_ui
+            .chat
+            .set_search(&self.side.gui.atlas, query);
         self.side.chat_ui.chat.search_prompt = focused && self.side.pvp.chat_search;
         // `ChatComponent`'s queue row: the messages Chat Delay holds back.
         self.side.chat_ui.chat.queue = self.chat_queue_len();
@@ -1206,13 +1209,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.side.chat_ui.chat.inline_images_stale(revision) {
             // Layout borrows a read-only Host while asking listeners.
             let mut chat = std::mem::take(&mut self.side.chat_ui.chat);
-            chat.refresh_inline_images(&self.gui.atlas, revision, |text| {
+            chat.refresh_inline_images(&self.side.gui.atlas, revision, |text| {
                 self.substitute_inline_images(text)
             });
             self.side.chat_ui.chat = chat;
         }
-        self.side.chat_ui.chat.smooth = self.settings.extras.chat_animation;
-        self.side.chat_ui.chat.hide_indicator = !self.settings.extras.chat_indicator;
+        self.side.chat_ui.chat.smooth = self.side.settings.extras.chat_animation;
+        self.side.chat_ui.chat.hide_indicator = !self.side.settings.extras.chat_indicator;
         // The fractional tick makes the smooth chat extra's slide move every
         // frame; vanilla's fade reads it too.
         let now = self.visual_ticks() as f32 + self.clock.fraction() as f32;
@@ -1226,7 +1229,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side
             .chat_ui
             .chat
-            .draw_at(batch, &self.gui.atlas, now, focused, offset);
+            .draw_at(batch, &self.side.gui.atlas, now, focused, offset);
     }
     /// `HoverEvent.EntityTooltipInfo.getTooltipLines`: the name when the
     /// event has one, the entity type and the UUID.
@@ -1287,12 +1290,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )
         });
         // The build made the box at this size (`ChatScreen.resize`).
-        let m = Measure(&self.gui.atlas.font);
+        let m = Measure(&self.side.gui.atlas.font);
         // Options.getBackgroundColor(Integer.MIN_VALUE).
-        let background = if self.settings.file.bool("backgroundForChatOnly") {
+        let background = if self.side.settings.file.bool("backgroundForChatOnly") {
             i32::MIN
         } else {
-            self.settings.text_background(0.0) as i32
+            self.side.settings.text_background(0.0) as i32
         };
         let mouse = (
             self.side.cursor.0.floor() as i32,
@@ -1305,17 +1308,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map_or(0, |t| t.elapsed().as_millis() as u64);
         let draws = screen.draw(&m, mouse, blink, background);
         self.side.chat_ui.chat_screen = Some(screen);
-        let tooltip = sunrise_client::screen_draw::paint(batch, &self.gui.atlas, &draws);
+        let tooltip = sunrise_client::screen_draw::paint(batch, &self.side.gui.atlas, &draws);
         if in_bed {
             let (w, h) = (batch.width, batch.height);
             let rect = self
                 .built_chat(w, h)
                 .map_or_else(|| Self::leave_bed_button(w, h), |l| l.leave_bed);
             let button = Self::leave_bed_draws(&m, mouse, rect);
-            let _ = sunrise_client::screen_draw::paint(batch, &self.gui.atlas, &button);
+            let _ = sunrise_client::screen_draw::paint(batch, &self.side.gui.atlas, &button);
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
-        sunrise_client::screen_draw::paint_tooltip(batch, &self.gui.atlas, &draws, tooltip);
+        sunrise_client::screen_draw::paint_tooltip(batch, &self.side.gui.atlas, &draws, tooltip);
         // The hovered message part's tooltip (`renderComponentHoverEffect`),
         // or the text of the message tag under the cursor.
         let height = batch.height as i32;
@@ -1325,18 +1328,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side
                 .chat_ui
                 .chat
-                .focused_tags(&self.gui.atlas.font, height, cx, cy);
-        sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &tag_icons);
+                .focused_tags(&self.side.gui.atlas.font, height, cx, cy);
+        sunrise_client::hud_layout::paint(batch, &self.side.gui.atlas, &tag_icons);
         let style = self
             .side
             .chat_ui
             .chat
-            .style_at(&self.gui.atlas.font, height, cx, cy)
+            .style_at(&self.side.gui.atlas.font, height, cx, cy)
             .or_else(|| {
                 self.side
                     .chat_ui
                     .chat
-                    .queue_style_at(&self.gui.atlas.font, height, cx, cy)
+                    .queue_style_at(&self.side.gui.atlas.font, height, cx, cy)
             });
         if let Some(style) = style {
             // ActiveTextCollector.ClickableStyleFinder: a click event, or an
@@ -1381,7 +1384,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if let Some(entity) = style
             .hover_entity
             .as_deref()
-            .filter(|_| self.settings.file.bool("advancedItemTooltips"))
+            .filter(|_| self.side.settings.file.bool("advancedItemTooltips"))
         {
             // A ShowEntity tooltip only with advanced tooltips on.
             let lines = Self::entity_tooltip_lines(entity);
@@ -1419,6 +1422,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         width: i32,
     ) -> Vec<(Text, u32)> {
         let split = self
+            .side
             .gui
             .atlas
             .font
@@ -1468,7 +1472,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> bool {
         if repeat
             || sunrise_client::keybinds::key_name(key)
-                != Some(self.settings.keys.get("key.screenshot"))
+                != Some(self.side.settings.keys.get("key.screenshot"))
         {
             return false;
         }
@@ -1572,7 +1576,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn post_screenshot_chat(&mut self, message: Text) {
         let focused = self.side.screen == Screen::Chat;
         self.side.chat_ui.chat.add(
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             message,
             None,
             ChatSource::Client,

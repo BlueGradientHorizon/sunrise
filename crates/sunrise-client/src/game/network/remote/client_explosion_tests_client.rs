@@ -12,7 +12,8 @@ fn explosion_validates_impulse_and_result_without_suppressing_effects() {
         "sunrise_client::game::client_side::remote_client::tests::client_explosion_tests::explosion_validates_impulse_and_result_without_suppressing_effects",
         |game| {
             let _reader = logged_in(game);
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             game.side.particles.0.particle_level = 0;
             game.side.particles.0.seed_randoms(719, 11, 12);

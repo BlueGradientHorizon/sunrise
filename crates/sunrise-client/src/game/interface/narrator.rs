@@ -186,7 +186,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn narrator_status_changed(&mut self) {
         let id = SystemToastId::Narrator;
         if let Some(toast) = update_status(
-            self.settings.narrator(),
+            self.side.settings.narrator(),
             self.side.toast_manager.system_mut(id),
         ) {
             self.add_system_toast(Some(id), toast);
@@ -206,16 +206,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
             letter,
             self.edit_box_focused(),
             sunrise_narrator::is_active(),
-            self.settings.file.bool("narratorHotkey"),
+            self.side.settings.file.bool("narratorHotkey"),
         );
         if !hotkey {
             return;
         }
-        let was_disabled = cycle_status(&mut self.settings);
+        let was_disabled = cycle_status(&mut self.side.settings);
         self.side.chat_ui.options.layout_changed();
         // OptionInstance.set runs the option's onValueUpdate.
         self.narrator_status_changed();
-        self.settings.save(&crate::game::options_path());
+        self.side.settings.save(&crate::game::options_path());
         self.on_narrator_status_changed(was_disabled, Trigger::Keyboard);
     }
     /// Where vanilla calls `screen.updateNarratorStatus(wasDisabled, trigger)`

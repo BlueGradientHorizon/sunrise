@@ -127,7 +127,7 @@ pub(in crate::game) fn death_protection_of<'m>(
         && (data.other(KEY).is_some() || data.other("!minecraft:death_protection").is_some())
     {
         return models
-            .components(&sunrise_client::item_render::stack_view(s))
+            .components(&sunrise_sim::item_models::stack_view(s))
             .get(KEY)
             .cloned()
             .map(std::borrow::Cow::Owned);
@@ -178,7 +178,7 @@ pub(in crate::game) mod death_protection_tests {
             (ItemStack::new("minecraft:unknown_item", 1), None),
         ] {
             let full = models
-                .components(&sunrise_client::item_render::stack_view(&stack))
+                .components(&sunrise_sim::item_models::stack_view(&stack))
                 .get("minecraft:death_protection")
                 .cloned();
             let fast =

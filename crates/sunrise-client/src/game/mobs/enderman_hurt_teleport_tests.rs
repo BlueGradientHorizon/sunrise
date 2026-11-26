@@ -34,9 +34,8 @@ fn floored_game<'a>(
     let mut game = crate::game::ServerGame::new(
         resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

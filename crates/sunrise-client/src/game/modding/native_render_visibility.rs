@@ -14,7 +14,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn refresh_render_visibility(&mut self) {
         // With no section listener now or before, the section policy does not change.
         let listening = mod_api::__private::listened(mod_api::HookId::SectionVisibility);
-        self.streaming
+        self.side
+            .streaming
             .refresh_section_visibility(&mut self.world, listening);
         let asked = mod_api::__private::has_scoped_hook(mod_api::HookId::BlockRenderVisibility);
         let mut hidden: Arc<[bool]> = if asked {
@@ -33,22 +34,24 @@ impl Game<'_, crate::game::client_side::ClientState> {
             hidden = Arc::from([]);
         }
         let part_tables = self.resolve_part_tables();
-        if hidden == self.pack.context.hidden_states
-            && part_tables == *self.pack.context.part_tables
+        if hidden == self.side.client_pack.context.mesh.hidden_states
+            && part_tables == *self.side.client_pack.context.mesh.part_tables
         {
             return;
         }
-        let old = &self.pack.context;
-        self.pack.context = Arc::new(sunrise_client::streaming::WorkerContext {
-            assets: old.assets.clone(),
-            render: old.render.clone(),
-            tables: old.tables.clone(),
-            biomes: old.biomes.clone(),
-            light: old.light.clone(),
-            hidden_states: hidden,
-            part_tables: Arc::new(part_tables),
+        let old = &self.side.client_pack.context;
+        self.side.client_pack.context = Arc::new(sunrise_client_render::streaming::WorkerContext {
+            chunk: old.chunk.clone(),
+            mesh: sunrise_client_render::streaming::MeshWorkerContext {
+                render: old.mesh.render.clone(),
+                tables: old.mesh.tables.clone(),
+                hidden_states: hidden,
+                part_tables: Arc::new(part_tables),
+            },
         });
         let context = self.worker_context();
-        self.streaming.reload_resources(&mut self.world, context);
+        self.side
+            .streaming
+            .reload_resources(&mut self.world, context);
     }
 }

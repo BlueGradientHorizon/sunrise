@@ -271,7 +271,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         let Some(slot) = self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1) else {
             return true;
@@ -339,7 +339,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(open) = self.side.mount_menu.open.as_ref() else {
             return;
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         // NautilusInventoryScreen draws its own background.
         let background = if nautilus::is_nautilus(open.species) {
             "gui/container/nautilus"
@@ -432,7 +432,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         m.hurt_time = 0;
         m.death_time = 0;
         let camera = glam::DVec3::new(m.position.x, m.position.y, m.position.z);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         let mut verts = Vec::new();
         // A screen preview: custom entity model animations see is_in_gui = 1.

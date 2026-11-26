@@ -180,7 +180,7 @@ fn teleport_duration_unclamped_negative_same_target_and_rotation_match_vanilla_2
     // 2. NBT readAdditionalSaveData still clamps teleport_duration to 0..59.
     let mut tag = Compound::new();
     tag.insert("teleport_duration".into(), Tag::Int(100));
-    let nbt_entries = sunrise_client::text_display::display_data(&Tag::Compound(tag), false);
+    let nbt_entries = sunrise_sim::text_display_data::display_data(&Tag::Compound(tag), false);
     let nbt_tp = nbt_entries
         .iter()
         .find_map(|(id, _, v)| match (id, v) {
@@ -496,8 +496,8 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         game.side.view.y_rot = 0.0;
         game.side.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
-        game.settings.render_distance = 8;
-        game.settings.entity_distance = 1.0;
+        game.side.settings.render_distance = 8;
+        game.side.settings.entity_distance = 1.0;
         let stone = game
             .pack
             .assets
@@ -861,8 +861,8 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
         game.side.view.y_rot = 0.0;
         game.side.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
-        game.settings.render_distance = 8;
-        game.settings.entity_distance = 1.0;
+        game.side.settings.render_distance = 8;
+        game.side.settings.entity_distance = 1.0;
 
         // 1. Deterministic insertion order (including ID inversions and shift_remove), matching EntityLookup.byId.
         game.side.text_displays.0.clear();
@@ -1084,10 +1084,10 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
         game.side.view.y_rot = 0.0;
         game.side.view.x_rot = 0.0;
         // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
-        game.settings.render_distance = 8;
-        game.settings.entity_distance = 1.0;
-        assert!(!game.gui.atlas.object_skins.contains_key(&id_key));
-        assert!(!game.gui.atlas.object_skins.contains_key(&name_key));
+        game.side.settings.render_distance = 8;
+        game.side.settings.entity_distance = 1.0;
+        assert!(!game.side.gui.atlas.object_skins.contains_key(&id_key));
+        assert!(!game.side.gui.atlas.object_skins.contains_key(&name_key));
 
         assert!(game.spawn_remote_object(
             83225,
@@ -1107,12 +1107,18 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
         collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         assert_eq!(
-            game.gui.atlas.object_skins.get(&id_key).map(String::as_str),
+            game.side
+                .gui
+                .atlas
+                .object_skins
+                .get(&id_key)
+                .map(String::as_str),
             Some(want_skin),
             "inline object:player profile must resolve to vanilla default skin (key: {id_key})"
         );
         assert_eq!(
-            game.gui
+            game.side
+                .gui
                 .atlas
                 .object_skins
                 .get(&name_key)
@@ -1138,8 +1144,8 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         game.side.posed_rotation = Some((0.0, 0.0));
         game.side.view.y_rot = 0.0;
         game.side.view.x_rot = 0.0;
-        game.settings.render_distance = 8;
-        game.settings.entity_distance = 1.0;
+        game.side.settings.render_distance = 8;
+        game.side.settings.entity_distance = 1.0;
         let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
@@ -1250,8 +1256,8 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         game.side.posed_rotation = Some((0.0, 0.0));
         game.side.view.y_rot = 0.0;
         game.side.view.x_rot = 0.0;
-        game.settings.render_distance = 8;
-        game.settings.entity_distance = 1.0;
+        game.side.settings.render_distance = 8;
+        game.side.settings.entity_distance = 1.0;
         let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
@@ -1474,7 +1480,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
 
         // Compiled empty section while fading (< 0.3 visibility) stays hidden; fade = 0 renders.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
-        game.settings.chunk_fade = 10.0;
+        game.side.settings.chunk_fade = 10.0;
         game.side
             .renderer
             .0
@@ -1494,7 +1500,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         assert!(blocks.is_empty(), "block display in fading empty section");
         assert!(!mob_drawn, "mob in fading empty section");
 
-        game.settings.chunk_fade = 0.0;
+        game.side.settings.chunk_fade = 0.0;
         normal.clear();
         blocks.clear();
         mob_verts.clear();
@@ -1567,8 +1573,8 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
         game.side.posed_rotation = Some((0.0, 0.0));
         game.side.view.y_rot = 0.0;
         game.side.view.x_rot = 0.0;
-        game.settings.render_distance = 8;
-        game.settings.entity_distance = 1.0;
+        game.side.settings.render_distance = 8;
+        game.side.settings.entity_distance = 1.0;
 
         // 1. Bold missing cursor in world TextDisplays matches vanilla TextDisplayRenderer bit-for-bit.
         for case_name in ["origin_fixed", "angled_billboard_transformed"] {
@@ -1730,10 +1736,10 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
                 "EID 83224 missing exact vanilla face {dir}: expected {want_pos:08x?}"
             );
         }
-        let sprite = game.gui.atlas.sprites["block/lime_concrete"];
-        let px = (sprite.u0 * game.gui.atlas.width as f32).round() as u32;
-        let py = (sprite.v0 * game.gui.atlas.height as f32).round() as u32;
-        let pixels = game.gui.atlas.pixels();
+        let sprite = game.side.gui.atlas.sprites["block/lime_concrete"];
+        let px = (sprite.u0 * game.side.gui.atlas.width as f32).round() as u32;
+        let py = (sprite.v0 * game.side.gui.atlas.height as f32).round() as u32;
+        let pixels = game.side.gui.atlas.pixels();
         assert!(px >= 1 && py >= 1);
         for (label, bx, by) in [
             ("left", px - 1, py),
@@ -1741,7 +1747,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             ("top", px, py - 1),
             ("bottom", px, py + 16),
         ] {
-            let a = pixels[((by * game.gui.atlas.width + bx) * 4 + 3) as usize];
+            let a = pixels[((by * game.side.gui.atlas.width + bx) * 4 + 3) as usize];
             assert_eq!(
                 a, 255,
                 "block/lime_concrete {label} border pixel ({bx},{by}) must be padded opaque, not transparent gutter"

@@ -2,15 +2,15 @@
 //! `/particle`, `/attribute`, `/ride` and `/spreadplayers`.
 use super::{Arg, Context, Game, R, Target, err, wrap_degrees};
 use crate::game::living_attributes::AttributeWrite;
-use sunrise_client::{
-    mobs::{DamageKind, MobEvent, NamedDamage, Who, finalize},
-    scoreboard_cmd::{Holder, Tracker},
-    settings::SOUND_SOURCES,
-    text::Text,
-};
 use sunrise_core::random::RandomSource;
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::damage_source::Catalog as DamageCatalog;
+use {
+    sunrise_client::mobs::DamageKind, sunrise_client::mobs::MobEvent,
+    sunrise_client::mobs::NamedDamage, sunrise_client::mobs::Who, sunrise_client::mobs::finalize,
+    sunrise_client::scoreboard_cmd::Holder, sunrise_client::scoreboard_cmd::Tracker,
+    sunrise_client::text::Text, sunrise_level::sim_settings::SOUND_SOURCES,
+};
 
 /// Queue bookkeeping for synchronous command damage, preserving prior requests
 /// and unrelated events. The existing game policy handles each extracted request.
@@ -1709,9 +1709,8 @@ pub(in crate::game) mod vehicle_damage_command_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1900,9 +1899,8 @@ pub(in crate::game) mod attribute_modifier_command_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

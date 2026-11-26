@@ -10,9 +10,9 @@
 //! doc says which).
 use super::{Game, commands::Target};
 use mod_api::{Identifier, LivingRef};
-use sunrise_client::first_person::{Hand, SwingAnimation};
 use sunrise_client::lan::waypoints::Icon;
 use sunrise_client::mobs::{spear_use, stuck::Stuck};
+use {sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The UUID of the player a living handle names.

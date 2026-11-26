@@ -117,8 +117,12 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
     }
     let improved = std::env::var(CASE).unwrap() == "improved_transparency";
     with_client_game(|game| {
-        game.gui = crate::game::UiResources::load(&pack(&[]), std::path::Path::new("")).unwrap();
-        assert!(game.gui.atlas.clouds_shader.is_none(), "no core/clouds");
+        game.side.gui =
+            crate::game::UiResources::load(&pack(&[]), std::path::Path::new("")).unwrap();
+        assert!(
+            game.side.gui.atlas.clouds_shader.is_none(),
+            "no core/clouds"
+        );
         let _event_loop = frame_scene(game);
         let renderer = game.side.renderer.0.as_mut().unwrap();
         renderer.improved_transparency = improved;
@@ -139,9 +143,9 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         game.pitch = -90.0;
         game.side.view.fov_modifier = 1.0;
         game.side.view.old_fov_modifier = 1.0;
-        game.settings.clouds = "true".into();
+        game.side.settings.clouds = "true".into();
         let before = drawn_frame(game);
-        game.settings.clouds = "false".into();
+        game.side.settings.clouds = "false".into();
         let off = drawn_frame(game);
         // This pixel is under the north-west cell's bottom face. Compare it with the same
         // scene with clouds off: the fogged blend's byte from another adapter is not a reference.
@@ -200,10 +204,10 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         };
         // `renderClouds`: true is fancy.
         for style in ["true", "fast"] {
-            game.settings.clouds = style.into();
+            game.side.settings.clouds = style.into();
             assert_eq!(samples(&drawn_frame(game)), [expected; 3], "{style}");
         }
-        game.settings.clouds = "false".into();
+        game.side.settings.clouds = "false".into();
         assert!(drawn_frame(game).0 == off.0, "no clouds drawn while off");
 
         game.side
@@ -213,7 +217,7 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
             .unwrap()
             .set_clouds_shader(None)
             .unwrap();
-        game.settings.clouds = "true".into();
+        game.side.settings.clouds = "true".into();
         assert!(
             drawn_frame(game).0 == before.0,
             "the native clouds again, to the byte"

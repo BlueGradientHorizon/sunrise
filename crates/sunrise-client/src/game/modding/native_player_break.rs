@@ -223,7 +223,7 @@ mod tests {
             game.dropped.clear();
             game.inventory[game.selected] = None;
             game.offhand = Some(pickaxe.clone());
-            game.hand = sunrise_client::first_person::Hand::Off;
+            game.hand = sunrise_sim::first_person_sim::Hand::Off;
             place(game, iron, "minecraft:iron_block");
             assert!(game.player_destroy_block(player, iron, false));
             assert!(
@@ -232,7 +232,7 @@ mod tests {
             );
             game.inventory[game.selected] = Some(pickaxe.clone());
             game.offhand = None;
-            game.hand = sunrise_client::first_person::Hand::Main;
+            game.hand = sunrise_sim::first_person_sim::Hand::Main;
             let (lower, upper) = ([6, 64, 4], [6, 65, 4]);
             let door = |game: &mut crate::game::ServerGame<'_>, half: &str, pos: [i32; 3]| {
                 let state = game
@@ -271,7 +271,7 @@ mod tests {
             game.dropped.clear();
             game.inventory[game.selected] = None;
             game.offhand = Some(pickaxe);
-            game.hand = sunrise_client::first_person::Hand::Off;
+            game.hand = sunrise_sim::first_person_sim::Hand::Off;
             door(game, "lower", lower);
             door(game, "upper", upper);
             assert_eq!(block(game, lower), "minecraft:iron_door");

@@ -16,7 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     || sunrise_client::mobs::nautilus::is_nautilus(m.species())),
         );
         let draws = sunrise_client::hud_overlays::jump_bar(w, h, cooldown, self.mount.jump_scale);
-        sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
+        sunrise_client::hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
     /// `willPrioritizeJumpInfo`: charging a jump or recharging.
     pub(in crate::game) fn mount_jumping(&self) -> bool {

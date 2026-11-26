@@ -17,8 +17,8 @@ fn mobs_past_the_simulation_distance_neither_enter_portals_nor_cool_down() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.settings.simulation_distance = 4;
-        game.settings.render_distance = 12;
+        game.side.settings.simulation_distance = 4;
+        game.side.settings.render_distance = 12;
         let registry = game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
         let portal = registry.default_state("minecraft:nether_portal").unwrap();

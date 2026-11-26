@@ -3,20 +3,19 @@
 //! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting, and the
 //! mount's health and jump bar on the HUD.
 use super::Game;
-use sunrise_client::{
-    blocks::Fluid,
-    first_person::Hand,
-    items::{EntityTypeTags, ItemStack},
-    mobs::{Mob, MobEvent, Species, Who, equine},
-    motion::{MotionWorld, PlayerMotion},
-    pose::{Dimensions, Pose},
-    sprint::Keys,
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3, VoxelShape},
     random::RandomSource,
 };
 use sunrise_world::living_air::escape_vector;
+use {
+    sunrise_client::blocks::Fluid, sunrise_client::items::EntityTypeTags,
+    sunrise_client::items::ItemStack, sunrise_client::mobs::Mob, sunrise_client::mobs::MobEvent,
+    sunrise_client::mobs::Species, sunrise_client::mobs::Who, sunrise_client::mobs::equine,
+    sunrise_client::motion::MotionWorld, sunrise_client::motion::PlayerMotion,
+    sunrise_client::pose::Dimensions, sunrise_client::pose::Pose, sunrise_client::sprint::Keys,
+    sunrise_sim::first_person_sim::Hand,
+};
 
 pub(in crate::game) fn steering_item(
     species: Species,
@@ -683,7 +682,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             yaw,
             width: p.dimensions.width,
             poses: rider_poses(p),
-            main_arm_left: self.settings.main_hand_left,
+            main_arm_left: self.side.settings.main_hand_left,
         };
         dismount_location(mount, &rider, &GameDismountWorld(self))
     }
@@ -1662,7 +1661,7 @@ pub(in crate::game) mod tests {
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
         let mut game =
-            crate::game::ServerGame::new(res, loaded.pack, loaded.gui?, options, settings, None)
+            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
                 .ok()?;
         game.reset_entity_residency();
         game.native_lifecycle
@@ -1673,7 +1672,7 @@ pub(in crate::game) mod tests {
             (0, 0),
             std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
         );
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         Some(Box::new(game))
     }
 

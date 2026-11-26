@@ -12,18 +12,19 @@ pub(in crate::game) use sunrise_client_gameplay::tutorial::{Hint, Previous, Step
 impl super::Game<'_, crate::game::client_side::ClientState> {
     /// `Tutorial.setStep` persists immediately so it survives leaving a world.
     pub(in crate::game::client_side) fn persist_tutorial_step(&mut self) {
-        self.settings.file.set(
+        self.side.settings.file.set(
             "tutorialStep",
             sunrise_client::options_file::V::Int(self.side.tutorial.step as i32),
         );
-        self.settings.save(&crate::game::options_path());
+        self.side.settings.save(&crate::game::options_path());
     }
 }
 
 impl super::Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn reset_tutorial(&mut self) {
-        self.side.tutorial =
-            Tutorial::new(Step::from_option(self.settings.file.int("tutorialStep")));
+        self.side.tutorial = Tutorial::new(Step::from_option(
+            self.side.settings.file.int("tutorialStep"),
+        ));
         self.side
             .toast_manager
             .queued
@@ -101,7 +102,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
         }
         // Minecraft.tick: also show this in a single-player world once it is
         // published to LAN, but not merely because its client uses memory networking.
-        if !self.settings.file.bool("joinedFirstServer")
+        if !self.side.settings.file.bool("joinedFirstServer")
             && (!self.has_singleplayer_server() || self.is_published())
         {
             if let Some(toast) = self.tutorial_toast(Hint::SocialInteractions, Some(0.0)) {
@@ -110,11 +111,11 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
                     .queued
                     .push_back(Toast::Tutorial(toast));
             }
-            self.settings.file.set(
+            self.side.settings.file.set(
                 "joinedFirstServer",
                 sunrise_client::options_file::V::Bool(true),
             );
-            self.settings.save(&crate::game::options_path());
+            self.side.settings.save(&crate::game::options_path());
         }
         if self.side.screen == super::Screen::Playing
             && ([
@@ -214,7 +215,8 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
     /// `Tutorial.key`: bold belongs to the bound key, not the translation using it.
     fn tutorial_toast(&self, hint: Hint, progress: Option<f32>) -> Option<HintToast> {
         use sunrise_client::{keybinds, text::Text};
-        let key = |mapping: &str| keybinds::display_name(self.settings.keys.get(mapping)).bold();
+        let key =
+            |mapping: &str| keybinds::display_name(self.side.settings.keys.get(mapping)).bold();
         let (title_key, fallback, description_key, description, title_args) = match hint {
             Hint::Move => (
                 "tutorial.move.title",
@@ -287,7 +289,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
         if !self.admit_toast(mod_api::ToastKind::Tutorial, &mut title, &mut description) {
             return None;
         }
-        let font = &self.gui.atlas.font;
+        let font = &self.side.gui.atlas.font;
         let mut lines = font.split_lines(&title, 126.0);
         let title_lines = lines.len();
         if let Some(description) = description {

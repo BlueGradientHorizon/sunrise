@@ -72,7 +72,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
     /// `Minecraft.computeChatAbilities` from the Chat option.
     pub(in crate::game) fn chat_abilities(&self) -> ChatAbilities {
-        ChatAbilities::new(ChatVisibility::from_option(self.settings.chat_visibility))
+        ChatAbilities::new(ChatVisibility::from_option(self.side.chat_visibility()))
     }
     /// `Player.getAbilities`; Paper `Player#getAllowFlight/isFlying/getFlySpeed/getWalkSpeed`.
     pub(in crate::game) fn player_abilities(&self, player: PlayerRef) -> Option<PlayerAbilities> {

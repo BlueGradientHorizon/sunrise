@@ -21,16 +21,6 @@ use super::{
     potions::{Victim, mob_can_be_affected},
 };
 use mod_api::DragonPhase;
-#[allow(unused_imports)]
-use sunrise_client::{
-    health::{DamageContainer, DamageLevel, HurtSource, Hurting, Knock, Reduction},
-    mesher::Vertex,
-    mobs::{Damage, DamageKind, Who},
-    particles::ParticleType,
-    projectiles::{Projectile, ProjectileKind},
-    random_source,
-    text::Text,
-};
 use sunrise_client_core::nbt_value;
 #[allow(unused_imports)]
 use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
@@ -43,6 +33,16 @@ use sunrise_core::{
 };
 #[cfg(test)]
 use sunrise_protocol::entity_data::Value;
+#[allow(unused_imports)]
+use {
+    sunrise_client::health::DamageContainer, sunrise_client::health::DamageLevel,
+    sunrise_client::health::HurtSource, sunrise_client::health::Hurting,
+    sunrise_client::health::Knock, sunrise_client::health::Reduction,
+    sunrise_client::mesher::Vertex, sunrise_client::mobs::Damage, sunrise_client::mobs::DamageKind,
+    sunrise_client::mobs::Who, sunrise_client::projectiles::Projectile,
+    sunrise_client::projectiles::ProjectileKind, sunrise_client::random_source,
+    sunrise_client::text::Text, sunrise_level::particle_options::ParticleType,
+};
 
 /// `EnderDragon.recreateFromPacket`: part `part` (`0..8`) gets wire id `dragon_id + 1 + part`
 /// using Java's wrapping 32-bit integer arithmetic.
@@ -1346,7 +1346,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// The island's centre chunks are lit (the arena is "loaded").
     pub(in crate::game::server_side) fn arena_loaded(&self) -> bool {
-        (-2..=1).all(|cz| (-2..=1).all(|cx| self.streaming.is_lit(cx, cz)))
+        (-2..=1).all(|cz| (-2..=1).all(|cx| self.side.streaming.is_lit(cx, cz)))
     }
     /// A player's entity id: the acting player's body has it, another
     /// player's comes from the hub (0 when no such player is available).
@@ -4286,7 +4286,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             (None, SpawnSite::Finalizing(sunrise_client::mobs::spawn_rules::Reason::Command)) => {
                 0.0
             }
-            _ => sunrise_client::camera::wrap_degrees(self.world.random.next_float() * 360.0),
+            _ => sunrise_level::camera_math::wrap_degrees(self.world.random.next_float() * 360.0),
         };
         let finalized = match site {
             SpawnSite::Finalizing(reason) => {
@@ -4628,7 +4628,8 @@ pub(in crate::game) mod tests {
                     // snapTo always draws yaw; only completed Mob.finalizeSpawn
                     // draws the follow-range triangle and handedness roll.
                     let mut expected = LegacyRandom::new(42);
-                    let yaw = sunrise_client::camera::wrap_degrees(expected.next_float() * 360.0);
+                    let yaw =
+                        sunrise_level::camera_math::wrap_degrees(expected.next_float() * 360.0);
                     if let Some(dragon) = game.dragon.as_ref() {
                         assert_eq!(dragon.yaw, yaw);
                         assert_eq!(dragon.previous_yaw, yaw);

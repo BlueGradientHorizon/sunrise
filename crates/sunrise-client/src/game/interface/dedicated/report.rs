@@ -3,14 +3,13 @@ use super::super::memory::{MEMORY_EVERY_S, flatten_report};
 use super::super::{
     Dim, Game,
     perf_remote::{Asked, Done},
-    profile_capture::shown,
+    profile_capture_server::shown,
     tick_profile,
 };
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-use sunrise_client::client_perf::request::Threads;
 use sunrise_client::perf_net::Refusal;
 use sunrise_client::server_perf::{
     self, CaptureEnd, CaptureOptions, SamplerOptions, ServerPerf, WorldCounts,
@@ -23,6 +22,7 @@ use sunrise_perf_format::{
     files,
     v1::{GpuMode, Start, StopReason, SunriseOptions, Trigger},
 };
+use sunrise_sim::perf_types::Threads;
 use sunrise_world::level::BlockId;
 
 /// What a capture is asked to record, and how it was asked.
@@ -409,9 +409,8 @@ mod tests {
         crate::game::ServerGame::new(
             resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap()
@@ -423,7 +422,7 @@ mod tests {
     fn a_capture_of_a_server_with_names_text_and_a_seed_holds_none_of_them() {
         use std::io::Read;
         use sunrise_client::containers::BlockEntity;
-        use sunrise_client::signs::{SignData, SignText};
+        use {sunrise_level::signs_data::SignData, sunrise_level::signs_data::SignText};
         let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let mut resources = None;
         let mut game = server_game(&mut resources, &root);

@@ -1,5 +1,8 @@
 //! Portable captured level sound record and sound-category re-exports.
-pub use sunrise_client_core::sound_source::{SOUND_SOURCES, ServerSound, sound_source_for_event};
+pub use sunrise_client_core::sound_source::{
+    AMBIENT, BLOCKS, MASTER, MUSIC, NEUTRAL, PLAYERS, RECORDS, SOUND_SOURCES, ServerSound,
+    SoundEntityState, UI, WEATHER, sound_source_for_event,
+};
 
 /// A level sound retained for the network broadcaster, in playback order.
 #[derive(Clone, Debug)]

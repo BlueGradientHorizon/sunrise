@@ -2,7 +2,10 @@ use super::{Game, spill};
 use crate::game::decorated_pot::WOBBLE_NEGATIVE;
 use crate::game::decorated_pot::WOBBLE_POSITIVE;
 use crate::game::decorated_pot::unpack_loot;
-use sunrise_client::{items::ItemStack, mobs::Who, particles::ParticleType, save};
+use {
+    sunrise_client::items::ItemStack, sunrise_client::mobs::Who, sunrise_client::save,
+    sunrise_level::particle_options::ParticleType,
+};
 use {sunrise_core::nbt::Tag, sunrise_world::loot::ContainerLootContext};
 
 impl Game<'_, crate::game::server_side::ServerState> {

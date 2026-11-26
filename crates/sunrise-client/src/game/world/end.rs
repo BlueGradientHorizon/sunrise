@@ -713,7 +713,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// scanState and spawnExitPortal, only while the fight has no exit portal
     /// location: a podium that is later broken stays broken.
     pub(in crate::game::server_side) fn ensure_exit_portal(&mut self) -> Result<()> {
-        if !(-1..=0).all(|cz| (-1..=0).all(|cx| self.streaming.is_lit(cx, cz)))
+        if !(-1..=0).all(|cz| (-1..=0).all(|cx| self.side.streaming.is_lit(cx, cz)))
             || !self.fight_ready()
         {
             return Ok(());
@@ -966,7 +966,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && !self.end.areas.contains(&c)
         {
             self.end.areas.push(c);
-            self.streaming.extra.push((c, 1));
+            self.side.streaming.extra.push((c, 1));
         }
         let destination = match job {
             GatewayJob::Known { exit, .. } => Vec3::new(
@@ -1481,7 +1481,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// areas a server keeps around its players.
     pub(in crate::game::server_side) fn keep_gateway_destinations(&mut self) {
         let areas = &self.end.areas;
-        self.streaming
+        self.side
+            .streaming
             .extra
             .retain(|&(c, r)| !(r == 1 && areas.contains(&c)));
         // The pearls' portal tickets hold End chunks, and run out there
@@ -1513,7 +1514,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             if !areas.contains(&c) {
                 areas.push(c);
-                self.streaming.extra.push((c, 1));
+                self.side.streaming.extra.push((c, 1));
             }
         }
         self.end.areas = areas;

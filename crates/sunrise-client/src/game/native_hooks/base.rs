@@ -933,7 +933,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn on(&self, mod_id: &str) -> bool {
         !self
             .mods
-            .code_disabled(&self.settings.mods.disabled, mod_id)
+            .code_disabled(&self.side.mods_list().disabled, mod_id)
     }
     /// The most of the item `item` one slot holds (`Item.getDefaultMaxStackSize`),
     /// or `None` for an unknown item: for a mod's container that fills or

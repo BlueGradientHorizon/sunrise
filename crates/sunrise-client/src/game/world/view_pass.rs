@@ -90,7 +90,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             tick_steps: self.clock.step_state(),
             collision: Some(self.collision),
             border: &self.border,
-            streaming: Some(&self.streaming),
+            streaming: Some(&self.side.streaming),
         };
         host.hub.viewed_pass(&mut ctx);
     }
@@ -159,9 +159,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

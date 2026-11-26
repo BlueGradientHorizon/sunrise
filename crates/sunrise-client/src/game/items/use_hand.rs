@@ -477,7 +477,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A guest's UseItemOn stops at ItemStack.useOn: what Item.use does
         // (throw, drink, eat, raise, equip) waits for its UseItem.
         let spawn_egg = stack.item.ends_with("_spawn_egg");
-        use sunrise_client::first_person::UseResult;
+        use sunrise_sim::first_person_sim::UseResult;
         let swings = self.swings_started;
         match self.use_tool(&stack, block_hit.is_some())? {
             UseResult::Success { swing } => {

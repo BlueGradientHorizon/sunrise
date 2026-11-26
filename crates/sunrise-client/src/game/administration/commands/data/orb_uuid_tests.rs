@@ -27,9 +27,8 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

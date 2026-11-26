@@ -823,7 +823,7 @@ mod tests {
                         game.options.dedicated = Some(Vec::new());
                         let dim = if death { Dim::Overworld } else { Dim::End };
                         game.enter_level(dim).unwrap();
-                        game.streaming.insert_remote(
+                        game.side.streaming.insert_remote(
                             &mut game.world,
                             sunrise_client::chunk::Chunk::empty(0, 0),
                         );
@@ -984,7 +984,8 @@ mod tests {
                         if missing {
                             for x in -2..=2 {
                                 for z in -2..=2 {
-                                    game.streaming
+                                    game.side
+                                        .streaming
                                         .insert_remote(&mut game.world, Chunk::empty(x, z));
                                 }
                             }
@@ -1009,7 +1010,8 @@ mod tests {
                             game.enter_level(Dim::Nether).unwrap();
                             for x in -2..=2 {
                                 for z in -2..=2 {
-                                    game.streaming
+                                    game.side
+                                        .streaming
                                         .insert_remote(&mut game.world, Chunk::empty(x, z));
                                 }
                             }

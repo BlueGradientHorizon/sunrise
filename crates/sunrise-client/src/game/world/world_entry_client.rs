@@ -25,7 +25,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.rest_loader.is_none() {
             return Ok(false);
         }
-        self.perf.world_opening();
+        self.side.perf.world_opening();
         if self.side.title.0.is_none() {
             let title = self
                 .new_title(std::env::current_dir()?.join("saves"))

@@ -197,7 +197,7 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
             .registry
             .default_state("minecraft:short_grass")
             .unwrap();
-        game.streaming.biome_blend = 2;
+        game.side.streaming.biome_blend = 2;
         let biomes = world_biomes!(game);
         let tint = biomes.grass(biomes.id("minecraft:plains"), 0.0, 0.0);
         let c = |shift: u32| 0.6 * ((tint >> shift) & 255) as f32 / 255.0;

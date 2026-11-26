@@ -11,7 +11,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let state = self.world.block(x, y, z).0;
         campfire_particle_tick(
-            self.res.animate(),
+            crate::game::client_side::ClientState::expect_client_res(&self.side.client_res)
+                .animate(),
             &mut self.side.particles.0,
             self.pack.assets.registry,
             [x, y, z],

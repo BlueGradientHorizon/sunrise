@@ -28,8 +28,8 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     game.open_options(true);
                     let kind = Identifier::parse("toast_fixture:progress").unwrap();
                     let sprite_id = Identifier::parse("minecraft:icon/checkmark").unwrap();
-                    let sprite = *game.gui.atlas.gui_rect("icon/checkmark").unwrap();
-                    let apple = *game.gui.atlas.texture_rect("item/apple").unwrap();
+                    let sprite = *game.side.gui.atlas.gui_rect("icon/checkmark").unwrap();
+                    let apple = *game.side.gui.atlas.texture_rect("item/apple").unwrap();
                     let mut first = ModToast::new(Text::literal("Queued sprite"));
                     first.kind = Some(kind.clone());
                     first.icon = Some(ToastIcon::Sprite(sprite_id));
@@ -186,7 +186,7 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     };
                     entry.request.toast.slide.origin =
                         Some(Instant::now() - Duration::from_secs(1));
-                    let rect = *game.gui.atlas.gui_rect("toast/system").unwrap();
+                    let rect = *game.side.gui.atlas.gui_rect("toast/system").unwrap();
                     let frame = draw(game);
                     let frame_bounds = frame
                         .vertices

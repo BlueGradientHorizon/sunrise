@@ -871,8 +871,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.force_load_test_chunks(area);
         let deadline = Instant::now() + std::time::Duration::from_secs(120);
         while missing(self) && Instant::now() < deadline {
-            let _ = self.streaming.update(&mut self.world);
-            self.streaming.wait(std::time::Duration::from_millis(5));
+            let _ = self.side.streaming.update(&mut self.world);
+            self.side
+                .streaming
+                .wait(std::time::Duration::from_millis(5));
         }
     }
 
@@ -1372,7 +1374,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if passed {
             self.remove_test_barriers(info.pos);
         } else if halt {
-            self.streaming.clear_forced();
+            self.side.streaming.clear_forced();
             self.clear_game_tests();
             return;
         }
@@ -1382,7 +1384,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         runner.batch_pending = runner.batch_pending.saturating_sub(1);
         if runner.batch_pending == 0 {
             let next = runner.current + 1;
-            self.streaming.clear_forced();
+            self.side.streaming.clear_forced();
             self.run_batch(next);
         }
     }
@@ -1710,7 +1712,6 @@ pub(in crate::game) mod tests {
                 .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
         );
         let settings = Settings::default();
-        let mut gui = None;
         let mut loaded = if menu {
             load_resources_skip_lang(
                 sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
@@ -1721,7 +1722,7 @@ pub(in crate::game) mod tests {
                 std::time::Instant::now(),
                 execution_role::ExecutionRole::IntegratedServer,
                 &Progress::new(),
-                &mut |ui, _| gui = Some(ui),
+                &mut |_, _| {},
             )
             .unwrap()
         } else {
@@ -1735,7 +1736,7 @@ pub(in crate::game) mod tests {
                 false,
                 execution_role::ExecutionRole::IntegratedServer,
                 &Progress::new(),
-                &mut |ui, _| gui = Some(ui),
+                &mut |_, _| {},
             )
             .unwrap()
         };
@@ -1746,15 +1747,9 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game = crate::game::ServerGame::new(
-            res,
-            loaded.pack,
-            gui.or(loaded.gui).unwrap(),
-            options,
-            settings,
-            None,
-        )
-        .unwrap();
+        let mut game =
+            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+                .unwrap();
         game.reset_entity_residency();
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);

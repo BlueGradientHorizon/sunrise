@@ -395,8 +395,8 @@ mod tests {
             return;
         }
         with_game(|game| {
-            let renderer = Arc::get_mut(&mut game.pack.item_renderer).unwrap();
-            let prototypes = Arc::make_mut(&mut renderer.models.prototypes);
+            let models = Arc::make_mut(&mut game.pack.item_models);
+            let prototypes = Arc::make_mut(&mut models.prototypes);
             prototypes.insert(
                 "minecraft:stone".into(),
                 [

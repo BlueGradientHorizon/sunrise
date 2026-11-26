@@ -7,7 +7,8 @@ use super::{
 use mod_api::{ItemDisplayContext, ItemStack, SpecialModelContext};
 use std::num::NonZeroU32;
 use sunrise_assets::item_model::{Context, DisplayContext, StackView};
-use sunrise_client::item_render::{SpecialModelInput, stack_view};
+use sunrise_client::item_render::SpecialModelInput;
+use sunrise_sim::item_models::stack_view;
 
 pub(in crate::game::client_side) fn draw_input<'a>(
     game: &'a Game<'_, crate::game::client_side::ClientState>,

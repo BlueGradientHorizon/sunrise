@@ -49,14 +49,14 @@ fn terrain_sources_are_kept_only_while_a_pack_is_loaded() {
         };
         // The first frame turns the resource packs' material maps on and reloads them, the
         // next loads the pack, and the one after meshes with its sources.
-        game.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
+        game.side.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
         assert!(kept_after(game, 3), "loaded");
-        assert!(game.streaming.shader_pack);
+        assert!(game.side.streaming.shader_pack);
         // Dropped: the next frame unloads it, the one after meshes without sources.
-        game.settings.sunrise.shader_pack = String::new();
+        game.side.settings.sunrise.shader_pack = String::new();
         assert!(!kept_after(game, 2), "dropped");
-        assert!(!game.streaming.shader_pack);
-        game.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
+        assert!(!game.side.streaming.shader_pack);
+        game.side.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
         assert!(kept_after(game, 3), "loaded again");
     });
 }

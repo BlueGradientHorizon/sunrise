@@ -1,6 +1,6 @@
 SectionCopy.getBlockState	inline	crates/sunrise-client-render/src/mesher.rs::Padded::new	the copy is Padded's block array; no debug-world barrier or DebugLevelSource blocks
 SectionRenderDispatcher.<init>	skip:other		builds the GPU arena and staging for chunk upload; Sunrise creates its arena and uploads in gfx.rs with the renderer
-SectionRenderDispatcher.runTask	port	crates/sunrise-client-render/src/streaming.rs::Streaming::new	the worker loop pops the nearest queued job and runs it
+SectionRenderDispatcher.runTask	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::new	the worker loop pops the nearest queued job and runs it
 SectionRenderDispatcher.getRenderSectionSlice	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_sections	the per-layer vertex and index slices of a section are read when drawing
 SectionRenderDispatcher.uploadTerrainBuffersToGpu	port	crates/sunrise-client-render/src/gfx/upload.rs::Uploads::finish	closes the frame's staging belt after the terrain copies
 SectionRenderDispatcher.schedule	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::submit_mesh_job	the mesh job goes into the priority queue by distance
@@ -11,7 +11,7 @@ SectionRenderDispatcher.RenderSection.setSectionNode	port	crates/sunrise-render-
 SectionRenderDispatcher.RenderSection.reset	port	crates/sunrise-client-render/src/gfx.rs::Renderer::release_section	drops the section's mesh and GPU slices
 SectionRenderDispatcher.RenderSection.resortTransparency	port	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	translucent quads re-sorted for the camera; gap: minor: the new order goes to the next draw, not a newly uploaded index buffer
 SectionRenderDispatcher.RenderSection.transparencyResortingScheduled	skip:other		Sunrise sorts during the frame, so there is no pending resort task to report
-SectionRenderDispatcher.RenderSection.cancelTasks	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	a finished job whose seq no longer matches is dropped on arrival; queued jobs are not removed
+SectionRenderDispatcher.RenderSection.cancelTasks	inline	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::update	a finished job whose seq no longer matches is dropped on arrival; queued jobs are not removed
 SectionRenderDispatcher.RenderSection.createCompileTask	port	crates/sunrise-client-render/src/streaming.rs::MeshStreamer::submit_mesh_job	the mesh job is queued; the recompile flag is not kept
 SectionRenderDispatcher.RenderSection.compileSync	port	crates/sunrise-client-render/src/mesher.rs::Mesher::mesh	meshes on the calling thread with no queue
 SectionRenderDispatcher.RenderSection.setSectionMesh	port	crates/sunrise-client-render/src/gfx.rs::Renderer::upload	stores the new mesh for the section and hands back the old one
@@ -22,7 +22,7 @@ SectionRenderDispatcher.RenderSection.addSectionBuffersToUberBuffer	port	crates/
 SectionRenderDispatcher.RenderSection.CompileTask.doTask	port	crates/sunrise-client-render/src/mesher.rs::Mesher::mesh	meshes the section; the empty result and upload are handled in streaming and Renderer::upload
 SectionRenderDispatcher.RenderSection.ResortTransparencyTask.doTask	port	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	re-sorts translucent quads when the camera's point of view changes
 SectionTaskDynamicQueue.poll	port	crates/sunrise-level/src/chunk_streamer.rs::Queued::cmp	nearest job first; gap: minor: no recompile quota, new and remesh jobs share one priority
-SectionTaskDynamicQueue.clear	skip:other		Sunrise has no queue clear; stale results are dropped by seq in Streaming::update
+SectionTaskDynamicQueue.clear	skip:other		Sunrise has no queue clear; stale results are dropped by seq in MeshStreamer::update
 TranslucencyPointOfView.set	inline	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	the point of view: camera block minus section, clamped to -1..1 per axis
 TranslucencyPointOfView.isAxisAligned	inline	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	the axis-aligned test: a zero component in the point of view
 TranslucencyPointOfView.equals	inline	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	compares the last point of view with the new one

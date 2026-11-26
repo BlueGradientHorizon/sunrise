@@ -59,15 +59,9 @@ impl<'a> Edits<'a> {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = &*resources.insert(loaded.resources);
-        let mut game = crate::game::ServerGame::new(
-            res,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            None,
-        )
-        .unwrap();
+        let mut game =
+            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+                .unwrap();
         // A placed sign opens its editor for a live server player, whose
         // handle needs the open world's epoch.
         game.native_lifecycle_open_started();

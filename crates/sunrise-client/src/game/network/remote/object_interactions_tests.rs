@@ -62,11 +62,11 @@ fn transactional_bucket_hands_reach_the_owning_client() {
         });
         let main = ItemPlace::PlayerHand {
             player: 12,
-            hand: sunrise_client::first_person::Hand::Main,
+            hand: sunrise_sim::first_person_sim::Hand::Main,
         };
         let off = ItemPlace::PlayerHand {
             player: 12,
-            hand: sunrise_client::first_person::Hand::Off,
+            hand: sunrise_sim::first_person_sim::Hand::Off,
         };
         with_client_game(|client| {
             let (_reader, _writer) = connect_menu_test(client);

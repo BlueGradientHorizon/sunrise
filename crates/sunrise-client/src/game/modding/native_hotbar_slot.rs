@@ -249,7 +249,7 @@ pub(in crate::game) mod hotbar_slot_tests {
                     }))
                     .unwrap();
                     let draws = game.side.debug_charts.draw(
-                        &game.gui.atlas.font,
+                        &game.side.gui.atlas.font,
                         484,
                         100,
                         0,

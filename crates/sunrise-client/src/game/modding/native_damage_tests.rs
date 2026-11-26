@@ -780,7 +780,8 @@ fn projectile_killing_hit_posts_before_its_follow_up() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             game.build_registries();
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             let center = Vec3::new(4.5, 80.0, 4.5);
             let (direct, blast) = (225034, 225035);
@@ -1227,7 +1228,8 @@ fn borrowed_pufferfish_posts_before_poison_and_the_next_sting() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             // Same chunk/section, in the order the contact query visits them.
             let mut puffer = mob(game, fish, "minecraft:pufferfish");
@@ -1385,7 +1387,8 @@ fn borrowed_bee_posts_at_both_server_ai_hurts() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             let water = game
                 .pack
@@ -1819,7 +1822,8 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             let registry = game.pack.assets.registry;
             let block = registry
@@ -1989,7 +1993,8 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             let stone = game
                 .pack
@@ -2160,7 +2165,8 @@ fn guest_landing_posts_before_its_ground_hit() {
         with_game(|game| {
             add_guest(game);
             for x in [0, 1] {
-                game.streaming
+                game.side
+                    .streaming
                     .insert_remote(&mut game.world, Chunk::empty(x, 0));
             }
             let honey = game
@@ -2254,7 +2260,8 @@ fn ordinary_guest_move_settles_fall_before_resuming() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             add_guest(game);
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let honey = game
                 .pack

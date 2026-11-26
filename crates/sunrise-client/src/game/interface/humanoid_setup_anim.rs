@@ -4,8 +4,8 @@ use sunrise_client::mobs::{anim, render};
 impl render::RenderDataSource for Game<'_, crate::game::client_side::ClientState> {
     fn mob_tables(&self) -> sunrise_client::mobs_render::ClientMobRender<'_> {
         sunrise_client::mobs_render::ClientMobRender {
-            models: self.res.client_mob_models(),
-            data: self.res.client_mob_data(),
+            models: self.client_res().client_mob_models(),
+            data: self.client_res().client_mob_data(),
         }
     }
 

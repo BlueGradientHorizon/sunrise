@@ -9,7 +9,7 @@ use super::native_hooks::{mod_particles_ok, mod_sound_ok};
 use super::{Game, creatures::NativeSound};
 use crate::lan::server_effects::ServerQueuedParticle;
 use mod_api::{LevelRef, PlayerRef, PlayerWorldRefusal, SoundSource};
-use sunrise_client::particles::ParticleOptions;
+use sunrise_level::particle_options::ParticleOptions;
 use sunrise_world::registry::BlockStateId;
 
 /// Validated inputs for queueing or deferring a level or entity-bound native sound.

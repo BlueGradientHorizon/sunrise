@@ -8,13 +8,13 @@
 //! players around as entity event 2. A left click jabs instead
 //! (`PiercingWeapon.attack`), which Lunge turns into a dash.
 use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_client::spear::hits_in_reach;
-use sunrise_client::{
-    attack_strength::delay,
-    spear::{HIT_FEEDBACK_TICKS, Kinetic},
-};
 use sunrise_core::geometry::Aabb;
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_sim::spear_sim::hits_in_reach;
+use {
+    sunrise_client::attack_strength::delay, sunrise_sim::spear_sim::HIT_FEEDBACK_TICKS,
+    sunrise_sim::spear_sim::Kinetic,
+};
 
 /// The key of this window's own player in `Game::kinetic_feedback`.
 pub(in crate::game) const OWN: i32 = i32::MIN;

@@ -38,6 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         alpha: f64,
     ) -> impl Iterator<Item = (Source, Option<&str>)> {
         let lum = self
+            .side
             .settings
             .extras
             .dynamic_lights

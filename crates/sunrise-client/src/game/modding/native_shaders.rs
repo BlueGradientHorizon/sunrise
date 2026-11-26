@@ -128,7 +128,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let values = sunrise_client::shader_pack_list::load_values(&values_pack, options);
             let constants = options.iter().map(|o| o.id.clone()).zip(values).collect();
             let sprites = || {
-                let layers = self.pack.render.sprite_layers.iter();
+                let layers = self.side.client_pack.render.sprite_layers.iter();
                 layers.map(|(name, layer)| (name.as_str(), *layer))
             };
             let tags = pack.manifest.sprite_tags(sprites());
@@ -139,7 +139,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let macros = sunrise_shaders::Macros::standard();
                 let properties = sunrise_shaders::Properties::parse(&listed, &macros);
                 let ids = sunrise_shaders::BlockIds::parse(&properties);
-                let table = super::shader_packs::block_id_table(&self.pack, &ids);
+                let table =
+                    super::shader_packs::block_id_table(&self.pack, &self.side.client_pack, &ids);
                 for (layer, id) in table.iter().step_by(2).enumerate() {
                     let layer = layer as u32;
                     if *id > 0 && !materials.iter().any(|m| m.0 == layer) {

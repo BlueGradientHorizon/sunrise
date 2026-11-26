@@ -52,7 +52,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use sunrise_client::first_person::Hand;
 #[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
@@ -80,6 +79,7 @@ use sunrise_protocol::{
     text::Language,
 };
 use sunrise_server_files::profiles::ServicesKeySet;
+use sunrise_sim::first_person_sim::Hand;
 #[allow(unused_imports)]
 use {
     sunrise_core::nbt::Tag,
@@ -155,11 +155,11 @@ pub(in crate::game) fn player_voice_pitch() -> f32 {
 pub(in crate::game) fn entity_sound_state(
     id: i32,
     player: Option<(i32, [f64; 3], bool)>,
-    mob: Option<sunrise_client::sound_engine::SoundEntityState>,
+    mob: Option<sunrise_client_core::sound_source::SoundEntityState>,
     tracked: &HashMap<i32, Tracked>,
     dragon: Option<(i32, [f64; 3])>,
-) -> Option<sunrise_client::sound_engine::SoundEntityState> {
-    use sunrise_client::sound_engine::SoundEntityState;
+) -> Option<sunrise_client_core::sound_source::SoundEntityState> {
+    use sunrise_client_core::sound_source::SoundEntityState;
     if let Some((player_id, position, silent)) = player
         && player_id == id
     {
@@ -616,7 +616,7 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) custom_completions: std::collections::BTreeSet<String>,
     pub(in crate::game) players: HashMap<u128, String>,
     /// `ClientPacketListener.playerInfoMap` as player-list entries, and which of them are listed.
-    pub(in crate::game) tab_players: HashMap<u128, sunrise_client::tab_list::TabPlayer>,
+    pub(in crate::game) tab_players: HashMap<u128, sunrise_level::profile_lookup::TabPlayer>,
     /// Live `PlayerInfo.gameMode` cell per active tab entry; `PlayerInfoRemove` drops the map
     /// slot while leaving any entity's cached `Arc` untouched (`AbstractClientPlayer.playerInfo`).
     pub(in crate::game) tab_game_modes: HashMap<u128, Arc<std::sync::atomic::AtomicI32>>,
@@ -1175,7 +1175,7 @@ pub(in crate::game) fn remote_use_swings(held: &ItemStack, consumable: bool) -> 
             | "minecraft:ender_eye"
             | "minecraft:brush"
     ) && !consumable
-        && sunrise_client::spear::Kinetic::of(id).is_none()
+        && sunrise_sim::spear_sim::Kinetic::of(id).is_none()
 }
 
 /// Whether an object interaction on the client predicts a hand swing (`InteractionResult.SUCCESS`).
@@ -1939,9 +1939,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -2014,7 +2013,9 @@ pub(in crate::game) mod tests {
         options.execution_role = crate::game::execution_role::ExecutionRole::Client;
         let mut client = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -2111,7 +2112,9 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         let mut game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,

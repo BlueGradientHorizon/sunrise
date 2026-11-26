@@ -54,11 +54,9 @@ impl<S: crate::game::Side> SignalAccess for ReadLevel<'_, '_, S> {
         self.game.world.block(pos.x, pos.y, pos.z)
     }
     fn shulker_is_closed(&self, pos: BlockPos) -> Option<bool> {
-        self.game
-            .be_anims
-            .shulkers
+        S::shulkers(&self.game.side)
             .get(&[pos.x, pos.y, pos.z])
-            .map(|s| s.status == sunrise_client::block_entity_anim::ShulkerStatus::Closed)
+            .map(|s| s.status == sunrise_level::shulker_box::ShulkerStatus::Closed)
     }
     fn published_collision_shape(
         &self,

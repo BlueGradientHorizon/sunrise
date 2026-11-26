@@ -127,7 +127,8 @@ pub(in crate::game) fn player_info_mode(uuid: u128, game_mode: i32) -> C {
 }
 
 pub(in crate::game) fn install_stone_floor(game: &mut crate::game::ClientGame<'_>) {
-    game.streaming
+    game.side
+        .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     let stone = game
         .pack
@@ -891,7 +892,8 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 // (`x0 - 1 ..= x1 + 1`, `z0 - 1 ..= z1 + 1`), then attach the camera to entity 99
                 // in air while the local body is in water.
                 for (cx, cz) in [(-1, -1), (-1, 0), (0, -1)] {
-                    game.streaming
+                    game.side
+                        .streaming
                         .insert_remote(&mut game.world, Chunk::empty(cx, cz));
                 }
                 game.remote.as_mut().unwrap().camera = Some(99);
@@ -1107,11 +1109,17 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 // Rebind movement (key.forward), keyboard toggle (key.sneak), mouse toggle
                 // (key.attack), and plain action (key.drop) onto key.mouse.middle alongside the
                 // default middle pair: every binding triggers exactly once.
-                game.settings.toggle_crouch = true;
-                game.settings.keys.set("key.forward", "key.mouse.middle");
-                game.settings.keys.set("key.sneak", "key.mouse.middle");
-                game.settings.keys.set("key.attack", "key.mouse.middle");
-                game.settings.keys.set("key.drop", "key.mouse.middle");
+                game.side.settings.toggle_crouch = true;
+                game.side
+                    .settings
+                    .keys
+                    .set("key.forward", "key.mouse.middle");
+                game.side.settings.keys.set("key.sneak", "key.mouse.middle");
+                game.side
+                    .settings
+                    .keys
+                    .set("key.attack", "key.mouse.middle");
+                game.side.settings.keys.set("key.drop", "key.mouse.middle");
                 let before = [
                     game.pending_mapping_clicks("key.forward"),
                     game.pending_mapping_clicks("key.sneak"),
@@ -1152,10 +1160,10 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
 
                 // Rebinding key.mouse.left away from key.attack to key.forward dispatches only
                 // key.forward and not key.attack.
-                game.settings.keys.reset_all();
-                game.settings.toggle_crouch = false;
-                game.settings.keys.set("key.attack", "key.keyboard.r");
-                game.settings.keys.set("key.forward", "key.mouse.left");
+                game.side.settings.keys.reset_all();
+                game.side.settings.toggle_crouch = false;
+                game.side.settings.keys.set("key.attack", "key.keyboard.r");
+                game.side.settings.keys.set("key.forward", "key.mouse.left");
                 let fwd_before = game.pending_mapping_clicks("key.forward");
                 let atk_before = game.pending_mapping_clicks("key.attack");
                 game.control_command("mouse left click", &reply, &NoopLoop)
@@ -1166,12 +1174,15 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 // Rebinding key.pickItem, key.drop, key.forward, key.sneak, and key.attack onto
                 // one keyboard key dispatches each binding exactly once (never double-queueing
                 // key.drop or skipping movement/toggle actions).
-                game.settings.keys.reset_all();
-                game.settings.keys.set("key.pickItem", "key.keyboard.g");
-                game.settings.keys.set("key.drop", "key.keyboard.g");
-                game.settings.keys.set("key.forward", "key.keyboard.g");
-                game.settings.keys.set("key.sneak", "key.keyboard.g");
-                game.settings.keys.set("key.attack", "key.keyboard.g");
+                game.side.settings.keys.reset_all();
+                game.side
+                    .settings
+                    .keys
+                    .set("key.pickItem", "key.keyboard.g");
+                game.side.settings.keys.set("key.drop", "key.keyboard.g");
+                game.side.settings.keys.set("key.forward", "key.keyboard.g");
+                game.side.settings.keys.set("key.sneak", "key.keyboard.g");
+                game.side.settings.keys.set("key.attack", "key.keyboard.g");
                 let key_before = [
                     game.pending_mapping_clicks("key.pickItem"),
                     game.pending_mapping_clicks("key.drop"),
@@ -1194,7 +1205,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                         "{name} after key g tap"
                     );
                 }
-                game.settings.keys.reset_all();
+                game.side.settings.keys.reset_all();
             });
         },
     );

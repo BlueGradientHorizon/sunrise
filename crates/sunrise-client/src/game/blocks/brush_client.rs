@@ -38,7 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let options = ParticleOptions::block(ParticleType::Block, sprite, tint);
         // The arm that brushes: the main arm, or the other one for the off hand.
-        let flip = if off_hand == self.settings.main_hand_left {
+        let flip = if off_hand == self.side.settings.main_hand_left {
             1.0
         } else {
             -1.0

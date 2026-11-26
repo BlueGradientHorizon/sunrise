@@ -266,7 +266,9 @@ fn a_client_refresh_keeps_and_a_world_close_retires_the_servers_answers() {
             options.game_dir = Some(saves.path().to_path_buf());
             let client = ClientGame::new(
                 &game.res,
+                loaded.client_res.unwrap(),
                 loaded.pack,
+                loaded.client_pack.unwrap(),
                 loaded.gui.unwrap(),
                 options,
                 settings,
@@ -631,7 +633,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
         with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
             let registry = Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
-            let create = sunrise_client::title::WorldOptions::default();
+            let create = sunrise_sim::world_options::WorldOptions::default();
             let mut request = crate::game::world_loading::WorldRequest::new(
                 "enchant_tags",
                 Some("enchant_tags"),

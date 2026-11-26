@@ -71,7 +71,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             position,
                             yaw,
                             pitch,
-                            self.settings.fov.clamp(1.0, 179.0),
+                            self.side.settings.fov.clamp(1.0, 179.0),
                         );
                         self.capture(true);
                         self.client_system_message(Text::translate(
@@ -115,7 +115,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 position,
                                 yaw,
                                 pitch,
-                                self.settings.fov.clamp(1.0, 179.0),
+                                self.side.settings.fov.clamp(1.0, 179.0),
                             );
                         }
                         self.capture(true);
@@ -234,7 +234,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.side
                     .studio
                     .freecam
-                    .activate(position, yaw, pitch, self.settings.fov);
+                    .activate(position, yaw, pitch, self.side.settings.fov);
             }
             TopBarAction::ToggleLockToPath => {
                 self.side.studio.freecam.locked_to_path = !self.side.studio.freecam.locked_to_path;
@@ -250,7 +250,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.side
                         .studio
                         .freecam
-                        .activate(position, yaw, pitch, self.settings.fov);
+                        .activate(position, yaw, pitch, self.side.settings.fov);
                     self.capture(true);
                 }
             }
@@ -356,7 +356,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.side
                         .studio
                         .freecam
-                        .activate(position, yaw, pitch, self.settings.fov);
+                        .activate(position, yaw, pitch, self.side.settings.fov);
                 }
             }
             TimelineAction::AddCameraKeyframe => {
@@ -495,13 +495,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.side.studio.topbar.render(
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             self.side.cursor,
             self.side.studio.freecam.locked_to_path,
         );
         self.side.studio.timeline.render(
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             self.side.cursor,
             &self.side.studio.freecam,
         );
@@ -564,7 +564,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let Some(renderer) = &self.side.renderer.0 {
                 let batch = super::HudBatch::new(
                     [renderer.config.width, renderer.config.height],
-                    self.settings.gui_scale_inputs(),
+                    self.side.settings.gui_scale_inputs(),
                 );
                 if self.side.studio.timeline.visible
                     && self.side.cursor.1 >= batch.height - self.side.studio.timeline.height()
@@ -609,7 +609,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .as_ref()
                 .map(|renderer| [renderer.config.width, renderer.config.height])
                 .unwrap_or([1, 1]);
-            let batch = super::HudBatch::new(size, self.settings.gui_scale_inputs());
+            let batch = super::HudBatch::new(size, self.side.settings.gui_scale_inputs());
             let had_open_menu = self.side.studio.topbar.open_menu.is_some();
             let topbar_action = self.side.studio.topbar.handle_mouse_click(
                 self.side.cursor,

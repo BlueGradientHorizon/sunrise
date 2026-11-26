@@ -65,7 +65,7 @@ fn opening_a_screen_releases_mod_holds() {
 
         // ModifiersChanged can contain an unrelated change, or be the OS's only
         // report of a real release. Only the recovered sneak release takes over.
-        game.settings.toggle_crouch = false;
+        game.side.settings.toggle_crouch = false;
         game.side.physical_keys.insert(KeyCode::ShiftLeft);
         game.update_modifiers(ModifiersState::SHIFT | ModifiersState::ALT);
         game.mapped_key_event(KeyCode::ShiftLeft, true, false)

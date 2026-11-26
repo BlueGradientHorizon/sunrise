@@ -43,9 +43,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .last
             .replace(now)
             .map_or(0.0, |t| now.duration_since(t).as_secs_f32());
-        if let Some(world) =
-            world.filter(|&w| !title && self.settings.sunrise.sky && self.pack.custom_sky.has(w))
-        {
+        if let Some(world) = world.filter(|&w| {
+            !title && self.side.settings.sunrise.sky && self.side.client_pack.custom_sky.has(w)
+        }) {
             let mut state = std::mem::take(&mut self.side.custom_sky.state);
             // Level.isThundering / isRaining.
             let weather = if thunder > 0.9 && rain > 0.2 {
@@ -61,7 +61,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 biome: self.biome_at(camera),
                 y: camera[1].floor() as i32,
             };
-            self.pack.custom_sky.draws(
+            self.side.client_pack.custom_sky.draws(
                 world,
                 &conditions,
                 sky.sun_angle / 360.0,

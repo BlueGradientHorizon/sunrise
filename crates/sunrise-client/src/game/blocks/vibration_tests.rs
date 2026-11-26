@@ -118,9 +118,8 @@ fn saddling_a_pig_posts_equip_from_the_pig() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();
@@ -176,9 +175,8 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();
@@ -323,9 +321,8 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

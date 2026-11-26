@@ -10,18 +10,15 @@ pub(in crate::game) use crate::game::potent_sulfur_common::{
     GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE, PassMobs,
 };
 use sunrise_client::{
-    Result,
-    block_entities::Pos,
-    containers::BlockEntity,
-    effects::EffectInstance,
-    mobs::Mob,
-    particles::ParticleLevel,
-    potent_sulfur::{can_be_reached_by_noxious_gas, unobstructed_block_count},
+    Result, block_entities::Pos, containers::BlockEntity, effects::EffectInstance, mobs::Mob,
 };
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
 use sunrise_gameplay::potent_sulfur::{
     EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, geyser_positional,
     launch_area, nearby_living_area,
+};
+use sunrise_level::potent_sulfur_level::{
+    SulfurLevel, can_be_reached_by_noxious_gas, unobstructed_block_count,
 };
 use sunrise_world::{level::flags, registry::BlockStateId};
 
@@ -80,13 +77,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.mobs_in_pass(area, &mut near) {
             near.extend(0..self.mobs.len() as u32);
         }
-        let level = ParticleLevel {
-            world: &self.world,
-            facts: self.res.facts(),
-            collision: self.collision,
-            player: None,
-            cached_chunk: std::cell::Cell::new(None),
-        };
+        let level = SulfurLevel::new(&self.world, self.res.facts(), self.collision);
         // The gas reads blocks only, so the mobs it reaches can be found
         // before any gets its effect.
         near.retain(|&j| {
@@ -152,13 +143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             p.position.z,
         ];
         let reached = {
-            let level = ParticleLevel {
-                world: &self.world,
-                facts: self.res.facts(),
-                collision: self.collision,
-                player: None,
-                cached_chunk: std::cell::Cell::new(None),
-            };
+            let level = SulfurLevel::new(&self.world, self.res.facts(), self.collision);
             can_be_reached_by_noxious_gas(&level, source, eye)
         };
         if reached {
@@ -245,13 +230,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let water_blocks = source[1] - pos.1 - 1;
-        let level = ParticleLevel {
-            world: &self.world,
-            facts: self.res.facts(),
-            collision: self.collision,
-            player: None,
-            cached_chunk: std::cell::Cell::new(None),
-        };
+        let level = SulfurLevel::new(&self.world, self.res.facts(), self.collision);
         let height = unobstructed_block_count(&level, [pos.0, pos.1 + 1, pos.2], water_blocks);
         let area = launch_area(pos, height);
         let limit = f64::from(0.3f32) + f64::from(water_blocks) * 0.1;

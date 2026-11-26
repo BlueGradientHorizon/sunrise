@@ -98,7 +98,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game: self,
             name: String::new(),
         };
-        hud_layout::paint_checked(batch, &self.gui.atlas, draws, &mut items, &mut faces)
+        hud_layout::paint_checked(batch, &self.side.gui.atlas, draws, &mut items, &mut faces)
             .map_err(paint_error)
     }
 }

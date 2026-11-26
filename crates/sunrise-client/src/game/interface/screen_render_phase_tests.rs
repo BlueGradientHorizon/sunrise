@@ -82,7 +82,7 @@ fn frame(game: &mut crate::game::ClientGame<'_>) -> Vec<u8> {
     // Exercise the actual Game dispatch, including its Pre/Post orchestration,
     // rather than manufacturing an equivalent sequence of render operations.
     let batch = game.hud_layers(SIZE);
-    render_hud(&batch, &game.gui.atlas, SIZE).expect("software Vulkan screen draw")
+    render_hud(&batch, &game.side.gui.atlas, SIZE).expect("software Vulkan screen draw")
 }
 
 fn pixel(pixels: &[u8], x: u32, y: u32) -> [u8; 4] {
@@ -94,7 +94,7 @@ fn pixel(pixels: &[u8], x: u32, y: u32) -> [u8; 4] {
 fn overlay_reference(game: &mut crate::game::ClientGame<'_>, carried: bool) -> Vec<u8> {
     let mut batch = HudBatch::scratch(SIZE);
     batch.fill(
-        &game.gui.atlas,
+        &game.side.gui.atlas,
         0.0,
         0.0,
         320.0,
@@ -106,7 +106,7 @@ fn overlay_reference(game: &mut crate::game::ClientGame<'_>, carried: bool) -> V
     } else {
         game.draw_slot_tooltip(&mut batch);
     }
-    render_hud(&batch, &game.gui.atlas, SIZE).expect("software Vulkan overlay reference")
+    render_hud(&batch, &game.side.gui.atlas, SIZE).expect("software Vulkan overlay reference")
 }
 
 #[test]

@@ -84,9 +84,9 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
     let mods = vec![mod_api::ModEntry::new("sync_route", Box::new(Route))].into();
     mod_platform::testing::with_mods(mods, || {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.settings.render_distance = 2;
-            game.settings.simulation_distance = 2;
-            let options = sunrise_client::title::WorldOptions {
+            game.side.settings.render_distance = 2;
+            game.side.settings.simulation_distance = 2;
+            let options = sunrise_sim::world_options::WorldOptions {
                 world_type: sunrise_client::save::WorldPreset::Flat,
                 ..Default::default()
             };

@@ -134,7 +134,8 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
         // An outline-only modifier is enough to enable expression evaluation.
         return with_client_game(|game| {
             let pack = sky_pack(&["rendertype_lines"]);
-            game.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
+            game.side.gui =
+                crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
             let _event_loop = frame_scene(game);
             assert!(game.reads_pack_expressions());
         });
@@ -143,9 +144,9 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
     with_client_game(|game| {
         // The pack's resources as the game loads them: the atlas resolves the uniform, and the
         // renderer the game builds over them takes the shader with it.
-        game.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
-        assert!(game.gui.atlas.lightmap_shader.is_some());
-        assert_eq!(game.gui.atlas.lightmap_expressions.len(), 1);
+        game.side.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
+        assert!(game.side.gui.atlas.lightmap_shader.is_some());
+        assert_eq!(game.side.gui.atlas.lightmap_expressions.len(), 1);
         let _event_loop = frame_scene(game);
         game.side.renderer.0.as_mut().unwrap().fullbright = fullbright;
         // The expression context's strings, given room up front: every frame rewrites them in
@@ -198,7 +199,7 @@ fn the_particles_frame_keeps_its_strings() {
             held.biome = String::with_capacity(64);
         }
         let registry = std::sync::Arc::new(registry);
-        game.pack.polytone_particles = Some(registry.clone());
+        game.side.client_pack.polytone_particles = Some(registry.clone());
         let _event_loop = frame_scene(game);
         game.side.screen = super::Screen::Playing;
         let buffers = || {
@@ -222,12 +223,12 @@ fn the_particles_frame_keeps_its_strings() {
 /// edges) draws its value.
 fn the_sky_draws_its_expression_uniform() {
     with_client_game(|game| {
-        game.gui = crate::game::UiResources::load(
+        game.side.gui = crate::game::UiResources::load(
             &sky_pack(&["sky", "stars", "rendertype_lines"]),
             std::path::Path::new(""),
         )
         .unwrap();
-        let atlas = &game.gui.atlas;
+        let atlas = &game.side.gui.atlas;
         let values = |expressions: &[sunrise_client::polytone_post::ExpressionUniform]| {
             let frame = sunrise_client::environment::Frame::default();
             expressions
@@ -334,9 +335,9 @@ fn the_sky_draws_poly_globals() {
                 .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
                 .collect(),
         );
-        game.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
-        assert!(game.gui.atlas.sky_shader.is_some());
-        assert!(game.gui.atlas.lightmap_shader.is_some());
+        game.side.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
+        assert!(game.side.gui.atlas.sky_shader.is_some());
+        assert!(game.side.gui.atlas.lightmap_shader.is_some());
         let _event_loop = frame_scene(game);
         assert!(game.reads_poly_globals());
         assert_eq!(corner(game), [64, 51, 0]);
@@ -372,7 +373,7 @@ fn a_post_effect_reads_poly_globals() {
                 .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
                 .collect(),
         );
-        game.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
+        game.side.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
         game.pack.source = pack;
         let _event_loop = frame_scene(game);
         assert!(!game.reads_poly_globals());

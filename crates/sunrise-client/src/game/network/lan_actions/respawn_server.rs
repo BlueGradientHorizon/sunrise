@@ -645,7 +645,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             tick_steps: self.clock.step_state(),
             collision: Some(self.collision),
             border: &self.border,
-            streaming: Some(&self.streaming),
+            streaming: Some(&self.side.streaming),
         };
         if let Some(host) = self.lan.as_mut() {
             if missing {

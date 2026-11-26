@@ -38,7 +38,7 @@ pub(in crate::game) fn run_event_loop(
     }
     let result = EventLoop::new()?.run_app(&mut game);
     narrator::stop();
-    leave_fullscreen_after(&result, &mut game.settings);
+    leave_fullscreen_after(&result, &mut game.side.settings);
     let result = result
         .map_err(Into::into)
         .and_then(|()| write_report(&game))
@@ -330,6 +330,8 @@ impl Loading {
         options.world = None;
         options.server = None;
         let gui = self.gui.take().ok_or("missing menu bundle")?;
+        let client_pack = loaded.client_pack.ok_or("missing client pack")?;
+        let client_res = loaded.client_res.ok_or("missing client resource slot")?;
         let window = self.window.clone().ok_or("window closed")?;
         // Keep the loader's device and swap in the real textures in one step.
         if let Some(renderer) = &mut self.renderer {
@@ -341,6 +343,7 @@ impl Loading {
                 window.clone(),
                 options.offscreen,
                 &loaded.pack,
+                &client_pack,
                 &gui,
                 self.renderer.as_ref(),
                 loaded.renderer_cpu,
@@ -382,7 +385,9 @@ impl Loading {
         let game_step = startup::step("handoff.start_game");
         let Some(mut game) = start_client_game(
             res,
+            client_res,
             loaded.pack,
+            client_pack,
             gui,
             options,
             pack_error,
@@ -410,11 +415,11 @@ impl Loading {
         }
         game.previous = Instant::now();
         // Minecraft.onGameLoadFinished: a start that made it this far is clean.
-        game.settings.file.set(
+        game.side.settings.file.set(
             "startedCleanly",
             sunrise_client::options_file::V::Bool(true),
         );
-        game.settings.save(&crate::game::options_path());
+        game.side.settings.save(&crate::game::options_path());
         log::info!(
             "Sunrise: startup handoff {} ms (renderer {} ms, start_game {} ms)",
             handoff_at.elapsed().as_millis(),

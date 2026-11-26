@@ -61,7 +61,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         match self.side.screen {
             Screen::Chat | Screen::CommandBlock => {
-                let measure = Measure(&self.gui.atlas.font);
+                let measure = Measure(&self.side.gui.atlas.font);
                 let commands = Commands {
                     dispatcher: super::chat::chat_tree(&self.remote),
                     registries: &self.ui.registries,
@@ -253,7 +253,7 @@ mod tests {
                 game.side.screen = Screen::Chat;
                 game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
                 game.side.chat_ui.chat_screen = Some(ChatScreen::new(
-                    &Measure(&game.gui.atlas.font),
+                    &Measure(&game.side.gui.atlas.font),
                     &Commands {
                         dispatcher: super::super::chat::chat_tree(&game.remote),
                         registries: &game.ui.registries,

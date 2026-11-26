@@ -3,8 +3,8 @@
 //! decodes its options with the same function.
 
 use mod_api::client::particles::PositionSource;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 /// A number tag as a float.
 fn tag_f32(tag: &Tag) -> Option<f32> {

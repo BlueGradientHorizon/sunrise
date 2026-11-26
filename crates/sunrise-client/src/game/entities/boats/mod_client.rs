@@ -101,6 +101,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let folder = if b.chest { "chest_boat" } else { "boat" };
             let Some(uv) = self
+                .side
                 .gui
                 .atlas
                 .sprites
@@ -177,7 +178,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // Depth only, so its texture is never seen; one texel of the white sprite, the
                 // same at every corner (no derivatives, so the base level at any distance), keeps
                 // a shader pack's alpha test from throwing the patch away.
-                let white = (self.gui.atlas.sprites.get("sunrise/white")).map_or(uv, |r| {
+                let white = (self.side.gui.atlas.sprites.get("sunrise/white")).map_or(uv, |r| {
                     let (u, v) = ((r.u0 + r.u1) / 2.0, (r.v0 + r.v1) / 2.0);
                     [u, v, u, v]
                 });

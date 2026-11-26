@@ -164,11 +164,12 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
                     w: 9,
                     h: 9,
                 };
-                game.gui
+                game.side
+                    .gui
                     .atlas
                     .sprites
                     .insert("hud/locator_bar_dot/near".into(), near_rect);
-                game.gui.atlas.sprites.insert(
+                game.side.gui.atlas.sprites.insert(
                     "hud/locator_bar_dot/far".into(),
                     Rect {
                         u0: 0.75,

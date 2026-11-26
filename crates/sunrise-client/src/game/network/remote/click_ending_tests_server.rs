@@ -10,9 +10,12 @@ fn an_end_crystal_click_on_a_block_ends_there() {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         use crate::game::Hit;
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, first_person::Hand, motion::PlayerMotion};
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play;
+        use {
+            sunrise_client::chunk::Chunk, sunrise_client::motion::PlayerMotion,
+            sunrise_sim::first_person_sim::Hand,
+        };
         let (mut peer, _writer) = connect_menu_test(game);
         peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
             .unwrap();
@@ -79,8 +82,8 @@ fn flint_and_steel_use_on_ends_the_click() {
     use crate::game::{
         Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
-    use sunrise_client::{first_person::Hand, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use {sunrise_client::motion::PlayerMotion, sunrise_sim::first_person_sim::Hand};
 
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
@@ -95,7 +98,7 @@ fn flint_and_steel_use_on_ends_the_click() {
         &settings,
         std::time::Instant::now(),
         false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
@@ -105,7 +108,9 @@ fn flint_and_steel_use_on_ends_the_click() {
     options.execution_role = ExecutionRole::Client;
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,

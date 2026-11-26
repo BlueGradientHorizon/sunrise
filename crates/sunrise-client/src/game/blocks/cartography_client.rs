@@ -27,17 +27,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if is_locked {
                 locked = true;
                 if scaling || locking {
-                    batch.sprite(&self.gui.atlas, error, ox + 35.0, oy + 31.0);
+                    batch.sprite(&self.side.gui.atlas, error, ox + 35.0, oy + 31.0);
                 }
             }
             if scaling && scale >= 4 {
                 locked = true;
-                batch.sprite(&self.gui.atlas, error, ox + 35.0, oy + 31.0);
+                batch.sprite(&self.side.gui.atlas, error, ox + 35.0, oy + 31.0);
             }
         }
         let sprite = |batch: &mut HudBatch, game: &Self, name: &str, x: f32, y: f32| {
             batch.sprite(
-                &game.gui.atlas,
+                &game.side.gui.atlas,
                 &format!("container/cartography_table/{name}"),
                 ox + x,
                 oy + y,
@@ -80,7 +80,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         for d in map.decorations.iter().filter(|d| shown_on_frame(d.sprite)) {
-            let Some(s) = self.gui.atlas.gui_rect(d.sprite).copied() else {
+            let Some(s) = self.side.gui.atlas.gui_rect(d.sprite).copied() else {
                 continue;
             };
             batch.quad(
@@ -90,11 +90,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             );
             if let Some(name) = &d.name {
                 let text = sunrise_client::text::Text::literal(name);
-                let f = self.gui.atlas.font.width_text(&text);
+                let f = self.side.gui.atlas.font.width_text(&text);
                 if f > 0.0 {
                     let f1 = (25.0 / f).clamp(0.0, 6.0 / 9.0);
                     let mut temp = HudBatch::scratch([1, 1]);
-                    temp.name_tag(&self.gui.atlas, &text, 0.0, 0xFFFF_FFFF, 0x8000_0000);
+                    temp.name_tag(&self.side.gui.atlas, &text, 0.0, 0xFFFF_FFFF, 0x8000_0000);
                     batch.patches.extend(temp.patches);
                     let tm = glam::Mat4::from_translation(glam::Vec3::new(
                         x + (f32::from(d.x) / 2.0 + 64.0) * scale,
@@ -114,7 +114,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // A native mod's own icons (`native_map_decorations`).
         for d in self.mod_map_decorations(id, true) {
-            let Some(s) = self.gui.atlas.gui_rect(d.sprite.as_str()).copied() else {
+            let Some(s) = self.side.gui.atlas.gui_rect(d.sprite.as_str()).copied() else {
                 continue;
             };
             batch.quad(

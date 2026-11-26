@@ -170,7 +170,8 @@ pub(in crate::game) fn reload(
         &[],
         &game.pack.assets,
         &game.res,
-        &game.pack.context,
+        game.client_res(),
+        &game.side.client_pack.context,
         false,
         false,
         &Progress::new(),
@@ -235,7 +236,7 @@ fn a_joined_levels_synced_cloud_height_reaches_the_frame_under_its_own_pack_laye
         // server's type, 250 + 10, while gameplay keeps the type without the packs.
         let pack = CloudPack::new("joined");
         reload(game, &[pack.pack()]);
-        assert!(game.pack.environments.is_some());
+        assert!(game.side.client_pack.environments.is_some());
         assert_eq!(drawn(game).cloud_height, 260.0);
         assert_eq!(gameplay(game).cloud_height, 250.0);
         let (_, overworld_frame) = built(game);
@@ -271,7 +272,7 @@ fn a_joined_levels_synced_cloud_height_reaches_the_frame_under_its_own_pack_laye
         // The pack is dropped: the reload builds the frame's environment again, the server's
         // 250 without the modifier; gameplay's, which has no pack layers, is kept.
         reload(game, &[]);
-        assert!(game.pack.environments.is_none());
+        assert!(game.side.client_pack.environments.is_none());
         assert_eq!(drawn(game).cloud_height, 250.0);
         let (gameplay_after, frame) = built(game);
         assert!(frame.is_none());
@@ -287,7 +288,7 @@ fn an_overworld_of_a_mods_type_draws_the_type_without_the_packs_overworld() {
     with_client_game(|game| {
         let pack = CloudPack::new("mod-type");
         reload(game, &[pack.pack()]);
-        assert!(game.pack.environments.is_some());
+        assert!(game.side.client_pack.environments.is_some());
         let _server = join(game, spawn(3, "minecraft:overworld"));
         assert_eq!(drawn(game).cloud_height, 250.0);
         assert_eq!(gameplay(game).cloud_height, 250.0);

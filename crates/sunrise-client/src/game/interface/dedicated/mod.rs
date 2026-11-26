@@ -960,7 +960,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(Arc::new(OnlineMode::generate(
                 props.prevent_proxy_connections,
                 Arc::new(|name, digest, ip| {
-                    sunrise_client::auth::has_joined(name, digest, ip)
+                    sunrise_server_profiles_http::has_joined(name, digest, ip)
                         .map(|opt| {
                             opt.map(|p| sunrise_client::lan::VerifiedSession {
                                 uuid: p.uuid,
@@ -1077,10 +1077,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.game_rule_changed("minecraft:show_advancement_messages", value, None);
             }
         }
-        self.settings.render_distance = props.view_distance.clamp(2, 32);
-        self.settings.simulation_distance = props.simulation_distance.clamp(2, 32);
+        self.side.settings.render_distance = props.view_distance.clamp(2, 32);
+        self.side.settings.simulation_distance = props.simulation_distance.clamp(2, 32);
         // Nothing is kept around the spawn while nobody is on.
-        self.streaming.radius = -1;
+        self.side.streaming.radius = -1;
         self.settle_spawn()?;
         self.prepare_levels()?;
         let level_load_time = level_load_started.elapsed();
@@ -1152,7 +1152,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             arrivals: transfers.as_ref().map(|t| t.expected.clone()),
             log: Some(NetLog {
                 write: Arc::new(log_from),
-                lang: Arc::new(sunrise_client::net::load_language(&self.options.resources)),
+                lang: Arc::new(sunrise_sim::lang_load::load_language(
+                    &self.options.resources,
+                )),
                 log_ips: props.log_ips,
             }),
             resource_pack: props.resource_pack.clone(),
@@ -1520,7 +1522,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 self.level.spawn = Some([f64::from(x), f64::from(y), f64::from(z)]);
                 self.level.world_spawn.get_or_insert([x, y, z]);
-                self.streaming.extra.clear();
+                self.side.streaming.extra.clear();
             }
             self.spawn = self
                 .level
@@ -1556,8 +1558,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .next()
         });
         if self.is_dedicated_server() || self.dim != super::Dim::Overworld || guest.is_some() {
-            self.streaming.radius = if guest.is_some() {
-                self.settings.render_distance
+            self.side.streaming.radius = if guest.is_some() {
+                self.side.settings.render_distance
             } else {
                 -1
             };
@@ -1566,7 +1568,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .spawn
             .map(|s| ((s.x.floor() as i32) >> 4, (s.z.floor() as i32) >> 4));
         if let Some(c) = guest.or(spawn) {
-            self.streaming.center = c;
+            self.side.streaming.center = c;
         }
     }
 
@@ -2420,7 +2422,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         crashed: bool,
         run_error: Option<&str>,
     ) -> Result<()> {
-        self.streaming.abort_generation();
+        self.side.streaming.abort_generation();
         self.side.levels.0.abort_parked_generation();
         // A failed open keeps its opening phase until the final save attempts finish.
         if run_error.is_none() || !self.native_lifecycle.is_opening() {
@@ -3202,9 +3204,8 @@ mod console_source_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

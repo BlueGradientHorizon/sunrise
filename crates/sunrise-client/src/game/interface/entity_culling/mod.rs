@@ -40,7 +40,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && !(self.side.occlusion.0.shadow_casters.0
                 && self.hide_spans_from(start, vertices.len()))
         {
-            if self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
+            if self.side.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
                 && let Some(culler) = &self.side.occlusion.0.async_culler
             {
                 culler.record_entity_vertices_culled(vertices.len().saturating_sub(start));
@@ -57,11 +57,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> bool {
         if self.side.occlusion.0.occlusion_hidden_camera_bounds(
             &section_scene!(self),
-            self.settings.sunrise.entity_culling,
+            self.side.settings.sunrise.entity_culling,
             lo,
             hi,
         ) {
-            if self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
+            if self.side.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
                 && let Some(culler) = &self.side.occlusion.0.async_culler
             {
                 culler.record_entity_vertices_culled(2);
@@ -92,7 +92,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         entity: &T,
         render_bounds: Aabb,
     ) -> EntityCullDecision {
-        if self.settings.sunrise.entity_culling == EntityCullingMode::Off
+        if self.side.settings.sunrise.entity_culling == EntityCullingMode::Off
             || self.side.occlusion.0.shadow_casters.0
             || entity.render_glowing(self)
         {
@@ -115,7 +115,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             return EntityCullDecision::Hidden;
         }
-        match self.settings.sunrise.entity_culling {
+        match self.side.settings.sunrise.entity_culling {
             EntityCullingMode::Off => EntityCullDecision::Bypass,
             EntityCullingMode::Synchronous => {
                 if self
@@ -196,7 +196,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> bool {
         self.side.occlusion.0.occlusion_hidden(
             &section_scene!(self),
-            self.settings.sunrise.entity_culling,
+            self.side.settings.sunrise.entity_culling,
             vertices,
             start,
             bounds,
@@ -231,7 +231,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Options.getEffectiveRenderDistance: the client setting, capped by the server's view distance.
     pub(in crate::game) fn effective_render_distance(&self) -> i32 {
         effective_render_distance_for(
-            self.settings.render_distance,
+            self.side.settings.render_distance,
             self.remote.as_ref().map(|r| r.view_distance),
         )
     }
@@ -239,7 +239,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn view_scale(&self) -> f64 {
         entity_view_scale(
             self.effective_render_distance(),
-            self.settings.entity_distance,
+            self.side.settings.entity_distance,
         )
     }
 }
@@ -258,7 +258,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return true;
         }
         self.side.renderer.0.as_ref().is_none_or(|renderer| {
-            renderer.entity_section_visible(block, self.settings.chunk_fade as f32, now)
+            renderer.entity_section_visible(block, self.side.settings.chunk_fade as f32, now)
         })
     }
     /// EntityRenderer.shouldRender: the entity within `range` blocks of the
@@ -314,7 +314,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn prepare_occlusion_culling(&mut self, camera: glam::DVec3) {
         self.side.occlusion.0.section_camera = None;
         self.side.occlusion.0.section_visibility_valid = false;
-        let entity_mode = self.settings.sunrise.entity_culling;
+        let entity_mode = self.side.settings.sunrise.entity_culling;
         let requested = entity_mode != EntityCullingMode::Off;
         let eligible = requested
             // Packs can replace opaque models, so their terrain is not a safe occluder.
@@ -340,7 +340,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.occlusion.0.async_failed = false;
             return;
         }
-        self.side.occlusion.0.section_visibility_valid = self.settings.sunrise.cave_culling
+        self.side.occlusion.0.section_visibility_valid = self.side.settings.sunrise.cave_culling
             && !camera_facts.solid_render
             && self.side.occlusion.0.section_camera.is_some();
 

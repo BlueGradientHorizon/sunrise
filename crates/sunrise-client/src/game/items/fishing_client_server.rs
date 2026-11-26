@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::particles::ParticleType;
+use sunrise_level::particle_options::ParticleType;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.sendParticles` of a simple particle.

@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::tab_list::TabPlayer;
+use sunrise_level::profile_lookup::TabPlayer;
 
 impl Remote {
     /// `ClientPacketListener.getPlayerInfo(String)`: exact profile name, whether listed or not.

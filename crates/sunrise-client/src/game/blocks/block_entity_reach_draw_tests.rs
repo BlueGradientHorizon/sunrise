@@ -170,7 +170,7 @@ pub(in crate::game) fn run_block_entity_draws_match_the_vanilla_cases() {
             }
             game.remote.as_mut().unwrap().view_distance = server;
         }
-        game.settings.render_distance = case["renderDistance"].as_i64().unwrap() as i32;
+        game.side.settings.render_distance = case["renderDistance"].as_i64().unwrap() as i32;
         let int = |v: &serde_json::Value| v.as_i64().unwrap() as i32;
         let pos = [
             int(&case["pos"][0]),

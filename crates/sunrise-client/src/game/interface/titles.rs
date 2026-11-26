@@ -22,38 +22,38 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn draw_overlay_message(&self, batch: &mut HudBatch) {
         let (w, h) = (batch.width as i32, batch.height as i32);
         let partial = self.clock.fraction() as f32;
-        let background = self.settings.text_background(0.0);
-        let font = &self.gui.atlas.font;
+        let background = self.side.settings.text_background(0.0);
+        let font = &self.side.gui.atlas.font;
         let draws = self
             .side
             .titles
             .overlay_message(w, h, partial, font, background);
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
     /// `Hud.extractTitle`.
     pub(in crate::game::client_side) fn draw_title(&self, batch: &mut HudBatch) {
         let (w, h) = (batch.width as i32, batch.height as i32);
         let partial = self.clock.fraction() as f32;
-        let background = self.settings.text_background(0.0);
-        let font = &self.gui.atlas.font;
+        let background = self.side.settings.text_background(0.0);
+        let font = &self.side.gui.atlas.font;
         let draws = self.side.titles.title(w, h, partial, font, background);
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
     /// `Hud.extractSavingIndicator`, under the screens: the option, then the
     /// fading "Saving world" text.
     pub(in crate::game::client_side) fn draw_saving_indicator(&self, batch: &mut HudBatch) {
-        if !self.settings.autosave_indicator {
+        if !self.side.settings.autosave_indicator {
             return;
         }
         let draws = self.side.saving_indicator.draw(
             batch.width as i32,
             batch.height as i32,
             self.clock.fraction() as f32,
-            &self.gui.atlas.font,
+            &self.side.gui.atlas.font,
             Text::literal(self.translate_with_fallback("menu.savingLevel", "Saving world")),
-            self.settings.text_background(0.0),
+            self.side.settings.text_background(0.0),
         );
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
     /// The selected stack as `Hud.tick` compares it for the name highlight.
     pub(in crate::game::client_side) fn held_name(&self) -> Option<HeldName> {
@@ -93,7 +93,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let held = self.held_name();
         self.side
             .tool_highlight
-            .tick(held, self.settings.notification_display_time);
+            .tick(held, self.side.settings.notification_display_time);
         self.side.tool_highlight.tip = self.highlight_tip();
     }
     /// `IItemExtension.getHighlightTip` of the selected stack, while its name
@@ -121,10 +121,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             batch.width as i32,
             batch.height as i32,
             can_hurt,
-            &self.gui.atlas.font,
-            self.settings.text_background(0.0),
+            &self.side.gui.atlas.font,
+            self.side.settings.text_background(0.0),
         );
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
 }
 

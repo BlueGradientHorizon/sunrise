@@ -83,7 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let (ox, oy) = self.inventory_origin(batch);
         {
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             self.render_transparent_background("inventory", batch);
             let part = |batch: &mut HudBatch,
                         name: &str,
@@ -272,12 +272,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for i in self.slots() {
             let (sx, sy) = self.slot_position(i);
             if i == 504 && self.offhand.is_none() {
-                batch.sprite(&self.gui.atlas, "container/slot/shield", ox + sx, oy + sy);
+                batch.sprite(
+                    &self.side.gui.atlas,
+                    "container/slot/shield",
+                    ox + sx,
+                    oy + sy,
+                );
             }
             if (500..504).contains(&i) && self.armor[i - 500].is_none() {
                 let icon = ["helmet", "chestplate", "leggings", "boots"][i - 500];
                 batch.sprite(
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     &format!("container/slot/{icon}"),
                     ox + sx,
                     oy + sy,
@@ -343,10 +348,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             0,
             0,
             &decorations,
-            &self.gui.atlas.font,
+            &self.side.gui.atlas.font,
         ));
         draws.push(hud_layout::GuiDraw::Pop);
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
         self.native_item_decorations(stack, x, y, batch);
     }
     /// `AbstractContainerScreen.extractSlotHighlightBack` and
@@ -367,7 +372,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         sunrise_client::ui::nine_slice(
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             sprite,
             x - 4.0,
             y - 4.0,
@@ -393,7 +398,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (stack, capped) = match drag.and_then(|d| d.slots.get(&slot)) {
             Some(None) => return,
             Some(Some((count, capped))) => {
-                batch.fill(&self.gui.atlas, x, y, 16.0, 16.0, rgba(255, 255, 255, 128));
+                batch.fill(
+                    &self.side.gui.atlas,
+                    x,
+                    y,
+                    16.0,
+                    16.0,
+                    rgba(255, 255, 255, 128),
+                );
                 carried = self
                     .carried
                     .clone()
@@ -408,7 +420,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.draw_item_decorations(batch, stack, x, y, text);
         } else if let Some(icon) =
             container_slot_index(slot).and_then(|slot| self.native_screen_slot_icon(slot))
-            && let Some(rect) = self.gui.atlas.gui_sprite_or_missing(icon)
+            && let Some(rect) = self.side.gui.atlas.gui_sprite_or_missing(icon)
         {
             batch.rect_uv(x, y, 16.0, 16.0, rect, 0xFFFF_FFFF);
         }

@@ -8,7 +8,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     pub(in crate::game) fn item_number(&self, item: &str) -> Option<u32> {
         // This side's prepared report includes mod items after vanilla, in content-plan order.
-        self.pack.item_renderer.item_registry_id(item)
+        self.pack.item_registry_id(item)
     }
 }
 

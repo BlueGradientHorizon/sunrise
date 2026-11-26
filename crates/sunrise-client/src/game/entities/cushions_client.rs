@@ -15,7 +15,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(model) = self.side.cushion_model.as_ref() else {
             return;
         };
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         for c in &self.cushions {
             if self.hides_as_camera(c.id) {
                 continue;

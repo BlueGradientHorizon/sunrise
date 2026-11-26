@@ -1112,9 +1112,8 @@ pub(in crate::game) mod wolf_live_anger_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1425,9 +1424,8 @@ pub(in crate::game) mod loot_table_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1559,9 +1557,8 @@ pub(in crate::game) mod arrow_owner_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1774,9 +1771,8 @@ pub(in crate::game) mod falling_live_adoption_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1790,7 +1786,7 @@ pub(in crate::game) mod falling_live_adoption_tests {
             .add_empty_chunk(ChunkPos::new(0, 0))
             .unwrap();
         assert!(game.run_command("difficulty normal"));
-        if !game.streaming.forced.contains(&(0, 0)) {
+        if !game.side.streaming.forced.contains(&(0, 0)) {
             assert!(game.run_command("forceload add 0 0"));
         }
         test(&mut game);

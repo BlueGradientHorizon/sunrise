@@ -25,19 +25,6 @@ use crate::game::lan_actions::touching_unloaded_chunk;
 use crate::game::lan_actions::turns::CombatPlayer;
 use crate::game::lan_actions::visible_aim_point;
 use mod_api::{ActionRefused, GameMode, SoundSource};
-use sunrise_client::{
-    containers::BlockEntity,
-    entities::Experience,
-    first_person::{Hand, SwingAnimation},
-    items::ItemStack,
-    lan::{
-        guest::SPECTATOR,
-        hub::TickCtx,
-        menu::{Rules, Slots},
-    },
-    motion::{MotionEvent, MotionWorld, PlayerMotion},
-    pose::Dimensions,
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
@@ -47,6 +34,15 @@ use sunrise_protocol::{
     text::literal,
 };
 use sunrise_world::entity_move::EntityMoveWorld;
+use {
+    sunrise_client::containers::BlockEntity, sunrise_client::entities::Experience,
+    sunrise_client::items::ItemStack, sunrise_client::lan::guest::SPECTATOR,
+    sunrise_client::lan::hub::TickCtx, sunrise_client::lan::menu::Rules,
+    sunrise_client::lan::menu::Slots, sunrise_client::motion::MotionEvent,
+    sunrise_client::motion::MotionWorld, sunrise_client::motion::PlayerMotion,
+    sunrise_client::pose::Dimensions, sunrise_sim::first_person_sim::Hand,
+    sunrise_sim::first_person_sim::SwingAnimation,
+};
 
 #[path = "attack_checks_server.rs"]
 pub(in crate::game) mod attack_checks;
@@ -732,11 +728,18 @@ pub(in crate::game) mod tests {
                     point: [10.5, 65.0, 4.5],
                     ..hit
                 };
+                game.start_audio_capture();
+                game.side.lan_block_events.clear();
                 assert!(game.use_hand(Some(&pot_hit)).unwrap());
-                assert!(!game.be_anims.pots.contains_key(&pot_hit.pos));
+                assert!(!game.side.lan_block_events.iter().any(|&(p, b0, b1, _)| {
+                    p == pot_hit.pos && b0 == 1 && b1 == crate::game::decorated_pot::WOBBLE_NEGATIVE
+                }));
                 *user.empty_answer.lock().unwrap() = None;
                 assert!(game.use_hand(Some(&pot_hit)).unwrap());
-                assert!(game.be_anims.pots.contains_key(&pot_hit.pos));
+                assert!(game.side.lan_block_events.iter().any(|&(p, b0, b1, _)| {
+                    p == pot_hit.pos && b0 == 1 && b1 == crate::game::decorated_pot::WOBBLE_NEGATIVE
+                }));
+                game.stop_audio_capture();
                 let shelf = game
                     .with_props(
                         game.pack
@@ -1019,9 +1022,8 @@ pub(in crate::game) mod respawn_world_point_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1173,9 +1175,8 @@ pub(in crate::game) mod guest_close_listener_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

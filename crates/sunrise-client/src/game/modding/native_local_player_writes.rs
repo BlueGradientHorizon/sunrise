@@ -133,7 +133,8 @@ mod tests {
         .unwrap();
         player.entity_id = remote.entity_id;
         game.player = Some(player);
-        game.streaming
+        game.side
+            .streaming
             .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
         sunrise_protocol::connection::Connection::local(server)
             .split()
@@ -412,7 +413,8 @@ mod tests {
                 loaded_client(game);
                 // Keep the tick's normal gravity away from a section boundary.
                 game.player.as_mut().unwrap().position.y = 64.5;
-                game.streaming
+                game.side
+                    .streaming
                     .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(1, 0));
                 game.tick_remote().unwrap();
                 assert_eq!(
@@ -453,7 +455,8 @@ mod tests {
         .unwrap();
         player.entity_id = remote.entity_id;
         game.player = Some(player);
-        game.streaming
+        game.side
+            .streaming
             .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
         peer
     }
@@ -549,7 +552,8 @@ mod tests {
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             bind_local_player(game, 42, 456);
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             check(game);
         });

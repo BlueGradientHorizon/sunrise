@@ -1,5 +1,8 @@
 use crate::game::native_entity_refs::tests::with_client_game;
-use sunrise_client::{first_person::Hand, items::ItemStack, mobs::Mob};
+use {
+    sunrise_client::items::ItemStack, sunrise_client::mobs::Mob,
+    sunrise_sim::first_person_sim::Hand,
+};
 
 #[test]
 #[ignore = "daily"]

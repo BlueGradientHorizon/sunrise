@@ -36,29 +36,27 @@ use crate::game::creatures::*;
 use mod_api::{EquipmentSlot, LootDrops, SoundSource};
 use std::sync::Arc;
 use sunrise_client::health::source_damage_type;
-use sunrise_client::{
-    Result,
-    arrows::EntityHit,
-    fast_hash::FxHashMap,
-    health::{Attack, HealthEvent, HurtSource},
-    items::ItemStack,
-    join_seq::JoinSeq,
-    mobs::{
-        Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, Species, Who,
-        ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
-        entity_sounds::full_id,
-        finalize::Group,
-        spawning::{self},
-    },
-    particles::ParticleType,
-    projectiles::{Hit, Projectile, ProjectileKind},
-};
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
 use sunrise_gameplay::projectile_world::ProjWorld;
+use {
+    sunrise_client::Result, sunrise_client::arrows::EntityHit,
+    sunrise_client::fast_hash::FxHashMap, sunrise_client::health::Attack,
+    sunrise_client::health::HealthEvent, sunrise_client::health::HurtSource,
+    sunrise_client::items::ItemStack, sunrise_client::join_seq::JoinSeq,
+    sunrise_client::mobs::Damage, sunrise_client::mobs::DamageKind, sunrise_client::mobs::Mob,
+    sunrise_client::mobs::MobEvent, sunrise_client::mobs::MobWorld,
+    sunrise_client::mobs::PlayerView, sunrise_client::mobs::Seen, sunrise_client::mobs::Species,
+    sunrise_client::mobs::Who, sunrise_client::mobs::ai::eating_sound,
+    sunrise_client::mobs::ai::eating_sound_is_bound, sunrise_client::mobs::ai::feed_animal,
+    sunrise_client::mobs::ai::takes_food, sunrise_client::mobs::entity_sounds::full_id,
+    sunrise_client::mobs::finalize::Group, sunrise_client::mobs::spawning,
+    sunrise_client::projectiles::Hit, sunrise_client::projectiles::Projectile,
+    sunrise_client::projectiles::ProjectileKind, sunrise_level::particle_options::ParticleType,
+};
 
 #[path = "borrowed_tick_server.rs"]
 pub(in crate::game) mod borrowed_tick;
@@ -969,7 +967,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             (Some(yaw), _) => yaw,
             (None, SpawnSite::Finalizing(SpawnReason::Command)) => 0.0,
             (None, SpawnSite::Finalizing(SpawnReason::SpawnItemUse | SpawnReason::Dispenser)) => {
-                sunrise_client::camera::wrap_degrees(self.world.random.next_float() * 360.0)
+                sunrise_level::camera_math::wrap_degrees(self.world.random.next_float() * 360.0)
             }
             _ => self.world.random.next_float() * 360.0,
         };
@@ -1448,7 +1446,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     speed,
                     count,
                 } => {
-                    if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
+                    if let Some(ty) = sunrise_level::particle_options::ParticleType::from_name(kind)
+                    {
                         self.server_level_particles(
                             &crate::lan::server_effects::ServerParticle::simple(ty),
                             at,
@@ -2528,15 +2527,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 MobEvent::Particles { kind, at, count } => {
                     // Mob particle bursts (hearts, smoke, splashes) around a point.
-                    if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
-                        if ty == sunrise_client::particles::ParticleType::SonicBoom {
+                    if let Some(ty) = sunrise_level::particle_options::ParticleType::from_name(kind)
+                    {
+                        if ty == sunrise_level::particle_options::ParticleType::SonicBoom {
                             self.lan_sonic_boom(
                                 &crate::lan::server_effects::ServerParticle::simple(ty),
                                 at,
                             );
                         }
                         // Count 0: one particle exactly there, at rest.
-                        if count == 0 && ty != sunrise_client::particles::ParticleType::SonicBoom {
+                        if count == 0
+                            && ty != sunrise_level::particle_options::ParticleType::SonicBoom
+                        {
                             self.server_particle_at(
                                 crate::lan::server_effects::ServerParticle::simple(ty),
                                 at,
@@ -2569,7 +2571,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.lan_entity_event(mob as i32, event, feet);
                 }
                 MobEvent::ParticleAt { kind, at, velocity } => {
-                    if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
+                    if let Some(ty) = sunrise_level::particle_options::ParticleType::from_name(kind)
+                    {
                         self.server_particle_at(
                             crate::lan::server_effects::ServerParticle::simple(ty),
                             at,
@@ -2583,7 +2586,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 } => {
                     self.server_particle_at(
                         crate::lan::server_effects::ServerParticle::colored(
-                            sunrise_client::particles::ParticleType::EntityEffect,
+                            sunrise_level::particle_options::ParticleType::EntityEffect,
                             [r, g, b, 1.0],
                         ),
                         at,
@@ -5090,7 +5093,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             (ProjectileKind::ShulkerBullet { .. }, Hit::Block { .. }) => {
                 self.server_play_sound("minecraft:entity.shulker_bullet.hit", atp, 1.0, 1.0);
-                if let Some(ty) = sunrise_client::particles::ParticleType::from_name("explosion") {
+                if let Some(ty) =
+                    sunrise_level::particle_options::ParticleType::from_name("explosion")
+                {
                     for _ in 0..2 {
                         let r = &mut self.world.random;
                         let at = [

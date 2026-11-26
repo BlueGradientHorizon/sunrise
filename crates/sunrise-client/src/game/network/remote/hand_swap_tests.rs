@@ -58,7 +58,7 @@ fn joining_a_server_empties_the_off_hand_too() {
         &settings,
         std::time::Instant::now(),
         false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
@@ -68,7 +68,9 @@ fn joining_a_server_empties_the_off_hand_too() {
     options.execution_role = ExecutionRole::Client;
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,

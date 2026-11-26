@@ -800,7 +800,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .iter()
             .map(|g| (g.conn, g.position, g.placed && g.dimension == dim))
             .collect();
-        let neutral = sunrise_client::settings::SOUND_SOURCES
+        let neutral = sunrise_level::sim_settings::SOUND_SOURCES
             .iter()
             .position(|s| *s == "neutral")
             .unwrap_or(0) as i32;
@@ -1366,9 +1366,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut stack = sunrise_client::items::ItemStack::new("minecraft:firework_rocket", 1);
         stack.data_mut().fireworks = Some((
             flight,
-            vec![sunrise_client::particles::FireworkExplosion {
-                shape: sunrise_client::particles::FireworkShape::Burst,
-                colors: vec![sunrise_client::particles::DYE_FIREWORK_COLORS[color & 15].1],
+            vec![sunrise_items::firework::FireworkExplosion {
+                shape: sunrise_items::firework::FireworkShape::Burst,
+                colors: vec![sunrise_items::firework::DYE_FIREWORK_COLORS[color & 15].1],
                 fade: Vec::new(),
                 trail: false,
                 twinkle: false,

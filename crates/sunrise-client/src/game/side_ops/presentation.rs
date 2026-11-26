@@ -3,8 +3,8 @@ use crate::game::{
     Game,
     memory_common::{MemoryInputs, MemoryReport},
 };
-use sunrise_client::first_person::{Hand, SwingAnimation};
 use sunrise_world::{collision_context::EntityContextKind, worldgen::structure::Rotation};
+use {sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `LivingEntity.swing` with `getModifiedSwingDuration` after the item's `on_entity_swing` Part.

@@ -44,9 +44,9 @@ fn virtual_host_is_the_rewritten_handshake_host() {
         let mods = vec![ModEntry::new("rewrite", Box::new(Rewrite(seen.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_client_game(|game| {
-                game.settings.render_distance = 2;
-                game.settings.simulation_distance = 2;
-                let options = sunrise_client::title::WorldOptions {
+                game.side.settings.render_distance = 2;
+                game.side.settings.simulation_distance = 2;
+                let options = sunrise_sim::world_options::WorldOptions {
                     world_type: sunrise_client::save::WorldPreset::Flat,
                     ..Default::default()
                 };

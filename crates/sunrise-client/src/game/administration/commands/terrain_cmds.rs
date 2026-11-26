@@ -108,7 +108,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match id {
             "forceload.query" if ctx.get("pos").is_none() => {
                 let mut forced: Vec<(i32, i32)> =
-                    self.streaming.commanded().iter().copied().collect();
+                    self.side.streaming.commanded().iter().copied().collect();
                 // ForceLoadCommand sorts its LongStream before formatting chunks.
                 forced.sort_unstable_by_key(|&(x, z)| ChunkPos::new(x, z).pack());
                 if forced.is_empty() {
@@ -137,7 +137,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "forceload.query" => {
                 let [x, z] = self.column_arg(ctx, "pos")?;
                 let key = (x >> 4, z >> 4);
-                if self.streaming.commanded().contains(&key) {
+                if self.side.streaming.commanded().contains(&key) {
                     self.feedback(Text::translate(
                         "commands.forceload.query.success",
                         &[chunk_text(key.0, key.1), dim],
@@ -151,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
             "forceload.remove.all" => {
-                self.streaming.clear_forced();
+                self.side.streaming.clear_forced();
                 self.feedback(Text::translate("commands.forceload.removed.all", &[dim]));
                 Ok(0)
             }
@@ -180,7 +180,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut tracker = Tracker::default();
                 for x in cx0..=cx1 {
                     for z in cz0..=cz1 {
-                        let changed = self.streaming.set_forced_loaded(&mut self.world, x, z, add);
+                        let changed =
+                            self.side
+                                .streaming
+                                .set_forced_loaded(&mut self.world, x, z, add);
                         tracker.track(&holder(chunk_text(x, z)), i32::from(changed));
                     }
                 }
@@ -647,9 +650,8 @@ pub(in crate::game) mod loot_mine_component_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -832,9 +834,8 @@ pub(in crate::game) mod loot_position_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -944,9 +945,8 @@ pub(in crate::game) mod loot_kill_target_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

@@ -2,11 +2,11 @@
 use super::Game;
 use crate::game::server_side::{passengers::Riders, tnt::tnt_seat};
 use std::collections::HashMap;
-use sunrise_client::{
-    camera::wrap_degrees,
-    mobs::{drops::is_animal, riders},
-};
 use sunrise_core::geometry::Vec3;
+use {
+    sunrise_client::mobs::drops::is_animal, sunrise_client::mobs::riders,
+    sunrise_level::camera_math::wrap_degrees,
+};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The vehicle's attachment for this passenger's actual place in `getPassengers`.

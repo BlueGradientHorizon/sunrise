@@ -175,7 +175,7 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let old = game.pack.render.generation;
+            let old = game.side.client_pack.render.generation;
             let staged = stage_pack(
                 &game.vanilla_root(),
                 &[],
@@ -185,22 +185,23 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
                 &[],
                 &game.pack.assets,
                 &game.res,
-                &game.pack.context,
-                game.settings.force_unicode,
-                game.settings.japanese_glyphs,
+                game.client_res(),
+                &game.side.client_pack.context,
+                game.side.settings.force_unicode,
+                game.side.settings.japanese_glyphs,
                 &Progress::new(),
             )
             .unwrap();
-            let candidate = staged.pack.render.generation;
+            let candidate = staged.client_pack.render.generation;
             assert_ne!(candidate, old);
-            assert_eq!(game.pack.render.generation, old);
+            assert_eq!(game.side.client_pack.render.generation, old);
             assert!(staged_failure.load(Ordering::Relaxed));
             assert_eq!(*trace.lock().unwrap(), ["prepare before", "prepare after"]);
             APPLY_GENERATIONS.replace(Some(Vec::new()));
             let result = game.apply_staged_pack(staged);
             let generations = APPLY_GENERATIONS.take().unwrap();
             result.unwrap();
-            assert_eq!(game.pack.render.generation, candidate);
+            assert_eq!(game.side.client_pack.render.generation, candidate);
             assert_eq!(generations, [old, candidate]);
             assert_eq!(
                 *trace.lock().unwrap(),
@@ -593,7 +594,9 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     options.resources = loaded.root;
                     let mut game = start_client_game(
                         &loaded.resources,
+                        loaded.client_res.unwrap(),
                         loaded.pack,
+                        loaded.client_pack.unwrap(),
                         loaded.gui.unwrap(),
                         options,
                         loaded.pack_error,
@@ -609,13 +612,16 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     )
                     .unwrap()
                     .unwrap();
-                    assert_eq!(game.pack.render.generation, 0);
+                    assert_eq!(game.side.client_pack.render.generation, 0);
                     assert_eq!(
-                        game.pack.render.model(&id("startup_anchor:stone")),
+                        game.side
+                            .client_pack
+                            .render
+                            .model(&id("startup_anchor:stone")),
                         Err(mod_api::ModelError::UnknownModel)
                     );
                     let pending = game.side.pending_initial_models.0.take().unwrap();
-                    let candidate = pending.models.pack.render.generation;
+                    let candidate = pending.models.client_pack.render.generation;
                     let renderer = if refusal == Some("renderer") {
                         Err("renderer validation refused".into())
                     } else {
@@ -631,7 +637,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         } else {
                             "unknown armour texture startup_anchor:missing"
                         }));
-                        assert_eq!(game.pack.render.generation, 0);
+                        assert_eq!(game.side.client_pack.render.generation, 0);
                         assert!(generations.is_empty());
                         assert_eq!(
                             *trace.lock().unwrap(),
@@ -640,7 +646,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         continue;
                     }
                     assert!(result.unwrap());
-                    assert_eq!(game.pack.render.generation, candidate);
+                    assert_eq!(game.side.client_pack.render.generation, candidate);
                     assert_ne!(candidate, 0);
                     assert_eq!(
                         generations,
@@ -1089,7 +1095,7 @@ fn an_arm_pose_answer_replaces_the_pose_the_item_gives() {
     with_client_game(|game| {
         let mut m = sunrise_client::mobs::Mob::new(
             1,
-            game.res.player_type().clone().unwrap(),
+            game.client_res().player_type().clone().unwrap(),
             sunrise_core::geometry::Vec3::ZERO,
             0.0,
         );
@@ -1175,9 +1181,10 @@ fn refused_client_context_keeps_pack_and_listeners() {
             &[],
             &game.pack.assets,
             &game.res,
-            &game.pack.context,
-            game.settings.force_unicode,
-            game.settings.japanese_glyphs,
+            game.client_res(),
+            &game.side.client_pack.context,
+            game.side.settings.force_unicode,
+            game.side.settings.japanese_glyphs,
             &Progress::new(),
         )
         .unwrap();
@@ -1410,7 +1417,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                         let mut options = game.options.clone();
                         options.headless = true;
                         let root = options.resources.clone();
-                        let gui = UiResources::server(
+                        let gui = UiResources::fonts_only(
                             &sunrise_assets::resource_source::ResourceSource::directory(
                                 root.clone(),
                             ),
@@ -1418,7 +1425,9 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                         .unwrap();
                         let mut started = start_client_game(
                             &resources,
+                            std::sync::Arc::clone(&game.side.client_res),
                             game.pack.clone(),
+                            game.side.client_pack.clone(),
                             gui,
                             options,
                             pack_error.map(str::to_owned),
@@ -1430,7 +1439,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             root,
                             Instant::now(),
                             None,
-                            game.settings.clone(),
+                            game.side.settings.clone(),
                             None,
                             vec![PreparedClientReload::Vanilla(())],
                             None,
@@ -1570,7 +1579,12 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
                 .set_slot_stack(OFFHAND, Some(ItemStack::new("minecraft:brush", 3)));
             game.mobs.push(m);
         }
-        let mut player = Mob::new(8, game.res.player_type().clone().unwrap(), Vec3::ZERO, 0.0);
+        let mut player = Mob::new(
+            8,
+            game.client_res().player_type().clone().unwrap(),
+            Vec3::ZERO,
+            0.0,
+        );
         player
             .extra
             .set_slot_stack(MAINHAND, Some(ItemStack::new("minecraft:stick", 1)));
@@ -1582,17 +1596,21 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
         m.extra.main_hand_left = true;
         m.extra.using_item = 12;
         m.extra.using_off_hand = true;
-        let res = game.res.clone();
-        let models = res.client_mob_models();
-        let baseline: Vec<_> = game.mobs.iter().map(|m| arms(m, models)).collect();
+        let baseline: Vec<_> = {
+            let models = game.client_res().client_mob_models();
+            game.mobs.iter().map(|m| arms(m, models)).collect()
+        };
         game.tick_remote_arm_poses();
-        assert_eq!(
-            game.mobs
-                .iter()
-                .map(|m| arms(m, models))
-                .collect::<Vec<_>>(),
-            baseline
-        );
+        {
+            let models = game.client_res().client_mob_models();
+            assert_eq!(
+                game.mobs
+                    .iter()
+                    .map(|m| arms(m, models))
+                    .collect::<Vec<_>>(),
+                baseline
+            );
+        }
         let calls = Arc::new(AtomicUsize::new(0));
         with_mods(
             vec![ModEntry::new("mob-pose", Box::new(MobPose(calls.clone())))].into(),
@@ -1602,11 +1620,14 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
                     game.mobs[0].extra.held_arm_pose,
                     [Some(sunrise_core::arm_pose::ArmPose::ThrowTrident), None]
                 );
-                let posed = arms(&game.mobs[0], models);
-                assert!((posed[1][3] + std::f32::consts::PI).abs() < 1e-6);
-                assert_ne!(posed, baseline[0]);
-                for (m, expected) in game.mobs[1..].iter().zip(&baseline[1..]) {
-                    assert_eq!(arms(m, models), *expected);
+                {
+                    let models = game.client_res().client_mob_models();
+                    let posed = arms(&game.mobs[0], models);
+                    assert!((posed[1][3] + std::f32::consts::PI).abs() < 1e-6);
+                    assert_ne!(posed, baseline[0]);
+                    for (m, expected) in game.mobs[1..].iter().zip(&baseline[1..]) {
+                        assert_eq!(arms(m, models), *expected);
+                    }
                 }
                 let empty = Mob::new(60, game.mobs[0].kind.clone(), Vec3::ZERO, 0.0);
                 assert_eq!(game.held_arm_poses(60, &empty), [None; 2]);
@@ -1621,6 +1642,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
         );
         assert_eq!(calls.load(Ordering::Relaxed), 2);
         game.tick_remote_arm_poses();
+        let models = game.client_res().client_mob_models();
         assert_eq!(
             game.mobs
                 .iter()

@@ -92,7 +92,7 @@ fn the_frame_reads_the_eye_light_in_first_and_third_person() {
             "schema = 1\nid = \"eye_light\"\nname = \"Eye light\"\nversion = \"1\"\napi = \"0.1\"\n",
         )
         .unwrap();
-        game.settings.sunrise.shader_pack = pack.to_string_lossy().into_owned();
+        game.side.settings.sunrise.shader_pack = pack.to_string_lossy().into_owned();
         for camera_type in [CameraType::FirstPerson, CameraType::ThirdPersonBack] {
             game.apply_camera_type(camera_type);
             let (camera, eye, _) = framed(game);
@@ -142,7 +142,8 @@ fn the_view_light_is_at_the_camera_entitys_eye() {
 fn the_view_reads_the_spectated_entitys_effects() {
     with_spectator(|game| {
         game.side.ambience.moodiness = 0.375;
-        game.settings
+        game.side
+            .settings
             .file
             .set("darknessEffectScale", V::Double(0.5));
         update(game, OWN, "minecraft:blindness", 100, 0);

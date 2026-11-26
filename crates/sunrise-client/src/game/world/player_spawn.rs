@@ -16,8 +16,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let feet = if let Some(p) = saved {
             let (cx, cz) = ((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4);
-            self.streaming.center = (cx, cz);
-            if !(-1..=1).all(|dz| (-1..=1).all(|dx| self.streaming.is_lit(cx + dx, cz + dz))) {
+            self.side.streaming.center = (cx, cz);
+            if !(-1..=1).all(|dz| (-1..=1).all(|dx| self.side.streaming.is_lit(cx + dx, cz + dz))) {
                 return Ok(());
             }
             self.level.position = None;
@@ -57,8 +57,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             let s = self.spawn.unwrap_or_default();
             let (cx, cz) = ((s.x.floor() as i32) >> 4, (s.z.floor() as i32) >> 4);
-            self.streaming.center = (cx, cz);
-            if !(-1..=1).all(|dz| (-1..=1).all(|dx| self.streaming.is_lit(cx + dx, cz + dz))) {
+            self.side.streaming.center = (cx, cz);
+            if !(-1..=1).all(|dz| (-1..=1).all(|dx| self.side.streaming.is_lit(cx + dx, cz + dz))) {
                 return Ok(());
             }
             let column = [s.x.floor() as i32, s.y.floor() as i32, s.z.floor() as i32];

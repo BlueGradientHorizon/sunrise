@@ -10,11 +10,11 @@ use crate::game::published_loops::{Attributed, LoopFlow, LoopMod};
 use sunrise_client::{
     Result,
     block_entities::{Pos, Ticking},
-    block_entity_anim::Ticker,
     containers::{BlockEntity, HOPPER_SLOTS},
 };
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay::block_entity_ticks::{block_ticking_at, ticker_name};
+use sunrise_level::block_entity_ticks::Ticker;
 
 /// What `block_entities.tick` is visiting: the kinds its dispatch ticks, read once per entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -468,10 +468,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let ticking = self.block_ticking_area();
         let mut pushes = Vec::new();
         let mut gone = Vec::new();
-        let positions: Vec<[i32; 3]> = self.be_anims.shulkers.keys().copied().collect();
+        let positions: Vec<[i32; 3]> = self.side.be_anims.shulkers.keys().copied().collect();
         for pos in positions {
             let state = self.world.block(pos[0], pos[1], pos[2]);
-            let Some(Ticker::Shulker { facing }) = self.be_anims.ticker(state.0) else {
+            let Some(Ticker::Shulker { facing }) = self.side.be_anims.ticker(state.0) else {
                 gone.push(pos);
                 continue;
             };
@@ -481,6 +481,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             }
             let tick = self
+                .side
                 .be_anims
                 .shulkers
                 .get_mut(&pos)
@@ -501,7 +502,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         for pos in gone {
-            self.be_anims.shulkers.remove(&pos);
+            self.side.be_anims.shulkers.remove(&pos);
         }
         pushes
     }
@@ -559,9 +560,8 @@ pub(in crate::game) mod jukebox_stop_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

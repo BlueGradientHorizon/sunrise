@@ -275,7 +275,8 @@ pub(in crate::game) fn ride(
 #[ignore = "daily"]
 fn the_camera_entitys_effect_lifecycle_is_vanillas() {
     with_spectator(|game| {
-        game.settings
+        game.side
+            .settings
             .file
             .set("darknessEffectScale", V::Double(0.5));
         set_camera(game, ZOMBIE);
@@ -356,7 +357,8 @@ fn the_camera_entitys_effect_lifecycle_is_vanillas() {
 #[ignore = "daily"]
 fn the_view_drops_values_whose_source_is_gone_before_a_tick() {
     with_spectator(|game| {
-        game.settings
+        game.side
+            .settings
             .file
             .set("darknessEffectScale", V::Double(0.5));
         update(game, ZOMBIE, "minecraft:darkness", 600, 0);
@@ -447,7 +449,7 @@ fn effects_count_down_on_the_ticks_their_entity_ticks() {
         ride(game, PIG, vec![OTHER]);
         ride(game, OTHER, vec![RIDER]);
         ride(game, STAND, vec![OWN]);
-        (game.streaming).insert_remote(&mut game.world, Chunk::empty(0, 0));
+        (game.side.streaming).insert_remote(&mut game.world, Chunk::empty(0, 0));
         let water = game.pack.assets.registry.default_state("minecraft:water");
         game.world.set(3, 64, 3, water.unwrap()).unwrap();
         game.tick_remote_entities(false);

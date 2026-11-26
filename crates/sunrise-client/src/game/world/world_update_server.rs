@@ -20,30 +20,33 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.defer_chunk_disk_save() {
             return;
         }
-        let areas = self.streaming.extra.len();
+        let areas = self.side.streaming.extra.len();
         let dim = self.dim;
         self.update_world_server(dim);
-        self.streaming.hold_unknown_tickets();
+        self.side.streaming.hold_unknown_tickets();
         let plan = sunrise_client::spans::time("streaming_plan", || {
-            let mut step = self.streaming.begin_plan_update(&mut self.world);
+            let mut step = self.side.streaming.begin_plan_update(&mut self.world);
             loop {
                 match step {
-                    sunrise_client::streaming::PlanStep::Ready(plan) => break plan,
-                    sunrise_client::streaming::PlanStep::Save { chunk, resume } => {
+                    sunrise_level::chunk_streamer::ChunkPlanStep::Ready(plan) => break plan,
+                    sunrise_level::chunk_streamer::ChunkPlanStep::Save { chunk, resume } => {
                         self.native_late_full_chunk_snapshot(&chunk);
-                        self.streaming.save_finished(chunk);
-                        step = self.streaming.resume_plan_update(&mut self.world, resume);
+                        self.side.streaming.save_finished(chunk);
+                        step = self
+                            .side
+                            .streaming
+                            .resume_plan_update(&mut self.world, resume);
                     }
                 }
             }
         });
-        let (commit, protos) = self.streaming.prepare_commit(&mut self.world, plan);
+        let (commit, protos) = self.side.streaming.prepare_commit(&mut self.world, plan);
         self.native_proto_snapshots(&protos);
-        self.streaming.submit_protos(protos);
-        let (_uploads, unloaded) = sunrise_client::spans::time("streaming", || {
-            self.streaming.complete_commit(&mut self.world, commit)
+        self.side.streaming.submit_protos(protos);
+        let unloaded = sunrise_client::spans::time("streaming", || {
+            self.side.streaming.complete_commit(&mut self.world, commit)
         });
-        self.streaming.extra.truncate(areas);
+        self.side.streaming.extra.truncate(areas);
         let dirty: Vec<_> = unloaded
             .iter()
             .filter(|c| self.world.modified.remove(&(c.x, c.z)))
@@ -84,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn update_world_server(&mut self, dim: Dim) {
         // The configuration connection is not a guest and owns no player area.
         // `extra` finishes chunks through radius + 1, even with no players.
-        self.streaming.extra.extend(
+        self.side.streaming.extra.extend(
             self.side
                 .tickets
                 .0
@@ -92,7 +95,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|(center, radius)| (center, radius - 1)),
         );
         if let Some(host) = &self.lan {
-            self.streaming.extra.extend(
+            self.side.streaming.extra.extend(
                 host.hub
                     .lan
                     .configuration_tasks
@@ -106,14 +109,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }),
             );
         }
-        self.streaming.extra.extend(
+        self.side.streaming.extra.extend(
             self.side
                 .server_trips
                 .iter()
                 .flat_map(|trip| trip.spawn_destination_areas(dim)),
         );
         let waiting = std::mem::take(&mut self.side.spawn_wait);
-        self.streaming
+        self.side
+            .streaming
             .extra
             .extend(waiting.into_iter().map(|chunk| (chunk, 0)));
     }

@@ -146,9 +146,9 @@ fn startup_rollback_waits_for_world_resources() {
             progress: Progress::new(),
             handle: std::thread::spawn(move || wait.recv().map_err(|e| e.to_string())),
         });
-        game.settings.resource_packs = vec!["file/inner".into()];
+        game.side.settings.resource_packs = vec!["file/inner".into()];
         game.selection_reload_failed("device refused the clouds pipeline");
-        assert!(game.settings.resource_packs.is_empty());
+        assert!(game.side.settings.resource_packs.is_empty());
         assert!(
             game.side
                 .toast_manager
@@ -168,7 +168,7 @@ fn startup_rollback_waits_for_world_resources() {
             game.drive_pack_reload();
             std::thread::yield_now();
         }
-        assert!(game.gui.atlas.sky_shader.is_none());
+        assert!(game.side.gui.atlas.sky_shader.is_none());
     });
 }
 
@@ -178,22 +178,28 @@ fn startup_rollback_waits_for_world_resources() {
 /// shader), and the load-failure toast shows, as vanilla's reload does.
 fn a_reload_fails_and_drops_the_selection(refused: &str) {
     with_client_game(|game| {
-        let vanilla_clouds = game.pack.clouds.clone();
-        game.settings.resource_packs = vec!["file/inner".into()];
+        let vanilla_clouds = game.side.client_pack.clouds.clone();
+        game.side.settings.resource_packs = vec!["file/inner".into()];
         reload(game);
-        assert_eq!(game.settings.resource_packs, ["file/inner"]);
-        assert!(game.gui.atlas.sky_shader.is_some());
-        assert_eq!((game.pack.clouds.0, game.pack.clouds.1), (4, 6));
-        assert!(!game.settings.improved_transparency);
-        game.settings.resource_packs = vec!["file/inner".into(), refused.into()];
+        assert_eq!(game.side.settings.resource_packs, ["file/inner"]);
+        assert!(game.side.gui.atlas.sky_shader.is_some());
+        assert_eq!(
+            (
+                game.side.client_pack.clouds.0,
+                game.side.client_pack.clouds.1
+            ),
+            (4, 6)
+        );
+        assert!(!game.side.settings.improved_transparency);
+        game.side.settings.resource_packs = vec!["file/inner".into(), refused.into()];
         reload(game);
-        assert!(game.settings.resource_packs.is_empty());
-        assert!(game.gui.atlas.clouds_shader.is_none());
+        assert!(game.side.settings.resource_packs.is_empty());
+        assert!(game.side.gui.atlas.clouds_shader.is_none());
         assert!(
-            game.gui.atlas.sky_shader.is_none(),
+            game.side.gui.atlas.sky_shader.is_none(),
             "the pack's sky went too"
         );
-        assert_eq!(game.pack.clouds, vanilla_clouds);
+        assert_eq!(game.side.client_pack.clouds, vanilla_clouds);
         assert!(
             game.side
                 .toast_manager
@@ -237,7 +243,7 @@ fn a_startup_load_fails_back_to_the_games_resources(refused: &str, error: &str) 
     assert!(gui.atlas.clouds_shader.is_none());
     let vanilla = sunrise_assets::resource_source::ResourceSource::directory(root);
     assert_eq!(
-        *loaded.pack.clouds,
+        *loaded.client_pack.unwrap().clouds,
         sunrise_client::clouds::load(&vanilla).unwrap()
     );
 }

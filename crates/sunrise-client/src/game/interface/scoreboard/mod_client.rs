@@ -23,11 +23,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             batch.height as i32,
             board,
             objective,
-            &self.gui.atlas.font,
-            self.settings.text_background(0.3),
-            self.settings.text_background(0.4),
+            &self.side.gui.atlas.font,
+            self.side.settings.text_background(0.3),
+            self.side.settings.text_background(0.4),
         );
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
     /// `Hud.extractTabList`: the player list while the player-list key is
     /// held. A local world shows it with a joined LAN guest or a `list`
@@ -92,11 +92,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
             online_mode,
             gui_ticks: self.visual_ticks() as i64,
             // Sunrise has no "chat background only" option: vanilla's default (on).
-            background: tab_list::row_background(true, self.settings.text_background_opacity),
+            background: tab_list::row_background(true, self.side.settings.text_background_opacity),
             upside_down: &up,
         };
-        let draws = self.side.tab_list.0.layout(&inputs, &self.gui.atlas.font);
-        sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
+        let draws = self
+            .side
+            .tab_list
+            .0
+            .layout(&inputs, &self.side.gui.atlas.font);
+        sunrise_client::hud_layout::paint(batch, &self.side.gui.atlas, &draws);
     }
     /// Advance the skin slots to a new frame with what the last one drew, and
     /// store any finished skin downloads into the atlas.

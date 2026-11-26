@@ -278,7 +278,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn native_fill(&self, batch: &mut HudBatch, rect: [f32; 4], argb: u32) {
         let [x, y, w, h] = rect;
         let [a, r, g, b] = argb.to_be_bytes();
-        batch.fill(&self.gui.atlas, x, y, w, h, rgba(r, g, b, a));
+        batch.fill(&self.side.gui.atlas, x, y, w, h, rgba(r, g, b, a));
     }
     /// The frame rate this window is about to be held to: Max Framerate after the
     /// inactivity throttle and Battery Mode (260 is unlimited). `focused` is whether the
@@ -503,7 +503,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         argb: u32,
     ) {
         let [a, r, g, b] = argb.to_be_bytes();
-        batch.fill_quad(&self.gui.atlas, points, rgba(r, g, b, a));
+        batch.fill_quad(&self.side.gui.atlas, points, rgba(r, g, b, a));
     }
     /// The server's recipes of `recipe_types` arrived (NeoForge's
     /// `RecipesReceivedEvent`): from now on the recipe helpers
@@ -789,7 +789,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         dst: [f32; 4],
         tint: Option<u32>,
     ) -> bool {
-        let Some(mut r) = self.gui.atlas.gui_rect(name).copied() else {
+        let Some(mut r) = self.side.gui.atlas.gui_rect(name).copied() else {
             return false;
         };
         let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
@@ -816,8 +816,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let [x, y] = at;
-        self.gui.plain_texts.with(text, |text| {
-            batch.text_styled(&self.gui.atlas, text, x, y, rgba(r, g, b, a), shadow)
+        self.side.gui.plain_texts.with(text, |text| {
+            batch.text_styled(&self.side.gui.atlas, text, x, y, rgba(r, g, b, a), shadow)
         });
     }
     /// `native_text` scaled by `scale` about `at`, its top-left corner (a GUI pose's scale).

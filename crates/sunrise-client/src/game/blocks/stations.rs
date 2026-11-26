@@ -789,7 +789,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return true;
         };
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let batch = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let (ox, oy) = self.inventory_origin(&batch);
         let local = (self.side.cursor.0 - ox, self.side.cursor.1 - oy);
         let shift = self.has_shift_down();
@@ -970,7 +970,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return handled;
         };
-        let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
+        let (_, oy) =
+            self.inventory_origin(&HudBatch::new(size, self.side.settings.gui_scale_inputs()));
         let y = self.side.cursor.1 - oy;
         // `StonecutterScreen.mouseDragged`.
         if let Some((s, ui)) = self.station_and_ui_mut()
@@ -1119,7 +1120,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         ui.rename.x = x;
         ui.rename.y = y;
         ui.rename.width = w;
-        ui.rename.click(&self.gui.atlas, mx, shift, false);
+        ui.rename.click(&self.side.gui.atlas, mx, shift, false);
         true
     }
     /// AnvilScreen's name box, drawn after the station picture.
@@ -1145,7 +1146,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         edit.focused = true;
         edit.text_color = u32::MAX;
         edit.max_length = anvil::NAME_CHARS;
-        edit.draw(batch, &self.gui.atlas, None);
+        edit.draw(batch, &self.side.gui.atlas, None);
     }
 
     // ---------------------------------------------------------------- drawing
@@ -1177,7 +1178,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         max: f32,
         color: u32,
     ) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let Some(sheet) = atlas.sprites.get("font/ascii_sga").copied() else {
             batch.text(atlas, text, x, y, color, false);
             return;
@@ -1816,7 +1817,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Options.advancedItemTooltips (F3+H).
     pub(in crate::game) fn options_advanced_tooltips(&self) -> bool {
-        self.settings.file.bool("advancedItemTooltips")
+        self.side.settings.file.bool("advancedItemTooltips")
     }
     /// `TooltipRenderUtil`: dark box with the purple border, first line spaced.
     pub(in crate::game) fn draw_tooltip_lines<T: Clone + Into<sunrise_client::text::Text>>(
@@ -1890,7 +1891,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let [background, frame] =
                 sunrise_client::ui::tooltip_style_sprites(style.namespace(), style.path());
             let sprites = [background.as_str(), frame.as_str()];
-            if sunrise_client::ui::tooltip_sprites(batch, &self.gui.atlas, sprites, [x, y, w, h]) {
+            if sunrise_client::ui::tooltip_sprites(
+                batch,
+                &self.side.gui.atlas,
+                sprites,
+                [x, y, w, h],
+            ) {
                 return;
             }
         }
@@ -1903,7 +1909,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             convert(border_top),
             convert(border_bottom),
         );
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         batch.fill(atlas, x - 3.0, y - 4.0, w + 6.0, 1.0, background);
         batch.fill(atlas, x - 3.0, y + h + 3.0, w + 6.0, 1.0, background);
         batch.fill(atlas, x - 4.0, y - 3.0, w + 8.0, h + 6.0, background);
@@ -1940,7 +1946,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let name = self.styled_stack_name(stack);
         let lines = Self::resolved(&[(name, self.rarity_color(stack))]);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let tw = atlas.font.width_text_with_font(&lines[0].0, default_font);
         let center = x + (w / 2.0).floor() - 12.0;
         let (px, py) = tooltip_position(
@@ -1964,7 +1970,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let sprite = |name: &str| format!("container/bundle/{name}");
             sunrise_client::ui::nine_slice(
                 batch,
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 &sprite(if selected {
                     "slot_highlight_back"
                 } else {
@@ -1981,7 +1987,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if selected {
                 sunrise_client::ui::nine_slice(
                     batch,
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     &sprite("slot_highlight_front"),
                     x,
                     y,
@@ -1991,7 +1997,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 );
             }
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         if let Some((at, hidden)) = layout.overflow {
             let label = sunrise_client::text::Text::literal(format!("+{hidden}"));
             let w = atlas.font.width_text_with_font(&label, default_font);
@@ -2758,7 +2764,7 @@ pub(in crate::game) mod tests {
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
             with_client_game(|game| {
-                game.settings.file.set(
+                game.side.settings.file.set(
                     "advancedItemTooltips",
                     sunrise_client::options_file::V::Bool(true),
                 );
@@ -3009,7 +3015,7 @@ pub(in crate::game) mod tests {
                         .iter()
                         .filter_map(|e| e.downcast_ref::<KnownClient>())
                         .collect();
-                    let font = &game.gui.atlas.font;
+                    let font = &game.side.gui.atlas.font;
                     let expected = font.split_formatted(&long, 40.0);
                     assert!(expected.len() > 1);
                     assert_eq!(
@@ -3234,7 +3240,7 @@ pub(in crate::game) mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_client_game(|game| {
-                game.settings.file.set(
+                game.side.settings.file.set(
                     "advancedItemTooltips",
                     sunrise_client::options_file::V::Bool(false),
                 );

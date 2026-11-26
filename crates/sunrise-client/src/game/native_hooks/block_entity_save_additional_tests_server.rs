@@ -151,7 +151,7 @@ pub(in crate::game) mod tests {
                     .unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
-                assert!(game.streaming.set_forced(0, 0, true));
+                assert!(game.side.streaming.set_forced(0, 0, true));
                 game.update_chunk_tickets();
                 game.tick_block_entities().unwrap();
                 let stone = saved_stack("minecraft:stone");

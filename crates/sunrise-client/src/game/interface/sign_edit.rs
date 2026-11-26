@@ -253,7 +253,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get(&edit.pos) else {
             return false;
         };
-        HudBatch::text_width(&self.gui.atlas, value) <= sign.max_line_width()
+        HudBatch::text_width(&self.side.gui.atlas, value) <= sign.max_line_width()
     }
     /// Edit the line, then keep the result only when it still fits.
     pub(in crate::game::client_side) fn sign_change(&mut self, f: impl FnOnce(&mut EditBox)) {
@@ -328,7 +328,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Done button (`this.width / 2 - 100, this.height / 4 + 144`, 200x20),
     /// or a click on a line (`EditBox.onClick`).
     pub(in crate::game::client_side) fn sign_edit_click(&mut self, size: [u32; 2]) -> bool {
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let (x, y) = done_button(b.width, b.height);
         let (mx, my) = self.side.cursor;
         if mx >= x && mx < x + 200.0 && my >= y && my < y + 20.0 {
@@ -356,13 +356,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .as_ref()
                 .map(|e| e.edit.value.clone())
                 .unwrap_or_default();
-            let lw = HudBatch::text_width(&self.gui.atlas, &value);
+            let lw = HudBatch::text_width(&self.side.gui.atlas, &value);
             let text_x = cx - (lw as i32 / 2) as f32;
             if let Some(edit) = self.side.sign_edit.as_mut() {
                 edit.edit.x = text_x;
                 edit.edit.y = ly;
                 edit.edit.width = max_width;
-                edit.edit.click(&self.gui.atlas, mx, shift, false);
+                edit.edit.click(&self.side.gui.atlas, mx, shift, false);
             }
             self.sign_write();
             return true;
@@ -398,7 +398,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         self.render_transparent_background("sign_editor", batch);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         let (key, fallback) = if sign.hanging {
             ("hanging_sign.edit", "Edit Hanging Sign Message")

@@ -42,6 +42,7 @@ sunrise-system = { path = "../sunrise-system" }
 sunrise-threads = { path = "../sunrise-threads" }
 sunrise-world = { path = "../sunrise-world" }
 sunrise-level = { path = "../sunrise-level" }
+sunrise-server-profiles-http = { path = "../sunrise-server-profiles-http" }
 ab_glyph = "0.2.32"
 base64 = "0.22"
 bytemuck = { version = "1.24", features = ["derive"] }

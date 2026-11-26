@@ -28,7 +28,7 @@ sunrise-client-render packs::tests::a_pack_that_unpacks_past_its_budget_fails_an
 sunrise-client-render radial_overlay::tests::every_action_has_an_icon_and_every_string_a_sunrise_key lib daily slow
 sunrise-client-render skins::tests::a_failed_download_is_retried_after_the_wait lib daily network
 sunrise-client-render skins::tests::http_get_reads_2xx_bodies lib daily network
-sunrise-client-render skins::tests::profiles_resolve_through_the_services lib daily network
+sunrise-server-profiles-http tests::profiles_resolve_through_the_services lib daily network
 sunrise-level chunk_streamer::cover_tests::the_buckets_answer_as_the_scan lib daily slow
 sunrise-level chunk_streamer::cover_tests::the_grid_answers_as_the_scan lib daily slow
 sunrise-client-render sunrise_shader::sunrise_fan::tests::angular_sector_matches_all_triangle_search test:it daily slow

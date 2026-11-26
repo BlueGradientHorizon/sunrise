@@ -21,7 +21,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let path = crate::game::options_path().with_file_name("hotbar.nbt");
         let known = |id: &str| self.res.items().get(id).is_some();
         let rows = hotbar::load(&path, &known);
-        let key = |mapping: &str| keybinds::display_name(self.settings.keys.get(mapping)).plain();
+        let key =
+            |mapping: &str| keybinds::display_name(self.side.settings.keys.get(mapping)).plain();
         let empty = || ItemStack::new("minecraft:air", 0);
         let mut items = Vec::with_capacity(hotbar::GROUPS * hotbar::SIZE);
         for (i, row) in rows.iter().enumerate().take(hotbar::GROUPS) {
@@ -85,7 +86,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             log::warn!("the creative hotbar was not saved: {e}");
             return;
         }
-        let key = |mapping: &str| keybinds::display_name(self.settings.keys.get(mapping));
+        let key = |mapping: &str| keybinds::display_name(self.side.settings.keys.get(mapping));
         let message = Text::translate(
             "inventory.hotbarSaved",
             &[

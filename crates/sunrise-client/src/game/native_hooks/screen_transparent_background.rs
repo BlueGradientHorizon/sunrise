@@ -25,7 +25,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The user's configured menu background blur radius (`menuBackgroundBlurriness` in options.txt,
     /// usually 0.0 to 10.0; default 5.0). 0.0 means blur is turned off. API @API:screen_transparent_background@.
     pub(in crate::game) fn menu_blur_radius(&self) -> f32 {
-        self.settings.menu_blur as f32
+        self.side.settings.menu_blur as f32
     }
     /// `Screen.renderMenuBackground`: draws the tiled menu background (32x32) across `rect`
     /// (`[x, y, w, h]` in GUI pixels). If `in_world` is true, uses the dark translucent
@@ -38,7 +38,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         in_world: bool,
     ) {
         let [x, y, w, h] = rect;
-        sunrise_client::ui::menu_background(batch, &self.gui.atlas, x, y, w, h, in_world);
+        sunrise_client::ui::menu_background(batch, &self.side.gui.atlas, x, y, w, h, in_world);
     }
     /// Repeats sprite `sprite` across `rect` (`[x, y, w, h]` in GUI pixels) with each tile
     /// sized `size` GUI pixels square, tinted by `argb`. False when the sprite is not in the HUD atlas.
@@ -51,7 +51,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         size: f32,
         argb: u32,
     ) -> bool {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         if atlas.gui_rect(sprite).is_none() {
             return false;
         }

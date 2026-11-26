@@ -47,7 +47,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Stop client-side terrain work before the integrated server is shut down. The
         // server's own stop path aborts its workers, but the window's streaming registration
         // is dropped only after the event loop exits and would otherwise wait for queued work.
-        self.streaming.abort_generation();
+        self.side.streaming.abort_generation();
         if let Some(integrated) = &self.integrated {
             integrated.request_stop();
             self.side.pending_save.0 = Some(ClosingSave {
@@ -207,7 +207,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let mut hud = HudBatch::new(
             [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         );
         let progress = match self.side.pending_save.0.as_ref().map(|save| &save.stage) {
             Some(Stage::Chunks(_)) => 0.25,
@@ -217,7 +217,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         sunrise_client::level_loading::draw_progress(
             &mut hud,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             "Saving world...",
             progress,
         );
@@ -259,7 +259,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // takeAutoScreenshot only saves with every loaded section rendered, or
         // the icon would picture the holes the streamer has not filled yet.
-        if self.streaming.pending() != 0
+        if self.side.streaming.pending() != 0
             || !self.side.pending_uploads.0.is_empty()
             || self.remote_backlog() != 0
         {

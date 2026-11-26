@@ -88,7 +88,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         name: Option<&str>,
         seed: Option<i64>,
         creative: bool,
-        create: Option<&sunrise_client::title::WorldOptions>,
+        create: Option<&sunrise_sim::world_options::WorldOptions>,
     ) -> Result<()> {
         // openWorldLoadLevelData: an existing world whose level data does not read opens
         // RecoverWorldDataScreen instead.
@@ -182,7 +182,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// menu items go back (Player.closeContainer), then the world is saved,
     /// once.
     pub(in crate::game::client_side) fn finish_perf(&mut self) {
-        let s = &self.settings;
+        let s = &self.side.settings;
         let settings = sunrise_telemetry::payload::Settings {
             render_distance: s.render_distance.clamp(0, 255) as u8,
             simulation_distance: s.simulation_distance.clamp(0, 255) as u8,
@@ -200,7 +200,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(window) = &self.side.window.0 {
             sunrise_client::telemetry::note_display(window);
         }
-        self.perf
+        self.side
+            .perf
             .finish(&sunrise_client::logging::game_home(), settings);
     }
 
@@ -224,7 +225,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.client_logging_out();
         // Native application termination can bypass the close request, so make the same
         // client-side worker abort explicit before the game-owned streaming state is dropped.
-        self.streaming.abort_generation();
+        self.side.streaming.abort_generation();
         if let Some(server) = self.integrated.take() {
             // The server thread saves the world.
             server.stop()?;

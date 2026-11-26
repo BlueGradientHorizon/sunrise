@@ -106,8 +106,8 @@ pub(in crate::game::server_side) fn run_fangs_and_an_ominous_item_spawner_outsid
     assert!(!witness.cases.is_empty());
 
     with_game(|game| {
-        game.settings.render_distance = witness.view_distance;
-        game.settings.simulation_distance = witness.simulation_distance;
+        game.side.settings.render_distance = witness.view_distance;
+        game.side.settings.simulation_distance = witness.simulation_distance;
         let [px, py, pz] = witness.player_pos;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(px, py, pz)).unwrap());
 
@@ -115,7 +115,7 @@ pub(in crate::game::server_side) fn run_fangs_and_an_ominous_item_spawner_outsid
             game.fangs.list.clear();
             game.ominous_spawners.clear();
             game.dropped.clear();
-            game.streaming.forced.clear();
+            game.side.streaming.forced.clear();
 
             match case {
                 TickingGateCase::EvokerFangs {
@@ -128,7 +128,7 @@ pub(in crate::game::server_side) fn run_fangs_and_an_ominous_item_spawner_outsid
                     expected_warmup,
                 } => {
                     for &[cx, cz] in forced_chunks {
-                        game.streaming.forced.insert((cx, cz));
+                        game.side.streaming.forced.insert((cx, cz));
                     }
                     game.update_chunk_tickets();
                     game.add_fangs(*pos, 0.0, *initial_warmup, 0);
@@ -165,7 +165,7 @@ pub(in crate::game::server_side) fn run_fangs_and_an_ominous_item_spawner_outsid
                     expected_spawned_items,
                 } => {
                     for &[cx, cz] in forced_chunks {
-                        game.streaming.forced.insert((cx, cz));
+                        game.side.streaming.forced.insert((cx, cz));
                     }
                     game.update_chunk_tickets();
                     game.add_ominous_item_spawner(
@@ -224,8 +224,8 @@ pub(in crate::game::server_side) fn run_fangs_and_an_ominous_item_spawner_pause_
     with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
-        game.settings.render_distance = witness.view_distance;
-        game.settings.simulation_distance = witness.simulation_distance;
+        game.side.settings.render_distance = witness.view_distance;
+        game.side.settings.simulation_distance = witness.simulation_distance;
         let [px, py, pz] = witness.player_pos;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(px, py, pz)).unwrap());
 

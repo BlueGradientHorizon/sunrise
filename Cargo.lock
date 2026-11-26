@@ -4816,6 +4816,7 @@ dependencies = [
  "sunrise-protocol",
  "sunrise-render-core",
  "sunrise-render-shaderpack",
+ "sunrise-server-profiles-http",
  "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
@@ -5663,7 +5664,10 @@ dependencies = [
 name = "sunrise-server-profiles-http"
 version = "0.1.0"
 dependencies = [
+ "log",
+ "serde_json",
  "sunrise-core",
+ "sunrise-level",
  "sunrise-server-files",
  "ureq",
 ]

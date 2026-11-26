@@ -55,7 +55,7 @@ fn parse(args: &str) -> Result<(u32, f64, PathBuf)> {
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Why a sequence can't start (or go on) now, if it can't.
     fn sequence_refusal(&self) -> Option<&'static str> {
-        let g = &self.settings.sunrise;
+        let g = &self.side.settings.sunrise;
         if !self.clock.still() {
             Some("screenshot-sequence needs SUNRISE_STILL=1")
         } else if !self.clock.frozen() || self.clock.stepping() || self.clock.sprinting() {
@@ -73,7 +73,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .is_some_and(|r| r.level_load.is_active())
             || self.side.flight.0.is_some()
             || self.world.chunks.is_empty()
-            || self.streaming.pending() != 0
+            || self.side.streaming.pending() != 0
             || !self.side.pending_uploads.0.is_empty()
             || self.remote_backlog() != 0
             || !self.world.dirty_light.is_empty()
@@ -83,7 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if self.side.lod.0.is_some() || self.far_terrain_choice().0 > 0 {
             // Far tiles load and fade in on the wall clock.
             Some("screenshot-sequence needs far terrain off (LOD Distance 0)")
-        } else if self.settings.chunk_fade != 0.0 || g.shadow_cache {
+        } else if self.side.settings.chunk_fade != 0.0 || g.shadow_cache {
             Some("screenshot-sequence needs chunk fade 0 and the shadow cache off")
         } else if g.taa || g.frame_generation != sunrise_client::graphics::FrameGeneration::Off {
             // Both build on earlier frames the pack's reset doesn't reach.
@@ -111,7 +111,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     pitch.to_bits()
                 ),
                 format!("{:?}", self.side.camera_type),
-                format!("{:?}", self.settings),
+                format!("{:?}", self.side.settings),
                 (
                     &self.side.native_shaders.picked,
                     renderer.shader_pack_kind()

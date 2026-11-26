@@ -86,7 +86,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
             }
         };
         Ok(self.surface.text_styled_with_font(
-            &self.game.gui.atlas,
+            &self.game.side.gui.atlas,
             &text,
             at,
             crate::hud::rgba(r, g, b, a),
@@ -98,7 +98,10 @@ impl DrawContext for GameDrawContext<'_, '_> {
         if let Some(active) = self.tooltip_font.filter(|active| active.id == font) {
             f(active);
         } else {
-            f(&EngineTooltipFont::new(&self.game.gui.atlas.font, font));
+            f(&EngineTooltipFont::new(
+                &self.game.side.gui.atlas.font,
+                font,
+            ));
         }
     }
     fn text_scaled(&mut self, text: &str, at: [f32; 2], scale: f32, argb: u32, shadow: bool) {
@@ -145,7 +148,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
     ) -> Result<TextLines, TextLinesRefusal> {
         let local = sunrise_client_lib::api_text::to_local_engine(text);
         label_layout_with(
-            &self.game.gui.atlas.font,
+            &self.game.side.gui.atlas.font,
             local.engine(),
             max_width,
             align,

@@ -1,12 +1,11 @@
 use super::{C, Signature, Tag, play, secure_chat};
 use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
-use sunrise_client::{
-    chat::{ChatAbilities, ChatOptions, ChatVisibility},
-    hud_layout::GuiDraw,
-    options_file::V,
-    tab_list::TabPlayer,
-};
 use sunrise_protocol::rsa::{RsaPrivateKey, RsaPublicKey, SignatureHash};
+use {
+    sunrise_client::chat::ChatAbilities, sunrise_client::chat::ChatOptions,
+    sunrise_client::chat::ChatVisibility, sunrise_client::hud_layout::GuiDraw,
+    sunrise_client::options_file::V, sunrise_level::profile_lookup::TabPlayer,
+};
 
 pub(in crate::game) const ALICE: u128 = 10;
 pub(in crate::game) const BOB: u128 = 11;
@@ -29,7 +28,7 @@ pub(in crate::game) fn with_delayed_chat(
         with_client_game(|game| {
             game.init_remote_for_replay().unwrap();
             game.remote.as_mut().unwrap().has_logical_player = true;
-            game.settings.chat_delay = 1.0;
+            game.side.settings.chat_delay = 1.0;
             check(game);
         });
     });
@@ -142,7 +141,10 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
     with_delayed_chat(
         "disguised_chat_has_a_system_tag_but_is_player_chat",
         |game| {
-            game.settings.file.set("onlyShowSecureChat", V::Bool(true));
+            game.side
+                .settings
+                .file
+                .set("onlyShowSecureChat", V::Bool(true));
 
             // Before a logical local player exists, disguised chat is rejected on accept.
             game.remote.as_mut().unwrap().has_logical_player = false;
@@ -257,24 +259,36 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
         "delayed_chat_uses_only_show_secure_chat_from_receipt",
         |game| {
             add_sender(game, ALICE);
-            game.settings.file.set("onlyShowSecureChat", V::Bool(true));
+            game.side
+                .settings
+                .file
+                .set("onlyShowSecureChat", V::Bool(true));
             game.handle_packet(C::PlayerChat(player_chat(ALICE, 0, "unsigned, hidden")))
                 .unwrap();
             assert_eq!(game.chat_queue_len(), 1);
-            game.settings.file.set("onlyShowSecureChat", V::Bool(false));
+            game.side
+                .settings
+                .file
+                .set("onlyShowSecureChat", V::Bool(false));
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
             assert!(game.chat_ui_for_test().chat.recent_lines(1).is_empty());
 
             game.handle_packet(C::PlayerChat(player_chat(ALICE, 1, "unsigned, visible")))
                 .unwrap();
-            game.settings.file.set("onlyShowSecureChat", V::Bool(true));
+            game.side
+                .settings
+                .file
+                .set("onlyShowSecureChat", V::Bool(true));
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
             assert!(game.chat_ui_for_test().chat.recent_lines(1)[0].contains("unsigned, visible"));
 
             // Language changes while queued re-evaluate decoration and trust on acceptance.
-            game.settings.file.set("onlyShowSecureChat", V::Bool(false));
+            game.side
+                .settings
+                .file
+                .set("onlyShowSecureChat", V::Bool(false));
             let key = RsaPrivateKey::generate(2048).unwrap();
             add_signed_sender(game, &key, BOB);
             sunrise_client::lang::set(sunrise_client::lang::Language::of(

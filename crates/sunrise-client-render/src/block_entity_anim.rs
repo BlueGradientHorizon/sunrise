@@ -384,10 +384,6 @@ pub struct BlockEntityAnims {
     pub skulls: FxHashMap<[i32; 3], Skull>,
     pub pots: FxHashMap<[i32; 3], PotWobble>,
     pub gateways: FxHashMap<[i32; 3], EndGateway>,
-    /// The integrated server's copies of the gateways (`portalTick`).
-    pub gateway_servers: FxHashMap<[i32; 3], EndGateway>,
-    /// The integrated server's copies of the conduits (`serverTick`).
-    pub conduit_servers: FxHashMap<[i32; 3], ConduitServer>,
     /// The client level's random (conduit particles).
     pub random: LegacyRandom,
     /// [`Ticker`] by block state id (see [`BlockEntityAnims::classify`]).
@@ -408,8 +404,6 @@ impl Default for BlockEntityAnims {
             skulls: FxHashMap::default(),
             pots: FxHashMap::default(),
             gateways: FxHashMap::default(),
-            gateway_servers: FxHashMap::default(),
-            conduit_servers: FxHashMap::default(),
             random: LegacyRandom::new(0x6c6576656c),
             kinds: Vec::new(),
             owners: FxHashMap::default(),
@@ -525,8 +519,6 @@ impl BlockEntityAnims {
         self.skulls.remove(&pos);
         self.pots.remove(&pos);
         self.gateways.remove(&pos);
-        self.gateway_servers.remove(&pos);
-        self.conduit_servers.remove(&pos);
     }
     pub fn retain(&mut self, keep: impl Fn([i32; 3]) -> bool) {
         self.chests.retain(|p, _| keep(*p));
@@ -537,8 +529,6 @@ impl BlockEntityAnims {
         self.skulls.retain(|p, _| keep(*p));
         self.pots.retain(|p, _| keep(*p));
         self.gateways.retain(|p, _| keep(*p));
-        self.gateway_servers.retain(|p, _| keep(*p));
-        self.conduit_servers.retain(|p, _| keep(*p));
     }
     /// `getOpenNess(partial)` of the chest or ender chest at `pos`.
     pub fn lid(&self, pos: [i32; 3], partial: f32) -> f32 {

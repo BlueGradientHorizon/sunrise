@@ -3,7 +3,8 @@ use super::Game;
 use crate::game::minecarts::{
     CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed, hit::CartHit,
 };
-use sunrise_client::{containers::BlockEntity, items::ItemStack, sound_engine::BLOCKS};
+use sunrise_client::{containers::BlockEntity, items::ItemStack};
+use sunrise_client_core::sound_source::BLOCKS;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_, crate::game::server_side::ServerState> {

@@ -15,6 +15,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let Some(r) = self
+            .side
             .gui
             .atlas
             .sprites

@@ -12,7 +12,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Vec<[f64; 6]> {
         self.state_shape_boxes(
             &self.world,
-            &self.be_anims,
+            &self.side.be_anims.shulkers,
             state,
             pos,
             mod_api::BlockShapeKind::Outline,
@@ -28,7 +28,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         state: BlockStateId,
     ) {
         let facts = self.res.facts().get(state);
-        if self.settings.extras.hide_block_particles || facts.render_shape == RenderShape::Invisible
+        if self.side.settings.extras.hide_block_particles
+            || facts.render_shape == RenderShape::Invisible
         {
             return;
         }

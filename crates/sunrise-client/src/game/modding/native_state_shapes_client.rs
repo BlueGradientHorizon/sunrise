@@ -9,7 +9,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         pos: [i32; 3],
     ) -> impl Iterator<Item = [f64; 6]> + '_ {
         let (outline, offset) =
-            self.selected_outline(&self.world, state, &self.be_anims, pos, true);
+            self.selected_outline(&self.world, state, &self.side.be_anims.shulkers, pos, true);
         let (owned, cached) = match outline {
             Outline::Published(shape) => (shape.edges(), &[][..]),
             Outline::Declared(_, kind) => (

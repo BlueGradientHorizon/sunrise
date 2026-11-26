@@ -42,7 +42,7 @@ fn run_mods(mods: Mods, test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.gui.atlas.sprites.insert(
+            game.side.gui.atlas.sprites.insert(
                 "container/bundle/slot_background".into(),
                 sunrise_client::hud::Rect {
                     u0: 0.25,
@@ -79,7 +79,7 @@ fn grid(game: &crate::game::ClientGame<'_>, batch: &HudBatch, y: f32, present: b
     let mut expected = HudBatch::scratch([320, 240]);
     sunrise_client::ui::nine_slice(
         &mut expected,
-        &game.gui.atlas,
+        &game.side.gui.atlas,
         "container/bundle/slot_background",
         94.0,
         y,
@@ -117,7 +117,7 @@ fn bundle_no_listener_order_and_draw_position() {
         let elements = game
             .gather_tooltip_components(&stack, lines, 10, (320.0, 240.0))
             .unwrap_ready();
-        let font = EngineTooltipFont::new(&game.gui.atlas.font, &DEFAULT_TOOLTIP_FONT_ID);
+        let font = EngineTooltipFont::new(&game.side.gui.atlas.font, &DEFAULT_TOOLTIP_FONT_ID);
         assert_eq!(elements.len(), 3);
         assert!(elements[0].as_text().is_some());
         assert!(elements[1].as_bundle().is_some());
@@ -200,7 +200,7 @@ fn bundle_empty_text_gathers_image_at_zero() {
         let elements = game
             .gather_tooltip_components(&bundle(), vec![], 10, (320.0, 240.0))
             .unwrap_ready();
-        let font = EngineTooltipFont::new(&game.gui.atlas.font, &DEFAULT_TOOLTIP_FONT_ID);
+        let font = EngineTooltipFont::new(&game.side.gui.atlas.font, &DEFAULT_TOOLTIP_FONT_ID);
         assert_eq!(elements.len(), 1);
         assert!(elements[0].as_bundle().is_some());
         assert_eq!(
@@ -222,7 +222,7 @@ fn bundle_empty_contents_keeps_image() {
         let elements = game
             .gather_tooltip_components(&stack, lines, 10, (320.0, 240.0))
             .unwrap_ready();
-        let font = EngineTooltipFont::new(&game.gui.atlas.font, &DEFAULT_TOOLTIP_FONT_ID);
+        let font = EngineTooltipFont::new(&game.side.gui.atlas.font, &DEFAULT_TOOLTIP_FONT_ID);
         // Vanilla maps the present bundle-contents component even when empty.
         // Empty description: two 9px lines + 13px bar + 8px gap = 39px.
         assert_eq!(elements.len(), 2);

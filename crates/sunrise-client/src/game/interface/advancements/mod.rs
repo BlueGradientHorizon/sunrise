@@ -459,7 +459,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(lock) = self.world.block_lock(key) else {
             return false;
         };
-        let lock = sunrise_client::item_render::tag_json(lock);
+        let lock = sunrise_sim::item_models::tag_json(lock);
         let hand = hand.map(item_view);
         !adv::can_unlock(&lock, spectator, hand.as_ref(), &View(self))
     }
@@ -2929,9 +2929,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -3014,9 +3013,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -3396,9 +3394,8 @@ pub(in crate::game) mod structure_tag_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -3502,9 +3499,8 @@ pub(in crate::game) mod random_chance_command_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

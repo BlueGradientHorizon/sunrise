@@ -126,7 +126,7 @@ fn expected_quads(
     p: &Painting,
     camera: glam::DVec3,
 ) -> Vec<Vertex> {
-    let sprites = &game.gui.atlas.sprites;
+    let sprites = &game.side.gui.atlas.sprites;
     let Some(back) = sprites.get("painting/back").copied() else {
         return Vec::new();
     };

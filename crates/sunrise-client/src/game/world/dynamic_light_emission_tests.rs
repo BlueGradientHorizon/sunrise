@@ -159,7 +159,7 @@ fn init_lights_world<S: crate::game::Side>(game: &mut Game<'_, S>) -> States {
         plain: registry.default_state(PLAIN).unwrap(),
         air: registry.default_state("minecraft:air").unwrap(),
     };
-    let light = &game.pack.context.light;
+    let light = &game.pack.chunk_context.light;
     assert!(light.is_dynamic(states.lamp.0));
     assert!(
         !light.is_dynamic(states.plain.0),

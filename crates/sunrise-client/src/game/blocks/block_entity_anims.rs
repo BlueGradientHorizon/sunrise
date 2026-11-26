@@ -5,21 +5,19 @@
 //! [`Game::block_anim`] and [`Game::chest_lid`].
 use super::Game;
 use sunrise_client::{
-    block_entity_anim::{
-        BellEntity, ConduitServer, ConduitTarget, Shulker, ShulkerStatus, Ticker,
-        closer_to_center_than,
-    },
     collisions::{SceneCollisions, no_collision_empty},
     containers::BlockEntity,
     effects::EffectInstance,
     mobs::{Damage, DamageKind},
 };
-#[cfg(test)]
-use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
+};
+use sunrise_level::{
+    block_entity_ticks::{BellEntity, ConduitServer, Ticker, closer_to_center_than},
+    shulker_box::{Shulker, ShulkerStatus},
 };
 
 /// The handle of the local player among a bell's gathered entities.
@@ -61,7 +59,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let pos = [key.0, key.1, key.2];
         let state = self.world.block(pos[0], pos[1], pos[2]).0;
-        match self.be_anims.ticker(state) {
+        match self.side.be_anims.ticker(state) {
             Some(Ticker::Lid) => {
                 let edge = self.lid_openers_changed(key, open);
                 if let Some(other) = self.chest_other_half(key) {
@@ -80,7 +78,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.barrel_openers_changed(key, open)
             }
             Some(Ticker::Shulker { .. }) => {
-                let shulker = self.be_anims.shulkers.entry(pos).or_default();
+                let shulker = self.side.be_anims.shulkers.entry(pos).or_default();
                 let (count, edge) = if open {
                     shulker.start_open()
                 } else {
@@ -196,6 +194,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// have a brain that reads it).
     pub(in crate::game) fn server_bell_heard(&mut self, pos: [i32; 3], now: i64) {
         let nearby = self
+            .side
             .be_anims
             .bells
             .get(&pos)
@@ -238,6 +237,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
         };
         let tick = self
+            .side
             .be_anims
             .bells
             .entry(pos)
@@ -264,10 +264,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// room to rise (`level.noCollision` of the half-open lid box).
     pub(in crate::game::server_side) fn shulker_can_open(&self, pos: [i32; 3]) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]).0;
-        let Some(Ticker::Shulker { facing }) = self.be_anims.ticker(state) else {
+        let Some(Ticker::Shulker { facing }) = self.side.be_anims.ticker(state) else {
             return true;
         };
         let closed = self
+            .side
             .be_anims
             .shulkers
             .get(&pos)
@@ -289,19 +290,20 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `BellBlockEntity.serverTick`: ringing server bells belong to the world,
     /// including when no renderer is attached.
     pub(in crate::game::server_side) fn tick_bell_servers(&mut self) {
-        if self.be_anims.bells.is_empty() {
+        if self.side.be_anims.bells.is_empty() {
             return;
         }
-        let mut positions: Vec<_> = self.be_anims.bells.keys().copied().collect();
+        let mut positions: Vec<_> = self.side.be_anims.bells.keys().copied().collect();
         positions.sort_unstable();
         let tags = self.items().entity_type_tags.clone();
         for pos in positions {
             if self
+                .side
                 .be_anims
                 .ticker(self.world.block(pos[0], pos[1], pos[2]).0)
                 != Some(Ticker::Bell)
             {
-                self.be_anims.bells.remove(&pos);
+                self.side.be_anims.bells.remove(&pos);
             } else if self.block_ticking_area()(pos[0], pos[2]) {
                 self.server_tick_bell(pos, &tags);
             }
@@ -323,6 +325,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let ticking = self.block_ticking_area();
         let mut positions: Vec<[i32; 3]> = self
+            .side
             .be_anims
             .conduit_servers
             .keys()
@@ -338,7 +341,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// chunks that tick blocks, keeping the state of those already known.
     pub(in crate::game::server_side) fn find_conduits(&mut self) {
         let levels = self.side.tickets.0.levels();
-        let kinds = &self.be_anims.kinds;
+        let kinds = &self.side.be_anims.kinds;
         let is_conduit = |id: u32| matches!(kinds.get(id as usize), Some(Some(Ticker::Conduit)));
         let mut found = Vec::new();
         for (&(cx, cz), chunk) in &self.world.chunks {
@@ -360,10 +363,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
         }
-        let mut old = std::mem::take(&mut self.be_anims.conduit_servers);
+        let mut old = std::mem::take(&mut self.side.be_anims.conduit_servers);
         for pos in found {
             let known = old.remove(&pos).unwrap_or_default();
-            self.be_anims.conduit_servers.insert(pos, known);
+            self.side.be_anims.conduit_servers.insert(pos, known);
         }
     }
     /// `ConduitBlockEntity.serverTick` of the conduit at `pos`, in a chunk
@@ -372,9 +375,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// sounds.
     pub(in crate::game::server_side) fn tick_conduit_server(&mut self, pos: [i32; 3]) {
         let state = self.world.block(pos[0], pos[1], pos[2]).0;
-        if self.be_anims.ticker(state) != Some(Ticker::Conduit) {
+        if self.side.be_anims.ticker(state) != Some(Ticker::Conduit) {
             // Broken since the chunks were searched.
-            self.be_anims.conduit_servers.remove(&pos);
+            self.side.be_anims.conduit_servers.remove(&pos);
             return;
         }
         if !self
@@ -389,6 +392,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let time = self.world.game_time;
         let mut conduit = self
+            .side
             .be_anims
             .conduit_servers
             .remove(&pos)
@@ -440,7 +444,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if short {
             self.server_play_sound("minecraft:block.conduit.ambient.short", centre, 1.0, 1.0);
         }
-        self.be_anims.conduit_servers.insert(pos, conduit);
+        self.side.be_anims.conduit_servers.insert(pos, conduit);
     }
     /// `ConduitBlockEntity.applyEffects`: conduit power for every player
     /// in water or rain within `frames / 7 * 16` blocks.
@@ -609,23 +613,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .unwrap_or(0);
         Some(candidates[pick as usize])
     }
-    /// The conduit's `destroyTarget` as the client draws it: the block
-    /// entity's `Target`, which `sendBlockUpdated` keeps in step for every
-    /// window; the server's own copy answers where there is no block entity.
-    #[allow(dead_code)]
-    pub(in crate::game) fn conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
-        let id = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-            Some(BlockEntity::Conduit(target)) => self.mob_by_uuid((*target)?)?,
-            _ => self.be_anims.conduit_servers.get(&pos)?.target?,
-        };
-        let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-        Some(ConduitTarget {
-            position: [m.position.x, m.position.y, m.position.z],
-            eye_y: m.eye_y(),
-            width: m.width(),
-            height: m.height(),
-        })
-    }
     /// `TheEndGatewayBlockEntity.portalTick` (the server ticker), from
     /// `Level.tickBlockEntities`: the age counts up in the block entity itself,
     /// which `/data get block` and the chunk save read; the cooldown an entry
@@ -634,7 +621,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn tick_end_gateway(&mut self, pos: (i32, i32, i32)) {
         let key = [pos.0, pos.1, pos.2];
         let initial = self.gateway_loaded(key);
-        let server = self.be_anims.gateway_servers.entry(key).or_insert(initial);
+        let server = self
+            .side
+            .be_anims
+            .gateway_servers
+            .entry(key)
+            .or_insert(initial);
         let triggered = server.portal_tick();
         let age = server.age;
         let mut aged = false;
@@ -655,7 +647,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Whether the gateway at `pos` can be entered (`!isCoolingDown`).
     pub(in crate::game::server_side) fn gateway_available(&self, pos: [i32; 3]) -> bool {
-        self.be_anims
+        self.side
+            .be_anims
             .gateway_servers
             .get(&pos)
             .copied()
@@ -669,6 +662,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn gateway_enter(&mut self, pos: [i32; 3]) -> bool {
         let initial = self.gateway_loaded(pos);
         let entered = self
+            .side
             .be_anims
             .gateway_servers
             .entry(pos)
@@ -686,6 +680,53 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn gateway_cooldown_event(&mut self, pos: [i32; 3]) {
         self.block_entity_event(pos, 1, 0);
         self.lan_block_event(pos, 1, 0);
+    }
+
+    /// `BlockEntity.triggerEvent(a, b)` on the block entity at `pos`.
+    pub(in crate::game) fn block_entity_event(&mut self, pos: [i32; 3], a: i32, b: i32) {
+        let state = self.world.block(pos[0], pos[1], pos[2]).0;
+        let time = self.world.game_time;
+        // PotentSulfurBlock.triggerEvent.
+        if self.potent_sulfur_eruption_event((pos[0], pos[1], pos[2])) {
+            return;
+        }
+        match self.side.be_anims.ticker(state) {
+            Some(Ticker::Shulker { .. }) => {
+                let shulker = self.side.be_anims.shulkers.entry(pos).or_default();
+                if shulker.trigger_event(a, b) {
+                    // Publish shulker lid status change to the collision snapshot immediately.
+                    self.world.shulkers.insert(pos, shulker.clone());
+                }
+            }
+            Some(Ticker::Bell) => {
+                let gathered = self.server_bell_gather(pos);
+                let rung = self
+                    .side
+                    .be_anims
+                    .bells
+                    .entry(pos)
+                    .or_default()
+                    .trigger_event(a, b, time, || gathered);
+                if rung {
+                    self.server_bell_heard(pos, time);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Copies the shulker box lids into the world, where the collision queries
+    /// read them (`SceneCollisions::shulker_collision_state`), as
+    /// `sync_moving_pistons` does for pistons.
+    pub(in crate::game) fn sync_shulkers(&mut self) {
+        self.world.shulkers.clear();
+        self.world.shulkers.extend(
+            self.side
+                .be_anims
+                .shulkers
+                .iter()
+                .map(|(p, s)| (*p, s.clone())),
+        );
     }
 }
 
@@ -730,21 +771,15 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
-        let mut game = crate::game::ServerGame::new(
-            &res,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            None,
-        )
-        .unwrap();
+        let mut game =
+            crate::game::ServerGame::new(&res, loaded.pack, options, settings.sim_settings(), None)
+                .unwrap();
         game.options.dedicated = Some(Vec::new());
         game.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
         );
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         game.build_registries();
         fn command(game: &mut crate::game::ServerGame<'_>, line: &str) -> bool {
             game.as_console(|game| game.run_command(line))
@@ -795,37 +830,15 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod bell_ownership_tests {
-    use sunrise_client::block_entity_anim::{Bell, BlockEntityAnims};
-
-    #[test]
-    fn server_bells_survive_visibility_changes_but_remote_bells_do_not() {
-        let pos = [8, 200, 8];
-        let mut anims = BlockEntityAnims::default();
-        let mut bell = Bell::default();
-        bell.trigger_event(1, 2, 100, || vec![7]);
-        anims.bells.insert(pos, bell);
-        anims.pots.insert(pos, Default::default());
-        anims.retain_present_preserving_bells(&[]);
-        assert_eq!(anims.bells[&pos].nearby.as_deref(), Some([7].as_slice()));
-        assert!(anims.bells[&pos].shaking);
-        assert!(anims.pots.is_empty());
-        anims.retain_present(&[]);
-        assert!(anims.bells.is_empty());
-    }
-}
-
-#[cfg(test)]
 pub(in crate::game) mod conduit_target_tests {
     //! `ConduitBlockEntity.selectNewTarget` picks `Enemy`s only, and its
     //! `Target` reaches every window through `sendBlockUpdated`; the window
     //! then spits a nautilus particle at the mob.
-    use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+    use crate::game::{Options, Progress, Settings, execution_role, load_resources};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
 
-    const CONDUIT: [i32; 3] = [8, 100, 8];
+    pub(in crate::game) const CONDUIT: [i32; 3] = [8, 100, 8];
 
     fn game_with(
         resources: &mut Option<Arc<crate::game::Resources>>,
@@ -853,63 +866,11 @@ pub(in crate::game) mod conduit_target_tests {
         options.resources = root.clone();
         options.execution_role = role;
         let res = resources.insert(loaded.resources);
-        let mut game = crate::game::ServerGame::new(
-            res,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            None,
-        )
-        .unwrap();
+        let mut game =
+            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+                .unwrap();
         game.build_registries();
         game.set_allow_commands(true);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game
-    }
-
-    fn game_with_client(
-        resources: &mut Option<Arc<crate::game::Resources>>,
-        role: execution_role::ExecutionRole,
-    ) -> crate::game::ClientGame<'_> {
-        let root = std::path::PathBuf::from(
-            std::env::var_os("SUNRISE_TEST_RESOURCES")
-                .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
-        );
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            role,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = role;
-        let res = resources.insert(loaded.resources);
-        let mut game = crate::game::ClientGame::new(
-            res,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        game.build_registries();
-
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -928,44 +889,29 @@ pub(in crate::game) mod conduit_target_tests {
     }
 
     /// A level of a server.
-    fn game(resources: &mut Option<Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
+    pub(in crate::game) fn game(
+        resources: &mut Option<Arc<crate::game::Resources>>,
+    ) -> crate::game::ServerGame<'_> {
         let mut game = game_with(resources, execution_role::ExecutionRole::IntegratedServer);
         setup(&mut game);
         game
     }
 
-    /// A window of one: a client game with no conduit state of its own, and a
-    /// conduit block whose block entity arrives from the server.
-    fn client(resources: &mut Option<Arc<crate::game::Resources>>) -> crate::game::ClientGame<'_> {
-        let mut game = game_with_client(resources, execution_role::ExecutionRole::Client);
-        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-        game.connect_local(pipe, "Window").unwrap();
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        let state = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:conduit")
-            .expect("the conduit's block state");
-        game.world
-            .set(CONDUIT[0], CONDUIT[1], CONDUIT[2], state)
-            .unwrap();
-        // The block entity a chunk's block entities build (`from_name`).
-        game.world.block_entities.insert(
-            (CONDUIT[0], CONDUIT[1], CONDUIT[2]),
-            BlockEntity::Conduit(None),
-        );
-        game
-    }
-
     /// A mob of `kind` beside the conduit, in the water.
-    fn summon(game: &mut crate::game::ServerGame<'_>, kind: &str) -> u32 {
+    pub(in crate::game) fn summon(game: &mut crate::game::ServerGame<'_>, kind: &str) -> u32 {
         assert!(game.run_command(&format!("summon minecraft:{kind} 4.5 100 8.5")));
         let id = game.mobs.last().unwrap().id;
         game.mobs.last_mut().unwrap().fluids.in_water = true;
         id
+    }
+
+    #[cfg(feature = "client")]
+    pub(in crate::game) fn attack_conduit_for_test(
+        game: &mut crate::game::ServerGame<'_>,
+        pos: [i32; 3],
+        hunting: bool,
+    ) {
+        game.conduit_attack(&mut super::ConduitServer::default(), pos, hunting);
     }
 
     /// `selectNewTarget`'s `instanceof Enemy`: the monster-category animals
@@ -986,89 +932,6 @@ pub(in crate::game) mod conduit_target_tests {
         );
         let zombie = summon(&mut game, "zombie");
         assert_eq!(game.conduit_new_target(CONDUIT), Some(zombie));
-    }
-
-    /// `updateAndAttackTarget` puts the target in the block entity's `Target`
-    /// and sends it (`sendBlockUpdated`); the window loads that tag, finds the
-    /// mob and `animationTick` draws one nautilus particle at its eye. A tag
-    /// without a `Target` takes the mob away again.
-    #[test]
-    #[ignore = "daily"]
-    fn a_conduits_target_reaches_the_client_as_a_particle() {
-        let mut server_resources = None;
-        let mut server = game(&mut server_resources);
-        let drowned = summon(&mut server, "drowned");
-        server.world.block_log = Some(Vec::new());
-        server.conduit_attack(&mut ConduitServer::default(), CONDUIT, true);
-        let uuid = server.persist.uuids[&drowned];
-        let key = (CONDUIT[0], CONDUIT[1], CONDUIT[2]);
-        // What `sendBlockUpdated` puts on the wire.
-        let tag = crate::lan::chunks::entity_tag(
-            &server.world.block_entities[&key],
-            false,
-            &Default::default(),
-        )
-        .expect("a conduit has an update tag");
-        assert_eq!(tag.get("Target"), Some(&Tag::IntArray(uuid.to_vec())));
-        assert!(
-            server.world.block_log.as_ref().unwrap().contains(&key),
-            "the new target is sent"
-        );
-        // The window: no `conduit_servers` of its own, the same mob, and the
-        // server's tag through `handleBlockEntityData`.
-        let mut client_resources = None;
-        let mut client = client(&mut client_resources);
-        let watched = 77_u32;
-        client.spawn_entity(
-            watched as i32,
-            "minecraft:drowned",
-            [4.5, 100.0, 8.5],
-            [0.0; 3],
-        );
-        client.persist.uuids.insert(watched, uuid);
-        let kind = client
-            .remote
-            .as_ref()
-            .and_then(|r| r.builtin.get("minecraft:block_entity_type"))
-            .and_then(|ids| ids.id("minecraft:conduit"))
-            .expect("the conduit's block entity type");
-        client.remote_block_entity_data(
-            CONDUIT,
-            kind,
-            mod_api::BlockEntityDataSource::UpdatePacket,
-            &tag,
-        );
-        let target = client
-            .test_conduit_target(CONDUIT)
-            .expect("the window sees the hunted mob");
-        let (position, eye_y) = {
-            let m = client.mobs.iter().find(|m| m.id == watched).unwrap();
-            (m.position, m.eye_y())
-        };
-        assert_eq!(target.eye_y, eye_y);
-        let mut anims = sunrise_client::block_entity_anim::Conduit::default();
-        let particles = anims.client_tick(
-            CONDUIT,
-            1,
-            |_| true,
-            |_| false,
-            Some(target),
-            &mut client.world.random,
-        );
-        // One particle, at the eye: a frame's own particles need a frame block.
-        assert_eq!(particles.len(), 1);
-        assert_eq!(particles[0].0, [position.x, eye_y, position.z]);
-        // The conduit stopped hunting: its empty tag drops the target.
-        client.remote_block_entity_data(
-            CONDUIT,
-            kind,
-            mod_api::BlockEntityDataSource::UpdatePacket,
-            &Tag::Compound(Default::default()),
-        );
-        assert!(
-            client.test_conduit_target(CONDUIT).is_none(),
-            "the target is dropped"
-        );
     }
 }
 

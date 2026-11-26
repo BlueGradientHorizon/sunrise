@@ -10,8 +10,9 @@ use std::{
     sync::{Arc, atomic::Ordering, mpsc::channel},
     time::{Duration, Instant},
 };
-use sunrise_client::{Result, lan::OwnerProfile, title::WorldOptions};
+use sunrise_client::{Result, lan::OwnerProfile};
 use sunrise_protocol::crypto::offline_uuid;
+use sunrise_sim::world_options::WorldOptions;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Only the owner window changes its integrated server's command tree.
@@ -19,7 +20,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(server) = &self.integrated else {
             return;
         };
-        let enabled = self.options.pregen || self.settings.extras.pregen;
+        let enabled = self.options.pregen || self.side.settings.extras.pregen;
         // Check on the server after earlier updates so a later toggle wins without blocking.
         server.queue_pregen_option(enabled);
     }
@@ -49,7 +50,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Result<()> {
         self.client_logging_out();
         sunrise_client::command::vanilla::set_sunrise_commands(
-            self.options.pregen || self.settings.extras.pregen,
+            self.options.pregen || self.side.settings.extras.pregen,
         );
         let auth = sunrise_client::auth::current();
         let player = auth
@@ -69,6 +70,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_ref()
             .map_or_else(|| offline_uuid(&player), |a| a.uuid);
         let launch = Launch {
+            online_auth: auth.is_some(),
             rule_registry: rule_registry.clone(),
             folder: folder.to_owned(),
             name: name.map(str::to_owned),
@@ -106,8 +108,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         options.server = None;
         options.world = None;
         self.join_world_rest()?;
-        let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
-        sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
+        let (res, pack, settings) = (
+            self.res.clone(),
+            self.pack.clone(),
+            self.side.settings.sim_settings(),
+        );
+        sunrise_client::parallel::set_setting(settings.parallel_tick);
         let flags = Arc::new(Flags {
             reports: self.side.client_reports.0.clone(),
             ..Flags::default()
@@ -199,7 +205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // FileFixerProgressScreen's Cancel: the upgrade stopped, back to the title.
             Ok(Err(_)) if starting.handle.upgrade().is_canceled() => {
                 self.integrated_starting = None;
-                self.perf.cancel_world_opening();
+                self.side.perf.cancel_world_opening();
                 return Ok(());
             }
             Ok(Err(e)) => {

@@ -26,7 +26,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let partial = self.clock.fraction() as f32;
                 let inputs = HotbarInputs {
                     selected: self.selected as i32,
-                    right_handed: !self.settings.main_hand_left,
+                    right_handed: !self.side.settings.main_hand_left,
                     offhand: self.offhand.is_some(),
                     slots: std::array::from_fn(|i| {
                         self.inventory[i]

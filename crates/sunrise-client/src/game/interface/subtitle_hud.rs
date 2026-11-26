@@ -42,16 +42,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn draw_subtitles(&self, batch: &mut HudBatch) {
         let v = &self.side.view;
         let frame = SubtitleFrame {
-            show: self.settings.show_subtitles,
+            show: self.side.settings.show_subtitles,
             position: v.position,
             forward: v.forwards.map(f64::from),
             up: v.up.map(f64::from),
-            multiplier: self.settings.notification_display_time,
-            background: self.settings.text_background(0.8),
+            multiplier: self.side.settings.notification_display_time,
+            background: self.side.settings.text_background(0.8),
             width: batch.width as i32,
             height: batch.height as i32,
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let draws = self
             .side
             .subtitles

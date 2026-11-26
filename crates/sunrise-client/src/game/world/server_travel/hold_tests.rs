@@ -15,7 +15,8 @@ const FAR: f64 = 96_000.5;
 fn light(game: &mut crate::game::ServerGame<'_>, around: i32) {
     for x in around - 2..=around + 2 {
         for z in around - 2..=around + 2 {
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }
     }
@@ -235,7 +236,8 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
     // The client can already stand and move here, but the arrival's full 5x5 is not lit.
     for x in chunk - 1..=chunk + 1 {
         for z in chunk - 1..=chunk + 1 {
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }
     }
@@ -368,7 +370,8 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             // The client can render its immediate surroundings before all 5x5 arrival chunks are lit.
             for x in chunk - 1..=chunk + 1 {
                 for z in chunk - 1..=chunk + 1 {
-                    game.streaming
+                    game.side
+                        .streaming
                         .insert_remote(&mut game.world, Chunk::empty(x, z));
                 }
             }
@@ -501,7 +504,8 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
         // the original suggestion. The pending search must complete and release movement.
         for x in -3..=5 {
             for z in -3..=5 {
-                game.streaming
+                game.side
+                    .streaming
                     .insert_remote(&mut game.world, Chunk::empty(x, z));
             }
         }

@@ -35,15 +35,9 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
-        res,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        None,
-    )
-    .unwrap();
+    let mut game =
+        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+            .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     game.world
@@ -95,7 +89,7 @@ fn a_spawn_eggs_yaw_is_the_wrapped_level_draw() {
             )
             .expect("pig");
         let yaw = yaw_of(&game, id);
-        assert_eq!(yaw, sunrise_client::camera::wrap_degrees(draw));
+        assert_eq!(yaw, sunrise_level::camera_math::wrap_degrees(draw));
         assert!((-180.0..180.0).contains(&yaw), "{yaw}");
         if draw >= 180.0 {
             checked = true;
@@ -115,6 +109,6 @@ fn a_dispensed_mob_takes_the_wrapped_draw_too() {
     let id = game.spawn_mob_at("pig", (4, 100, 8), false).expect("pig");
     assert_eq!(
         yaw_of(&game, id),
-        sunrise_client::camera::wrap_degrees(draw)
+        sunrise_level::camera_math::wrap_degrees(draw)
     );
 }

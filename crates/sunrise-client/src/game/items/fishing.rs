@@ -5,16 +5,17 @@ use super::{Game, creatures::ProjectileHitter, lan_mobs::guest_bounds};
 use std::sync::Arc;
 use sunrise_client::advancements::EntityView;
 use sunrise_client::lan::entity::States;
-use sunrise_client::{
-    blocks::Fluid, collisions::SceneCollisions, items::ItemStack, particles::ParticleType,
-    random_source,
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_protocol::entity_data::{Value, serializer};
+use {
+    sunrise_client::blocks::Fluid, sunrise_client::collisions::SceneCollisions,
+    sunrise_client::items::ItemStack, sunrise_client::random_source,
+    sunrise_level::particle_options::ParticleType,
+};
 
 #[path = "fishing/impact.rs"]
 pub(in crate::game) mod impact;

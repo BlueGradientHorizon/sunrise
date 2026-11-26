@@ -179,7 +179,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && self.side.right_click_emulation.is_right_click(
                 *state == ElementState::Pressed,
                 self.side.modifiers.control_key(),
-                cfg!(target_os = "macos") && self.settings.ctrl_click_emulates_right_click,
+                cfg!(target_os = "macos") && self.side.settings.ctrl_click_emulates_right_click,
             )
         {
             *button = MouseButton::Right;
@@ -423,7 +423,7 @@ impl ApplicationHandler for Game<'_, crate::game::client_side::ClientState> {
         }
         debug_keys::warm_debug_cpu();
         // The Window constructor: created fullscreen when options.txt or --fullscreen says so.
-        let fullscreen = self.settings.fullscreen || self.options.fullscreen;
+        let fullscreen = self.side.settings.fullscreen || self.options.fullscreen;
         let size = self.options.window_size.map(f64::from);
         self.side.fullscreen = sunrise_client::window::FullscreenState::new(fullscreen);
         let attributes = sunrise_client::window::with_icon(
@@ -463,7 +463,12 @@ impl ApplicationHandler for Game<'_, crate::game::client_side::ClientState> {
         drop(window_step);
         let pending = self.side.pending_initial_models.0.take();
         let renderer = match &pending {
-            Some(start) => self.renderer_for(window.clone(), &start.models.pack, &start.models.gui),
+            Some(start) => self.renderer_for(
+                window.clone(),
+                &start.models.pack,
+                &start.models.client_pack,
+                &start.models.gui,
+            ),
             None => self.new_renderer(window.clone()),
         };
         self.side.resize_state = Some(self.resize_state_of(window.inner_size()));
@@ -471,11 +476,11 @@ impl ApplicationHandler for Game<'_, crate::game::client_side::ClientState> {
         if let Some(pending) = pending {
             match self.apply_pending_client_start(*pending, renderer.map(Some)) {
                 Ok(true) => {
-                    self.settings.file.set(
+                    self.side.settings.file.set(
                         "startedCleanly",
                         sunrise_client::options_file::V::Bool(true),
                     );
-                    self.settings.save(&crate::game::options_path());
+                    self.side.settings.save(&crate::game::options_path());
                 }
                 Ok(false) => {
                     event_loop.exit();

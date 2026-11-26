@@ -1,54 +1,5 @@
 use super::*;
 
-/// Helpers for native mods, kept as stable as the hook points.
-// Native mods use these; nothing in Sunrise does.
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    /// A snapshot of the current graphics preferences.
-    pub(in crate::game) fn graphics_options(&self) -> ClientGraphicsOptions {
-        let s = &self.settings;
-        ClientGraphicsOptions {
-            fov: s.fov,
-            render_distance: s.render_distance,
-            simulation_distance: s.simulation_distance,
-            brightness: s.gamma as f32,
-            max_fps: s.max_fps,
-            vsync: s.vsync,
-            fullscreen: s.fullscreen,
-            view_bobbing: s.view_bobbing,
-            smooth_lighting: s.smooth_lighting,
-            particles: s.particles,
-            entity_distance: s.entity_distance as f32,
-            biome_blend: s.biome_blend,
-        }
-    }
-    /// A snapshot of the current GUI and accessibility preferences.
-    pub(in crate::game) fn gui_options(&self) -> ClientGuiOptions {
-        gui_options_snapshot(&self.settings)
-    }
-    /// A snapshot of the current chat preferences.
-    pub(in crate::game) fn chat_options(&self) -> ClientChatOptions {
-        let s = &self.settings;
-        ClientChatOptions {
-            visibility: s.chat_visibility,
-            colors: s.chat_colors,
-            links: s.chat_links,
-            opacity: s.chat_opacity as f32,
-            scale: s.chat_scale as f32,
-            width: s.chat_width as f32,
-            height_focused: s.chat_height_focused as f32,
-            height_unfocused: s.chat_height_unfocused as f32,
-            line_spacing: s.chat_line_spacing as f32,
-            delay: s.chat_delay,
-        }
-    }
-    /// A snapshot of the current audio preferences.
-    pub(in crate::game) fn audio_options(&self) -> ClientAudioOptions {
-        ClientAudioOptions {
-            master_volume: self.settings.master_volume as f32,
-        }
-    }
-}
-
 /// Convert live client settings into the API-owned GUI snapshot.
 pub(in crate::game) fn gui_options_snapshot(
     s: &sunrise_client::settings::Settings,

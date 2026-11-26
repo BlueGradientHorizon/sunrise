@@ -2,13 +2,11 @@
 //! `ITEM_USED` an `useOn` counts. Prepared resources only.
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    items::ItemStack,
-    mobs::Who,
-    particles::{FireworkExplosion, FireworkShape},
-};
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::LegacyRandom};
+use {
+    sunrise_client::chunk::Chunk, sunrise_client::items::ItemStack, sunrise_client::mobs::Who,
+    sunrise_items::firework::FireworkExplosion, sunrise_items::firework::FireworkShape,
+};
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -32,9 +30,8 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

@@ -1566,15 +1566,8 @@ pub(in crate::game) mod tests {
         // Keep nested fixture helpers from copying the large Game value
         // through several test-thread stack frames.
         let mut game = Box::new(
-            crate::game::ServerGame::new(
-                res,
-                loaded.pack,
-                loaded.gui.unwrap(),
-                options,
-                settings,
-                None,
-            )
-            .unwrap(),
+            crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+                .unwrap(),
         );
         game.options.dedicated = Some(Vec::new());
         // Entity ticking waits for every chunk within 2 columns
@@ -1587,7 +1580,7 @@ pub(in crate::game) mod tests {
                 );
             }
         }
-        game.streaming.forced.insert((0, 0));
+        game.side.streaming.forced.insert((0, 0));
         Some(game)
     }
 
@@ -1868,7 +1861,7 @@ pub(in crate::game) mod tests {
         game.block_ticks
             .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
             .unwrap();
-        assert!(game.streaming.forced.contains(&(0, 0)));
+        assert!(game.side.streaming.forced.contains(&(0, 0)));
         // The existing unit helper supplies a resident column. The paired
         // runtime harness separately admits actual ticket/streaming readiness.
         assert!(game.world.chunks.contains_key(&(0, 0)));

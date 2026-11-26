@@ -207,12 +207,12 @@ pub(in crate::game) mod tests {
                 for p in four {
                     game.world.set(p[0], p[1], p[2], stone).unwrap();
                 }
-                game.settings.improved_transparency = false;
+                game.side.settings.improved_transparency = false;
                 let camera = glam::DVec3::new(4.5, 65.0, 4.5);
                 game.destroy_block_progress(10, pos, 2);
                 let rendered = game.cracks(camera);
                 assert_eq!(rendered.len(), 4);
-                let sprite = &game.gui.atlas.sprites["block/destroy_stage_2"];
+                let sprite = &game.side.gui.atlas.sprites["block/destroy_stage_2"];
                 assert!(rendered.iter().all(|(_, uv)| *uv == [sprite.u0, sprite.v0]));
                 let mut expected = four.map(|p| (p, 2)).to_vec();
                 expected.sort_unstable();
@@ -232,7 +232,7 @@ pub(in crate::game) mod tests {
                 assert!(game.crack_stages().iter().all(|(_, stage)| *stage == 7));
                 let rendered = game.cracks(camera);
                 assert_eq!(rendered.len(), 4);
-                let sprite = &game.gui.atlas.sprites["block/destroy_stage_7"];
+                let sprite = &game.side.gui.atlas.sprites["block/destroy_stage_7"];
                 assert!(rendered.iter().all(|(_, uv)| *uv == [sprite.u0, sprite.v0]));
                 assert_eq!(*calls.lock().unwrap(), [2, 7]);
                 for clear in [-1, 10] {

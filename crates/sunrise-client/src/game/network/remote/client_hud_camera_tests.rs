@@ -92,6 +92,7 @@ pub(in crate::game) fn drawn_groups(game: &mut crate::game::ClientGame<'_>) -> G
         .flat_map(|(_, names)| names.iter())
         .map(|name| {
             let r = *game
+                .side
                 .gui
                 .atlas
                 .gui_rect(name)

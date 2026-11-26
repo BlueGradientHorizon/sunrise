@@ -43,7 +43,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// nothing per input event.
     fn tracing_input(&self) -> bool {
         self.control.is_some()
-            || self.settings.extras.repro_keys
+            || self.side.settings.extras.repro_keys
             || self.side.repro.0.recording_active()
     }
 

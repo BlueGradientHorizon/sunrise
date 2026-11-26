@@ -15,9 +15,9 @@ use sunrise_client::{
     save::item_from_nbt,
     scoreboard::{comp_text, json_to_tag, tag_to_json},
     text::Text,
-    text_display::{display_data, text_display_data},
 };
 use sunrise_protocol::entity_data::Value;
+use sunrise_sim::text_display_data::{display_data, text_display_data};
 use {
     sunrise_core::nbt::{Compound, Tag},
     sunrise_world::registry::BlockStateId,

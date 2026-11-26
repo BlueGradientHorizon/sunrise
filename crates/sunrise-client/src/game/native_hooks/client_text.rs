@@ -3,26 +3,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn text_string(&self, text: &mod_api::Text) -> String {
         sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
     }
-
-    pub(in crate::game) fn text_width(&self, text: &mod_api::Text) -> i32 {
-        let engine = sunrise_client_lib::api_text::to_engine_inprocess(text);
-        self.gui.atlas.font.width_text(&engine) as i32
-    }
-
-    pub(in crate::game) fn text_split(
-        &self,
-        text: &mod_api::Text,
-        width: i32,
-    ) -> Vec<mod_api::Text> {
-        let local = sunrise_client_lib::api_text::to_local_engine(text);
-        self.gui
-            .atlas
-            .font
-            .split_formatted(&local.engine().resolved(), width as f32)
-            .iter()
-            .map(|line| local.text_to_api(line))
-            .collect()
-    }
 }
 
 #[cfg(test)]
@@ -148,7 +128,7 @@ mod tests {
                     ),
                 )]),
             );
-            game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+            game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
             let host: &dyn mod_api::ClientHost = game;
             assert_eq!(host.text_width(&mod_api::Text::literal("AA")), 8);
             assert_eq!(host.text_split(&mod_api::Text::literal("AA"), 8).len(), 1);

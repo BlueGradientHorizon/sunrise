@@ -299,24 +299,31 @@ pub(in crate::game) struct Loaded {
     /// The one parsed `entity-models.json`, for the handoff `Game::new` does
     /// itself on the synchronous launch.
     pub(in crate::game) entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
+    #[cfg(feature = "client")]
     pub(in crate::game) renderer_cpu: Option<sunrise_client::gfx::PreparedTextures>,
     pub(in crate::game) root: PathBuf,
     pub(in crate::game) pack_error: Option<String>,
     pub(in crate::game) resources: Arc<Resources>,
+    #[cfg(feature = "client")]
+    pub(in crate::game) client_res: Option<Arc<std::sync::OnceLock<ClientResources>>>,
     pub(in crate::game) rest_loader: Option<WorldRestLoader>,
     /// The client reload listeners' prepared applies, staged by the loader
     /// thread; `start_game` runs them once the game exists.
     #[cfg(feature = "client")]
     pub(in crate::game) client_applies: Vec<client_reload::PreparedClientReload>,
     pub(in crate::game) pack: PackResources,
+    #[cfg(feature = "client")]
+    pub(in crate::game) client_pack: Option<ClientPackResources>,
     /// The menu bundle, for the synchronous launch; the loading screen receives
     /// it earlier through its own channel.
+    #[cfg(feature = "client")]
     pub(in crate::game) gui: Option<UiResources>,
 }
 
 /// What the background loader publishes: the menu bundle as soon as it is
 /// ready, then the core bundle with a handle to the rest worker.
 pub(in crate::game) enum LoaderMsg {
+    #[cfg(feature = "client")]
     Ui(UiResources, PathBuf),
     /// Clear the failed revision on the thread that owns settings, then acknowledge.
     ClearPackSelection {
@@ -358,7 +365,7 @@ pub(in crate::game) enum PendingWorldEntry {
         name: Option<String>,
         seed: Option<i64>,
         creative: bool,
-        create: Option<Box<sunrise_client::title::WorldOptions>>,
+        create: Option<Box<sunrise_sim::world_options::WorldOptions>>,
     },
     Server {
         address: String,
@@ -403,8 +410,8 @@ pub(in crate::game) fn write_report(
             "frames": game.side.frames,
             "elapsed_seconds": game.side.started.elapsed().as_secs_f64(),
             "chunks": game.world.chunks.len(),
-            "generated": game.streaming.generated_total,
-            "meshed_sections": game.streaming.meshed_total,
+            "generated": game.side.streaming.generated_total,
+            "meshed_sections": game.side.streaming.meshed_total,
             "player": game.player.as_ref().map(|p| [p.position.x, p.position.y, p.position.z]),
             "error": game.error.as_ref().map(|e| e.to_string()),
         });
@@ -463,7 +470,7 @@ pub(in crate::game) fn run_loading(
     let result = EventLoop::new()?.run_app(&mut app);
     narrator::stop();
     match &mut app {
-        App::Ready(game) => leave_fullscreen_after(&result, &mut game.settings),
+        App::Ready(game) => leave_fullscreen_after(&result, &mut game.side.settings),
         App::Loading(loading) => leave_fullscreen_after(&result, &mut loading.settings),
     }
     result?;

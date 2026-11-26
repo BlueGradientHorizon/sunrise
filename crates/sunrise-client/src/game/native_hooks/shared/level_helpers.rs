@@ -275,13 +275,13 @@ pub(in crate::game) fn block_entity_for_block(
         && let Some(form) = facts.get(state).sign_form()
     {
         let text = facts.sign_text(name).map_or_else(Default::default, |d| {
-            sunrise_client::signs::SignText {
+            sunrise_level::signs_data::SignText {
                 color: d.color,
                 glowing: d.glowing,
                 ..Default::default()
             }
         });
-        return Some(BlockEntity::Sign(sunrise_client::signs::SignData {
+        return Some(BlockEntity::Sign(sunrise_level::signs_data::SignData {
             hanging: form.hanging,
             front: text.clone(),
             back: text,

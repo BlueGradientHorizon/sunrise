@@ -250,7 +250,8 @@ mod tests {
 
         with_game(|game| {
             open_to_lan(game);
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let stone = game
                 .pack
@@ -340,7 +341,8 @@ mod tests {
                     std::sync::Arc::make_mut(&mut items.enchantments)
                         .bind_damage_catalog(&game.health_resources.damage);
                     game.server_items = Some(std::sync::Arc::new(items));
-                    game.streaming
+                    game.side
+                        .streaming
                         .insert_remote(&mut game.world, Chunk::empty(0, 0));
                     let magma = game
                         .pack

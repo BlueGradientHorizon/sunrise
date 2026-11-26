@@ -33,7 +33,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .instance_slot(fields.slot)
             .and_then(|_| self.model_faces(fields.slot))
             .ok_or(TerrainModelError::Model(ModelError::UnknownModel))?;
-        let layers = &self.pack.render.sprite_layers;
+        let layers = &self.side.client_pack.render.sprite_layers;
         draw_terrain_model(
             draw,
             faces,

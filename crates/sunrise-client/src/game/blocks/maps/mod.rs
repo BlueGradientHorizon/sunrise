@@ -1087,7 +1087,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let dim = self.dimension_id();
-        let zoom = self.streaming.biome_zoom;
+        let zoom = self.side.streaming.biome_zoom;
         let watery_biomes: std::collections::HashSet<String> = self
             .tag_entries("worldgen/biome", "minecraft:water_on_map_outlines")
             .into_iter()
@@ -1867,9 +1867,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

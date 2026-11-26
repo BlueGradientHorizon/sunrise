@@ -33,7 +33,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             poem,
             &self.pack.source,
             &self.options.player_name(),
-            &self.gui.atlas.font,
+            &self.side.gui.atlas.font,
         );
         self.side.win = Some(Win {
             screen,
@@ -67,7 +67,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             now.duration_since(win.frame).as_secs_f32() / self.clock.tick_duration().as_secs_f32();
         win.frame = now;
         let sprite = |n: &str| {
-            self.gui
+            self.side
+                .gui
                 .atlas
                 .sprites
                 .get(n)
@@ -80,14 +81,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ],
             game_time: (self.world.game_time % 24000) as f32 / 24000.0,
         };
-        win.screen.draw_background(batch, &self.gui.atlas, fill);
+        win.screen
+            .draw_background(batch, &self.side.gui.atlas, fill);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        self.side
-            .win
-            .as_mut()
-            .unwrap()
-            .screen
-            .draw_contents(batch, &self.gui.atlas, delta_ticks);
+        self.side.win.as_mut().unwrap().screen.draw_contents(
+            batch,
+            &self.side.gui.atlas,
+            delta_ticks,
+        );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
     }
     /// `WinScreen.keyPressed` / `keyReleased`; Escape closes it (`onClose`).

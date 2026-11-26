@@ -36,7 +36,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         camera: glam::DVec3,
     ) -> Vec<([i32; 3], [f32; 2])> {
-        let names = crack_stage_names(self.settings.improved_transparency);
+        let names = crack_stage_names(self.side.settings.improved_transparency);
         self.crack_stages()
             .into_iter()
             .filter(|(pos, _)| {
@@ -51,7 +51,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             })
             .filter_map(|(pos, stage)| {
                 let name = names.get(stage as usize)?;
-                let r = self.gui.atlas.sprites.get(*name)?;
+                let r = self.side.gui.atlas.sprites.get(*name)?;
                 Some((pos, [r.u0, r.v0]))
             })
             .collect()
@@ -79,7 +79,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         ];
         let phase = phases[(self.view_day_time() / 24000).rem_euclid(8) as usize];
         let moon = format!("environment/celestial/moon/{phase}");
-        let (out, bodies) = celestial_bodies(&self.gui.atlas.sprites, sky, &moon, body_color);
+        let (out, bodies) = celestial_bodies(&self.side.gui.atlas.sprites, sky, &moon, body_color);
         // SkyRenderer.renderStars: the static star buffer on the same frame.
         let stars = (sky.star_brightness > 0.0)
             .then(|| (celestial_frame(sky.star_angle), sky.star_brightness));
@@ -133,11 +133,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(avatar) = self.side.player_model.as_ref() else {
             return;
         };
-        let Some(arm) = self.res.player_arm(avatar.slim, left).as_ref() else {
+        let Some(arm) = self.client_res().player_arm(avatar.slim, left).as_ref() else {
             return;
         };
         // Selection resolves a texture and model as a pair before submission.
-        let sprites = &self.gui.atlas.sprites;
+        let sprites = &self.side.gui.atlas.sprites;
         let Some(r) = avatar.skin.as_deref().and_then(|skin| sprites.get(skin)) else {
             return;
         };
@@ -245,9 +245,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             let scale = item.as_ref().map_or(1.0, |stack| {
                 self.pack
-                    .item_renderer
-                    .models
-                    .swap_animation_scale(&sunrise_client::item_render::stack_view(stack))
+                    .item_models
+                    .swap_animation_scale(&sunrise_sim::item_models::stack_view(stack))
             });
             let attack = attacks[i];
             let inverse_height =
@@ -292,7 +291,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 to_world * native_hooks::hand_pose_matrix(pose)
             };
             // The main hand on its arm, the off hand on the other one.
-            let left = self.settings.main_hand_left != (hand == Hand::Off);
+            let left = self.side.settings.main_hand_left != (hand == Hand::Off);
             // A Legacy sword held up hides the off hand's shield.
             if hand == Hand::Off && legacy_block {
                 continue;
@@ -479,7 +478,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if intensity <= 0.0 {
             return Vec::new();
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (Some(rain_tex), Some(snow_tex)) = (
             atlas.sprites.get("environment/rain").copied(),
             atlas.sprites.get("environment/snow").copied(),
@@ -492,10 +491,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             camera.z.floor() as i32,
         );
         // The 32x32 direction table supports at most a 15-block radius.
-        let radius = self.settings.weather_radius.clamp(0, 15);
+        let radius = self.side.settings.weather_radius.clamp(0, 15);
         let eye = camera.to_array();
         let sea_level = self.weather_sea_level();
-        let biome_zoom = self.streaming.biome_zoom;
+        let biome_zoom = self.side.streaming.biome_zoom;
         let biomes = world_biomes!(self);
         let mut rain = Vec::new();
         let mut snow_vertices = Vec::new();

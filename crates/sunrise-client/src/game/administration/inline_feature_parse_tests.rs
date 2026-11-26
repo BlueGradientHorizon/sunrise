@@ -29,15 +29,9 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::Serve
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
-        res,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        None,
-    )
-    .unwrap();
+    let mut game =
+        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+            .unwrap();
     // As a world opens: the live features are installed while it is
     // prepared, then its registries are built (`load_world_state`).
     growth::install_live_features(&game.res, &game.pack, &game.options, &Default::default());

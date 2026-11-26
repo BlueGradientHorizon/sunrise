@@ -1351,8 +1351,8 @@ mod tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.settings.simulation_distance = 4;
-            game.settings.render_distance = 12;
+            game.side.settings.simulation_distance = 4;
+            game.side.settings.render_distance = 12;
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let portal = registry.default_state("minecraft:nether_portal").unwrap();
@@ -2011,7 +2011,7 @@ mod tests {
                         values: vec![(15, serializer::HUMANOID_ARM, Value::Id(i32::from(!left)))],
                     }))
                     .unwrap();
-                    game.settings.main_hand_left = left;
+                    game.side.settings.main_hand_left = left;
                     let arm = if left {
                         MainHand::Left
                     } else {

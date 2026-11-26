@@ -8,12 +8,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         request: super::world_loading::WorldRequest,
     ) -> crate::Result<PreparedWorld> {
         self.join_world_rest()?;
-        self.perf.world_opening();
+        sunrise_level::spans::startup::arm("world.opening");
         let prepared = request.prepare(
             &self.res,
             &self.pack,
             &self.options,
-            &self.settings,
+            &self.side.settings,
             &sunrise_world::datafix::progress::UpgradeProgress::new(),
         )?;
         self.load_opening_game_rules(&prepared);

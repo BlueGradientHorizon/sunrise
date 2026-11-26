@@ -344,9 +344,8 @@ pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survive
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();
@@ -840,9 +839,8 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();
@@ -984,9 +982,8 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();
@@ -1115,9 +1112,8 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

@@ -3,6 +3,7 @@ use sunrise_client::{
     blocks::{MAP_COLORS, RenderShape},
     particles::{ParticleOptions, ParticleType},
 };
+use sunrise_client_render::streaming::WorkerContext;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn block_provider_options(
@@ -14,8 +15,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.pack.assets.registry.state(state)?;
         let facts = self.res.facts();
         let block = facts.get(state);
-        let sprite =
-            || Self::block_particle_sprite(&self.pack, state).unwrap_or_else(|| "missingno".into());
+        let sprite = || {
+            Self::block_particle_sprite(&self.side.client_pack, state)
+                .unwrap_or_else(|| "missingno".into())
+        };
         let options = match ty {
             ParticleType::Block | ParticleType::DustPillar | ParticleType::BlockCrumble => {
                 if facts.is_air(state)
@@ -77,7 +80,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         state: BlockStateId,
     ) -> Option<(String, u32)> {
-        let pack = &self.pack;
+        let pack = &self.side.client_pack;
         let models = pack
             .render
             .model_catalog
@@ -106,7 +109,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn mesh_biomes(&self) -> &Arc<Biomes> {
         self.world_biomes
             .as_ref()
-            .unwrap_or(&self.pack.context.biomes)
+            .unwrap_or(&self.side.client_pack.context.chunk.biomes)
     }
     /// The server's recipes a client was sent, over its own; None on a
     /// server and until a server sends any.
@@ -117,6 +120,66 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.synced_recipes().unwrap_or_else(|| self.res.recipes())
     }
     pub(in crate::game) fn worker_context(&self) -> Arc<WorkerContext> {
-        self.pack.context_with(self.mesh_biomes().clone())
+        self.side
+            .client_pack
+            .context_with(self.mesh_biomes().clone())
+    }
+
+    pub(in crate::game) fn block_particle_sprite(
+        client_pack: &ClientPackResources,
+        state: BlockStateId,
+    ) -> Option<String> {
+        let catalog = &client_pack.render.model_catalog;
+        let layer = catalog.particle(state).or_else(|| {
+            let models = catalog
+                .collect(state, sunrise_core::position::BlockPos::new(0, 0, 0))
+                .ok()?;
+            models
+                .iter()
+                .flat_map(|(_, m)| m.faces.iter())
+                .next()
+                .map(|f| f.layer)
+        })?;
+        client_pack.layer_names.get(&layer).cloned()
+    }
+
+    pub(in crate::game) fn particle_sprite(
+        &self,
+        state: BlockStateId,
+        pos: [i32; 3],
+    ) -> Option<(String, u32)> {
+        let sprite = Self::block_particle_sprite(&self.side.client_pack, state)?;
+        let tint = self.terrain_particle_tint(state, pos).unwrap_or(0xFFFFFF);
+        Some((sprite, tint))
+    }
+
+    pub(in crate::game) fn terrain_particle_tint(
+        &self,
+        state: BlockStateId,
+        pos: [i32; 3],
+    ) -> Option<u32> {
+        let chunks = &self.world.chunks;
+        let (cx, cz) = (pos[0] >> 4, pos[2] >> 4);
+        let region: [[Option<&sunrise_client::chunk::Chunk>; 3]; 3] = std::array::from_fn(|dz| {
+            std::array::from_fn(|dx| {
+                chunks
+                    .get(&(cx + dx as i32 - 1, cz + dz as i32 - 1))
+                    .map(|c| &**c)
+            })
+        });
+        self.side
+            .client_pack
+            .context
+            .mesh
+            .tables
+            .terrain_particle_tint(
+                state,
+                pos,
+                &region,
+                world_biomes!(self),
+                self.side.streaming.biome_zoom,
+                self.side.streaming.biome_blend,
+                self.side.streaming.nether_shading,
+            )
     }
 }

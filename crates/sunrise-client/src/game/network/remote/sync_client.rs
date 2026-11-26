@@ -361,7 +361,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_sound_entity_state(
         &mut self,
         id: i32,
-    ) -> Option<sunrise_client::sound_engine::SoundEntityState> {
+    ) -> Option<sunrise_client_core::sound_source::SoundEntityState> {
         let r = self.remote.as_ref()?;
         let player = self.player.as_ref().map(|p| {
             (
@@ -375,7 +375,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return entity_sound_state(id, player, None, &r.entities, None);
         }
         let mob = self.mob_index.get(&self.mobs, id as u32).map(|m| {
-            sunrise_client::sound_engine::SoundEntityState {
+            sunrise_client_core::sound_source::SoundEntityState {
                 position: [m.position.x, m.position.y, m.position.z],
                 silent: m.silent,
                 removed: m.removed,

@@ -91,7 +91,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             self.outline_boxes_iter(
                 &self.world,
                 self.world.block(at[0], at[1], at[2]),
-                &self.be_anims,
+                self.side.shulkers(),
                 at,
                 true,
             ),

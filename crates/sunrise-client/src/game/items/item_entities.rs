@@ -287,7 +287,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.res.facts(),
                     registry,
                     &native_components::item_damage_resolver(
-                        &self.pack.item_renderer.models,
+                        &self.pack.item_models,
                         &self.health_resources.damage,
                     ),
                     |world, damage| {

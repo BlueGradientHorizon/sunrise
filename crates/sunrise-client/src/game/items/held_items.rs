@@ -184,8 +184,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &self,
         stack: &ItemStack,
     ) -> Option<serde_json::Value> {
-        let view_stack = sunrise_client::item_render::stack_view(stack);
-        let view = self.pack.item_renderer.models.components_view(&view_stack);
+        let view_stack = sunrise_sim::item_models::stack_view(stack);
+        let view = self.pack.item_models.components_view(&view_stack);
         if let Some(val) = view.get("minecraft:attack_range") {
             return Some(val.clone());
         }
@@ -398,8 +398,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// Whether the stack has `DataComponents.DEATH_PROTECTION`, whatever item it is.
     pub(in crate::game) fn has_death_protection(&self, s: &ItemStack) -> bool {
-        super::totem::death_protection_of(&self.pack.item_renderer.models, &s.item, Some(s))
-            .is_some()
+        super::totem::death_protection_of(&self.pack.item_models, &s.item, Some(s)).is_some()
     }
 
     /// `Attributes.MINING_EFFICIENCY`, which `Player.getDestroySpeed` adds to tool speed > 1.
@@ -482,9 +481,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> String {
         if let Some(value) = stack.and_then(|s| {
             self.pack
-                .item_renderer
-                .models
-                .components_view(&sunrise_client::item_render::stack_view(s))
+                .item_models
+                .components_view(&sunrise_sim::item_models::stack_view(s))
                 .get("minecraft:damage_type")
                 .cloned()
         }) && let Some(id) = value.as_str()
@@ -593,9 +591,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> mod_api::ItemAttackRange {
         let range = stack.and_then(|stack| {
             self.pack
-                .item_renderer
-                .models
-                .components_view(&sunrise_client::item_render::stack_view(stack))
+                .item_models
+                .components_view(&sunrise_sim::item_models::stack_view(stack))
                 .get("minecraft:attack_range")
                 .cloned()
         });

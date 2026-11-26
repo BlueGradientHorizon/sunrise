@@ -1,15 +1,13 @@
 use super::{Game, chat_common::PLAYER_NAME};
-use sunrise_client::{
-    containers::{BlockEntity, Lectern},
-    first_person::Hand,
-    items::ItemStack,
-    menu::{Kind, Menu},
-    mobs::Who,
-};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::level::flags as level_flags;
+use {
+    sunrise_client::containers::BlockEntity, sunrise_client::containers::Lectern,
+    sunrise_client::items::ItemStack, sunrise_client::menu::Kind, sunrise_client::menu::Menu,
+    sunrise_client::mobs::Who, sunrise_sim::first_person_sim::Hand,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerGamePacketListenerImpl.handleEditBook`: a guest's book in a

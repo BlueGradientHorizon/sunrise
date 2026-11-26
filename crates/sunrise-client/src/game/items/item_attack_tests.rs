@@ -8,12 +8,11 @@ use mod_api::{
     OnLeftClickEntityEvent, Registrar, RegistrationContext, ServerHost,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    first_person::{Hand, SwingAnimation},
-    items::ItemStack,
-    motion::PlayerMotion,
-};
 use sunrise_core::geometry::Vec3;
+use {
+    sunrise_client::items::ItemStack, sunrise_client::motion::PlayerMotion,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation,
+};
 
 /// What the Parts heard, and what they answer.
 #[derive(Default)]

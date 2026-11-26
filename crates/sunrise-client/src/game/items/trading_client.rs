@@ -44,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let offers = m.session.offers.clone();
         let costs: Vec<ItemStack> = offers.iter().map(|o| o.cost_a(self.items())).collect();
         self.render_transparent_background("merchant", batch);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         if let Some(mut r) = atlas.sprites.get("gui/container/villager").copied() {
             let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
             r.u1 = r.u0 + 276.0 * du;
@@ -154,7 +154,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             } else {
                 "widget/button"
             };
-            batch.sprite_scaled(&self.gui.atlas, sprite, bx, by, 88.0, 20.0, u32::MAX);
+            batch.sprite_scaled(&self.side.gui.atlas, sprite, bx, by, 88.0, 20.0, u32::MAX);
             let y = oy + 16.0 + 1.0 + 20.0 * row as f32 + 2.0;
             let base = offer.base_cost_a.stack.clone();
             let cost_a = costs[index].clone();
@@ -172,7 +172,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     x,
                     y,
                 );
-                let atlas = &self.gui.atlas;
+                let atlas = &self.side.gui.atlas;
                 let t = base.count.to_string();
                 batch.text(
                     atlas,
@@ -207,7 +207,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "trade_arrow"
             };
             batch.sprite(
-                &self.gui.atlas,
+                &self.side.gui.atlas,
                 &format!("container/villager/{arrow}"),
                 ox + SHIFT + 60.0,
                 y + 3.0,
@@ -318,7 +318,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return false;
         };
-        let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
+        let (_, oy) =
+            self.inventory_origin(&HudBatch::new(size, self.side.settings.gui_scale_inputs()));
         let y = self.side.cursor.1 - oy;
         if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut())
             && m.dragging

@@ -29,7 +29,10 @@ pub(in crate::game) mod tests {
             assert!(!forward_mapping.is_down(game).unwrap());
             assert_eq!(forward_mapping.physical_down(game), Ok(true));
             // Rebound, it reads the new key, and the old one no longer counts.
-            game.settings.keys.set("key.forward", "key.keyboard.up");
+            game.side
+                .settings
+                .keys
+                .set("key.forward", "key.keyboard.up");
             assert_eq!(forward_mapping.physical_down(game), Ok(false));
             game.side.physical_keys.insert(KeyCode::ArrowUp);
             assert_eq!(forward_mapping.physical_down(game), Ok(true));
@@ -42,7 +45,10 @@ pub(in crate::game) mod tests {
             game.side.physical_buttons.clear();
             assert!(!game.is_key_down("key.mouse.left"));
             // A mapping bound to no key is never down.
-            game.settings.keys.set("key.attack", "key.keyboard.unknown");
+            game.side
+                .settings
+                .keys
+                .set("key.attack", "key.keyboard.unknown");
             game.side.physical_buttons.insert(MouseButton::Left);
             assert_eq!(attack_mapping.physical_down(game), Ok(false));
 
@@ -81,7 +87,7 @@ pub(in crate::game) mod tests {
 
             // A new client input store resolves the same fixed vanilla slot with a new identity.
             game.side.mod_keys = sunrise_client::keymapping::ModKeys::default();
-            game.settings.keys.set("key.attack", "key.keyboard.r");
+            game.side.settings.keys.set("key.attack", "key.keyboard.r");
             assert_eq!(old.binding(game), Err(MappingError::Stale));
             assert_eq!(old.is_down(game), Err(MappingError::Stale));
             assert_eq!(old.physical_down(game), Err(MappingError::Stale));

@@ -2,15 +2,16 @@
 //! from a block face, boosting a gliding player, the 1.15 horizontal
 //! acceleration and 0.04 lift, the flight-duration lifetime, explosion
 //! damage with line of sight, and the client explosion (`createFireworks`).
-use super::{Game, view_vector};
+use super::{Game, Side, view_vector};
 use std::sync::Arc;
-use sunrise_client::{
-    collisions::SceneCollisions, entity_nbt::RocketNbt, items::ItemStack, mobs::Who,
-    particles::FireworkExplosion,
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
+};
+use {
+    sunrise_client::collisions::SceneCollisions, sunrise_client::entity_nbt::RocketNbt,
+    sunrise_client::items::ItemStack, sunrise_client::mobs::Who,
+    sunrise_items::firework::FireworkExplosion,
 };
 
 pub(in crate::game) const FIREWORK_EXPLODE_EVENT: i8 = 17;
@@ -417,7 +418,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             |s: Option<&ItemStack>| s.is_some_and(|s| &*s.item == "minecraft:firework_rocket");
         let main = self.stack_in(self.selected);
         let offhand_only = is_rocket(self.offhand.as_ref()) && !is_rocket(main);
-        let right = offhand_only == self.settings.main_hand_left;
+        let right = offhand_only == self.side.main_hand_left();
         let arm = if right { 80 } else { -80 };
         let v = view_vector(self.yaw + arm as f32, 0.0);
         [v[0] * 0.5, v[1] * 0.5, v[2] * 0.5]
@@ -534,15 +535,9 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
-        let mut game = crate::game::ServerGame::new(
-            &res,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            None,
-        )
-        .unwrap();
+        let mut game =
+            crate::game::ServerGame::new(&res, loaded.pack, options, settings.sim_settings(), None)
+                .unwrap();
         game.player = Some(
             sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, -3.25))
                 .unwrap(),

@@ -178,9 +178,11 @@ struct Options { offscreen: bool }
 struct ServerPacks { prompt: Option<()> }
 #[derive(Default)]
 struct ScreenState { answered: Cell<bool> }
-#[derive(Default)]
-struct ServerState { lan_acting: Option<u32> }
 struct ClientState {
+    window: (Option<Box<Window>>,), title: (Option<()>,),
+    screen_state: (ScreenState,), renderer: (Option<Renderer>,),
+    server_packs: (ServerPacks,), command_prompt: (Option<()>,),
+    settings: Settings, lan_acting: Option<u32>,
     focused: bool, agent_pointer: bool, mouse: Mouse,
     captured: bool, capture_mode: Option<CursorGrabMode>, regrab_on_refocus: bool, screen: Screen,
     studio: Studio, cursor: (f32, f32),
@@ -191,7 +193,11 @@ struct ClientState {
 }
 impl Default for ClientState {
     fn default() -> Self {
-        Self { focused: true, agent_pointer: false, mouse: Mouse::default(),
+        Self { window: (Some(Box::default()),), title: (None,),
+            screen_state: (ScreenState::default(),), renderer: (None,),
+            server_packs: (ServerPacks::default(),), command_prompt: (None,),
+            settings: Settings, lan_acting: None,
+            focused: true, agent_pointer: false, mouse: Mouse::default(),
             captured: false, capture_mode: None, regrab_on_refocus: false,
             screen: Screen::Playing, studio: Studio::default(),
             cursor: (0.0, 0.0), window_cursor: None,
@@ -201,27 +207,21 @@ impl Default for ClientState {
     }
 }
 struct Game {
-    window: (Option<Box<Window>>,), title: (Option<()>,),
-    screen_state: (ScreenState,), remote: Option<Remote>,
-    replay: Replay,
-    mining: bool, renderer: (Option<Renderer>,),
-    server_packs: (ServerPacks,), command_prompt: (Option<()>,), options: Options, settings: Settings,
+    remote: Option<Remote>, replay: Replay, mining: bool, options: Options,
     scripted: bool, applied_focus: Vec<bool>, applied_modifiers: Vec<u8>,
-    server: ServerState, client: ClientState,
+    side: ClientState,
 }
 impl Default for Game {
     fn default() -> Self {
-        Self { window: (Some(Box::default()),), title: (None,),
-            screen_state: (ScreenState::default(),), remote: None, replay: Replay::default(),
-            mining: false, renderer: (None,), server_packs: (ServerPacks::default(),),
-            command_prompt: (None,), options: Options::default(), settings: Settings,
+        Self { remote: None, replay: Replay::default(), mining: false,
+            options: Options::default(),
             scripted: false, applied_focus: Vec::new(), applied_modifiers: Vec::new(),
-            server: ServerState::default(), client: ClientState::default() }
+            side: ClientState::default() }
     }
 }
 impl Game {
     fn stop_mining(&mut self) { self.mining = false; }
-    fn studio_up(&self) -> bool { self.replay.playing() || self.client.studio.flying() }
+    fn studio_up(&self) -> bool { self.replay.playing() || self.side.studio.flying() }
     fn reset_inventory_clicks(&mut self) {}
     fn restore_held_keys(&mut self) {} // This fixture exercises pointer state, not key mappings.
     fn dialog_open(&self) -> bool { false }
@@ -232,7 +232,7 @@ impl Game {
         match event {
             WindowEvent::Focused(focused) => {
                 self.applied_focus.push(focused);
-                self.client.focused = focused;
+                self.side.focused = focused;
                 if focused { self.regrab_on_refocus(); }
             }
             WindowEvent::ModifiersChanged(modifiers) => self.applied_modifiers.push(modifiers),
@@ -244,69 +244,69 @@ fn main() {
     // The server pack prompt keeps the pointer: nothing grabs it while it is open.
     {
         let mut game = Game::default();
-        game.server_packs.0.prompt = Some(());
+        game.side.server_packs.0.prompt = Some(());
         game.capture(true);
-        assert!(!game.client.captured);
-        game.server_packs.0.prompt = None;
+        assert!(!game.side.captured);
+        game.side.server_packs.0.prompt = None;
         game.capture(true);
-        assert!(game.client.captured);
+        assert!(game.side.captured);
     }
     // So does a clicked command's confirmation.
     {
         let mut game = Game::default();
-        game.command_prompt.0 = Some(());
+        game.side.command_prompt.0 = Some(());
         game.capture(true);
-        assert!(!game.client.captured);
-        game.command_prompt.0 = None;
+        assert!(!game.side.captured);
+        game.side.command_prompt.0 = None;
         game.capture(true);
-        assert!(game.client.captured);
+        assert!(game.side.captured);
     }
     // New and existing worlds, returning to title, and reopening a world.
     for remote in [false, true] {
         let mut game = Game::default();
         if remote { game.remote = Some(Remote); }
         for _ in 0..3 {
-            game.title.0 = Some(());
+            game.side.title.0 = Some(());
             game.capture(false);
             game.capture_loaded_world();
-            assert!(!game.client.captured);
-            game.title.0 = None;
+            assert!(!game.side.captured);
+            game.side.title.0 = None;
             game.capture_loaded_world();
-            assert!(game.client.captured);
-            assert!(game.client.mouse.ignore_first);
-            assert!(!game.window.0.as_ref().unwrap().visible.get());
+            assert!(game.side.captured);
+            assert!(game.side.mouse.ignore_first);
+            assert!(!game.side.window.0.as_ref().unwrap().visible.get());
             for screen in [Screen::Paused, Screen::Inventory] {
-                game.client.screen = screen;
+                game.side.screen = screen;
                 game.mining = true;
                 game.capture(false);
                 assert!(!game.mining);
                 game.capture_loaded_world();
-                assert!(!game.client.captured);
-                assert!(game.window.0.as_ref().unwrap().visible.get());
-                game.client.screen = Screen::Playing;
+                assert!(!game.side.captured);
+                assert!(game.side.window.0.as_ref().unwrap().visible.get());
+                game.side.screen = Screen::Playing;
                 game.capture(true);
-                assert!(game.client.captured);
+                assert!(game.side.captured);
             }
         }
         // Alt+Tab during loading: no native grab or agent-pointer reset.
-        game.client.focused = false;
+        game.side.focused = false;
         game.mining = true;
         game.capture(false);
         assert!(!game.mining);
-        assert!(!game.client.captured);
-        assert!(game.window.0.as_ref().unwrap().visible.get());
-        game.client.agent_pointer = true;
-        let grabs = game.window.0.as_ref().unwrap().grabs.get();
+        assert!(!game.side.captured);
+        assert!(game.side.window.0.as_ref().unwrap().visible.get());
+        game.side.agent_pointer = true;
+        let grabs = game.side.window.0.as_ref().unwrap().grabs.get();
         game.capture_loaded_world();
         game.capture(true);
-        assert!(!game.client.captured);
-        assert!(game.client.agent_pointer);
-        assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), grabs);
-        game.client.focused = true;
-        assert!(!game.client.captured); // Setting the flag is not a grab: `capture` is.
+        assert!(!game.side.captured);
+        assert!(game.side.agent_pointer);
+        assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), grabs);
+        game.side.focused = true;
+        assert!(!game.side.captured); // Setting the flag is not a grab: `capture` is.
         game.capture(true); // `regrab_on_refocus`, or a click on the world.
-        assert!(game.client.captured);
-        assert_eq!(game.client.cursor, (213.5, 120.0)); // The grab puts the mouse at the centre.
+        assert!(game.side.captured);
+        assert_eq!(game.side.cursor, (213.5, 120.0)); // The grab puts the mouse at the centre.
     }
     // A window that held the pointer asks for it back when the focus returns:
     // the system drops a grabbed pointer with the focus and vanilla's grab
@@ -315,84 +315,84 @@ fn main() {
     {
         let mut game = Game::default();
         game.capture(true);
-        assert!(game.client.captured);
-        let grabs = game.window.0.as_ref().unwrap().grabs.get();
-        game.client.focused = false; // Alt+Tab: the release `window_event` makes.
-        game.client.regrab_on_refocus = game.client.captured;
+        assert!(game.side.captured);
+        let grabs = game.side.window.0.as_ref().unwrap().grabs.get();
+        game.side.focused = false; // Alt+Tab: the release `window_event` makes.
+        game.side.regrab_on_refocus = game.side.captured;
         game.capture(false);
-        assert!(!game.client.captured);
-        game.client.focused = true;
+        assert!(!game.side.captured);
+        game.side.focused = true;
         game.regrab_on_refocus();
-        assert!(game.client.captured);
-        assert!(game.window.0.as_ref().unwrap().grabs.get() > grabs);
-        assert!(game.client.mouse.ignore_first);
+        assert!(game.side.captured);
+        assert!(game.side.window.0.as_ref().unwrap().grabs.get() > grabs);
+        assert!(game.side.mouse.ignore_first);
         // Taken once: a focus gain that follows a screen's release takes nothing.
         game.capture(false);
-        let grabs = game.window.0.as_ref().unwrap().grabs.get();
+        let grabs = game.side.window.0.as_ref().unwrap().grabs.get();
         game.regrab_on_refocus();
-        assert!(!game.client.captured);
-        assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), grabs);
+        assert!(!game.side.captured);
+        assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), grabs);
         // A screen open while the window was away keeps the pointer free.
-        game.client.regrab_on_refocus = true;
-        game.client.screen = Screen::Inventory;
+        game.side.regrab_on_refocus = true;
+        game.side.screen = Screen::Inventory;
         game.regrab_on_refocus();
-        assert!(!game.client.captured);
-        assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), grabs);
+        assert!(!game.side.captured);
+        assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), grabs);
         // A window that never held the pointer does not take it on focus.
-        game.client.screen = Screen::Playing;
+        game.side.screen = Screen::Playing;
         game.regrab_on_refocus();
-        assert!(!game.client.captured);
-        assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), grabs);
+        assert!(!game.side.captured);
+        assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), grabs);
         // A prompt over the world keeps the pointer, as the grab itself checks.
-        game.client.regrab_on_refocus = true;
-        game.server_packs.0.prompt = Some(());
+        game.side.regrab_on_refocus = true;
+        game.side.server_packs.0.prompt = Some(());
         game.regrab_on_refocus();
-        assert!(!game.client.captured);
+        assert!(!game.side.captured);
     }
     // Studio replays keep the pointer released after focus returns; camera look
     // only captures it while the right mouse button is held.
     {
         let mut game = Game::default();
         game.replay.driver = Some(());
-        game.client.studio.rmb_down = true;
+        game.side.studio.rmb_down = true;
         game.capture(true);
-        assert!(game.client.captured);
-        game.client.regrab_on_refocus = true;
-        game.client.focused = false;
+        assert!(game.side.captured);
+        game.side.regrab_on_refocus = true;
+        game.side.focused = false;
         game.capture(false);
-        game.client.focused = true;
+        game.side.focused = true;
         game.regrab_on_refocus();
-        assert!(!game.client.captured);
-        assert!(!game.client.studio.rmb_down);
+        assert!(!game.side.captured);
+        assert!(!game.side.studio.rmb_down);
     }
     // The native pointer and the GUI cursor are centred in their own units.
     {
         let mut game = Game::default();
-        game.window.0.as_mut().unwrap().size = Some([1000, 600]);
-        game.renderer.0 = Some(Renderer { config: Config { width: 1000, height: 600 } });
+        game.side.window.0.as_mut().unwrap().size = Some([1000, 600]);
+        game.side.renderer.0 = Some(Renderer { config: Config { width: 1000, height: 600 } });
         game.capture(true);
-        assert!(game.client.captured);
-        assert_eq!(game.window.0.as_ref().unwrap().at.get(), (500.0, 300.0));
-        assert_eq!(game.client.cursor, (250.0, 150.0));
+        assert!(game.side.captured);
+        assert_eq!(game.side.window.0.as_ref().unwrap().at.get(), (500.0, 300.0));
+        assert_eq!(game.side.cursor, (250.0, 150.0));
         game.capture(false);
-        assert!(!game.client.captured);
-        assert_eq!(game.window.0.as_ref().unwrap().at.get(), (500.0, 300.0));
-        assert_eq!(game.client.cursor, (250.0, 150.0));
+        assert!(!game.side.captured);
+        assert_eq!(game.side.window.0.as_ref().unwrap().at.get(), (500.0, 300.0));
+        assert_eq!(game.side.cursor, (250.0, 150.0));
     }
     // `--offscreen` shows no window: the grab is the game's own, and the system
     // pointer is never grabbed, warped or hidden.
     {
         let mut game = Game::default();
         game.options.offscreen = true;
-        game.window.0.as_ref().unwrap().visible.set(true);
+        game.side.window.0.as_ref().unwrap().visible.set(true);
         game.capture_loaded_world();
-        assert!(game.client.captured);
-        assert!(game.client.mouse.ignore_first);
+        assert!(game.side.captured);
+        assert!(game.side.mouse.ignore_first);
         game.capture(false);
-        assert!(!game.client.captured);
+        assert!(!game.side.captured);
         game.capture(true);
-        assert!(game.client.captured);
-        let window = game.window.0.as_ref().unwrap();
+        assert!(game.side.captured);
+        let window = game.side.window.0.as_ref().unwrap();
         assert_eq!((window.grabs.get(), window.warps.get()), (0, 0));
         assert!(window.visible.get());
     }
@@ -400,27 +400,27 @@ fn main() {
     // does, focused or not: the person's pointer is never grabbed, warped or hidden.
     for focused in [true, false] {
         let mut game = Game::default();
-        game.client.unclaimed_window = true;
-        game.client.focused = focused;
-        game.window.0.as_ref().unwrap().visible.set(true);
+        game.side.unclaimed_window = true;
+        game.side.focused = focused;
+        game.side.window.0.as_ref().unwrap().visible.set(true);
         game.capture_loaded_world();
-        assert!(game.client.captured);
+        assert!(game.side.captured);
         game.capture(false);
         game.capture(true);
-        let window = game.window.0.as_ref().unwrap();
+        let window = game.side.window.0.as_ref().unwrap();
         assert_eq!((window.grabs.get(), window.warps.get()), (0, 0));
         assert!(window.visible.get());
         // The person's press inside it claims it: the game's own grab is dropped, so that
         // press takes the system pointer (`MouseHandler.onPress`) instead of attacking. The
         // game hears of the focus the window has by then, if it didn't know.
-        game.window.0.as_ref().unwrap().focus.set(true);
+        game.side.window.0.as_ref().unwrap().focus.set(true);
         game.claim_window(&Loop);
-        assert!(!game.client.unclaimed_window);
-        assert!(!game.client.captured);
+        assert!(!game.side.unclaimed_window);
+        assert!(!game.side.captured);
         assert_eq!(game.applied_focus, if focused { vec![] } else { vec![true] });
         game.capture(true);
-        assert!(game.client.captured);
-        let window = game.window.0.as_ref().unwrap();
+        assert!(game.side.captured);
+        let window = game.side.window.0.as_ref().unwrap();
         assert_eq!(window.grabs.get(), 1);
         assert!(!window.visible.get());
     }
@@ -428,124 +428,124 @@ fn main() {
     // the focus is elsewhere: nothing is grabbed until it comes, as in any window.
     {
         let mut game = Game::default();
-        game.client.unclaimed_window = true;
+        game.side.unclaimed_window = true;
         game.claim_window(&Loop);
         assert_eq!(game.applied_focus, vec![false]);
         game.capture(true);
-        assert!(!game.client.captured);
-        assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), 0);
+        assert!(!game.side.captured);
+        assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), 0);
     }
     // An agent's `pad focus false` in play leaves a regrab owed. The claim drops it: the focus
     // catching up takes nothing, so the press still finds the pointer free and takes it.
     {
         let mut game = Game::default();
-        game.client.unclaimed_window = true;
+        game.side.unclaimed_window = true;
         game.capture_loaded_world();
-        game.client.focused = false;
-        game.client.regrab_on_refocus = true;
-        game.window.0.as_ref().unwrap().focus.set(true);
+        game.side.focused = false;
+        game.side.regrab_on_refocus = true;
+        game.side.window.0.as_ref().unwrap().focus.set(true);
         game.claim_window(&Loop);
         assert_eq!(game.applied_focus, vec![true]);
-        assert!(!game.client.captured, "the press must take the pointer, not attack");
-        assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), 0);
+        assert!(!game.side.captured, "the press must take the pointer, not attack");
+        assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), 0);
     }
     // A Shift the person held before the click reaches the game at the claim, after the focus.
     {
         let mut game = Game::default();
-        game.client.unclaimed_window = true;
-        game.client.unclaimed_modifiers = Some(1);
-        game.window.0.as_ref().unwrap().focus.set(true);
+        game.side.unclaimed_window = true;
+        game.side.unclaimed_modifiers = Some(1);
+        game.side.window.0.as_ref().unwrap().focus.set(true);
         game.claim_window(&Loop);
         assert_eq!(game.applied_modifiers, vec![1]);
-        assert_eq!(game.client.unclaimed_modifiers, None);
+        assert_eq!(game.side.unclaimed_modifiers, None);
     }
     // A scripted run's grab is the game's own, even in a window the person clicked into,
     // and once it ends the system pointer follows: a run that closed a screen leaves the
     // pointer to be taken then, as the window's own grab would have.
     {
         let mut game = Game::default();
-        game.window.0.as_ref().unwrap().visible.set(true);
+        game.side.window.0.as_ref().unwrap().visible.set(true);
         game.scripted = true;
         game.capture(true);
-        assert!(game.client.captured);
-        let window = game.window.0.as_ref().unwrap();
+        assert!(game.side.captured);
+        let window = game.side.window.0.as_ref().unwrap();
         assert_eq!((window.grabs.get(), window.warps.get()), (0, 0));
         assert!(window.visible.get());
         game.settle_after_run(&Loop);
-        assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), 0, "nothing moves while it runs");
+        assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), 0, "nothing moves while it runs");
         game.scripted = false;
         game.settle_after_run(&Loop);
-        assert!(game.client.captured);
-        let window = game.window.0.as_ref().unwrap();
+        assert!(game.side.captured);
+        let window = game.side.window.0.as_ref().unwrap();
         assert_eq!(window.grabs.get(), 1);
         assert!(!window.visible.get());
         game.settle_after_run(&Loop);
-        assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), 1, "settled once");
+        assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), 1, "settled once");
     }
     // A pointer the window held as the run began stays the system's while it runs, and the
     // run's release lets it go when the run ends.
     {
         let mut game = Game::default();
         game.capture(true);
-        let warps = game.window.0.as_ref().unwrap().warps.get();
+        let warps = game.side.window.0.as_ref().unwrap().warps.get();
         game.scripted = true;
         game.capture(false);
-        assert!(!game.client.captured);
-        assert!(game.client.capture_mode.is_some());
-        assert_eq!(game.window.0.as_ref().unwrap().warps.get(), warps);
+        assert!(!game.side.captured);
+        assert!(game.side.capture_mode.is_some());
+        assert_eq!(game.side.window.0.as_ref().unwrap().warps.get(), warps);
         game.scripted = false;
         game.settle_after_run(&Loop);
-        assert!(!game.client.captured);
-        assert!(game.client.capture_mode.is_none());
-        assert!(game.window.0.as_ref().unwrap().visible.get());
+        assert!(!game.side.captured);
+        assert!(game.side.capture_mode.is_none());
+        assert!(game.side.window.0.as_ref().unwrap().visible.get());
     }
     // A person's click into the window or away from it during the run applies once it ends.
     {
         let mut game = Game::default();
         game.scripted = true;
-        game.client.focus_after_run = Some(false);
+        game.side.focus_after_run = Some(false);
         game.settle_after_run(&Loop);
         assert!(game.applied_focus.is_empty());
         game.scripted = false;
         game.settle_after_run(&Loop);
         assert_eq!(game.applied_focus, vec![false]);
-        assert!(!game.client.focused);
+        assert!(!game.side.focused);
     }
     let mut game = Game::default();
     // On a server the chat is ChatScreen (#708): loading never grabs over it.
     game.remote = Some(Remote);
-    game.client.screen = Screen::Chat;
+    game.side.screen = Screen::Chat;
     game.capture_loaded_world();
-    assert!(!game.client.captured);
-    assert_eq!(game.window.0.as_ref().unwrap().grabs.get(), 0);
+    assert!(!game.side.captured);
+    assert_eq!(game.side.window.0.as_ref().unwrap().grabs.get(), 0);
     game.remote = None;
-    game.client.screen = Screen::Playing;
+    game.side.screen = Screen::Playing;
     // Grabbing and releasing put the pointer at the window's centre
     // (MouseHandler.grabMouse / releaseMouse), in the surface's pixels when it
     // has one; releasing an already released pointer leaves it where it is.
     // A grab warps once on every system: Windows before the Locked grab, which
     // clips the pointer where it is (#6076).
     let grab_warps = 1;
-    game.window.0.as_mut().unwrap().size = Some([1000, 600]);
-    game.client.window_pointer_space.take();
-    game.renderer.0 = Some(Renderer { config: Config { width: 1000, height: 600 } });
+    game.side.window.0.as_mut().unwrap().size = Some([1000, 600]);
+    game.side.window_pointer_space.take();
+    game.side.renderer.0 = Some(Renderer { config: Config { width: 1000, height: 600 } });
     game.capture(true);
-    assert!(game.client.captured);
-    let window = game.window.0.as_ref().unwrap();
+    assert!(game.side.captured);
+    let window = game.side.window.0.as_ref().unwrap();
     assert_eq!((window.warps.get(), window.at.get()), (grab_warps, (500.0, 300.0)));
     game.capture(false);
-    let window = game.window.0.as_ref().unwrap();
+    let window = game.side.window.0.as_ref().unwrap();
     assert_eq!(window.warps.get(), grab_warps + 2);
-    assert_eq!(game.client.cursor, (250.0, 150.0));
-    game.client.cursor = (1.0, 1.0);
+    assert_eq!(game.side.cursor, (250.0, 150.0));
+    game.side.cursor = (1.0, 1.0);
     game.capture(false);
-    assert_eq!(game.window.0.as_ref().unwrap().warps.get(), grab_warps + 2);
-    assert_eq!(game.client.cursor, (1.0, 1.0));
-    game.renderer.0 = None;
-    game.window.0.as_mut().unwrap().fail = true;
+    assert_eq!(game.side.window.0.as_ref().unwrap().warps.get(), grab_warps + 2);
+    assert_eq!(game.side.cursor, (1.0, 1.0));
+    game.side.renderer.0 = None;
+    game.side.window.0.as_mut().unwrap().fail = true;
     game.capture_loaded_world();
-    assert!(!game.client.captured);
-    assert!(game.window.0.as_ref().unwrap().visible.get());
+    assert!(!game.side.captured);
+    assert!(game.side.window.0.as_ref().unwrap().visible.get());
 }
 '''
         fixture = fixture.replace("POINTER_PROJECTION", pointer_projection_sources())
@@ -590,11 +590,12 @@ struct Radial(bool);
 impl Radial { fn is_open(&self) -> bool { self.0 } }
 struct Pad { radial: Radial }
 struct ClientState {
+    pending_save: (Option<()>,),
     captured: bool, focused: bool, screen: Screen, mouse: MouseLook, last_input: Instant,
     unclaimed_window: bool,
 }
 struct Game {
-    pending_save: (Option<()>,), options: Options, pad: Pad, scripted: bool, client: ClientState,
+    options: Options, pad: Pad, scripted: bool, side: ClientState,
 }
 impl Game {
     fn scripted_run(&self) -> bool { self.scripted }
@@ -619,11 +620,11 @@ fn main() {
         (false, true, true, false, false, false, true, false),
     ] {
         let mut game = Game {
-            pending_save: (saving.then_some(()),),
             options: Options { offscreen },
             pad: Pad { radial: Radial(radial) },
             scripted,
-            client: ClientState {
+            side: ClientState {
+                pending_save: (saving.then_some(()),),
                 captured: true, focused: active,
                 screen: if playing { Screen::Playing } else { Screen::Paused },
                 mouse: MouseLook::default(), last_input: Instant::now(),
@@ -633,7 +634,7 @@ fn main() {
         game.device_event(&ActiveEventLoop, DeviceId, DeviceEvent::MouseMotion { delta: (0.0, 0.0) });
         game.device_event(&ActiveEventLoop, DeviceId, DeviceEvent::MouseMotion { delta: (20.0, -10.0) });
         let look = LookOptions { sensitivity: 0.5, smooth_camera: false, scoping: false, invert_x: false, invert_y: false };
-        let (x, y) = game.client.mouse.handle_accumulated_movement(1.0, true, true, look).unwrap();
+        let (x, y) = game.side.mouse.handle_accumulated_movement(1.0, true, true, look).unwrap();
         let mut rotation = Rotation { x_rot: 0.0, y_rot: 0.0, x_rot_o: 0.0, y_rot_o: 0.0 };
         rotation.turn(x, y);
         let want = if turns { (3.0, -1.5) } else { (0.0, 0.0) };

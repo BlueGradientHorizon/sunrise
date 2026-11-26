@@ -127,7 +127,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         oy: f32,
     ) {
         use sunrise_client::hud::rgba;
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let grey = rgba(64, 64, 64, 255);
         if self
             .container_block()

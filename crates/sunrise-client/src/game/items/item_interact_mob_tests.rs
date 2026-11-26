@@ -134,9 +134,8 @@ fn actual_item_interact_mob_fallback_priority_and_filters_isolated() {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();

@@ -118,7 +118,7 @@ mod tests {
                     .unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
-                assert!(game.streaming.set_forced(0, 0, true));
+                assert!(game.side.streaming.set_forced(0, 0, true));
                 game.update_chunk_tickets();
                 game.tick_block_entities().unwrap();
                 assert_eq!(*log.lock().unwrap(), [(2, 9), (1, 7), (2, -1), (1, -1)]);

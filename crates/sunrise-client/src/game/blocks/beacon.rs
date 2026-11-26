@@ -278,7 +278,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             )
         });
         self.render_transparent_background("beacon", batch);
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         if let Some(mut r) = atlas.sprites.get("gui/container/beacon").copied() {
             let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
             r.u1 = r.u0 + 230.0 * du;
@@ -292,7 +292,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ("block.minecraft.beacon.secondary", "Secondary Power", 169.0),
         ] {
             let text = self.translate_with_fallback(key, fallback);
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             let w = HudBatch::text_width(atlas, &text);
             batch.text(
                 atlas,
@@ -306,7 +306,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for (item, x) in PAYMENT_ROW {
             self.draw_item(batch, &ItemStack::new(item, 1), bx + x, by + 109.0);
         }
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let buttons = buttons();
         let anchor = quantize_tooltip_anchor(self.widget_tooltip_cursor());
         let rect = |x, y| {
@@ -424,6 +424,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         out: &mut Vec<Vertex>,
     ) {
         let Some(s) = self
+            .side
             .gui
             .atlas
             .sprites

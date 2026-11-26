@@ -13,7 +13,7 @@ macro_rules! section_scene {
             world: &$game.world,
             facts: $game.res.facts(),
             renderer: $game.side.renderer.0.as_deref(),
-            streaming: &$game.streaming,
+            streaming: &$game.side.streaming,
             pending_uploads: &$game.side.pending_uploads.0,
         }
     };
@@ -30,7 +30,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             state_is_opaque(self.res.facts().get(self.world.block(at[0], at[1], at[2])));
         let mode =
             if self.model_packs_are_vanilla() && self.player.is_some() && !camera_inside_opaque {
-                self.settings.sunrise.particle_culling
+                self.side.settings.sunrise.particle_culling
             } else {
                 ParticleCullingMode::Off
             };

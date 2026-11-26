@@ -29,7 +29,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let sound = sound
                 .as_deref()
                 .unwrap_or("minecraft:item.armor.equip_generic");
-            let players = sunrise_client::settings::SOUND_SOURCES
+            let players = sunrise_level::sim_settings::SOUND_SOURCES
                 .iter()
                 .position(|s| *s == "player")
                 .unwrap_or(0);

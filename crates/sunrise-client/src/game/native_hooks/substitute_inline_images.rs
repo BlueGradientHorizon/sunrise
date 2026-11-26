@@ -7,7 +7,7 @@ use sunrise_client::text::{InlineObject, Text};
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn substitute_inline_images(&self, text: &Text) -> Option<Text> {
-        substitute(&self.gui.atlas, text, |run, images| {
+        substitute(&self.side.gui.atlas, text, |run, images| {
             self.native_substitute_inline_images(mod_api::__private::SubstituteInlineImagesCall {
                 run,
                 images,

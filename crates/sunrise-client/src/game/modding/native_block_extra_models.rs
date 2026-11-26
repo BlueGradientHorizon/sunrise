@@ -1,10 +1,13 @@
 //! `ClientRenderClientHost::set_block_extra_models`: the standalone models a client mod draws as
 //! part of a block (NeoForge's `ModelData` use), kept in the client's columns for the chunk mesher
 //! (`World::set_extra_models`), which reads them on its workers and calls no mod code.
+#[cfg(feature = "client")]
 use super::Game;
+#[cfg(feature = "client")]
 use mod_api::{BlockExtraModelsError, ModelRef};
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+#[cfg(feature = "client")]
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `models` (resolved standalone models) replace those drawn as part of the block at `pos`,
     /// its section meshed again when they change. A stale or unknown handle refuses the list.
     pub(in crate::game) fn set_block_extra_models(
@@ -13,7 +16,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         models: &[ModelRef],
     ) -> Result<(), BlockExtraModelsError> {
         for &model in models {
-            self.pack
+            self.side
+                .client_pack
                 .render
                 .validate_standalone_model(model)
                 .map_err(BlockExtraModelsError::Model)?;
@@ -23,7 +27,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "client"))]
 mod tests {
     use mod_api::BlockExtraModelsError;
     use mod_api::prelude::ClientRenderClientHost;
@@ -49,7 +53,7 @@ mod tests {
                 Err(BlockExtraModelsError::NotLoaded),
             );
 
-            let render = &game.pack.render;
+            let render = &game.side.client_pack.render;
             let generation = render.generation;
             let state = game
                 .pack

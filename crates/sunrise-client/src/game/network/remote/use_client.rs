@@ -131,7 +131,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return false;
         };
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let batch = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         let Some(internal) = self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1) else {
             return false;
         };

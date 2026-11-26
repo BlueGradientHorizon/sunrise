@@ -13,7 +13,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
         sunrise_client::mobs::render::villager_client::install(
             table,
             &self
-                .res
+                .client_res()
                 .client_mob_data()
                 .villager_hats
                 .read()

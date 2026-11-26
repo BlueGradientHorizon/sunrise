@@ -276,8 +276,8 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
     with_mod_factories(mods, |game| {
         let stick = ItemStack::new("minecraft:stick", 1);
         *config.bundle.lock().unwrap() = Some(populated_bundle().try_into_api().unwrap());
-        game.gui.atlas.font = synthetic_ascii_fonts([("default", 5)]);
-        let font = &game.gui.atlas.font;
+        game.side.gui.atlas.font = synthetic_ascii_fonts([("default", 5)]);
+        let font = &game.side.gui.atlas.font;
         let long_text = sunrise_client::text::Text::literal(
             "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron",
         );
@@ -803,7 +803,7 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
     with_mod_factories(mods, |game| {
         let stick = ItemStack::new("minecraft:stick", 1);
         *state.bundle_stack.lock().unwrap() = Some(populated_bundle().try_into_api().unwrap());
-        game.gui.atlas.font = synthetic_ascii_fonts([("default", 5), ("alt", 14)]);
+        game.side.gui.atlas.font = synthetic_ascii_fonts([("default", 5), ("alt", 14)]);
         let line = sunrise_client::text::Text::literal("one two three four five six");
 
         let mut prepared = game
@@ -1155,7 +1155,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
     const WIDE: &str = "long item name near a screen edge";
     let assert_unwrapped = |game: &mut crate::game::ClientGame<'_>, stack: &ItemStack| {
         let original_font = std::mem::replace(
-            &mut game.gui.atlas.font,
+            &mut game.side.gui.atlas.font,
             synthetic_ascii_fonts([("default", 6)]),
         );
         let gathered = game
@@ -1167,7 +1167,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
             )
             .unwrap_ready();
         assert_eq!(text_lines(&gathered), [WIDE]);
-        game.gui.atlas.font = original_font;
+        game.side.gui.atlas.font = original_font;
         gathered
     };
     let stick = ItemStack::new("minecraft:stick", 1);
@@ -2412,9 +2412,9 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
                 ),
             ]),
         );
-        game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+        game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
         game.side.armor_stand_assets.0.extensions =
-            crate::game::ClientGame::prepare_client_item_extensions(&game.gui).unwrap();
+            crate::game::ClientGame::prepare_client_item_extensions(&game.side.gui).unwrap();
 
         let stick = ItemStack::new("minecraft:stick", 1);
         let text = sunrise_client::text::Text::literal("aa aa");
@@ -2481,7 +2481,7 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
             Vec::new()
         };
         with_mod_factories(mods.into(), |game| {
-            game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+            game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
             let stack = ItemStack::new("minecraft:stick", 1);
             let line = sunrise_client::text::Text::literal("\u{644}\u{627} \u{644}\u{627}");
             // The listener uses max_width; the fast path gets the same 25px from the screen edge.

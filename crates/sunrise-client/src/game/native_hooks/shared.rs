@@ -1742,9 +1742,8 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1785,6 +1784,7 @@ pub(in crate::game) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[cfg(feature = "client")]
     #[test]
     #[ignore = "daily"]
     fn generated_fire_matches_dispatch() {
@@ -1835,7 +1835,7 @@ pub(in crate::game) mod tests {
             &settings,
             std::time::Instant::now(),
             false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
@@ -1845,7 +1845,9 @@ pub(in crate::game) mod tests {
         options.execution_role = crate::game::execution_role::ExecutionRole::Client;
         let game = crate::game::ClientGame::new(
             &loaded.resources,
+            loaded.client_res.unwrap(),
             loaded.pack,
+            loaded.client_pack.unwrap(),
             loaded.gui.unwrap(),
             options,
             settings,
@@ -1925,6 +1927,7 @@ pub(in crate::game) mod tests {
     }
 
     /// With no window to lay a screen out in there is no slot under the pointer.
+    #[cfg(feature = "client")]
     #[test]
     #[ignore = "daily"]
     fn no_stack_is_hovered_without_a_window() {
@@ -1944,7 +1947,7 @@ pub(in crate::game) mod tests {
                     &settings,
                     std::time::Instant::now(),
                     false,
-                    crate::game::execution_role::ExecutionRole::IntegratedServer,
+                    crate::game::execution_role::ExecutionRole::Client,
                     &Progress::new(),
                     &mut |_, _| unreachable!("no menu handoff"),
                 )
@@ -1953,7 +1956,9 @@ pub(in crate::game) mod tests {
                 options.resources = root.clone();
                 let game = crate::game::ClientGame::new(
                     &loaded.resources,
+                    loaded.client_res.unwrap(),
                     loaded.pack,
+                    loaded.client_pack.unwrap(),
                     loaded.gui.unwrap(),
                     options,
                     settings,

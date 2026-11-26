@@ -49,10 +49,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let faces = models.into_iter().flat_map(|model| {
             model.faces.iter().filter_map(|face| {
                 let sprite = self
-                    .pack
+                    .side
+                    .client_pack
                     .layer_names
                     .get(&face.layer)
-                    .and_then(|name| self.gui.atlas.sprites.get(name))?;
+                    .and_then(|name| self.side.gui.atlas.sprites.get(name))?;
                 Some((
                     PreparedModelFace::new(&face.quad, *sprite),
                     light(&face.quad),
@@ -99,7 +100,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         out: &mut Vec<Vertex>,
     ) -> bool {
         if self
-            .pack
+            .side
+            .client_pack
             .render
             .model_catalog
             .slots_seeded(state, seed, slots)
@@ -109,21 +111,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let effective_light = self.block_display_light(state, light);
         let has_translucency = slots.iter().any(|&slot| {
-            self.pack
+            self.side
+                .client_pack
                 .render
                 .model_catalog
                 .baked_model(slot)
                 .faces
                 .iter()
                 .any(|face| {
-                    let Some(name) = self.pack.layer_names.get(&face.layer) else {
+                    let Some(name) = self.side.client_pack.layer_names.get(&face.layer) else {
                         return false;
                     };
-                    if !self.gui.atlas.sprites.contains_key(name) {
+                    if !self.side.gui.atlas.sprites.contains_key(name) {
                         return false;
                     }
                     face.translucent
-                        || self.gui.atlas.translucent.contains(name)
+                        || self.side.gui.atlas.translucent.contains(name)
                         || face.quad.render_type
                             == Some(sunrise_assets::bake::RenderType::Translucent)
                 })
@@ -136,12 +139,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let tint = self.default_block_tint(state);
         let mut normals = sunrise_client::item_render::FaceNormals::new(pose.to_glam());
         for &slot in slots.iter() {
-            let model = self.pack.render.model_catalog.baked_model(slot);
+            let model = self.side.client_pack.render.model_catalog.baked_model(slot);
             for face in &model.faces {
-                let Some(name) = self.pack.layer_names.get(&face.layer) else {
+                let Some(name) = self.side.client_pack.layer_names.get(&face.layer) else {
                     continue;
                 };
-                let Some(sprite) = self.gui.atlas.sprites.get(name) else {
+                let Some(sprite) = self.side.gui.atlas.sprites.get(name) else {
                     continue;
                 };
                 let quad = PreparedModelFace::new(&face.quad, *sprite);
@@ -198,6 +201,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let a = alpha as f32;
         let Some(uv) = self
+            .side
             .gui
             .atlas
             .sprites
@@ -370,8 +374,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         state: BlockStateId,
     ) -> impl Fn(i32) -> Option<u32> + '_ {
-        let grass = self.pack.item_renderer.grass_color(0.5, 1.0) as u32;
-        let tables = &self.pack.context.tables;
+        let grass = self.side.client_pack.item_renderer.grass_color(0.5, 1.0) as u32;
+        let tables = &self.side.client_pack.context.mesh.tables;
         move |index| tables.default_tint(state, index, grass)
     }
     /// The block the cart shows: `None` for air (`AbstractMinecartRenderer`
@@ -480,22 +484,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game_time: self.world.game_time,
             max_y: self.world.shape.max_y() - 1,
             world: &self.world,
-            sprites: &self.gui.atlas.sprites,
-            emissive: &self.gui.atlas.emissive,
-            translucent_sprites: &self.gui.atlas.translucent,
-            atlas_revision: self.gui.atlas.revision,
+            sprites: &self.side.gui.atlas.sprites,
+            emissive: &self.side.gui.atlas.emissive,
+            translucent_sprites: &self.side.gui.atlas.translucent,
+            atlas_revision: self.side.gui.atlas.revision,
             nether: self.nether_lighting(),
             lid: &lid,
             sign: &|_| None,
             banner: &|_| Vec::new(),
             skull: &|_| None,
-            glyph: &|c| self.gui.atlas.glyph_cell(c),
-            glyphs: self.gui.atlas.font.epoch(),
-            font: Some(&self.gui.atlas.font),
+            glyph: &|c| self.side.gui.atlas.glyph_cell(c),
+            glyphs: self.side.gui.atlas.font.epoch(),
+            font: Some(&self.side.gui.atlas.font),
             inline_images: None,
             dynamic_visible: None,
         };
-        self.res
+        self.client_res()
             .block_entity_render()
             .render_state(&scene, state.0, m, light, out);
     }
@@ -566,7 +570,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         tint: impl Fn(i32) -> Option<u32>,
         out: &mut Vec<Vertex>,
     ) {
-        let Ok(models) = self.pack.render.model_catalog.collect_seeded(state, seed) else {
+        let Ok(models) = self
+            .side
+            .client_pack
+            .render
+            .model_catalog
+            .collect_seeded(state, seed)
+        else {
             return;
         };
         let models = models.into_iter().map(|(_, model)| model);

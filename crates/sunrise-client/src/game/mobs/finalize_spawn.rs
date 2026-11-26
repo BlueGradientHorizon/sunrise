@@ -29,10 +29,10 @@ impl FinalizeGame<'_, '_> {
     /// The biome id at a block, when its chunk is loaded.
     fn biome_name(&self, pos: [i32; 3]) -> Option<String> {
         // `LevelReader.getBiome`: the noise cell the biome zoom picks, perhaps in a neighbouring chunk.
-        let game = &self.game;
+        let game: &crate::game::ServerGame<'_> = &*self.game;
         let biome = game
             .world
-            .biome_at(game.streaming.biome_zoom, pos[0], pos[1], pos[2])?;
+            .biome_at(game.side.streaming.biome_zoom, pos[0], pos[1], pos[2])?;
         Some(world_biomes!(game).get(biome).name.clone())
     }
 }

@@ -107,8 +107,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.res.behaviours().facts(state).flags & state_flags::SOLID_RENDER != 0
             })
         };
-        let grass = self.pack.item_renderer.grass_color(0.5, 1.0) as u32;
-        let tables = &self.pack.context.tables;
+        let grass = self.side.client_pack.item_renderer.grass_color(0.5, 1.0) as u32;
+        let tables = &self.side.client_pack.context.mesh.tables;
         let mut quads = Vec::new();
         for block in blocks {
             let at = Vec3::new(
@@ -117,7 +117,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 block.pos[2] as f32,
             );
             let Ok(models) = self
-                .pack
+                .side
+                .client_pack
                 .render
                 .model_catalog
                 .collect_seeded(block.state, 42)
@@ -132,10 +133,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                 }
                 let Some(sprite) = self
-                    .pack
+                    .side
+                    .client_pack
                     .layer_names
                     .get(&face.layer)
-                    .and_then(|name| self.gui.atlas.sprites.get(name))
+                    .and_then(|name| self.side.gui.atlas.sprites.get(name))
                 else {
                     continue;
                 };

@@ -32,8 +32,12 @@ fn riptide_ground_release_keeps_launch_velocity() {
                     let mut stack = ItemStack::new("minecraft:trident", 1);
                     stack.enchant("minecraft:riptide", 3);
                     for (grounded, roof) in [(true, false), (false, false), (true, true)] {
-                        arena(server, roof);
-                        arena(client, roof);
+                        arena(server, roof, |g, c| {
+                            g.side.streaming.insert_remote(&mut g.world, c);
+                        });
+                        arena(client, roof, |g, c| {
+                            g.side.streaming.insert_remote(&mut g.world, c);
+                        });
                         let start = if grounded {
                             START
                         } else {

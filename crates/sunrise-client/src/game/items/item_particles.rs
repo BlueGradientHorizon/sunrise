@@ -4,12 +4,12 @@ use super::Game;
 use serde_json::Value;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
-    item_render::stack_view,
     items::ItemStack,
     particles::{ParticleOptions, ParticleType},
 };
 use sunrise_core::equipment_slot::EquipmentSlot;
 use sunrise_core::random::RandomSource;
+use sunrise_sim::item_models::stack_view;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ItemParticleOption(ITEM, stack)`: the layer particle sprites of the
@@ -107,7 +107,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// (`playLocalSound`) at the entity's feet, at 0.8 volume and a pitch of
     /// 0.8 to 1.2.
     pub(in crate::game::client_side) fn break_sound_at(&mut self, stack: &ItemStack, at: [f64; 3]) {
-        let models = &self.pack.item_renderer.models;
+        let models = &self.pack.item_models;
         let sound = match models
             .components(&stack_view(stack))
             .get("minecraft:break_sound")

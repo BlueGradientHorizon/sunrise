@@ -32,7 +32,9 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
     options.resources = root.clone();
     let mut game = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,

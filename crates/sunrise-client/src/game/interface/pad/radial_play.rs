@@ -49,7 +49,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the radial menu selects with this stick (0 left, 1 right): while it is open that
     /// stick neither walks nor turns the view.
     pub(in crate::game::client_side) fn pad_radial_selects(&self, stick: usize) -> bool {
-        match self.settings.controller.radial_stick {
+        match self.side.settings.controller.radial_stick {
             RadialStick::Right => stick == 1,
             RadialStick::Left => stick == 0,
             RadialStick::Either => true,
@@ -58,14 +58,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Each stick's tilts, from its own deadzone (left, right).
     fn pad_radial_tilts(&self) -> [radial::Tilt; 2] {
-        let settings = &self.settings.controller;
+        let settings = &self.side.settings.controller;
         [settings.move_deadzone, settings.look_deadzone].map(radial::Tilt::for_deadzone)
     }
 
     /// The stick that selects now (0 left, 1 right), where it is, the furthest it leant since the
     /// last poll, and its tilts. With Either, the stick that last leant past the select tilt.
     fn pad_radial_selector(&self) -> (usize, [f32; 2], [f32; 2], radial::Tilt) {
-        let index = match self.settings.controller.radial_stick {
+        let index = match self.side.settings.controller.radial_stick {
             RadialStick::Right => 1,
             RadialStick::Left => 0,
             RadialStick::Either => self.side.pad.0.radial_either.unwrap_or(1),
@@ -138,7 +138,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.side.pad.0.radial.is_open() {
             return Ok(());
         }
-        if self.settings.controller.radial_mode == RadialMode::Toggle
+        if self.side.settings.controller.radial_mode == RadialMode::Toggle
             && !self.side.pad.0.radial.latched()
         {
             self.side.pad.0.radial.latch();
@@ -172,7 +172,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// `pad_radial_available` on page `page`.
     fn pad_radial_available_on(&self, page: usize) -> [bool; radial::SLOTS] {
-        let page = self.settings.controller.radial.page(page);
+        let page = self.side.settings.controller.radial.page(page);
         page.slots().map(|slot| match slot {
             Slot::Empty => true,
             Slot::Action(action) => self.pad_radial_runs(*action),
@@ -183,6 +183,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A slot that holds something that would run: only those tick as the stick reaches them.
     fn pad_radial_fills(&self, slot: usize) -> bool {
         let page = self
+            .side
             .settings
             .controller
             .radial
@@ -211,7 +212,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             [self.side.pad.0.state.left, self.side.pad.0.state.right],
             now,
         );
-        if self.settings.controller.radial_stick == RadialStick::Either {
+        if self.side.settings.controller.radial_stick == RadialStick::Either {
             self.pad_radial_follow_either();
         }
         let (_, stick, peak, tilt) = self.pad_radial_selector();
@@ -250,7 +251,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return;
         }
-        let pages = &self.settings.controller.radial;
+        let pages = &self.side.settings.controller.radial;
         let page = self.side.pad.0.radial.page();
         if !std::mem::replace(&mut self.side.pad.0.radial_page_said, true) {
             let name = sunrise_client_render::radial_overlay::page_label(pages.page(page));
@@ -272,7 +273,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         button: Button,
     ) -> Result<bool> {
-        let settings = &self.settings.controller;
+        let settings = &self.side.settings.controller;
         let opener = settings.binding(gamepad::RADIAL);
         let toggle = settings.radial_mode == RadialMode::Toggle;
         let bumpers = [Button::LeftBumper, Button::RightBumper];
@@ -303,7 +304,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A page turn: a tick, and a second one when the pages went round an end.
     fn pad_radial_turn(&mut self, forward: bool) {
         let (_, stick, _, tilt) = self.pad_radial_selector();
-        let pages = self.settings.controller.radial.len();
+        let pages = self.side.settings.controller.radial.len();
         let Some(wrapped) = self
             .side
             .pad
@@ -342,7 +343,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // bar says it isn't available (`Gui.handleKeybinds`).
         let action = slot
             .and_then(|slot| {
-                self.settings
+                self.side
+                    .settings
                     .controller
                     .radial
                     .page(page)
@@ -397,14 +399,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn pad_radial_closed(&mut self, selecting: usize) {
         let now = Instant::now();
         // With Either neither stick moved anything while it was open: both wait.
-        let either = self.settings.controller.radial_stick == RadialStick::Either;
+        let either = self.side.settings.controller.radial_stick == RadialStick::Either;
         for i in 0..2 {
             if i != selecting && !either {
                 continue;
             }
             let deadzone = [
-                self.settings.controller.move_deadzone,
-                self.settings.controller.look_deadzone,
+                self.side.settings.controller.move_deadzone,
+                self.side.settings.controller.look_deadzone,
             ][i];
             let stick = [self.side.pad.0.state.left, self.side.pad.0.state.right][i];
             if gamepad::radial(stick, deadzone) != [0.0; 2] {
@@ -417,10 +419,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         if self.side.pad.0.held_drop.is_some() {
-            let delay = Duration::from_secs_f32(self.settings.controller.repeat_delay);
+            let delay = Duration::from_secs_f32(self.side.settings.controller.repeat_delay);
             self.side.pad.0.held_drop = Some(gamepad::HeldDrop::new(now, delay));
         }
         if self
+            .side
             .settings
             .controller
             .binding(gamepad::RADIAL)
@@ -433,7 +436,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A D-pad press in play starting just after the menu closed on a D-pad opener: a thumb
     /// rolling off it. It is ignored, and so is its release; the opener's own isn't.
     pub(in crate::game::client_side) fn pad_radial_settling(&self, button: Button) -> bool {
-        let opener = self.settings.controller.binding(gamepad::RADIAL);
+        let opener = self.side.settings.controller.binding(gamepad::RADIAL);
         let held = opener.is_some_and(|opener| self.side.pad.0.state.held(opener));
         DPAD.contains(&button)
             && self
@@ -446,7 +449,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// A button came up: the opener's release starts the D-pad's settle again.
     pub(in crate::game::client_side) fn pad_radial_button_up(&mut self, button: Button) {
-        if self.settings.controller.binding(gamepad::RADIAL) == Some(button) {
+        if self.side.settings.controller.binding(gamepad::RADIAL) == Some(button) {
             self.side.pad.0.radial_settle.opener_up(Instant::now());
         }
     }
@@ -461,7 +464,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn pad_radial_status(&self) -> Value {
         let menu = &self.side.pad.0.radial;
-        let pages = &self.settings.controller.radial;
+        let pages = &self.side.settings.controller.radial;
         let page = pages.page(menu.page());
         json!({
             "open": menu.is_open(),
@@ -483,8 +486,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             },
             "waiting": menu.waiting(),
             "selecting": self.pad_radial_selector().0,
-            "mode": self.settings.controller.radial_mode.name(),
-            "stick": self.settings.controller.radial_stick.name(),
+            "mode": self.side.settings.controller.radial_mode.name(),
+            "stick": self.side.settings.controller.radial_stick.name(),
             "runs": self.side.pad.0.radial_runs.last,
             "run_count": self.side.pad.0.radial_runs.count,
         })
@@ -507,7 +510,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(seen) = self.pad_radial_drawn(clock) else {
             return;
         };
-        let pages = &self.settings.controller.radial;
+        let pages = &self.side.settings.controller.radial;
         let page = pages.page(seen.page);
         let why = page.slots().map(|slot| match slot {
             Slot::Action(action) => self.pad_radial_why(*action),
@@ -521,11 +524,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
             toggles: self.pad_radial_toggles(),
             page_keys: self.pad_radial_page_keys(),
             cancel: self.menu_glyph(MenuJob::Back),
-            backing: (self.settings.text_background(radial_overlay::CHIP_BACKING) >> 24) as u8,
+            backing: (self
+                .side
+                .settings
+                .text_background(radial_overlay::CHIP_BACKING)
+                >> 24) as u8,
             room: &self.side.chat_ui.room,
         };
         let painter = super::super::item_draw::IconPainter { game: self };
-        radial_overlay::draw_overlay(batch, &self.gui.atlas, &painter, &dial, look, clock);
+        radial_overlay::draw_overlay(batch, &self.side.gui.atlas, &painter, &dial, look, clock);
     }
 
     /// What the overlay draws at `clock`: while it shows, and while it fades out, but never a
@@ -560,7 +567,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The bumpers that turn the pages back and on, in this player's glyphs. With a bumper as the
     /// opener, only the other, which turns them on.
     fn pad_radial_page_keys(&self) -> [Option<Glyph>; 2] {
-        let opener = self.settings.controller.binding(gamepad::RADIAL);
+        let opener = self.side.settings.controller.binding(gamepad::RADIAL);
         let [back, on] = [MenuJob::PagePrev, MenuJob::PageNext];
         match opener {
             Some(Button::LeftBumper) => [None, Some(self.menu_glyph(on))],

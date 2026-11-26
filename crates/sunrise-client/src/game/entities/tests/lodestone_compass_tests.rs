@@ -73,7 +73,9 @@ fn client_game<'a>(
     let res = &*resources.insert(loaded.resources);
     crate::game::ClientGame::new(
         res,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,
@@ -98,6 +100,7 @@ fn drawn_needle(game: &mut crate::game::ClientGame<'_>, frame: ItemFrame) -> Str
     let near =
         |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).abs() < 1.0e-5 && (a[1] - b[1]).abs() < 1.0e-5;
     let drawn: Vec<&str> = game
+        .side
         .gui
         .atlas
         .sprites

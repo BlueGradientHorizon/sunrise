@@ -1,7 +1,7 @@
 //! The server thread's side of a capture (docs/perf-platform.md §4.1): it writes into the window's file, or into one of its own.
 use super::super::dedicated::{SLOW_TICK_MS, report::Recording};
 use super::super::perf_remote::Done;
-use super::super::profile_capture::{reply_text, shown};
+use super::super::profile_capture_server::{reply_text, shown};
 use super::super::{Game, tick_profile};
 use std::io;
 use std::path::PathBuf;
@@ -11,18 +11,15 @@ use std::sync::{
     mpsc::Sender,
 };
 use std::time::Instant;
-use sunrise_client::client_perf::{
-    Join,
-    request::{Failed, ProfileSide, StartOptions, Stopped, Threads},
-};
 use sunrise_client::server_perf::{
     self, CaptureEnd, CaptureOptions, MAX_WINDOW_S, Role, SamplerOptions, ServerPerf, TickDetail,
 };
-use sunrise_client::spans;
+use sunrise_level::spans;
 use sunrise_perf_format::{
     files,
     v1::{GpuMode, Start, StopReason, Trigger},
 };
+use sunrise_sim::perf_types::{Failed, Join, ProfileSide, StartOptions, Stopped, Threads};
 
 /// How far the server thread has got with the side of a capture the window asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,6 +73,7 @@ pub(in crate::game) enum Target {
         options: StartOptions,
         trigger: Trigger,
         dir: PathBuf,
+        viewer: Option<fn() -> Option<String>>,
     },
 }
 
@@ -90,6 +88,7 @@ pub(in crate::game) struct ServerSide {
     live: Option<Arc<Live>>,
     /// Whether the file is this side's to finish.
     owner: bool,
+    viewer: Option<fn() -> Option<String>>,
     /// The `profile stop` waiting for the file, on an owner.
     reply: Option<Sender<String>>,
     spans_were_on: bool,
@@ -104,6 +103,7 @@ impl ServerSide {
             window: None,
             live: None,
             owner: false,
+            viewer: None,
             reply: None,
             spans_were_on: false,
         }
@@ -137,6 +137,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Result<PathBuf, String> {
         let slow_ms = self.options.spikes.unwrap_or(SLOW_TICK_MS);
         let mut side = self
+            .side
             .profile
             .server
             .take()
@@ -157,7 +158,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             live.set(Phase::Running);
             side.live = Some(live);
         }
-        self.profile.server = Some(side);
+        self.side.profile.server = Some(side);
         began
     }
 
@@ -176,6 +177,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } => (options.clone(), *trigger),
         };
         let owner = matches!(target, Target::Own { .. });
+        let viewer = match &target {
+            Target::Join(_) => None,
+            Target::Own { viewer, .. } => *viewer,
+        };
         let capture = self.server_capture_options(&options, trigger);
         let t = side.now();
         let was_on = spans::recording_here();
@@ -206,6 +211,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         };
         side.owner = owner;
+        side.viewer = viewer;
         side.spans_were_on = was_on;
         side.recording = Some(Recording::here(options.seconds.unwrap_or(0)));
         side.window = window;
@@ -272,7 +278,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         reason: StopReason,
         reply: Option<Sender<String>>,
     ) {
-        let Some(mut side) = self.profile.server.take() else {
+        let Some(mut side) = self.side.profile.server.take() else {
             return;
         };
         if side.perf.capturing() {
@@ -283,7 +289,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 error: "no capture is running".into(),
             }));
         }
-        self.profile.server = Some(side);
+        self.side.profile.server = Some(side);
     }
 
     /// Writes the spans, workers and world and hands the file off to finish; false when no capture runs here.
@@ -309,7 +315,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Labels the moment in the running capture.
     pub(in crate::game::server_side) fn mark_server_capture(&mut self, name: &str) {
-        if let Some(side) = &mut self.profile.server {
+        if let Some(side) = &mut self.side.profile.server {
             let t = side.now();
             side.perf.mark(t, name);
         }
@@ -317,7 +323,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Whether a server capture runs or is being saved on this thread.
     pub(in crate::game::server_side) fn server_capture_busy(&self) -> bool {
-        self.profile
+        self.side
+            .profile
             .server
             .as_ref()
             .is_some_and(|s| s.perf.capturing() || s.perf.finishing())
@@ -329,7 +336,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         paused: bool,
     ) -> crate::Result<()> {
         self.serve_perf_asked();
-        let Some(mut side) = self.profile.server.take() else {
+        let Some(mut side) = self.side.profile.server.take() else {
             return self.tick_server_timed(paused);
         };
         let slow_ms = side.perf.slow_threshold_ms();
@@ -370,14 +377,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .into_iter()
             .filter_map(|saved| server_saved(&mut side, saved))
             .collect();
-        self.profile.server = Some(side);
+        self.side.profile.server = Some(side);
         self.perf_captures_done(done);
         result.map(|_| ())
     }
 
     /// The server is closing: ends the capture, and waits for the file when it is this side's.
     pub(in crate::game::server_side) fn finish_server_capture(&mut self) {
-        let Some(mut side) = self.profile.server.take() else {
+        let Some(mut side) = self.side.profile.server.take() else {
             return;
         };
         self.end_server_capture(&mut side, StopReason::Shutdown);
@@ -415,7 +422,7 @@ fn server_saved(side: &mut ServerSide, saved: io::Result<server_perf::Saved>) ->
                     ok: true,
                     sides: vec![ProfileSide::Server],
                     path: shown(&saved.path),
-                    open_at: sunrise_client::client_perf::request::viewer(),
+                    open_at: side.viewer.take().and_then(|lookup| lookup()),
                     removed: removed.clone(),
                 }));
             }

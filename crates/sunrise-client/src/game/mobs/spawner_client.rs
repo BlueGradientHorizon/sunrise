@@ -164,7 +164,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         alpha: f64,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // A shader pack's shadow pass draws a block entity only in the sections it draws
         // (`Renderer::shadow_pass_block_entities`, #8464): a spawner's mob out of the view and

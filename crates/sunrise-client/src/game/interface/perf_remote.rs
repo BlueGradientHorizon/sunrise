@@ -1,7 +1,7 @@
 //! A guest's `sunrise:perf` requests (docs/perf-platform.md §4.2): who may profile this server, the one capture at a time, and the log lines about it.
 use super::Game;
 use super::integrated::capture::{Live, Target};
-use super::profile_capture::{reports_dir, shown};
+use super::profile_capture_server::{reports_dir, shown};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -80,7 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             log::debug!("Sunrise: a bad server profile request from {name}");
             return;
         };
-        let served = &mut self.profile.served;
+        let served = &mut self.side.profile.served;
         let held = match &served.requester {
             Some(r) if r.conn == conn => Held::Asker,
             Some(_) => Held::Someone,
@@ -119,7 +119,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// What guests asked since the last tick, and a stop when the guest whose capture runs has left.
     pub(in crate::game::server_side) fn take_perf_asked(&mut self) -> Vec<Asked> {
-        let served = &mut self.profile.served;
+        let served = &mut self.side.profile.served;
         let mut asked = std::mem::take(&mut served.asked);
         if let Some(r) = served.requester.as_mut()
             && !r.left
@@ -148,7 +148,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             window(wanted),
             if wanted.samples { "on" } else { "off" }
         );
-        self.profile.served.requester = Some(Requester {
+        self.side.profile.served.requester = Some(Requester {
             conn,
             name,
             left: false,
@@ -171,7 +171,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Server captures whose files are done: the guest that asked is told, and the log names it.
     pub(in crate::game) fn perf_captures_done(&mut self, done: Vec<Done>) {
         for done in done {
-            let Some(Requester { conn, name, left }) = self.profile.served.requester.take() else {
+            let Some(Requester { conn, name, left }) = self.side.profile.served.requester.take()
+            else {
                 continue;
             };
             if left {
@@ -212,7 +213,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             bytes,
                         },
                     );
-                    self.profile.served.sending.extend(sending);
+                    self.side.profile.served.sending.extend(sending);
                 }
                 Done::Failed => {
                     log::error!("Sunrise: {name}'s server profile could not be written");
@@ -225,7 +226,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Sends the next chunk of each file that is due, at most [`sunrise_client::perf_net::RATE`] a second and not while the guest has a backlog.
     pub(in crate::game::server_side) fn pump_perf_files(&mut self) {
         let now = Instant::now();
-        let mut sending = std::mem::take(&mut self.profile.served.sending);
+        let mut sending = std::mem::take(&mut self.side.profile.served.sending);
         sending.retain_mut(|s| {
             let Some(guest) = self.lan.as_ref().and_then(|h| h.hub.guest(s.conn)) else {
                 return false;
@@ -245,8 +246,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             !s.pace.done()
         });
-        sending.append(&mut self.profile.served.sending);
-        self.profile.served.sending = sending;
+        sending.append(&mut self.side.profile.served.sending);
+        self.side.profile.served.sending = sending;
     }
 
     /// On the server thread, between two ticks: begins and ends the captures guests asked for.
@@ -263,6 +264,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         options: wanted.options(),
                         trigger: Trigger::Remote,
                         dir: reports_dir(),
+                        viewer: None,
                     };
                     match self.start_server_capture(target, Live::new()) {
                         Ok(path) => {

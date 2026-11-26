@@ -22,7 +22,7 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
         crate::game::weather::precipitation_at(
             &game.world,
             world_biomes!(game),
-            game.streaming.biome_zoom,
+            game.side.streaming.biome_zoom,
             BlockPos::new(x, y, z),
             game.weather_sea_level(),
         )
@@ -58,7 +58,7 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "ClientWeatherTest").unwrap();
                 send_types(game, &types);
-                game.settings.sunrise.fog = true;
+                game.side.settings.sunrise.fog = true;
                 let camera = DVec3::new(0.0, 64.0, 0.0);
                 let mut clouds = Vec::new();
                 let mut fog = Vec::new();
@@ -85,10 +85,10 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                     let sky = drawn(game);
                     let mut transparent = sky;
                     transparent.cloud_color[3] = 0.0;
-                    game.settings.clouds = "true".into();
+                    game.side.settings.clouds = "true".into();
                     let enabled = game.frame_cloud_uv(false, &sky).is_some();
                     let zero_alpha = game.frame_cloud_uv(false, &transparent).is_some();
-                    game.settings.clouds = "false".into();
+                    game.side.settings.clouds = "false".into();
                     let off = game.frame_cloud_uv(false, &sky).is_some();
                     clouds.push([enabled, zero_alpha, off]);
 
@@ -96,8 +96,8 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                     no_tint.sunrise_color[3] = 0.0;
                     let mut sample = |forward, distance, sky, draws_sky| {
                         game.side.view.forwards = [forward, 0.0, 0.0];
-                        game.streaming.radius = distance;
-                        game.settings.sunrise.sky = draws_sky;
+                        game.side.streaming.radius = distance;
+                        game.side.settings.sunrise.sky = draws_sky;
                         let f = game.frame_fog(camera, sky, 0, [0.0; 3]);
                         let [r, g, b, _] = f.color;
                         ([r, g, b].map(f32::to_bits), f.sky_end)

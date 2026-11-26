@@ -61,7 +61,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             &mut self.world,
             gone,
         );
-        self.streaming.forget_columns(&mut self.world, gone);
+        self.side.streaming.forget_columns(&mut self.world, gone);
         if keep_terrain && let Some(lod) = &mut self.side.lod.0 {
             for chunk in &freed {
                 lod.observe(chunk.clone(), self.res.facts());
@@ -71,7 +71,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             renderer.remove_columns(gone.iter().copied());
         }
         sunrise_client::chunk::free_columns(freed, gone.len());
-        self.be_anims
+        self.side
+            .be_anims
             .pots
             .retain(|[x, _, z], _| !gone.contains(&(*x >> 4, *z >> 4)));
         sunrise_client::spans::time("unload_block_entities", || {
@@ -117,8 +118,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     pub(in crate::game) fn set_remote_chunk_cache_radius(&mut self, distance: i32) {
-        self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
-            self.settings.render_distance,
+        self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+            self.side.settings.render_distance,
             Some(distance),
         );
         if let Some(r) = self.remote.as_mut() {
@@ -151,7 +152,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.remove_columns(hidden.iter().copied());
         }
-        self.streaming
+        self.side
+            .streaming
             .remote_chunk_visibility_changed(&mut self.world, &hidden, &shown);
     }
 }

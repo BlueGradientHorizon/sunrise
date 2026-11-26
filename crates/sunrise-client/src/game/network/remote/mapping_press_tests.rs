@@ -180,7 +180,10 @@ fn a_screen_drops_the_clicks_and_holds_nothing() {
 fn the_host_presses_by_name_and_refuses_the_others() {
     with_pressing_game(|game, packets, _| {
         let hotbar = ClientInputClientHost::vanilla_key_mapping(game, "key.hotbar.3").unwrap();
-        game.settings.keys.set("key.hotbar.3", "key.keyboard.4");
+        game.side
+            .settings
+            .keys
+            .set("key.hotbar.3", "key.keyboard.4");
         assert_eq!(hotbar.click(game), Ok(()));
         game.remote_handle_input();
         assert_eq!(game.selected, 2);

@@ -51,7 +51,7 @@ ConfirmExperimentalFeaturesScreen.DetailsScreen.PackListEntry.getNarration	skip:
 CreateWorldScreen.openFresh	port	crates/sunrise-client/src/title.rs::Title::new_world	the screen shows createWorld.preparing while the world creation data is read, then opens
 CreateWorldScreen.testWorld	skip:debug		TW button, shown only when running in the IDE
 CreateWorldScreen.openCreateWorldScreen	skip:data		loads datapack registries and world presets before the screen; Sunrise reads data from tables
-CreateWorldScreen.createFromExisting	port	crates/sunrise-client/src/title/create_world.rs::WorldOptions::of_world	name, seed and mode come from title.rs click_action arm 15; the old world's datapacks come from datapack::for_recreate
+CreateWorldScreen.createFromExisting	port	crates/sunrise-sim/src/world_options.rs::WorldOptions::of_world	name, seed and mode come from title.rs click_action arm 15; the old world's datapacks come from datapack::for_recreate
 CreateWorldScreen.init	port	crates/sunrise-client/src/title/create_world.rs::buttons	tab bar and footer buttons; tabs are drawn by draw_create
 CreateWorldScreen.repositionElements	skip:ui		layout only
 CreateWorldScreen.onCreate	port	crates/sunrise-client/src/title.rs::Title::create_action	gap: minor: no experimental or deprecated-data warning before creating
@@ -117,11 +117,11 @@ WorldCreationUiState.<init>	port	crates/sunrise-client/src/title.rs::Title::new_
 WorldCreationUiState.onChanged	skip:ui		listener refresh; Sunrise's buttons read WorldOptions every frame, bonus chest via WorldOptions::bonus_chest
 WorldCreationUiState.setName	port	crates/sunrise-client/src/title.rs::Title::edit_field	name text kept in Mode::Create.name; gap: minor: target folder is not recomputed per keystroke (create_tooltip and create_action compute it)
 WorldCreationUiState.findResultFolder	port	crates/sunrise-client/src/title.rs::Title::target_folder	gap: minor: a blank name gives folder World, vanilla gives New World
-WorldCreationUiState.isAllowCommands	port	crates/sunrise-client/src/title/create_world.rs::WorldOptions::commands	never in Hardcore, else on for Creative until toggled
+WorldCreationUiState.isAllowCommands	port	crates/sunrise-sim/src/world_options.rs::WorldOptions::commands	never in Hardcore, else on for Creative until toggled
 WorldCreationUiState.setSeed	port	crates/sunrise-client/src/title.rs::parse_seed	gap: minor: seed text is stored in Mode::Create.seed and parsed in create_action
-WorldCreationUiState.isBonusChest	port	crates/sunrise-client/src/title/create_world.rs::WorldOptions::bonus_chest	never in Hardcore
+WorldCreationUiState.isBonusChest	port	crates/sunrise-sim/src/world_options.rs::WorldOptions::bonus_chest	never in Hardcore
 WorldCreationUiState.tryUpdateDataConfiguration	skip:data		datapack and feature-flag config; Sunrise has neither at creation
-WorldCreationUiState.setWorldType	port	crates/sunrise-client/src/title/create_world.rs::WorldOptions::press	Superflat toggle (id 25); gap: player: only Default and Superflat exist, vanilla's other presets such as Amplified are missing
+WorldCreationUiState.setWorldType	port	crates/sunrise-sim/src/world_options.rs::WorldOptions::press	Superflat toggle (id 25); gap: player: only Default and Superflat exist, vanilla's other presets such as Amplified are missing
 WorldCreationUiState.getPresetEditor	port	crates/sunrise-client/src/title/create_world.rs::buttons	customize button enabled for the flat and single-biome presets, the two PresetEditor.EDITORS has; the editor opens in title.rs click_action arm 26
 WorldCreationUiState.updatePresetLists	skip:data		preset lists from the registry; Sunrise has two built-in types
 WorldCreationUiState.findPreset	skip:data		registry lookup
@@ -132,7 +132,7 @@ WorldOpenFlows.createFreshLevel	port	crates/sunrise-client/src/game/world/world_
 WorldOpenFlows.createWorldAccess	port	crates/sunrise-sim/src/save/session.rs::SessionLock::acquire	takes the world's session lock as the access; gap: minor: no symlink warning
 WorldOpenFlows.createLevelFromExistingSettings	port	crates/sunrise-client/src/game/world/world_session.rs::Game::open_world	starts the world with the given settings; the packs come from datapack::for_recreate and are installed before the world opens
 WorldOpenFlows.loadWorldStem	port	crates/sunrise-client/src/game/world/world_loading.rs::WorldRequest::prepare	reads level data and generator settings and discovers the world's packs (datapack::discover_with_features); gap: minor: no safe-mode retry when a pack fails to load
-WorldOpenFlows.recreateWorldData	port	crates/sunrise-client/src/title/create_world.rs::WorldOptions::of_world	reads the old world's settings for Re-Create; title.rs click_action arm 15 fills name, seed and mode
+WorldOpenFlows.recreateWorldData	port	crates/sunrise-sim/src/world_options.rs::WorldOptions::of_world	reads the old world's settings for Re-Create; title.rs click_action arm 15 fills name, seed and mode
 WorldOpenFlows.loadWorldDataBlocking	port	crates/sunrise-client/src/game/world/world_loading.rs::WorldLoader::finish	waits for the load worker and returns its result
 WorldOpenFlows.askForBackup	port	crates/sunrise-client/src/title.rs::Title::play	a world that needs its files fixed or comes from a newer version asks for a backup first (Mode::BackupBeforeUpgrade)
 WorldOpenFlows.confirmWorldCreation	skip:data		lifecycle warning for experimental or deprecated data; Sunrise has no such data

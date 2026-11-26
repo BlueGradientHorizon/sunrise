@@ -11,7 +11,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(screen) = self.machine_screen() else {
             return false;
         };
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let key_is_cart = self
             .container
             .is_some_and(|k| k.1 == crate::game::minecarts::CART_KEY_Y);

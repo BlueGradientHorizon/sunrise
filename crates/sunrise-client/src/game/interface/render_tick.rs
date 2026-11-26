@@ -195,10 +195,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         title: bool,
         sky: &sunrise_client::environment::Sky,
     ) -> Option<[f32; 2]> {
-        if title || !sunrise_client::clouds::visible(&self.settings.clouds, sky.cloud_color[3]) {
+        if title || !sunrise_client::clouds::visible(&self.side.settings.clouds, sky.cloud_color[3])
+        {
             return None;
         }
-        let white = self.gui.atlas.sprites.get("sunrise/white")?;
+        let white = self.side.gui.atlas.sprites.get("sunrise/white")?;
         Some([(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0])
     }
     pub(in crate::game::client_side) fn forward(&self) -> [f64; 3] {
@@ -221,7 +222,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
         self.side.view.near_plane(
-            self.settings.fov as i32 as f32,
+            self.side.settings.fov as i32 as f32,
             width as f32,
             height.max(1) as f32,
         )
@@ -248,7 +249,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let tables = if self.side.title.0.is_some() {
             &title_fog
         } else {
-            self.res.fog()
+            self.client_res().fog()
         };
         let partial = self.clock.fraction() as f32;
         let fog_effects = cam.as_ref().map(|c| c.fog_effects);
@@ -284,7 +285,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             biome,
             render_distance_chunks: self.terrain_distance(),
             distant_terrain: self.side.lod.0.is_some() && self.overworld_skybox(),
-            cloud_range_chunks: self.settings.cloud_range,
+            cloud_range_chunks: self.side.settings.cloud_range,
             camera_y: camera.y,
             min_y: self.level_min_y(),
             flat: self.level_flat(),
@@ -301,11 +302,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             fire_resistance,
             full_water_vision: !is_local || self.pvp_clear_fluids().1,
             night_vision,
-            environment: self.pack.polytone_colors.env,
-            fluid_fog: self.pack.polytone_colors.fluid_fog,
+            environment: self.side.client_pack.polytone_colors.env,
+            fluid_fog: self.side.client_pack.polytone_colors.fluid_fog,
         };
         let mut fog = sunrise_client::fog::setup_fog(tables, &self.side.fog, &input);
-        if !self.settings.sunrise.fog {
+        if !self.side.settings.sunrise.fog {
             sunrise_client::fog::clear_distance_fog(&mut fog, &input);
         }
         if self.side.title.0.is_none() {
@@ -392,7 +393,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let sunrise = if self.level_flat() {
             f64::from(self.level_min_y())
         } else {
-            f64::from(self.pack.polytone_colors.env.horizon_height)
+            f64::from(self.side.client_pack.polytone_colors.env.horizon_height)
         };
         let eye_y = p.position.y + f64::from(p.dimensions.eye_height);
         self.overworld_skybox() && eye_y < sunrise && !p.is_under_water()
@@ -420,7 +421,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // ScreenEffectRenderer: the block's particle material.
         let block_overlay = effects
             .block
-            .and_then(|state| Self::block_particle_sprite(&self.pack, state));
+            .and_then(|state| Self::block_particle_sprite(&self.side.client_pack, state));
         let water = effects
             .water
             .then(|| (self.eye_brightness(eye), self.yaw, self.pitch));
@@ -469,8 +470,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             hud_overlays::camera_overlays(size[0] as i32, size[1] as i32, &overlays, &mut scope)
         };
         self.side.screen_fx.build(&ScreenInputs {
-            sprites: &self.gui.atlas.sprites,
-            flags: &self.gui.atlas.flags,
+            sprites: &self.side.gui.atlas.sprites,
+            flags: &self.side.gui.atlas.flags,
             aspect: size[0] as f32 / size[1].max(1) as f32,
             partial,
             block_overlay,
@@ -543,7 +544,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Frustum.getNearPlaneBounds from culling projection (max(fov, option_fov), camera rot).
             let cull_fov = self
                 .fov_degrees(partial, eye)
-                .max((self.settings.fov as i32) as f32);
+                .max((self.side.settings.fov as i32) as f32);
             let (near_yaw, near_pitch) = self.side.posed_rotation.unwrap_or((self.yaw, self.pitch));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 cull_fov,
@@ -553,7 +554,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 near_pitch,
                 sunrise_client::camera::depth_far(
                     self.terrain_distance(),
-                    self.settings.cloud_range,
+                    self.side.settings.cloud_range,
                 ),
             );
             let near_plane = sunrise_core::geometry::Aabb::new(
@@ -623,7 +624,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 && (!modded
                     || self.screen_effect_kept(
                         BlockScreenEffect::Water,
-                        self.pack.water_overlay_state,
+                        self.side.client_pack.water_overlay_state,
                         eye.map(|c| c.floor() as i32),
                         partial,
                         player_partial_tick,
@@ -789,7 +790,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             update_rain_fog(&mut self.side.fog, rain, sky_light, rains, 1.0);
         }
         laps.lap("tp_fx");
-        self.side.particles.0.particle_level = self.settings.particles;
+        self.side.particles.0.particle_level = self.side.settings.particles;
         self.side.particles.0.camera = cam_pos;
         let (rain, thunder) = self.weather_levels(1.0);
         let ambient_attribute = attribute(AMBIENT_PARTICLES).expect("registered ambient particles");
@@ -809,14 +810,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let block = eye.map(|e| e.map(|v| v.floor() as i32));
         let mut sampling = block.map(AnimateSampling::new);
         let sea_level = self.weather_sea_level();
-        let biome_zoom = self.streaming.biome_zoom;
+        let biome_zoom = self.side.streaming.biome_zoom;
         // `ClientLevel.animateTick`, then the rain and the campfires. The sampling stops in each
         // pick whose block has a part, for the game to call it there (`mod_animate_tick`); the
         // context borrows the game, so it is made again for the rest of the tick.
         loop {
+            let client_pack = &self.side.client_pack;
             let marker_options = |state| {
                 // BlockMarker: the particle sprite, untinted.
-                let sprite = Self::block_particle_sprite(&self.pack, state)?;
+                let sprite = Self::block_particle_sprite(client_pack, state)?;
                 Some(ParticleOptions::block(
                     ParticleType::BlockMarker,
                     sprite,
@@ -881,10 +883,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let height_no_leaves =
                 |p: [i32; 3]| motion_blocking_leaves(world, facts, p[0], p[2], i32::MAX, false);
-            let tables = &self.pack.context.tables;
+            let tables = &self.side.client_pack.context.mesh.tables;
             let model_offset = |state, x, z| tables.offset(state, x, z);
+            let client_res =
+                crate::game::client_side::ClientState::expect_client_res(&self.side.client_res);
             let gateway_particles = |state, p| {
-                self.res
+                client_res
                     .block_entity_render()
                     .gateway_faces(world, state, p)
                     .len()
@@ -916,13 +920,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.side
                         .particles
                         .0
-                        .set_polytone(self.pack.polytone_particles.clone());
-                    if let Some(registry) = &self.pack.polytone_particles {
+                        .set_polytone(self.side.client_pack.polytone_particles.clone());
+                    if let Some(registry) = &self.side.client_pack.polytone_particles {
                         registry.set_biomes(biomes);
                     }
                 }
                 if let Some(step) =
-                    sampling.run(self.res.animate(), &mut self.side.particles.0, &ctx)
+                    sampling.run(client_res.animate(), &mut self.side.particles.0, &ctx)
                 {
                     match step {
                         AnimateStep::BlockPart(state, pos) => self.mod_animate_tick(state, pos),
@@ -932,15 +936,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 laps.lap("tp_animate");
                 // The Sunrise Weather option off means no rain visuals or sounds at all.
-                if rain > 0.0 && self.settings.sunrise.weather {
+                if rain > 0.0 && self.side.settings.sunrise.weather {
                     let weather_block = cam_pos.map(|v| v.floor() as i32);
                     // ClientLevel.tickWeatherEffects: rain splashes around the camera, and the rain sound.
                     let mut random =
                         LegacyRandom::new(self.world.game_time.wrapping_mul(312_987_231));
-                    let radius = self.settings.weather_radius;
+                    let radius = self.side.settings.weather_radius;
                     let diameter = 2 * radius + 1;
                     let count = (0.225 * (diameter * diameter) as f32 * rain * rain) as i32
-                        / if self.settings.particles == 1 { 2 } else { 1 };
+                        / if self.side.settings.particles == 1 {
+                            2
+                        } else {
+                            1
+                        };
                     let mut rain_position = None;
                     for _ in 0..count {
                         let x = weather_block[0]
@@ -967,7 +975,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         rain_position = Some([x, below, z]);
                         // The Minimal option stops at the first spot that rains (the
                         // rain sound still plays there).
-                        if self.settings.particles >= 2 {
+                        if self.side.settings.particles >= 2 {
                             break;
                         }
                         let (bx, bz) = (random.next_double(), random.next_double());
@@ -988,7 +996,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         let smoke = f.fluid == Fluid::Lava
                             || &*f.name == "minecraft:magma_block"
                             || (f.name.ends_with("campfire")
-                                && self.res.animate().is_lit_campfire(state.0));
+                                && self.client_res().animate().is_lit_campfire(state.0));
                         let ty = if smoke {
                             ParticleType::Smoke
                         } else {
@@ -1205,7 +1213,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (rain, thunder) = self.view_weather(0.0);
         let day_time = self.view_day_time();
         let frame = self
-            .pack
+            .side
+            .client_pack
             .polytone_particles
             .as_ref()
             .and_then(|p| p.frame.read().ok().map(|f| f.clone()))
@@ -1336,11 +1345,11 @@ mod tests {
                     );
                     game.side.camera_type = CameraType::FirstPerson;
                     game.side.chat_ui.hide_gui = false;
-                    game.gui.atlas.sprites.clear();
+                    game.side.gui.atlas.sprites.clear();
                     let expected = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
                     let mut stack = |slot: &str, u0: f32| {
                         let overlay = format!("misc/test_{slot}");
-                        game.gui.atlas.sprites.insert(
+                        game.side.gui.atlas.sprites.insert(
                             overlay.clone(),
                             Rect {
                                 u0,

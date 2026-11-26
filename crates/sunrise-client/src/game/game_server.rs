@@ -1,13 +1,14 @@
 use crate::game::hud_render::is_game_master_block;
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::{
-    Result, containers::BlockEntity, entities::Experience, first_person::Hand, items::ItemStack,
-    save::Level,
-};
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_world::level::{Behaviours, BucketContent, LevelEvent, PlayerEffect, Ticks};
+use {
+    sunrise_client::Result, sunrise_client::containers::BlockEntity,
+    sunrise_client::entities::Experience, sunrise_client::items::ItemStack,
+    sunrise_client::save::Level, sunrise_sim::first_person_sim::Hand,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The UUID of the player acting: the guest whose turn it is, else the host.
@@ -473,7 +474,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.yaw = yaw;
         self.pitch = pitch;
         self.selected = level.selected_slot.clamp(0, 8) as usize;
-        self.streaming = streaming;
+        self.side.streaming = streaming;
         self.world = world;
         self.inventory = inventory;
         self.bind_chunk_disk_worker(&save, dim);
@@ -532,19 +533,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.restore_effects();
         self.mining = None;
         self.container = None;
-        let kinds = std::mem::take(&mut self.be_anims.kinds);
-        self.be_anims = sunrise_client::block_entity_anim::BlockEntityAnims {
+        let kinds = std::mem::take(&mut self.side.be_anims.kinds);
+        self.side.be_anims = sunrise_level::block_entity_ticks::BlockEntityTicks {
             kinds,
             ..Default::default()
         };
         self.carried = None;
         self.using = None;
-        self.streaming.radius =
-            crate::game::entity_culling::streaming_radius_for(self.settings.render_distance, None);
+        self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+            self.side.settings.render_distance,
+            None,
+        );
         let facts = self.dimension_type_of(dim);
-        self.streaming.sky_light = facts.height.has_skylight;
-        self.streaming.nether_shading =
-            facts.cardinal_light == sunrise_world::dimension_type::CardinalLight::Nether;
+        self.side.streaming.sky_light = facts.height.has_skylight;
         self.load_world_state()?;
         self.open_builtin_levels()?;
         Ok(stack)
@@ -1158,7 +1159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .filter(|&(_, spectator)| game_mode::loads_chunks(rule, spectator))
                     .map(|(chunk, _)| chunk)
                     .collect(),
-                forced: self.streaming.forced.iter().copied().collect(),
+                forced: self.side.streaming.forced.iter().copied().collect(),
                 // Filled from the `PORTAL` tickets by `update`.
                 portal: Vec::new(),
                 spawn: Vec::new(),
@@ -1169,8 +1170,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && self.side.fight.arena_watched())
                 .then_some((0, 0)),
                 viewed: self.viewed_tickets(),
-                view_distance: self.settings.render_distance.clamp(2, 32),
-                simulation_distance: self.settings.simulation_distance.max(2),
+                view_distance: self.side.settings.render_distance.clamp(2, 32),
+                simulation_distance: self.side.settings.simulation_distance.max(2),
             }
         });
         // The levels' changes are kept only for a listener, so that a tick
@@ -1214,7 +1215,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.level.game_rules = self.ui.rules.by_name();
         // PrimaryLevelData.setDifficulty: /difficulty and the options button change it.
         self.level.difficulty =
-            sunrise_client::title::DIFFICULTIES[usize::from(self.ui.difficulty) & 3].into();
+            sunrise_sim::world_options::DIFFICULTIES[usize::from(self.ui.difficulty) & 3].into();
         self.level.time = self.world.game_time;
         self.level.weather = self.world.weather;
         // level.dat holds the Overworld clock's total, whichever level is in place.
@@ -1752,8 +1753,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         stack: &ItemStack,
         allow_block_actions: bool,
-    ) -> Result<sunrise_client::first_person::UseResult> {
-        use sunrise_client::first_person::UseResult;
+    ) -> Result<sunrise_sim::first_person_sim::UseResult> {
+        use sunrise_sim::first_person_sim::UseResult;
         let item = stack.item.trim_start_matches("minecraft:").to_owned();
         let at = |p: [i32; 3]| {
             [
@@ -2232,7 +2233,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             attachment_query_scopes: &self.transactions.attachment_query_scopes,
             command_block_transition: None,
             positions: piston_carry_state::PositionState {
-                gateways: &mut self.be_anims.gateway_servers,
+                gateways: &mut self.side.be_anims.gateway_servers,
                 hoppers: &mut self.side.hoppers,
             },
             border: self.border.geometry(),
@@ -2272,7 +2273,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             building_player_boxes,
             player_collision,
             biomes: world_biomes!(self),
-            biome_zoom: self.streaming.biome_zoom,
+            biome_zoom: self.side.streaming.biome_zoom,
             seed: self.level.seed,
             behaviours: self.res.behaviours(),
             items: server_world_items!(self),

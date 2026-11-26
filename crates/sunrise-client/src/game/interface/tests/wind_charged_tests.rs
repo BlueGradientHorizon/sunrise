@@ -38,15 +38,9 @@ pub(in crate::game) fn with_game<R>(
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let mut resources = None;
     let res = &*resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
-        res,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        None,
-    )
-    .unwrap();
+    let mut game =
+        crate::game::ServerGame::new(res, loaded.pack, options, settings.sim_settings(), None)
+            .unwrap();
     game.options.dedicated = Some(Vec::new());
     game.side.audio_capture_active = true;
     game.build_registries();
@@ -55,7 +49,7 @@ pub(in crate::game) fn with_game<R>(
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    game.streaming.forced.insert((0, 0));
+    game.side.streaming.forced.insert((0, 0));
     assert!(game.run_command("fill 0 63 0 15 63 15 stone"));
     Some(f(&mut game))
 }

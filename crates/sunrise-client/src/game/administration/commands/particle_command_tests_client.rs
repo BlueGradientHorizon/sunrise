@@ -60,21 +60,12 @@ pub(in crate::game) fn drawn(
     match queued.particle.data {
         ServerParticleData::None => ParticleOptions::simple(ty),
         ServerParticleData::Block(state) => {
-            let block = [
-                queued.at[0].floor() as i32,
-                queued.at[1].floor() as i32,
-                queued.at[2].floor() as i32,
-            ];
             let source = game.res.facts().get(state).name.clone();
-            let (sprite, tint) = game.particle_sprite(state, block).unwrap_or_else(|| {
-                (
-                    format!(
-                        "block/{}",
-                        source.strip_prefix("minecraft:").unwrap_or(&source)
-                    ),
-                    0xFF_FFFF,
-                )
-            });
+            let sprite = format!(
+                "block/{}",
+                source.strip_prefix("minecraft:").unwrap_or(&source)
+            );
+            let tint = 0xFF_FFFF;
             ParticleOptions::block(ty, sprite, tint).with_source(&source)
         }
         ServerParticleData::ColorScale { rgb, scale } => ParticleOptions {

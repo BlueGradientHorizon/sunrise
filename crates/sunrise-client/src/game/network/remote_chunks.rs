@@ -186,14 +186,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if resident {
             // LevelChunk.replaceWithPacketData clears the old block entities. Pots keep
             // their wobble outside the block entity store, so retire it here too.
-            self.be_anims
+            self.side
+                .be_anims
                 .pots
                 .retain(|[bx, _, bz], _| (*bx >> 4, *bz >> 4) != (x, z));
             sunrise_client::spans::time("replace_remote", || {
-                self.streaming.replace_remote(&mut self.world, chunk)
+                self.side.streaming.replace_remote(&mut self.world, chunk)
             });
         } else {
-            self.streaming.insert_remote(&mut self.world, chunk);
+            self.side.streaming.insert_remote(&mut self.world, chunk);
         }
         // Before any block entity joins: a state change before the first ticker pass (a campfire
         // lit) must find which states tick, to join the list at that moment, not at its place.

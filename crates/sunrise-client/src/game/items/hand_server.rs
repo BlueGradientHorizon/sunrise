@@ -1,7 +1,7 @@
 use super::Game;
-use sunrise_client::{
-    first_person::{Hand, SwingAnimation, swing_duration},
-    items::ItemStack,
+use {
+    sunrise_client::items::ItemStack, sunrise_sim::first_person_sim::Hand,
+    sunrise_sim::first_person_sim::SwingAnimation, sunrise_sim::first_person_sim::swing_duration,
 };
 
 impl Game<'_, crate::game::server_side::ServerState> {

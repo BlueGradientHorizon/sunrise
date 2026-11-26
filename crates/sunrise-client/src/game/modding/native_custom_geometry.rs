@@ -32,10 +32,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         uv: [[f32; 2]; 4],
         argb: u32,
     ) -> bool {
-        let Some(r) = self.gui.atlas.texture_rect(name) else {
+        let Some(r) = self.side.gui.atlas.texture_rect(name) else {
             return false;
         };
-        let flags = self.gui.atlas.flags.get(name).copied();
+        let flags = self.side.gui.atlas.flags.get(name).copied();
         let sampling = flags.map_or(0, sampling);
         draw.push(corners, uv, [r.u0, r.v0, r.u1, r.v1], argb, sampling)
     }
@@ -82,7 +82,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         draw: &mut WorldGeometry,
         entities: &mut Vec<Vertex>,
     ) {
-        let white = self.gui.atlas.sprites["sunrise/white"];
+        let white = self.side.gui.atlas.sprites["sunrise/white"];
         draw.reset(
             camera,
             view,
@@ -147,13 +147,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let lines = [(text, 0.0)];
         // Options.getBackgroundOpacity(0.25), and the faded text alpha that goes with it.
         let backdrop = if options.background {
-            self.settings.text_background(0.25)
+            self.side.settings.text_background(0.25)
         } else {
             0
         };
         let faded = options
             .faded_alpha
-            .map_or_else(|| self.settings.faded_text_alpha(0.25), u32::from);
+            .map_or_else(|| self.side.settings.faded_text_alpha(0.25), u32::from);
         let light = options.light;
         let unit = super::names::NAME_TAG_UNIT;
         let (mut world, mut see_through) = (Vec::new(), Vec::new());
@@ -208,7 +208,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         quads: &[PipelineQuad],
     ) -> Result<(), PipelineDrawError> {
         let slot = self
-            .pack
+            .side
+            .client_pack
             .render
             .mod_pipelines
             .slot(pipeline)
@@ -399,7 +400,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if !materials.is_empty() {
             self.mark_model_copies(entities.len());
-            let layers = &self.pack.render.sprite_layers;
+            let layers = &self.side.client_pack.render.sprite_layers;
             for &index in &materials {
                 let copy = draw.copy(index as usize);
                 let Some(faces) = self.model_faces(copy.slot) else {
@@ -522,8 +523,8 @@ mod tests {
         uploaded: u64,
         view: Mat4,
     ) -> (u8, [u8; 4], [u8; 4]) {
-        let pixels = game.gui.atlas.pixels().to_vec();
-        let size = [game.gui.atlas.width, game.gui.atlas.height];
+        let pixels = game.side.gui.atlas.pixels().to_vec();
+        let size = [game.side.gui.atlas.width, game.side.gui.atlas.height];
         let cpu = sunrise_client::gfx::entity_pixel_test::render(
             cpu_vertices,
             size,
@@ -766,8 +767,8 @@ mod tests {
                         instances: &[staged[0].instance],
                         per_copy: false,
                         hdr: false,
-                        atlas_size: [game.gui.atlas.width, game.gui.atlas.height],
-                        atlas: &game.gui.atlas.pixels(),
+                        atlas_size: [game.side.gui.atlas.width, game.side.gui.atlas.height],
+                        atlas: &game.side.gui.atlas.pixels(),
                         view_proj: Mat4::IDENTITY,
                     },
                 )
@@ -970,8 +971,8 @@ mod tests {
             let pixels = |game: &crate::game::ClientGame<'_>, vertices: &[Vertex]| {
                 sunrise_client::gfx::entity_pixel_test::render(
                     vertices,
-                    [game.gui.atlas.width, game.gui.atlas.height],
-                    &game.gui.atlas.pixels(),
+                    [game.side.gui.atlas.width, game.side.gui.atlas.height],
+                    &game.side.gui.atlas.pixels(),
                     Mat4::IDENTITY,
                     false,
                 )
@@ -1103,7 +1104,11 @@ mod tests {
                 assert_eq!(released.set_len(game, 1), Err(GroupError::Stale));
                 game.create_group(model, 1).unwrap()
             };
-            game.settings.mods.disabled.insert("group-owner".into());
+            game.side
+                .settings
+                .mods
+                .disabled
+                .insert("group-owner".into());
             game.sync_native_switches();
             let mut draw = WorldGeometry::default();
             assert_eq!(
@@ -1122,7 +1127,7 @@ mod tests {
                 other_group.set_len(game, 1).unwrap();
                 other_group.destroy(game).unwrap();
             }
-            game.settings.mods.disabled.remove("group-owner");
+            game.side.settings.mods.disabled.remove("group-owner");
             game.sync_native_switches();
             assert_eq!(released.set_len(game, 1), Err(GroupError::Stale));
             let reenabled: Vec<_> = (0..4)

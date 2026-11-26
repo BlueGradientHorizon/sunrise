@@ -148,7 +148,8 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut crate::game::ServerGa
 fn light(game: &mut crate::game::ServerGame<'_>, cx: i32, cz: i32) {
     for x in cx - 2..=cx + 2 {
         for z in cz - 2..=cz + 2 {
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, Chunk::empty(x, z));
         }
     }
@@ -222,7 +223,8 @@ fn run_as_player(game: &mut crate::game::ServerGame<'_>, role: ExecutionRole, co
 
 fn prepare_end_exit(game: &mut crate::game::ServerGame<'_>, credits: bool) {
     game.enter_level(Dim::End).unwrap();
-    game.streaming
+    game.side
+        .streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     assert!(
         game.set_state_named([3, 64, 5], "minecraft:end_portal", &[])

@@ -36,7 +36,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             "map/map_background"
         };
-        if let Some(r) = self.gui.atlas.sprites.get(background).copied() {
+        if let Some(r) = self.side.gui.atlas.sprites.get(background).copied() {
             for (c, uv) in [
                 ([-7.0, 135.0, 0.0], [r.u0, r.v1]),
                 ([135.0, 135.0, 0.0], [r.u1, r.v1]),
@@ -130,6 +130,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         };
         let rect = self
+            .side
             .gui
             .atlas
             .sprites
@@ -139,7 +140,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if m.texture_dirty {
             m.texture_dirty = false;
             let rgba: Vec<u8> = m.colors.iter().flat_map(|&c| packed_rgba(c)).collect();
-            let (w, h) = (self.gui.atlas.width as f32, self.gui.atlas.height as f32);
+            let (w, h) = (
+                self.side.gui.atlas.width as f32,
+                self.side.gui.atlas.height as f32,
+            );
             self.side.map_patches.push(sunrise_client::font::Patch {
                 x: (rect.u0 * w).round() as u32,
                 y: (rect.v0 * h).round() as u32,
@@ -201,7 +205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if show_only_frame && !shown_on_frame(d.sprite) {
                 continue;
             }
-            let Some(s) = self.gui.atlas.gui_rect(d.sprite).copied() else {
+            let Some(s) = self.side.gui.atlas.gui_rect(d.sprite).copied() else {
                 continue;
             };
             let dm = decoration_pose(d, -0.02 - count as f32 * 0.001);
@@ -226,12 +230,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             );
             if let Some(name) = &d.name {
                 let text = sunrise_client::text::Text::literal(name);
-                let f = self.gui.atlas.font.width_text(&text);
+                let f = self.side.gui.atlas.font.width_text(&text);
                 if f > 0.0 {
                     let f1 = (25.0 / f).clamp(0.0, 6.0 / 9.0);
                     let mut text_batch = HudBatch::scratch([1, 1]);
-                    let behind =
-                        text_batch.name_tag(&self.gui.atlas, &text, 0.0, 0xFFFF_FFFF, 0x8000_0000);
+                    let behind = text_batch.name_tag(
+                        &self.side.gui.atlas,
+                        &text,
+                        0.0,
+                        0xFFFF_FFFF,
+                        0x8000_0000,
+                    );
                     self.side.map_patches.append(&mut text_batch.patches);
                     let tm = glam::Mat4::from_translation(glam::Vec3::new(
                         f32::from(d.x) / 2.0 + 64.0,
@@ -264,7 +273,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // A native mod's own icons, over the vanilla ones.
         for d in self.mod_map_decorations(id, show_only_frame) {
-            let Some(s) = self.gui.atlas.gui_rect(d.sprite.as_str()).copied() else {
+            let Some(s) = self.side.gui.atlas.gui_rect(d.sprite.as_str()).copied() else {
                 continue;
             };
             let dm = decoration_pose_at(d.x, d.y, d.rot, -0.02 - count as f32 * 0.001);

@@ -100,7 +100,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 2 if answered && sent < lines.len() => {
                     let line = &lines[sent];
                     if let Some(delay) = line.strip_prefix(".delay ") {
-                        self.settings.chat_delay = delay.parse().unwrap_or(0.0);
+                        self.side.settings.chat_delay = delay.parse().unwrap_or(0.0);
                     } else if let Some(command) = line.strip_prefix(".click ") {
                         self.click_command(command);
                         prompts.push(self.command_prompt_message());

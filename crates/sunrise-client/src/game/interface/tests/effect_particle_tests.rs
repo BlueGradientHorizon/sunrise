@@ -89,7 +89,9 @@ fn with_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     options.execution_role = execution_role::ExecutionRole::Client;
     let mut g = crate::game::ClientGame::new(
         &loaded.resources,
+        loaded.client_res.unwrap(),
         loaded.pack,
+        loaded.client_pack.unwrap(),
         loaded.gui.unwrap(),
         options,
         settings,

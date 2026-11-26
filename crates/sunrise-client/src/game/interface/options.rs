@@ -28,19 +28,19 @@ pub(in crate::game) const CONTROL_HELP: &[&str] = &[
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn save_title_options(&mut self) {
         if let Some(title) = &self.side.title.0
-            && (title.last_server != self.settings.file.string("lastServer")
+            && (title.last_server != self.side.settings.file.string("lastServer")
                 || title.skip_multiplayer_warning
-                    != self.settings.file.bool("skipMultiplayerWarning"))
+                    != self.side.settings.file.bool("skipMultiplayerWarning"))
         {
-            self.settings.file.set(
+            self.side.settings.file.set(
                 "lastServer",
                 sunrise_client::options_file::V::Str(title.last_server.clone()),
             );
-            self.settings.file.set(
+            self.side.settings.file.set(
                 "skipMultiplayerWarning",
                 sunrise_client::options_file::V::Bool(title.skip_multiplayer_warning),
             );
-            self.settings.save(&crate::game::options_path());
+            self.side.settings.save(&crate::game::options_path());
         }
     }
     /// `options-get` and `options-set`; None for other commands.
@@ -51,7 +51,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Result<Option<Value>> {
         match words[0] {
             "options-get" => {
-                let file = self.settings.to_file();
+                let file = self.side.settings.to_file();
                 let wanted: Vec<&str> = if words.len() > 1 {
                     words[1..].to_vec()
                 } else {
@@ -76,31 +76,31 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .ok_or("options-set KEY VALUE: missing the value")?;
-                let narrator = self.settings.narrator();
-                let reduced = self.settings.reduced_debug_info;
-                let before_atlas = self.settings.texture_atlas_settings();
-                self.settings = self.settings.with_option(key, value)?;
-                if self.settings.reduced_debug_info != reduced {
+                let narrator = self.side.settings.narrator();
+                let reduced = self.side.settings.reduced_debug_info;
+                let before_atlas = self.side.settings.texture_atlas_settings();
+                self.side.settings = self.side.settings.with_option(key, value)?;
+                if self.side.settings.reduced_debug_info != reduced {
                     self.side.debug_entries.0.invalidate();
                 }
                 // As the options screen applies a change (OptionInstance.set
                 // runs the narrator's onValueUpdate for a new value only).
                 let mut events = vec![Event::Changed];
-                if self.settings.narrator() != narrator {
+                if self.side.settings.narrator() != narrator {
                     events.push(Event::Narrator);
                 }
                 self.handle_option_events(events)?;
                 match *key {
-                    "lang" => self.load_language(&self.settings.language.clone()),
+                    "lang" => self.load_language(&self.side.settings.language.clone()),
                     "resourcePacks" | "incompatibleResourcePacks" => self.reload_packs(),
-                    _ if self.settings.texture_atlas_settings() != before_atlas => {
+                    _ if self.side.settings.texture_atlas_settings() != before_atlas => {
                         self.reload_packs();
                     }
                     _ => {}
                 }
                 // Labels change (a language, a value): `ui` reads the redrawn screen.
                 self.side.ui_wait.0.clicked();
-                let now = self.settings.to_file().describe(key);
+                let now = self.side.settings.to_file().describe(key);
                 Ok(Some(json!({ "ok": true, "key": key, "option": now })))
             }
             _ => Ok(None),
@@ -117,7 +117,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or([1280, 720], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+        let b = HudBatch::new(size, self.side.settings.gui_scale_inputs());
         (b.width, b.height)
     }
     /// Close the options screens (`OptionsScreen.onClose`) back to where they
@@ -160,7 +160,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.hold_fullbright();
         let ui = &mut self.side.chat_ui.options;
         ui.open_at(!from_title && self.side.title.0.is_none(), page);
-        ui.capture_video_atlas(&self.settings);
+        ui.capture_video_atlas(&self.side.settings);
         ui.minecart_improvements = minecart_improvements;
         ui.languages = lang::available(&[&self.pack.source]);
         self.refresh_pack_lists();
@@ -229,22 +229,24 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or(Default::default(), |r| r.output());
-        self.side
-            .chat_ui
-            .options
-            .draw_background(&self.settings, output, batch, &self.gui.atlas);
+        self.side.chat_ui.options.draw_background(
+            &self.side.settings,
+            output,
+            batch,
+            &self.side.gui.atlas,
+        );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         self.side.chat_ui.options.draw_contents(
-            &self.settings,
+            &self.side.settings,
             batch,
-            &self.gui.atlas,
+            &self.side.gui.atlas,
             self.side.cursor,
         );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         self.side
             .chat_ui
             .options
-            .draw_overlays(batch, &self.gui.atlas, self.side.cursor);
+            .draw_overlays(batch, &self.side.gui.atlas, self.side.cursor);
         self.show_calibration((batch.width, batch.height));
     }
     fn controller_settings_context(&self) -> sunrise_client::controller_ui::Context {
@@ -266,7 +268,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.side
                     .chat_ui
                     .options
-                    .calibration_picture(&self.gui.atlas, size)
+                    .calibration_picture(&self.side.gui.atlas, size)
             })
             .flatten();
         if let Some(r) = self.side.renderer.0.as_mut() {
@@ -327,8 +329,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut ui = std::mem::take(&mut self.side.chat_ui.options);
         ui.shift = self.side.modifiers.shift_key();
         let (events, handled) = ui.click_with_outcome(
-            &mut self.settings,
-            &self.gui.atlas,
+            &mut self.side.settings,
+            &self.side.gui.atlas,
             self.side.cursor.0,
             self.side.cursor.1,
             size,
@@ -347,8 +349,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         let mut ui = std::mem::take(&mut self.side.chat_ui.options);
         let (handled, events) = ui.drag(
-            &mut self.settings,
-            &self.gui.atlas,
+            &mut self.side.settings,
+            &self.side.gui.atlas,
             self.side.cursor,
             size,
             framebuffer,
@@ -372,7 +374,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.chat_ui.options.framebuffer = framebuffer;
         let mut ui = std::mem::take(&mut self.side.chat_ui.options);
         ui.modifiers = self.modifiers().bits;
-        let (handled, events) = ui.key_input(&mut self.settings, &self.gui.atlas, key, text, shift);
+        let (handled, events) = ui.key_input(
+            &mut self.side.settings,
+            &self.side.gui.atlas,
+            key,
+            text,
+            shift,
+        );
         self.side.chat_ui.options = ui;
         self.handle_option_events(events)?;
         self.refresh_screen_widgets();
@@ -387,7 +395,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .side
             .chat_ui
             .options
-            .key_released(&mut self.settings, key);
+            .key_released(&mut self.side.settings, key);
         let handled = !events.is_empty();
         self.handle_option_events(events)?;
         Ok(handled)
@@ -397,18 +405,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) -> bool {
-        self.side
-            .chat_ui
-            .options
-            .shortcut(&self.gui.atlas, shortcut, &mut self.side.clipboard.0)
+        self.side.chat_ui.options.shortcut(
+            &self.side.gui.atlas,
+            shortcut,
+            &mut self.side.clipboard.0,
+        )
     }
     pub(in crate::game::client_side) fn options_scroll(&mut self, amount: f32) -> Result<bool> {
         if self.pad_stick_scroll() {
             let size = self.gui_size();
-            self.side
-                .chat_ui
-                .options
-                .scroll_at(&self.settings, size, self.side.cursor, amount);
+            self.side.chat_ui.options.scroll_at(
+                &self.side.settings,
+                size,
+                self.side.cursor,
+                amount,
+            );
             return Ok(true);
         }
         let framebuffer = self.side.renderer.0.as_ref().map_or([1280, 720], |r| {
@@ -417,14 +428,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.side.chat_ui.options.video_open() && self.has_control_down() {
             // VideoSettingsScreen.mouseScrolled: Ctrl with the wheel steps the GUI scale.
             let mut ui = std::mem::take(&mut self.side.chat_ui.options);
-            let events = ui.video_wheel_gui_scale(&mut self.settings, framebuffer, amount);
+            let events = ui.video_wheel_gui_scale(&mut self.side.settings, framebuffer, amount);
             self.side.chat_ui.options = ui;
             self.handle_option_events(events)?;
             return Ok(true);
         }
         let size = self.gui_size();
         let (handled, events) = self.side.chat_ui.options.wheel_input(
-            &mut self.settings,
+            &mut self.side.settings,
             size,
             self.side.cursor,
             framebuffer,
@@ -446,7 +457,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .side
             .chat_ui
             .options
-            .bind_mouse(&mut self.settings, button);
+            .bind_mouse(&mut self.side.settings, button);
         self.handle_option_events(events)
     }
     pub(in crate::game::client_side) fn handle_option_events(
@@ -458,8 +469,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Event::ButtonClick => self.side.audio.0.play_button_click(),
                 Event::DebugEntriesChanged => self.side.debug_entries.0.invalidate(),
                 Event::Changed => {
-                    self.settings.save(&crate::game::options_path());
-                    self.settings.keys.sync_action_bindings();
+                    self.side.settings.save(&crate::game::options_path());
+                    self.side.settings.keys.sync_action_bindings();
                     self.apply_settings();
                     self.switch_mods();
                     self.sync_native_switches();
@@ -491,18 +502,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Event::PlayMusicTrack(event, track) => self.play_music_track(&event, &track),
                 Event::Close if self.side.chat_ui.options.resource_error.is_some() => {}
                 Event::Close => {
-                    self.settings.save(&crate::game::options_path());
+                    self.side.settings.save(&crate::game::options_path());
                     self.leave_options();
                 }
                 Event::Language(code) => {
                     self.load_language(&code);
                 }
                 Event::Packs(_) => {
-                    self.settings.save(&crate::game::options_path());
+                    self.side.settings.save(&crate::game::options_path());
                     self.reload_packs();
                 }
                 Event::ReloadTextures => {
-                    self.settings.save(&crate::game::options_path());
+                    self.side.settings.save(&crate::game::options_path());
                     self.apply_settings();
                     self.reload_packs();
                 }
@@ -577,21 +588,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Event::ListShaderPacks => {
                     let (key, _) = sunrise_client::shader_pack_list::resolve(
                         &Self::shader_packs_dir(),
-                        &self.settings.sunrise.shader_pack,
+                        &self.side.settings.sunrise.shader_pack,
                     );
-                    if key != self.settings.sunrise.shader_pack {
-                        self.settings.sunrise.shader_pack = key;
-                        self.settings.save(&crate::game::options_path());
+                    if key != self.side.settings.sunrise.shader_pack {
+                        self.side.settings.sunrise.shader_pack = key;
+                        self.side.settings.save(&crate::game::options_path());
                     }
-                    self.settings.shader_packs =
+                    self.side.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
                 }
                 // Saved; the next frame's `shader_pack_inputs` loads the pick.
-                Event::ShaderPack => self.settings.save(&crate::game::options_path()),
+                Event::ShaderPack => self.side.settings.save(&crate::game::options_path()),
                 Event::OpenShaderOptions => self.open_shader_options(),
                 Event::ShaderOptions => self.save_shader_options(),
                 Event::NativePackOptions(i) => {
-                    if let Some(pack) = self.settings.shader_packs.get(i) {
+                    if let Some(pack) = self.side.settings.shader_packs.get(i) {
                         pack.save_values(&Self::shader_packs_dir());
                     }
                 }
@@ -629,7 +640,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn load_language(&mut self, code: &str) {
         lang::set(lang::Language::load(&[&self.pack.source], code));
         self.refresh_remote_language();
-        self.side.chat_ui.chat.rescale(&self.gui.atlas);
+        self.side.chat_ui.chat.rescale(&self.side.gui.atlas);
         self.side.creative_screen.0.forget_items();
     }
     /// Window.updateFullscreenIfChanged: only a changed option asks the
@@ -644,13 +655,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .0
                 .refresh(monitor, sunrise_client::window::monitor_video_modes)
             {
-                self.settings.video_modes = modes;
+                self.side.settings.video_modes = modes;
             }
             let in_video_screen =
                 self.side.screen == Screen::Options && self.side.chat_ui.options.video_open();
-            let wanted = self.settings.fullscreen;
-            let exclusive = self.settings.file.bool("exclusiveFullscreen");
+            let wanted = self.side.settings.fullscreen;
+            let exclusive = self.side.settings.file.bool("exclusiveFullscreen");
             let preferred = self
+                .side
                 .settings
                 .file
                 .fullscreen_resolution
@@ -663,9 +675,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Settings that Sunrise applies beyond render distance, volume and GUI scale.
     pub(in crate::game::client_side) fn apply_ui_settings(&mut self) {
-        sunrise_client::parallel::set_setting(self.settings.sunrise.parallel_tick);
+        sunrise_client::parallel::set_setting(self.side.settings.sunrise.parallel_tick);
         if sunrise_client_render::mipmap::set_dither_cutouts(
-            self.settings.sunrise.dither_cutout_mips,
+            self.side.settings.sunrise.dither_cutout_mips,
         ) {
             self.reload_packs();
         }
@@ -673,13 +685,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // A failed HDR start that named no driver becomes the window's driver's, and another
         // driver's is dropped, so HDR output is tried again.
         if let Some(driver) = self.side.renderer.0.as_ref().and_then(|r| r.hdr_driver())
-            && self.settings.sunrise.settle_failed_start(driver)
+            && self.side.settings.sunrise.settle_failed_start(driver)
             && let Some(dir) = crate::game::options_path().parent()
         {
-            self.settings.sunrise.save(dir);
+            self.side.settings.sunrise.save(dir);
         }
         self.hold_fullbright();
-        let s = &self.settings;
+        let s = &self.side.settings;
         if let Some(r) = self.side.renderer.0.as_mut() {
             r.gamma = s.gamma as f32;
             r.improved_transparency = s.improved_transparency;
@@ -730,14 +742,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         self.side.chat_ui.chat.options = chat;
         if rescale {
-            self.side.chat_ui.chat.rescale(&self.gui.atlas);
+            self.side.chat_ui.chat.rescale(&self.side.gui.atlas);
         }
-        let font = &mut self.gui.atlas.font;
+        let font = &mut self.side.gui.atlas.font;
         if font.uniform != s.force_unicode || font.japanese != s.japanese_glyphs {
             font.uniform = s.force_unicode;
             font.japanese = s.japanese_glyphs;
             font.reset_cache();
-            self.side.chat_ui.chat.rescale(&self.gui.atlas);
+            self.side.chat_ui.chat.rescale(&self.side.gui.atlas);
         }
         self.notify_window_resize();
         // GUI-scale changes rebuild mounted children before the next input.
@@ -759,8 +771,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             size,
             gui_size: sunrise_client::window::GuiSize::new(
                 viewport,
-                self.settings.gui_scale,
-                self.settings.force_unicode,
+                self.side.settings.gui_scale,
+                self.side.settings.force_unicode,
             )
             .size,
         }
@@ -792,17 +804,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let Some(w) = &self.side.window.0 else { return };
         if let Some(now) = self.side.fullscreen.observe(w.fullscreen().is_some())
-            && self.settings.fullscreen != now
+            && self.side.settings.fullscreen != now
         {
-            self.settings.fullscreen = now;
-            self.settings.save(&crate::game::options_path());
+            self.side.settings.fullscreen = now;
+            self.side.settings.save(&crate::game::options_path());
             self.notify_window_resize();
         }
     }
     /// F11 (key.fullscreen): Window.toggleFullScreen, remembered in options.txt.
     pub(in crate::game::client_side) fn toggle_fullscreen(&mut self) {
-        self.settings.fullscreen = !self.settings.fullscreen;
-        self.settings.save(&crate::game::options_path());
+        self.side.settings.fullscreen = !self.side.settings.fullscreen;
+        self.side.settings.save(&crate::game::options_path());
         self.apply_ui_settings();
     }
     /// The Extras page's shader pack key: turns the picked pack off, or asks for the last
@@ -818,11 +830,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .exists()
         };
         let plan = plan_shader_toggle(
-            &self.settings.sunrise.shader_pack,
-            &self.settings.extras.last_shader_pack,
+            &self.side.settings.sunrise.shader_pack,
+            &self.side.settings.extras.last_shader_pack,
             dev_pack().is_some(),
             present,
-            |key| !active_pack(key, &self.settings.mods).is_empty(),
+            |key| !active_pack(key, &self.side.settings.mods).is_empty(),
         );
         match plan {
             TogglePlan::Noop => {}
@@ -830,21 +842,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.client_system_message(Text::tr("sunrise.shaders.noPack", &[]));
             }
             TogglePlan::HintClearLast => {
-                self.settings.extras.last_shader_pack.clear();
-                self.settings.save(&crate::game::options_path());
+                self.side.settings.extras.last_shader_pack.clear();
+                self.side.settings.save(&crate::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.noPack", &[]));
             }
             TogglePlan::HintModOff(name) => {
                 self.client_system_message(Text::tr("sunrise.shaders.modOff", &[&name]));
             }
             TogglePlan::Off(name) => {
-                self.settings.set_shader_pick("");
-                self.settings.save(&crate::game::options_path());
+                self.side.settings.set_shader_pick("");
+                self.side.settings.save(&crate::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.suspended", &[&name]));
             }
             TogglePlan::On(name) => {
-                self.settings.set_shader_pick(&name);
-                self.settings.save(&crate::game::options_path());
+                self.side.settings.set_shader_pick(&name);
+                self.side.settings.save(&crate::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.resumed", &[&name]));
             }
         }
@@ -853,7 +865,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// throttled when minimised, idle, or in a menu without a world.
     pub(in crate::game::client_side) fn framerate_limit(&self) -> i32 {
         let context = FrameContext {
-            inactivity: if self.settings.inactivity_fps_limit == "minimized" {
+            inactivity: if self.side.settings.inactivity_fps_limit == "minimized" {
                 InactivityFpsLimit::Minimized
             } else {
                 InactivityFpsLimit::Afk
@@ -882,8 +894,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             has_screen: self.side.title.0.is_some() || self.side.screen != super::Screen::Playing,
             has_overlay: false,
         };
-        let limit = framerate_limit(self.settings.max_fps as i32, context);
-        let limit = self.settings.sunrise.battery_limit(
+        let limit = framerate_limit(self.side.settings.max_fps as i32, context);
+        let limit = self.side.settings.sunrise.battery_limit(
             limit,
             self.side.title.0.is_none(),
             self.side.focused,
@@ -910,7 +922,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let limit = self.framerate_limit();
-        match self.settings.sunrise.pacing {
+        match self.side.settings.sunrise.pacing {
             sunrise_client::graphics::Pacing::Precise => sunrise_client::window::end_frame(
                 &mut self.side.limiter,
                 limit,
@@ -949,9 +961,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.remote.as_ref().map(|_| self.integrated.is_some()),
             self.replay.playing(),
         );
-        self.settings.fullbright_held = held;
+        self.side.settings.fullbright_held = held;
         if let Some(r) = self.side.renderer.0.as_mut() {
-            r.fullbright = self.settings.extras.fullbright && !held;
+            r.fullbright = self.side.settings.extras.fullbright && !held;
         }
     }
 }
@@ -1040,8 +1052,8 @@ mod resize_state_tests {
                     game.side.window.0 = Some(window.clone());
                     game.side.renderer.0 = Some(game.new_renderer(window.clone()).unwrap());
                     game.side.renderer.0.as_mut().unwrap().resize(960, 1080);
-                    game.settings.gui_scale = scale;
-                    game.settings.force_unicode = false;
+                    game.side.settings.gui_scale = scale;
+                    game.side.settings.force_unicode = false;
                     game.notify_window_resize();
                     game.notify_window_resize();
                     assert_eq!(

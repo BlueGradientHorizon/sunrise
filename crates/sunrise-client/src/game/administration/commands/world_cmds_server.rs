@@ -39,7 +39,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game::server_side) fn cmd_particle(&mut self, ctx: &Context) -> R<i32> {
         use crate::lan::server_effects::{ServerParticle, ServerQueuedParticle};
-        use sunrise_client::particles::ParticleType;
+        use sunrise_level::particle_options::ParticleType;
         let (name, particle) = match ctx.get("name") {
             Some(Arg::Particle(opts)) => {
                 use crate::game::api_values::TryIntoEngine;
@@ -142,7 +142,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .as_ref()
                             .and_then(|c| crate::game::potions::particle_options(ty, c))
                             .unwrap_or_else(|| {
-                                sunrise_client::particles::ParticleOptions::simple(ty)
+                                sunrise_level::particle_options::ParticleOptions::simple(ty)
                             });
                         crate::game::lan_particles::server_particle_from_options(&options, None)
                     }

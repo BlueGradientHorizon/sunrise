@@ -41,7 +41,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         .map_or(FluidTable::EMPTY, |faces| {
             FluidTable::new(fluids.len(), faces)
         });
-        let tables = &self.pack.context.tables;
+        let tables = &self.side.client_pack.context.mesh.tables;
         let vanilla = |state: BlockStateId| tables.vanilla_fluid_overlay(state.0);
         let fluid_overlay = Self::resolve_per_state_fluid(
             HookId::ShouldDisplayFluidOverlay,

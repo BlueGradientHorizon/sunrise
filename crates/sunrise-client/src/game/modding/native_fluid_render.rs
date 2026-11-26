@@ -39,7 +39,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The look of `key`, once per resource generation: water and lava keep their own sprite,
     /// tint and light, any other fluid reads its look (`data/<mod>/sunrise/fluid/`).
     fn resolve_fluid_look(&self, key: mod_api::FluidKey) -> Result<FluidBoxLook, FluidBoxError> {
-        let layers = &self.pack.render.sprite_layers;
+        let layers = &self.side.client_pack.render.sprite_layers;
         let id = mod_api::__private::fluid_id(key).ok_or(FluidBoxError::UnsupportedFluid)?;
         let luminosity = super::native_block_tables::BlockTables::new(&self.res, &self.pack)
             .fluid_type_properties(key)

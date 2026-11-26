@@ -193,7 +193,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 format!("{title}\n{}", prompt.text),
             )
         });
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         if self.player.is_none() {
             // In place of the connecting screen, on its background.
@@ -270,7 +270,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(prompt) = self.side.code_of_conduct.as_mut() else {
             return Ok(false);
         };
-        let layout = prompt.layout(&self.gui.atlas.font, size);
+        let layout = prompt.layout(&self.side.gui.atlas.font, size);
         let [x, y, w, h] = layout.check;
         let toggled = ui::hovered(cursor, x, y, w, h);
         if toggled {
@@ -298,7 +298,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(prompt) = self.side.code_of_conduct.as_mut() else {
             return false;
         };
-        let layout = prompt.layout(&self.gui.atlas.font, size);
+        let layout = prompt.layout(&self.side.gui.atlas.font, size);
         let [_, ay, _, ah] = layout.area;
         if !(ay..ay + ah).contains(&self.side.cursor.1) && !stick_scroll {
             return false;

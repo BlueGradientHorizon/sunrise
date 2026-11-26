@@ -74,7 +74,7 @@ sunrise-client game::server_side::beehives::stay_tests::every_ready_bee_of_a_hiv
 sunrise-client game::server_side::jigsaw_blocks_server::tests::a_local_jigsaw_edit_applies_and_marks_the_chunk lib daily resources
 sunrise-client game::server_side::block_edits::tests::typed_bulk_late_refusals_preserve_the_world_and_emit_no_changes lib daily resources
 sunrise-client game::server_side::block_entity_anims::conduit_target_tests::a_conduit_hunts_only_enemies lib daily resources
-sunrise-client game::server_side::block_entity_anims::conduit_target_tests::a_conduits_target_reaches_the_client_as_a_particle lib daily resources
+sunrise-client game::client_side::block_entity_anims_client::conduit_target_tests::a_conduits_target_reaches_the_client_as_a_particle lib daily resources
 sunrise-client game::server_side::block_entity_anims::gateway_age_tests::a_gateway_that_ages_marks_the_chunk lib daily resources
 sunrise-client game::server_side::block_entity_anims::tests::replacing_a_gateway_discards_its_old_cooldown lib daily resources
 sunrise-client game::server_side::block_entity_part_state_tests::a_removal_retires_its_state_only_at_the_root_commit lib daily resources

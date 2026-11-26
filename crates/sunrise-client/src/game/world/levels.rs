@@ -35,15 +35,14 @@ use sunrise_client::join_seq::{
 use sunrise_client::spans::time as span;
 use sunrise_client::{
     Result,
-    block_entity_anim::BlockEntityAnims,
     random_tick_sections::RandomTickSections,
     save::SaveDir,
-    streaming::Streaming,
     tick_chunk_membership::TickChunkMembership,
     ticket_levels::{ChunkTickets, PortalTicket},
     vanillagen::VanillaTerrain,
     world::World,
 };
+use sunrise_level::{block_entity_ticks::BlockEntityTicks, chunk_streamer::ChunkStreamer};
 use sunrise_world::level::{LevelEvent, Ticks};
 
 const BUILTIN_LEVEL_ORDER: [Dim; 3] = [Dim::Overworld, Dim::Nether, Dim::End];
@@ -207,7 +206,7 @@ fn custom_close_still_eligible(
 /// A level that is not in place: every per-level field of `Game`.
 pub(in crate::game) struct Parked {
     pub(in crate::game) world: World,
-    streaming: Streaming,
+    streaming: ChunkStreamer,
     locator: Option<Arc<VanillaTerrain>>,
     save: Arc<SaveDir>,
     block_ticks: Ticks,
@@ -256,7 +255,7 @@ pub(in crate::game) struct Parked {
     /// them: what its players' moves are checked against before this tick describes them again.
     lan_states: sunrise_client::lan::entity::States,
     /// Only the per-level parts of these are used (`swap_level`).
-    anims: BlockEntityAnims,
+    anims: BlockEntityTicks,
     pub(in crate::game) raiding: Raiding,
     sculk: SculkState,
     creaking: CreakingState,
@@ -772,7 +771,7 @@ impl Levels {
     pub(in crate::game::server_side) fn parked_streaming_of(
         &self,
         dimension: &str,
-    ) -> Option<&Streaming> {
+    ) -> Option<&ChunkStreamer> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
@@ -791,7 +790,7 @@ impl Levels {
     pub(in crate::game::server_side) fn parked_streaming_of_mut(
         &mut self,
         dimension: &str,
-    ) -> Option<&mut Streaming> {
+    ) -> Option<&mut ChunkStreamer> {
         self.parked
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
@@ -833,7 +832,7 @@ impl Levels {
         )
     }
 
-    pub(in crate::game::server_side) fn parked_anims(&self, dim: Dim) -> Option<&BlockEntityAnims> {
+    pub(in crate::game::server_side) fn parked_anims(&self, dim: Dim) -> Option<&BlockEntityTicks> {
         self.parked.get(&dim).map(|level| &level.anims)
     }
 
@@ -871,7 +870,7 @@ impl Levels {
     /// The streamers of the levels not in place.
     pub(in crate::game::server_side) fn parked_streamings(
         &self,
-    ) -> impl Iterator<Item = &sunrise_client::streaming::Streaming> {
+    ) -> impl Iterator<Item = &ChunkStreamer> {
         self.parked.values().map(|level| &level.streaming)
     }
 
@@ -986,7 +985,7 @@ impl Levels {
 #[inline(never)]
 fn box_parked(
     world: World,
-    streaming: Streaming,
+    streaming: ChunkStreamer,
     locator: Option<Arc<VanillaTerrain>>,
     save: Arc<SaveDir>,
     seed: i64,
@@ -1060,7 +1059,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &self.res,
             &self.pack,
             &self.options,
-            &self.settings,
+            &self.side.settings,
             &self.side.world_root,
             dim,
             self.side.level_shapes.get(dim.id()),
@@ -1102,8 +1101,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut starting_level = if starting_dim != Dim::Overworld {
             let mut overworld = self.open_level(Dim::Overworld)?;
             self.replace_level(Dim::Overworld, &mut overworld);
-            self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
-                self.settings.render_distance,
+            self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                self.side.settings.render_distance,
                 None,
             );
             self.read_raids();
@@ -1122,8 +1121,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut level = self.open_level(dim)?;
                 let left = self.replace_level(dim, &mut level);
                 self.side.levels.0.parked.insert(left, level);
-                self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
-                    self.settings.render_distance,
+                self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                    self.side.settings.render_distance,
                     None,
                 );
                 self.read_raids();
@@ -1160,7 +1159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.enter_level(dim)?;
             Self::load_saved_level_tickets(
                 &self.side.save.0,
-                &mut self.streaming,
+                &mut self.side.streaming,
                 &mut self.side.tickets.0,
             );
             self.validate_mod_chunk_tickets(dim);
@@ -1178,7 +1177,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// command tickets, and stage mod tickets for their controllers to validate.
     fn load_saved_level_tickets(
         save: &SaveDir,
-        streaming: &mut Streaming,
+        streaming: &mut ChunkStreamer,
         tickets: &mut ChunkTickets,
     ) {
         tickets.restore_portal(save.load_portal_tickets());
@@ -1205,14 +1204,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // radius can become ticking chunks: those are waited for.
         let portal = self.portal_ticket_areas();
         for area in &portal {
-            if !self.streaming.extra.contains(area) {
-                self.streaming.extra.push(*area);
+            if !self.side.streaming.extra.contains(area) {
+                self.side.streaming.extra.push(*area);
             }
         }
         loop {
             self.update_chunk_tickets();
             let levels = self.side.tickets.0.levels();
-            let streaming = &self.streaming;
+            let streaming = &self.side.streaming;
             let ready = streaming
                 .forced
                 .iter()
@@ -1233,7 +1232,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 return;
             }
             self.server_update_world();
-            self.streaming.wait(Duration::from_millis(5));
+            self.side.streaming.wait(Duration::from_millis(5));
         }
     }
 
@@ -1244,7 +1243,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The carrier first-use gate belongs to the world, not the
         // level: a level swap keeps it.
         self.world.carrier_data_existed_at_open = p.world.carrier_data_existed_at_open;
-        swap(&mut self.streaming, &mut p.streaming);
+        swap(&mut self.side.streaming, &mut p.streaming);
         let mut locator = self.end.locator();
         swap(&mut locator, &mut p.locator);
         self.end.set_locator(locator);
@@ -1292,17 +1291,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         swap(&mut self.side.lan_block_events, &mut p.lan_block_events);
         swap(&mut self.side.lan_entity_events, &mut p.lan_entity_events);
         swap(&mut self.side.lan_critical_hits, &mut p.lan_critical_hits);
-        let (a, b) = (&mut self.be_anims, &mut p.anims);
-        swap(&mut a.chests, &mut b.chests);
-        swap(&mut a.books, &mut b.books);
-        swap(&mut a.shulkers, &mut b.shulkers);
-        swap(&mut a.bells, &mut b.bells);
-        swap(&mut a.conduits, &mut b.conduits);
-        swap(&mut a.skulls, &mut b.skulls);
-        swap(&mut a.pots, &mut b.pots);
-        swap(&mut a.gateways, &mut b.gateways);
-        swap(&mut a.gateway_servers, &mut b.gateway_servers);
-        swap(&mut a.conduit_servers, &mut b.conduit_servers);
+        self.side.be_anims.swap_level(&mut p.anims);
         self.side.raiding.0.swap_level(&mut p.raiding);
         self.side.sculk.swap_level(&mut p.sculk);
         self.side.creaking.swap_level(&mut p.creaking);
@@ -1352,8 +1341,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let left = self.replace_level(target, &mut p);
             self.side.levels.0.parked.insert(left, p);
             if opened {
-                self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
-                    self.settings.render_distance,
+                self.side.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                    self.side.settings.render_distance,
                     None,
                 );
                 // ServerLevel's constructor reads the level's raids.
@@ -1516,7 +1505,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         dim: Dim,
     ) -> Option<Arc<dyn sunrise_level::chunk_streamer::LodSource>> {
         if dim == self.dim {
-            return Some(self.streaming.lod_source());
+            return Some(self.side.streaming.lod_source());
         }
         let parked = self.side.levels.0.parked.get(&dim)?;
         Some(parked.streaming.lod_source())
@@ -1644,7 +1633,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // ServerChunkCache.tick's purge, before the update that may unload the columns.
             if running == Some(true) {
-                self.streaming.purge_unknown_tickets();
+                self.side.streaming.purge_unknown_tickets();
             }
             sunrise_client::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
@@ -1654,7 +1643,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // The end of ServerChunkCache.tick, after its unloads: `clearCache`. A paused or held
             // server ticks no level.
             if running.is_some() {
-                self.streaming.clear_full_lookups();
+                self.side.streaming.clear_full_lookups();
             }
             let tick_span = sunrise_client::spans::guard("level_tick");
             // This level's moving colliders, solid to its movers for this tick only.
@@ -1918,9 +1907,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .into_iter()
             .filter(|d| {
                 // `/forceload`ed chunks, or a native mod's tickets.
-                let held = |s: &Streaming| !s.forced.is_empty();
+                let held = |s: &ChunkStreamer| !s.forced.is_empty();
                 let forced = if *d == self.dim {
-                    held(&self.streaming)
+                    held(&self.side.streaming)
                 } else {
                     self.side.levels.0
                         .parked
@@ -2103,8 +2092,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let back = self.dim;
         self.enter_level(dim)?;
         let spawn_wait = std::mem::take(&mut self.side.spawn_wait);
-        self.streaming.radius = -1;
-        self.streaming.extra.clear();
+        self.side.streaming.radius = -1;
+        self.side.streaming.extra.clear();
         self.server_update_world();
         self.side.spawn_wait = spawn_wait;
         self.enter_level(back)?;
@@ -2244,13 +2233,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`) on the server
     /// thread: column `chunk` of the level in place (`parked: None`) or of the parked level
     /// `parked`, without switching levels, loaded or generated to FULL (resident and lit) under
-    /// an `UNKNOWN` ticket (`Streaming::begin_full_column`). It blocks until then, with no
+    /// an `UNKNOWN` ticket (`ChunkStreamer::begin_full_column`). It blocks until then, with no
     /// timeout, as vanilla's `managedBlock`. Each column the wait brings in is announced while
     /// it is resident, before this returns: its `dynamic_light` cells asked (the light job
     /// waits for them) and `chunk_load` fired, at the same point as vanilla's FULL task fires
     /// NeoForge's `ChunkEvent.Load` inside `getChunk`. `Ok` once FULL; `Failed` when a
     /// generation the column needs panicked, before or during the wait
-    /// (`Streaming::full_column_failed`); `Unloaded` when `begin_full_column` refuses, when
+    /// (`ChunkStreamer::full_column_failed`); `Unloaded` when `begin_full_column` refuses, when
     /// the level is gone, and when generation is aborted during the wait.
     pub(in crate::game::server_side) fn load_full_chunk(
         &mut self,
@@ -2296,9 +2285,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     fn full_load_level(
         &mut self,
         parked: Option<&str>,
-    ) -> Option<(&mut sunrise_client::streaming::Streaming, &mut World)> {
+    ) -> Option<(&mut ChunkStreamer, &mut World)> {
         match parked {
-            None => Some((&mut self.streaming, &mut self.world)),
+            None => Some((&mut self.side.streaming, &mut self.world)),
             Some(id) => {
                 let level = self.side.levels.0.parked_mut_of(id)?;
                 Some((&mut level.streaming, &mut level.world))
@@ -2319,7 +2308,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let loaded = std::mem::take(&mut world.loaded_chunks);
-        if self.pack.context.light.any_dynamic() {
+        if self.pack.chunk_context.light.any_dynamic() {
             let dimension = Self::light_emission_dimension(level);
             for &(x, z, _) in &loaded {
                 self.ask_level_chunk_light_emission(Some(id), dimension, (x, z));
@@ -2684,9 +2673,8 @@ mod tests {
         let mut game = crate::game::ServerGame::new(
             resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -2780,9 +2768,8 @@ mod tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -2850,9 +2837,8 @@ mod tests {
         let mut game = crate::game::ServerGame::new(
             resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -3114,9 +3100,9 @@ mod tests {
             game.options.execution_role =
                 crate::game::execution_role::ExecutionRole::DedicatedServer;
             game.options.dedicated = Some(Vec::new());
-            game.settings.render_distance = 2;
-            game.settings.simulation_distance = 2;
-            game.streaming.radius = -1;
+            game.side.settings.render_distance = 2;
+            game.side.settings.simulation_distance = 2;
+            game.side.streaming.radius = -1;
             game.side.server_lists.0 = Some(Arc::new(Mutex::new(crate::game::dedicated::Lists {
                 ops: OpList::new(home.path().join("ops.json")),
                 white: WhiteList::new(home.path().join("whitelist.json")),

@@ -9,7 +9,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut downloads = self.side.skin_downloads.0.borrow_mut();
         // A slot without its sprite (the atlas was rebuilt, or the upload
         // never happened) counts as missing, so the skin is stored again.
-        if self.side.skin_slots.contains(location) && self.gui.atlas.sprites.contains_key(location)
+        if self.side.skin_slots.contains(location)
+            && self.side.gui.atlas.sprites.contains_key(location)
         {
             downloads.drawn(location);
             true
@@ -43,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             listed,
             &mut self.side.skin_profiles.borrow_mut(),
             &mut self.side.skin_downloads.0.borrow_mut(),
-            |location| self.gui.atlas.sprites.contains_key(location),
+            |location| self.side.gui.atlas.sprites.contains_key(location),
             name,
         )
     }
@@ -59,7 +60,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 profile,
                 &mut self.side.skin_profiles.borrow_mut(),
                 &mut self.side.skin_downloads.0.borrow_mut(),
-                |location| self.gui.atlas.sprites.contains_key(location),
+                |location| self.side.gui.atlas.sprites.contains_key(location),
             );
             let id = skins::parse_profile(profile).id;
             let name = profile
@@ -71,18 +72,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 name.map(|n| format!("name:{}", n.to_ascii_lowercase())),
             ];
             for key in keys.iter().flatten() {
-                if let Some(listed) = self.gui.atlas.object_skins.get(key)
+                if let Some(listed) = self.side.gui.atlas.object_skins.get(key)
                     && listed.starts_with("skins/")
                 {
                     let listed = listed.clone();
                     self.again_skin(&listed);
                 }
             }
-            self.gui
+            self.side
+                .gui
                 .atlas
                 .set_object_skin(format!("id:{id:032x}"), skin.clone());
             if let Some(name) = name {
-                self.gui
+                self.side
+                    .gui
                     .atlas
                     .set_object_skin(format!("name:{}", name.to_ascii_lowercase()), skin);
             }
@@ -95,9 +98,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         if let Some(old) = evicted {
-            self.gui.atlas.sprites.remove(&old);
+            self.side.gui.atlas.sprites.remove(&old);
         }
         let Some(mut rect) = self
+            .side
             .gui
             .atlas
             .sprites
@@ -106,7 +110,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return;
         };
-        let (w, h) = (self.gui.atlas.width as f32, self.gui.atlas.height as f32);
+        let (w, h) = (
+            self.side.gui.atlas.width as f32,
+            self.side.gui.atlas.height as f32,
+        );
         self.side.map_patches.push(sunrise_client::font::Patch {
             x: (rect.u0 * w).round() as u32,
             y: (rect.v0 * h).round() as u32,
@@ -118,7 +125,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if location.starts_with("capes/") {
             rect.v1 = (rect.v0 + rect.v1) / 2.0;
         }
-        self.gui.atlas.sprites.insert(location, rect);
+        self.side.gui.atlas.sprites.insert(location, rect);
     }
 
     /// The player list's view of the connection: the listed players (with
@@ -132,7 +139,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             r.listed.len(),
             r.listed.iter().fold(0, |xor, uuid| xor ^ uuid),
             r.skins_revision,
-            self.gui.atlas.object_skins_revision,
+            self.side.gui.atlas.object_skins_revision,
         );
         if r.published_skins == Some(fingerprint) {
             return;
@@ -150,8 +157,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 format!("id:{uuid:032x}"),
                 format!("name:{}", p.name.to_ascii_lowercase()),
             ] {
-                if object_skin_changed(&self.gui.atlas.object_skins, &key, skin) {
-                    self.gui.atlas.set_object_skin(key, skin.to_owned());
+                if object_skin_changed(&self.side.gui.atlas.object_skins, &key, skin) {
+                    self.side.gui.atlas.set_object_skin(key, skin.to_owned());
                 }
             }
         }
@@ -160,7 +167,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             fingerprint.0,
             fingerprint.1,
             fingerprint.2,
-            self.gui.atlas.object_skins_revision,
+            self.side.gui.atlas.object_skins_revision,
         ));
     }
 

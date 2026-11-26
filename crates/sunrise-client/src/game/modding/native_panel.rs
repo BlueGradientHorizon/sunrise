@@ -597,7 +597,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let r = self.side.renderer.0.as_ref()?;
         Some(HudBatch::new(
             [r.config.width, r.config.height],
-            self.settings.gui_scale_inputs(),
+            self.side.settings.gui_scale_inputs(),
         ))
     }
     /// The mod showing a panel, with its items made into stacks once per
@@ -608,11 +608,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return None;
         }
-        let Some(shown) = self
-            .side
-            .panel
-            .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
-        else {
+        let Some(shown) = self.side.panel.shown(|id| {
+            !self
+                .mods
+                .code_disabled(&self.side.settings.mods.disabled, id)
+        }) else {
             self.side.panel.of = None;
             self.side.panel.stacks.clear();
             return None;
@@ -644,9 +644,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// What the panel shows now.
     fn panel_shown(&self) -> Option<&Shown> {
-        self.side
-            .panel
-            .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
+        self.side.panel.shown(|id| {
+            !self
+                .mods
+                .code_disabled(&self.side.settings.mods.disabled, id)
+        })
     }
     /// The player did `event` on `owner`'s panel.
     pub(in crate::game::client_side) fn panel_event(&mut self, owner: &Owner, event: BrowserEvent) {
@@ -790,7 +792,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         square: bool,
         classic: bool,
     ) {
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         for (i, (rect @ [x, y, w, h], on)) in rects.into_iter().zip(enabled).enumerate() {
             let hovered = inside(self.side.cursor, rect);
             if square {
@@ -847,7 +849,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             } else {
                 [page > 0, page + 1 < pages]
             };
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             if square && !classic {
                 batch.fill(
                     atlas,
@@ -893,7 +895,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // The classic look lights the whole slot, as JEI 1.12.
                 let lit = if classic { [x, y, SLOT, SLOT] } else { rect };
                 batch.fill(
-                    &self.gui.atlas,
+                    &self.side.gui.atlas,
                     lit[0],
                     lit[1],
                     lit[2],
@@ -955,12 +957,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             rgba(224, 224, 224, 255)
         };
         let mut search = search.clone();
-        search.draw_with_skin(batch, &self.gui.atlas, None, skin);
+        search.draw_with_skin(batch, &self.side.gui.atlas, None, skin);
         self.side.panel.search = Some(search);
         let mut settings_label = None;
         if let Some(rect @ [x, y, width, height]) = layout.settings {
             let hovered = inside(cursor, rect);
-            let atlas = &self.gui.atlas;
+            let atlas = &self.side.gui.atlas;
             if layout.classic {
                 // JEI's config button: its wrench on its own button.
                 let sprite = if hovered {
@@ -1064,6 +1066,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if !right {
                 self.list_native_mods();
                 if let Some(index) = self
+                    .side
                     .settings
                     .mods
                     .installed
@@ -1078,7 +1081,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return true;
         }
         let shift = self.has_shift_down();
-        let atlas = &self.gui.atlas;
+        let atlas = &self.side.gui.atlas;
         let search = self.side.panel.search.get_or_insert_with(|| {
             let mut edit = EditBox::new(0.0, 0.0, 0.0, 0.0);
             edit.max_length = 50;
@@ -2065,7 +2068,8 @@ mod tests {
     }
     /// One frame of the panel on a window `size` pixels big: what the mods heard.
     fn frame(game: &mut crate::game::ClientGame<'_>, size: [u32; 2]) -> Vec<(String, String)> {
-        let mut batch = sunrise_client::hud::HudBatch::new(size, game.settings.gui_scale_inputs());
+        let mut batch =
+            sunrise_client::hud::HudBatch::new(size, game.side.settings.gui_scale_inputs());
         game.draw_mod_browser(&mut batch);
         std::mem::take(&mut *HEARD.lock().unwrap())
     }

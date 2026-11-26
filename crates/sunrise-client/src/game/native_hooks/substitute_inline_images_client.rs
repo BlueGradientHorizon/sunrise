@@ -9,7 +9,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && mod_api::__private::enabled_listened(HookId::SubstituteInlineImages))
         .then(|| {
             [
-                self.gui.atlas.revision,
+                self.side.gui.atlas.revision,
                 self.side.dynamic_textures.geometry_revision(),
                 mod_api::__private::mods_switched(),
             ]

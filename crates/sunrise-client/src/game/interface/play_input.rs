@@ -34,10 +34,10 @@ fn studio_freecam_movement_key(key: KeyCode) -> bool {
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn toggle_options(&self) -> [bool; 4] {
         [
-            self.settings.toggle_crouch,
-            self.settings.toggle_sprint,
-            self.settings.toggle_attack,
-            self.settings.toggle_use,
+            self.side.settings.toggle_crouch,
+            self.side.settings.toggle_sprint,
+            self.side.settings.toggle_attack,
+            self.side.settings.toggle_use,
         ]
     }
     pub(in crate::game::client_side) fn reset_toggle_keys(&mut self) {
@@ -101,9 +101,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let released = sunrise_client_input::modifiers::reconcile(
             self.side.modifiers,
             &mut self.side.physical_keys,
-            &self.settings.keys,
+            &self.side.settings.keys,
             &mut self.side.vanilla_mappings,
-            [self.settings.toggle_crouch, self.settings.toggle_sprint],
+            [
+                self.side.settings.toggle_crouch,
+                self.side.settings.toggle_sprint,
+            ],
             [
                 self.side.pad.0.holds_action("key.sneak"),
                 self.side.pad.0.holds_action("key.sprint"),
@@ -148,7 +151,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match source {
             // A pad's toggle-sneak isn't holding it: it has no release that would end it.
             Source::Keyboard => {
-                !(slot == SNEAK && self.settings.controller.toggle_sneak)
+                !(slot == SNEAK && self.side.settings.controller.toggle_sneak)
                     && self
                         .side
                         .pad
@@ -156,7 +159,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .holds_action(["key.sneak", "key.sprint"][slot])
             }
             Source::Pad => self.side.physical_keys.iter().any(|physical| {
-                self.settings
+                self.side
+                    .settings
                     .keys
                     .translate_all(*physical)
                     .contains(&Ok(key))
@@ -189,11 +193,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         if let Some(name) = sunrise_client::keybinds::key_name(key) {
             let screen_open = self.mod_mappings_screen_open() || self.replay.playing();
-            self.side
-                .vanilla_mappings
-                .key_event(&self.settings.keys, name, action, screen_open);
+            self.side.vanilla_mappings.key_event(
+                &self.side.settings.keys,
+                name,
+                action,
+                screen_open,
+            );
         }
-        for mapped in self.settings.keys.translate_all(key) {
+        for mapped in self.side.settings.keys.translate_all(key) {
             match mapped {
                 Ok(k) => {
                     self.mapped_key_dispatch(k, pressed, repeat, key, source, true)?;
@@ -234,10 +241,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         source: Source,
     ) -> Result<()> {
         let screen_open = self.mod_mappings_screen_open();
-        self.side
-            .vanilla_mappings
-            .mouse_event(&self.settings.keys, input, pressed, screen_open);
-        for mapped in self.settings.keys.translate_mouse_all(button) {
+        self.side.vanilla_mappings.mouse_event(
+            &self.side.settings.keys,
+            input,
+            pressed,
+            screen_open,
+        );
+        for mapped in self.side.settings.keys.translate_mouse_all(button) {
             match mapped {
                 Err(MouseButton::Middle) => {}
                 Err(b) => self.mouse_mapping(b, pressed, source)?,
@@ -298,8 +308,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // repeat) flips them when toggling; only releases reach them
         // behind a screen (KeyboardHandler.keyPress).
         let toggle = match key {
-            KeyCode::ShiftLeft => Some((0, self.settings.toggle_crouch)),
-            KeyCode::ControlLeft => Some((1, self.settings.toggle_sprint)),
+            KeyCode::ShiftLeft => Some((0, self.side.settings.toggle_crouch)),
+            KeyCode::ControlLeft => Some((1, self.side.settings.toggle_sprint)),
             _ => None,
         };
         if let Some((slot, option)) = toggle {
@@ -454,8 +464,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // The other device's hold takes over again, even after a direct setDown(false).
             // In toggle mode a release does not change the mapping.
             let toggled = match button {
-                MouseButton::Left => self.settings.toggle_attack,
-                MouseButton::Right => self.settings.toggle_use,
+                MouseButton::Left => self.side.settings.toggle_attack,
+                MouseButton::Right => self.side.settings.toggle_use,
                 _ => return Ok(()),
             };
             if !toggled {
@@ -489,7 +499,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match source {
             Source::Keyboard | Source::Agent => self.input_holds(mapping),
             Source::Pad => {
-                let keys = &self.settings.keys;
+                let keys = &self.side.settings.keys;
                 self.side
                     .physical_buttons
                     .iter()
@@ -551,7 +561,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return false;
         }
-        let names: Vec<&'static str> = self.settings.keys.translated_mappings(input).collect();
+        let names: Vec<&'static str> = self.side.settings.keys.translated_mappings(input).collect();
         let mut canceled = false;
         for name in names {
             let mut this = false;

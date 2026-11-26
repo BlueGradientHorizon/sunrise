@@ -250,7 +250,10 @@ pub(in crate::game) mod client_screen_tests {
             }))
             .unwrap();
             // Screen.clickUrlAction with Prompt on Links on, as a page's link opens it.
-            (game.settings.chat_links, game.settings.chat_links_prompt) = (true, true);
+            (
+                game.side.settings.chat_links,
+                game.side.settings.chat_links_prompt,
+            ) = (true, true);
             game.click_url("https://example.org".into());
             assert!(
                 game.side.link_prompt.is_some(),
@@ -539,7 +542,8 @@ pub(in crate::game) mod client_screen_tests {
         with_client_game(|game| {
             let mut reader = logged_in(game);
             // The player's keys act once the client told the server it loaded.
-            game.streaming
+            game.side
+                .streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             game.poll_stationary_client().unwrap();
             sent(&mut reader); // PlayerLoaded precedes the inventory action.

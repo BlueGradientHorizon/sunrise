@@ -5,9 +5,9 @@
 use crate::game::game_tests::tests::server_game;
 use crate::game::{Game, GuestUse, Hit};
 use sunrise_client::command::args::GameMode;
-use sunrise_client::first_person::Hand;
 use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
+use sunrise_sim::first_person_sim::Hand;
 use sunrise_world::registry::BlockStateId;
 
 /// A server's game with the prepared resources, or `None` where CI has none.

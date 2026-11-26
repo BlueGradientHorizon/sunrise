@@ -22,7 +22,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.repro_tick();
         // Hud.tick ends with ChatComponent.tick.
         let chat_ticks = self.visual_ticks();
-        self.side.chat_ui.chat.tick(&self.gui.atlas, chat_ticks);
+        self.side
+            .chat_ui
+            .chat
+            .tick(&self.side.gui.atlas, chat_ticks);
         self.tick_sign_editor();
         self.track_experience_display();
         self.tick_enchanting_book();
@@ -32,8 +35,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Options.broadcastOptions: a changed render distance or Chat option
         // is sent again.
         let info = self
+            .side
             .settings
-            .client_information(client_view_distance(self.settings.render_distance));
+            .client_information(client_view_distance(self.side.settings.render_distance));
         if let Some(r) = self.remote.as_mut()
             && r.joined
             && r.sent_info != info

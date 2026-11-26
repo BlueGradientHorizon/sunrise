@@ -58,7 +58,7 @@ pub(in crate::game) fn run_a_spectated_dying_living_entity_squeezes_the_fov_26_3
         .unwrap();
         game.remote_set_camera(31);
         assert!(!game.controls_camera());
-        game.settings.fov = 70.0;
+        game.side.settings.fov = 70.0;
         let mut wrong = Vec::new();
         for row in witness.lines().filter(|l| !l.starts_with('#')) {
             let [dead, partial, fov, hud] = row.split('\t').collect::<Vec<_>>()[..] else {

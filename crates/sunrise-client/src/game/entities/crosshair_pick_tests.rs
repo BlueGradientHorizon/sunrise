@@ -113,8 +113,8 @@ fn setup_remote_overworld(
     game.player = Some(PlayerMotion::new(game.motion, pos).unwrap());
     game.previous_position = pos;
     game.side.camera_type = CameraType::FirstPerson;
-    game.settings.fov = 70.0;
-    game.settings.render_distance = 8;
+    game.side.settings.fov = 70.0;
+    game.side.settings.render_distance = 8;
     server
 }
 

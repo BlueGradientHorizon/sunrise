@@ -1576,9 +1576,8 @@ pub(in crate::game) mod order_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1686,9 +1685,8 @@ pub(in crate::game) mod order_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1781,9 +1779,8 @@ pub(in crate::game) mod order_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1865,9 +1862,8 @@ pub(in crate::game) mod order_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -1975,9 +1971,8 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
             let mut game = crate::game::ServerGame::new(
                 &loaded.resources,
                 loaded.pack,
-                loaded.gui.unwrap(),
                 options,
-                settings,
+                settings.sim_settings(),
                 None,
             )
             .unwrap();

@@ -31,9 +31,8 @@ pub(in crate::game) fn run_crack_packets_follow_start_clock_and_strict_observer_
     let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
-        settings,
+        settings.sim_settings(),
         None,
     )
     .unwrap();

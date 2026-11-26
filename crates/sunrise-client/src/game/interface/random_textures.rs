@@ -9,8 +9,8 @@ use sunrise_optifine::random::Weather;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_random_textures(&mut self) {
-        let res = self.res.clone();
-        let textures = res
+        let client_res = self.side.client_res.clone();
+        let textures = crate::game::client_side::ClientState::expect_client_res(&client_res)
             .client_mob_data()
             .random_textures
             .read()

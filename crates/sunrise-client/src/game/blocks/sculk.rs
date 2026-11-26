@@ -80,7 +80,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The Darkness Effect option (`darknessEffectScale`), 0..1.
     pub(in crate::game::client_side) fn darkness_effect_scale(&self) -> f32 {
-        self.settings.file.double("darknessEffectScale") as f32
+        self.side.settings.file.double("darknessEffectScale") as f32
     }
 
     /// `LightmapRenderStateExtractor`: the night vision effect's intensity
@@ -427,9 +427,8 @@ pub(in crate::game) mod shriek_capture_tests {
         let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
-            settings,
+            settings.sim_settings(),
             None,
         )
         .unwrap();
@@ -518,7 +517,9 @@ pub(in crate::game) mod shriek_capture_tests {
         client_options.execution_role = crate::game::execution_role::ExecutionRole::Client;
         let mut client = crate::game::ClientGame::new(
             &client_loaded.resources,
+            client_loaded.client_res.unwrap(),
             client_loaded.pack,
+            client_loaded.client_pack.unwrap(),
             client_loaded.gui.unwrap(),
             client_options,
             client_settings,

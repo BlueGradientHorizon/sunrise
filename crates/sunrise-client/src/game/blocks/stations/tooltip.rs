@@ -216,7 +216,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn bundle_description_lines(&self, default_font: &str) -> usize {
         let text =
             sunrise_client::text::Text::translate("item.minecraft.bundle.empty.description", &[]);
-        self.gui
+        self.side
+            .gui
             .atlas
             .font
             .split_formatted_with_font(&text, 96.0, default_font)
@@ -302,7 +303,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Option<(i32, i32)> {
         let width = match item {
             PreparedTooltipItem::Text { text, .. } => {
-                self.gui.atlas.font.width_text_with_font(text, font.name()) as i32
+                self.side
+                    .gui
+                    .atlas
+                    .font
+                    .width_text_with_font(text, font.name()) as i32
             }
             PreparedTooltipItem::Bundle { .. } => sunrise_client::bundle::Contents::TOOLTIP_WIDTH,
             PreparedTooltipItem::Custom(component) => component.width(font)?,
@@ -382,7 +387,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             let item_font = self.item_tooltip_font(stack);
             let item_font_str = crate::game::host::draw::font_id_str(&item_font);
-            let font = &self.gui.atlas.font;
+            let font = &self.side.gui.atlas.font;
             let (mut max_width, mut cancel) = (-1, false);
             self.native_render_tooltip_gather_components(
                 &api_stack,
@@ -613,7 +618,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (at, chosen_font) =
             self.tooltip_pre_components(batch, stack, components, at, positioner)?;
 
-        let tooltip_font = EngineTooltipFont::new(&self.gui.atlas.font, &chosen_font);
+        let tooltip_font = EngineTooltipFont::new(&self.side.gui.atlas.font, &chosen_font);
         let chosen_font_str = tooltip_font.name();
 
         let mut w = 0_i32;
@@ -641,7 +646,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             match component {
                 PreparedTooltipItem::Text { text, color } => {
                     batch.text_styled_with_font(
-                        &self.gui.atlas,
+                        &self.side.gui.atlas,
                         text,
                         [x as f32, local_y as f32],
                         *color,

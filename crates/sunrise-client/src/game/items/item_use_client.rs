@@ -111,17 +111,18 @@ pub(in crate::game) mod tests {
         }
         with_client_game(|game| {
             stand_in_first_person(game);
-            game.settings.main_hand_left = true;
+            game.side.settings.main_hand_left = true;
             let left = game.hand_geometry(0.0).0;
-            game.settings.main_hand_left = false;
+            game.side.settings.main_hand_left = false;
             let right = game.hand_geometry(0.0).0;
 
-            game.settings
+            game.side
+                .settings
                 .file
                 .set("modelPart_left_sleeve", V::Bool(false));
             game.tick_player_model();
             let right_hidden_left = game.hand_geometry(0.0).0;
-            game.settings.main_hand_left = true;
+            game.side.settings.main_hand_left = true;
             let left_hidden_left = game.hand_geometry(0.0).0;
 
             assert_eq!(
@@ -526,7 +527,8 @@ pub(in crate::game) mod tests {
                         w: 64,
                         h: 64,
                     };
-                    game.gui
+                    game.side
+                        .gui
                         .atlas
                         .sprites
                         .insert("arms:fixture_skin".into(), atlas);
@@ -638,7 +640,7 @@ pub(in crate::game) mod tests {
                         "pop restores the unscaled normal pose for the second arm"
                     );
 
-                    game.gui.atlas.sprites.remove("arms:fixture_skin");
+                    game.side.gui.atlas.sprites.remove("arms:fixture_skin");
                     for missing_avatar in [false, true] {
                         if missing_avatar {
                             game.side.player_model = None;

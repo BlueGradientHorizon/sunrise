@@ -57,7 +57,8 @@ fn client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions() {
         let authoritative = Vec3::new(8.5, 70.0, 8.5);
         game.player = Some(PlayerMotion::new(game.motion, authoritative).unwrap());
         game.mobs.push(Mob::new(66, kind, authoritative, 0.0));
-        game.streaming
+        game.side
+            .streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         let registry = game.pack.assets.registry;
         let air = registry.default_state("minecraft:air").unwrap();

@@ -5,21 +5,20 @@
 use super::{Game, chat_common::PLAYER_NAME, commands::Target};
 use mod_api::EntityTags;
 use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
-use sunrise_client::{
-    command::{
-        Context,
-        args::{IntRange, Selector},
-    },
-    lan::{guest::Guest, playerdata::ints_uuid},
-    save::{self, uuid_from_text, uuid_text},
-    scoreboard::{self as sb, Comp, Scoreboard, literal},
-    scoreboard_cmd::{self, Env, Holder},
-    tab_list::TabPlayer,
-    text::Text,
-};
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay::stats::{StatScoreChange, StatScoreOp};
+#[allow(unused_imports)]
+use {
+    sunrise_client::command::Context, sunrise_client::command::args::IntRange,
+    sunrise_client::command::args::Selector, sunrise_client::lan::guest::Guest,
+    sunrise_client::lan::playerdata::ints_uuid, sunrise_client::save,
+    sunrise_client::save::uuid_from_text, sunrise_client::save::uuid_text,
+    sunrise_client::scoreboard as sb, sunrise_client::scoreboard::Comp,
+    sunrise_client::scoreboard::Scoreboard, sunrise_client::scoreboard::literal,
+    sunrise_client::scoreboard_cmd, sunrise_client::scoreboard_cmd::Env,
+    sunrise_client::scoreboard_cmd::Holder, sunrise_client::text::Text,
+    sunrise_level::profile_lookup::TabPlayer,
+};
 
 /// What `ServerPlayer` last recorded for the criteria that follow the player.
 #[derive(Default)]

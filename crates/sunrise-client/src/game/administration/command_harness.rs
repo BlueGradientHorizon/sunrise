@@ -160,11 +160,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Finish requested terrain before inspecting it, so worker
                 // timing cannot change which command positions are loaded.
                 if (std::env::var_os("SUNRISE_HARNESS_TERRAIN_ONLY").is_some()
-                    || !self.streaming.busy())
+                    || !self.side.streaming.busy())
                     && required.and_then(Value::as_array).map_or_else(
                         || {
                             (-1..=1).all(|dz| {
-                                (-1..=1).all(|dx| self.streaming.is_lit(cx + dx, cz + dz))
+                                (-1..=1).all(|dx| self.side.streaming.is_lit(cx + dx, cz + dz))
                             })
                         },
                         |chunks| {
@@ -172,7 +172,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 chunk[0]
                                     .as_i64()
                                     .zip(chunk[1].as_i64())
-                                    .is_some_and(|(x, z)| self.streaming.is_lit(x as i32, z as i32))
+                                    .is_some_and(|(x, z)| {
+                                        self.side.streaming.is_lit(x as i32, z as i32)
+                                    })
                             })
                         },
                     )
@@ -189,9 +191,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 eprintln!(
                     "settle: player {:?} center {:?} chunks {} pending {}",
                     self.player.as_ref().map(|p| p.position),
-                    self.streaming.center,
+                    self.side.streaming.center,
                     self.world.chunks.len(),
-                    self.streaming.pending()
+                    self.side.streaming.pending()
                 );
             }
             if Instant::now() > deadline {
@@ -473,7 +475,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let resident = g.world.chunks.contains_key(&(x, z));
                         Ok([
                             resident,
-                            g.streaming.is_lit(x, z),
+                            g.side.streaming.is_lit(x, z),
                             resident
                                 && !g
                                     .world
@@ -511,7 +513,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             g.spawn_loaded_entities();
                             if targets.iter().all(|&(x, z)| {
                                 g.world.chunks.contains_key(&(x, z))
-                                    && g.streaming.is_lit(x, z)
+                                    && g.side.streaming.is_lit(x, z)
                                     && !g
                                         .world
                                         .loaded_entities

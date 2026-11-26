@@ -1,7 +1,10 @@
 //! Particle keys cross the game boundary through the load-resolved provider table.
 use super::{TryIntoApi, TryIntoEngine};
 use mod_api::{__private::ParticleKind, ParticleOptions as ApiOptions};
-use sunrise_client::particles::{ParticleOptions as EngineOptions, ParticleType};
+use {
+    sunrise_level::particle_options::ParticleOptions as EngineOptions,
+    sunrise_level::particle_options::ParticleType,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ParticleValueError {

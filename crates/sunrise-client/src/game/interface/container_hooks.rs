@@ -366,7 +366,7 @@ impl<'g> Game<'g, crate::game::client_side::ClientState> {
         let (origin, panel) = match self.side.renderer.0.as_ref() {
             Some(r) => self.container_frame(&HudBatch::new(
                 [r.config.width, r.config.height],
-                self.settings.gui_scale_inputs(),
+                self.side.settings.gui_scale_inputs(),
             )),
             None => (
                 (0.0, 0.0),
@@ -499,7 +499,7 @@ impl<'g> Game<'g, crate::game::client_side::ClientState> {
         };
         let mut canvas = Canvas {
             batch,
-            atlas: &self.gui.atlas,
+            atlas: &self.side.gui.atlas,
             origin,
         };
         api::engine::draw(&open, &mut canvas);
@@ -788,7 +788,7 @@ mod tests {
                 assert!(game.container_mouse(MouseButton::Left, true, false))
             });
             assert_eq!(reads(), 1);
-            let mut batch = HudBatch::new([854, 480], game.settings.gui_scale_inputs());
+            let mut batch = HudBatch::new([854, 480], game.side.settings.gui_scale_inputs());
             with_registrants(&[&READ_FAR], || game.draw_container_hooks(&mut batch));
             assert_eq!(reads(), 2, "the draw view reads nothing there either");
         });
