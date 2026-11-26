@@ -252,6 +252,20 @@ mod tests {
         }
     }
 
+    /// A lava source block at the zombie's feet: the world recomputes `fluids.lava` from it
+    /// during the move, so the height stays above the fluid jump threshold.
+    fn put_lava_at_the_zombie(
+        world: &mut crate::world::World,
+        registry: &sunrise_world::registry::BlockRegistry,
+    ) {
+        world
+            .chunks
+            .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+        world
+            .set(0, 80, 0, registry.default_state("minecraft:lava").unwrap())
+            .unwrap();
+    }
+
     /// One travel of a zombie standing in lava (its lava height above the fluid jump threshold)
     /// in open air at `(0.5, 80, 0.5)` with velocity `start`: the velocity and x position it
     /// leaves, and every displacement the listener heard.
@@ -261,20 +275,24 @@ mod tests {
         let mut left = None;
         mod_platform::testing::with_mods(mods, || {
             assert!(
-                crate::mobs::world::with_test_world(&[], |w, types| {
-                    let mut mob = Mob::new(
-                        1,
-                        Arc::new(types.types["minecraft:zombie"].clone()),
-                        Vec3::new(0.5, 80.0, 0.5),
-                        0.0,
-                    );
-                    mob.fluids.in_lava = true;
-                    mob.fluids.lava = 1.0;
-                    mob.velocity = start;
-                    let mut test_level = crate::health::TestLevel::new(0);
-                    mob.travel(w, &mut test_level.level(), Vec3::ZERO, &mut Vec::new());
-                    left = Some((mob.velocity, mob.position.x));
-                }),
+                crate::mobs::world::with_built_test_world(
+                    &[],
+                    put_lava_at_the_zombie,
+                    |w, types| {
+                        let mut mob = Mob::new(
+                            1,
+                            Arc::new(types.types["minecraft:zombie"].clone()),
+                            Vec3::new(0.5, 80.0, 0.5),
+                            0.0,
+                        );
+                        mob.fluids.in_lava = true;
+                        mob.fluids.lava = 1.0;
+                        mob.velocity = start;
+                        let mut test_level = crate::health::TestLevel::new(0);
+                        mob.travel(w, &mut test_level.level(), Vec3::ZERO, &mut Vec::new());
+                        left = Some((mob.velocity, mob.position.x));
+                    }
+                ),
                 "prepared resources are required"
             );
         });
