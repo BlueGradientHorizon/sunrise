@@ -605,10 +605,19 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         let game = self.game.ok_or(GuiDrawError::Unavailable)?;
         // The entity's own depth pass is cut at the posed box, as `DrawContext::entity` cuts it
         // at the box; the group's scissor still applies on top.
-        let clip = posed_bounds(self.pose, view.rect)?;
-        self.paint_in_pose(self.pose, |batch, _| {
+        let pose = self.pose;
+        let clip = posed_bounds(pose, view.rect)?;
+        self.paint_in_pose(pose, |batch, _| {
+            let start = batch.vertices.len();
             game.native_draw_entity_clipped(batch, entity, view, clip)
-                .map_err(entity_error)
+                .map_err(entity_error)?;
+            // The depth pass's cut is an axis-aligned rectangle of the screen: exact for a pose
+            // that keeps the axes, but a turned one would let the model spill from the box into
+            // the corners of its bounds. Cut the geometry to the box before the pose turns it.
+            if pose[1] != 0.0 || pose[2] != 0.0 {
+                batch.crop_since(start, view.rect);
+            }
+            Ok(())
         })
     }
 }
@@ -1372,6 +1381,16 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_item_decorator_canvas_draws_a_mob_in_its_pose_and_scissor() {
+        const NAME: &str = "game::host::draw::gui_canvas::tests::an_item_decorator_canvas_draws_a_mob_in_its_pose_and_scissor";
+        // The fixture publishes game keys, particle providers and language state in its
+        // process: a fresh child runs this test alone.
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            NAME,
+            "SUNRISE_GUI_CANVAS_ENTITY",
+            &["run"],
+        ) {
+            return;
+        }
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let look = mod_api::GuiEntityLook::Turned {
                 yaw: 30.0,
@@ -1450,6 +1469,60 @@ mod tests {
             .unwrap();
             assert_eq!(batch.vertices.len(), n as usize);
             assert_eq!(batch.blends, blends);
+
+            // A turned pose and an oversized model: the box is cut as the box turns, and the
+            // scope's scissor, with bounds of its own, applies over that.
+            let turned = [PoseOp::Translate(90.0, 70.0), PoseOp::Rotate(0.6)];
+            let mut pose = IDENTITY;
+            turned.into_iter().for_each(|op| pose_apply(&mut pose, op));
+            let big = GuiEntityView::new([0.0, 0.0, 16.0, 16.0], 40.0, 0.0, look);
+            let mut plain = HudBatch::scratch([320, 240]);
+            game.native_draw_entity(&mut plain, &zombie, big).unwrap();
+            let outside =
+                |[x, y]: [f32; 2]| !(0.0..=16.0).contains(&x) || !(0.0..=16.0).contains(&y);
+            assert!(
+                plain.vertices.iter().any(|v| outside(v.pos)),
+                "the model overflows its box"
+            );
+            let mut batch = HudBatch::scratch([320, 240]);
+            GameGuiCanvas::draw_root(
+                &mut batch,
+                &game.gui.atlas,
+                Some(game),
+                None,
+                true,
+                &mut |root| {
+                    // The outer scissor is screen [60, 40, 120, 100], unlike the posed box's bounds.
+                    root.scope(&[], Some([60.0, 40.0, 60.0, 60.0]), &mut |outer| {
+                        outer.scope(&turned, None, &mut |slot| slot.entity(&zombie, big))
+                    })
+                },
+            )
+            .unwrap();
+            assert!(!batch.vertices.is_empty());
+            // Back through the pose, every surviving vertex lies in the local box.
+            let det = pose[0] * pose[3] - pose[1] * pose[2];
+            for v in &batch.vertices {
+                let (dx, dy) = (v.pos[0] - pose[4], v.pos[1] - pose[5]);
+                let local = [
+                    (pose[3] * dx - pose[2] * dy) / det,
+                    (pose[0] * dy - pose[1] * dx) / det,
+                ];
+                assert!(
+                    local.iter().all(|c| (-0.01..=16.01).contains(c)),
+                    "{local:?} is outside the local box"
+                );
+            }
+            let n = batch.vertices.len() as u32;
+            assert_eq!(
+                batch.scissors_in(0..n).collect::<Vec<_>>(),
+                [(0..n, Some([60.0, 40.0, 120.0, 100.0]))]
+            );
+            let [x0, y0, x1, y1] = posed_bounds(pose, [0.0, 0.0, 16.0, 16.0]).unwrap();
+            let device = |v: f32| (v * batch.scale).max(0.0) as u32;
+            let (x0, y0) = (device(x0), device(y0));
+            let clip = [x0, y0, device(x1) - x0, device(y1) - y0];
+            assert_eq!(batch.runs(), [(0..n, HudBlend::Depth(clip))]);
         });
     }
 }

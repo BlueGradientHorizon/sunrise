@@ -304,12 +304,13 @@ pub trait GuiCanvas {
     /// Draw living entity `entity` standing in `view.rect` (`[x0, y0, x1, y1]`, local GUI
     /// pixels), `view.size` GUI pixels a block, turned as `view.look` says, under the current
     /// pose and scissor: vanilla's `InventoryScreen.extractEntityInInventoryFollowsMouse`
-    /// (`GuiEntityLook::At`, a point in local GUI pixels) and `renderEntityInInventory`
-    /// (`GuiEntityLook::Turned`), as an item decorator shows a data model's mob over its icon.
+    /// (`GuiEntityLook::At`, a point in local GUI pixels) and, for a fixed turn
+    /// (`GuiEntityLook::Turned`), `GuiGraphicsExtractor.entity` given the render state and the
+    /// rotation, as an item decorator shows a data model's mob over its icon.
     /// It is drawn as [`crate::DrawContext::entity`] draws it: by its type's renderer as in the
     /// world, full bright, lit by `Lighting.ENTITY_IN_UI`, with a depth of its own, cut off at
-    /// the screen bounds of the posed box and at the scissor. A `GuiEntity::Kind` drawn every
-    /// frame is made once and kept.
+    /// `view.rect` in local pixels (under a turned pose the box's edges turn with it) and, apart
+    /// from that, at the scissor. A `GuiEntity::Kind` drawn every frame is made once and kept.
     ///
     /// A view [`GuiEntityView::is_drawable`] refuses, or one whose sums or products overflow, is
     /// refused with [`GuiDrawError::Entity`]`(`[`GuiEntityError::BadView`]`)`; an unknown type,

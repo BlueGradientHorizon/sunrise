@@ -117,7 +117,8 @@ HUD or screen draw hooks.
 
 A decorator draws a mob over its icon with `event.draw.entity(&entity, view)`, the box
 `view.rect` in the same local pixels (`[event.x, event.y, event.x + 16.0, event.y + 16.0]` for the
-slot). It is drawn as `DrawContext::entity` draws it, cut at that box and the canvas's scissor.
+slot). It is drawn as `DrawContext::entity` draws it, cut at that box (which turns with a
+rotated pose) and at the canvas's scissor.
 
 For replacing or wrapping a HUD status layer, see [HUD drawing](hud-drawing.md).
 
