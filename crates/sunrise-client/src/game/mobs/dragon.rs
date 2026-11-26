@@ -2412,12 +2412,8 @@ impl Game<'_> {
     /// who hurt the dragon within the last 100 ticks. A guest's kill is
     /// theirs: their statistics, scores and advancements.
     fn credit_dragon_kill(&mut self, resolve_uuid: bool) -> Option<u128> {
-        let Some(d) = self.dragon.as_ref() else {
-            return None;
-        };
-        let Some((who, _)) = d.hurt_by_player.filter(|(_, hit)| d.ticks - hit <= 100) else {
-            return None;
-        };
+        let d = self.dragon.as_ref()?;
+        let (who, _) = d.hurt_by_player.filter(|(_, hit)| d.ticks - hit <= 100)?;
         let view = sunrise_client::advancements::EntityView {
             kind: "minecraft:ender_dragon".to_owned(),
             position: [d.position.x, d.position.y, d.position.z],

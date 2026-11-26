@@ -334,6 +334,22 @@ fn key(game: &mut Game<'_>, key: KeyCode, state: ElementState) {
     );
 }
 
+fn window_key(game: &mut Game<'_>, input: WindowKeyInput<'_>) {
+    game.dispatch_window_key(&NoLoop, input, |_| false);
+}
+
+fn socket_key(game: &mut Game<'_>, key: KeyCode, pressed: bool) -> bool {
+    game.dispatch_screen_key(
+        &NoLoop,
+        key,
+        pressed,
+        false,
+        None,
+        sunrise_client::held::Source::Agent,
+    )
+    .unwrap()
+}
+
 fn publish_frame(game: &mut Game<'_>, frame: u64) {
     let renderer = game.renderer.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
@@ -1147,7 +1163,6 @@ fn context_menu_overlay_draw_order_disposal_and_action_reopen() {
 #[ignore = "daily"]
 fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
     use mod_api::client::widgets::ContextMenuEntry;
-    use sunrise_client::held::Source;
     use winit::keyboard::NativeKeyCode;
 
     if run_fresh_cases(
@@ -1220,8 +1235,8 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
             "opening menu resets active IME composition"
         );
         // Unidentified-key text (Windows Alt-code) is consumed.
-        game.dispatch_window_key(
-            &NoLoop,
+        window_key(
+            game,
             WindowKeyInput {
                 physical: PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
                 state: ElementState::Pressed,
@@ -1229,7 +1244,6 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
                 text: Some("é"),
                 shortcut: None,
             },
-            |_| false,
         );
         // IME preedit and commit are suppressed while menu is open.
         send(
@@ -1242,36 +1256,10 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "base");
 
         // Control socket key goes through the menu before the focused Chat screen.
-        assert!(
-            game.dispatch_screen_key(
-                &NoLoop,
-                KeyCode::ArrowDown,
-                true,
-                false,
-                None,
-                Source::Agent
-            )
-            .unwrap()
-        );
-        assert!(
-            game.dispatch_screen_key(
-                &NoLoop,
-                KeyCode::ArrowDown,
-                false,
-                false,
-                None,
-                Source::Agent
-            )
-            .unwrap()
-        );
-        assert!(
-            game.dispatch_screen_key(&NoLoop, KeyCode::Enter, true, false, None, Source::Agent)
-                .unwrap()
-        );
-        assert!(
-            game.dispatch_screen_key(&NoLoop, KeyCode::Enter, false, false, None, Source::Agent)
-                .unwrap()
-        );
+        assert!(socket_key(game, KeyCode::ArrowDown, true));
+        assert!(socket_key(game, KeyCode::ArrowDown, false));
+        assert!(socket_key(game, KeyCode::Enter, true));
+        assert!(socket_key(game, KeyCode::Enter, false));
         assert!(picked.load(Ordering::SeqCst));
         assert_eq!(game.screen, Screen::Chat);
         assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "base");
@@ -1319,8 +1307,8 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
         key(game, KeyCode::Escape, ElementState::Pressed);
         assert!(!game.context_menu_open());
         assert_eq!(game.screen, Screen::Mod);
-        game.dispatch_window_key(
-            &NoLoop,
+        window_key(
+            game,
             WindowKeyInput {
                 physical: PhysicalKey::Code(KeyCode::Escape),
                 state: ElementState::Pressed,
@@ -1328,7 +1316,6 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
                 text: None,
                 shortcut: None,
             },
-            |_| false,
         );
         assert_eq!(
             game.screen,
