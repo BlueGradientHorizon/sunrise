@@ -327,6 +327,8 @@ pub(super) struct ScreenState {
     /// book drew none.
     pub(super) drawn_book_tabs: std::cell::Cell<Option<[f32; 4]>>,
     pub(super) widgets: super::screen_widgets::MountedScreenWidgets,
+    /// A mod's context menu over this screen (`ClientHost::open_context_menu`).
+    pub(super) context_menu: Option<super::context_menu::ContextMenu>,
     /// Monotonic identity of the currently open screen instance. Bumped on
     /// every screen open, close, or replacement, and preserved across
     /// same-instance resize/rebuild (`Screen.resize`/`rebuildWidgets`).

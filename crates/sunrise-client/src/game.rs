@@ -387,6 +387,8 @@ mod container_hooks;
 mod container_layout;
 #[path = "game/world/container_loot.rs"]
 mod container_loot;
+#[path = "game/interface/context_menu.rs"]
+mod context_menu;
 #[cfg(test)]
 #[path = "game/items/continue_using_tests.rs"]
 mod continue_using_tests;
@@ -12640,6 +12642,16 @@ impl Game<'_> {
                 self.held_key_text.released(key);
             }
         }
+        // An open context menu takes every key, and the text it types, until it closes.
+        if let PhysicalKey::Code(key) = input.physical
+            && if pressed {
+                self.context_menu_key(key)
+            } else {
+                self.context_menu_open()
+            }
+        {
+            return true;
+        }
         // The OS consumes composing keys before they can reach a screen or a shortcut.
         if (pressed && self.ime_suppresses_key()) || before_screen(self) {
             return true;
@@ -13221,6 +13233,7 @@ impl Game<'_> {
                             .window_cursor
                             .map_or([0.0; 2], |previous| projection.drag_delta(previous, sample));
                         self.set_window_cursor(sample, projection);
+                        self.context_menu_hover();
                         let [w, h] = projection.gui.size.map(|v| v as f32);
                         let overlay = self.observed_overlay_now();
                         if self.observed_screen_view().is_none() && self.studio_mouse_dragged(w) {
@@ -13462,6 +13475,10 @@ impl Game<'_> {
                     let code = glfw_button(button);
                     let modifiers = glfw_modifiers(self.modifiers);
                     let synthetic = self.pad_synthetic_input();
+                    // An open context menu takes every button until it closes.
+                    if self.context_menu_mouse(pressed, button == MouseButton::Left) {
+                        return Ok(());
+                    }
                     let owned_release = std::mem::take(&mut self.container_owned_up);
                     let had_screen = self.mod_mappings_screen_open() || self.remote_loading();
                     let receiver = (!synthetic).then(|| self.observed_input_screen()).flatten();
