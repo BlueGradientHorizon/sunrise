@@ -18,7 +18,7 @@ use sunrise_sim::{
 
 /// The hit target state an independent projectile decided against before a hook.
 #[derive(PartialEq)]
-pub(in crate::game) enum ImpactTarget {
+pub enum ImpactTarget {
     Block(sunrise_world::registry::BlockStateId),
     Entity(mod_api::EntityRef, [f64; 3]),
 }
@@ -41,7 +41,7 @@ pub struct Impact {
     pub events: Range<usize>,
 }
 
-pub(in crate::game) struct ProjectileHit {
+pub struct ProjectileHit {
     pub projectile: Projectile,
     pub hit: Hit,
     /// An ordinary (not deferred) block arrow finished its first tick already;
@@ -49,7 +49,7 @@ pub(in crate::game) struct ProjectileHit {
     pub shot_after_hit: bool,
 }
 
-pub(in crate::game) type ProjectileShot = (Option<Who>, Option<u32>, [f64; 3]);
+pub type ProjectileShot = (Option<Who>, Option<u32>, [f64; 3]);
 
 /// A notified hit still waiting to be applied after the intervening callbacks.
 pub struct PendingImpact {
