@@ -1153,6 +1153,7 @@ mod tests {
         let (overrides, _) = crate::datapack::worldgen_overrides_over(
             &[],
             &crate::datapack::DataPacks::new(&[&pack]),
+            &sunrise_world::conditions::LoadConditions::vanilla(),
         );
         let state = State::new(Path::new("missing"), None, &overrides);
         let [preset] = &state.presets[..] else {

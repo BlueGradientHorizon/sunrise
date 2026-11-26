@@ -415,7 +415,11 @@ impl Game<'_> {
         match owner {
             Some(Who::Mob(id)) => {
                 if let Some(w) = self.mobs.iter_mut().find(|m| m.id == id && m.alive()) {
-                    w.heal(&self.loop_context, 5.0);
+                    w.heal(
+                        &self.loop_context,
+                        &|| crate::game::entity::hit_reads_of!(self),
+                        5.0,
+                    );
                 }
             }
             // The player (or the guest acting now) who owns the skull.

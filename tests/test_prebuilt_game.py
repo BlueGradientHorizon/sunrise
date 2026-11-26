@@ -477,7 +477,7 @@ class SdkAssetTests(unittest.TestCase):
             ("win32", "x86_64-pc-windows-gnu", ["link-arg=-Wl,--stack,8388608"]),
         ):
             with self.subTest(host=host), tempfile.TemporaryDirectory() as directory, \
-                    patch.object(sys, "platform", platform), patch.object(prebuilt_game, "run") as rustc:
+                    patch.object(prebuilt_game, "PLATFORM", platform), patch.object(prebuilt_game, "run") as rustc:
                 out = Path(directory)
                 toolchain = out / "toolchain"
                 toolchain.mkdir()
@@ -498,6 +498,7 @@ class SdkAssetTests(unittest.TestCase):
                 self.assertIn(f"bin/{standard.name}", files)
                 self.assertEqual((out / "bin" / standard.name).read_bytes(), b"std")
                 self.assertIn('feature="official"', command)
+                self.assertNotIn("--target", command)
                 self.assertIn(f"sunrise_official={official}", command)
                 self.assertEqual([arg for arg in command if arg.startswith("link-arg=")], expected_link_args)
                 metadata = {"packages": [{"id": "official", "name": "sunrise-official"}], "resolve": {"nodes": []}}

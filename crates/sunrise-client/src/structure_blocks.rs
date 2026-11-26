@@ -193,19 +193,57 @@ pub fn block_entities(
     Vec<((i32, i32, i32), BlockEntity)>,
     std::collections::HashMap<(i32, i32, i32), crate::save::PendingContainerLoot>,
 ) {
-    let mut out = Vec::new();
-    let mut pending = std::collections::HashMap::new();
-    for (pos, nbt) in &chunk.block_entities {
+    let promoted = promote(&chunk.block_entities, |[x, y, z]| chunk.block_name(x, y, z));
+    (promoted.modelled, promoted.pending_loot)
+}
+
+/// A generated chunk's pending block-entity data, promoted as `LevelChunk` promotes its
+/// `pendingBlockEntities` when it becomes a full chunk.
+pub struct Promoted {
+    /// The block entities the client models, by position.
+    pub modelled: Vec<((i32, i32, i32), BlockEntity)>,
+    /// The loot tables their containers wait with (`RandomizableContainer`).
+    pub pending_loot: std::collections::HashMap<(i32, i32, i32), crate::save::PendingContainerLoot>,
+    /// The data of a block entity the client does not model, with its `id`, `x`, `y` and `z`,
+    /// kept as a loaded chunk keeps it.
+    pub unmodelled: Vec<Tag>,
+}
+
+/// `LevelChunk.promotePendingBlockEntity` for each of `pending` (absolute positions, in
+/// placement order), where `block_name` names the block at a position: the data becomes the
+/// block entity of that block, or is dropped if the block has none.
+pub fn promote<'b>(
+    pending: &[([i32; 3], Compound)],
+    block_name: impl Fn([i32; 3]) -> &'b str,
+) -> Promoted {
+    let mut promoted = Promoted {
+        modelled: Vec::new(),
+        pending_loot: std::collections::HashMap::new(),
+        unmodelled: Vec::new(),
+    };
+    for (pos, nbt) in pending {
         let [x, y, z] = *pos;
-        let Some((entity, loot)) = generated_container(chunk.block_name(x, y, z), nbt) else {
+        let block = block_name(*pos);
+        if let Some((entity, loot)) = generated_container(block, nbt) {
+            if let Some(loot) = loot {
+                promoted.pending_loot.insert((x, y, z), loot);
+            }
+            promoted.modelled.push(((x, y, z), entity));
+            continue;
+        }
+        // The block entities Sunrise does not model (decorated pots with their sherds and loot
+        // table) stay as placed, as a loaded chunk's do.
+        let Some(id) = crate::lan::chunks::block_entity_type(block) else {
             continue;
         };
-        if let Some(loot) = loot {
-            pending.insert((x, y, z), loot);
+        let mut nbt = nbt.clone();
+        nbt.insert("id".into(), Tag::String(id.into()));
+        for (key, v) in ["x", "y", "z"].into_iter().zip(pos) {
+            nbt.insert(key.into(), Tag::Int(*v));
         }
-        out.push(((x, y, z), entity));
+        promoted.unmodelled.push(Tag::Compound(nbt));
     }
-    (out, pending)
+    promoted
 }
 
 /// One generated block entity at `block`, and the loot table its container waits with

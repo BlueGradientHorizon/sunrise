@@ -42,7 +42,7 @@ impl Game<'_> {
     pub(super) fn resume_world_entry(&mut self) -> Result<()> {
         self.poll_integrated_start()?;
         self.poll_world_rest()?;
-        self.poll_world_creation();
+        self.poll_world_creation()?;
         if self.rest_loader.is_some() {
             return Ok(());
         }
@@ -102,15 +102,15 @@ impl Game<'_> {
     /// `CreateWorldScreen.openCreateWorldScreen`: read the world data the create
     /// screen describes (`title.preparing`). The first call leaves the preparing
     /// screen up for a frame; the next reads.
-    pub(super) fn poll_world_creation(&mut self) {
+    pub(super) fn poll_world_creation(&mut self) -> Result<()> {
         let Some(title) = self.title.as_ref() else {
-            return;
+            return Ok(());
         };
         if !title.preparing() {
-            return;
+            return Ok(());
         }
         if !std::mem::replace(&mut self.creation_read_started, true) {
-            return;
+            return Ok(());
         }
         self.creation_read_started = false;
         let (dir, packs) = title.creation_packs().unwrap_or_default();
@@ -142,6 +142,7 @@ impl Game<'_> {
                 }
             }
         }
+        Ok(())
     }
 
     /// `applyNewPackConfig` reloads with the new pack config through `WorldLoader.load`: the
@@ -570,6 +571,17 @@ impl Game<'_> {
                 .collect(),
         );
         pack_tags.insert("damage_type", damage_tags);
+        if !view.tags.contains_key("minecraft:villager_trade")
+            && let Ok(tags) = sunrise_client::items::load_tags(root, "villager_trade", &tag_files)
+        {
+            view.tags.insert(
+                "minecraft:villager_trade".to_owned(),
+                tags.into_iter()
+                    .filter(|(_, members)| !members.is_empty())
+                    .map(|(tag, _)| tag)
+                    .collect(),
+            );
+        }
 
         let datapack_candidate = self.stage_datapack_registries(
             stack,
@@ -803,6 +815,9 @@ impl Game<'_> {
         if !unbound.is_empty() {
             return Err(unbound.join("\n").into());
         }
+        // Check again after `StationData::from_sources` (`Trades::load`) and other late
+        // condition readers, before live state (`resolve_enchantment_registry`) changes.
+        conditions.check_errors()?;
         // The API's key order is live state as well: do not change it for a
         // candidate refused by the condition readers.
         api_values::resolve_enchantment_registry(&items)?;

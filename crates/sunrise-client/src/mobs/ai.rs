@@ -1368,7 +1368,7 @@ pub fn tick(
             TickProgress::Paused(Pause::Drink { stack, resume }) => {
                 // The hostless probe runs the same drink's built-in behaviour.
                 if stack.potion().unwrap_or(&stack.item) == "minecraft:healing" {
-                    m.heal(w.loop_context, 4.0);
+                    m.heal(w.loop_context, &|| w.side.hit_reads(), 4.0);
                 }
                 if let Some(effect) = drink_potion_effect(&stack) {
                     m.add_effect_instance(crate::brewing::namespaced(effect.id), effect);
@@ -1966,7 +1966,7 @@ fn continue_ai_tail(
                         farm::chicken_egg_step(m, events);
                     }
                     if m.species() == Species::Allay {
-                        super::allay::passive_heal(m, w.loop_context);
+                        super::allay::passive_heal(m, w.loop_context, w.side);
                         super::allay::update_duplication_cooldown(m);
                     }
                     // AbstractHorse.aiStep, Camel.tick, Bee.aiStep and WanderingTrader.aiStep
@@ -6277,7 +6277,7 @@ fn tick_effects_until_hurt(
                 "minecraft:regeneration"
                     if count % interval(50) == 0 && !m.kind.flags.undead && m.alive() =>
                 {
-                    m.heal(context, 1.0);
+                    m.heal(context, &|| level.reads(), 1.0);
                 }
                 // AbsorptionMobEffect.applyEffectTick (asked on every tick): false
                 // once the absorption is used up, so tickServer drops the effect
@@ -6316,7 +6316,7 @@ fn tick_effects_until_hurt(
         } = tick;
         while let Some(change) = changes.next() {
             match change {
-                super::MobEffectAction::Heal(amount) => m.heal(context, amount),
+                super::MobEffectAction::Heal(amount) => m.heal(context, &|| level.reads(), amount),
                 super::MobEffectAction::Hurt(kind, amount) => {
                     m.damage(level, amount, Damage::of(kind));
                     after_effect(m);

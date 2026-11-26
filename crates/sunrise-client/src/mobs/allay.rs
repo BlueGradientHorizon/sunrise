@@ -534,7 +534,7 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld) {
         // value reaches zero for one tick before that stop.
         set_pickup_cooldown(m, pickup_cooldown(m).filter(|t| *t > 0).map(|t| t - 1));
     }
-    passive_heal(m, w.loop_context);
+    passive_heal(m, w.loop_context, w.side);
     stop_dancing_away(m, w);
     update_duplication_cooldown(m);
     animate(m);
@@ -576,9 +576,13 @@ pub fn forget_liked_player(m: &mut Mob) {
     }
 }
 /// `Allay.aiStep`: server-side healing runs independently of the AI gate.
-pub fn passive_heal(m: &mut Mob, context: &sunrise_world::native_load_context::LoopContext) {
+pub fn passive_heal(
+    m: &mut Mob,
+    context: &sunrise_world::native_load_context::LoopContext,
+    side: &dyn crate::motion::SideLevel,
+) {
     if m.alive() && m.age.is_multiple_of(10) {
-        m.heal(context, 1.0);
+        m.heal(context, &|| side.hit_reads(), 1.0);
     }
 }
 /// `Allay.updateDuplicationCooldown`: the server decrements positive counters,

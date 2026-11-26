@@ -1339,44 +1339,48 @@ impl super::native_hooks::HitLevel<'_> {
             body => body,
         })
     }
+    /// The body `party` names with the hit's reads, which a view needs to read it; none where the
+    /// hit lends no such body or was built without reads.
+    fn party_reads(
+        &self,
+        party: mod_api::__private::LivingParty,
+    ) -> Option<super::native_living_body::BodyReads<'_>> {
+        Some(super::native_living_body::BodyReads {
+            body: self.party_body(party)?,
+            reads: self.0.reads()?,
+        })
+    }
 }
 
-/// A hit's victim and causer, read through the same functions as the `LivingRef` reads.
+/// A hit's victim and causer, read through the same functions as the `LivingRef` reads
+/// ([`BodyReads`](super::native_living_body::BodyReads)).
 impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
     #[inline]
     fn living_entity(&self, party: mod_api::__private::LivingParty) -> Option<mod_api::EntityRef> {
-        let reads = self.0.reads()?;
-        let id = match self.party_body(party)? {
-            sunrise_client::health::LivingBody::Mob(m) => m.id,
-            sunrise_client::health::LivingBody::Player(p) => u32::try_from(p.id).ok()?,
-            sunrise_client::health::LivingBody::Stand(s)
-            | sunrise_client::health::LivingBody::Dragon(s) => s.id,
-        };
-        Some(mod_api::EntityRef::new(reads.epoch, id))
+        self.party_reads(party)?.living_entity(party)
     }
     #[inline]
     fn living_kind(
         &self,
         party: mod_api::__private::LivingParty,
     ) -> Option<mod_api::EntityTypeKey> {
-        let keys = self.0.reads()?.living_types;
-        super::native_living_body::body_kind(self.party_body(party)?, keys)
+        self.party_reads(party)?.living_kind(party)
     }
     #[inline]
     fn living_holder(&self, party: mod_api::__private::LivingParty) -> Option<mod_api::Holder> {
-        super::native_living_body::body_holder(self.party_body(party)?)
+        self.party_reads(party)?.living_holder(party)
     }
     #[inline]
     fn living_health(&self, party: mod_api::__private::LivingParty) -> Option<f32> {
-        super::native_living_body::body_health(self.party_body(party)?)
+        self.party_reads(party)?.living_health(party)
     }
     #[inline]
     fn living_absorption(&self, party: mod_api::__private::LivingParty) -> Option<f32> {
-        super::native_living_body::body_absorption(self.party_body(party)?)
+        self.party_reads(party)?.living_absorption(party)
     }
     #[inline]
     fn living_max_health(&self, party: mod_api::__private::LivingParty) -> Option<f32> {
-        super::native_living_body::body_max_health(self.party_body(party)?)
+        self.party_reads(party)?.living_max_health(party)
     }
     #[inline]
     fn living_effect(
@@ -1384,16 +1388,14 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
         party: mod_api::__private::LivingParty,
         effect: mod_api::EffectKey,
     ) -> Option<mod_api::ActiveEffect> {
-        let def = mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)?;
-        super::native_living_body::body_effect(self.party_body(party)?, def.index)
+        self.party_reads(party)?.living_effect(party, effect)
     }
     #[inline]
     fn living_effects(
         &self,
         party: mod_api::__private::LivingParty,
     ) -> Option<Vec<mod_api::ActiveEffect>> {
-        super::native_living_body::body_effects(self.party_body(party)?)
+        self.party_reads(party)?.living_effects(party)
     }
     #[inline]
     fn living_potion_affected(
@@ -1401,12 +1403,8 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
         party: mod_api::__private::LivingParty,
         effect: mod_api::EffectKey,
     ) -> bool {
-        mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)
-            .zip(self.party_body(party))
-            .is_some_and(|(def, body)| {
-                super::native_living_body::body_potion_affected(body, def.index)
-            })
+        self.party_reads(party)
+            .is_some_and(|reads| reads.living_potion_affected(party, effect))
     }
     #[inline]
     fn living_attribute_value(
@@ -1414,12 +1412,7 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
         party: mod_api::__private::LivingParty,
         id: &str,
     ) -> Option<f64> {
-        super::native_living_body::body_attribute(
-            self.party_body(party)?,
-            self.0.reads()?.attributes,
-            id,
-            sunrise_world::attribute_map::ValueKind::Computed,
-        )
+        self.party_reads(party)?.living_attribute_value(party, id)
     }
     #[inline]
     fn living_hand_item(
@@ -1428,15 +1421,11 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
         hand: mod_api::Hand,
         read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
     ) -> Option<()> {
-        let stack = super::native_living_body::body_equipment(
-            self.party_body(party)?,
-            super::native_living_refs::hand_slot(hand),
-        )?;
-        super::native_living_refs::lend_equipment(stack, read)
+        self.party_reads(party)?.living_hand_item(party, hand, read)
     }
     #[inline]
     fn living_no_ai(&self, party: mod_api::__private::LivingParty) -> Option<bool> {
-        super::native_living_body::body_no_ai(self.party_body(party)?)
+        self.party_reads(party)?.living_no_ai(party)
     }
 }
 
