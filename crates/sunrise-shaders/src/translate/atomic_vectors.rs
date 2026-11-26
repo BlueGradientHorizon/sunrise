@@ -94,7 +94,8 @@ fn std430(ty: &str) -> Option<(u32, u32)> {
 }
 
 /// `pp` with its shared and buffer vectors that atomic functions use by component rewritten,
-/// or `None` if nothing changes. An unclosed array index refuses the stage at its opening `[`.
+/// or `None` if nothing changes. An unclosed array index or a terminal selector refuses the
+/// stage at the `[` or `.` that starts it.
 pub(super) fn rewrite(pp: &Preprocessed) -> Result<Option<Preprocessed>, Error> {
     if !ATOMICS.iter().any(|a| pp.code().contains(a)) {
         return Ok(None);
@@ -496,7 +497,6 @@ pub(super) fn rewrite(pp: &Preprocessed) -> Result<Option<Preprocessed>, Error> 
             last = close;
         }
         let after = next(last);
-        let follows = |t: &str| after.is_some_and(|j| tokens[j] == t);
         let assigned = |at: Option<usize>| {
             at.is_some_and(|j| tokens[j] == "=" && next(j).is_none_or(|k| tokens[k] != "="))
         };
@@ -532,9 +532,13 @@ pub(super) fn rewrite(pp: &Preprocessed) -> Result<Option<Preprocessed>, Error> 
             out[semi] = "));".into();
             i = eq + 1;
             continue;
-        } else if follows(".") || (s.array.is_none() && follows("[")) {
-            let at = after.and_then(next).unwrap();
-            if follows("[") {
+        } else if let Some(selector) =
+            after.filter(|&j| tokens[j] == "." || (s.array.is_none() && tokens[j] == "["))
+        {
+            let at = next(selector).ok_or_else(|| {
+                error_at_token(pp, &tokens, selector, "missing atomic vector selector")
+            })?;
+            if tokens[selector] == "[" {
                 // `name[c]`: an element already.
                 replacement = base.clone();
             } else if let Some(c) = component(tokens[at]) {
@@ -651,6 +655,30 @@ mod tests {
         };
         let expected = Error::new("deferred.csh", 4, "unclosed atomic vector array index");
         assert_eq!(errors, [expected]);
+    }
+
+    #[test]
+    fn a_terminal_atomic_vector_selector_is_refused_at_its_delimiter() {
+        let fragment = Preprocessed::from_source("composite.fsh", "void main() {}\n");
+        for selector in [".", "["] {
+            let vertex = Preprocessed::from_source(
+                "composite.vsh",
+                &format!(
+                    "layout(std430, binding = 2) buffer Counts {{ uvec2 values; }} counts;\n\
+                     void main() {{\n    atomicAdd(counts.values.x, 1u);\n    counts.values{selector}\n"
+                ),
+            );
+            let Err(errors) = crate::translate_composite(
+                &vertex,
+                &fragment,
+                crate::Target::Buffers,
+                crate::DEVICELESS_INTERFACE_LIMITS,
+            ) else {
+                panic!("a terminal `{selector}` must be refused");
+            };
+            let expected = Error::new("composite.vsh", 4, "missing atomic vector selector");
+            assert_eq!(errors, [expected], "{selector}");
+        }
     }
 
     #[test]
