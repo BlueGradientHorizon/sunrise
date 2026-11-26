@@ -1,0 +1,3 @@
+ids = ["method:PieceContext::set_block_raw"]
+why = "A structure piece can write a block the way `WorldGenLevel.setBlock` does, without `StructurePiece.placeBlock`'s extras (#6037). `PieceContext::set_block_raw(pos, state)` writes with flags 2 and is clipped to `chunk_box` like `set_block`, but schedules no fluid tick for a fluid at `pos` and marks nothing for post-processing, so water or lava a piece places stays still until something else ticks it. Applied Energistics 2's meteorite crater writes through the level this way."
+migrate = "Additive: nothing to change. A type that implements `PieceContext` itself (the game is its only implementor) adds `set_block_raw`."

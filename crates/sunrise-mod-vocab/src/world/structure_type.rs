@@ -532,6 +532,12 @@ pub trait PieceContext {
     /// vanilla's `placeBlock` skips it; an unregistered state or world write failure logs the
     /// position and cause and returns `false` without failing the piece.
     fn set_block(&mut self, pos: [i32; 3], state: BlockState) -> bool;
+    /// `WorldGenLevel.setBlock(pos, state, 2)`: the write [`set_block`](Self::set_block) makes,
+    /// without what `StructurePiece.placeBlock` adds around it: no fluid tick is scheduled for
+    /// a fluid at `pos` (so water or lava a piece places stays still until something else ticks
+    /// it) and no state is marked for post-processing. A position outside `chunk_box`, an
+    /// unregistered state and a world write failure answer `false` as for `set_block`.
+    fn set_block_raw(&mut self, pos: [i32; 3], state: BlockState) -> bool;
     /// `WorldGenLevel.getHeight` of the heightmap kind at (x, z).
     fn height(&mut self, kind: HeightmapType, x: i32, z: i32) -> Option<i32>;
     /// `BlockState.isSolidRender` of a state: whether the block draws as a
