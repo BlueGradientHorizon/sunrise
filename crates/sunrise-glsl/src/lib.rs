@@ -184,11 +184,10 @@ pub fn declared_at(
 
 /// The integer texel buffers a stage declares (`uniform isamplerBuffer` or `usamplerBuffer`).
 fn texel_buffers(text: &str) -> HashSet<&str> {
-    text.lines()
-        .flat_map(declaration_lines)
-        .filter_map(declaration)
-        .filter(|d| d.storage == "uniform" && matches!(d.ty, "isamplerBuffer" | "usamplerBuffer"))
-        .map(|d| d.name)
+    resources(text)
+        .into_iter()
+        .filter(|resource| resource.kind == ResourceKind::TexelBuffer)
+        .map(|resource| resource.name)
         .collect()
 }
 
@@ -1435,24 +1434,131 @@ impl ImageAccess {
     }
 }
 
-/// A `[layout(<format>)] [memory qualifiers] uniform image2D Name;` line: a storage image.
-#[derive(Debug, PartialEq, Eq)]
-pub struct StorageImage<'a> {
-    /// The image's name.
-    pub name: &'a str,
-    /// Its memory qualifiers (`readonly`, `writeonly`, `coherent`, `volatile`, `restrict`).
-    pub qualifiers: Vec<&'a str>,
-    /// What stood inside `layout(...)`: the texel format, e.g. `rgba8`, `r32f`.
-    pub layout: &'a str,
+/// What a resource a stage declares is, as [`resources`] lists it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceKind {
+    /// A `uniform Name { ... }` block.
+    UniformBlock,
+    /// A `layout(push_constant) uniform Name { ... }` block.
+    PushConstantBlock,
+    /// `uniform sampler2D Name;`.
+    Sampler2D,
+    /// `uniform isamplerBuffer Name;` or `uniform usamplerBuffer Name;`.
+    TexelBuffer,
+    /// A `buffer Name { ... }` block.
+    StorageBuffer {
+        /// Whether the block says `readonly`.
+        read_only: bool,
+    },
+    /// `layout(<format>) uniform image2D Name;`.
+    StorageImage {
+        /// What the declaration's `readonly` and `writeonly` qualifiers say.
+        access: ImageAccess,
+    },
 }
 
-/// The storage image a line declares, if it declares one.
-pub fn storage_image(line: &str) -> Option<StorageImage<'_>> {
+/// A resource a stage declares: what `rewrite` binds by name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Resource<'a> {
+    pub name: &'a str,
+    pub kind: ResourceKind,
+}
+
+/// The resources the text of a stage declares, in the order it declares them (a name declared
+/// twice is listed twice). It finds them as `rewrite` does when it binds them, so a caller
+/// that needs to know which names a program declares (a static check, which has no layout to ask)
+/// never disagrees with the translator: a declaration is read whatever else is on its line, and
+/// whatever qualifier stands before `uniform`. The text is read as `rewrite` reads it: with
+/// comments gone and includes inlined ([`expand_includes`]).
+pub fn resources(text: &str) -> Vec<Resource<'_>> {
+    text.lines()
+        .flat_map(declaration_lines)
+        .filter_map(declared)
+        .filter_map(|declared| {
+            let (name, kind) = match declared {
+                Declared::Storage(block) => (
+                    block.name,
+                    ResourceKind::StorageBuffer {
+                        read_only: block.qualifiers.contains(&"readonly"),
+                    },
+                ),
+                Declared::Block {
+                    name,
+                    push_constant: true,
+                    ..
+                } => (name, ResourceKind::PushConstantBlock),
+                Declared::Block { name, .. } => (name, ResourceKind::UniformBlock),
+                Declared::TexelBuffer(decl) => (decl.name, ResourceKind::TexelBuffer),
+                Declared::Image(decl) => (
+                    decl.name,
+                    ResourceKind::StorageImage {
+                        access: ImageAccess::of_qualifiers(&decl.qualifiers),
+                    },
+                ),
+                Declared::Sampler(decl) => (decl.name, ResourceKind::Sampler2D),
+                Declared::Other(_) => return None,
+            };
+            Some(Resource { name, kind })
+        })
+        .collect()
+}
+
+/// The `in` declarations of a stage's text as `(name, type)`, in the order it declares them (a
+/// name declared twice is listed twice). They are found as [`resources`] finds its own: through
+/// the one declaration classifier, whatever else is on the line, and the text is read as
+/// `rewrite` reads it, with comments gone and includes inlined ([`expand_includes`]).
+pub fn stage_inputs(text: &str) -> Vec<(&str, &str)> {
+    text.lines()
+        .flat_map(declaration_lines)
+        .filter_map(declared)
+        .filter_map(|declared| match declared {
+            Declared::Other(decl) if decl.storage == "in" => Some((decl.name, decl.ty)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A declaration on one line, classified: the one reading of a line that [`rewrite`] binds from
+/// and [`resources`] and [`stage_inputs`] list from.
+enum Declared<'a> {
+    /// A `buffer Name {` block.
+    Storage(StorageBlock<'a>),
+    /// A `uniform Name {` block, a push-constant one when its `layout(...)` says so, with the
+    /// line from its `uniform` token on.
+    Block {
+        name: &'a str,
+        tail: &'a str,
+        push_constant: bool,
+    },
+    /// `uniform isamplerBuffer Name;` or `uniform usamplerBuffer Name;`.
+    TexelBuffer(Decl<'a>),
+    /// `uniform image2D Name;`.
+    Image(Decl<'a>),
+    /// `uniform sampler2D Name;`.
+    Sampler(Decl<'a>),
+    /// Any other declaration: a loose uniform, an `in` or an `out`.
+    Other(Decl<'a>),
+}
+
+/// What `line` declares, if it declares anything: a storage block first, then a uniform block,
+/// then any other declaration.
+fn declared(line: &str) -> Option<Declared<'_>> {
+    if let Some(block) = storage_block(line) {
+        return Some(Declared::Storage(block));
+    }
+    if let Some((name, tail)) = block_name(line) {
+        return Some(Declared::Block {
+            name,
+            tail,
+            push_constant: is_push_constant_block(line),
+        });
+    }
     let decl = declaration(line)?;
-    (decl.storage == "uniform" && decl.ty == "image2D").then_some(StorageImage {
-        name: decl.name,
-        qualifiers: decl.qualifiers,
-        layout: decl.layout,
+    Some(match (decl.storage, decl.ty) {
+        ("uniform", "isamplerBuffer" | "usamplerBuffer") => Declared::TexelBuffer(decl),
+        ("uniform", "image2D") => Declared::Image(decl),
+        ("uniform", "sampler2D") => Declared::Sampler(decl),
+        _ => Declared::Other(decl),
     })
 }
 
@@ -1515,61 +1621,93 @@ fn declaration(line: &str) -> Option<Decl<'_>> {
     })
 }
 
-/// GLSL pack shaders are often minified, with several global declarations on one line.
-/// Keep the line-oriented rewriter simple by separating only declaration statements; ordinary
-/// statements and function bodies remain untouched.
+/// GLSL pack shaders are often minified, with several global declarations on one line, some after
+/// code (`void f() { } uniform sampler2D Late;`). Keep the line-oriented rewriter simple by
+/// separating every declaration statement ([`declared`]) wherever it stands on the line; the
+/// code around them stays as it is, in pieces. A statement ends at a `;` outside braces, and a
+/// declaration may start where the line does or after a `}` that closes a braced body.
 fn declaration_lines(line: &str) -> Vec<&str> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    while let Some(relative) = line[start..].find(';') {
-        let end = start + relative + 1;
-        if declaration(&line[start..end]).is_some() {
-            lines.push(&line[start..end]);
-            start = end;
-        } else {
-            break;
+    let mut parts = Vec::new();
+    let mut taken = 0;
+    let mut depth = 0usize;
+    let mut starts = vec![0];
+    for (at, c) in line.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    starts.push(at + 1);
+                }
+            }
+            ';' if depth == 0 => {
+                let end = at + 1;
+                // The latest start wins: `void f() { int x; } uniform sampler2D T;` declares T.
+                if let Some(&start) = starts
+                    .iter()
+                    .rev()
+                    .find(|&&start| declared(&line[start..end]).is_some())
+                {
+                    if taken < start {
+                        parts.push(&line[taken..start]);
+                    }
+                    parts.push(&line[start..end]);
+                    taken = end;
+                }
+                starts = vec![end];
+            }
+            _ => {}
         }
     }
-    if start == 0 {
-        vec![line]
-    } else {
-        if start < line.len() {
-            lines.push(&line[start..]);
-        }
-        lines
+    if parts.is_empty() {
+        return vec![line];
     }
+    if taken < line.len() {
+        parts.push(&line[taken..]);
+    }
+    parts
 }
 
-/// The block a `uniform Name {` line opens, with the line's text before `uniform`.
-fn block_name(line: &str) -> Option<&str> {
-    let at = line.find("uniform")?;
+/// Where the `uniform` keyword stands in `line`: a whole token, never part of an identifier
+/// such as `uniformColor`.
+fn uniform_keyword(line: &str) -> Option<usize> {
+    line.match_indices("uniform").map(|(at, _)| at).find(|&at| {
+        !line[..at].ends_with(is_ident) && !line[at + "uniform".len()..].starts_with(is_ident)
+    })
+}
+
+/// The block a `uniform Name {` line opens, with its name and the line from the `uniform` token
+/// on (what the line's text before `uniform` leaves: the block's `layout(...)` is rewritten).
+fn block_name(line: &str) -> Option<(&str, &str)> {
+    let at = uniform_keyword(line)?;
     let head = line[..at].trim();
     if !(head.is_empty() || head.starts_with("layout")) {
         return None;
     }
-    let rest = line[at + "uniform".len()..].trim();
+    let tail = line[at..].trim();
+    let rest = tail["uniform".len()..].trim();
     let name_end = rest.find(|c: char| !is_ident(c)).unwrap_or(rest.len());
-    let (name, tail) = rest.split_at(name_end);
+    let (name, after) = rest.split_at(name_end);
     // `{` alone, or the whole block on the line (`uniform Day { float daylight; };`).
-    (!name.is_empty() && (tail.trim().is_empty() || tail.trim_start().starts_with('{')))
-        .then_some(name)
+    (!name.is_empty() && (after.trim().is_empty() || after.trim_start().starts_with('{')))
+        .then_some((name, tail))
 }
 
 /// A `[layout(..)] [memory qualifiers] buffer Name {` line: a std430 storage buffer block.
 #[derive(Debug, PartialEq, Eq)]
-pub struct StorageBlock<'a> {
+struct StorageBlock<'a> {
     /// What the `layout(...)` qualifier lists, empty when the line has none.
-    pub layout: &'a str,
+    layout: &'a str,
     /// The block's name.
-    pub name: &'a str,
+    name: &'a str,
     /// Its memory qualifiers (`readonly`, `writeonly`, `coherent`, `volatile`, `restrict`).
-    pub qualifiers: Vec<&'a str>,
+    qualifiers: Vec<&'a str>,
     /// The line from the block's `{` on, empty when the brace is on the next line.
-    pub tail: &'a str,
+    tail: &'a str,
 }
 
 /// The storage buffer block a line opens, if it opens one.
-pub fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
+fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
     let mut rest = line.trim();
     let mut layout = "";
     if let Some(after) = rest.strip_prefix("layout") {
@@ -1607,7 +1745,7 @@ pub fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
 
 /// Whether the `layout(...)` qualifier before `uniform` names `push_constant`.
 fn is_push_constant_block(line: &str) -> bool {
-    let Some(at) = line.find("uniform") else {
+    let Some(at) = uniform_keyword(line) else {
         return false;
     };
     let head = line[..at].trim();
@@ -1775,89 +1913,85 @@ fn rewrite(
         let at = |message: String| source.error_at(Some(here), message);
         let write = |out: &mut Lines, code: &str| out.push(code, origin);
         for line in declaration_lines(source_line) {
-            if let Some(block) = storage_block(line) {
-                let Some(&(_, binding, read_only)) = inputs
-                    .extra_storage_buffers
-                    .iter()
-                    .find(|(buffer, _, _)| *buffer == block.name)
-                else {
-                    return Err(at(format!(
-                        "storage buffer {} is not declared on this pipeline",
-                        block.name
-                    )));
-                };
-                if block.qualifiers.contains(&"readonly") != read_only {
-                    return Err(at(format!(
-                        "storage buffer {} is declared {} in the layout but {} in the shader",
-                        block.name,
-                        if read_only { "read-only" } else { "read-write" },
-                        if read_only {
-                            "without `readonly`"
-                        } else {
-                            "`readonly`"
-                        },
-                    )));
-                }
-                if let Some(packing) = block
-                    .layout
-                    .split(',')
-                    .map(str::trim)
-                    .find(|item| matches!(*item, "std140" | "shared" | "packed"))
-                {
-                    return Err(at(format!(
-                        "storage buffer {} is declared `layout({packing})`; a storage block is std430",
-                        block.name
-                    )));
-                }
-                let set = inputs.extra_set;
-                let (name, qualifiers, tail) = (block.name, block.qualifiers.join(" "), block.tail);
-                write(
-                    &mut out,
-                    &format!(
-                        "layout(std430, set = {set}, binding = {binding}) {qualifiers} buffer {name} {tail}\n"
-                    ),
-                );
-                continue;
-            }
-            if let Some(name) = block_name(line) {
-                let (set, binding) = if is_push_constant_block(line) {
-                    let Some(b) = inputs.push_constant_binding else {
-                        return Err(at(format!(
-                            "push_constant block {name} is not declared on this pipeline"
-                        )));
-                    };
-                    (inputs.extra_set, b)
-                } else if let Some((_, b)) = inputs.blocks.iter().find(|(block, _)| *block == name)
-                {
-                    (0, *b)
-                } else if let Some((_, b)) =
-                    inputs.extra_blocks.iter().find(|(block, _)| *block == name)
-                {
-                    (inputs.extra_set, *b)
-                } else {
-                    (0, names.other_binding(name).map_err(at)?)
-                };
-                let tail = line[line.find("uniform").unwrap_or(0)..].trim();
-                write(
-                    &mut out,
-                    &format!("layout(std140, set = {set}, binding = {binding}) {tail}\n"),
-                );
-                continue;
-            }
-            let Some(decl) = declaration(line) else {
+            let Some(found) = declared(line) else {
                 write(&mut out, line);
                 write(&mut out, "\n");
                 continue;
             };
-            if stage == ShaderStage::Compute && matches!(decl.storage, "in" | "out") {
-                return Err(at(format!(
-                    "{} {} is not allowed in a compute shader, which has no stage interface",
-                    decl.storage, decl.name
-                )));
-            }
-            let qualifiers = decl.qualifiers.join(" ");
-            match decl.storage {
-                "uniform" if matches!(decl.ty, "isamplerBuffer" | "usamplerBuffer") => {
+            match found {
+                Declared::Storage(block) => {
+                    let Some(&(_, binding, read_only)) = inputs
+                        .extra_storage_buffers
+                        .iter()
+                        .find(|(buffer, _, _)| *buffer == block.name)
+                    else {
+                        return Err(at(format!(
+                            "storage buffer {} is not declared on this pipeline",
+                            block.name
+                        )));
+                    };
+                    if block.qualifiers.contains(&"readonly") != read_only {
+                        return Err(at(format!(
+                            "storage buffer {} is declared {} in the layout but {} in the shader",
+                            block.name,
+                            if read_only { "read-only" } else { "read-write" },
+                            if read_only {
+                                "without `readonly`"
+                            } else {
+                                "`readonly`"
+                            },
+                        )));
+                    }
+                    if let Some(packing) = block
+                        .layout
+                        .split(',')
+                        .map(str::trim)
+                        .find(|item| matches!(*item, "std140" | "shared" | "packed"))
+                    {
+                        return Err(at(format!(
+                            "storage buffer {} is declared `layout({packing})`; a storage block is std430",
+                            block.name
+                        )));
+                    }
+                    let set = inputs.extra_set;
+                    let (name, qualifiers, tail) =
+                        (block.name, block.qualifiers.join(" "), block.tail);
+                    write(
+                        &mut out,
+                        &format!(
+                            "layout(std430, set = {set}, binding = {binding}) {qualifiers} buffer {name} {tail}\n"
+                        ),
+                    );
+                }
+                Declared::Block {
+                    name,
+                    tail,
+                    push_constant,
+                } => {
+                    let (set, binding) = if push_constant {
+                        let Some(b) = inputs.push_constant_binding else {
+                            return Err(at(format!(
+                                "push_constant block {name} is not declared on this pipeline"
+                            )));
+                        };
+                        (inputs.extra_set, b)
+                    } else if let Some((_, b)) =
+                        inputs.blocks.iter().find(|(block, _)| *block == name)
+                    {
+                        (0, *b)
+                    } else if let Some((_, b)) =
+                        inputs.extra_blocks.iter().find(|(block, _)| *block == name)
+                    {
+                        (inputs.extra_set, *b)
+                    } else {
+                        (0, names.other_binding(name).map_err(at)?)
+                    };
+                    write(
+                        &mut out,
+                        &format!("layout(std140, set = {set}, binding = {binding}) {tail}\n"),
+                    );
+                }
+                Declared::TexelBuffer(decl) => {
                     let (set, binding) = match inputs
                         .extra_texel_buffers
                         .iter()
@@ -1880,7 +2014,7 @@ fn rewrite(
                         ),
                     );
                 }
-                "uniform" if decl.ty == "image2D" => {
+                Declared::Image(decl) => {
                     let Some(&(_, binding, access)) = inputs
                         .extra_storage_images
                         .iter()
@@ -1904,6 +2038,7 @@ fn rewrite(
                             decl.name
                         )));
                     }
+                    let qualifiers = decl.qualifiers.join(" ");
                     let (set, format, name) = (inputs.extra_set, decl.layout, decl.name);
                     write(
                         &mut out,
@@ -1912,7 +2047,7 @@ fn rewrite(
                         ),
                     );
                 }
-                "uniform" if decl.ty == "sampler2D" => {
+                Declared::Sampler(decl) => {
                     let (set, binding) = match inputs
                         .samplers
                         .iter()
@@ -1939,88 +2074,99 @@ fn rewrite(
                         ),
                     );
                 }
-                "uniform" => {
-                    // A loose declaration of a name a block declares (an older version kept in
-                    // an `#else` branch): the preprocessor picks the branch later, but this pass
-                    // sees both.
-                    if inputs.loose.contains(&decl.name) {
-                        write(&mut out, "\n");
-                        continue;
+                Declared::Other(decl) => {
+                    if stage == ShaderStage::Compute && matches!(decl.storage, "in" | "out") {
+                        return Err(at(format!(
+                            "{} {} is not allowed in a compute shader, which has no stage interface",
+                            decl.storage, decl.name
+                        )));
                     }
-                    return Err(at(format!("uniform {} outside a block", decl.name)));
-                }
-                "in" if vertex => {
-                    if glue.inputs.iter().any(|(name, _)| *name == decl.name) {
-                        // Declared by the glue as a global.
-                        write(&mut out, "\n");
-                    } else {
-                        // Another format's input (`UV2` behind `#if !defined(IS_GUI)`): the
-                        // preprocessor drops it when it is for another pipeline, else it reads 0.
-                        write(&mut out, &format!("{} {};\n", decl.ty, decl.name));
+                    let qualifiers = decl.qualifiers.join(" ");
+                    match decl.storage {
+                        "uniform" => {
+                            // A loose declaration of a name a block declares (an older version
+                            // kept in an `#else` branch): the preprocessor picks the branch
+                            // later, but this pass sees both.
+                            if !inputs.loose.contains(&decl.name) {
+                                return Err(at(format!("uniform {} outside a block", decl.name)));
+                            }
+                            write(&mut out, "\n");
+                        }
+                        "in" if vertex => {
+                            if glue.inputs.iter().any(|(name, _)| *name == decl.name) {
+                                // Declared by the glue as a global.
+                                write(&mut out, "\n");
+                            } else {
+                                // Another format's input (`UV2` behind `#if !defined(IS_GUI)`):
+                                // the preprocessor drops it when it is for another pipeline,
+                                // else it reads 0.
+                                write(&mut out, &format!("{} {};\n", decl.ty, decl.name));
+                            }
+                        }
+                        "out" if vertex => {
+                            // One location each: naga takes scalars and vectors only.
+                            let location = decl
+                                .location
+                                .or_else(|| names.location(decl.name))
+                                .unwrap_or_else(|| {
+                                    (0..)
+                                        .find(|l| {
+                                            !explicit.contains(l)
+                                                && names.varyings.iter().all(|(_, v)| v != l)
+                                        })
+                                        .unwrap_or_default()
+                                });
+                            let varying = (decl.name.to_owned(), location);
+                            if !names.varyings.contains(&varying) {
+                                names.varyings.push(varying);
+                            }
+                            write(
+                                &mut out,
+                                &format!(
+                                    "layout(location = {location}) {qualifiers} out {} {};\n",
+                                    decl.ty, decl.name
+                                ),
+                            );
+                        }
+                        "in" => {
+                            let location = decl
+                                .location
+                                .or_else(|| names.location(decl.name))
+                                .ok_or_else(|| {
+                                    at(format!(
+                                        "input {} isn't written by the vertex shader",
+                                        decl.name
+                                    ))
+                                })?;
+                            names.inputs.push((location, out.text().len()));
+                            write(
+                                &mut out,
+                                &format!(
+                                    "layout(location = {location}) {qualifiers} in {} {};\n",
+                                    decl.ty, decl.name
+                                ),
+                            );
+                        }
+                        _ => {
+                            // Pipelines with more targets (OIT's, behind `#ifdef OIT`) name
+                            // them; the colour this pipeline draws is the one at location 0.
+                            let location = decl.location.unwrap_or_else(|| {
+                                let at = outputs.iter().position(|o| *o == decl.name);
+                                at.unwrap_or_else(|| {
+                                    outputs.push(decl.name);
+                                    outputs.len() - 1
+                                }) as u32
+                            });
+                            names.outputs.push((location, out.text().len()));
+                            write(
+                                &mut out,
+                                &format!(
+                                    "layout(location = {location}) out {} {};\n",
+                                    decl.ty, decl.name
+                                ),
+                            );
+                        }
                     }
-                }
-                "out" if vertex => {
-                    // One location each: naga takes scalars and vectors only.
-                    let location = decl
-                        .location
-                        .or_else(|| names.location(decl.name))
-                        .unwrap_or_else(|| {
-                            (0..)
-                                .find(|l| {
-                                    !explicit.contains(l)
-                                        && names.varyings.iter().all(|(_, v)| v != l)
-                                })
-                                .unwrap_or_default()
-                        });
-                    let varying = (decl.name.to_owned(), location);
-                    if !names.varyings.contains(&varying) {
-                        names.varyings.push(varying);
-                    }
-                    write(
-                        &mut out,
-                        &format!(
-                            "layout(location = {location}) {qualifiers} out {} {};\n",
-                            decl.ty, decl.name
-                        ),
-                    );
-                }
-                "in" => {
-                    let location = decl
-                        .location
-                        .or_else(|| names.location(decl.name))
-                        .ok_or_else(|| {
-                            at(format!(
-                                "input {} isn't written by the vertex shader",
-                                decl.name
-                            ))
-                        })?;
-                    names.inputs.push((location, out.text().len()));
-                    write(
-                        &mut out,
-                        &format!(
-                            "layout(location = {location}) {qualifiers} in {} {};\n",
-                            decl.ty, decl.name
-                        ),
-                    );
-                }
-                _ => {
-                    // Pipelines with more targets (OIT's, behind `#ifdef OIT`) name them; the
-                    // colour this pipeline draws is the one at location 0.
-                    let location = decl.location.unwrap_or_else(|| {
-                        let at = outputs.iter().position(|o| *o == decl.name);
-                        at.unwrap_or_else(|| {
-                            outputs.push(decl.name);
-                            outputs.len() - 1
-                        }) as u32
-                    });
-                    names.outputs.push((location, out.text().len()));
-                    write(
-                        &mut out,
-                        &format!(
-                            "layout(location = {location}) out {} {};\n",
-                            decl.ty, decl.name
-                        ),
-                    );
                 }
             }
         }
@@ -2879,12 +3025,57 @@ mod tests {
     /// Only a uniform block's declaration names a block, written over several lines or on one.
     #[test]
     fn block_names_are_read_from_block_declarations_only() {
-        assert_eq!(block_name("layout(std140) uniform Day {"), Some("Day"));
-        assert_eq!(block_name("uniform Day { float daylight; };"), Some("Day"));
-        assert_eq!(block_name("uniform Foo{"), Some("Foo"));
-        assert_eq!(block_name("uniform Globals"), Some("Globals"));
+        let name = |line| block_name(line).map(|(name, _)| name);
+        assert_eq!(name("layout(std140) uniform Day {"), Some("Day"));
+        assert_eq!(name("uniform Day { float daylight; };"), Some("Day"));
+        assert_eq!(name("uniform Foo{"), Some("Foo"));
+        assert_eq!(name("uniform Globals"), Some("Globals"));
+        assert_eq!(
+            block_name("layout(std140) uniform Day {").map(|(_, tail)| tail),
+            Some("uniform Day {")
+        );
         assert_eq!(block_name("uniform float x;"), None);
         assert_eq!(block_name("uniform sampler2D Sampler0;"), None);
+    }
+
+    /// `uniform` is a keyword only as a whole token: `uniformColor` opens no block, and a block
+    /// after code on its line is listed and bound.
+    #[test]
+    fn uniform_is_a_whole_token_and_a_declaration_after_code_is_read() {
+        let kinds = |text| {
+            resources(text)
+                .iter()
+                .map(|r| (r.name, r.kind))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(kinds("vec4 uniformColor = vec4(1.0);"), []);
+        assert_eq!(
+            kinds("layout(location = 0) vec4 uniformColor\n    = vec4(1.0);"),
+            []
+        );
+        assert_eq!(
+            kinds("void f() { } uniform sampler2D Late;"),
+            [("Late", ResourceKind::Sampler2D)]
+        );
+        assert_eq!(
+            kinds("void f() { int x; } uniform Late { vec4 a; };"),
+            [("Late", ResourceKind::UniformBlock)]
+        );
+        // Bound: the sampler gets its texture and sampler globals and `f` stays.
+        let fsh = "#version 330\nvoid f() { } uniform sampler2D Late;\nout vec4 fragColor;\n\
+            void main() { fragColor = texture(Late, vec2(0.5)); f(); }\n";
+        let vsh = "#version 330\nvoid main() { gl_Position = vec4(0.0); }\n";
+        translate_core_with(vsh, fsh, &[], &include, &GLUE, &|name| name == "Late").unwrap();
+    }
+
+    /// The `in` declarations of a stage, name and type in order, whatever else is on the line.
+    #[test]
+    fn stage_inputs_lists_every_in_declaration() {
+        let text = "in vec3 Position; in vec4 Color;\nuniform float u;\nvoid f() { } in vec2 UV0;\nout vec4 o;\n";
+        assert_eq!(
+            stage_inputs(text),
+            [("Position", "vec3"), ("Color", "vec4"), ("UV0", "vec2")]
+        );
     }
 
     /// Only a storage buffer's declaration names a storage block, with its memory qualifiers.
@@ -2985,27 +3176,67 @@ mod tests {
         }
     }
 
-    /// Only an `image2D` declaration names a storage image, with its format and qualifiers in
-    /// either order around `uniform`.
+    /// The resources of a stage are each declaration `rewrite` binds, whatever else is on its
+    /// line and whatever qualifier stands before `uniform`, and nothing else.
     #[test]
-    fn storage_images_are_read_from_image2d_declarations_only() {
-        let image = storage_image("layout(rgba16f) writeonly uniform image2D Out;").unwrap();
+    fn resources_lists_each_declaration_the_translator_binds() {
+        let text = "\
+layout(std140) uniform Day { float daylight; };
+layout(push_constant) uniform Push { vec4 offset; };
+highp uniform sampler2D Tex;
+uniform sampler2D TexA; uniform sampler2D TexB;
+uniform sampler2D TexC; uniform Scene { vec4 tint; };
+uniform sampler2D TexD; layout(std430) readonly buffer Data { vec4 d[]; };
+uniform isamplerBuffer Faces;
+uniform usamplerBuffer Ids;
+buffer Free { uint slots[]; };
+layout(rgba16f) writeonly uniform image2D Out;
+layout(r32f) uniform readonly image2D In;
+uniform image2D Both;
+uniform image3D Volume;
+uniform float loose;
+uniform sampler2D A, B;
+in vec2 uv;
+void main() { }
+";
+        let found: Vec<(&str, ResourceKind)> =
+            resources(text).iter().map(|r| (r.name, r.kind)).collect();
+        use ResourceKind::*;
         assert_eq!(
-            (image.name, image.layout, image.qualifiers),
-            ("Out", "rgba16f", vec!["writeonly"])
+            found,
+            [
+                ("Day", UniformBlock),
+                ("Push", PushConstantBlock),
+                ("Tex", Sampler2D),
+                ("TexA", Sampler2D),
+                ("TexB", Sampler2D),
+                ("TexC", Sampler2D),
+                ("Scene", UniformBlock),
+                ("TexD", Sampler2D),
+                ("Data", StorageBuffer { read_only: true }),
+                ("Faces", TexelBuffer),
+                ("Ids", TexelBuffer),
+                ("Free", StorageBuffer { read_only: false }),
+                (
+                    "Out",
+                    StorageImage {
+                        access: ImageAccess::WriteOnly
+                    }
+                ),
+                (
+                    "In",
+                    StorageImage {
+                        access: ImageAccess::ReadOnly
+                    }
+                ),
+                (
+                    "Both",
+                    StorageImage {
+                        access: ImageAccess::ReadWrite
+                    }
+                ),
+            ]
         );
-        let image = storage_image("layout(r32f) uniform readonly image2D In;").unwrap();
-        assert_eq!(
-            (image.layout, ImageAccess::of_qualifiers(&image.qualifiers)),
-            ("r32f", ImageAccess::ReadOnly)
-        );
-        assert_eq!(
-            ImageAccess::of_qualifiers(&storage_image("uniform image2D Both;").unwrap().qualifiers),
-            ImageAccess::ReadWrite
-        );
-        assert_eq!(storage_image("uniform sampler2D Tex;"), None);
-        assert_eq!(storage_image("uniform image3D Volume;"), None);
-        assert_eq!(storage_image("layout(rgba8) uniform Block {"), None);
     }
 
     /// An array too large to lay out (#4134) is the shader's error at its line, not a panic.

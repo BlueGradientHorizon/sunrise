@@ -97,6 +97,23 @@ impl BlockDefinition {
             .map(|(index, (_, legal))| legal[usize::from(values[index])].as_str()))
     }
 
+    /// Visit each property of `state` with its serialized value, in name order (as vanilla's
+    /// `StateDefinition` keeps them), without allocation, locks or mutable state.
+    pub fn visit_properties(
+        &self,
+        state: u16,
+        mut visit: impl FnMut(&str, &str),
+    ) -> Result<(), StateError> {
+        let values = self
+            .states
+            .get(usize::from(state))
+            .ok_or(StateError::UnknownState)?;
+        for ((name, legal), &value) in self.properties.iter().zip(values.iter()) {
+            visit(name, &legal[usize::from(value)]);
+        }
+        Ok(())
+    }
+
     /// Build a state from the default and partial property constraints.
     pub fn of(&self, properties: &[(&str, &str)]) -> Result<u16, StateError> {
         if properties.is_empty() {

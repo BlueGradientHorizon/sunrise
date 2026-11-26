@@ -1730,6 +1730,30 @@ impl Menu {
             }
     }
 
+    /// `canTakeItemForPickAll(carried, slot)` on a mod menu type: whether its parts
+    /// (`menu_pick_all`) let a double click's gather take slot `s`'s stack into `carried`. True
+    /// for an empty slot, another menu type, or a type no part answers.
+    pub fn parts_allow_pick_all(&self, env: &Env, s: usize, carried: &ItemStack) -> bool {
+        let (Some(menu), Some(rules), Some(stack)) =
+            (self.registry_id(), env.slot_rules, self.slot(s))
+        else {
+            return true;
+        };
+        if !matches!(self.state.kind, Kind::Mod(_)) || !rules.pick_all_listens(menu) {
+            return true;
+        }
+        let mut allowed = true;
+        rules.pick_all(
+            menu,
+            self.state.slots[s].index,
+            carried,
+            stack,
+            self.slot_context(env, s),
+            &mut allowed,
+        );
+        allowed
+    }
+
     /// The parts answer `mayPickup` on a mod menu type's slots that its screen shows, and on the
     /// player's own inventory menu ([`INVENTORY_MENU`]).
     fn asks_pickup(&self, s: usize) -> bool {

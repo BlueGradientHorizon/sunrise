@@ -946,6 +946,11 @@ jobs:
         id: process_starting_tests_are_daily_tests
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/check_process_tests.py
+      # Its one rustc outgrew the 16 GiB parity runner (#4896): a harness runs a fixture from lab.parity_fixtures().
+      - name: Parity harnesses do not build the client lib test
+        id: parity_harnesses_do_not_build_the_client_lib_test
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: python3 tools/ci/check_parity_harness_builds.py
       # A test that reruns its own test executable by --exact must select it ignored or not, or a daily one checks nothing.
       - name: Test reruns select ignored tests too
         id: test_reruns_select_ignored_tests_too

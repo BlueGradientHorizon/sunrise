@@ -559,15 +559,35 @@ Path(sys.argv[3]).write_text('{"schema": 3, "by": "' + marker + '"}\n')
             # The base against this checkout, then the landed merge against its first parent.
             self.assertEqual(exports, [sha, "checkout", "aaaa", sha])
 
-    @unittest.skipUnless(importlib.util.find_spec("fcntl"), "needs POSIX file locking")
+    def test_the_base_tool_is_copied_with_the_platforms_executable_suffix(self):
+        for platform, name in (("win32", "sunrise-stage.exe"), ("linux", "sunrise-stage")):
+            with self.subTest(platform), tempfile.TemporaryDirectory() as directory:
+                folder = Path(directory)
+                work = folder / "work"
+                work.mkdir()
+
+                def cargo(command, cwd, **_):
+                    built = folder / "target/surface-base/debug" / name
+                    built.parent.mkdir(parents=True, exist_ok=True)
+                    built.write_text("stage")
+                    return subprocess.CompletedProcess(command, 0, "", "")
+
+                with mock.patch.object(surface_report, "ROOT", folder), \
+                     mock.patch.object(surface_report.sys, "platform", platform), \
+                     mock.patch.object(surface_report.subprocess, "run", cargo):
+                    tool = surface_report.tree_tool(Path("one"), work)
+                self.assertEqual(Path(tool[0]).name, "base-stage-0" + name[len("sunrise-stage"):])
+                self.assertEqual(Path(tool[0]).read_text(), "stage")
+
     def test_each_base_tool_build_gets_its_own_copy(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             work = folder / "work"
             work.mkdir()
+            name = "sunrise-stage.exe" if sys.platform == "win32" else "sunrise-stage"
 
             def cargo(command, cwd, **_):
-                binary = folder / "target/surface-base/debug/sunrise-stage"
+                binary = folder / "target/surface-base/debug" / name
                 binary.parent.mkdir(parents=True, exist_ok=True)
                 binary.write_text(str(cwd))
                 return subprocess.CompletedProcess(command, 0, "", "")
