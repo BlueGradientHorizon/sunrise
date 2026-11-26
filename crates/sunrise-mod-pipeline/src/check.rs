@@ -39,15 +39,6 @@ pub fn problem(file: &str, stage: Option<ShaderStage>, message: impl Into<String
     }
 }
 
-/// 1-based `(line, column)` of byte offset `offset` inside `text`.
-pub fn line_column(text: &str, offset: usize) -> (usize, usize) {
-    let clamped = offset.min(text.len());
-    let before = &text[..clamped];
-    let line = before.matches('\n').count() + 1;
-    let column = before.len() - before.rfind('\n').map_or(0, |i| i + 1) + 1;
-    (line, column)
-}
-
 /// Validates `module` and translates every entry point for Vulkan (SPIR-V), Metal (MSL) and
 /// DirectX 12 (HLSL), catching backend panics so a mod shader never takes down the game or
 /// `cargo sunrise-mod check`. Returns each refusal as `<backend> refuses it: <reason>`.

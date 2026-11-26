@@ -20,7 +20,7 @@ pub mod check;
 pub mod guard;
 pub mod stubs;
 
-use crate::check::{Problem, line_column, problem, translate_backends};
+use crate::check::{Problem, problem, translate_backends};
 use naga::ShaderStage;
 use naga::front::glsl::InterfaceLimits;
 use std::sync::LazyLock;
@@ -542,15 +542,15 @@ fn import_problem(stage: ShaderStage, error: sunrise_glsl::ImportError) -> Probl
     }
 }
 
-/// A refusal at byte `at` of `code` (none when it has no place: the stage file, no line),
-/// attributed to `stage`. The file and line come from [`Expanded::error_at`] (an included
-/// declaration is located in its own file); the column is in the expanded text.
+/// A refusal in `stage` at byte `at` of `code`, mapped to the authored file, line and
+/// column by [`Expanded::error_at`]. An included declaration keeps its own file; `None`
+/// names the stage file without a line or column.
 fn refusal_at(stage: ShaderStage, code: &Expanded, at: Option<usize>, message: String) -> Problem {
     let error = code.error_at(at, message);
     Problem {
         file: asset_path(&error.file),
         line: error.line as usize,
-        column: at.map_or(0, |at| line_column(code.text(), at).1),
+        column: error.column as usize,
         stage: Some(stage),
         message: error.message,
     }
@@ -2016,6 +2016,25 @@ void main() {{
         assert_eq!(
             refused[0].message,
             "vertex input `Stray` has no matching vertex attribute"
+        );
+    }
+
+    /// A refused input on a continued line keeps the vertex stage and the column of its name
+    /// on the physical line, not where it lands after splicing.
+    #[test]
+    fn a_refused_vertex_input_keeps_its_column_after_line_splicing() {
+        let vsh = "#version 330\nin vec4 \\\n    Stray;\nvoid main() { gl_Position = Stray; }\n";
+        let problems = translate(&sources(vsh, FSH), &Options::default(), &stub_include)
+            .expect_err("an undeclared vertex input is refused");
+        assert_eq!(
+            problems,
+            [Problem {
+                file: "assets/example/shaders/core/glow.vsh".to_owned(),
+                line: 3,
+                column: 5,
+                stage: Some(ShaderStage::Vertex),
+                message: "vertex input `Stray` has no matching vertex attribute".to_owned(),
+            }]
         );
     }
 
