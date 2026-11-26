@@ -5,7 +5,7 @@
 //! as `native_set_block` does: another one is refused. While the game ticks its
 //! mobs they are out of the level: a mob a hook spawns then joins it after the
 //! tick, and the others read as gone.
-use super::{Game, commands::Target};
+use super::commands::Target;
 
 /// The `EquipmentSlot` names of `Mob::equipment_stacks`, in its order.
 const MOB_SLOTS: [&str; 8] = [

@@ -10,7 +10,6 @@
 //! (`nav_move_to`, `ai.target`), behind the same input boundaries the mob
 //! handles take, and the write handles a `ServerHost` takes do not exist here.
 
-use super::Game;
 use mod_api::{
     BehaviorCxBackend, EntityRef, EntityTags, GoalCxBackend, Host, LivingRef, MobRef, PlayerRef,
     RandomSource,

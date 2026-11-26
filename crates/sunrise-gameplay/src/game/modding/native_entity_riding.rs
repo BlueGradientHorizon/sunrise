@@ -1,7 +1,7 @@
 //! Vehicles and passengers through an `EntityRef`: what an entity rides, who rides it,
 //! getting off, and who holds its lead. Basic topology reads also answer from the client's
 //! packet state; riding writes and the remaining reads are server-only.
-use super::{Game, commands::Target, mounts_common::steering_item};
+use super::{commands::Target, mounts_common::steering_item};
 use mod_api::{EntityRef, LeashHolder, LivingRef, StartRidingRefusal};
 use sunrise_sim::{
     lan::playerdata::ints_uuid,

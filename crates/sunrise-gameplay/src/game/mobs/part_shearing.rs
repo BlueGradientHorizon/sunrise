@@ -1,7 +1,7 @@
 //! Shears and entity parts (NeoForge's `IShearable`, #3351): a player's shears and a dispenser's
 //! ask the mob's entity parts first (`EntityPart::is_shearable`), and a part that says yes
 //! shears it (`EntityPart::on_sheared`) in place of the species' own shearing.
-use super::{Game, Hand};
+use super::Hand;
 use mod_api::{
     PlayerRef,
     content::crash::{ModCall, enter_native_mod},

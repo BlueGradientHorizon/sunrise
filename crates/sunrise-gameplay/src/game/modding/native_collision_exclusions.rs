@@ -2,7 +2,7 @@
 //! blocks don't stop it, as a portal in a wall needs. The server keeps them on the guest, and its
 //! body takes them at each turn; a client keeps its own player's on the body it moves. Neither
 //! side sends its set to the other: a mod sets both.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{CollisionExclusionsError, EntityRef};
 use sunrise_world::collision_exclusions::Refused;
 

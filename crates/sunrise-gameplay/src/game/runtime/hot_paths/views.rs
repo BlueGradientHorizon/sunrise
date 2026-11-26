@@ -1,5 +1,5 @@
 //! Matched resident ticker workload: the same keyed Part uses a view or a retained handle.
-use super::{super::Game, Recorder, world::FLOOR};
+use super::{Recorder, world::FLOOR};
 use mod_api::BlockEntityRef;
 use std::{cell::RefCell, sync::Arc};
 use sunrise_core::nbt::Tag;

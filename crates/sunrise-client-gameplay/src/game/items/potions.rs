@@ -2,7 +2,7 @@
 //! `Consumable`), throwing splash/lingering potions (`ThrownSplashPotion`),
 //! filling glass bottles (`BottleItem`), the per-tick effect application,
 //! effect attribute modifiers and the HUD effect icons (`Hud.extractEffects`).
-use super::{Game, Screen, item_draw::owner_at};
+use super::{Screen, item_draw::owner_at};
 use sunrise_gameplay_common::game::potions_common::{PotionState, ThrownPotion};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{

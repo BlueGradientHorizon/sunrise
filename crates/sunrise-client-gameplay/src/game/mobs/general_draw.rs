@@ -4,7 +4,7 @@
 //! type has no look of its own: without a renderer, or with one that failed until the next
 //! resource load, its rows draw nothing.
 use super::native_entity_renderers::EntityRendererTable;
-use super::{Game, entity_culling};
+use super::entity_culling;
 use crate::game::client_side::remote_client::general::RemoteGeneral;
 use glam::DVec3;
 use std::{sync::Arc, time::Instant};

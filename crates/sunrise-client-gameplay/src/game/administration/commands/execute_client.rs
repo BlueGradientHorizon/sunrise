@@ -1,5 +1,5 @@
 //! Client-side entity eye-height lookup (`Entity.getEyeHeight`).
-use sunrise_gameplay_common::game::{Game, commands_common::Target};
+use sunrise_gameplay_common::game::commands_common::Target;
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn target_eye_height(&self, t: Target) -> f64 {

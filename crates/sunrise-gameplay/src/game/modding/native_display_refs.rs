@@ -5,7 +5,7 @@
 //! game builds the entity data it sends (so a handle reads what clients see),
 //! and a write changes the compound: the next tracking pass sends the changed
 //! entries as `SetEntityData`, and the save holds them.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{
     Billboard, DisplayKind, DisplayRef, EntityRef, ItemDisplayContext, TextAlignment,
     Transformation,

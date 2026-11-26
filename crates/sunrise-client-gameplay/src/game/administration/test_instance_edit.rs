@@ -1,9 +1,6 @@
 //! `TestInstanceBlockEditScreen`: the test's id, the size of the area, its
 //! rotation and entity handling, and the reset, save and run actions.
-use super::{
-    Game,
-    block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action, on_off},
-};
+use super::block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action, on_off};
 use sunrise_client::ui::EditBox;
 use sunrise_game_data::text::{self, Text};
 use sunrise_gameplay_common::game::remote::remote_text;

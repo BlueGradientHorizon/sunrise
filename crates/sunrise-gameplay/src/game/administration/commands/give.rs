@@ -1,5 +1,5 @@
 //! `/give`'s handing over of one stack.
-use super::{Game, Target};
+use super::Target;
 use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_core::random::RandomSource;

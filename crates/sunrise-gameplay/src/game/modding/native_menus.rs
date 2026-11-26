@@ -1,7 +1,7 @@
 //! Blockless server menus for native mods: vanilla chest displays or declared mod menus.
 //! Owned slots run ordinary clicks; display slots move nothing by default. Menu parts can
 //! replace a click, and a close listener receives any detached owned contents.
-use super::{Game, lan::LanHost, lan_menus::GuestMenus};
+use super::{lan::LanHost, lan_menus::GuestMenus};
 use mod_api::__private::game::*;
 use mod_api::{MenuRef, MenuReplace, ModMenuOpen};
 use sunrise_game_data::text::Text;

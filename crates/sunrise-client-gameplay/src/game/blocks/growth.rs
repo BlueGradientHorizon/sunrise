@@ -1,5 +1,5 @@
 //! The client hand's bone meal interaction.
-use super::{Game, native_hooks::BonemealAsk};
+use super::native_hooks::BonemealAsk;
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;
 

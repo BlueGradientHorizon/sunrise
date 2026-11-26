@@ -1,5 +1,5 @@
 //! Navigation helpers for native mod mob handles.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{MobRef, MoveToPathError, PathType};
 
 /// The numbers a mod hands a mob's navigation (`moveTo(x, y, z, speed)`): a

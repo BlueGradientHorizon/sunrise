@@ -6,7 +6,7 @@
 //! its simulation and the play-state hub that LAN hosting uses, configured
 //! from server.properties, with the operator, whitelist and ban lists and a
 //! console on standard input.
-use super::{Game, Options, lan::LanSettings, world_loading::WorldRequest};
+use super::{Options, lan::LanSettings, world_loading::WorldRequest};
 use mod_api::PermissionLevel;
 use std::{
     io::Write,

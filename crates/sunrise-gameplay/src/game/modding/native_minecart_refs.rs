@@ -1,6 +1,5 @@
 //! Minecart handles for native server mods.
 use super::{
-    Game,
     commands::Target,
     minecarts::{CartKind, Minecart, display_offset},
 };

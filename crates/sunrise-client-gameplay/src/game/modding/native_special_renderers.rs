@@ -1,6 +1,5 @@
 //! Game-side stack and draw context for special item renderers. The client item renderer owns
 //! scoped submission, rollback and the session's callback failure policy.
-use super::Game;
 use mod_api::{ItemDisplayContext, ItemStack, SpecialModelContext};
 use std::num::NonZeroU32;
 use sunrise_assets::item_model::{Context, DisplayContext, StackView};

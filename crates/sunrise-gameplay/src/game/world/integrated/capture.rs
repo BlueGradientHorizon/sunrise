@@ -1,7 +1,7 @@
 //! The server thread's side of a capture (docs/perf-platform.md §4.1): it writes into the window's file, or into one of its own.
 use super::super::dedicated::{SLOW_TICK_MS, report::Recording};
 use super::super::perf_remote::Done;
-use super::super::{Game, tick_profile};
+use super::super::tick_profile;
 use sunrise_gameplay_common::game::profile_capture_common::{Live, Phase, Target, reply_text, shown};
 use std::io;
 use std::path::PathBuf;

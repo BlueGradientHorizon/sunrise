@@ -2,7 +2,7 @@
 //! player (health, food, xp, deaths, kills, statistics), score holders for
 //! entities, the selector options `scores=`, `team=` and `tag=`, the
 //! commands' [`Env`] and the sidebar.
-use super::{Game, chat_common::PLAYER_NAME};
+use super::chat_common::PLAYER_NAME;
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_gameplay_common::game::scoreboard_common::{Recorded, pet_team, root_owner, tame_owner};
 use mod_api::EntityTags;

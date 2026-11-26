@@ -1,6 +1,6 @@
 //! The PvP & HUD page's options in the game (`sunrise_client::pvp`, `docs/pvp.md`). Each
 //! does nothing while it is off.
-use sunrise_gameplay_common::game::{Dim, Game, Side};
+use sunrise_gameplay_common::game::{Dim, Side};
 use std::sync::Arc;
 use sunrise_client::{
     extras::Corner,

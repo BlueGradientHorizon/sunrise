@@ -1,5 +1,5 @@
 //! One storage-family dispatch for the server's residency journal.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::DimensionKey;
 use sunrise_sim::join_seq::{
     Joined,

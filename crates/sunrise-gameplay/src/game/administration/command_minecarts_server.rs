@@ -1,5 +1,5 @@
 //! Server-side `MinecartCommandBlock` execution, synced output, and edit packet handling.
-use super::{Game, commands::execute::Source, commands_common::Target};
+use super::{commands::execute::Source, commands_common::Target};
 use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play;
 

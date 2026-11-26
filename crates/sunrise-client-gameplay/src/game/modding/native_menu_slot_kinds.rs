@@ -1,5 +1,5 @@
 //! Client layout roles; never inspect stacks or server container identities.
-use super::{Game, Screen};
+use super::Screen;
 use mod_api::{MenuRef, MenuSlotKind};
 use sunrise_level::containers::{ModMenuType, mod_menu_type};
 

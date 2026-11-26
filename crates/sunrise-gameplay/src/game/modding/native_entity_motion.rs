@@ -5,7 +5,7 @@
 //! stale handle. On a client (API @API:client_entity_refs@) they read the
 //! entities the server shows the window, and nothing moves one.
 use super::entity::{Entity as _, EntityHandle, with_entity, with_entity_mut};
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_gameplay_common::game::native_entity_motion_values::{corners, on_block_position, turned_view_vector};
 use mod_api::{ClipBlock, ClipFluid, ClipHit, EntityRef, LevelWriteError};
 use sunrise_core::geometry::Vec3;

@@ -8,7 +8,7 @@ use sunrise_client_gameplay::agent_navigation as navigation;
 
 #[cfg(feature = "client")]
 use super::event_loop::EventLoopCtl;
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
 use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use navigation::{Cell, Node, Plan, Progress};

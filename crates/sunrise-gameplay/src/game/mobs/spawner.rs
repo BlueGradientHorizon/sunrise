@@ -2,7 +2,7 @@
 //! `clientTick` for every spawner (`mobs::spawner`), the mobs they add, a
 //! spawn egg used on one (`SpawnEggItem.useOn`), their events and the mob
 //! spinning inside (`SpawnerRenderer`).
-use super::{Game, persist::SpawnTree};
+use super::persist::SpawnTree;
 use std::collections::HashMap;
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]

@@ -1,4 +1,4 @@
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 
 impl crate::game::ServerGame<'_> {

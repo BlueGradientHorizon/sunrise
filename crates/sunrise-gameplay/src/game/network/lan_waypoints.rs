@@ -1,6 +1,6 @@
 //! The locator bar of the players on a served world (lan/waypoints.rs): what
 //! each player looks like to their level's waypoint manager this tick.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_sim::lan::waypoints::{self, PLAYER_RANGE};
 use sunrise_sim::motion::MotionEvent;
 

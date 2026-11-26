@@ -2,7 +2,7 @@
 //! a respawning server player ends up. As in `PlayerList.respawn`, the destination
 //! and any redirect are resolved before the replacement is created.
 use super::respawn_anchor::RespawnConfig;
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_core::geometry::Vec3;
 
 /// Where a respawn ends, as the server found it: a level, a point and the

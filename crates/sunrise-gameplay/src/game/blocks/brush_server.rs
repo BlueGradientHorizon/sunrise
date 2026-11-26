@@ -1,4 +1,4 @@
-use super::{Game, Hit, decorated_pot};
+use super::{Hit, decorated_pot};
 use sunrise_core::random::RandomSource;
 use sunrise_gameplay::brushing::{USE_DURATION, completion_state};
 use sunrise_level::containers::BlockEntity;

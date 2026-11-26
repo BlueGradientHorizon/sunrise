@@ -3,7 +3,7 @@
 //! blows it up anywhere else (`useWithoutItem`), and respawning goes to it
 //! (`ServerPlayer.findRespawnAndUseSpawnBlock`, `PlayerList.respawn`),
 //! using a charge.
-use super::{Dim, Game};
+use super::Dim;
 use mod_api::client::first_person::Hand;
 use sunrise_core::{
     geometry::{Aabb, Axis, Vec3, VoxelShape},

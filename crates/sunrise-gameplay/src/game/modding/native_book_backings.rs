@@ -1,8 +1,5 @@
 //! Canonical physical storage behind a detached custom placement.
-use super::{
-    Game,
-    native_book_scope::{MenuSnapshot, NativeMenuSlot},
-};
+use super::native_book_scope::{MenuSnapshot, NativeMenuSlot};
 use mod_api::__private::game::Fields;
 use mod_api::{ItemPlace, MenuSlotBacking, MenuSlotPlace, ServerHost};
 use std::collections::{BTreeMap, BTreeSet};

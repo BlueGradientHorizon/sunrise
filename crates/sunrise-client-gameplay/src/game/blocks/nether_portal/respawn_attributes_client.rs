@@ -1,4 +1,4 @@
-use super::super::{Game, Result};
+use super::super::Result;
 use super::respawn_attributes_state::{Carried, RespawnAttributes};
 use sunrise_protocol::packets::play::AttributeSnapshot;
 use sunrise_sim::{lan::attributes::apply, motion::PlayerMotion};

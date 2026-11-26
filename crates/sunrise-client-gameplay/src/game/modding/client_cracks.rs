@@ -1,6 +1,6 @@
 //! Client crack state belongs to one level and expires independently of new updates.
 #[cfg(feature = "client")]
-use super::{Game, Mining};
+use super::Mining;
 
 #[cfg(feature = "client")]
 pub(in crate::game) struct ClientCrack {

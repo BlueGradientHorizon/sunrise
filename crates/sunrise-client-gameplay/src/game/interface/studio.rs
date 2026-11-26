@@ -2,7 +2,7 @@
 //! `/studio freecam|keyframe|path` commands. It builds on the
 //! platform's replay recording and playback (`replay.rs`).
 
-use super::{Game, Screen, packs};
+use super::{Screen, packs};
 use std::{path::PathBuf, time::Duration};
 use sunrise_client::{
     packet_source::PacketSource,

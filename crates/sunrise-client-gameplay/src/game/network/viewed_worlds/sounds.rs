@@ -4,7 +4,7 @@
 //! which volume and pitch. Nothing plays it otherwise, and nothing of it reaches the player's
 //! level's own sound hooks.
 use super::routing::RouteError;
-use sunrise_gameplay_common::game::{Game, level_sounds_common::LevelSound, native_hooks::level_sound_playable};
+use sunrise_gameplay_common::game::{level_sounds_common::LevelSound, native_hooks::level_sound_playable};
 use mod_api::{HookId, Identifier, LevelRef, SoundSource};
 use sunrise_protocol::{
     packets::play::{self, Clientbound as C},

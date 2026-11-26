@@ -1,6 +1,6 @@
 //! Emptying a filled bucket from a player's hand: the `empty_contents` Part's say, the guest's
 //! sounds and the client's prediction.
-use super::{Game, Hit};
+use super::Hit;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::UseResult;

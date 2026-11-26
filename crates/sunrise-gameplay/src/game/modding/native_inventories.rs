@@ -6,7 +6,7 @@
 //! at a time, checked against what the mod last showed, so a menu built on
 //! these never copies or loses an item. Server menus are in `native_menus.rs`;
 //! maps a mod draws in `player_send_map` below.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{__private::game::Fields, PlayerRef};
 use std::path::Path;
 use sunrise_items::items::ItemStack;

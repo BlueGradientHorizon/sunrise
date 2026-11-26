@@ -1,6 +1,6 @@
 //! Server-side command-block execution, ticks, chaining, and edit packet handling.
 use super::command_blocks_common::Pos;
-use super::{Game, commands::execute::Source};
+use super::commands::execute::Source;
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::command_blocks::{

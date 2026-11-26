@@ -12,7 +12,7 @@
 //! the clocks as they are, and its viewers get its game time every 20 ticks. A level whose last
 //! area was withdrawn keeps its passes, with no ticket, until its chunks were forgotten and it was
 //! closed on the clients.
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_game_data::Result;
 use sunrise_sim::lan::hub::TickCtx;
 

@@ -6,7 +6,7 @@ use super::{
     worlds::{Binding, ViewedWorld, stored_state},
 };
 use crate::game::remote_chunks::section_blocks;
-use {sunrise_gameplay_common::game::Game, crate::game::client_side::remote_client::Remote, crate::game::native_connection_groups::block_groups, crate::game::native_connection_groups::check_group_updates};
+use {crate::game::client_side::remote_client::Remote, crate::game::native_connection_groups::block_groups, crate::game::native_connection_groups::check_group_updates};
 use sunrise_items::blocks::BlockFacts;
 use sunrise_level::world::World;
 use sunrise_protocol::{

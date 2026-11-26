@@ -1,4 +1,4 @@
-use super::{Game, WorldIcon};
+use super::WorldIcon;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use sunrise_gameplay_common::game::integrated_link::{

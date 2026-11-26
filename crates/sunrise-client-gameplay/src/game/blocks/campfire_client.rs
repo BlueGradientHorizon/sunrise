@@ -1,7 +1,4 @@
-use super::{
-    Game,
-    item_draw::{BlockItemDraw, block_entity_pose},
-};
+use super::item_draw::{BlockItemDraw, block_entity_pose};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{block_entity_render::vertex_light, camera::rotate_degrees, mesher::Vertex};
 use sunrise_client_render::block_entity_reach::Reach;

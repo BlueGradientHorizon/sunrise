@@ -1,6 +1,6 @@
 //! The server level's tick over mobs and over hoppers, at two sizes each: a cost that grows
 //! faster than the count shows as a higher cost per entity at the larger size.
-use super::{super::Game, Recorder, world::FLOOR};
+use super::{Recorder, world::FLOOR};
 use sunrise_core::random::{LegacyRandom, RandomSource};
 use sunrise_game_data::Result;
 use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;

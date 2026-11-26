@@ -10,7 +10,7 @@ pub(in crate::game) mod raw_inbox;
 pub(in crate::game) mod residency;
 pub(in crate::game) mod viewed_areas;
 
-use super::{Game, shield::OFFHAND_SLOT};
+use super::shield::OFFHAND_SLOT;
 pub(in crate::game) use sunrise_gameplay_common::game::lan_common::{LanSettings, sync};
 use sunrise_gameplay_common::game::{
     api_values::TryIntoApi,

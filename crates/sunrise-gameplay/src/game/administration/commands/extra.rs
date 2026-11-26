@@ -3,7 +3,7 @@
 //! (DialogCommand), `/posteffect` (PostEffectCommand), `/kick`,
 //! `/fetchprofile`, `/publish`, `/unpublish`, `/debug`, `/jfr` and
 //! `/version`, with vanilla's feedback and failures.
-use super::{Arg, Context, Game, R, Target, err};
+use super::{Arg, Context, R, Target, err};
 use std::{collections::HashMap, time::Instant};
 use sunrise_command::CommandError;
 use sunrise_core::nbt::{JavaString, Tag};

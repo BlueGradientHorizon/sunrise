@@ -1,4 +1,4 @@
-use super::{Game, view_vector};
+use super::view_vector;
 use sunrise_gameplay_common::game::spear::OWN;
 use sunrise_gameplay_common::game::spear::Target;
 use sunrise_core::{

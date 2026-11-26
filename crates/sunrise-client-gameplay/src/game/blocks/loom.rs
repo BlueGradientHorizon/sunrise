@@ -2,7 +2,7 @@
 //! preview and the six-layer error. The menu itself (`LoomMenu`: slots,
 //! selectable patterns, the pattern buttons, quick moves, the result) runs on
 //! the verified engine, `sunrise_client::menu`, through `Game::menu_session`.
-use super::{Game, stations::Kind};
+use super::stations::Kind;
 use std::sync::Arc;
 use sunrise_client::{
     hud::{HudBatch, Rect, rgba},

@@ -35,7 +35,7 @@ use sunrise_core::{
 use sunrise_protocol::entity_data::Value;
 #[allow(unused_imports)]
 use {
-    sunrise_client::mesher::Vertex, sunrise_game_data::text::Text,
+    sunrise_game_data::text::Text,
     sunrise_level::particle_options::ParticleType, sunrise_level::random_source,
     sunrise_sim::health::DamageContainer, sunrise_sim::health::DamageLevel,
     sunrise_sim::health::HurtSource, sunrise_sim::health::Hurting, sunrise_sim::health::Knock,

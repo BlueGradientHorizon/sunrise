@@ -1,7 +1,7 @@
 //! Standalone models under a block entity's pose with the terrain's own materials
 //! (`BlockEntityDrawContext::terrain_model`): explicit solid/cutout/cutout-mipped selection,
 //! directional shading, UV shift and shrink, and tint.
-use super::{Game, native_block_entity_draw::BlockEntityDraw};
+use super::native_block_entity_draw::BlockEntityDraw;
 use mod_api::{
     ModelError, ModelRef, TerrainMaterial, TerrainModelError, TerrainModelOptions, TerrainShade,
 };

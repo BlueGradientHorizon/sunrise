@@ -1,6 +1,6 @@
 //! Container geometry constructed by the screen build seam.
 use super::screen_build::ContainerLayout;
-use super::{Creative, Game, Screen};
+use super::{Creative, Screen};
 use sunrise_client::inventory_effects::EffectsLayout;
 
 #[cfg(test)]

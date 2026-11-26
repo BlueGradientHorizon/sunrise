@@ -2,7 +2,7 @@
 //! end crystals on a server's client (`ClientPacketListener.handleAddEntity`
 //! and `handleSetEntityData`): the server simulates them, the client draws
 //! them where it says and interpolates their moves.
-use super::{FallingBlock, Game, fireworks::fireworks_of};
+use super::{FallingBlock, fireworks::fireworks_of};
 use sunrise_gameplay_common::game::native_ticks::{TickRound, places_of, slot_place};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 use sunrise_items::items::ItemStack;

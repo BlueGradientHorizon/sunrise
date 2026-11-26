@@ -1,5 +1,5 @@
 //! Landing impacts for falling blocks, before their placement/drop decision.
-use super::{FallingBlock, Game, Landing};
+use super::{FallingBlock, Landing};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 use sunrise_sim::falling_block;
 use sunrise_world::level::LevelEvent;

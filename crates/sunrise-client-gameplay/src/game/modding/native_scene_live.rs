@@ -7,7 +7,6 @@
 //! the client's level, its particle engine or its sounds. A scene of blocks alone never
 //! comes here.
 use super::{
-    Game,
     native_scene::{SceneBlock, SceneQuad, face_shade, shaded},
 };
 use glam::{DVec3, Quat, Vec3};

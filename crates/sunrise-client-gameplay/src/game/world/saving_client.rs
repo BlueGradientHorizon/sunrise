@@ -1,4 +1,4 @@
-use super::{Game, loading_frame};
+use super::loading_frame;
 use sunrise_gameplay_common::game::saving::ClientQuit;
 use sunrise_gameplay_common::game::saving::ClosingSave;
 use sunrise_gameplay_common::game::saving::Stage;

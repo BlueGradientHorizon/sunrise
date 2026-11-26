@@ -1,5 +1,4 @@
 use super::{
-    Game,
     entity::Entity,
     pick_entity::pick_sections::PickMember,
     pick_entity_common::{PickKind, aabb_extents},

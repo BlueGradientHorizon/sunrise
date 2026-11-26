@@ -1,4 +1,4 @@
-use super::{Game, Hit};
+use super::Hit;
 use sunrise_client::animate_tick::make_campfire_smoke;
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;

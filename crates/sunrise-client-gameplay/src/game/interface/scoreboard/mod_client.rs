@@ -1,4 +1,4 @@
-use super::{Game, chat_common::PLAYER_NAME};
+use super::chat_common::PLAYER_NAME;
 use sunrise_gameplay_common::game::scoreboard_common::{pet_team, root_owner, tame_owner};
 use std::collections::HashMap;
 use sunrise_client::actions::Action;

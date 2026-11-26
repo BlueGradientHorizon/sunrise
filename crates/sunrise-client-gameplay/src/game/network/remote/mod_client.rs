@@ -1,7 +1,7 @@
 use super::raw_backlog::Received;
 use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next, RemoteLight};
 use super::render_tick::{mob_tracking_body, player_tracking_body};
-use super::{Dim, Game, Hit, Mining, Screen};
+use super::{Dim, Hit, Mining, Screen};
 use mod_api::InteractionKey;
 pub(in crate::game) use session_state::{
     BACKLOG_LIMIT, CHUNK_PACKETS_PER_FRAME, ClientMenu, ItemUseAim, NoTerrain, OwnProfile,

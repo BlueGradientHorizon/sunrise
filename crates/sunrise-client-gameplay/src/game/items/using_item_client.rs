@@ -1,4 +1,4 @@
-use super::{Game, Hit, item_use_common};
+use super::{Hit, item_use_common};
 use sunrise_items::items::ItemStack;
 
 impl crate::game::ClientGame<'_> {

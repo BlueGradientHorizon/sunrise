@@ -3,7 +3,7 @@
 //! As the objectives of `native_scoreboard.rs`: every write is made on the same `Scoreboard`
 //! `/team` writes, with its methods, so the sync, the save and the selectors need to know
 //! nothing of a mod; a handle holds the world's epoch and the identity the board gave its team.
-use super::{Game, native_scoreboard::api_text};
+use super::native_scoreboard::api_text;
 use core::ops::ControlFlow;
 use mod_api::__private::game::*;
 use mod_api::{

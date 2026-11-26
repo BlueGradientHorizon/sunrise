@@ -1,7 +1,7 @@
 //! Where sleeping through the night moves the level's clock: vanilla's morning, or the mods'
 //! `ClockAdjustment` from `sleep_finished_time` (NeoForge's `SleepFinishedTimeEvent`), and the
 //! clock time markers both read.
-use super::{Dim, Game};
+use super::Dim;
 use mod_api::{ClockAdjustment, Identifier, LevelRef};
 use sunrise_gameplay::world_clock::{OVERWORLD_CLOCK, TimeMarker};
 

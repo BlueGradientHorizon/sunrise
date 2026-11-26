@@ -4,7 +4,7 @@
 //! saving and `AbstractBoatRenderer` with animated paddles.
 pub(in crate::game) mod below_world;
 
-use super::{Game, InteractTarget};
+use super::InteractTarget;
 use sunrise_gameplay_common::game::boats_common::{
     BUBBLE_DOWN_EVENT, BUBBLE_TIME, BUBBLE_UP_EVENT, Boat, WIDTH, reached_cells,
 };

@@ -1,6 +1,6 @@
 //! `/item` (ItemCommands) and `if items`/`if slots`: addressing the item
 //! slots of the player, mobs, armor stands, item frames and containers.
-use super::{Arg, Context, Game, R, Target, err};
+use super::{Arg, Context, R, Target, err};
 use sunrise_command::{CommandError, args::ItemInput};
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::text::Text;

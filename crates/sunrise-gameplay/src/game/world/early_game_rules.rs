@@ -1,5 +1,5 @@
 //! Install the opening's authoritative rules before either early server hook.
-use super::{Game, world_loading::PreparedWorld};
+use super::world_loading::PreparedWorld;
 use sunrise_game_data::gamerules::{GameRules, Value};
 
 impl crate::game::ServerGame<'_> {

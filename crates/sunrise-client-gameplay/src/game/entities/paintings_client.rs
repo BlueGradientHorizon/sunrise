@@ -1,4 +1,4 @@
-use super::{Game, entity_culling::default_range};
+use super::entity_culling::default_range;
 use sunrise_client::mesher::Vertex;
 
 pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {

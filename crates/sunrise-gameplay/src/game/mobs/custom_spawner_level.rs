@@ -1,5 +1,5 @@
 //! `Game` as the `CustomSpawnerLevel` the custom spawners run on: each service forwards to the game's own method.
-use super::{Game, creatures::SpawnSite};
+use super::creatures::SpawnSite;
 use std::collections::HashSet;
 use sunrise_game_data::gamerules::RuleIndex;
 use sunrise_gameplay::custom_spawner::{CustomSpawnerLevel, SpawnerParts, SpawnerPlayer};

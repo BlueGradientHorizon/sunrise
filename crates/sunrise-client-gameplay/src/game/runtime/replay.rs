@@ -2,7 +2,7 @@
 //! and `/studio replay` commands (chat and `sunrise-ctl`), the replay's clock and its world. This is
 //! platform (docs/layers.md, "Replays"); Studio's editor (`studio.rs`) builds on it.
 
-use super::{Game, Screen};
+use super::Screen;
 #[cfg(feature = "client")]
 use crate::game::client_side::resource_loader::PendingWorldEntry;
 use serde_json::{Value, json};

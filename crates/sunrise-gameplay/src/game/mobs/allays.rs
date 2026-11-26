@@ -2,7 +2,6 @@
 //! throwing their load to the player or note block, dancing to jukeboxes,
 //! and the hand-over interaction (`Allay.mobInteract`).
 
-use super::Game;
 use super::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_gameplay::allays::{AllayLevel, AllayPlayer, SightView};

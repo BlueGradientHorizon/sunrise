@@ -2,7 +2,7 @@
 //! `TextEdit`, whose edits go back through the box's own filter, length limit and responders.
 //! The boxes with validators of their own (Options, World Options, the game rules, the block
 //! editor) are not offered.
-use super::{Game, Screen, control};
+use super::{Screen, control};
 use mod_api::client::widgets::TextEdit;
 use sunrise_client::{
     chat::Commands,

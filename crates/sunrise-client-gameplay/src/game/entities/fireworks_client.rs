@@ -1,4 +1,4 @@
-use super::{Game, item_draw::owner_at};
+use super::item_draw::owner_at;
 #[cfg(test)]
 use sunrise_gameplay_common::game::fireworks::FIREWORK_EXPLODE_EVENT;
 use sunrise_gameplay_common::game::fireworks::Rocket;

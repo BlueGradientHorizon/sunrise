@@ -1,5 +1,5 @@
 use sunrise_gameplay_common::game::lan_actions::death_state::FatalSource;
-use sunrise_gameplay_common::game::{Game, api_values::TryIntoApi};
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 impl crate::game::ServerGame<'_> {
     /// A veto belongs to the guest's living body, not its replaceable combat history.

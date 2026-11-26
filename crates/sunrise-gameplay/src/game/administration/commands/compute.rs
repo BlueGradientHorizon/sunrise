@@ -1,7 +1,7 @@
 //! `/compute` (ComputeCommand): context number providers
 //! (`context_int_provider`, `context_float_provider`) evaluated in a loot
 //! context of the source, optionally with a block or a target entity.
-use super::{Arg, Context, Game, R, Target, err};
+use super::{Arg, Context, R, Target, err};
 use serde_json::Value;
 use std::borrow::Cow;
 use sunrise_command::CommandError;

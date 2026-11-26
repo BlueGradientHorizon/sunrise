@@ -1,5 +1,5 @@
 //! Entity command execution shared by the bool and feedback-returning mod API methods.
-use super::{Game, commands::execute, native_server::system_chat};
+use super::{commands::execute, native_server::system_chat};
 use sunrise_game_data::text::Text;
 
 impl crate::game::ServerGame<'_> {

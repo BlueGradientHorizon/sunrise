@@ -1,6 +1,6 @@
 //! AI goals of native mod mob handles.
 use super::native_namespaced_id::namespaced;
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{GoalSpec, MobFilter, MobGoalEntry, MobRef};
 use sunrise_sim::mobs::{
     self, Species,

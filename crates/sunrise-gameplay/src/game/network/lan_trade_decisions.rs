@@ -1,6 +1,6 @@
 //! A subscribed guest's merchant result click is one savepoint. Each take has its own
 //! frozen menu plan, collect and apply; a later refusal aborts every earlier iteration.
-use super::{Game, trading::MadeMaps};
+use super::trading::MadeMaps;
 use sunrise_gameplay_common::game::transactions::{
     After,
     decision::{Identity, OwnerStamp},

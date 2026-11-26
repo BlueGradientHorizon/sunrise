@@ -1,4 +1,4 @@
-use sunrise_gameplay_common::game::{Game, remote::passengers::passenger_root};
+use sunrise_gameplay_common::game::remote::passengers::passenger_root;
 use mod_api::EntityRef;
 
 impl crate::game::ClientGame<'_> {

@@ -1,7 +1,7 @@
 //! Server-side sculk and game-event simulation: dispatching events to sculk
 //! sensors, shriekers and wardens (`GameEventDispatcher`), the vibration
 //! ticker, redstone output, resonance, shrieks, warden summoning, and catalysts.
-use super::{Game, Result};
+use super::Result;
 use mod_api::client::particles::PositionSource;
 use std::collections::HashSet;
 use sunrise_core::{

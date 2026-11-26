@@ -1,7 +1,7 @@
 //! Trial spawners in the game: `TrialSpawner.tickServer` for every trial
 //! spawner (`mobs::trial_spawner`), the block's state as it changes, the mobs
 //! it adds and the rewards it ejects.
-use super::{Game, natural_spawning::GameLevel, spawner::Planned};
+use super::{natural_spawning::GameLevel, spawner::Planned};
 use std::collections::HashMap;
 use sunrise_core::{
     geometry::Vec3,

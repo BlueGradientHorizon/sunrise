@@ -1,5 +1,6 @@
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+use super::{Dim, commands::execute, respawn_anchor::RespawnConfig};
 use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
 use sunrise_gameplay_common::game::native_server::Acting;
 use sunrise_gameplay_common::game::native_server::BaseTree;

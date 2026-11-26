@@ -1,4 +1,4 @@
-use super::{Game, entity_culling::at, view_vector};
+use super::{entity_culling::at, view_vector};
 use sunrise_gameplay_common::game::boats_common::{Boat, HEIGHT, PLAYER_RIDING_OFFSET, Status, WIDTH};
 use std::collections::HashMap;
 use std::{f32::consts::PI, sync::Arc};

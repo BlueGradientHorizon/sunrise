@@ -3,7 +3,7 @@
 //! collects the impacts; once its worlds are let go, the mods hear each one, and a
 //! projectile whose impact a mod canceled flies the tick again from where it was,
 //! through whatever it hit.
-use super::{Game, commands::Target, dragon_common::SPECIAL, lan_pvp::meets_players};
+use super::{commands::Target, dragon_common::SPECIAL, lan_pvp::meets_players};
 use crate::game::native_hooks::mob_kind;
 use sunrise_gameplay_common::game::creatures::TargetQuery;
 use std::ops::Range;

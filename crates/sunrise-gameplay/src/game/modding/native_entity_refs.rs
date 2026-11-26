@@ -16,7 +16,7 @@ pub(in crate::game) mod dragon_query;
 #[path = "native_entity_refs/save_lending.rs"]
 pub(in crate::game) mod save_lending;
 #[allow(unused_imports)]
-use super::{Game, commands::Target, entity::Entity, pick_entity_common::aabb_extents};
+use super::{commands::Target, entity::Entity, pick_entity_common::aabb_extents};
 #[allow(unused_imports)]
 use core::ops::ControlFlow;
 #[allow(unused_imports)]

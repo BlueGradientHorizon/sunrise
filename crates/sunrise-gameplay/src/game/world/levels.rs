@@ -14,7 +14,7 @@
 
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
-    Dim, ExperienceOrb, FallingBlock, Game, ItemEntity, Mob,
+    Dim, ExperienceOrb, FallingBlock, ItemEntity, Mob,
     boats_common::Boat,
     creaking::CreakingState,
     dragon_common,

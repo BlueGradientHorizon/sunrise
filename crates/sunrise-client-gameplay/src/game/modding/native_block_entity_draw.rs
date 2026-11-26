@@ -4,7 +4,7 @@
 //! batch, as vanilla's block entity renderers draw.
 pub use mod_api::game::CubeFace;
 
-use super::{Dim, Game};
+use super::Dim;
 use glam::{DVec3, Mat4, Quat, Vec3};
 #[cfg(test)]
 use mod_api::prelude::*;

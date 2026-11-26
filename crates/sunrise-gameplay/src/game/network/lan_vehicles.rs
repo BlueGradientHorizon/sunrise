@@ -9,7 +9,7 @@
 //! here with the rider's input (`ServerPlayer.getLastClientMoveIntent`).
 //! Sneaking gets out (`Player.rideTick`: `wantsToStopRiding`), and the client
 //! is teleported where the player lands (`ServerPlayer.dismountTo`).
-use super::{Dim, Game, Keys, lan::LanHost, minecarts::SEAT};
+use super::{Dim, Keys, lan::LanHost, minecarts::SEAT};
 use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_protocol::{

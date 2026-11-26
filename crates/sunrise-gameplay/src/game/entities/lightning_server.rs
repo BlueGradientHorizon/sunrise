@@ -1,5 +1,4 @@
 use super::{
-    Game,
     commands::Target,
     entity::{
         Entity as _, EntityHandle, ThunderHit, entity_lists_of, for_each_entity, with_entity,

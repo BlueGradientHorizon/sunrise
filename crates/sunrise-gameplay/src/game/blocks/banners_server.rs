@@ -1,4 +1,4 @@
-use super::{Game, maps::MapBanner};
+use super::maps::MapBanner;
 use sunrise_gameplay_common::game::banners::map_banner;
 
 impl crate::game::ServerGame<'_> {

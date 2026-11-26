@@ -8,7 +8,7 @@
 //!
 //! The events are also what a repro recording writes to `inputs.jsonl`
 //! (game/runtime/repro.rs).
-use super::{Game, Screen};
+use super::Screen;
 use serde_json::json;
 use sunrise_client::{keybinds, window::PointerSample};
 use winit::{

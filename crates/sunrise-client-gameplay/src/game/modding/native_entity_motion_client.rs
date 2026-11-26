@@ -1,6 +1,6 @@
 use super::entity::{Entity as _, EntityHandle, with_entity};
 use sunrise_gameplay_common::game::native_entity_motion_values::corners;
-use sunrise_gameplay_common::game::{Game, commands_common::Target};
+use sunrise_gameplay_common::game::commands_common::Target;
 use mod_api::EntityRef;
 use sunrise_core::geometry::Vec3;
 

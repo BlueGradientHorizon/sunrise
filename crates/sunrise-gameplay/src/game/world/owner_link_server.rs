@@ -1,5 +1,5 @@
+use sunrise_gameplay_common::game::blockctl::BlockctlGameExt1;
 use sunrise_gameplay_common::game::{
-    Game,
     lan_common::LanSettings,
     owner_link::{ControlRequest, OwnerRequest, Snapshot},
 };

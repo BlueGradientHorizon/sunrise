@@ -5,7 +5,7 @@
 //! down (`try_sleep`) and freed in the level's tick once nobody sleeps in it
 //! any more, whichever way they got up: waking, the Leave Bed button, death,
 //! a broken bed, or leaving the game.
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_game_data::Result;
 use sunrise_gameplay_common::game::native_hooks::SleepProblem;
 

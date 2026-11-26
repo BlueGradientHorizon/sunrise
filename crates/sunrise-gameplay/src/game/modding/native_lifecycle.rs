@@ -5,7 +5,6 @@
 use sunrise_gameplay_common::game::native_lifecycle_common::OpenState;
 
 use super::{
-    Game,
     execution_role::ExecutionRole,
     scheduled_tasks::{ServerTask, dispose_pending_task, report_failure, run_all},
 };

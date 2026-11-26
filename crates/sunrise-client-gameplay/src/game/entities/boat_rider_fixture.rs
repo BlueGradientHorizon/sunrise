@@ -1,5 +1,5 @@
 //! Headless passenger-order regression through the real remote client paths.
-use super::{Game, Keys};
+use super::Keys;
 use sunrise_gameplay_common::game::boats_common::Boat;
 use serde::Deserialize;
 use serde_json::json;

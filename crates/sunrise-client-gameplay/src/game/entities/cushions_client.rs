@@ -1,4 +1,4 @@
-use super::{Game, entity_culling::default_range};
+use super::entity_culling::default_range;
 use sunrise_gameplay_common::game::cushions_common::{aabb, snap_yaw};
 use sunrise_core::geometry::Aabb;
 use sunrise_sim::mobs::anim::Poses;

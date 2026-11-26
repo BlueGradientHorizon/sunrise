@@ -1,6 +1,6 @@
 //! Still-fluid boxes under a block entity's pose (`BlockEntityDrawContext::fluid_box`), drawn
 //! with their own sorted translucent material (`FLUID_OVERLAY`).
-use super::{Game, native_block_entity_draw::BlockEntityDraw};
+use super::native_block_entity_draw::BlockEntityDraw;
 use glam::Vec3;
 use mod_api::{FluidBoxError, FluidBoxOptions, FluidStack};
 use sunrise_client::{

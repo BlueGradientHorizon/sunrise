@@ -4,7 +4,6 @@
 //! server list's setting, downloads into `downloads/`, and a resource reload
 //! with the server's packs on top of the player's own.
 use super::{
-    Game,
     packs::ReloadKind,
     toast_manager::{SystemToastId, Toast},
 };

@@ -1,7 +1,7 @@
 //! Particles a server sends its players and its clients draw:
 //! `ClientboundLevelParticlesPacket` (`ServerLevel.sendParticles`, which
 //! `/particle` uses) and `ClientboundExplodePacket` (`ServerLevel.explode`).
-use super::{Game, explosion_settings::BlastEffects, lan::LanHost};
+use super::{explosion_settings::BlastEffects, lan::LanHost};
 use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_core::{

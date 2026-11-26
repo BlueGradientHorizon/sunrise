@@ -1,5 +1,5 @@
 use super::piston_push::Lid;
-use super::{Dim, Game, entity_culling::EntityCullDecision, native_mob_draw::PlayerRender};
+use super::{Dim, entity_culling::EntityCullDecision, native_mob_draw::PlayerRender};
 use sunrise_gameplay_common::game::creatures::MobDrawFrame;
 use sunrise_gameplay_common::game::creatures::Skinned;
 use sunrise_gameplay_common::game::creatures::is_item_billboard;

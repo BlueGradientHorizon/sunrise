@@ -3,7 +3,7 @@
 //! widgets), resizes with the wheel and sends back to its corner with a right click; buttons
 //! for the text colour, shadow, boxes and their opacity, and Reset. Opened from the PvP & HUD
 //! page or its key. Nothing here reaches the server.
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_client::{
     hud::{HudBatch, rgba},
     pvp::Opt,

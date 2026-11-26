@@ -6,7 +6,7 @@
 //! feedback and no failure in anyone's chat. A batch waits in a queue and runs
 //! [`PER_TICK`] lines a player a tick, so a mod can't flood a server; each
 //! finished batch is one line in the server's log.
-use super::{Game, lan_actions::GuestCommand};
+use super::lan_actions::GuestCommand;
 use std::collections::{HashMap, VecDeque};
 use sunrise_protocol::quiet;
 

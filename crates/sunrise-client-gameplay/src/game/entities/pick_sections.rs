@@ -2,7 +2,7 @@
 use sunrise_gameplay_common::game::entity::Entity as _;
 use sunrise_gameplay_common::game::general::general_type_catalog;
 use sunrise_gameplay_common::game::pick_entity_common::{aabb_extents, knot_bounds};
-use sunrise_gameplay_common::game::{Dim, Game};
+use sunrise_gameplay_common::game::Dim;
 use std::collections::BTreeMap;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_level::fast_hash::FxHashMap;

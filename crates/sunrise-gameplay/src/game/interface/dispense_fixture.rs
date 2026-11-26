@@ -4,7 +4,6 @@
 //! around it) through `dispense_from` on a fresh headless world and prints what
 //! changed in the format of `VanillaDispenserOracle`.
 use super::{
-    Game,
     dispenser::{Slot, body_equipment_species, mob_set_slot, mob_slot_item},
 };
 use serde_json::Value;

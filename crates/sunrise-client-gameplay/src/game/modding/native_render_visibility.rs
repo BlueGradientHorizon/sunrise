@@ -2,7 +2,7 @@
 //! scanners, builder cutaways, cinematic shots. The answer is per state and resolved here, so
 //! meshing reads one table and never a mod.
 
-use super::{BlockStateId, Game};
+use super::BlockStateId;
 use std::sync::Arc;
 
 impl crate::game::ClientGame<'_> {

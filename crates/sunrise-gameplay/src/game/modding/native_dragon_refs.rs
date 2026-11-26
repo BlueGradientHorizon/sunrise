@@ -1,6 +1,6 @@
 //! Ender dragon handles for native server mods: the `Mob` state the dragon
 //! keeps, its phase and the fight it belongs to.
-use super::{Dim, Game, commands::Target, dragon::Fight, dragon_common::Dragon};
+use super::{Dim, commands::Target, dragon::Fight, dragon_common::Dragon};
 use mod_api::{DragonPhase, DragonRef, EntityRef, LivingRef, MobRef};
 
 impl crate::game::ServerGame<'_> {

@@ -113,3 +113,4 @@ pub fn configure_launch_spans(on: bool) {
 }
 
 use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
+use sunrise_gameplay_common::game::native_hooks::game_shutting_down::GameHooks as _;

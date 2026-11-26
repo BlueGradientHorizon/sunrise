@@ -1,5 +1,5 @@
 //! Server-side dropped-item handle reads and writes for native mods.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, ItemEntityRef, ItemStackView};
 use sunrise_gameplay_common::game::api_values::{project_stack, stack_read_metadata};
 use sunrise_items::items::ItemStack;

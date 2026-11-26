@@ -4,7 +4,7 @@
 use mod_api::prelude::*;
 use mod_api::{BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, PlayerRef};
 use std::sync::Arc;
-use {crate::game::client_side::remote_client::Remote, sunrise_gameplay_common::game::Game};
+use crate::game::client_side::remote_client::Remote;
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn native_session(&self) -> Option<&Remote> {

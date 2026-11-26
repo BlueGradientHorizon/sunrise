@@ -1,9 +1,6 @@
 //! `JigsawBlockEditScreen`: the jigsaw block's pool, name, target, final
 //! state, priorities and joint, with the Generate button and its levels.
-use super::{
-    Game,
-    block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action, on_off},
-};
+use super::block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action, on_off};
 use sunrise_client::ui::EditBox;
 use sunrise_game_data::text::Text;
 use sunrise_level::{

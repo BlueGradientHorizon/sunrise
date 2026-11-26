@@ -8,6 +8,7 @@ use sunrise_gameplay_common::game::level_sounds_common::{HeardSound, LevelSound,
 
 use crate::game::ServerGame;
 use sunrise_gameplay_common::game::native_hooks::level_sound_playable;
+use sunrise_gameplay_common::game::native_hooks::level_sounds::GameHooks as _;
 
 /// A sound bound to an entity (`level.playSound(except, entity, ...)`),
 /// waiting for the end of the tick to be asked of the mods and sent.

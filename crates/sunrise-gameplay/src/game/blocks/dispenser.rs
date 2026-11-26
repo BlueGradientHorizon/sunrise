@@ -6,7 +6,7 @@
 #[allow(unused_imports)]
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
 #[allow(unused_imports)]
-use super::{Dim, Game, item_abilities::ability};
+use super::{Dim, item_abilities::ability};
 #[allow(unused_imports)]
 use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use sunrise_gameplay_common::game::spill_common;

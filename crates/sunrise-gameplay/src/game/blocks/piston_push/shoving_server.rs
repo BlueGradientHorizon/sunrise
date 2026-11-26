@@ -1,5 +1,5 @@
 //! Server-side directional push of mod moving colliders (`MoveWho::Entity(_)` only).
-use super::{Game, move_gate::MoveWho};
+use super::move_gate::MoveWho;
 use sunrise_gameplay_common::game::piston_push::{StepHeights, carrying::Rider};
 use sunrise_core::geometry::Vec3;
 use sunrise_world::moving_colliders::{self, Placed, Prepared, Shove};

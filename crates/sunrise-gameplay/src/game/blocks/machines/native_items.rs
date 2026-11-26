@@ -2,7 +2,7 @@
 //! container slots and the composter's state-backed input/output, by the rules hoppers follow.
 //! Side-local slots are numbered from zero. It acts where the world is simulated, never on
 //! a client's copy, and only on the level in place.
-use super::{Game, Insertion, MoveIn};
+use super::{Insertion, MoveIn};
 use sunrise_gameplay_common::game::{
     machine_containers::{Kind, PlacementAttempt, View},
     spill_common::{put_saved_entity, saved_entity},

@@ -2,7 +2,7 @@
 //! into zombie villagers (`Zombie.killedEntity`), the golden apple that starts
 //! a cure (`ZombieVillager.mobInteract`), and the cured villager that
 //! remembers who saved it (`ZombieVillager.finishConversion`).
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{

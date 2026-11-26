@@ -1,6 +1,6 @@
 //! Client-host notifications use the ordinary system-toast update and slots.
 
-use super::{Game, toast_manager::Toast};
+use super::toast_manager::Toast;
 use mod_api::{AddToastError, Identifier, ModToast, ToastIcon, ToastKind};
 use sunrise_client::{
     hud::HudBatch,

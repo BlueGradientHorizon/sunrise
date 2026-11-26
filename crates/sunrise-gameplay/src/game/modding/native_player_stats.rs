@@ -3,7 +3,7 @@
 //! `ServerRecipeBook`. Reads return None for a stale handle or a player who
 //! isn't online here. Writes return false (or None) for those, for a dead
 //! player, and, inside another player's turn, for anyone but that player.
-use super::{Game, lan_actions_server::CombatPlayer, stats::Stats};
+use super::{lan_actions_server::CombatPlayer, stats::Stats};
 use mod_api::{PlayerRef, StatType};
 use sunrise_gameplay_common::game::{native_server::PlayerRead, transactions::DeferredEffect};
 use sunrise_gameplay_common::stats::StatValues;

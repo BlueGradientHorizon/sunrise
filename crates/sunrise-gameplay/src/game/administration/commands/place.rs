@@ -1,6 +1,6 @@
 //! `/place template` (PlaceCommand): a saved structure template placed with
 //! rotation, mirroring and integrity.
-use super::{Arg, Context, Game, R, err};
+use super::{Arg, Context, R, err};
 use crate::game::structure_blocks::{load_settings, template_size};
 use std::sync::OnceLock;
 use sunrise_core::position::BlockPos;

@@ -1,6 +1,6 @@
 //! A command that resolves an entity selector, parsed and run as a function's line or a
 //! repeating command block runs it every tick.
-use super::{super::Game, Recorder};
+use super::Recorder;
 use sunrise_game_data::Result;
 
 impl crate::game::ServerGame<'_> {

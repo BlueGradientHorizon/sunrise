@@ -1,4 +1,4 @@
-use super::{Game, ItemStack};
+use super::ItemStack;
 use sunrise_protocol::item::Stack;
 
 impl crate::game::ClientGame<'_> {

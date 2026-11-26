@@ -1,6 +1,6 @@
 //! `/bossbar` (BossBarCommands) and drawing the custom boss bars.
 use super::{
-    Dim, Game,
+    Dim,
     commands_common::{R, Target, err},
 };
 use std::collections::{HashMap, HashSet};

@@ -1,4 +1,4 @@
-use super::{Game, Hit};
+use super::Hit;
 use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 

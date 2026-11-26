@@ -4,7 +4,7 @@
 //! (`startRiding(vehicle, true, true)`), so any of them takes a rider; the rider then sits at the vehicle's
 //! default passenger attachment and gets off on sneak, as vanilla's `Entity` does for a vehicle that
 //! overrides neither.
-use super::{Game, Keys};
+use super::Keys;
 use sunrise_gameplay_common::game::seats_common::{Seat, could_accept_passenger};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;

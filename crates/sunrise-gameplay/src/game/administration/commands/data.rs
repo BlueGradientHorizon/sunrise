@@ -1,6 +1,6 @@
 //! `/data` (DataCommands), `/tag` (TagCommand) and `/summon` with NBT: entity,
 //! block entity and storage data accessors over the game state.
-use super::{Arg, Context, Game, R, Target, err};
+use super::{Arg, Context, R, Target, err};
 use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
 use sunrise_game_data::{nbt_path::NbtPath, snbt, text::Text};
 use sunrise_sim::{

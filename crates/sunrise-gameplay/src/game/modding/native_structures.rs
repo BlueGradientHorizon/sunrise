@@ -2,7 +2,7 @@
 //! `StructureTemplateManager.get`, and what `StructureTemplate.placeInWorld`
 //! would place) without placing them: a builder reads a template once, then
 //! places its blocks one at a time.
-use super::{Game, api_values::TryIntoApi};
+use super::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::native_structure_values::{
     TemplateBlock, TemplateSnapshot, engine_mirror, engine_rotation, template_id,
 };

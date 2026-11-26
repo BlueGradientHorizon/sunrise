@@ -3,7 +3,7 @@
 //! dropped items (`ItemEntityRenderer`) and items posed in the world (hands,
 //! frames, armour stands). This binds the resolver's host services
 //! (`ItemEnv`) and the special renderers' registries to the game.
-use super::{Dim, Game, entity_culling::EntityCullDecision};
+use super::{Dim, entity_culling::EntityCullDecision};
 #[cfg(feature = "client")]
 use crate::game::client_side::item_model_context;
 use serde_json::Value;

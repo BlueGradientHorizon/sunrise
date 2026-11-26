@@ -1,5 +1,5 @@
 //! Direct move-control wishes, independent of navigation and terrain availability.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{MobRef, WantedPositionError};
 
 impl crate::game::ServerGame<'_> {

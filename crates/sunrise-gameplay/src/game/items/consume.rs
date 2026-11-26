@@ -2,7 +2,7 @@
 //! its particles and sounds, and `TeleportRandomlyConsumeEffect` (chorus
 //! fruit) for players and foxes. The level random stands in for the player's
 //! own, as for every other player draw.
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_gameplay_common::game::item_use_common::{ItemConsumable, USE_ITEM_COMPLETE_EVENT};

@@ -1,7 +1,7 @@
 //! The creaking heart block entity in the game: `mobs::creaking_heart`
 //! ticks each heart (spawning, letting go of and bleeding for its creaking)
 //! and this applies what it reports to the world, the mobs and the speakers.
-use super::{Game, creatures::seen};
+use super::creatures::seen;
 use std::sync::Arc;
 use sunrise_core::{
     geometry::Vec3,

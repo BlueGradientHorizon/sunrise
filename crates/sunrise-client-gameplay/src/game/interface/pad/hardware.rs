@@ -2,7 +2,7 @@
 //! over HID: its rumble, adaptive triggers, lights and HD haptics. A build without the feature (the
 //! server build) has the stub in pad.rs instead, and only `sunrise-ctl pad`'s virtual pad.
 use super::{
-    super::{Game, Screen},
+    super::Screen,
     Connection, Pads,
 };
 use serde_json::{Value, json};

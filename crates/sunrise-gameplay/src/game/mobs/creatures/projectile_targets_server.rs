@@ -1,4 +1,4 @@
-use super::super::{Game, commands::Target, entity::Entity as _, lan_mobs::guest_bounds};
+use super::super::{commands::Target, entity::Entity as _, lan_mobs::guest_bounds};
 use super::ProjWorld;
 use sunrise_gameplay_common::game::creatures::projectile_targets::NonMobHit;
 use sunrise_gameplay_common::game::creatures::projectile_targets::ProjectileHitInfo;

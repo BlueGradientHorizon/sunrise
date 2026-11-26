@@ -1,5 +1,5 @@
 //! Server-side shelf item swaps (`ShelfBlock.useItemOn`).
-use super::{Game, Hit, machines::dir_from_name};
+use super::{Hit, machines::dir_from_name};
 use sunrise_core::geometry::Direction;
 use sunrise_level::containers::BlockEntity;
 

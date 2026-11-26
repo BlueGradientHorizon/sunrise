@@ -1,7 +1,7 @@
 //! Raid handles for native server mods (`Raid`, `Raids`). Sunrise keeps the
 //! raids of current and parked server levels. Earlier opens, closed levels
 //! and client reads return `None` or `false`.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, LevelRef, MobRef, RaidRef, RaidStatus};
 use sunrise_sim::{
     lan::playerdata::ints_uuid,

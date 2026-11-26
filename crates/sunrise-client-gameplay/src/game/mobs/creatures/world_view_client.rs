@@ -1,4 +1,4 @@
-use super::{Game, view_vector};
+use super::view_vector;
 use sunrise_gameplay_common::game::creatures::world_view::MobWorldSideParams;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};

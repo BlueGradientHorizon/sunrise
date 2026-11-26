@@ -7,7 +7,7 @@
 //! the local client's live semantic sneak state; fire and underwater reads also
 //! use the client's own cached state.
 //! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_gameplay_common::game::native_entity_state_common::Body;
 use mod_api::EntityRef;
 use sunrise_sim::mobs::sync;

@@ -1,5 +1,5 @@
 //! Specialized authoritative owners that are not homogeneous entity lists.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_gameplay_common::game::fishing_common::Hook;
 
 pub(in crate::game) enum SpecializedSource<'a> {

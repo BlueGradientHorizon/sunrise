@@ -1,7 +1,7 @@
 //! `sunrise-report [SECONDS]` and `sunrise-trace [SECONDS]` on the dedicated server's console, and `SUNRISE_TRACE`: record a window of ticks into `reports/profile-<time>Z.hzperf`.
 use super::super::memory::{MEMORY_EVERY_S, flatten_report};
 use super::super::{
-    Dim, Game,
+    Dim,
     perf_remote::{Asked, Done},
     profile_capture_common::shown,
     tick_profile,

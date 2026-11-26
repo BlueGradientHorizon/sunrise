@@ -4,7 +4,7 @@
 //! and in the inventory (`InventoryScreen.extractEntityInInventoryFollowsMouse`).
 #[cfg(feature = "client")]
 use super::native_mob_draw::PlayerRender;
-use super::{Game, Screen};
+use super::Screen;
 use mod_api::Hand;
 use std::{
     io,

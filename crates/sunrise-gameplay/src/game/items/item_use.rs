@@ -5,7 +5,7 @@
 //! `native_living_entity_use_item_start`, `native_living_entity_use_item_finish`),
 //! and each tick and the release of a use (`native_living_entity_use_item_tick`,
 //! `native_on_use_tick`, `native_living_entity_use_item_stop`, `native_release_using`).
-use super::{Game, held_items::OFFHAND_SLOT};
+use super::held_items::OFFHAND_SLOT;
 use sunrise_gameplay_common::game::item_use_common::{held, start_of, ticks_left};
 use {
     sunrise_items::items::ItemInfo, sunrise_items::items::ItemStack,

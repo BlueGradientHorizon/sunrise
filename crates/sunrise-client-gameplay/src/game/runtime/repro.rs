@@ -17,7 +17,7 @@
 //! ```
 use super::event_loop::EventLoopCtl;
 use super::input_trace::{InputOrigin, TraceEvent, TraceKind};
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use serde::Deserialize;
 use serde_json::{Value, json};

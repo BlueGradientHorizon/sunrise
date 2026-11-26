@@ -1,7 +1,7 @@
 //! `/execute` (ExecuteCommand): walk the parsed redirect chain, forking and
 //! filtering command sources, then run the final command once per source,
 //! reporting each result to the `store` callbacks of its source.
-use super::{Arg, Context, Dim, Game, R, Target, data::DataRef, err, wrap_degrees};
+use super::{Arg, Context, Dim, R, Target, data::DataRef, err, wrap_degrees};
 use sunrise_core::geometry::trig;
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::nbt_path::NbtPath;

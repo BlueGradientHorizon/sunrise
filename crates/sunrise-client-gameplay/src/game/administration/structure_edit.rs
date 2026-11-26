@@ -1,7 +1,6 @@
 //! `StructureBlockEditScreen`: the structure block's name, position, size,
 //! mode and options, with its buttons laid out as vanilla's.
 use super::{
-    Game,
     block_editor::{
         Editor, Item, Outcome, Pos, cycle, footer_action, on_off, valid_character_for_name,
     },

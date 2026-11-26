@@ -1,6 +1,5 @@
 //! A player's inventory by vanilla's slot numbers (`Inventory.getItem`/`setItem`).
 //! Reads lend the current slots; writes go through the authoritative server.
-use super::Game;
 use mod_api::{PlayerDataRefusal, PlayerRef};
 use sunrise_gameplay_common::game::native_server::{PlayerRead, SLOTS, inventory_slot};
 use sunrise_items::items::ItemStack;

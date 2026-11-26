@@ -1,5 +1,4 @@
 use super::super::{
-    Game,
     entity::{Entity, with_entity},
 };
 use sunrise_gameplay_common::game::creatures::pufferfish_player::PUFFER_FISH_STING;

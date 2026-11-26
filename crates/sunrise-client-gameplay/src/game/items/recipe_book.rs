@@ -7,7 +7,7 @@
 #[path = "recipe_book/mod_screen.rs"]
 pub(in crate::game) mod mod_screen;
 
-use super::{Game, Screen};
+use super::Screen;
 use mod_api::{RecipeTransferCheck, RecipeTransferResult};
 use std::{
     hash::{Hash, Hasher},

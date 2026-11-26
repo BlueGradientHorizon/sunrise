@@ -1,4 +1,4 @@
-use super::{Game, combat_common::PlayerCredit};
+use super::combat_common::PlayerCredit;
 use sunrise_gameplay_common::game::native_knockback_credit::CreditEntity;
 use sunrise_gameplay_common::game::native_knockback_credit::CreditPlan;
 use sunrise_gameplay_common::game::native_knockback_credit::HurtBy;

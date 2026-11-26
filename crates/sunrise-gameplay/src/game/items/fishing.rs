@@ -1,7 +1,7 @@
 //! Fishing: `FishingRodItem.use` (cast / reel in), the `FishingHook` (flight,
 //! bobbing, lure and bite timers, open water, hooking mobs, retrieving the
 //! `gameplay/fishing` loot) and `FishingHookRenderer` (bobber and line).
-use super::{Game, creatures::ProjectileHitter, lan_mobs::guest_bounds};
+use super::{creatures::ProjectileHitter, lan_mobs::guest_bounds};
 #[cfg(test)]
 use sunrise_gameplay_common::game::fishing_common::inside_medium;
 use sunrise_gameplay_common::game::fishing_common::{

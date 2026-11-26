@@ -9,7 +9,7 @@
 //! A server keeps one level per dimension. Entity portal processes and
 //! cooldowns follow their level; shared `Arrival`s hold each traveller's
 //! saved compound until its destination chunks are loaded.
-use super::{Dim, Game, Result};
+use super::{Dim, Result};
 use sunrise_gameplay_common::game::entity::{Entity as _, entity_lists_of, for_each_entity};
 use crate::game::entity_server::ServerEntity as _;
 use std::collections::HashMap;

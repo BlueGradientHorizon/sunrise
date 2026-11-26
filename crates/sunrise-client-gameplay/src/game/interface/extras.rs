@@ -6,7 +6,7 @@ pub(in crate::game) mod mouse_tweaks;
 #[path = "extras/sorting.rs"]
 mod sorting;
 
-use super::{Game, Screen};
+use super::Screen;
 use std::time::Duration;
 use sunrise_client::{
     extras::{Corner, Cps, FpsCounter, fov_target},

@@ -2,7 +2,7 @@
 //! packets (ServerGamePacketListenerImpl.handleChatCommand and
 //! handleSignedChatCommand), and the message commands whose text they sign
 //! (SayCommand, EmoteCommands, MsgCommand), relayed by the hub as chat.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_command::{Arg, ParseResults};
 use sunrise_game_data::text::{self, Text};
 use sunrise_protocol::packets::play::{self, Clientbound as C};

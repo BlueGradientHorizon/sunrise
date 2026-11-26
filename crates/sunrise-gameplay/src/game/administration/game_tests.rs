@@ -13,7 +13,7 @@
 #[cfg(test)]
 use super::test_instances::TestDefSample;
 use super::{
-    Dim, Game,
+    Dim,
     commands::{Target, execute::Source},
     structure_blocks::template_size,
     test_entities::{aabb_of, inflate},

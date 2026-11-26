@@ -4,7 +4,7 @@
 //! arrows at power 3.15, or rockets at 1.6 for three durability, with the
 //! fanned Multishot angles and their shot pitches. `Player.getProjectile`
 //! finds the ammo for bows and crossbows.
-use super::{Game, view_vector};
+use super::view_vector;
 use sunrise_gameplay_common::game::crossbow_common::{ARROW, CROSSBOW, FIREWORK_ROCKET};
 #[allow(unused_imports)]
 #[cfg(test)]

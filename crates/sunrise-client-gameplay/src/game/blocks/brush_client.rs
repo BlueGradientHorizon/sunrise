@@ -1,5 +1,5 @@
 use super::{
-    Game, Hit,
+    Hit,
     item_draw::{BlockItemDraw, block_entity_pose},
     view_vector,
 };

@@ -1,7 +1,6 @@
 //! Data packs in the game: functions (`/function`, `/return`, tick and load
 //! tags, `/schedule`), predicates, `/reload` and `/datapack`.
 use super::{
-    Game,
     commands::{
         R, Target, err,
         execute::{ExecState, Source},

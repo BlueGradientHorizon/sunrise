@@ -4,7 +4,7 @@
 //! prints the panel, the origin, the slot boxes, the slot a cursor point
 //! hovers, the pause menu's buttons and icons, and the chat and command block
 //! screens' widgets, in the format of `VanillaScreenBuildOracle`.
-use super::{Game, Screen, screen_build::ScreenLayout};
+use super::{Screen, screen_build::ScreenLayout};
 use serde_json::Value;
 use std::io::Write as _;
 use sunrise_client::{

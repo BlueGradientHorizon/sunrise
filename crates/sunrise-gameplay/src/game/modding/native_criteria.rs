@@ -2,7 +2,7 @@
 //! "Advancement triggers"). An advancement of a content mod or a world's data
 //! pack names a trigger of the mod's (`mymod:pipe_connected`); the tree keeps
 //! it as it keeps vanilla's, and the mod fires it where its event happens.
-use super::{Game, advancements::item_view};
+use super::advancements::item_view;
 use mod_api::{
     CriterionContext, CriterionTest, CriterionTestError, Identifier, PlayerRef,
     TriggerCriterionError,

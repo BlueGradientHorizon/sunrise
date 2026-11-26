@@ -5,7 +5,7 @@
 //! markMessageAsProcessed). Without a signed-in
 //! account, or on a server that plays the account under another profile
 //! (offline mode), there is no session and everything goes unsigned.
-use super::{Game, Screen, books::BookScreen, dialogs::ClosedDialog};
+use super::{Screen, books::BookScreen, dialogs::ClosedDialog};
 use std::sync::Arc;
 use sunrise_client::{
     auth::{self, ChatKeyPair},

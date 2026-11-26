@@ -1,4 +1,4 @@
-use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
+use super::{Hit, InteractTarget, Keys, entity::Entity};
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_gameplay_common::game::minecarts::CART_KEY_Y;
 use sunrise_gameplay_common::game::minecarts::CartKind;

@@ -1,6 +1,6 @@
 //! Control-socket commands for menus and item components, so scripts can
 //! drive the workstation screens (`sunrise-ctl click-slot 600`, ...).
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
 use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::{Value, json};

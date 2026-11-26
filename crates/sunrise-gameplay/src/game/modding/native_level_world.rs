@@ -2,7 +2,7 @@
 //! (docs/modding/src/how-to/native-mods.md, "Entity and level handles", #7387): the seed,
 //! difficulty and game rules on the server, and weather on both sides.
 //! Stale handles return `None`.
-use super::{Dim, Game};
+use super::Dim;
 use mod_api::{BoolGameRuleKey, FeatureFlags, LevelReadError, LevelRef};
 use sunrise_command::vanilla::DIFFICULTIES;
 use sunrise_core::position::BlockPos;

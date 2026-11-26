@@ -1,7 +1,4 @@
-use super::{
-    Game,
-    lan_crafting::{load_player, machine_menu},
-};
+use super::lan_crafting::{load_player, machine_menu};
 use mod_api::__private::game::*;
 use mod_api::{EntityRef, MenuRef, MenuSlotBacking, PlayerRef};
 use sunrise_items::items::ItemStack;

@@ -9,7 +9,7 @@
 //! seat (`seat_player_passenger`), the validity (`player_vehicle`) and the
 //! vehicle player's own `SetPassengers` (`tell_vehicle_players`) all start by
 //! finding a player behind that id, and find none in a vanilla game.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, RidePlayerRefusal};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::packets::play;

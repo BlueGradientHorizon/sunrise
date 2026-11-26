@@ -4,7 +4,7 @@
 //! moments. With none registered nothing here builds a view.
 use super::stations::{self, Kind as StationKind};
 use crate::game::client_side::key_codes::glfw_button;
-use sunrise_gameplay_common::game::{Game, Screen};
+use sunrise_gameplay_common::game::Screen;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use sunrise_client::hud::{HudAtlas, HudBatch, rgba};

@@ -6,7 +6,7 @@
 //! 26.3's own `Entity.invulnerableTime` timer, so neither is offered. Reads
 //! return None and writes false for a stale handle, on a client, and for a
 //! kind Sunrise keeps no such state for.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::EntityRef;
 use sunrise_sim::mobs::Damage;
 

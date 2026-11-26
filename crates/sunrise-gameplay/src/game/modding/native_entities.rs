@@ -5,7 +5,6 @@
 //! the world is simulated, in the level in place, which each names by its
 //! `dimension` (`minecraft:overworld`) as `native_set_block` does.
 use super::{
-    Game,
     commands::{Target, place_summoned, strip_finalize_tree},
 };
 use sunrise_gameplay_common::game::commands_common::target_id;

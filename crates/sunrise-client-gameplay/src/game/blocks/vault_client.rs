@@ -1,5 +1,4 @@
 use super::{
-    Game,
     item_draw::{BlockItemDraw, block_entity_pose},
 };
 use sunrise_assets::item_model::DisplayContext;

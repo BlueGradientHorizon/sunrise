@@ -1,7 +1,6 @@
 //! Structure templates placed for server mods: `/place template`'s path, for a
 //! template the game has by id or for vanilla structure NBT a mod carries.
 use super::{
-    Game,
     native_structure_values::{engine_mirror, engine_rotation, template_id},
     structure_blocks::load_settings,
 };

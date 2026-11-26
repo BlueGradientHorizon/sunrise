@@ -1,7 +1,7 @@
 //! Beehives and bee nests in the game (`crate::beehive` holds their logic):
 //! their server tick, bees going in, and the bees let out, angry, when a
 //! player breaks the hive or fire reaches it.
-use super::{Game, item_abilities::ability};
+use super::item_abilities::ability;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,

@@ -2,7 +2,7 @@
 //! (video, sound, chat, font, language) and the F11 fullscreen toggle.
 #[cfg(feature = "client")]
 use super::shader_packs::{TogglePlan, active_pack, dev_pack, plan_shader_toggle};
-use super::{Game, ResizeState, Screen};
+use super::{ResizeState, Screen};
 #[cfg(feature = "client")]
 use crate::game::client_side::pack_discovery_client;
 use serde_json::{Value, json};

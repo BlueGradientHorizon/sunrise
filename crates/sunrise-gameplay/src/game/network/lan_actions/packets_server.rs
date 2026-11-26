@@ -1459,3 +1459,5 @@ use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommon
 use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt1 as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

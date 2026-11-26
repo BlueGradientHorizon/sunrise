@@ -1,4 +1,4 @@
-use sunrise_gameplay_common::game::{Game, api_values::TryIntoEngine};
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use mod_api::*;
 
 impl RenderAssets for crate::game::ClientGame<'_> {

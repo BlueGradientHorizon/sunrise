@@ -1,5 +1,5 @@
 //! Dispatch each configuring connection on the server's ordinary tick.
-use super::{Dim, Game};
+use super::Dim;
 use mod_api::{
     __private::{
         ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,

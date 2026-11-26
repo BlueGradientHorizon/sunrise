@@ -6,7 +6,7 @@
 //! A cushion is a `BlockAttachedEntity`, not a block: it has no block state,
 //! only an entity whose `Pos` is the click point's height. Placement uses
 //! outline bounds, collision shapes and suffocation predicates.
-use super::{Game, Hit, InteractTarget, Keys};
+use super::{Hit, InteractTarget, Keys};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::cushion::blocks_in;

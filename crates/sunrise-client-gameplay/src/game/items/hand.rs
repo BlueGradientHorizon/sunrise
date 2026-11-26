@@ -6,7 +6,7 @@
 #[cfg(test)]
 use super::held_items::in_attack_range;
 use super::held_items::{attack_range_contains, attack_reach};
-use super::{Game, minecarts::CartKind};
+use super::minecarts::CartKind;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::attack_strength::HeldStack;

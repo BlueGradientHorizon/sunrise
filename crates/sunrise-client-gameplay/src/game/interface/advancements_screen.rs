@@ -3,7 +3,7 @@
 //! `TreeNodePosition`, dragged or scrolled inside the 252x140 window, with
 //! the progress tooltip of the hovered advancement.
 
-use super::{Game, Screen, advancements_common::text_of};
+use super::{Screen, advancements_common::text_of};
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
 use sunrise_client::{hud::HudBatch, ui};
 use sunrise_game_data::text::{Style, Text};

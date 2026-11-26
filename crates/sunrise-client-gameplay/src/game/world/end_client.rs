@@ -1,5 +1,5 @@
 #[cfg(feature = "client")]
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_client::{gfx::CelestialBody, mesher::Vertex};
 #[cfg(feature = "client")]
 use sunrise_core::random::RandomSource;

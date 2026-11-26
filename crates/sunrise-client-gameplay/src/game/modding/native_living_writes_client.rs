@@ -1,4 +1,4 @@
-use super::{Game, commands_common::Target};
+use super::commands_common::Target;
 use mod_api::LivingRef;
 
 impl crate::game::ClientGame<'_> {

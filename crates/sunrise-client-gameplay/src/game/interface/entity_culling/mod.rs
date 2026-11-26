@@ -2,7 +2,7 @@
 #[cfg(feature = "client")]
 use super::particle_culling::section_scene;
 use super::{
-    Game, Vertex,
+    Vertex,
     entity_client::{RenderEntity, RenderEntityBounds},
     occlusion_culling::{AsyncOcclusionCuller, opaque},
 };

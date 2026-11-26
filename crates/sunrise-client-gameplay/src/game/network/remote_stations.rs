@@ -5,7 +5,7 @@
 //! `MultiPlayerGameMode.handleContainerInput` and `handleInventoryButtonClick`
 //! do. The menu's client-side `slotsChanged` follows the server's slots, and
 //! its data slots come in `ClientboundContainerSetDataPacket`.
-use super::{Game, Screen, stations::Station};
+use super::{Screen, stations::Station};
 use sunrise_gameplay_common::game::remote::inventory::remote_station_kind;
 use sunrise_gameplay_common::game::stations_common::{INPUT, Kind};
 use sunrise_protocol::packets::play::{self, Serverbound as S};

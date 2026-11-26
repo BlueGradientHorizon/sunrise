@@ -1,5 +1,5 @@
 //! Live living-entity weapon reads for death loot.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_gameplay_common::game::native_equipment_read::lend_equipment;
 use mod_api::{EquipmentSlot, ItemStackView, LivingRef};
 use sunrise_sim::mobs::finalize::EquipmentRead;

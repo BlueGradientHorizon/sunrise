@@ -2,7 +2,7 @@
 //! (`handleSpectatorAction`) or `/spectate`, followed every tick, dropped
 //! when the entity dies, the player sneaks, is teleported or leaves
 //! spectator mode.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_core::geometry::{Aabb, Vec3};
 pub(in crate::game) use sunrise_gameplay::lan::guest_rules::{
     CameraExtra, GuestCamera, camera_ends,

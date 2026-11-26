@@ -1,6 +1,6 @@
 //! Per-dimension attachment indexes, retained independently of level swaps.
 
-use super::{Dim, Game};
+use super::Dim;
 use mod_api::{AttachmentHolder, ChunkRef};
 use std::sync::Arc;
 use sunrise_mod_runtime::attachments::{

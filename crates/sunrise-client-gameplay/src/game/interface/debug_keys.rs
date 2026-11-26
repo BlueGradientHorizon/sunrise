@@ -1,7 +1,7 @@
 //! The debug keys in the game (26.3 `KeyboardHandler.keyPress`,
 //! `handleDebugKeys` and `tick`): F3 combinations, F3+Escape, the held
 //! debug-crash keys, and the debug renderers they switch on.
-use super::{Game, Screen};
+use super::Screen;
 use std::time::{Duration, Instant};
 use sunrise_client::{
     debug_keys::{CrashNotice, DebugAction, DebugHost, KeyAction, OpenScreen},

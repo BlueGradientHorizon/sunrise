@@ -18,7 +18,7 @@ use sunrise_client::hud::HudBatch;
 use sunrise_client::inventory_effects::{EffectsLayout, EffectsSpace};
 use sunrise_client::window::GuiSize;
 
-use super::{Game, Screen};
+use super::Screen;
 
 /// What the native hooks see of the screen showing (`observe_screen`), kept
 /// beside its build so one `ScreenState` holds both.

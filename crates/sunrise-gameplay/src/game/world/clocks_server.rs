@@ -1,4 +1,4 @@
-use super::{Game, chat_common::OVERWORLD_CLOCK};
+use super::chat_common::OVERWORLD_CLOCK;
 use sunrise_gameplay_common::game::clocks::HubClockSnapshot;
 use sunrise_gameplay::world_clock::WorldClock;
 

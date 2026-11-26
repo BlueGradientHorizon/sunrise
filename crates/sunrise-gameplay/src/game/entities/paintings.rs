@@ -2,7 +2,7 @@
 //! variant choice (or the stack's `painting/variant`), `HangingEntity.survives`
 //! checks every 100 ticks, breaking by attack (`dropItem`), saving, and
 //! `PaintingRenderer` quads.
-use super::{Game, Hit};
+use super::Hit;
 use std::sync::Arc;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;

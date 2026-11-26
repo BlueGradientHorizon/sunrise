@@ -1,6 +1,7 @@
 //! Server-side player food and experience writes for native mods.
 use crate::game::ServerGame;
 use mod_api::PlayerRef;
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_sim::entities::Experience;
 
 impl ServerGame<'_> {

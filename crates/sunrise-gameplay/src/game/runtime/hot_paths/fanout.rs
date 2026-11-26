@@ -1,5 +1,5 @@
 //! Fan-out over native dispatch, with one counted call per subscribed mod.
-use super::{Game, Recorder};
+use super::Recorder;
 use std::{
     cell::{Cell, OnceCell},
     num::NonZeroU16,

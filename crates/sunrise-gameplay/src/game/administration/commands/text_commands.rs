@@ -1,5 +1,5 @@
 //! `/tellraw` (TellRawCommand) and `/title` (TitleCommand).
-use super::{Arg, Context, Game, R, Target, err};
+use super::{Arg, Context, R, Target, err};
 use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::lan::data::component_nbt;

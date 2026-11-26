@@ -1,5 +1,5 @@
 use super::{
-    Dim, Game, GuestUse, Hit, InteractTarget, Mining,
+    Dim, GuestUse, Hit, InteractTarget, Mining,
     building_players::{BuildingPlayer, HubBodies, shared},
     lan::LanHost,
     lan_crafting::MenuRemoval,

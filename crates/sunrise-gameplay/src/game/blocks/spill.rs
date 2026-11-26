@@ -3,7 +3,7 @@
 //! block drops (`Block.dropResources`), drawn from the level random at the
 //! moment vanilla draws them. The item entities they make are added to the
 //! world as soon as the behaviour returns, within the same tick.
-use super::{Game, GameLevel};
+use super::GameLevel;
 use sunrise_gameplay_common::game::spill_common::{
     BlockDrops, BlockItemDrop, Pending, Spawn, UsedDrops, saved_entity, world_source,
 };

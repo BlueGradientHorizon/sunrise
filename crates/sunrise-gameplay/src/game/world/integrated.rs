@@ -9,7 +9,7 @@
 //! Every single-player world runs this way; LAN guests and dedicated servers
 //! use the same server code.
 use super::{
-    Dim, Game, Options, PackResources, Resources,
+    Dim, Options, PackResources, Resources,
     execution_role::ExecutionRole,
     lan::Owner,
     native_singleplayer_owner::SingleplayerProfile,

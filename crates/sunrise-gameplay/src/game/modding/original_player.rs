@@ -1,5 +1,5 @@
 //! The old `ServerPlayer` retained across `restoreFrom`, independently of its replacement.
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_gameplay_common::game::player_state::OriginalAttachmentSlot;
 use mod_api::{
     ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore, AttachmentValue, Attachments,

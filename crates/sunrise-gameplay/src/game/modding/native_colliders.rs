@@ -5,7 +5,7 @@
 //! The server keeps a [`ColliderEntry`] by entity id beside the entity's attachments, and a
 //! client keeps what its tracking server sent in `Remote::colliders`. A level with no colliders
 //! holds empty maps, so nothing else in the game pays for them.
-use super::{Dim, Game, commands::Target};
+use super::{Dim, commands::Target};
 use sunrise_gameplay_common::game::native_collider_state::{
     ColliderEntry, Placement, PlacementKey, SAVE_KEY, origin_bits,
 };

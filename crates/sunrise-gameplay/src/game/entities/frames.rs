@@ -2,7 +2,7 @@
 //! `ItemFrame.survives`, `interact` (put an item in, then rotate it),
 //! `hurtServer` (take the item out, then break the frame) and
 //! `ItemFrameRenderer` (the frame model and the item at a 45 degree step).
-use super::{Game, Hit, InteractTarget};
+use super::{Hit, InteractTarget};
 use sunrise_gameplay_common::game::frames_common::center;
 use sunrise_core::{
     geometry::{Aabb, Vec3},

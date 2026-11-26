@@ -4,7 +4,6 @@
 //! range, the activate/ambient/deactivate sounds, the 230x219 menu with its
 //! power buttons and payment slot, and the rotating, scrolling beam.
 use super::{
-    Game,
     stations::{
         INPUT,
         tooltip::{WidgetTooltipPositioner, quantize_tooltip_anchor},

@@ -4,7 +4,7 @@
 
 #[cfg(feature = "client")]
 use crate::game::host::draw::GameDrawContext;
-use sunrise_gameplay_common::game::{Game, api_values::TryIntoEngine};
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use mod_api::{
     __private::game::CallbackOwner,
     ScreenView, ScreenWidget, ScreenWidgetId, ScreenWidgets,

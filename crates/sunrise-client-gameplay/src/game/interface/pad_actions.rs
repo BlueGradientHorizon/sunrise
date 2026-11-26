@@ -1,7 +1,7 @@
 //! The controller's side of the buttons screens declare (`widgets::Action`): which pad button does
 //! which job, and the glyph on the button while the pad drives. A screen only declares; nothing
 //! here names one (docs/controllers.md, "Adding a screen").
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_client::{
     gamepad::{Button, MenuJob},
     hud::HudBatch,

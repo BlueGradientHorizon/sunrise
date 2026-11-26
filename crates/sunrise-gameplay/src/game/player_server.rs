@@ -1,6 +1,6 @@
 use super::*;
 use sunrise_gameplay_common::game::{
-    Game, Hit,
+    Hit,
     commands_common::Target,
     entity::Entity as _,
     held_items::attack_reach,

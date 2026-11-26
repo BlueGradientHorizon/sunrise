@@ -1,4 +1,4 @@
-use super::{Game, chat_common::PLAYER_NAME};
+use super::chat_common::PLAYER_NAME;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play::{self, Clientbound as C};

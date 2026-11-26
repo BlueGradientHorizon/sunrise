@@ -24,6 +24,7 @@ use sunrise_sim::mobs::{
         SpawnPlayer, SpawnRequest, SpawnState, Spawned, StructureAt, StructureSpawns,
     },
 };
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_sim::vanillagen::VanillaTerrain;
 use sunrise_world::dimension_type::DimensionFacts;
 use {

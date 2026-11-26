@@ -7,7 +7,7 @@
 //! rewrites the flag; the ender dragon, an area-effect cloud, an ominous item
 //! spawner and a shulker bullet take it, starting from the true value their
 //! constructors set.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::EntityRef;
 use sunrise_sim::mobs::Species;
 use sunrise_sim::projectiles::{Projectile, ProjectileKind};

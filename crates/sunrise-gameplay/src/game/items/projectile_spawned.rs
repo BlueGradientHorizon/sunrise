@@ -3,7 +3,7 @@
 //! made from, then of an arrow's weapon, run on it
 //! (`EnchantmentHelper.onProjectileSpawned`). One path for every spawn site:
 //! bows, crossbows, thrown items, dispensers, mobs and the mod host.
-use super::{Game, enchant_effects::look_impulse};
+use super::enchant_effects::look_impulse;
 use serde_json::Value;
 use sunrise_items::{
     enchant::{EffectContext, level_value},

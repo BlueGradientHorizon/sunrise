@@ -1,6 +1,6 @@
 //! Scoped access to the compound mods keep on a server player (NeoForge's
 //! `Entity.getPersistentData`).
-use super::{Game, native_server::PlayerRead};
+use super::native_server::PlayerRead;
 use mod_api::{Compound, JavaString, PlayerPersistentDataError, PlayerRef, Tag};
 use sunrise_core::nbt::{Limits, clone_tag};
 

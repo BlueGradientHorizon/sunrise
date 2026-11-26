@@ -13,7 +13,7 @@
 //! also move on their rider's client when saddled and steered with the right stick.
 //! A minecart
 //! moves on the server with the rider's input, and the rider sits in it.
-use super::{Game, Keys};
+use super::Keys;
 use crate::game::client_side::remote_client::Remote;
 use sunrise_gameplay_common::game::remote::passengers::{PassengerSeat, passenger_chain};
 use sunrise_client::keybinds;

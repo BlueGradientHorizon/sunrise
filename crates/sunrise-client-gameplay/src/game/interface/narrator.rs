@@ -2,7 +2,7 @@
 //! opened with the client, closed with it, and kept in step with the options
 //! it reads (`Options.narrator`, `getFinalSoundSourceVolume(VOICE)`); and its
 //! `NARRATOR_TOGGLE` toast.
-use super::{Game, Screen, toast_manager::SystemToastId};
+use super::{Screen, toast_manager::SystemToastId};
 use sunrise_client::{
     clipboard,
     screen_narrator::{InputType, ScreenNarrator},

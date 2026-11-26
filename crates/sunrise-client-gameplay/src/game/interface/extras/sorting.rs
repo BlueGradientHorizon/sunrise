@@ -2,7 +2,7 @@
 //! menu's storage slots and one by the inventory's (an optional key sorts the part under the
 //! cursor). The clicks come from `inv_sort::plan` and go through the Mouse Tweaks' ordinary slot
 //! clicks (`mouse_tweaks.rs`), so they work wherever vanilla's do.
-use sunrise_gameplay_common::game::{Game, Screen};
+use sunrise_gameplay_common::game::Screen;
 use sunrise_client::{
     creative::Creative,
     hud::{HudBatch, rgba},

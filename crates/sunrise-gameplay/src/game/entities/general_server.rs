@@ -1,5 +1,5 @@
 use super::{
-    Game, entity_initialization::TransferredEntityState, entity_server::ServerEntity,
+    entity_initialization::TransferredEntityState, entity_server::ServerEntity,
     persist::ChunkKey,
 };
 use sunrise_gameplay_common::game::{

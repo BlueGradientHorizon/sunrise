@@ -1,4 +1,4 @@
-use super::{Game, billboard_axes};
+use super::billboard_axes;
 use sunrise_gameplay_common::game::fishing_common::{
     Hook, HookLerp, State, bite_impulse, bounds, resting, synchronized_random,
 };

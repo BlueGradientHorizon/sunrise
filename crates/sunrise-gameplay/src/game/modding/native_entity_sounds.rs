@@ -4,7 +4,7 @@
 //! `Level.broadcastEntityEvent`, `getSoundSource` and `isSpectator`. They
 //! return None or false for a stale handle, on a client, and for an entity
 //! that is not in the level in place (a player in a parked level).
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, SoundSource};
 use sunrise_sim::mobs::Species;
 

@@ -1,5 +1,5 @@
 //! Server-side profiler controls. Export and durable filesystem work run only on stop.
-use super::{Game, R, err};
+use super::{R, err};
 #[cfg(test)]
 use mod_platform::__private::profiler;
 use std::{

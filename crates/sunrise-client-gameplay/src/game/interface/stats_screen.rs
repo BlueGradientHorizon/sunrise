@@ -1,6 +1,6 @@
 //! The Statistics screen (`StatsScreen`): General, Items and Mobs tabs over
 //! the player's statistics, with the Done button.
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_client::{hud::HudBatch, ui};
 use sunrise_core::java_number::{double_to_string, format_decimal2};
 use sunrise_game_data::text::Text;

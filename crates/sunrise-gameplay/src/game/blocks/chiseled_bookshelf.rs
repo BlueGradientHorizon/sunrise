@@ -4,7 +4,7 @@
 //! hopper or dropper moved (`machines::container_changed`). The slots' books
 //! show through the block state's `slot_N_occupied`, which reaches a server's
 //! clients with the block update.
-use super::{Game, Hit, machines::dir_from_name};
+use super::{Hit, machines::dir_from_name};
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,

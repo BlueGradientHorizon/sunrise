@@ -1,5 +1,5 @@
 //! `Minecraft.createTitle` and `updateTitle`: the window's title, as vanilla's reads.
-use super::{Game, Screen};
+use super::Screen;
 
 /// `Minecraft* 26.3`: `ModCheck` reports a client that isn't Mojang's signed jar as modified.
 pub(in crate::game) fn base() -> String {

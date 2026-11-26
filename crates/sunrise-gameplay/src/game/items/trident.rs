@@ -3,7 +3,7 @@
 //! 8 damage plus Impaling, the reversed bounce off a hit, sticking, Loyalty's
 //! return to the owner, pickup) with `ThrownTridentRenderer`, and Channeling's
 //! lightning on a hit (`channeling.json`).
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use mod_api::{__private::TransactionFrame, SoundSource};
 use sunrise_core::{

@@ -9,7 +9,7 @@
 //! between two ticks, on the server thread, so the player is never caught half-way through a
 //! tick. The rules are `lan/arrivals.rs`'s. All of them are refused while `server.toml`'s
 //! `[transfer]` is off, and those that bring a player in once the server has begun to stop.
-use sunrise_gameplay_common::game::{Dim, Game};
+use sunrise_gameplay_common::game::Dim;
 use serde_json::{Value, json};
 use std::time::Instant;
 use sunrise_protocol::packets::play::{self, Clientbound as C};

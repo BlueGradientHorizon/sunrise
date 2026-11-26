@@ -1,5 +1,5 @@
 //! `TestCommand`'s `locate`, `pos` and `create`.
-use super::{Arg, Context, Game, R, err};
+use super::{Arg, Context, R, err};
 use crate::game::test_instances::TestDef;
 use sunrise_game_data::text::{self, ClickEvent, Style, Text};
 use sunrise_level::{

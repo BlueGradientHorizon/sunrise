@@ -1,7 +1,7 @@
 //! `WanderingTraderSpawner`: every 1200 ticks the spawn delay counts down;
 //! when it runs out a trader may appear near the player (or the nearest
 //! bell), bringing two llamas on leads, and wanders off after two days.
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_gameplay::wandering_trader::{TraderLevel, roll};
 use sunrise_sim::save::{read_dat, write_dat};
 

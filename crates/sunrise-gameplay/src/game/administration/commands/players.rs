@@ -5,7 +5,7 @@
 //! UUID or selector, and what a command does to them runs with their state
 //! swapped in (`for_player`), as their own turn, what it tells them going to
 //! their chat.
-use super::{Game, Target};
+use super::Target;
 
 /// GameType.getName for a guest's game mode id.
 pub(in crate::game) fn mode_name(id: i32) -> &'static str {

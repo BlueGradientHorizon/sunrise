@@ -1,6 +1,6 @@
 //! What a mod's presence costs per call: a hook fired with no listener, or with the one native
 //! listener `sunrise-hot-paths-game` installs, and an attachment read and written.
-use super::{super::Game, Recorder};
+use super::Recorder;
 use sunrise_game_data::Result;
 use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
 

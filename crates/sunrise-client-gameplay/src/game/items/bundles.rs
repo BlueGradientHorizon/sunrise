@@ -2,7 +2,7 @@
 //! one of the items it shows, which a click that takes one out of it then takes
 //! (`BundleContents.Mutable.removeOne`). Moving off the bundle clears the
 //! selection. On a server the selection is sent to it (`ServerboundSelectBundleItemPacket`).
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_client::mouse::ScrollWheelHandler;
 use sunrise_items::bundle::{Contents, toggle_selected};
 use sunrise_protocol::packets::play::{self, Serverbound as S};

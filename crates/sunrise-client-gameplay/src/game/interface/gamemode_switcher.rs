@@ -1,5 +1,5 @@
 //! The non-pausing F3+F4 screen (`GameModeSwitcherScreen`).
-use super::{Game, ItemStack, Screen};
+use super::{ItemStack, Screen};
 use sunrise_client::{
     game_mode_switcher::{GameModeSwitcher, ICONS, MODES, slot_origin},
     hud::HudBatch,

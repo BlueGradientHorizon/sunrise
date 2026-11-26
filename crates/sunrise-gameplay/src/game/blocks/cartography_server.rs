@@ -1,5 +1,5 @@
 //! Server-side cartography map loading and registration (`MapItem.scaleMap`, `lockMap`).
-use super::{Game, cartography::LevelMaps, maps::map_id};
+use super::{cartography::LevelMaps, maps::map_id};
 use std::collections::HashMap;
 use sunrise_items::items::ItemStack;
 

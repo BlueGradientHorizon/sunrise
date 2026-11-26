@@ -2,7 +2,6 @@
 //! sets one off as `Level.explode(source, ...)` does, in the level in place, and the blast's
 //! causing entity comes from its source as vanilla's `Explosion.getIndirectSourceEntity` has it.
 use super::{
-    Game,
     commands::Target,
     explosion::{BlockInteraction, ExplosionSource},
     explosion_settings::{BlastCalculator, BlastEffects, BlastSettings, SourceCalculator},

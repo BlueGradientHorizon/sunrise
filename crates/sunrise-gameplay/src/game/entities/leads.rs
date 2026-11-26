@@ -2,7 +2,7 @@
 //! (`Entity.interact`'s leash part), fence knots (`LeadItem.useOn` and
 //! `LeashFenceKnotEntity.interact`), loading and saving who holds what,
 //! breaking, and drawing the rope (`LeashFeatureRenderer`) and the knot.
-use super::{Game, commands_common::Target};
+use super::commands_common::Target;
 use mod_api::LootDrops;
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]

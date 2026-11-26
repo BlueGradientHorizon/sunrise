@@ -4,7 +4,6 @@
 //! natural spawning reads (`natural_spawning::SpawnPolicy`), and the chunk
 //! question it asks (`ServerLevel.canSpawnEntitiesInChunk`).
 use super::{
-    Game,
     commands::Target,
     general::{GeneralEntityRecord, GeneralTypeEnvelope, general_type_catalog},
     native_projectile_launch::thrown_projectile_kind,

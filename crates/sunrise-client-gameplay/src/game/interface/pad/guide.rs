@@ -2,7 +2,7 @@
 //! results and from what the client answers to a click (`remote_block_reacts`, `remote_mob_takes`),
 //! and its rows, drawn around whatever the HUD drew this frame. An inventory's rows (`resolve_menu`)
 //! are drawn the same way, from its bottom corners.
-use super::super::{Game, Screen};
+use super::super::Screen;
 use serde_json::{Value, json};
 use sunrise_client::actions::Action;
 use sunrise_client::{

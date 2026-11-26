@@ -16,7 +16,7 @@
 //! behaviour (drags, sliders, scrollbars, hover highlights) with no pad code
 //! of its own.
 use super::event_loop::EventLoopCtl;
-use super::{Game, Screen};
+use super::Screen;
 use crate::game::client_side::key_codes::glfw_modifiers;
 use crate::game::client_side::key_focus::{self, Act, Nav};
 use std::time::Instant;

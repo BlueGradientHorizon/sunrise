@@ -9,7 +9,7 @@
 //! go over the screen comes to the mod as `Dropped` (`Held`). With no mod
 //! showing a panel, each hook here returns after one check.
 use super::{
-    crate::game::native_hooks::PanelEvent as BrowserEvent, Game, Screen,
+    crate::game::native_hooks::PanelEvent as BrowserEvent, Screen,
     native_panel_recipes::RecipePage,
 };
 use mod_api::{PanelStyle, Stack as BrowserStack};

@@ -10,7 +10,7 @@
 //! entities, a few times per tick, so a hook that removes one never shifts the
 //! lists the game is walking. A container vehicle spills before its logical removal;
 //! only taking the row out of its list waits for the sweep.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, RemovalReason};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;

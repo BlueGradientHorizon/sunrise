@@ -2,7 +2,7 @@
 //! tick (`execute`, `executeChain`), `BaseCommandBlock.performCommand`
 //! through the command system with the block's output, and
 //! `CommandBlockEditScreen` with what `handleSetCommandBlock` does with it.
-use super::{Game, Screen};
+use super::Screen;
 #[allow(unused_imports)]
 use sunrise_client::{
     chat::Commands,

@@ -7,7 +7,7 @@
 //! server the screen shows the server's menu (`ClientboundMountScreenOpenPacket`)
 //! and its clicks go out as container clicks; a server's players get theirs
 //! from game/network/lan_mount_menu.rs.
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_client::hud::{HudBatch, rgba};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Mob, Species, llama, nautilus};

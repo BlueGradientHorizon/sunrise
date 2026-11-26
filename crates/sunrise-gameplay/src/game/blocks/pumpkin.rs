@@ -1,7 +1,7 @@
 //! `PumpkinBlock.useItemOn`: shears (a stack able to `shears_carve`) carve a pumpkin into a carved pumpkin
 //! facing the clicked side (the side facing the player on the top and
 //! bottom), and the `carve/pumpkin` seeds pop out of that side.
-use super::{Game, item_abilities::ability};
+use super::item_abilities::ability;
 use sunrise_core::random::RandomSource;
 use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;

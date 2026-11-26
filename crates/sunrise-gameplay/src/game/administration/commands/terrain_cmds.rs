@@ -1,5 +1,5 @@
 //! `/forceload`, `/fillbiome`, `/worldborder` and `/loot`.
-use super::{Arg, Context, Game, R, err};
+use super::{Arg, Context, R, err};
 use sunrise_core::position::ChunkPos;
 #[allow(unused_imports)]
 use sunrise_game_data::text::Text;

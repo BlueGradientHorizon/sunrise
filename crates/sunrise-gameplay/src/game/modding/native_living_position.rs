@@ -1,7 +1,7 @@
 //! `LivingRef` line of sight, random teleport and the box of a pose (#944):
 //! the engine's own clip and `randomTeleport` paths, for players and mobs
 //! alike.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, LivingRef};
 use sunrise_core::geometry::Vec3;
 

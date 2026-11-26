@@ -1,7 +1,7 @@
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use super::piston_push::Lid;
 #[allow(unused_imports)]
-use super::{Dim, Game, InteractTarget, view_vector};
+use super::{Dim, InteractTarget, view_vector};
 use sunrise_gameplay_common::game::combat_common::PlayerCredit;
 use sunrise_gameplay_common::game::creatures::DyingDrops;
 use sunrise_gameplay_common::game::creatures::Finalized;

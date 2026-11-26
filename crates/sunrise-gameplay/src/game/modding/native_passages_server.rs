@@ -1,5 +1,4 @@
 use sunrise_gameplay_common::game::{
-    Game,
     native_passages::{
         Dirty, MAX_PER_CHUNK, MAX_PER_LEVEL, check, form, passage_carried, passage_chunk_of,
         passage_turned, passage_within_reach, passage_yaw_turn,

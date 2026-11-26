@@ -4,7 +4,7 @@
 //! `clearthat`/`these`/`all` and `stop`, with `TestFinder`'s searches.
 //!
 //! Retries are `RetryOptions(numberOfTimes, untilFailed)`.
-use super::{Arg, Context, Game, R, err};
+use super::{Arg, Context, R, err};
 use crate::game::game_tests::Retry;
 use sunrise_core::bounding_box::BoundingBox;
 use sunrise_game_data::text::Text;

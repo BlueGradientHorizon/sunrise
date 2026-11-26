@@ -5,7 +5,7 @@
 //! (Screen.clickUrlAction), and the `dialog/warning_button`'s
 //! DialogScreen.WarningScreen ("Note about custom screens").
 //! https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/dialog/ServerLinksDialogScreen
-use super::{Game, Screen, packs::open_uri};
+use super::{Screen, packs::open_uri};
 use sunrise_gameplay_common::game::untrusted_uri::valid_untrusted_uri;
 use sunrise_client::{clipboard::Clipboard, hud::HudBatch, ui};
 use sunrise_game_data::{Result, text::Text};

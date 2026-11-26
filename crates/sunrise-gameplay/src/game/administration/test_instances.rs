@@ -2,7 +2,6 @@
 //! the `TestInstanceBlockEntity` operations behind it (reset, save, export,
 //! the structure's placement), over the game tests the registry holds.
 use super::{
-    Game,
     game_tests::Info,
     structure_blocks::{create_seed, template_size},
     test_entities::{aabb_of, inflate},

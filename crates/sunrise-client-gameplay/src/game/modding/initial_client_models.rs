@@ -1,5 +1,5 @@
 //! First client reload: the initial game owns no published model generation until apply.
-use super::{Game, PackResources, Renderer, UiResources, client_reload};
+use super::{PackResources, Renderer, UiResources, client_reload};
 use std::sync::Arc;
 use sunrise_client::gfx::PreparedModels;
 

@@ -1,5 +1,5 @@
 //! The parentless demo popup and hints sent by `ClientPacketListener.handleGameEvent`.
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_client::{
     hud::{HudAtlas, HudBatch},
     keybinds::{KeyBinds, display_name},

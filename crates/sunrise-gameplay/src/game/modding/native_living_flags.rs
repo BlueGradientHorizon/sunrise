@@ -10,7 +10,7 @@
 //! `requiresCustomPersistence`. Reads return `None` and writes `false` for a
 //! stale handle, and for a kind Sunrise keeps no such state for (each doc
 //! says which).
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_gameplay_common::game::native_living_body::FlagClimbing;
 use mod_api::LivingRef;
 use sunrise_core::position::BlockPos;

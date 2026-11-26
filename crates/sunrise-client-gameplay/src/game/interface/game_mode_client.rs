@@ -1,4 +1,4 @@
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_gameplay_common::game::game_mode_common::inventory_after_infinite_materials;
 use sunrise_client::chat::{ChatAbilities, ChatVisibility};
 use sunrise_command::args::GameMode;

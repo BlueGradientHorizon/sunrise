@@ -2,7 +2,7 @@
 //! VALUE`; docs/agent-control.md): what the last frame drew, with ids, and
 //! clicks that go through the same window events as the mouse.
 use super::event_loop::EventLoopCtl;
-use super::{Game, Screen, agent::Handled};
+use super::{Screen, agent::Handled};
 use serde_json::{Value, json};
 use std::{
     sync::mpsc::Sender,

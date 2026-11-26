@@ -4,7 +4,7 @@
 //! and whether it is in its level. They return `None` (or `false`) for a
 //! stale handle or on a client, which the server sends no saved data or tags;
 //! only the name reads there.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, EntityTags, MobCategory};
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_game_data::{scoreboard::json_to_tag, text::Text};

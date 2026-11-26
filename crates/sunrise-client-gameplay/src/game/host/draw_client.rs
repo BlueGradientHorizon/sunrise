@@ -5,7 +5,6 @@ use crate::game::host::draw::GameWorldDrawContext;
 use mod_api::{prelude::*, *};
 use crate::game::host::draw::{EngineTooltipFont, font_id_str};
 use sunrise_gameplay_common::game::{
-    Game,
     api_values::{TryIntoApi, TryIntoEngine},
 };
 

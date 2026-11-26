@@ -4,7 +4,7 @@
 //! lays out its widgets, takes their presses and builds the packet for the
 //! server. The screens change the client's copy of the block entity as they
 //! are used, as vanilla's do, so the box preview follows them.
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_client::{
     hud::{HudBatch, rgba},
     ui::{self, EditBox},

@@ -1,7 +1,7 @@
 //! Glowing entities (`EntityRenderer.extractRenderState`'s outlineColor): which entities
 //! appear glowing, in which team colour, and their silhouettes for the renderer's entity
 //! outline (`OutlineBufferSource`).
-use super::{Game, Vertex};
+use super::Vertex;
 use sunrise_game_data::scoreboard as sb;
 use sunrise_sim::mobs::Mob;
 

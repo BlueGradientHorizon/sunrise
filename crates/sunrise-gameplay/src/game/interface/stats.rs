@@ -3,7 +3,7 @@
 //! killed by, saved to `players/stats/<uuid>.json`, plus the phantom
 //! spawner that reads the time since rest (`PhantomSpawner`).
 use sunrise_gameplay_common::game::PhantomSpawnResult;
-use super::{Dim, Game};
+use super::Dim;
 use std::path::PathBuf;
 use sunrise_core::{geometry::Vec3, identifier::Identifier, random::RandomSource};
 

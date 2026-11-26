@@ -1,5 +1,5 @@
 //! `RaidCommand`: `/raid start|stop|check|spawnleader|setomen|glow|sound`.
-use super::{Game, R, Text, err};
+use super::{R, Text, err};
 use sunrise_command::{Arg, Context};
 use sunrise_core::random::RandomSource;
 use sunrise_sim::mobs::raider;

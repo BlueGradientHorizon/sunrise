@@ -10,7 +10,7 @@
 //!
 //! Server authority: each case the pause cannot apply to is told apart here,
 //! where the side, the epoch and the held-out list are known.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, MobAiPauseRefusal, MobRef};
 
 impl crate::game::ServerGame<'_> {

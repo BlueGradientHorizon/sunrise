@@ -31,7 +31,7 @@ pub(in crate::game) mod test_runs;
 pub(in crate::game) mod text_commands;
 pub mod world_cmds;
 
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_command::{
     Arg, CommandError, Context, Reader,
     args::{BlockInput, Coordinates, ItemInput, Selector},

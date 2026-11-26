@@ -1,4 +1,4 @@
-use super::{Game, Hit, dragon_common::FightWho};
+use super::{Hit, dragon_common::FightWho};
 use sunrise_gameplay_common::game::fireworks::FIREWORK_EXPLODE_EVENT;
 use sunrise_gameplay_common::game::fireworks::Rocket;
 use sunrise_gameplay_common::game::fireworks::blast_damage;

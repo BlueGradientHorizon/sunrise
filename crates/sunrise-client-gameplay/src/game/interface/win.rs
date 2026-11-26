@@ -2,7 +2,7 @@
 //! the first time (`EndPortalBlock.entityInside` -> `ServerPlayer.showEndCredits`,
 //! or a server's `WIN_GAME` event), and the credits from Credits &
 //! Attribution.
-use super::{Game, Screen};
+use super::Screen;
 use std::time::Instant;
 use sunrise_client::{
     hud::{EndPortalFill, HudBatch},

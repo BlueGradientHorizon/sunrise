@@ -1,5 +1,5 @@
 //! Client-side entity state reads and client fire-immunity writes.
-use super::{Game, commands_common::Target};
+use super::commands_common::Target;
 use mod_api::EntityRef;
 
 impl crate::game::ClientGame<'_> {

@@ -2,7 +2,7 @@
 //! per-state resolver where `refresh_render_visibility` resolves the hidden states, so meshing
 //! reads tables and never a mod.
 
-use super::{BlockStateId, Game, native_world_read_common::api_fluid_state};
+use super::{BlockStateId, native_world_read_common::api_fluid_state};
 use mod_api::HookId;
 use sunrise_client::mesher::part_tables::{FluidTable, PartTables};
 use sunrise_core::geometry::Direction;

@@ -8,7 +8,7 @@
 //! waypoint (`Waypoint.Icon`). Reads return None and writes false for a stale
 //! handle, on a client, and for a kind Sunrise keeps no such state for (each
 //! doc says which).
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{Identifier, LivingRef};
 use sunrise_sim::lan::waypoints::Icon;
 use sunrise_sim::mobs::stuck::Stuck;

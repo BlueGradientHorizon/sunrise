@@ -2,7 +2,7 @@
 //! (game rules, the world clock, difficulty), bound to the game.
 
 
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_gameplay_common::game::chat_common::{block_properties, command_export, resource_ids};
 use sunrise_client::{
     chat::{

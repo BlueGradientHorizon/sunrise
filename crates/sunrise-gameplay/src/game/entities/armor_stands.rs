@@ -3,7 +3,7 @@
 //! of `hurtServer` (creative breaks at once), and `ArmorStandRenderer` with
 //! the default pose, the hit wobble and humanoid armor layers.
 use super::entity::Entity;
-use super::{Game, InteractTarget};
+use super::InteractTarget;
 use sunrise_gameplay_common::game::armor_stands_common::{TYPE_ID, overlaps, swap_with_equipment_slot};
 use std::sync::Arc;
 use sunrise_core::{

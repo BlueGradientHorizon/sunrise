@@ -4,7 +4,6 @@
 //! The mod hears clicks on their slots, their action buttons, the back
 //! button and page turns.
 use super::{
-    Game,
     native_panel::{Layout, Owner, browser_stack, inside, wheel_turn},
 };
 use mod_api::Stack as BrowserStack;

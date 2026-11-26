@@ -1,5 +1,5 @@
 //! `/random` (RandomCommand) and `/teammsg` (TeamMsgCommand).
-use super::{Arg, Context, Game, R, err};
+use super::{Arg, Context, R, err};
 use sunrise_core::java_number::format_fixed;
 use sunrise_game_data::text::Text;
 use sunrise_sim::clock::SprintReport;

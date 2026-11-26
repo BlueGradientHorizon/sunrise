@@ -2,7 +2,7 @@
 //! rail (`performCommand`, `CloseableCommandBlockSource`), the entity data
 //! that carries its command and last output to clients, and the edit screen's
 //! `ServerboundSetCommandMinecartPacket` with `handleSetCommandMinecart`.
-use super::{Game, command_blocks::CommandBlockScreen, minecarts::CartKind};
+use super::{command_blocks::CommandBlockScreen, minecarts::CartKind};
 use sunrise_game_data::text::Text;
 use sunrise_level::command_block::Mode;
 use sunrise_protocol::packets::play::{self, Serverbound as S};

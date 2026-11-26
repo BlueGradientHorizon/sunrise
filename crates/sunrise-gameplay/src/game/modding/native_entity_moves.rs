@@ -5,7 +5,7 @@
 //! Reads return `None`, writes false, for a stale handle or on a client.
 use super::entity::{Entity as _, EntityHandle, with_entity_mut};
 use super::{
-    Dim, Game,
+    Dim,
     commands::{Target, entity_pitch},
     vehicle_teleport::TeleportMotion,
 };

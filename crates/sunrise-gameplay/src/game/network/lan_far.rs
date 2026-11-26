@@ -3,7 +3,7 @@
 //! then sampled from the level the player is in on the far terrain thread.
 //! The replies come back here and leave with the tick's other packets. A
 //! refused request is answered at once, so the client knows to ask again.
-use super::{Dim, Game};
+use super::Dim;
 use std::sync::atomic::Ordering;
 use sunrise_protocol::{
     packets::{configuration::CustomPayload, play},

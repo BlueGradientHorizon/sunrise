@@ -1,6 +1,6 @@
 //! A server mod's respawn of a dead player (`PlayerRef::respawn`): the Respawn button, pressed
 //! for them; and where a player would respawn (`PlayerRef::respawn_target`), without it.
-use super::{Dim, Game, native_server::PlayerRead, respawn_anchor::RespawnConfig};
+use super::{Dim, native_server::PlayerRead, respawn_anchor::RespawnConfig};
 use mod_api::{PlayerRef, RespawnRefusal, RespawnTarget, RespawnTargetUnavailable};
 use sunrise_core::geometry::Vec3;
 

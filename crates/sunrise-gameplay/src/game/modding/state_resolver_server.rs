@@ -1,4 +1,4 @@
-use super::{BlockStateId, Game};
+use super::BlockStateId;
 use mod_api::{__private::has_scoped_hook, HookId};
 
 impl crate::game::ServerGame<'_> {

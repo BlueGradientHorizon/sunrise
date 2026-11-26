@@ -3,7 +3,7 @@
 //! lives on the server and hands its band to the level's streaming, whose
 //! workers do the work; chunks behind the band unload and are saved as any
 //! chunk the players leave.
-use super::{CommandError, Dim, Game};
+use super::{CommandError, Dim};
 use std::time::{Duration, Instant};
 use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Clientbound as C};

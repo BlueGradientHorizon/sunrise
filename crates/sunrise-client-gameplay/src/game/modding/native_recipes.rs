@@ -4,7 +4,6 @@
 //! content root's — with the server's recipes of the types its native mods
 //! had it send (`sunrise:recipe_content`) in their place, while the known
 //! displays follow the server's book as the recipe book does.
-use super::Game;
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use sunrise_gameplay_common::game::native_hooks::{
     NativeItem as RecipeItem, NativeRecipe as Recipe, NativeRecipeKind as RecipeKind,

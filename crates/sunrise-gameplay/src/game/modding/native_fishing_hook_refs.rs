@@ -1,6 +1,6 @@
 //! Fishing-hook handles for native server mods. A cast hook lives with the
 //! player who cast it, not in a level list, so a handle finds it through them.
-use super::{Game, commands::Target};
+use super::{commands::Target};
 use mod_api::{EntityRef, FishingHookRef};
 
 impl crate::game::ServerGame<'_> {

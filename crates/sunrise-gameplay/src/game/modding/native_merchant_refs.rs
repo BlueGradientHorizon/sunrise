@@ -1,5 +1,5 @@
 //! Merchant handles for native server mods: villagers and wandering traders.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, MerchantRef, PlayerRef};
 use sunrise_core::identifier::Identifier;
 use sunrise_sim::{

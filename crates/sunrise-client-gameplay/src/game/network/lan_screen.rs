@@ -5,7 +5,7 @@
 //! forcing the game mode. Its difficulty lock asks first (PopupScreen), and
 //! Restrictions opens RestrictionsScreen.
 //! Parity reference: https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/WorldOptionsScreen
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_gameplay_common::game::integrated_link::ServerOptions;
 use sunrise_gameplay_common::game::owner_link::OwnerRequest;
 use sunrise_client::{

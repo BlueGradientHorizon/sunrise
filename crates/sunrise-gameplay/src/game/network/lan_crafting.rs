@@ -4,7 +4,6 @@
 //! guest's inventory, with vanilla's packets: OpenScreen, container clicks
 //! and their corrections, and the grid back into the inventory when the menu
 //! closes (`AbstractContainerMenu.clearContainer`).
-use super::Game;
 use sunrise_gameplay_common::game::lan_menu_data::{FurnaceMenuEffects, GuestMenuEffects};
 use sunrise_gameplay_common::game::{
     lan_actions::RECIPE_CHECK_COST,

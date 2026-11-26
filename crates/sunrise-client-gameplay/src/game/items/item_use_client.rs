@@ -1,5 +1,3 @@
-#[allow(unused_imports)]
-use super::Game;
 #[cfg(test)]
 use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
 #[cfg(test)]

@@ -1,5 +1,5 @@
 //! Shared server damage for dropped items.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{entities::ItemEntity, health::HurtSource, mobs::Who};

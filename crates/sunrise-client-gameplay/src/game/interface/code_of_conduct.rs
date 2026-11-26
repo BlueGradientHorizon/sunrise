@@ -3,7 +3,7 @@
 //! the "do not notify again" box, Acknowledge and Disconnect, and the server
 //! list entry that keeps the accepted text. The server waits in configuration
 //! until the answer, so the connection stays open while the screen shows.
-use super::{Game, Screen, server_packs::saves};
+use super::{Screen, server_packs::saves};
 use sunrise_client::{
     dialog_screen::BOX,
     font::Font,

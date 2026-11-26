@@ -1,4 +1,4 @@
-use super::{Game, Screen};
+use super::Screen;
 use sunrise_core::random::RandomSource;
 use sunrise_sim::nether_portal::PLAYER_DELAY;
 use crate::game::client_side::screens::ScreenClientExt as _;

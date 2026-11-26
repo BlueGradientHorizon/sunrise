@@ -2,7 +2,7 @@
 //! arrow's pickup, damage and critical flag. They cover the projectile list
 //! and the player-thrown tridents and firework rockets, which Sunrise keeps
 //! in lists of their own.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{ArrowPickup, Deflection, EntityRef, PierceLevelError, ProjectileRef};
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::{

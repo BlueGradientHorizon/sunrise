@@ -1,6 +1,6 @@
 //! `/recipe`, `/damage`, `/rotate`, `/swing`, `/playsound`, `/stopsound`,
 //! `/particle`, `/attribute`, `/ride` and `/spreadplayers`.
-use super::{Arg, Context, Game, R, Target, err, wrap_degrees};
+use super::{Arg, Context, R, Target, err, wrap_degrees};
 use crate::game::living_attributes::AttributeWrite;
 use sunrise_core::random::RandomSource;
 use sunrise_world::attribute_map::ValueKind;

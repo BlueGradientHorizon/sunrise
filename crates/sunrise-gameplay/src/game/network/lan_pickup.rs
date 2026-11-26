@@ -2,7 +2,7 @@
 //! lectern and mount menus), with the pickup decided by the mods first when any listens to
 //! `item_stacked_on_other` (`stacked_pickup`). The trading menu builds its own and does the same
 //! in `lan_trading.rs`.
-use super::{Game, lan_crafting::input};
+use super::lan_crafting::input;
 use sunrise_gameplay_common::game::stacked_on_other::Pickup;
 use sunrise_protocol::packets::play;
 use sunrise_sim::menu::{Env, Input, Menu};

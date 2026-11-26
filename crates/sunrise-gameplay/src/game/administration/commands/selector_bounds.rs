@@ -1,6 +1,6 @@
 //! The physical bounds already kept for selector targets. This is not a
 //! rendered box or a new source of entity dimensions.
-use super::{Game, Target};
+use super::Target;
 use sunrise_gameplay_common::game::entity::Entity;
 use sunrise_core::geometry::{Aabb, Vec3};
 

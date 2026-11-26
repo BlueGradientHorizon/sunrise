@@ -7,7 +7,7 @@
 //! the generation each open of an id was given: a `LevelRef` from before an unload never names a
 //! later open of the same id. A delete is an unload and then the removal of the level's files, on
 //! the server thread in the same pass, so a reopen is applied only after the files are gone.
-use super::{Dim, Game};
+use super::Dim;
 use mod_api::{LevelRef, RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;

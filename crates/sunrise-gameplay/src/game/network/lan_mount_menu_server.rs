@@ -1,4 +1,4 @@
-use super::{Game, lan_actions::guest_within_entity_range};
+use super::lan_actions::guest_within_entity_range;
 
 impl crate::game::ServerGame<'_> {
     /// `AbstractMountInventoryMenu.stillValid`: the mount is alive and the

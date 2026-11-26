@@ -3,7 +3,6 @@
 //! fill feedback of level event 1500 (`handleFill`). Emptying a full
 //! composter by hand is `useWithoutItem` in sunrise-world.
 use super::{
-    Game,
     commands::{Target, compute::ComputeContext},
 };
 use sunrise_gameplay_common::game::composter_data::{Effects, is_composter};
