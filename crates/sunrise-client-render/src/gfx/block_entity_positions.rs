@@ -24,9 +24,9 @@ impl Renderer {
             // New translucent terrain, not an edit's remesh: large pages wait for it.
             self.shrink_gate.wait(Instant::now(), SHRINK_SETTLE);
         }
-        if !self.section_uploaded.contains_key(&key) {
+        if let std::collections::hash_map::Entry::Vacant(entry) = self.section_uploaded.entry(key) {
             let now = std::time::Instant::now();
-            self.section_uploaded.insert(key, now);
+            entry.insert(now);
             self.newest_upload = Some(now);
         }
         self.release_section(key);
