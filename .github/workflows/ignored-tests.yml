@@ -172,6 +172,7 @@ jobs:
       - name: Run the ignored tests that need prepared data
         env:
           SHARD: ${{ matrix.shard }}
+          SUNRISE_TOOL_CHANNEL: ${{ matrix.shard == 'daily-rows' && 'mod-tool' || '' }}
           SUNRISE_DATA_LEG_TIMING: '1'
           # The mesher and section-visibility tests read the prepared data from their own variable.
           SUNRISE_MESH_TEST_RESOURCES: ${{ github.workspace }}/.local/sunrise-client/26.3
