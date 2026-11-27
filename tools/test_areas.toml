@@ -353,6 +353,8 @@ cargo = [
   { package = "sunrise-sim", target = "lib", filter = "recipe_book::tests::recipe_book_and_placement_use_component_ingredient_item_lists" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::container_hooks::" }, { package = "sunrise-client-gameplay", target = "lib", filter = "game::client_side::container_hooks::" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::extras::mouse_tweaks::" },
+  { package = "sunrise-client", target = "lib", filter = "cut_layout::game::client_side::screen_build::tests::room_on_the_left_moves_the_window_right_and_clears_the_book" },
+  { package = "sunrise-client-gameplay", target = "lib", filter = "game::client_side::recipe_book::tests::screen_room_keeps_a_mod_menus_book_toggle_painted_and_reachable" },
 ]
 harnesses = [
   "menu_click", "anvil_name", "container_*", "storage_menu", "vehicle_container", "carrier_inventory", "simple_container",

@@ -222,7 +222,7 @@ pub struct LevelChange {
 /// What the gameplay code has to do for a guest.
 pub enum HostEvent {
     /// Release input reservations only after this segment has finished in Game.
-    InputCredits(Vec<crate::net_ingress::ReceiveLease<NetEvent>>),
+    InputCredits(Vec<crate::raw_payloads::ingress::ReceiveLease<NetEvent>>),
     RawPayload(Box<crate::raw_payloads::Delivery>),
     /// A joined player's play pong; dispatch before resuming their inbox.
     PlayerPong {
@@ -6927,8 +6927,11 @@ mod tests {
         let mut neg = Negotiation::new(local.manifest.clone());
         neg.receive(Control::Offer(local.manifest.clone())).unwrap();
         let accepted = neg.accepted().unwrap().to_vec();
-        let transport =
-            crate::raw_payloads::Transport::new(local, crate::raw_payloads::Side::Server);
+        let transport = crate::raw_payloads::Transport::new(
+            local,
+            crate::raw_payloads::Side::Server,
+            crate::lan::PAYLOAD_RECORD_OVERHEAD,
+        );
         transport.accept(&accepted).unwrap();
         transport.finish_configuration().unwrap();
         let (ann_sender, ann_queued) =

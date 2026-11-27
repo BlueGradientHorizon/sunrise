@@ -2864,6 +2864,7 @@ fn a_mods_fluid_ticks_are_saved_by_name() {
     let fluid = register_mod_fluid(ModFluidType {
         id: "savetest:oil".into(),
         flowing_id: "savetest:flowing_oil".into(),
+        block_id: "savetest:oil".into(),
         bucket: None,
         rules: ModFluidRules {
             tick_delay: 5,

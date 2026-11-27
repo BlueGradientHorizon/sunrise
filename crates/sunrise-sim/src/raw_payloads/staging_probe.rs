@@ -82,7 +82,7 @@ pub(super) fn prepared(channel: &str, work: bool) {
     }
 }
 
-pub(super) fn capture<E>(channel: &str, endpoint: &super::Endpoint<E>) {
+pub(super) fn capture(channel: &str, endpoint: &super::Endpoint) {
     if let Some(watch) = WATCH.lock().unwrap().as_mut()
         && watch.channel == channel
         && !watch.endpoints.iter().any(|e| e.same_target(endpoint))

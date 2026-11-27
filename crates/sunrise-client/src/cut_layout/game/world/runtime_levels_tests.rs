@@ -9,7 +9,8 @@ use mod_api::{
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use sunrise_gameplay::game::server_side::runtime_levels::{
-    Generate, OpenLevel, RuntimeTable, classify_biome_source_error, runtime_biome_source_json,
+    Generate, OpenLevel, RETAINED_TABLE_LIMIT, RuntimeTable, classify_biome_source_error,
+    retained_metadata_counts, runtime_biome_source_json,
 };
 use sunrise_gameplay_common::game::Dim;
 
@@ -2084,14 +2085,8 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
                 game.server.levels.0.runtime.seeds().get("cycle:a").copied(),
                 Some(seed)
             );
-            let level = game
-                .server
-                .level_shapes
-                .extra
-                .iter()
-                .find(|level| level.id == "cycle:a")
-                .copied()
-                .unwrap();
+            let table = game.server.level_shapes.extra.clone();
+            let level = table.iter().find(|level| level.id == "cycle:a").unwrap();
             let facts = sunrise_world::dimension_type::DimensionFacts::of_level(key);
             let leaked = (
                 level.id.as_ptr(),
@@ -2108,6 +2103,76 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
             );
         }
     });
+}
+
+/// Churning level ids preserves publication order and bounds metadata retention (#1367).
+#[test]
+#[ignore = "daily"]
+fn churning_runtime_level_metadata_stays_within_the_retention_bound() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+
+    // Real opens publish their ids in process-wide tables.
+    if run_fresh_cases(
+        "cut_layout::game::server_side::runtime_levels_tests::churning_runtime_level_metadata_stays_within_the_retention_bound",
+        "SUNRISE_RUNTIME_LEVEL_METADATA_CHILD",
+        &["churn"],
+    ) {
+        return;
+    }
+    with_opener("cycle", "cycle:seed", flat(), |game, _| {
+        for batch in 0..(RETAINED_TABLE_LIMIT * 2) {
+            let left = format!("cycle:left-{batch}");
+            let right = format!("cycle:right-{batch}");
+            let left_type = match batch % 3 {
+                0 => "minecraft:overworld",
+                1 => "minecraft:the_nether",
+                _ => "minecraft:the_end",
+            };
+            let right_type = match (batch + 1) % 3 {
+                0 => "minecraft:overworld",
+                1 => "minecraft:the_nether",
+                _ => "minecraft:the_end",
+            };
+            let mut ordered = vec![(left.as_str(), left_type), (right.as_str(), right_type)];
+            if batch % 2 == 1 {
+                ordered.reverse();
+            }
+            for (index, (id, dimension_type)) in ordered.iter().enumerate() {
+                let level = RuntimeLevel::new(
+                    *dimension_type,
+                    RuntimeGenerator::Flat,
+                    (batch * 2 + index) as i64,
+                );
+                game.runtime_level_open(id, level).unwrap();
+                game.apply_runtime_levels();
+                assert!(game.runtime_level_is_open(id));
+            }
+            assert_eq!(
+                game.server
+                    .level_shapes
+                    .extra
+                    .iter()
+                    .map(|level| level.id)
+                    .collect::<Vec<_>>(),
+                ordered.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+            );
+            for (id, _) in ordered.into_iter().rev() {
+                unload_as(game, "cycle", id).unwrap();
+                game.apply_runtime_levels();
+                assert!(!game.runtime_level_is_open(id));
+            }
+        }
+    });
+
+    let (types, tables) = retained_metadata_counts();
+    assert!(
+        types <= sunrise_world::worldgen::overrides::mod_dimensions().len() + 4,
+        "runtime dimension facts grew beyond startup-known types: {types}"
+    );
+    assert!(
+        tables <= RETAINED_TABLE_LIMIT,
+        "runtime level tables grew beyond their retention bound: {tables}"
+    );
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;

@@ -93,9 +93,9 @@ fn generic_submission_preserves_plugin_bytes_and_rejects_malformed_packets() {
 fn generic_submission_cannot_bypass_registered_or_engine_channel_authority() {
     super::client_payload_test_support::with_peer(|_server_transport| {
         let (mut session, _peer) = connected();
-        session.payloads = crate::raw_payloads::Transport::capture_with_event_size(
+        session.payloads = crate::raw_payloads::Transport::capture(
             crate::raw_payloads::Side::Client,
-            std::mem::size_of::<super::Event>(),
+            crate::net::PAYLOAD_RECORD_OVERHEAD,
         )
         .unwrap();
         for channel in [

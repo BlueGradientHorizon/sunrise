@@ -210,7 +210,7 @@ impl Hub {
     pub(super) fn pause_for_move(
         &mut self,
         i: usize,
-        credits: &mut Vec<crate::net_ingress::ReceiveLease<crate::lan::NetEvent>>,
+        credits: &mut Vec<crate::raw_payloads::ingress::ReceiveLease<crate::lan::NetEvent>>,
         events: &mut Vec<HostEvent>,
     ) -> bool {
         let Some(_) = self.guests[i].pending_move.as_ref().filter(|p| !p.paused) else {

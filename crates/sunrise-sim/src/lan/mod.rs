@@ -74,6 +74,22 @@ use sunrise_protocol::{
     text::translatable,
 };
 
+/// Staging margin for the hosted side's ordered event unions and delivery record.
+pub(crate) const PAYLOAD_RECORD_OVERHEAD: usize =
+    crate::raw_payloads::connection::record_overhead(&[
+        std::mem::size_of::<NetEvent>(),
+        std::mem::size_of::<hub::HostEvent>(),
+    ]);
+
+#[cfg(test)]
+mod payload_epoch_tests;
+#[cfg(test)]
+mod payload_executor_tests;
+#[cfg(test)]
+mod payload_probe;
+#[cfg(test)]
+mod payload_raw_channel_tests;
+
 /// IntegratedServer.MAX_PLAYERS.
 pub const MAX_PLAYERS: usize = 8;
 
@@ -90,6 +106,25 @@ pub enum NetEvent {
     /// PlayerList.disconnectAllPlayersWithProfile: a new login of this
     /// profile replaces the player already in the world.
     Duplicate(u128),
+}
+impl crate::raw_payloads::HostedEvent for NetEvent {
+    fn delivery(
+        conn: Option<u32>,
+        endpoint: crate::raw_payloads::Endpoint,
+        incoming: crate::raw_payloads::Incoming,
+    ) -> Self {
+        Self::RawPayload(Box::new(crate::raw_payloads::Delivery {
+            conn,
+            endpoint,
+            incoming,
+        }))
+    }
+    fn into_incoming(self) -> crate::raw_payloads::Incoming {
+        let Self::RawPayload(delivery) = self else {
+            unreachable!("only a delivery is taken back")
+        };
+        delivery.incoming
+    }
 }
 pub struct Joined {
     pub conn: u32,
@@ -109,20 +144,20 @@ pub struct Joined {
 }
 
 pub(crate) fn event_channel() -> (
-    crate::net_ingress::Producer<NetEvent>,
-    crate::net_ingress::Consumer<NetEvent>,
+    crate::raw_payloads::ingress::Producer<NetEvent>,
+    crate::raw_payloads::ingress::Consumer<NetEvent>,
 ) {
-    crate::net_ingress::channel(96 << 20, NetEvent::ingress_charge)
+    crate::raw_payloads::ingress::channel(96 << 20, NetEvent::ingress_charge)
         .expect("positive incoming byte budget")
 }
 #[cfg(test)]
 pub(crate) fn event_channel_with_capacity(
     capacity: usize,
 ) -> (
-    crate::net_ingress::Producer<NetEvent>,
-    crate::net_ingress::Consumer<NetEvent>,
+    crate::raw_payloads::ingress::Producer<NetEvent>,
+    crate::raw_payloads::ingress::Consumer<NetEvent>,
 ) {
-    crate::net_ingress::channel(capacity, NetEvent::ingress_charge)
+    crate::raw_payloads::ingress::channel(capacity, NetEvent::ingress_charge)
         .expect("positive test incoming byte budget")
 }
 impl NetEvent {
@@ -165,7 +200,7 @@ impl NetEvent {
                 Self,
                 play::Serverbound,
                 hub::HostEvent,
-                crate::net_ingress::ReceiveLease<Self>,
+                crate::raw_payloads::ingress::ReceiveLease<Self>,
                 usize,
                 usize,
             )>(),
@@ -508,7 +543,7 @@ pub struct Shared {
     payload_local: Arc<crate::raw_payloads::Local>,
     /// What the next login is sent; `PlayerList.reloadResources` swaps it.
     sync: Mutex<Arc<data::SyncData>>,
-    pub events: crate::net_ingress::Producer<NetEvent>,
+    pub events: crate::raw_payloads::ingress::Producer<NetEvent>,
     /// Handshakes waiting for the server tick, when a game drives this listener.
     handoffs: Option<Mutex<Vec<Handoff>>>,
     handshake_listeners: mod_api::__private::EnabledListeners,
@@ -787,7 +822,7 @@ pub fn base64(data: &[u8]) -> String {
 pub struct Lan {
     pub shared: Arc<Shared>,
     pub configuration_tasks: configuration_tasks::Tasks,
-    events: crate::net_ingress::Consumer<NetEvent>,
+    events: crate::raw_payloads::ingress::Consumer<NetEvent>,
     configuration_requests: Option<Receiver<configuration_tasks::ConfigurationRequest>>,
     login_profiles: Option<Receiver<login_profile::LoginProfileRequest>>,
     pub port: u16,
@@ -999,7 +1034,7 @@ impl Lan {
         Ok(client)
     }
     /// Everything the connection threads reported since the last call.
-    pub fn poll(&self) -> Vec<crate::net_ingress::OwnedReceipt<NetEvent>> {
+    pub fn poll(&self) -> Vec<crate::raw_payloads::ingress::OwnedReceipt<NetEvent>> {
         self.events.take_turn()
     }
     pub fn stop(&mut self) {

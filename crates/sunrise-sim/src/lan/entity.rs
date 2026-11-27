@@ -1483,20 +1483,13 @@ fn prepare_pairing_attachment_sync(
     use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
     let epoch = sender.payload_transport().epoch()?;
     let result = match &snapshot.body {
-        Ok(bytes) => {
-            let endpoint = crate::raw_payloads::Endpoint::server(sender.clone());
-            endpoint
-                .prepare(
-                    &epoch,
-                    &PayloadId(sunrise_protocol::attachment_sync::CHANNEL.into()),
-                    PayloadBytes(bytes.clone()),
-                )
-                .map(|prepared| {
-                    prepared
-                        .into_prepared_body(epoch.clone())
-                        .expect("server endpoint produces a prepared server body")
-                })
-        }
+        Ok(bytes) => crate::raw_payloads::HostedEndpoint::new(sender.clone())
+            .prepare_pairing(
+                &epoch,
+                &PayloadId(sunrise_protocol::attachment_sync::CHANNEL.into()),
+                PayloadBytes(bytes.clone()),
+            )
+            .map(super::Body::Prepared),
         Err(reason) => Err(PayloadSendError::EncodeFailed(reason.clone())),
     };
     match result {
@@ -3957,8 +3950,11 @@ mod tests {
             let mut neg = Negotiation::new(local.manifest.clone());
             neg.receive(Control::Offer(local.manifest.clone())).unwrap();
             let accepted = neg.accepted().unwrap().to_vec();
-            let transport =
-                crate::raw_payloads::Transport::new(local, crate::raw_payloads::Side::Server);
+            let transport = crate::raw_payloads::Transport::new(
+                local,
+                crate::raw_payloads::Side::Server,
+                crate::lan::PAYLOAD_RECORD_OVERHEAD,
+            );
             transport.accept(&accepted).unwrap();
             transport.finish_configuration().unwrap();
             let (sender, _) =

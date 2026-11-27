@@ -796,12 +796,10 @@ impl crate::game::ClientGame<'_> {
 
     // ---- geometry ----
 
-    /// `RecipeBookComponent.getXOrigin` / `getYOrigin` (`widthTooNarrow`
-    /// centres the book over the menu), moved left with the window by the
-    /// room the mods ask beside it (`screen_room`).
+    /// Move the vanilla recipe book origin with the window when mods reserve room.
     pub fn book_origin(&self, batch: &HudBatch) -> (f32, f32) {
         let (x, y) = self.book_origin_in_place(batch);
-        (x - self.screen_room_shift(batch), y)
+        (x + self.screen_room_offset(batch), y)
     }
     /// The visible left edge, including the selected tab, of the book beside
     /// the window before room moves it; none while no book is open or it covers the
@@ -2401,6 +2399,179 @@ pub(in crate::game) mod tests {
         assert!(super::escape_closes_book(super::NARROW - 1.0, true));
         assert!(!super::escape_closes_book(super::NARROW, true));
         assert!(!super::escape_closes_book(super::NARROW - 1.0, false));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn screen_room_keeps_a_mod_menus_book_toggle_painted_and_reachable() {
+        use crate::game::native_hooks::book_screen::lifecycle_tests_shared::{
+            BookMod, KEY, STONE, receive,
+        };
+        use crate::game::native_hooks::{OpenNativeMenu, OpenNativeScreen, seed_native_menu};
+        use std::sync::Arc;
+        use sunrise_gameplay_common::game::Screen;
+        use sunrise_gameplay_common::game::tables::GameItems as _;
+        use sunrise_sim::recipe_book::{
+            BookFlags, placement_sync::ResourceId, settings_sync::Message,
+        };
+
+        sunrise_gameplay_common::game::in_own_process(
+            "game::client_side::recipe_book::tests::screen_room_keeps_a_mod_menus_book_toggle_painted_and_reachable",
+            || {
+                use std::sync::atomic::{AtomicU32, Ordering};
+                struct Room([Arc<AtomicU32>; 2]);
+                #[mod_api::__subscriptions]
+                impl mod_api::Hooks for Room {
+                    fn screen_room(
+                        &self,
+                        _: &dyn mod_api::ClientHost,
+                        event: &mut mod_api::ScreenRoomEvent<'_>,
+                    ) {
+                        event.left = f32::from_bits(self.0[0].load(Ordering::Relaxed));
+                        event.right = f32::from_bits(self.0[1].load(Ordering::Relaxed));
+                    }
+                }
+                let rooms = [Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0))];
+                let mods: mod_api::Mods = vec![
+                    mod_api::ModEntry::new("geometry", Box::new(BookMod)),
+                    mod_api::ModEntry::new("room", Box::new(Room(rooms.clone()))),
+                ]
+                .into();
+                mod_platform::testing::with_mods(mods, || {
+                    crate::game::native_entity_refs::tests::with_client_game(|game| {
+                        let key = KEY.get().unwrap().clone();
+                        mod_api::__private::resolve_menus(["geometry:menu"]).unwrap();
+                        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+                        game.connect_local(pipe, "Geometry").unwrap();
+                        game.client.remote.as_mut().unwrap().joined = true;
+                        let generation = seed_native_menu(game, 1, "geometry:menu");
+                        game.client.remote.as_mut().unwrap().custom_books = true;
+                        game.client.settings.gui_scale = 1;
+                        game.client.screen = Screen::Inventory;
+                        game.client.title.0 = None;
+                        game.container = Some((i32::MIN, 0, 0));
+                        let recipes = sunrise_sim::crafting::Recipes::from_sources(
+                            &game.options.resources,
+                            game.items(),
+                            &sunrise_world::loot::PackOverlay::NONE,
+                            vec![(
+                                "geometry:recipe".into(),
+                                serde_json::json!({"type": "geometry:crafting"}),
+                            )],
+                            game.res.core.item_data.context(),
+                        )
+                        .unwrap();
+                        game.recipe_tables.install_test_recipes(recipes);
+                        game.recipe_tables.books = None;
+                        // (screen, menu width, [left, right]) -> the window's left edge, and the
+                        // toggle's top-left corner, painted, clicked and focused there.
+                        let cases = [
+                            // The closed book's toggle in the right gutter, 4 right of the window.
+                            ([427, 240], 176.0, [0.0, 0.0], 125.0, (305.0, 42.0)),
+                            // 50 right: the toggle at 355..375 stays on the screen.
+                            ([427, 240], 176.0, [100.0, 0.0], 175.0, (355.0, 42.0)),
+                            // The window would fit at 249..425, the toggle not at 429..449: no move.
+                            ([427, 240], 176.0, [248.0, 0.0], 125.0, (305.0, 42.0)),
+                            // Right room still moves the toggle left with the window.
+                            ([427, 240], 176.0, [0.0, 149.0], 51.0, (231.0, 42.0)),
+                            // #6198: on a narrow screen the toggle is in the left gutter at 57; 154
+                            // right would fit the window at 4..142 but put the toggle at -20..0.
+                            ([301, 240], 138.0, [0.0, 0.0], 81.0, (57.0, 42.0)),
+                            ([301, 240], 138.0, [0.0, 154.0], 81.0, (57.0, 42.0)),
+                            // 40 right keeps it at 37..57.
+                            ([301, 240], 138.0, [0.0, 40.0], 61.0, (37.0, 42.0)),
+                        ];
+                        for (epoch, (size, width, [left, right], x, toggle)) in (1..).zip(cases) {
+                            game.client.recipe_ui.0.test_viewport = Some(size);
+                            game.client.mod_screen.0 = Some(OpenNativeScreen {
+                                menu: OpenNativeMenu {
+                                    key: (i32::MIN, 0, 0),
+                                    window: 1,
+                                    generation,
+                                    name: "geometry:menu".into(),
+                                    title: None,
+                                    block: Some(STONE.into()),
+                                    pos: None,
+                                    mod_type: None,
+                                    data: Vec::new(),
+                                },
+                                slot_moves: Default::default(),
+                                layout_revision: 0,
+                                shown: true,
+                                detached: false,
+                                screen: mod_api::__private::OwnedMenuScreen::new(
+                                    "geometry",
+                                    0,
+                                    mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                                        width,
+                                        height: 166.0,
+                                        slots: vec![Some(mod_api::ScreenSlot {
+                                            position: [8.0, 18.0],
+                                            ..Default::default()
+                                        })],
+                                        inventory_y: 84.0,
+                                        inventory_x: 8.0,
+                                        recipe_book: Some(key.clone()),
+                                        ..Default::default()
+                                    }),
+                                ),
+                            });
+                            receive(game, Message::Ready);
+                            receive(
+                                game,
+                                Message::Snapshot {
+                                    epoch,
+                                    revision: 0,
+                                    entries: vec![(
+                                        ResourceId::from_registered_book(&key),
+                                        BookFlags {
+                                            open: false,
+                                            filtering: false,
+                                        },
+                                    )],
+                                },
+                            );
+                            rooms[0].store(f32::to_bits(left), Ordering::Relaxed);
+                            rooms[1].store(f32::to_bits(right), Ordering::Relaxed);
+                            game.client.frames += 1;
+                            game.build_screen();
+                            let case = format!("{size:?} {width} [{left}, {right}]");
+                            let batch = sunrise_client::hud::HudBatch::new(
+                                size,
+                                game.client.settings.gui_scale_inputs(),
+                            );
+                            assert_eq!(game.inventory_origin(&batch), (x, 37.0), "{case}");
+                            let mut painted = sunrise_client::hud::HudBatch::new(
+                                size,
+                                game.client.settings.gui_scale_inputs(),
+                            );
+                            game.draw_recipe_book(&mut painted);
+                            let button = &painted.vertices[..6];
+                            let corner = |pick: fn(f32, f32) -> f32, i: usize| {
+                                button.iter().map(|v| v.pos[i]).reduce(pick).unwrap()
+                            };
+                            assert_eq!(
+                                [corner(f32::min, 0), corner(f32::min, 1)],
+                                [toggle.0, toggle.1],
+                                "painted {case}"
+                            );
+                            assert_eq!(
+                                [corner(f32::max, 0), corner(f32::max, 1)],
+                                [toggle.0 + 20.0, toggle.1 + 18.0],
+                                "painted {case}"
+                            );
+                            assert_eq!(
+                                game.recipe_book_targets()[0].rect,
+                                [toggle.0, toggle.1, 20.0, 18.0],
+                                "focused {case}"
+                            );
+                            game.client.cursor = (toggle.0 + 1.0, toggle.1 + 1.0);
+                            assert!(game.recipe_book_click(false), "clicked {case}");
+                        }
+                    });
+                });
+            },
+        );
     }
 }
 

@@ -2,7 +2,6 @@
 //! arguments against (what the server's registry access holds).
 use std::collections::BTreeMap;
 
-/// Registry contents and source state used to validate and complete arguments.
 /// A selector token a mod registered: the word after `@` and the base selection it parses to,
 /// before its `[...]` options.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,6 +27,7 @@ pub struct CommandSender {
     /// Their account name.
     pub name: String,
 }
+/// Registry contents and source state used to validate and complete arguments.
 #[derive(Clone, Debug, Default)]
 pub struct Registries {
     /// Permission level of the command source.
@@ -102,7 +102,7 @@ pub struct Registries {
     /// Every registry's element and tag ids (`minecraft:item` -> ...), as
     /// the server's registry access and reloadable registries hold them.
     pub by_registry: BTreeMap<String, RegistryIds>,
-    /// The selector tokens mods registered (`@allies`), in registration order.
+    /// Mod selector tokens in host token-name order or in the order received from the server.
     pub selector_tokens: Vec<SelectorToken>,
     /// Blocks whose default state has a block entity.
     pub block_entities: std::collections::BTreeSet<String>,
@@ -257,10 +257,14 @@ impl Registries {
             if RELOADED.contains(&name.as_str()) || self.by_registry.contains_key(name) {
                 continue;
             }
+            // Appended mod entries can hide vanilla ids from a binary search (#6129).
+            let mut ids = strings(&entry["ids"]);
+            ids.sort_unstable();
+            ids.dedup();
             self.by_registry.insert(
                 name.clone(),
                 RegistryIds {
-                    ids: strings(&entry["ids"]),
+                    ids,
                     tags: strings(&entry["tags"]),
                 },
             );
@@ -420,6 +424,34 @@ impl Registries {
 
 #[cfg(test)]
 mod tests {
+    /// Binary search finds both vanilla and appended mod entries after loading the export (#6129).
+    #[test]
+    fn an_exports_merged_entries_read_sorted() {
+        let registries = Registries::from_export(&serde_json::json!({"by_registry": {
+            "minecraft:worldgen/biome": {"ids": [
+                "minecraft:plains", "minecraft:wooded_badlands", "ae2:spatial_storage",
+                "tconstruct:skyslime", "minecraft:plains",
+            ]},
+        }}));
+        let ids = registries.ids("minecraft:worldgen/biome");
+        assert_eq!(
+            ids,
+            [
+                "ae2:spatial_storage",
+                "minecraft:plains",
+                "minecraft:wooded_badlands",
+                "tconstruct:skyslime",
+            ]
+        );
+        for id in [
+            "minecraft:wooded_badlands",
+            "ae2:spatial_storage",
+            "tconstruct:skyslime",
+        ] {
+            assert!(ids.binary_search_by(|known| known.as_str().cmp(id)).is_ok());
+        }
+    }
+
     /// A content mod's enchantment reaches the ids an item component's enchantment map is
     /// checked against (#5607): the export's vanilla-only `by_registry` list no longer hides it,
     /// and the export's tags stay.

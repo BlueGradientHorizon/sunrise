@@ -297,10 +297,23 @@ fn run_checked(
     let mut blocked = false;
     // Noted as the output arrives: later lines can push the linker's note out of `tail`.
     let mut libraries = false;
-    for text in BufReader::new(child.stderr.take().expect("piped"))
-        .lines()
-        .map_while(Result::ok)
-    {
+    let mut stderr = BufReader::new(child.stderr.take().expect("piped"));
+    let mut bytes = Vec::new();
+    let stderr_result = loop {
+        bytes.clear();
+        match stderr.read_until(b'\n', &mut bytes) {
+            Ok(0) => break Ok(()),
+            Ok(_) => (),
+            Err(error) => break Err(format!("Could not read {what}'s stderr: {error}")),
+        }
+        // Strip LF or CRLF as `lines` does, leaving Cargo's interior carriage returns for
+        // `log_text`. A compiler or linker can print non-UTF-8 bytes; keep reading after them.
+        let line = if let Some(line) = bytes.strip_suffix(b"\n") {
+            line.strip_suffix(b"\r").unwrap_or(line)
+        } else {
+            &bytes
+        };
+        let text = String::from_utf8_lossy(line);
         // A diagnostic is one line of JSON: its rendered text goes on as lines, each as the
         // compiler printed it (for the log and the matchers) and as shown to the author.
         let lines = match sources.zip(present::Diagnostic::parse(&text)) {
@@ -309,7 +322,7 @@ fn run_checked(
                 .into_iter()
                 .map(|(raw, shown)| (raw.to_owned(), shown))
                 .collect(),
-            None => vec![(text.clone(), text)],
+            None => vec![(text.to_string(), text.into_owned())],
         };
         for (raw, shown) in lines {
             if let Some(kept) = log_text(&raw) {
@@ -325,8 +338,12 @@ fn run_checked(
             }
             tail.push_back(shown);
         }
-    }
-    let status = child.wait().map_err(|e| e.to_string())?;
+    };
+    // Close the pipe before waiting even if a read failed.
+    drop(stderr);
+    let status = child.wait();
+    stderr_result?;
+    let status = status.map_err(|e| e.to_string())?;
     let took = started.elapsed();
     if status.success() {
         // Every command of a native build says how long it took, so the log accounts for
@@ -980,6 +997,54 @@ mod tests {
         ]);
         let e = run(cmd, "Compiling the game").unwrap_err();
         assert!(!e.contains("Smart App Control"), "{e}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "daily"]
+    fn malformed_stderr_does_not_hide_later_diagnostics() {
+        const ACTOR: &str = "SUNRISE_MALFORMED_STDERR_TEST_ACTOR";
+        if std::env::var_os(ACTOR).is_none() {
+            let scratch = tempfile::tempdir().unwrap();
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::malformed_stderr_does_not_hide_later_diagnostics",
+                    "--include-ignored",
+                    "--nocapture",
+                ])
+                .env(ACTOR, "1")
+                // The unhosted build log lives under the child's temp dir and PID.
+                .env("TMPDIR", scratch.path())
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{stdout}\n{stderr}");
+            assert!(
+                stdout.contains("test result: ok. 1 passed;"),
+                "exact-name child did not run one test:\n{stdout}\n{stderr}"
+            );
+            return;
+        }
+        clear_log().unwrap();
+        let mut cmd = Command::new("sh");
+        cmd.args([
+            "-c",
+            r"printf 'bad byte \377\r\nBuilding [=>] 3/9: a\r\033[Kerror: later\r\nlast warning' >&2; exit 17",
+        ]);
+        let error = run(cmd, "Compiling the mod").unwrap_err();
+        assert!(
+            error.starts_with("Compiling the mod failed (exit status: 17)"),
+            "{error}"
+        );
+        assert!(error.contains("bad byte �\n"), "{error}");
+        assert!(error.ends_with("error: later\nlast warning"), "{error}");
+        let log = fs::read_to_string(log_path()).unwrap();
+        assert!(
+            log.ends_with("bad byte �\nerror: later\nlast warning\n"),
+            "{log}"
+        );
     }
 
     #[cfg(unix)]

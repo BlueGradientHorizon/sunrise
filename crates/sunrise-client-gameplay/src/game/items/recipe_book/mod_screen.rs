@@ -306,10 +306,15 @@ impl crate::game::ClientGame<'_> {
         ui.overlay = None;
         ui.presentation = Some(presentation);
     }
+    /// A mod menu's book toggle edges before the window moves to make room.
+    pub(in crate::game) fn mod_book_toggle_span(&self, batch: &HudBatch) -> Option<[f32; 2]> {
+        let (open, _) = self.mod_book_flags()?;
+        Some(self.mod_book_layout(batch.width, open)?.toggle_span())
+    }
     fn mod_book_button(&self, batch: &HudBatch) -> (f32, f32) {
         self.mod_book_layout(batch.width, self.mod_book_open())
             .map_or((0.0, 0.0), |layout| {
-                layout.shifted_toggle(self.screen_room_shift(batch))
+                layout.shifted_toggle(self.screen_room_offset(batch))
             })
     }
     pub(in crate::game) fn draw_mod_book(

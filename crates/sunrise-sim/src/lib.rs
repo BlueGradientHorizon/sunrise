@@ -169,7 +169,6 @@ pub mod move_gate;
 pub mod native_client_hooks;
 pub mod native_stack_hooks;
 pub mod neoforge_mob_maps;
-pub mod net_ingress;
 pub mod nether_portal;
 pub mod offline_name;
 pub mod old_world;

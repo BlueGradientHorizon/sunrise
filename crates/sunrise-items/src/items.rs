@@ -1675,11 +1675,6 @@ impl Items {
                 "worldgen/biome",
                 "minecraft:worldgen/biome",
             ),
-            (
-                TagRegistry::Enchantment,
-                "enchantment",
-                "minecraft:enchantment",
-            ),
         ] {
             let exported = self.component_registry.ids(reg_key);
             let fallback = builtin.get(kind);
@@ -1696,6 +1691,9 @@ impl Items {
             })?;
             self.set_tags(registry, tags);
         }
+        // Enchantment tags bind once the enchantments are installed (`bind_enchantment_tags`,
+        // which every load that installs them runs), never against the export here: it lists
+        // vanilla's alone, so a tag naming a mod's enchantment failed to bind (#6129).
         Ok(())
     }
 
@@ -4435,6 +4433,91 @@ mod tests {
         assert_eq!(song(5.0, 15.0).unwrap().comparator, 15);
         assert!(song(5.0, 16.0).is_err());
         assert!(song(5.0, -1.0).is_err());
+    }
+
+    /// #6129: a mod's biome, structure and enchantment, merged into the export after vanilla's
+    /// and added to vanilla tags, leave every vanilla tag bound, with the mod members in them.
+    #[test]
+    fn mod_entries_merged_into_the_export_keep_vanilla_tags_bound() {
+        let root = std::env::temp_dir().join(format!("sunrise-6129-tags-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("items.json"), "{}").unwrap();
+        // The order the mod content load leaves: vanilla's sorted ids, then the mods'.
+        let export = json!({
+            "enchantments": ["minecraft:binding_curse"],
+            "by_registry": {
+                "minecraft:worldgen/biome": {"ids": [
+                    "minecraft:badlands", "minecraft:wooded_badlands", "ae2:spatial_storage",
+                ]},
+                "minecraft:worldgen/structure": {"ids": [
+                    "minecraft:village_plains", "minecraft:village_taiga", "ae2:meteorite",
+                ]},
+                "minecraft:enchantment": {"ids": ["minecraft:binding_curse"]},
+            },
+        });
+        fs::write(root.join("command-registries.json"), export.to_string()).unwrap();
+        let tag = |values: &[&str]| vec![json!({ "values": values }).to_string().into_bytes()];
+        let enchantment = || {
+            vec![
+                json!({"description": "curse", "max_level": 1})
+                    .to_string()
+                    .into_bytes(),
+            ]
+        };
+        let files = vec![
+            (
+                "tags/minecraft:worldgen/biome/is_badlands".to_owned(),
+                tag(&[
+                    "minecraft:badlands",
+                    "minecraft:wooded_badlands",
+                    "ae2:spatial_storage",
+                ]),
+            ),
+            (
+                "tags/minecraft:worldgen/structure/village".to_owned(),
+                tag(&["minecraft:village_taiga", "ae2:meteorite"]),
+            ),
+            (
+                "tags/minecraft:enchantment/curse".to_owned(),
+                tag(&["minecraft:binding_curse", "enderio:soulbound"]),
+            ),
+            (
+                "enchantment/minecraft:binding_curse".to_owned(),
+                enchantment(),
+            ),
+            ("enchantment/enderio:soulbound".to_owned(), enchantment()),
+        ];
+        let overlay = PackOverlay {
+            files: &files,
+            ..PackOverlay::default()
+        };
+        let defaults = sunrise_world::item_defaults::read(&root).unwrap();
+        let items = Items::tags_only(&root, &overlay, &defaults).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+        let members = |registry, tag| items.tag_members(registry, tag).map(<[String]>::to_vec);
+        assert_eq!(
+            members(TagRegistry::Biome, "minecraft:is_badlands"),
+            Some(vec![
+                "minecraft:badlands".to_owned(),
+                "minecraft:wooded_badlands".to_owned(),
+                "ae2:spatial_storage".to_owned(),
+            ])
+        );
+        assert_eq!(
+            members(TagRegistry::Structure, "minecraft:village"),
+            Some(vec![
+                "minecraft:village_taiga".to_owned(),
+                "ae2:meteorite".to_owned(),
+            ])
+        );
+        assert_eq!(
+            members(TagRegistry::Enchantment, "minecraft:curse"),
+            Some(vec![
+                "minecraft:binding_curse".to_owned(),
+                "enderio:soulbound".to_owned(),
+            ])
+        );
     }
 
     #[test]

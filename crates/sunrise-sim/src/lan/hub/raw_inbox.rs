@@ -118,9 +118,9 @@ impl Hub {
     pub(super) fn poll_raw_payload(
         &mut self,
         delivery: Box<crate::raw_payloads::Delivery>,
-        credit: crate::net_ingress::ReceiveLease<NetEvent>,
+        credit: crate::raw_payloads::ingress::ReceiveLease<NetEvent>,
         events: &mut Vec<HostEvent>,
-        credits: &mut Vec<crate::net_ingress::ReceiveLease<NetEvent>>,
+        credits: &mut Vec<crate::raw_payloads::ingress::ReceiveLease<NetEvent>>,
     ) {
         if let Some(conn) = delivery.conn {
             self.update_guest(conn, |g| {
@@ -152,9 +152,9 @@ impl Hub {
 
 pub(super) fn yield_raw(
     delivery: Box<crate::raw_payloads::Delivery>,
-    credit: crate::net_ingress::ReceiveLease<NetEvent>,
+    credit: crate::raw_payloads::ingress::ReceiveLease<NetEvent>,
     events: &mut Vec<HostEvent>,
-    credits: &mut Vec<crate::net_ingress::ReceiveLease<NetEvent>>,
+    credits: &mut Vec<crate::raw_payloads::ingress::ReceiveLease<NetEvent>>,
 ) -> bool {
     credits.push(credit);
     if !delivery.incoming.epoch.active() {

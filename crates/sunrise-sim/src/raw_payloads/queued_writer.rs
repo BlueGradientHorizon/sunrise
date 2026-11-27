@@ -69,6 +69,11 @@ impl PreparedPayload {
             .map_err(|_| PayloadSendError::Disconnected)
     }
 }
+impl crate::raw_payloads::PreparedSend for PreparedPayload {
+    fn publish(self: Box<Self>) -> std::result::Result<(), PayloadSendError> {
+        (*self).publish()
+    }
+}
 enum PrepareFailure {
     Closed,
     Full,
@@ -187,7 +192,7 @@ impl QueuedWriter {
         held
     }
     #[cfg(any(test, feature = "test-payload-probe"))]
-    pub(crate) fn diagnostics(&self) -> String {
+    pub fn diagnostics(&self) -> String {
         let stats = match self.sender.try_lock() {
             Ok(sender) => sender.as_ref().map(|s| s.stats()),
             Err(_) => return "writer sender busy/poisoned".into(),

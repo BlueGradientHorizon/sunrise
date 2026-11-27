@@ -113,8 +113,7 @@ pub struct LevelShapes {
     pub overworld: LevelShape,
     pub nether: LevelShape,
     pub end: LevelShape,
-    /// The levels past vanilla's three that the world's data packs give, by id: a snapshot its
-    /// readers share and the last one frees.
+    /// An immutable snapshot of extra levels, shared by clones and reusable by the runtime cache.
     pub extra: ExtraLevels,
 }
 /// An immutable snapshot of the levels past vanilla's three. Publishing a change makes a new
@@ -126,10 +125,14 @@ impl ExtraLevels {
     pub const NONE: Self = Self(None);
     /// The snapshot of `levels`.
     pub fn new(levels: Vec<ExtraLevel>) -> Self {
+        Self::from_shared(levels.into())
+    }
+    /// A snapshot backed by shared storage, such as the runtime-level retention cache.
+    pub fn from_shared(levels: Arc<[ExtraLevel]>) -> Self {
         if levels.is_empty() {
             Self::NONE
         } else {
-            Self(Some(levels.into()))
+            Self(Some(levels))
         }
     }
 }
@@ -147,6 +150,7 @@ pub struct ExtraLevel {
     pub dimension_type: &'static str,
     pub shape: LevelShape,
 }
+
 impl LevelShapes {
     pub const VANILLA: Self = Self {
         overworld: LevelShape::OVERWORLD,

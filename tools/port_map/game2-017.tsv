@@ -136,7 +136,7 @@ SignBlockEntity.applyImplicitComponents	port	crates/sunrise-sim/src/block_entity
 SignBlockEntity.collectImplicitComponents	port	crates/sunrise-sim/src/block_entity_item.rs::collect	front_text, back_text and is_waxed leave on the item as sign_text_front, sign_text_back and waxed
 SignBlockEntity.removeComponentsFromTag	port	crates/sunrise-sim/src/block_entity_item.rs::pick	front, back and waxed left out of the item data
 SignText.load	port	crates/sunrise-level/src/signs_data.rs::SignData::decode	modern String messages remain literal; compound/list components keep their structured path
-SignText.<clinit>	port	crates/sunrise-sim/src/item_sync.rs::sign_text_tag	STREAM_CODEC read into the saved CODEC form; lan/guest.rs::sign_text_bytes writes it
+SignText.<clinit>	port	crates/sunrise-sim/src/item_sync.rs::sign_text_tag	STREAM_CODEC read into the saved CODEC form; item_sync/net_stack.rs::sign_text_bytes writes it
 SignText.validateLineCounts	skip:java		codec check of four lines; Sunrise fixes the array size
 SignText.withGlowingText	port	crates/sunrise-gameplay/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	glow ink sac
 SignText.withColor	port	crates/sunrise-gameplay/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	dye

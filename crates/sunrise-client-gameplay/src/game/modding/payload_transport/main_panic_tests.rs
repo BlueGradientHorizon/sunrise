@@ -67,7 +67,11 @@ fn a_panicking_main_payload_refunds_its_journal_and_preserves_unrelated_delivery
         sunrise_gameplay_common::game::api_values::install_parts(mod_api::__private::mods())
             .unwrap();
         with_game(|game| {
-            let transport = Transport::capture(Side::Server).unwrap();
+            let transport = Transport::capture(
+                Side::Server,
+                sunrise_sim::raw_payloads::connection::record_overhead(&[]),
+            )
+            .unwrap();
             transport
                 .accept(transport.local.manifest.entries())
                 .unwrap();

@@ -2,6 +2,8 @@
 mod payload_queue;
 pub(crate) use payload_queue::PayloadTurn;
 #[cfg(test)]
+pub(crate) mod test_hooks;
+#[cfg(test)]
 mod tests;
 use super::{Local, Peer, Side};
 use mod_api::{PayloadSendError, PlayerRef};
@@ -105,19 +107,19 @@ pub struct IngressLease {
     _permit: byte_channel::Permit<()>,
     pub(super) owned_bytes: usize,
 }
-/// Checked upper bound on client event size for server-only constructions.
-pub const CLIENT_EVENT_SIZE_BOUND: usize = 128;
-
-// Four slots cover Vec's initial growth and later geometric staging. Provider
-// queue storage is separately charged by the typed ingress channel. This charge
-// covers both main routes and network-staged work, including boxed identities.
-pub const fn record_overhead(client_event_size: usize) -> usize {
-    4 * (std::mem::size_of::<crate::lan::NetEvent>()
-        + std::mem::size_of::<crate::lan::hub::HostEvent>()
-        + client_event_size
-        + std::mem::size_of::<super::Incoming>())
-        + std::mem::size_of::<super::Delivery>()
-        + 128
+/// The retained-ingress margin one side pays per staged record. Four slots cover
+/// `Vec`'s initial growth and later geometric staging; provider queue storage is
+/// separately charged by the typed ingress channel. This charge covers both main
+/// routes and network-staged work, including boxed identities, so the side passes
+/// the event unions it can stage and nothing else knows their layout.
+pub const fn record_overhead(event_sizes: &[usize]) -> usize {
+    let mut events = std::mem::size_of::<super::Incoming>();
+    let mut i = 0;
+    while i < event_sizes.len() {
+        events += event_sizes[i];
+        i += 1;
+    }
+    4 * events + std::mem::size_of::<super::Delivery>() + 128
 }
 const INGRESS_BUDGET: usize = 16 << 20;
 
@@ -161,14 +163,7 @@ impl Connection {
             ),
         }
     }
-    pub fn new(local: Arc<Local>, side: Side) -> Arc<Self> {
-        Self::new_with_event_size(local, side, CLIENT_EVENT_SIZE_BOUND)
-    }
-    pub fn new_with_event_size(
-        local: Arc<Local>,
-        side: Side,
-        client_event_size: usize,
-    ) -> Arc<Self> {
+    pub fn new(local: Arc<Local>, side: Side, record_overhead: usize) -> Arc<Self> {
         let (ingress, receiver) = byte_channel::channel(INGRESS_BUDGET).unwrap();
         let droppable = local.has_droppable().then(|| {
             let budgets = local.budgets;
@@ -180,6 +175,7 @@ impl Connection {
             }
         });
         Arc::new(Self {
+            record_overhead,
             droppable,
             ingress,
             _ingress_receiver: receiver,
@@ -188,17 +184,12 @@ impl Connection {
             payload_pending: AtomicBool::new(false),
             local,
             side,
-            record_overhead: record_overhead(client_event_size),
             current: Mutex::new(Current {
                 closed: false,
                 epoch: None,
                 player: None,
             }),
         })
-    }
-    #[cfg(test)]
-    pub(super) fn record_overhead(&self) -> usize {
-        self.record_overhead
     }
     /// Retain bytes across arbitrary ingress staging queues and phase changes.
     /// The layout-derived allowance covers envelope and geometric actor staging;

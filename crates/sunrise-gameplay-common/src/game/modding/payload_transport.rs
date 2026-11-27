@@ -8,9 +8,7 @@ use mod_api::{
 };
 use std::sync::Arc;
 use sunrise_protocol::payload_negotiation::Phase;
-use sunrise_sim::raw_payloads::{
-    Body, ClientEvent, Endpoint, Incoming, Prepared, Side, connection::Epoch,
-};
+use sunrise_sim::raw_payloads::{Body, Endpoint, Incoming, Prepared, Side, connection::Epoch};
 
 /// Fits the journal-growth allowance already charged by each prepared operation.
 pub struct Deferred {
@@ -51,9 +49,9 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             })
             .count() as u32
     }
-    fn queue_current_payload<E: ClientEvent>(
+    fn queue_current_payload(
         &mut self,
-        endpoint: Endpoint<E>,
+        endpoint: Endpoint,
         id: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<PayloadAccepted, PayloadSendError> {
@@ -63,9 +61,9 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .ok_or(PayloadSendError::NotNegotiated)?;
         self.queue_payload(endpoint, epoch, id, bytes)
     }
-    fn queue_payload<E: ClientEvent>(
+    fn queue_payload(
         &mut self,
-        endpoint: Endpoint<E>,
+        endpoint: Endpoint,
         epoch: Arc<Epoch>,
         id: &PayloadId,
         bytes: PayloadBytes,
@@ -78,7 +76,7 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(PayloadAccepted::Queued)
     }
     /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
-    fn run_payload<E: ClientEvent>(&mut self, endpoint: Endpoint<E>, mut incoming: Incoming) {
+    fn run_payload(&mut self, endpoint: Endpoint, mut incoming: Incoming) {
         if !incoming.epoch.active() {
             return;
         }
@@ -143,17 +141,17 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PayloadTransportGameExt1<'__sg> for G {}
 
-struct MainContext<'a, 'resources, S: crate::game::SideGame<'resources>, E: ClientEvent> {
+struct MainContext<'a, 'resources, S: crate::game::SideGame<'resources>> {
     game: &'a mut S,
     epoch: &'a Arc<Epoch>,
-    endpoint: Endpoint<E>,
+    endpoint: Endpoint,
     receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
     failure: Option<CallbackFailure>,
     pub resource_lifetime: std::marker::PhantomData<fn(&'resources ()) -> &'resources ()>,
 }
-impl<'__carrier, S: crate::game::SideGame<'__carrier>, E: ClientEvent> IPayloadContext
-    for MainContext<'_, '__carrier, S, E>
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> IPayloadContext
+    for MainContext<'_, '__carrier, S>
 {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
         if !self.epoch.active() || self.disconnect.is_some() {

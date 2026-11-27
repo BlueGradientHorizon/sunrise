@@ -429,13 +429,12 @@ struct EffectsMemo {
     answer: EffectsLayout,
 }
 
-/// One frame's `screen_room` answer and the screen it was taken for: the
-/// layout's inputs ask it more than once a frame, the hook once.
+/// Memoize the left and right room so multiple layout queries fire the hook once per frame.
 #[derive(Clone, Copy, PartialEq)]
 struct RoomMemo {
     frame: u64,
     screen: Screen,
-    room: f32,
+    room: [f32; 2],
 }
 
 /// The open screen's build and what it was made from.
@@ -491,7 +490,7 @@ impl ScreenBuildState {
         &self,
         frame: u64,
         screen: Screen,
-    ) -> Option<f32> {
+    ) -> Option<[f32; 2]> {
         self.room
             .get()
             .filter(|memo| memo.frame == frame && memo.screen == screen)
@@ -503,7 +502,7 @@ impl ScreenBuildState {
         &self,
         frame: u64,
         screen: Screen,
-        room: f32,
+        room: [f32; 2],
     ) {
         self.room.set(Some(RoomMemo {
             frame,

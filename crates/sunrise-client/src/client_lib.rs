@@ -141,7 +141,6 @@ pub use sunrise_sim::native_client_hooks;
 pub use sunrise_sim::native_stack_hooks;
 pub use sunrise_sim::neoforge_mob_maps;
 pub mod net;
-pub use sunrise_sim::net_ingress;
 pub use sunrise_sim::nether_portal;
 pub mod no_resources;
 pub use sunrise_sim::offline_name;

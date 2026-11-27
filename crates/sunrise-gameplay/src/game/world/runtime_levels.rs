@@ -9,9 +9,9 @@
 //! the server thread in the same pass, so a reopen is applied only after the files are gone.
 use super::{Dim, world_loading::ModStem};
 use mod_api::{LevelRef, RuntimeBiomeSource, RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::Path;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use sunrise_core::{LevelKey, identifier::Identifier};
 use sunrise_level::chunk::{ExtraLevel, ExtraLevels, LevelShape};
 use sunrise_sim::vanillagen::{TerrainResources, shared_biome_source_data, shared_resource_data};
@@ -333,36 +333,88 @@ fn mod_stem(
     Ok(serde_json::json!({"type": dimension_type, "generator": generator}))
 }
 
-/// What runtime levels' opens leaked into the game's `&'static` tables, kept so that every later
-/// open reuses it: opening and unloading one id over and over leaks once (#4019).
+/// Maximum recent extra-level shape tables retained for reuse (#1367).
+const RETAINED_TABLE_CAP: usize = 64;
+
+/// Eviction drops the cache's Arc while readers keep their snapshots.
+#[derive(Default)]
+struct ShapeTableCache {
+    tables: VecDeque<Arc<[ExtraLevel]>>,
+}
+
+impl ShapeTableCache {
+    fn intern(&mut self, levels: Vec<ExtraLevel>) -> Arc<[ExtraLevel]> {
+        if levels.is_empty() {
+            return Arc::from([]);
+        }
+        if let Some(index) = self
+            .tables
+            .iter()
+            .position(|table| table.as_ref() == levels.as_slice())
+        {
+            let table = self.tables.remove(index).expect("the table was found");
+            self.tables.push_back(Arc::clone(&table));
+            return table;
+        }
+        let table: Arc<[ExtraLevel]> = Arc::from(levels);
+        if self.tables.len() >= RETAINED_TABLE_CAP {
+            self.tables.pop_front();
+        }
+        self.tables.push_back(Arc::clone(&table));
+        table
+    }
+}
+
+/// Runtime levels share retained facts by startup-known type and shape tables by layout.
 #[derive(Default)]
 struct Leaked {
-    /// A level's names and dimension type, by its id and the dimension type it was opened with.
-    /// `resolve_type` reads only startup data, so the same pair always gives the same facts.
-    levels: HashMap<(String, String), (&'static str, &'static str, &'static DimensionFacts)>,
+    types: HashMap<String, &'static DimensionFacts>,
+    tables: ShapeTableCache,
 }
 
 static LEAKED: LazyLock<Mutex<Leaked>> = LazyLock::new(Mutex::default);
 
-/// The names and facts of the level `id` of the dimension type `dimension_type`, leaked on its
-/// first open only.
+/// The names and facts of the level `id` of the startup-known `dimension_type`.
 fn leaked_level(
     id: &str,
     dimension_type: &str,
     facts: DimensionFacts,
 ) -> (&'static str, &'static str, &'static DimensionFacts) {
-    let mut leaked = LEAKED.lock().unwrap_or_else(|e| e.into_inner());
-    *leaked
-        .levels
-        .entry((id.to_owned(), dimension_type.to_owned()))
-        .or_insert_with(|| {
-            (
-                id.to_owned().leak(),
-                dimension_type.to_owned().leak(),
-                Box::leak(Box::new(facts)),
-            )
+    let key = mod_api::__private::dimension_key(id);
+    let id_name = mod_api::__private::dimension_id(key).expect("the game's table made the key");
+    let type_name = DimensionFacts::vanilla(dimension_type)
+        .map(|facts| facts.id.as_str())
+        .or_else(|| {
+            mod_dimensions()
+                .iter()
+                .find(|dimension| dimension.id == dimension_type)
+                .map(|dimension| dimension.id.as_str())
         })
+        .expect("runtime level types are known at startup");
+    let mut leaked = LEAKED.lock().unwrap_or_else(|e| e.into_inner());
+    let facts = *leaked
+        .types
+        .entry(type_name.to_owned())
+        .or_insert_with(|| Box::leak(Box::new(facts)));
+    (id_name, type_name, facts)
 }
+
+fn retained_table(levels: Vec<ExtraLevel>) -> Arc<[ExtraLevel]> {
+    LEAKED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .tables
+        .intern(levels)
+}
+
+#[cfg(feature = "test-support")]
+pub fn retained_metadata_counts() -> (usize, usize) {
+    let leaked = LEAKED.lock().unwrap_or_else(|e| e.into_inner());
+    (leaked.types.len(), leaked.tables.tables.len())
+}
+
+#[cfg(feature = "test-support")]
+pub const RETAINED_TABLE_LIMIT: usize = RETAINED_TABLE_CAP;
 
 /// Resolve a runtime level against its registered dimension type.
 fn resolve_type(id: &str, dimension_type: &str) -> Option<(LevelShape, DimensionFacts)> {
@@ -917,7 +969,7 @@ impl crate::game::ServerGame<'_> {
             dimension_type,
             shape,
         });
-        self.server.level_shapes.extra = ExtraLevels::new(extras);
+        self.server.level_shapes.extra = ExtraLevels::from_shared(retained_table(extras));
         if let Some(host) = self.server.lan.as_mut() {
             host.hub.config.levels = self.server.level_shapes.clone();
             host.hub.config.level_seeds = self.server.levels.0.runtime.seeds();
@@ -1029,7 +1081,7 @@ impl crate::game::ServerGame<'_> {
             .copied()
             .filter(|level| level.id != id)
             .collect();
-        self.server.level_shapes.extra = ExtraLevels::new(extras);
+        self.server.level_shapes.extra = ExtraLevels::from_shared(retained_table(extras));
         if let Some(host) = self.server.lan.as_mut() {
             host.hub.config.levels = self.server.level_shapes.clone();
             host.hub.config.level_seeds = self.server.levels.0.runtime.seeds();
@@ -1048,5 +1100,95 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<(&Generate, i64)> {
         let level = &self.server.levels.0.runtime.entries.get(dim.id())?.level;
         Some((&level.generate, level.seed))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Weak};
+
+    #[test]
+    fn evicted_shape_tables_free_after_the_last_reader() {
+        use sunrise_level::chunk::{ExtraLevel, ExtraLevels, LevelShape, LevelShapes};
+
+        let limit = super::RETAINED_TABLE_CAP;
+        let mut cache = super::ShapeTableCache::default();
+        let layout = |index: usize| ExtraLevel {
+            id: "cycle:a",
+            dimension_type: "minecraft:overworld",
+            shape: LevelShape {
+                logical_height: LevelShape::OVERWORLD.logical_height - index as i32,
+                ..LevelShape::OVERWORLD
+            },
+        };
+        let mut tracked: Vec<Weak<[ExtraLevel]>> = Vec::new();
+        let mut first_reader = None;
+        let mut first_table = None;
+        let mut oldest = None;
+        let mut live_after_round = None;
+
+        for round in 0..3 {
+            for index in 0..=limit {
+                let table = cache.intern(vec![layout(index)]);
+                let weak = Arc::downgrade(&table);
+                if !tracked.iter().any(|known| Weak::ptr_eq(known, &weak)) {
+                    tracked.push(weak.clone());
+                }
+                if index == 1 {
+                    oldest = Some(weak.clone());
+                }
+                if round == 0 && index == 0 {
+                    first_table = Some(weak);
+                    let shapes = LevelShapes {
+                        extra: ExtraLevels::from_shared(Arc::clone(&table)),
+                        ..LevelShapes::VANILLA
+                    };
+                    first_reader = Some(shapes.clone());
+                }
+            }
+
+            let live = tracked
+                .iter()
+                .filter(|table| table.strong_count() > 0)
+                .count();
+            assert_eq!(
+                live,
+                limit + 1,
+                "the cache retains {limit} tables and the evicted first table has one reader"
+            );
+            if let Some(previous) = live_after_round {
+                assert_eq!(live, previous, "outstanding storage grew on round {round}");
+            }
+            live_after_round = Some(live);
+        }
+
+        let first_table = first_table.expect("the first table was allocated");
+        assert_eq!(
+            first_reader.as_ref().unwrap().extra[0],
+            layout(0),
+            "a reader still sees its immutable snapshot after cache eviction"
+        );
+        drop(first_reader);
+        assert!(
+            first_table.upgrade().is_none(),
+            "eviction plus the final reader drop leaves no strong owner"
+        );
+        assert_eq!(
+            tracked
+                .iter()
+                .filter(|table| table.strong_count() > 0)
+                .count(),
+            limit,
+            "only the bounded cache's tables remain"
+        );
+
+        // Layout 0 fell out of the cache, so layout 1 is now the oldest entry.
+        let promoted = Arc::downgrade(&cache.intern(vec![layout(1)]));
+        assert!(
+            oldest.unwrap().ptr_eq(&promoted),
+            "a cache hit reuses the table"
+        );
+        drop(cache.intern(vec![layout(0)]));
+        assert!(promoted.upgrade().is_some(), "a hit promotes the table");
     }
 }

@@ -773,13 +773,13 @@ pub struct Built {
     pub catalog: internals::Catalog,
 }
 
-/// Compiles the mods (`resolution`'s order, each with its installed mod dependencies) and the
-/// launcher's executable against the prebuilt game `package`, by `route` ([`Route::of`] the same
-/// `projects`), under `builds` (`native/prebuilt-build`), in folders keyed by the SDK's inputs
-/// ([`kept_build`]): the API route in `api-<key>`, the engine route in `rustc-<key>`, each mod's
-/// library reused only while its own inputs are unchanged, and the registry route's cargo build in
-/// `<key>`, staged per mods folder (`mods`). Returns the executable, its dynamic libraries and
-/// the build's validated internals catalog.
+/// Compiles the mods (`resolution`'s order, each with its installed mod dependencies) against
+/// the prebuilt game `package`, by `route` ([`Route::of`] the same `projects`), under `builds`
+/// (`native/prebuilt-build`), in folders keyed by the SDK's inputs ([`kept_build`]): the API route
+/// in `api-<key>`, the engine route in `rustc-<key>`, each mod's library reused only while its own
+/// inputs are unchanged, and the registry route's cargo build in `<key>`, staged per mods folder
+/// (`mods`). Returns the SDK's unchanged game executable, the runtime and compiled mod libraries
+/// to install beside it, and the build's validated internals catalog.
 // Unlike the source workspace, this route invokes rustc with only selected --extern
 // libraries; it does not resolve or compile arbitrary transitive Cargo dependencies.
 #[allow(clippy::too_many_arguments)]
@@ -851,15 +851,23 @@ pub fn compile(
     let game = &package.whole(&builds.with_file_name("prebuilt-package"))?;
     if route == Route::Registry {
         let kept = builds.join(&key);
+        own_folder(builds, &kept)?;
+        let target = kept.join("target");
+        // Check an existing target before restaging. Cargo still creates an absent target
+        // itself, after consent. Inspect the directory entry so dangling links are refused too.
+        match fs::symlink_metadata(&target) {
+            Ok(_) => own_folder(&kept, &target)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(error) => return Err(format!("{}: {error}", target.display())),
+        }
         // Stamped before it fills, so a build that fails still leaves an aged unit.
-        fs::create_dir_all(&kept).map_err(|e| e.to_string())?;
         crate::host::mark_used(&kept)?;
         let stage = kept.join(format!("stage-{}", short_hash(&mods_key(mods)?)));
         let built = super::registry_compile::stage_and_cargo(
             rust,
             game,
             &stage,
-            &kept.join("target"),
+            &target,
             projects,
             declared,
             resolution,
@@ -2050,6 +2058,151 @@ mod tests {
                 "{error}"
             );
         }
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    #[ignore = "daily"]
+    fn registry_refuses_linked_kept_and_target_folders_before_restaging() {
+        let scratch = tempfile::tempdir().unwrap();
+        let work = scratch.path();
+        let package = Package::at(&work.join("sdk"));
+        let commit = crate::tests::A;
+        let mut identity = published_identity();
+        identity["commit"] = commit.into();
+        fs::create_dir_all(package.runtime.join("deps")).unwrap();
+        fs::create_dir_all(&package.api).unwrap();
+        fs::create_dir_all(&package.engine).unwrap();
+        fs::write(package.runtime.join(IDENTITY), identity.to_string()).unwrap();
+        fs::write(package.runtime.join("deps/fixture.rmeta"), "").unwrap();
+        fs::write(
+            package.api.join(internals::INTERNALS),
+            serde_json::json!({"schema": 1, "build": {"commit": commit}, "internals": []})
+                .to_string(),
+        )
+        .unwrap();
+        fs::write(
+            package.api.join(crate::api_route::TEMPLATE),
+            "/* MOD_ENTRIES */\n/* BUILT_MODS */\n",
+        )
+        .unwrap();
+        let mods = work.join("mods");
+        let project = mods.join("example");
+        crate::tests::write_bundle(&project, "example", "");
+        fs::write(project.join("build.rs"), "fn main() {}").unwrap();
+        fs::write(
+            project.join("Cargo.toml"),
+            "[package]\nname='example'\nversion='0.1.0'\n[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\n",
+        )
+        .unwrap();
+        let bundle = crate::bundle_in(&project).unwrap().unwrap();
+        let projects = [api::Project::read(&bundle).unwrap()];
+        let declared = [Vec::new()];
+        let resolution = dependencies::resolve(&[dependencies::Mod {
+            id: &bundle.manifest.id,
+            version: &bundle.manifest.version,
+            dependencies: &declared[0],
+            code: true,
+        }])
+        .unwrap();
+        let route = Route::of(&projects);
+        assert_eq!(route, Route::Registry);
+        let rust = crate::rust::tests::unpacked(work.join("toolchain"), "test");
+        let key = kept_build(
+            rust.target(),
+            crate::contract::TOOL_COMMIT,
+            &package,
+            commit,
+        )
+        .unwrap();
+        let build = |builds: &Path| {
+            compile(
+                &rust,
+                &package,
+                builds,
+                &mods,
+                route,
+                &projects,
+                &declared,
+                &resolution,
+                None,
+                &|_, _, _| {},
+                false,
+            )
+            .err()
+            .expect("the fixture has no SDK mod_api library to compile against")
+        };
+        let stage_name = format!("stage-{}", short_hash(&mods_key(&mods).unwrap()));
+        let check_links = |name: &str, link: &dyn Fn(&Path, &Path) -> std::io::Result<()>| {
+            let builds = work.join(name);
+            let kept = builds.join(&key);
+            let outside = work.join(format!("{name}-outside"));
+            fs::create_dir(&builds).unwrap();
+            fs::create_dir_all(outside.join(&stage_name)).unwrap();
+            fs::write(outside.join(&stage_name).join("keep"), "outside").unwrap();
+            // As in the direct route's fixture, only a Windows privilege refusal may skip a
+            // symlink. The junction case below does not require that privilege.
+            match link(&outside, &kept) {
+                Ok(()) => (),
+                Err(error) if cfg!(windows) && error.raw_os_error() == Some(1314) => return,
+                Err(error) => panic!("{error}"),
+            }
+            let error = build(&builds);
+            assert!(
+                error.contains(&format!("{}: not a folder of its own", kept.display())),
+                "{error}"
+            );
+            assert_eq!(
+                fs::read_to_string(outside.join(&stage_name).join("keep")).unwrap(),
+                "outside"
+            );
+            #[cfg(unix)]
+            fs::remove_file(&kept).unwrap();
+            #[cfg(windows)]
+            fs::remove_dir(&kept).unwrap();
+
+            let stage = kept.join(&stage_name);
+            fs::create_dir_all(&stage).unwrap();
+            fs::write(stage.join("keep"), "stage").unwrap();
+            let target = kept.join("target");
+            link(&outside, &target).unwrap();
+            let error = build(&builds);
+            assert!(
+                error.contains(&format!("{}: not a folder of its own", target.display())),
+                "{error}"
+            );
+            assert_eq!(fs::read_to_string(stage.join("keep")).unwrap(), "stage");
+        };
+        #[cfg(unix)]
+        check_links("symlink", &|to, at| std::os::unix::fs::symlink(to, at));
+        #[cfg(windows)]
+        {
+            check_links("symlink", &|to, at| {
+                std::os::windows::fs::symlink_dir(to, at)
+            });
+            check_links("junction", &|to, at| {
+                let made = Command::new("cmd.exe")
+                    .args(["/D", "/C", "mklink", "/J"])
+                    .arg(at)
+                    .arg(to)
+                    .output()
+                    .unwrap();
+                assert!(made.status.success(), "mklink /J failed: {made:?}");
+                Ok(())
+            });
+        }
+        // Ordinary paths get past the guard and restage the mod before the intentionally
+        // incomplete SDK is refused. No Cargo target is created on that early refusal.
+        let builds = work.join("ordinary");
+        let error = build(&builds);
+        assert!(error.contains("no mod_api"), "{error}");
+        let kept = builds.join(&key);
+        assert!(
+            kept.join(stage_name)
+                .join("native-api/example/src/lib.rs")
+                .is_file()
+        );
+        assert!(!kept.join("target").exists());
     }
 
     #[test]

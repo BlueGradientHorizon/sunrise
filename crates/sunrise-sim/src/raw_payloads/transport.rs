@@ -12,43 +12,16 @@ pub struct Transport {
     pub connection: Option<Arc<Connection>>,
 }
 impl Transport {
-    pub fn capture(side: Side) -> Result<Arc<Self>, String> {
-        Ok(Self::new(Local::capture(side)?, side))
-    }
-    pub fn capture_with_event_size(
-        side: Side,
-        client_event_size: usize,
-    ) -> Result<Arc<Self>, String> {
-        Ok(Self::new_with_event_size(
-            Local::capture(side)?,
-            side,
-            client_event_size,
-        ))
+    pub fn capture(side: Side, record_overhead: usize) -> Result<Arc<Self>, String> {
+        Ok(Self::new(Local::capture(side)?, side, record_overhead))
     }
     /// A listener shares Local, never mutable connection epochs, across guests.
-    pub fn new(local: Arc<Local>, side: Side) -> Arc<Self> {
+    pub fn new(local: Arc<Local>, side: Side, record_overhead: usize) -> Arc<Self> {
         if !local.has_declarations() {
             return Self::empty();
         }
         Arc::new(Self {
-            connection: Some(Connection::new(local.clone(), side)),
-            local,
-        })
-    }
-    pub fn new_with_event_size(
-        local: Arc<Local>,
-        side: Side,
-        client_event_size: usize,
-    ) -> Arc<Self> {
-        if !local.has_declarations() {
-            return Self::empty();
-        }
-        Arc::new(Self {
-            connection: Some(Connection::new_with_event_size(
-                local.clone(),
-                side,
-                client_event_size,
-            )),
+            connection: Some(Connection::new(local.clone(), side, record_overhead)),
             local,
         })
     }

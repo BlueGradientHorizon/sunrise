@@ -321,7 +321,7 @@ pub(crate) mod tests {
                 PlayerSender,
                 viewed_levels::areas::{ChunkArea, ChunkAreaMode},
             },
-            raw_payloads::{Side, Transport},
+            raw_payloads::{Side, Transport, connection::record_overhead},
         };
         use {
             sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
@@ -395,7 +395,7 @@ pub(crate) mod tests {
             // server startup does before any block-entity load callbacks need it.
             game.native_lifecycle_open_started();
             game.native_lifecycle_world_ready();
-            let transport = Transport::capture(Side::Server).unwrap();
+            let transport = Transport::capture(Side::Server, record_overhead(&[])).unwrap();
             transport
                 .accept(transport.local.manifest.entries())
                 .unwrap();
