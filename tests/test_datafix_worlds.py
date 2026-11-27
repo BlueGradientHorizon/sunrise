@@ -112,6 +112,21 @@ class FakeOutput(list):
         self.closed = True
 
 
+class BlockingOutput:
+    """A live process's stdout: stays open until `release` is set, then ends at EOF."""
+
+    def __init__(self):
+        self.release = threading.Event()
+        self.closed = False
+
+    def __iter__(self):
+        self.release.wait(5)
+        return iter(())
+
+    def close(self):
+        self.closed = True
+
+
 class ServerStartupTests(unittest.TestCase):
     def test_a_startup_that_fails_stops_java_and_raises_the_original_error(self):
         process = mock.Mock(stdout=FakeOutput())
@@ -133,15 +148,29 @@ class ServerStartupTests(unittest.TestCase):
         self.assertTrue(process.stdout.closed)
 
     def test_a_failing_cleanup_does_not_replace_the_startup_error(self):
-        process = mock.Mock(stdout=FakeOutput())
+        stdout = BlockingOutput()
+        self.addCleanup(stdout.release.set)
+        process = mock.Mock(stdout=stdout)
         process.poll.return_value = None
         process.kill.side_effect = OSError('kill failed')
+        started = []
+        real_start = threading.Thread.start
+
+        def record_start(thread):
+            started.append(thread)
+            return real_start(thread)
+
         with tempfile.TemporaryDirectory() as temp, \
                 mock.patch.object(worlds, 'subprocess', SimpleNamespace(Popen=lambda *a, **k: process, PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT)), \
+                mock.patch.object(threading.Thread, 'start', autospec=True, side_effect=record_start), \
                 mock.patch.object(worlds.Server, 'wait', side_effect=TimeoutError('no Done')), \
                 self.assertRaisesRegex(TimeoutError, 'no Done'):
             worlds.Server(Path(temp), Path('server.jar'), 12345)
-        self.assertFalse(process.stdout.closed)   # Java may still run: its pipe is not closed under the reader
+        self.assertFalse(stdout.closed)   # Java may still run: its pipe is not closed under the reader
+        stdout.release.set()
+        for thread in started:
+            thread.join(5)
+        self.assertTrue(stdout.closed)
 
 
 class RealChildServerTests(unittest.TestCase):
@@ -203,6 +232,42 @@ class RealChildServerTests(unittest.TestCase):
         self.assertNotEqual(child.returncode, 0)
         self.assert_reaped_and_closed(child)
 
+    def test_a_pump_that_finishes_after_the_join_deadline_still_closes_stdout(self):
+        server, error, child = self.start('import sys; sys.stdin.readline(); print("late", flush=True)')
+        self.assertIsNone(error)
+        entered = threading.Event()
+        release = threading.Event()
+        self.addCleanup(release.set)
+        real_put = server.queue.put
+
+        def slow_put(line):
+            entered.set()
+            release.wait(5)
+            return real_put(line)
+
+        server.queue.put = slow_put
+        pump = server._pump_thread
+        real_join = pump.join
+
+        def expired_join(timeout=None):
+            self.assertTrue(entered.wait(5), 'pump did not reach queue.put before stop joined it')
+            # Simulate the five-second join expiring while the pump is still draining.
+            return None
+
+        pump.join = expired_join
+        try:
+            server.stop(save=True)
+            self.assertEqual(child.returncode, 0)
+            self.assertTrue(child.stdin.closed)
+            self.assertTrue(pump.is_alive())
+            self.assertFalse(child.stdout.closed)
+        finally:
+            release.set()
+            real_join(5)
+        self.assertFalse(pump.is_alive())
+        self.assertEqual(server.lines, ['late'])
+        self.assert_reaped_and_closed(child)
+
 
 class PlayerIdleTests(unittest.TestCase):
     def player(self, receive, name='Bot', problems=None):
@@ -211,6 +276,7 @@ class PlayerIdleTests(unittest.TestCase):
         player.name = name
         player.problems = problems
         player.sock = mock.Mock()
+        player.threshold = -1
         player.stop = threading.Event()
         player.protocol = 340
         player.receive = receive
@@ -257,11 +323,44 @@ class PlayerIdleTests(unittest.TestCase):
                 self.assertEqual(self.run_on_thread(receive, problems), [])
                 self.assertEqual(problems, [])
 
-    def test_a_disconnect_while_handling_a_packet_ends_the_loop_without_a_problem(self):
+    def test_a_send_timeout_while_handling_a_packet_is_recorded_and_surfaces(self):
+        teleport = struct.pack('>dddffB', 1.0, 64.0, 2.0, 0.0, 0.0, 0) + worlds.varint(7)
+        for label, packet, pid_text in (
+                ('keep-alive', (0x1F, b'12345678'), '0x1f'),
+                ('teleport', (0x2F, teleport), '0x2f')):
+            with self.subTest(label):
+                packets = iter([packet])
+                problems = []
+                player = self.player(lambda: next(packets), name='Upgrader', problems=problems)
+                player.sock.sendall.side_effect = socket.timeout('timed out')
+                seen = []
+                with mock.patch.object(threading, 'excepthook', seen.append):
+                    thread = threading.Thread(target=player.idle)
+                    thread.start()
+                    thread.join(5)
+                self.assertFalse(thread.is_alive())
+                self.assertEqual([hook.exc_type for hook in seen], [socket.timeout])
+                self.assertEqual(problems, [(f'bot Upgrader packet {pid_text}', [f'{socket.timeout.__name__}: timed out'])])
+
+    def test_an_unexpected_send_disconnect_while_handling_a_packet_is_recorded_and_surfaces(self):
         packets = iter([(0x1F, b'12345678')])
         problems = []
-        player = self.player(lambda: next(packets), problems=problems)
-        player.send = mock.Mock(side_effect=ConnectionResetError('reset'))
+        player = self.player(lambda: next(packets), name='Upgrader', problems=problems)
+        player.sock.sendall.side_effect = ConnectionResetError('reset')
+        with self.assertRaises(ConnectionResetError):
+            player.idle()
+        self.assertEqual(problems, [('bot Upgrader packet 0x1f', ['ConnectionResetError: reset'])])
+
+    def test_a_send_disconnect_during_shutdown_ends_the_loop_without_a_problem(self):
+        packets = iter([(0x1F, b'12345678')])
+        problems = []
+        player = self.player(lambda: next(packets), name='Upgrader', problems=problems)
+
+        def send_while_leaving(*args):
+            player.stop.set()
+            raise ConnectionResetError('reset')
+
+        player.send = mock.Mock(side_effect=send_while_leaving)
         player.idle()
         self.assertEqual(problems, [])
 

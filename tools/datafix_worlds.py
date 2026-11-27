@@ -229,10 +229,15 @@ class Server:
             raise
 
     def _pump(self):
-        for line in self.process.stdout:
-            line = line.rstrip('\n')
-            self.lines.append(line)
-            self.queue.put(line)
+        try:
+            for line in self.process.stdout:
+                line = line.rstrip('\n')
+                self.lines.append(line)
+                self.queue.put(line)
+        finally:
+            if self.process.stdout is not None:
+                with contextlib.suppress(OSError, ValueError):
+                    self.process.stdout.close()
 
     def wait(self, pattern, timeout=60):
         end = time.time() + timeout
@@ -273,13 +278,13 @@ class Server:
                 if self.process.stdin is not None:
                     with contextlib.suppress(OSError, ValueError):   # already closed, or a pipe broken by the exit
                         self.process.stdin.close()
-                # stdout is closed only once Java is gone and the pump has seen its EOF: closing it under an active reader
-                # would block or race. A process that could not be killed keeps its pipe.
+                # A started pump owns closing stdout in its finally block once it hits EOF, even if it finishes after
+                # join() returns. If no pump started, stop() closes stdout once Java is gone.
                 if self.process.poll() is not None:
                     pump = getattr(self, '_pump_thread', None)
                     if pump is not None:
                         pump.join(5)
-                    if (pump is None or not pump.is_alive()) and self.process.stdout is not None:
+                    elif self.process.stdout is not None:
                         with contextlib.suppress(OSError, ValueError):
                             self.process.stdout.close()
 

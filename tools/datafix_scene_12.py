@@ -828,9 +828,10 @@ def make_player(Bot, varint, parse_varint, mcstring):
                     break
                 try:
                     self.handle(pid, data)
-                except (EOFError, OSError):
-                    break
                 except Exception as error:
+                    # Expected shutdown: Bot.leave() sets self.stop before closing the socket.
+                    if isinstance(error, (EOFError, OSError)) and self.stop.is_set():
+                        break
                     # On the keep-alive thread this would reach only threading.excepthook: record it in the run too.
                     if self.problems is not None:
                         self.problems.append((f'bot {self.name} packet 0x{pid:02x}', [f'{type(error).__name__}: {error}']))
