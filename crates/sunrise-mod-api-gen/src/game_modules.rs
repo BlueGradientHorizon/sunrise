@@ -1,4 +1,5 @@
 //! The game's generated host forwarders, written into a source copy for tools that can't read OUT_DIR.
+use mod_source::modules::{gate_items, generated_include};
 use std::{fs, path::Path};
 
 const HOST: &str = "include!(concat!(env!(\"OUT_DIR\"), \"/game_host_generated.rs\"));";
@@ -19,16 +20,7 @@ pub(crate) fn expand(path: &Path, source: &str) -> Result<String, String> {
             if lines[line].trim_end_matches(['\r', '\n']) != HOST {
                 continue;
             }
-            let root = path
-                .canonicalize()
-                .map_err(|e| e.to_string())?
-                .ancestors()
-                .nth(6)
-                .ok_or("game host source outside the game tree")?
-                .to_owned();
-            let generated = crate::build::game_host_generated(&root)?;
-            let generated = syn::parse_file(&generated).map_err(|e| e.to_string())?;
-            lines[line] = prettyplease::unparse(&generated);
+            lines[line] = prettyplease::unparse(&generated_host(path)?);
         }
     }
     Ok(lines.concat())
@@ -48,14 +40,33 @@ pub fn materialize_generated_host(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// `source` parsed once, with the host forwarders' include replaced by the generated items in
+/// the tree. Spans address `source`, so an edit that needs them uses [`expand`] instead.
 pub(crate) fn parse(path: &Path, source: &str) -> Result<syn::File, String> {
-    syn::parse_file(&expand(path, source)?).map_err(|e| format!("{}: {e}", path.display()))
+    let mut file = syn::parse_file(source).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut items = Vec::with_capacity(file.items.len());
+    for item in file.items {
+        match generated_include(&item) {
+            Some((name, attrs)) if name == crate::build::HOST_OUTPUT => {
+                items.extend(gate_items(generated_host(path)?.items, attrs));
+            }
+            _ => items.push(item),
+        }
+    }
+    file.items = items;
+    Ok(file)
 }
 
-/// [`parse`] for a walk that reads module declarations and never bodies: through the
-/// interface cache, which `scan` then reuses.
-pub(crate) fn parse_signatures(path: &Path, source: &str) -> Result<syn::File, String> {
-    syn::parse_file(&expand(path, source)?).map_err(|error| format!("{}: {error}", path.display()))
+/// The generated forwarders of the game file at `path`, parsed.
+fn generated_host(path: &Path) -> Result<syn::File, String> {
+    let root = path
+        .canonicalize()
+        .map_err(|e| e.to_string())?
+        .ancestors()
+        .nth(6)
+        .ok_or("game host source outside the game tree")?
+        .to_owned();
+    syn::parse_file(&crate::build::game_host_generated(&root)?).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

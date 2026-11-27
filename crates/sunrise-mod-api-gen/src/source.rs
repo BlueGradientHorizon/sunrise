@@ -56,7 +56,7 @@ pub(crate) fn module_files(
         dir,
         every_build,
         false,
-        crate::game_modules::parse_signatures,
+        crate::game_modules::parse,
     )
 }
 

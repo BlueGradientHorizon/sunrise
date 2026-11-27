@@ -7,6 +7,8 @@ use std::{
 };
 use syn::{Attribute, Item, Meta, UseTree, Visibility};
 
+use crate::modules::{gate_items, generated_include};
+
 /// The first of `values` this tool's own target has, as `cfg!` saw it when the tool was built.
 macro_rules! built_for {
     ($key:ident: $($value:literal),+) => {
@@ -636,24 +638,24 @@ impl<'a> Index<'a> {
         self.expand_includes(file.items)
     }
 
-    /// `items` with each `include!` of a generated file replaced by that file's items.
+    /// `items` with each `include!` of a generated file replaced by that file's items, under the
+    /// invocation's `cfg` gates.
     fn expand_includes(&self, items: Vec<Item>) -> Result<Vec<Item>, String> {
         let mut out = Vec::new();
         for item in items {
             match &item {
                 Item::Macro(mac) if mac.mac.path.is_ident("include") => {
-                    let tokens = mac.mac.tokens.to_string();
-                    // The wire impls are generated from what this reads, so it never reads them.
-                    if tokens.contains("wire_") {
-                        continue;
-                    }
-                    let (name, source) = self
-                        .included
-                        .iter()
-                        .find(|(name, _)| tokens.contains(name))
-                        .ok_or_else(|| format!("include!({tokens}) is not a generated file"))?;
+                    let (name, source, attrs) = generated_include(&item)
+                        .and_then(|(file, attrs)| {
+                            let (name, source) =
+                                self.included.iter().find(|(name, _)| *name == file)?;
+                            Some((name, source, attrs))
+                        })
+                        .ok_or_else(|| {
+                            format!("include!({}) is not a generated file", mac.mac.tokens)
+                        })?;
                     let file = syn::parse_file(source).map_err(|e| format!("{name}: {e}"))?;
-                    out.extend(file.items);
+                    out.extend(gate_items(file.items, attrs));
                 }
                 _ => out.push(item),
             }
@@ -1498,6 +1500,77 @@ mod index_tests {
             Some(vec!["z".into(), "y".into()])
         );
         assert_eq!(resolves(lib, &["z", "w"], "Hidden"), None);
+    }
+
+    /// The index of a one-crate fixture whose `lib.rs` is `lib`, with `generated` as the files a
+    /// build script would write; the root module's id on success.
+    fn index_of(lib: &str, generated: &[(&str, &str)]) -> Result<usize, String> {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("k/src")).unwrap();
+        fs::write(dir.path().join("k/src/lib.rs"), lib).unwrap();
+        let mut index = Index::new(dir.path(), generated, &[("k", "k/src")]);
+        index.module("k", &[])
+    }
+
+    #[test]
+    fn a_generated_include_keeps_its_cfg_gates_and_its_items_own() {
+        let os = std::env::consts::OS;
+        let on = format!("#[cfg(target_os = \"{os}\")]");
+        let off = format!("#[cfg(not(target_os = \"{os}\"))]");
+        let fragment =
+            format!("pub struct Plain;\n{on} pub struct ItemOn;\n{off} pub struct ItemOff;");
+        let lib = format!(
+            "{on} include!(concat!(env!(\"OUT_DIR\"), \"/gen_on.rs\"));\n\
+             {off} include!(concat!(env!(\"OUT_DIR\"), \"/gen_off.rs\"));"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("k/src")).unwrap();
+        fs::write(dir.path().join("k/src/lib.rs"), lib).unwrap();
+        let generated = [
+            ("gen_on.rs", fragment.as_str()),
+            ("gen_off.rs", fragment.as_str()),
+        ];
+        let mut index = Index::new(dir.path(), &generated, &[("k", "k/src")]);
+        let root = index.module("k", &[]).unwrap();
+        // The gate of the include and the gate of an item in the fragment both apply.
+        for (name, found) in [("Plain", true), ("ItemOn", true), ("ItemOff", false)] {
+            assert_eq!(index.resolve(root, name).is_ok(), found, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_generated_include_under_a_gate_that_is_off_defines_nothing() {
+        let os = std::env::consts::OS;
+        let lib = format!(
+            "#[cfg(not(target_os = \"{os}\"))] include!(concat!(env!(\"OUT_DIR\"), \"/gen.rs\"));"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("k/src")).unwrap();
+        fs::write(dir.path().join("k/src/lib.rs"), lib).unwrap();
+        let generated = [("gen.rs", "pub struct Gated;")];
+        let mut index = Index::new(dir.path(), &generated, &[("k", "k/src")]);
+        let root = index.module("k", &[]).unwrap();
+        assert!(index.resolve(root, "Gated").is_err());
+    }
+
+    #[test]
+    fn only_the_exact_generated_basename_in_the_out_dir_shape_is_expanded() {
+        let generated = [("gen.rs", "pub struct Gen;")];
+        let real = "include!(concat!(env!(\"OUT_DIR\"), \"/gen.rs\"));";
+        assert!(index_of(real, &generated).is_ok());
+        // A look-alike beside a real one is an ordinary include, not generated code.
+        for lookalike in [
+            "include!(concat!(env!(\"OUT_DIR\"), \"/not_gen.rs\"));",
+            "include!(concat!(env!(\"OUT_DIR\"), \"/gen.rs.orig\"));",
+            "include!(concat!(env!(\"OUT_DIR\"), \"/nested/gen.rs\"));",
+            "include!(concat!(env!(\"MANIFEST\"), \"/gen.rs\"));",
+            "include!(\"gen.rs\");",
+            "include!(\"wire_gen.rs\");",
+        ] {
+            let lib = format!("{real}\n{lookalike}");
+            let error = index_of(&lib, &generated).expect_err(lookalike);
+            assert!(error.contains("is not a generated file"), "{error}");
+        }
     }
 
     #[test]

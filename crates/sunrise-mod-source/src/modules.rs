@@ -301,17 +301,7 @@ pub fn test_only(attrs: &[syn::Attribute]) -> bool {
 /// A bare `include!` is the standard macro unless `shadowed` ([`include_shadowed`]); one written
 /// `std::include!` or `core::include!` always is. Any other invocation is an opaque macro.
 pub fn literal_include(item: &Item, shadowed: bool) -> Option<(syn::LitStr, &[syn::Attribute])> {
-    let Item::Macro(item) = item else { return None };
-    let path = &item.mac.path;
-    let standard = if path.leading_colon.is_none() && path.is_ident("include") {
-        !shadowed
-    } else {
-        let segments: Vec<_> = path.segments.iter().map(|s| s.ident.to_string()).collect();
-        matches!(segments.as_slice(), [root, name] if (root == "std" || root == "core") && name == "include")
-    };
-    if !standard {
-        return None;
-    }
+    let item = standard_include(item, shadowed)?;
     let path = item
         .mac
         .parse_body_with(|input: ParseStream<'_>| {
@@ -321,6 +311,71 @@ pub fn literal_include(item: &Item, shadowed: bool) -> Option<(syn::LitStr, &[sy
         })
         .ok()?;
     Some((path, &item.attrs))
+}
+
+/// An item-position `include!(concat!(env!("OUT_DIR"), "/<file>"))` of a build script's output,
+/// with the file's name and the attributes on the invocation. Only this exact shape: any other
+/// `include!` is an ordinary one, whatever its path says.
+pub fn generated_include(item: &Item) -> Option<(String, &[syn::Attribute])> {
+    let item = standard_include(item, false)?;
+    let Ok(syn::Expr::Macro(concat)) = item.mac.parse_body::<syn::Expr>() else {
+        return None;
+    };
+    if !concat.mac.path.is_ident("concat") {
+        return None;
+    }
+    let args = concat
+        .mac
+        .parse_body_with(Punctuated::<syn::Expr, Token![,]>::parse_terminated)
+        .ok()?;
+    let mut args = args.iter();
+    let (
+        Some(syn::Expr::Macro(env)),
+        Some(syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(file),
+            ..
+        })),
+        None,
+    ) = (args.next(), args.next(), args.next())
+    else {
+        return None;
+    };
+    if !env.mac.path.is_ident("env")
+        || env.mac.parse_body::<syn::LitStr>().ok()?.value() != "OUT_DIR"
+    {
+        return None;
+    }
+    let file = file.value();
+    let name = file.strip_prefix('/')?;
+    (!name.is_empty() && !name.contains('/')).then(|| (name.to_owned(), item.attrs.as_slice()))
+}
+
+/// `items` as compiled when the invocation that produced them carries `attrs`: its `cfg` gates
+/// join each item's own.
+pub fn gate_items(items: Vec<Item>, attrs: &[syn::Attribute]) -> Vec<Item> {
+    let gates: Vec<_> = attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
+        .collect();
+    if gates.is_empty() {
+        return items;
+    }
+    items
+        .into_iter()
+        .map(|item| -> Item { syn::parse_quote!(#(#gates)* #item) })
+        .collect()
+}
+
+fn standard_include(item: &Item, shadowed: bool) -> Option<&syn::ItemMacro> {
+    let Item::Macro(item) = item else { return None };
+    let path = &item.mac.path;
+    let standard = if path.leading_colon.is_none() && path.is_ident("include") {
+        !shadowed
+    } else {
+        let segments: Vec<_> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+        matches!(segments.as_slice(), [root, name] if (root == "std" || root == "core") && name == "include")
+    };
+    standard.then_some(item)
 }
 
 /// Whether `items` define a `macro_rules! include` or import a name `include`. The tools then
