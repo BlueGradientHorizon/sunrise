@@ -337,7 +337,7 @@ def plain_path(path: os.PathLike | str) -> PurePath:
     return PurePosixPath(posixpath.normpath(text))
 
 
-def source_key(read: Path, workspace_root: Path, crate: Crate, out_dir: Path | None) -> str | None:
+def source_key(read: PurePath, workspace_root: PurePath, crate: Crate, out_dir: PurePath | None) -> str | None:
     """The API source's `/`-separated path of a file rustc read for `crate`'s library, or None for a file directly in
     the build script's OUT_DIR, whose generated files the API source carries instead. A read outside the crate is
     refused."""
