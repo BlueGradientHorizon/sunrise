@@ -714,7 +714,7 @@ Sunrise's own and third-party addresses (Sunrise layer):
 | `telemetry.playsunrise.net` | opt-in telemetry, the "I'm playing" ping, benchmark uploads | `sunrise-addresses` (#12993) |
 | `stun.cloudflare.com`, `stun.l.google.com` | Play with Friends NAT discovery | `sunrise-addresses` (#12993) |
 | `sunrise-org.github.io/sunrise-mods`, `github.com/sunrise-org/sunrise-mods`, `playsunrise.net/mods` | Sunrise's mod registry: index, mirrored release assets, icons and screenshots, report form and project pages (`SUNRISE_MOD_INDEX` overrides the index) | `sunrise-launcher-addresses` in the launcher repository; `cargo-sunrise-mod` reads `sunrise_addresses::MOD_REGISTRY_INDEX` and `MOD_REGISTRY_METADATA`; `sunrise_mod_package::index` (`REGISTRY_REPO`, `FILE_HOST`) supplies the registry release defaults for `sunrise-mod-registry` |
-| `api.modrinth.com`, `cdn.modrinth.com` | the in-game resource pack browser, modpack porting | `pack_browser.rs`, `sunrise-port-pack` |
+| `api.modrinth.com`, `cdn.modrinth.com` | modpack porting | `sunrise-port-pack` |
 | `github.com`, `raw.githubusercontent.com`, `gitlab.com`, `maven.neoforged.net` | modpack porting's sources | `sunrise-port-pack` |
 | `play.playhorizon.dev` | the official Horizon server, which the client identity hook answers for | `sunrise-addresses`, `sunrise-official` |
 | `playsunrise.net` | the download link shown with no resources | `no_resources.rs` |
