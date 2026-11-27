@@ -1,8 +1,7 @@
 struct Hud {
     size: vec4<f32>,
     // Blend::EndPortal: atlas rects (u0, v0, width, height) of end_sky.png and
-    // end_portal.png, then vanilla's GameTime in x and PvP & HUD's glint colour in yzw
-    // (y below 0: vanilla's).
+    // end_portal.png, then vanilla's GameTime in x.
     end_portal: array<vec4<f32>, 3>,
 }
 @group(0) @binding(0) var<uniform> hud: Hud;

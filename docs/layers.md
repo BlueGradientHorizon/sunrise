@@ -144,14 +144,14 @@ exposes. Ports to consoles and handhelds need them, and other projects can build
   API). Sunrise Settings, the controller pages and the PvP & HUD page all become clients of it.
 - **PvP & HUD:** the HUD widget framework (placing, sizing and toggling HUD elements: `hud_kit.rs` and `hud_kit/`,
   `extras_hud.rs`, `game/hud_room.rs`, `game/hud_editor.rs`) is platform. `hud_layout.rs` is vanilla's `Hud` as draw
-  calls, which the parity fixture compares with the vanilla client: engine, like `hud_overlays.rs`. The PvP presets and Sunrise's own widgets (keystrokes, CPS, reach readout, `pvp.rs`, `pvp_hud.rs`)
+  calls, which the parity fixture compares with the vanilla client: engine, like `hud_overlays.rs`. Sunrise's own widgets (keystrokes, CPS, reach readout, `pvp.rs`, `pvp_hud.rs`)
   are Sunrise extras, and candidates to become native mods.
 
 ## Sunrise
 
 Sunrise's own extras and its product, and every built-in address of an outside service vanilla doesn't contact.
 
-- **Belongs:** Sunrise's extras (zoom, Mouse Tweaks, sorting, smooth chat, the PvP & HUD presets and widgets, the
+- **Belongs:** Sunrise's extras (zoom, Mouse Tweaks, sorting, smooth chat, the PvP & HUD widgets, the
   music page, keystrokes, auto-reconnect...), Play with Friends and its relay, Discord, the "I'm playing" ping,
   telemetry and benchmark uploads, releases and updates, the hosting supervisor, the launcher.
 - **Examples:** `sunrise-addresses`, `sunrise-friends`, `sunrise-relay`, `sunrise-telemetry`,
@@ -203,7 +203,7 @@ lookups; the platform owns profiling, resource access and Parts authoring. See t
 | Splitscreen | official native mod (planned) | removed from the engine and launcher; the mod will use the existing mod API and native patch route |
 | A render pipeline capability vanilla's path doesn't use but a higher layer can't add without rebuilding the pipeline (the compositor) | engine | `gfx.rs` and `gfx/`, doing nothing on vanilla's path |
 | A UI page others can add to, a HUD widget framework, replay recording and playback | platform | the page API, `hud_kit.rs` and `hud_kit/`, `studio/recorder.rs`, `mcpr.rs`, `replay.rs` |
-| A finished feature built on those (PvP presets, the replay editor) | Sunrise, or a native mod | behind `sunrise-extras` |
+| A finished feature built on those (PvP & HUD widgets, the replay editor) | Sunrise, or a native mod | behind `sunrise-extras` |
 | A Sunrise extra (a setting, screen or HUD element vanilla doesn't have) | Sunrise | its own module behind `sunrise-extras`, built on platform API; or an optional native mod that players add themselves |
 | Anything that talks to playsunrise.net or a third-party service by itself | Sunrise | a Sunrise crate, its address in `sunrise-addresses` |
 | Discord, telemetry, Play with Friends | Sunrise | `sunrise-discord`, `sunrise-telemetry`..., behind `sunrise-extras` |
@@ -468,10 +468,8 @@ What the engine draws differently for a crate above, as plain data: PvP & HUD's 
 pub struct Look {       // #[non_exhaustive]; Default is vanilla's
     pub legacy_pose: bool, pub hide_attack_indicator: bool,
     pub mute_attack_sounds: bool, pub hide_attack_particles: bool,
-    pub frame: Frame,   // outline, hurt overlay and glint colours
-    pub shield_size: u8, pub totem_scale: f32, pub fire_lower: f32,
-    pub clear_lava: bool, pub clear_water: bool, pub chat: Chat,
-    pub hide_effect_icons: bool, pub time_of_day: Option<i64>, pub weather: Option<(f32, f32)>,
+    pub frame: Frame,   // outline and hurt overlay colours
+    pub chat: Chat, pub hide_effect_icons: bool,
 }
 pub fn update(change: impl FnOnce(&mut Look));  // the player whose turn it is (`seat()`)
 ```
@@ -638,7 +636,7 @@ themselves, or stays a module linked into the official build, as auto-reconnect 
 - zoom (OptiFine-style), keystrokes and FPS overlays, own name tag;
 - Mouse Tweaks controls, sorting, scroll-wheel settings, smooth chat;
 - UI-sound channels, the music page;
-- the PvP & HUD presets and widgets, the replay editor (Replay Studio's camera paths and timeline), the AI agent page;
+- the PvP & HUD widgets, the replay editor (Replay Studio's camera paths and timeline), the AI agent page;
 - the Sunrise Settings menu itself, the advanced menu that hosts them;
 - the renderer's extras: fullbright, dynamic lights, hidden block-break particles;
 - chunk pregeneration.

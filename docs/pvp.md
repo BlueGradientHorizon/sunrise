@@ -97,7 +97,7 @@ Layout: a widget moved by hand stays where it was put, as `hudPlace:<widget>,<x>
 are fractions of the room the screen leaves beside the widget, so it stays on screen after a resize; `corner` instead of them keeps the corner; scale in
 percent, 50 to 200). Widgets without such a line keep their corner. `pvp_hud::Layout`, `pvp_hud::snap`.
 
-**HUD editor**: the **Edit HUD** button on the PvP & HUD page beside the preset (in a world), or the **HUD editor key** (unbound by
+**HUD editor**: the **Edit HUD** button on the PvP & HUD page (in a world), or the **HUD editor key** (unbound by
 default). The game pauses where it can; each widget that is on gets a frame. Drag one anywhere: it snaps to the
 screen's edges and middle and to the other widgets' edges (the guides show where). The mouse wheel over a widget
 scales it by 10%, a right click puts it back in its corner at 100%, and the buttons set the text colour, shadow,
