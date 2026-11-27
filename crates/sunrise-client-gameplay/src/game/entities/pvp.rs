@@ -11,7 +11,6 @@ use sunrise_client::{
 };
 use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::Side;
-use sunrise_level::particle_options::ParticleType;
 use winit::event::MouseButton;
 
 #[derive(Default)]
@@ -179,23 +178,6 @@ impl crate::game::ClientGame<'_> {
     // one engine knob or hook (vanilla's value when nothing is registered) when PvP & HUD leaves
     // the engine (docs/layers.md, plan M5). The HUD editor (`hud_editor.rs`) reads the widgets.
 
-    /// Combat feel Legacy's pictures: 1.8.9's sword block, flat item pose and hand swing.
-    pub(in crate::game::client_side) fn pvp_legacy_look(&self) -> bool {
-        self.client.settings.extras.pvp.combat.legacy
-    }
-    /// Combat feel Legacy hides the attack indicator unless the player keeps it.
-    pub(in crate::game::client_side) fn pvp_hides_attack_indicator(&self) -> bool {
-        let combat = self.client.settings.extras.pvp.combat;
-        combat.legacy && !combat.indicator
-    }
-    /// A sound Combat feel Legacy keeps quiet.
-    pub(in crate::game) fn pvp_mutes_sound(&self, name: &str) -> bool {
-        self.client.settings.extras.pvp.combat.mutes_sound(name)
-    }
-    /// A particle Combat feel Legacy doesn't draw (sweeps, damage hearts).
-    pub(in crate::game::client_side) fn pvp_hides_particle(&self, ty: ParticleType) -> bool {
-        self.client.settings.extras.pvp.combat.hides_particle(ty)
-    }
     /// The block outline and hurt overlay colours the renderer draws with.
     pub(in crate::game::client_side) fn pvp_render_frame(&self) -> Frame {
         self.client.settings.extras.pvp.frame()

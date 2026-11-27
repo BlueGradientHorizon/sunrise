@@ -387,11 +387,10 @@ impl crate::game::ClientGame<'_> {
             changed[h] = !same;
         }
         let speed = self.main_hand_attack_speed();
-        let replace = self.client.heights.tick_with(
+        let replace = self.client.heights.tick(
             self.hands_busy(),
             self.client.hand_strength.swap_scale(1.0, speed),
             changed,
-            self.pvp_legacy_look(),
         );
         for h in 0..2 {
             if replace[h] {
