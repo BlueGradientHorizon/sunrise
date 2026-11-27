@@ -210,7 +210,7 @@ impl<'a> HitLend<'a> {
                 id: motion.entity_id,
                 uuid: None,
                 health: PlayerHealthRead::Synced(&motion.health.data, motion.health.ids),
-                attributes: Some(motion.attributes()),
+                attributes: Some(&motion.attributes),
                 effects: Some(effects),
                 equipment: *equipment,
                 attachments: None,
