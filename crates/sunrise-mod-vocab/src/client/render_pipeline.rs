@@ -1922,7 +1922,9 @@ impl<H: crate::ClientHost + ?Sized> MeshContext for H {
 ///
 /// Drawing a [`MeshRef`] via [`crate::WorldDrawContext::draw_mesh`] records a small POD draw
 /// command with zero CPU vertex copying per frame. Handles are owner-checked and retired
-/// automatically on mod disable, world close, resource reload, or [`Self::release`].
+/// automatically on mod disable, world close, resource reload, renderer rebuild (even on
+/// the same device), or [`Self::release`]. A later allocation by the same mod never makes
+/// a retired handle valid again.
 // no wire: process-local generational handle to retained GPU buffers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the engine creates handles.
@@ -2496,10 +2498,10 @@ impl BindGroupLayoutBuilder {
 #[non_exhaustive]
 // no wire: refusal of a local client GPU buffer operation.
 pub enum BufferError {
-    /// No GPU renderer is available in this context.
+    /// No GPU renderer is available in this context, or the requested readback is unavailable.
     Unavailable,
-    /// The handle was released, its owner mod was disabled, the world closed, or resources
-    /// reloaded. Retired handles never become valid again.
+    /// This buffer handle has been retired. See [`UniformBufferRef`] and
+    /// [`crate::StorageBufferRef`] for their respective lifetimes.
     Stale,
     /// The calling mod does not own this buffer.
     NotOwned,
@@ -2582,7 +2584,8 @@ impl<H: crate::ClientHost + ?Sized> UniformBufferContext for H {
 /// [`crate::prelude::ClientRenderClientHost::create_uniform_buffer`].
 ///
 /// Handles are owner-checked and retired automatically on mod disable, world close, resource
-/// reload, or [`Self::release`].
+/// reload, renderer rebuild (even on the same device), or [`Self::release`]. A later allocation
+/// by the same mod never makes a retired handle valid again.
 // no wire: process-local generational handle to a retained GPU uniform buffer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the engine creates handles.
@@ -2789,8 +2792,8 @@ pub struct RenderCapabilities {
 pub enum RenderTargetError {
     /// No GPU renderer is available in this context.
     Unavailable,
-    /// The handle was released or its owner mod was unloaded. Retired handles never become
-    /// valid again.
+    /// The handle was released, its owner mod was unloaded, or the GPU device was replaced.
+    /// Retired handles never become valid again.
     Stale,
     /// The calling mod does not own this render target.
     NotOwned,
@@ -2982,8 +2985,10 @@ impl<H: crate::ClientHost + ?Sized> RenderTargetContext for H {
 /// Generational handle to a mod-owned offscreen render target, created via
 /// [`crate::prelude::ClientRenderClientHost::create_render_target`].
 ///
-/// Targets retain their contents across frames until resized. Handles are owner-checked. A target survives a resource reload and a world close, and is freed by
-/// [`Self::release`] or when its mod unloads.
+/// Handles are owner-checked. The target and its contents survive resource reloads on the same
+/// device and world close. Resizing to a different size replaces the attachments. Release, mod
+/// unload, or GPU device replacement retires the handle ([`RenderTargetError::Stale`]). After
+/// device replacement the mod must allocate a new target and populate its attachments.
 // no wire: process-local generational handle to a retained GPU render target.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the engine creates handles.

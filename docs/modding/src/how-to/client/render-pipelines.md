@@ -265,8 +265,8 @@ A pipeline reads large, sparsely updated data (compact geometry records, per-ins
 a std430 storage buffer. Create it once with `host.create_storage_buffer(&StorageBufferDescriptor::new(size))`
 (a multiple of 4 bytes, up to the device's `max_buffer_size`), update ranges with
 `buffer.write_range(host, offset, bytes)` (queued and applied in call order before the next frame),
-and free it with `buffer.release(host)`. It survives a resource reload and a world close, and is
-freed when the mod unloads.
+and free it with `buffer.release(host)`. See `StorageBufferRef` for when a mod must recreate a
+buffer instead of reusing its handle.
 
 Declare it in the layout with `BindEntry::new("Tints", BindingKind::StorageBuffer { read_only: true, min_size: 16 })`
 (`min_size` is the smallest range the block accepts, 16 for a `vec4[]` block; it must be non-zero and
@@ -311,8 +311,8 @@ read-write storage in `read_write_storage`, and `float32_filterable` says whethe
 target can be sampled with `SamplerFilter::Linear`; where it cannot, the target is read with nearest filtering. A device refusal of the allocation itself is
 `RenderTargetError::Device`.
 
-A render target survives a resource reload and a world close, and is freed by
-`target.release(host)` or when its mod unloads.
+Free the target with `target.release(host)`. See `RenderTargetRef` for the lifetime of a target
+and its contents.
 
 ## Samplers and mipmapped textures
 
@@ -390,10 +390,11 @@ integer id (`mc_Entity`) for a block state, as Sunrise's shader-pack loader maps
 engine's own terrain carries for it, which a mod writes into its vertices so waving, emissive, water
 or translucent blocks shade like terrain. It is `None` unless a `shaders/` pack is loaded and
 rendering (the title screen and a pack still loading included), under a native pack, when the pack
-gives the state no id and for a state the live block-state index lacks. The answer changes when the
-active pack is loaded, switched or turned off, and no pack-reload signal exists yet:
-`shader_pack_active()` stays `true` when one pack replaces another, and nothing else tells a mod. Ask
-again when you need the id instead of caching it across frames. Item and entity ids
+gives the state no id and for a state the live block-state index lacks. The answer can change when
+the active pack is loaded, switched or turned off. `shader_pack_active()` alone cannot detect a
+switch: it can be `true` for both packs. To notice pack changes, compare the optional generation
+from `host.shader_pack_state().map(|state| state.generation)` each frame; see
+[Shadow pass, clouds and pack changes](#shadow-pass-clouds-and-pack-changes). Item and entity ids
 (`item.properties`, `entity.properties`) are not part of it.
 
 ### Your own vertex stage, and the main depth
@@ -519,6 +520,9 @@ anything is queued: a refused call returns a `PipelineDrawError` and queues noth
 - **Transient bytes.** `draw.draw_vertices(pipeline, &[vertex_bytes, instance_bytes],
   Some((IndexFormat::Uint16, index_bytes)), draw, &DrawBindings::EMPTY)` uploads this frame's
   slices and draws them. There is one slice per binding, in binding order.
+
+A renderer rebuild retires both `MeshRef` and `UniformBufferRef` handles, even on the same
+GPU device. New allocations by the same mod never make those handles valid again.
 
 `MeshDraw::vertices(range)` draws a range of vertices, `MeshDraw::indexed(range, base_vertex)`
 draws a range of an index buffer, and `.with_instances(range)` sets the instance range. The
@@ -655,8 +659,8 @@ resolve `Invalid`. A shader that needs subgroup operations resolves `Unsupported
 `RenderCapabilities::subgroup` is false, and a dispatch over
 `max_compute_workgroups_per_dimension` returns `TooManyWorkgroups`. To sample the live world depth
 from a compute node, declare `.reads(FrameTarget::MainDepth)` and bind `TextureSource::WorldDepth`.
-The same sampler rules apply as for standalone draws. Your GPU objects survive a resource reload
-and a world close; free them with `release`.
+The same sampler rules apply as for standalone draws. Free retained storage buffers and render
+targets with `release`.
 
 ## Indirect draws
 
@@ -733,6 +737,5 @@ if let Some(bytes) = ticket.poll_readback(host)? {
   buffer and the buffer has `copy_src` (`BufferError::{InvalidAlignment, Empty, OutOfRange,
   NotReadable}`), all refused before the GPU is touched. There is no cap on tickets beyond the
   device's memory: running out is `BufferError::ExceedsDeviceLimit`.
-- **Letting go.** `ticket.release(host)` drops a ticket you no longer want; unpolled tickets are freed
-  when the mod unloads. A spent or unknown ticket, a node the frame did not run, and a lost device
-  are `BufferError::Unavailable`.
+- **Letting go.** `ticket.release(host)` drops a ticket you no longer want. See `ReadbackTicket`
+  for how reloads and device replacement affect outstanding tickets.
