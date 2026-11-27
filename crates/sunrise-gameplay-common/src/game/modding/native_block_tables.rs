@@ -1,7 +1,8 @@
 //! The read-only tables behind `BlockStates`: the facts a block state carries, read from the
 //! game's shared resources alone. `Game` and every level view hand out this one view, so a part
 //! reads the same facts in a level callback as through a `Host`. The reads a world's data packs
-//! change are a host's by its side's own tables ([`SideBlockTables`]).
+//! change read the side's own tables: a host's through [`SideBlockTables`], a level view's from
+//! the references it takes when it is built ([`BlockTables::with_side_tables`]).
 use super::{
     CommonGame, PackResources, Resources, WorldRest,
     api_values::TryIntoEngine,
@@ -24,11 +25,41 @@ use sunrise_world::registry::BlockStateId;
 pub struct BlockTables<'a> {
     res: &'a Resources,
     pack: &'a PackResources,
+    /// The suffocation rules `block_state_is_suffocating` reads: the game's own, or the side's a
+    /// level view took when it was built ([`Self::with_side_tables`]).
+    suffocation: &'a sunrise_world::suffocation::SuffocationRegistry<'static>,
+    /// The item table whose block tags `block_state_correct_tool_for_drops` matches, when a level
+    /// view took the side's; None for the game's own (`Resources::items`, which a view built
+    /// before the world's resources load cannot borrow yet).
+    tag_items: Option<&'a sunrise_items::items::Items>,
 }
 
 impl<'a> BlockTables<'a> {
+    /// A view of the game's own tables.
     pub fn new(res: &'a Resources, pack: &'a PackResources) -> Self {
-        Self { res, pack }
+        Self {
+            res,
+            pack,
+            suffocation: res.suffocation(),
+            tag_items: None,
+        }
+    }
+
+    /// This view with one side's tables for the reads a world's data packs change: its level's
+    /// suffocation rules (`GameItems::level_suffocation`) and its item table (`GameItems::items`).
+    /// A level view takes them once, when it is built for a callback, so a part reads in the
+    /// callback what a `Host` of that side reads ([`SideBlockTables`]).
+    #[inline(always)]
+    pub fn with_side_tables(
+        self,
+        suffocation: &'a sunrise_world::suffocation::SuffocationRegistry<'static>,
+        items: &'a sunrise_items::items::Items,
+    ) -> Self {
+        Self {
+            suffocation,
+            tag_items: Some(items),
+            ..self
+        }
     }
 
     pub fn of(game: &'a CommonGame<'_>) -> Self {
@@ -470,21 +501,13 @@ impl<'a> BlockTables<'a> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).dampening)
     }
-    /// `BlockState.isSuffocating` of a state alone, from the game's own suffocation rules. None
-    /// for an unknown state and for a rule that needs the position or a block entity. A host
-    /// reads it by its side's rules ([`SideBlockTables::block_state_is_suffocating`]).
+    /// `BlockState.isSuffocating` of a state alone, from the view's suffocation rules (a level
+    /// view's: its side's; [`Self::new`]'s: the game's own). None for an unknown state and for a
+    /// rule that needs the position or a block entity. A host reads it by its side's rules
+    /// ([`SideBlockTables::block_state_is_suffocating`]).
     pub fn block_state_is_suffocating(&self, state: BlockStateId) -> Option<bool> {
-        self.suffocating_by(self.res.suffocation(), state)
-    }
-    /// [`Self::block_state_is_suffocating`] by `rules`.
-    #[inline(always)]
-    fn suffocating_by(
-        &self,
-        rules: &sunrise_world::suffocation::SuffocationRegistry<'_>,
-        state: BlockStateId,
-    ) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
-        rules.constant(state)
+        self.suffocation.constant(state)
     }
     /// `BlockState.isValidSpawn(level, pos, type)` of a state alone. None for an unknown state
     /// and for an entity type with no spawn species.
@@ -586,26 +609,19 @@ impl<'a> BlockTables<'a> {
     }
 
     /// `ItemStack.isCorrectToolForDrops(state)`: the stack's own tool rules, with no block
-    /// requirement, player, position or hook, by the game's own item table. None for an unknown
-    /// state. A host reads it by its side's table
-    /// ([`SideBlockTables::block_state_correct_tool_for_drops`]).
+    /// requirement, player, position or hook, by the view's item table (a level view's: its
+    /// side's; [`Self::new`]'s: the game's own). None for an unknown state. A host reads it by its
+    /// side's table ([`SideBlockTables::block_state_correct_tool_for_drops`]).
     pub fn block_state_correct_tool_for_drops(
         &self,
         stack: &ItemStack,
         state: BlockStateId,
     ) -> Option<bool> {
-        self.correct_tool_by(self.res.items(), stack, state)
-    }
-    /// [`Self::block_state_correct_tool_for_drops`] by `items`, whose block tags the tool rules
-    /// name.
-    #[inline(always)]
-    fn correct_tool_by(
-        &self,
-        items: &sunrise_items::items::Items,
-        stack: &ItemStack,
-        state: BlockStateId,
-    ) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
+        let items = match self.tag_items {
+            Some(items) => items,
+            None => self.res.items(),
+        };
         Some(items.correct_for_drops(Some(stack), &self.res.facts().get(state).name))
     }
 
@@ -706,7 +722,11 @@ pub trait SideBlockTables<'__sg>: crate::game::SideGame<'__sg> {
     /// the rules `level_state_is_suffocating` reads at a position.
     #[inline(always)]
     fn block_state_is_suffocating(&self, state: BlockStateId) -> Option<bool> {
-        BlockTables::of(self.common()).suffocating_by(self.level_suffocation(), state)
+        BlockTables {
+            suffocation: self.level_suffocation(),
+            ..BlockTables::of(self.common())
+        }
+        .block_state_is_suffocating(state)
     }
     /// [`BlockTables::block_state_correct_tool_for_drops`] by the side's item table
     /// (`GameItems::items`, whose block tags the world's data packs bind), the table the game's
@@ -717,7 +737,11 @@ pub trait SideBlockTables<'__sg>: crate::game::SideGame<'__sg> {
         stack: &ItemStack,
         state: BlockStateId,
     ) -> Option<bool> {
-        BlockTables::of(self.common()).correct_tool_by(self.items(), stack, state)
+        BlockTables {
+            tag_items: Some(self.items()),
+            ..BlockTables::of(self.common())
+        }
+        .block_state_correct_tool_for_drops(stack, state)
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> SideBlockTables<'__sg> for G {}

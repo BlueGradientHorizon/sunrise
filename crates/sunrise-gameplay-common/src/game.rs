@@ -83,6 +83,28 @@ macro_rules! world_stations {
         }
     };
 }
+/// The block-state tables a level view hands to a part, as field-level borrows: the game's own,
+/// with the side's suffocation rules and item table (`GameItems::level_suffocation`,
+/// `GameItems::items`) taken once as the view is built, so the reads a world's data packs change
+/// answer in a level callback as through the side's `Host`.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! world_block_tables {
+    ($s:expr) => {{
+        let world = $crate::game::Side::world_tables({
+            use $crate::game::SideGame as _;
+            ($s).side_state()
+        });
+        $crate::game::native_block_tables::BlockTables::new(&$s.res, &$s.pack).with_side_tables(
+            $crate::game::level_suffocation_of(world, &$s.res),
+            match (&$s.server_items, world) {
+                (Some(items), _) => &**items,
+                (None, Some(t)) => &t.items,
+                (None, None) => $s.res.items(),
+            },
+        )
+    }};
+}
 /// The biome table the world plays with (`Game::biomes`), as a field-level
 /// borrow: the world's packs' over the game's own.
 #[doc(hidden)]
@@ -137,7 +159,7 @@ macro_rules! game_side {
                 ))
             }),
             facts: $s.res.facts(),
-            tables: $crate::game::native_block_tables::BlockTables::new(&$s.res, &$s.pack),
+            tables: $crate::world_block_tables!($s),
             biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $crate::game::side_ops::tables::SideOps::side_level_features(
@@ -197,7 +219,7 @@ macro_rules! game_side {
             dim: $s.dim,
             level,
             facts: $s.res.facts(),
-            tables: $crate::game::native_block_tables::BlockTables::new(&$s.res, &$s.pack),
+            tables: $crate::world_block_tables!($s),
             biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $features,

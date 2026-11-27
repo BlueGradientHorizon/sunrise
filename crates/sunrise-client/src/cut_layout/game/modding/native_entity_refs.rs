@@ -3000,10 +3000,11 @@ pub(crate) mod tests {
     }
 
     /// A world's data pack that replaces `#minecraft:causes_suffocation` and
-    /// `#minecraft:mineable/pickaxe` changes the server host's reads of those tables: both
+    /// `#minecraft:mineable/pickaxe` changes the server's reads of those tables: both
     /// suffocation reads, the state alone and at a position, and the correct-tool read follow the
-    /// world's tables, which the server's state owns. The client's host reads the client's own
-    /// tables, which no world pack of the server changes.
+    /// world's tables, which the server's state owns, through its host, inside a level callback
+    /// and through the side a motion tick lends a friction part. The client's host reads the
+    /// client's own tables, which hold no world's packs yet.
     #[test]
     #[ignore = "daily"]
     fn a_world_pack_decides_the_hosts_table_reads_on_its_side() {
@@ -3043,6 +3044,25 @@ pub(crate) mod tests {
                         .is_correct_tool_for_drops(&pickaxe(), dirt),
                     Some(false)
                 );
+                // The same answers from the level views a part reads in a callback: the level
+                // a block callback gets, and the side a motion tick lends a friction part.
+                let read = |states: mod_api::BlockStates<'_>| {
+                    [
+                        states.is_suffocating(stone),
+                        states.is_suffocating(dirt),
+                        states.is_correct_tool_for_drops(&pickaxe(), stone),
+                        states.is_correct_tool_for_drops(&pickaxe(), dirt),
+                    ]
+                };
+                let views = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
+                    let level = game
+                        .with_level(|_, level, _| read(mod_api::LevelHost::block_states(&*level)));
+                    let side = game_side!(game);
+                    let side = read(sunrise_sim::motion::SideLevel::block_states(&side).unwrap());
+                    [level, side]
+                };
+                let own = [Some(true), Some(true), Some(true), Some(false)];
+                assert_eq!(views(game), [own, own]);
                 game.server.world_root = root.join("world");
                 let pack = game.server.world_root.join("datapacks/side_tables");
                 let tags = pack.join("data/minecraft/tags/block");
@@ -3090,6 +3110,8 @@ pub(crate) mod tests {
                         .is_correct_tool_for_drops(&pickaxe(), dirt),
                     Some(true)
                 );
+                let world = [Some(false), Some(true), Some(false), Some(true)];
+                assert_eq!(views(game), [world, world]);
                 // The client's host keeps the client's own tables.
                 assert_eq!(client.block_states().is_suffocating(stone), Some(true));
                 assert_eq!(
