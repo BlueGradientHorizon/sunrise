@@ -611,6 +611,9 @@ pub struct Resources<'a> {
     pub mod_depth_targets: &'a [ModDepthTargetDecl],
     /// Mod-declared per-frame uniforms for uniform resolution and type validation.
     pub mod_uniforms: &'a [ModUniformDecl],
+    /// The pack is served Sunrise's HDR extension (`Post::hdr`): its programs read the display
+    /// uniforms (`pack_uniforms::DISPLAY`).
+    pub display_uniforms: bool,
     /// Deduplicates warnings when a pack declares a mod uniform with an incompatible GLSL type.
     pub mod_uniform_mismatches: &'a std::cell::RefCell<HashSet<(String, String)>>,
     /// Auxiliary depth target index written by the mod geometry pass currently being built, if any.
@@ -1193,7 +1196,9 @@ const POLYGON_OFFSET: wgpu::DepthBiasState = wgpu::DepthBiasState {
 
 /// Match a pass's declared GLSL uniforms against mod-declared per-frame uniforms.
 /// Incompatible GLSL types leave the uniform unbound, record a note, and log a warning once
-/// per `(name, declared_ty)` without panicking.
+/// per `(name, declared_ty)` without panicking. In a pack served Sunrise's HDR extension the
+/// display uniforms (`pack_uniforms::DISPLAY`) are the display's, never a mod's: a mod uniform
+/// of such a name binds only where the pack isn't served.
 fn resolve_mod_uniforms<'a>(
     interface: &'a sunrise_shaders::Interface,
     pass_name: &str,
@@ -1202,7 +1207,8 @@ fn resolve_mod_uniforms<'a>(
 ) -> (Vec<(usize, bool, u32)>, HashSet<&'a str>) {
     let mut bound = Vec::new();
     let mut handled = HashSet::new();
-    for u in &interface.uniforms {
+    let display = |name: &str| pack.display_uniforms && pack_uniforms::DISPLAY.contains(&name);
+    for u in interface.uniforms.iter().filter(|u| !display(&u.name)) {
         match match_mod_uniform(pack.mod_uniforms, &u.name, &u.ty) {
             ModUniformMatch::None => {}
             ModUniformMatch::Bound { index, previous } => {
@@ -1251,7 +1257,8 @@ pub fn build_pass(
     let features = device.features();
     // The frame's uniforms, then the pack's custom ones.
     let index = |name: &str, ty: &str| {
-        pack_uniforms::index_in(name, geometry.is_some()).or_else(|| custom_index(custom, name, ty))
+        pack_uniforms::index_in(name, geometry.is_some(), pack.display_uniforms)
+            .or_else(|| custom_index(custom, name, ty))
     };
     let mask = |flips: &[(u32, bool)]| flips.iter().filter(|f| f.1).fold(0u16, |m, f| m | 1 << f.0);
     let mut p = p;
@@ -1726,7 +1733,8 @@ pub fn build_compute(
     pack: &Resources<'_>,
 ) -> Option<Pass> {
     let index = |name: &str, ty: &str| {
-        pack_uniforms::index_in(name, false).or_else(|| custom_index(custom, name, ty))
+        pack_uniforms::index_in(name, false, pack.display_uniforms)
+            .or_else(|| custom_index(custom, name, ty))
     };
     let interface = &c.interface;
     let (entries, samplers, slots, reads, shadow_reads, images) = bindings(
@@ -2339,6 +2347,7 @@ impl PackPost {
             jobs: defer.then(Default::default),
             mod_depth_targets: mods.depth_targets,
             mod_uniforms: mods.uniforms,
+            display_uniforms: hdr.is_some(),
             mod_uniform_mismatches: &mod_uniform_mismatches,
             mod_depth_target: std::cell::Cell::new(None),
             depth_compare: std::cell::Cell::new(wgpu::CompareFunction::LessEqual),

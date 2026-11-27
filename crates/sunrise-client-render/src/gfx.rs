@@ -290,6 +290,8 @@ mod off_page;
 use off_page::move_off_page;
 pub mod submit;
 mod sunrise_fan;
+#[cfg(feature = "test-support")]
+pub mod test_hooks;
 mod timing;
 pub mod translucency;
 pub(crate) mod upload;

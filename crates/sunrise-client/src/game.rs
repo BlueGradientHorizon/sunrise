@@ -2214,6 +2214,9 @@ mod server_travel;
 #[path = "game/administration/setblock_order_tests.rs"]
 mod setblock_order_tests;
 #[cfg(test)]
+#[path = "game/interface/shader_pack_display_tests.rs"]
+mod shader_pack_display_tests;
+#[cfg(test)]
 #[path = "game/interface/shader_pack_hdr_tests.rs"]
 mod shader_pack_hdr_tests;
 #[cfg(test)]

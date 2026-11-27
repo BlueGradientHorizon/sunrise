@@ -178,6 +178,7 @@ fn run_frame_and_sample_at(
         &screen,
         &frame,
         &Default::default(),
+        Default::default(),
         SIZE,
         SIZE,
         &[],
