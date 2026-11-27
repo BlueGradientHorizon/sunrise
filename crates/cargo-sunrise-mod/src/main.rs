@@ -314,7 +314,12 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
         let value = options
             .next()
             .ok_or_else(|| format!("missing value after {option}\n{}", usage().trim_end()))?;
-        slot.get_or_insert(value);
+        if slot.replace(value).is_some() {
+            return Err(format!(
+                "{option} may only be given once\n{}",
+                usage().trim_end()
+            ));
+        }
     }
     let dir = Path::new(path);
     if dir.exists() {
@@ -945,6 +950,29 @@ mod tests {
         for arg in ["--native", "--content", "--typo", "-x", "--name"] {
             let error = new(&[path.display().to_string(), arg.into()], &offline).unwrap_err();
             assert!(error.contains(arg), "{error}");
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn new_refuses_repeated_singleton_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("greeter");
+        let pin = format!("--template native --sunrise {OLD_BUILD} --sunrise {OLD_BUILD}");
+        for (option, line) in [
+            ("--name", "--name First --name Second"),
+            ("--template", "--template content --template native"),
+            ("--sunrise", pin.as_str()),
+        ] {
+            let args: Vec<_> = std::iter::once(path.display().to_string())
+                .chain(argv(line))
+                .collect();
+            let fetch = |_: &Path, _: &str| panic!("a repeated option must not fetch an SDK");
+            let error = new(&args, &fetch).unwrap_err();
+            assert_eq!(
+                error.lines().next().unwrap(),
+                format!("{option} may only be given once")
+            );
             assert!(!path.exists());
         }
     }
