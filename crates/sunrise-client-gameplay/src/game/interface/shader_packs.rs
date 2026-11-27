@@ -478,20 +478,25 @@ pub struct NamedIds {
 }
 
 impl NamedIds {
-    /// Reads the pack's `entity.properties` and `item.properties` with `macros`.
+    /// Reads the pack's `entity.properties` and `item.properties` with `macros`. Whether the
+    /// pack has a file decides its default, even when the file can't be read (a zipped file past
+    /// the size cap): such a file gives no ids.
     pub(in crate::game) fn read(pack: &Pack, macros: &Macros) -> Self {
         let read = |kind: &str| {
-            let text = pack.read_text(&format!("{kind}.properties"))?;
-            Some(BlockIds::parse_kind(&Properties::parse(&text, macros), kind).plain())
+            let path = format!("{kind}.properties");
+            let ids = pack.read_text(&path).map_or_else(HashMap::new, |text| {
+                BlockIds::parse_kind(&Properties::parse(&text, macros), kind).plain()
+            });
+            (ids, pack.exists(&path))
         };
-        let entities = read("entity");
-        let items = read("item");
+        let (entities, entity_file) = read("entity");
+        let (items, item_file) = read("item");
         Self {
-            missing_entity: if entities.is_some() { 65535 } else { 0 },
-            entities: entities.unwrap_or_default(),
-            item_file: items.is_some(),
-            missing_item: if items.is_some() { -1 } else { 0 },
-            items: items.unwrap_or_default(),
+            entities,
+            missing_entity: if entity_file { 65535 } else { 0 },
+            items,
+            item_file,
+            missing_item: if item_file { -1 } else { 0 },
         }
     }
 
@@ -1985,5 +1990,39 @@ pub(in crate::game) mod named_id_tests {
         assert_eq!(neither.entity_id("minecraft:creeper"), 0);
         assert!(!neither.item_file);
         assert_eq!(neither.missing_item, 0);
+    }
+
+    /// A zipped `entity.properties` or `item.properties` past the pack's 64 MiB read cap
+    /// (`MAX_FILE` in `sunrise-shaders`' `pack.rs`) gives no ids, but the pack still has the
+    /// file: an entity it lacks reads 65535 and a held item −1 (5.3).
+    #[test]
+    fn a_file_past_the_read_cap_still_counts_as_the_packs() {
+        use std::io::Write;
+        let oversized = |file: &str| {
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            w.start_file("shaders/shaders.properties", options).unwrap();
+            w.start_file(format!("shaders/{file}"), options).unwrap();
+            let mut text = b"entity.37=minecraft:zombie\nitem.53=minecraft:stick\n".to_vec();
+            text.resize((64 << 20) + 1, b' ');
+            w.write_all(&text).unwrap();
+            let bytes = w.finish().unwrap().into_inner();
+            NamedIds::read(
+                &Pack::from_zip_bytes("P.zip", bytes).unwrap(),
+                &Macros::standard(),
+            )
+        };
+        let entity = oversized("entity.properties");
+        assert_eq!(entity.entity_id("minecraft:zombie"), 65535);
+        assert_eq!(entity.entity_id("minecraft:creeper"), 65535);
+        assert!(!entity.item_file);
+        assert_eq!(entity.missing_item, 0);
+
+        let item = oversized("item.properties");
+        assert_eq!(item.entity_id("minecraft:creeper"), 0);
+        assert!(item.items.is_empty());
+        assert!(item.item_file);
+        assert_eq!(item.missing_item, -1);
     }
 }
