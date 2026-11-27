@@ -4164,9 +4164,16 @@ pub enum PipelineDrawError {
     InvalidAlignment,
     /// Set-1 [`DrawBindings`] is missing a declared entry, supplies an unknown/duplicate entry,
     /// mismatches kind or `min_size`, references an unknown/unavailable texture, or provides an
-    /// invalid push-constant payload. A transient target the offscreen pass samples without
-    /// declaring it in its [`crate::FramePassDescriptor::reads`] is an unavailable texture: the target's
-    /// lifetime follows declared uses only, so the draw is refused and logged once.
+    /// invalid push-constant payload.
+    ///
+    /// Declare a sampled transient on a consumer pass that does not write it, using
+    /// `.reads(FrameTarget::Transient(id))`: the graph computes lifetimes from declared uses.
+    /// An undeclared sample is refused here and logged once, except that a draw sampling its
+    /// own transient attachment returns [`Self::TargetReadWriteHazard`]. For a transient
+    /// listed only in `.writes(...)`, an undeclared sample returns `InvalidBinding` in a draw
+    /// and [`crate::ComputeDispatchError::InvalidBinding`] in a compute dispatch. Declaring
+    /// both the read and the write is refused before recording with
+    /// [`crate::FrameGraphError::SelfDependency`]; split the producer and consumer instead.
     InvalidBinding,
     /// An active shader pack links this world draw to a translated pack program, whose fixed
     /// sampler layout cannot bind one of the draw's textures. Direct mod draws, including those

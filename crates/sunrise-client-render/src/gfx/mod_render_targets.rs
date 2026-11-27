@@ -782,7 +782,7 @@ impl super::mod_gpu::ModGpuResources {
             .warned_frame_graph_cycles
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if warned.insert(passes.to_vec()) {
+        if warned.insert(super::mod_gpu::FrameGraphWarning::Cycle(passes.to_vec())) {
             log::warn!(
                 "Sunrise: frame graph cycle detected between {}",
                 passes.join(", ")
@@ -801,12 +801,11 @@ impl super::mod_gpu::ModGpuResources {
             .warned_frame_graph_cycles
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let raw = target.raw();
-        if warned.insert(vec![
-            "undeclared transient read".to_owned(),
+        if warned.insert(super::mod_gpu::FrameGraphWarning::UndeclaredTransientRead(
             pass.to_owned(),
-            raw.to_string(),
-        ]) {
+            target,
+        )) {
+            let raw = target.raw();
             log::warn!(
                 "Sunrise: frame graph pass {pass} samples transient target {raw} without declaring it in its reads; binding refused"
             );

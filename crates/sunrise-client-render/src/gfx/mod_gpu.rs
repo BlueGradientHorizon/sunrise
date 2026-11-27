@@ -33,6 +33,12 @@ pub(crate) struct ModFrameState {
     pub(crate) pack_iris: bool,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+pub(super) enum FrameGraphWarning {
+    Cycle(Vec<String>),
+    UndeclaredTransientRead(String, mod_api::TransientTargetId),
+}
+
 /// Handles on the device and the mod tables of one [`Renderer`](super::Renderer); cloning shares
 /// them.
 ///
@@ -54,7 +60,7 @@ pub struct ModGpuResources {
     pub(crate) queue: wgpu::Queue,
     /// Distinct frame-graph warnings (cycle pass-label sets, refused undeclared transient reads)
     /// already logged once since last reload.
-    pub(crate) warned_frame_graph_cycles: Arc<Mutex<HashSet<Vec<String>>>>,
+    pub(super) warned_frame_graph_cycles: Arc<Mutex<HashSet<FrameGraphWarning>>>,
     render_capabilities: RenderCapabilities,
     max_buffer_size: u64,
     /// Retained GPU vertex/index buffers backing [`mod_api::MeshRef`].
