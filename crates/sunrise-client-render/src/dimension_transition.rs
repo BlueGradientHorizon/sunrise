@@ -336,7 +336,7 @@ mod tests {
             }
         }
 
-        mod_api::testing::with_dispatch(Vec::new().into(), || {
+        mod_platform::testing::with_mods(Vec::new().into(), || {
             let screens = TransitionScreens::new([(
                 "broken_presentation",
                 DimensionTransitionScreen::new(
