@@ -292,12 +292,10 @@ impl Gpu {
         let (plain, _) = self.draw(batch, 0.3, initial, false);
         let (color, mask) = self.draw(batch, 0.3, initial, true);
         assert_eq!(color, plain, "coverage changed the primary colour or alpha");
-        for (got, want) in mask.iter().zip(expected.repeat(2)) {
-            assert!(
-                got.abs_diff(want) <= 1,
-                "coverage {mask:?}, expected {expected:?}"
-            );
-        }
+        // The 4 x 2 target's two rows of `expected`: no shorter readback may compare less.
+        let want = expected.repeat(2);
+        assert_eq!(mask.len(), want.len(), "coverage readback length");
+        assert_eq!(mask, want, "coverage bytes");
     }
 }
 
@@ -315,16 +313,30 @@ pub(super) fn quad(batch: &mut HudBatch, blend: Blend, color: u32, x: f32, uv: f
 #[ignore = "daily"]
 fn coverage_follows_hud_blends_discard_scissor_and_depth_without_changing_colour() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(gpu) = Gpu::new() else {
-        return;
-    };
+    let gpu = Gpu::new().expect("HUD coverage test requires the GPU fixture");
+    // Every expected byte is derived from the coverage target alone (R8, cleared to `initial`/255;
+    // each draw is stored as 8 bits before the next reads it). `wrap` in gfx/hud_coverage.rs
+    // gives each pipeline a coverage `c` and the target blends it as `c + dst * (1 - c)`
+    // (One, OneMinusSrc), writing RED only, and nothing for an additive primary blend. Every
+    // `initial`, alpha and result below is an integer byte, and each real-number result is an
+    // integer number of bytes before any rounding, so no rounding mode can change it.
     for (blend, color, initial, count, expected) in [
-        (Blend::Alpha, rgba(255, 255, 255, 128), 0.0, 2, 192),
-        (Blend::Additive, rgba(255, 255, 255, 128), 0.3, 1, 77),
-        (Blend::Invert, rgba(255, 255, 255, 32), 0.0, 1, 255),
-        (Blend::EndPortal, rgba(255, 255, 255, 255), 0.0, 1, 255),
-        (Blend::Vignette, rgba(102, 102, 102, 255), 0.0, 1, 102),
+        // Alpha (SrcAlpha, OneMinusSrcAlpha): c = a = 51/255 = 1/5, so each draw maps
+        // d to 51 + d * 204/255 = 51 + 0.8 d bytes. 30 -> 75 -> 111 over the two quads.
+        (Blend::Alpha, rgba(255, 255, 255, 51), 30u8, 2, 111u8),
+        // Additive (One, One): the coverage target's write mask is empty, so it keeps its
+        // clear value, 77/255, whatever the quad's alpha.
+        (Blend::Additive, rgba(255, 255, 255, 51), 77, 1, 77),
+        // Invert (OneMinusDst, OneMinusSrc): no scalar reproduces it, so c = 1 whatever the
+        // alpha (32/255) or the clear value: 1 + d * 0 = 255 bytes.
+        (Blend::Invert, rgba(255, 255, 255, 32), 30, 1, 255),
+        // EndPortal (REPLACE, One/Zero): not an alpha blend, c = 1: 255 bytes.
+        (Blend::EndPortal, rgba(255, 255, 255, 255), 30, 1, 255),
+        // Vignette (Zero, OneMinusSrc): c = max(r, g, b) = 102/255 = 2/5 (the white texel's
+        // centre is sampled), so d -> 102 + d * 153/255 = 102 + 0.6 * 30 = 120 bytes.
+        (Blend::Vignette, rgba(102, 102, 102, 255), 30, 1, 120),
     ] {
+        let backdrop = f64::from(initial) / 255.0;
         let mut batch = HudBatch::new(
             [4, 2],
             crate::hud::GuiScale {
@@ -339,16 +351,8 @@ fn coverage_follows_hud_blends_discard_scissor_and_depth_without_changing_colour
         if blend == Blend::Invert {
             quad(&mut batch, blend, color, 2.0, 0.75);
         }
-        gpu.check(
-            &batch,
-            initial,
-            [
-                expected,
-                expected,
-                (initial * 255.0).round() as u8,
-                (initial * 255.0).round() as u8,
-            ],
-        );
+        // The quad covers pixels 0 and 1 of each row; pixels 2 and 3 keep the clear value.
+        gpu.check(&batch, backdrop, [expected, expected, initial, initial]);
     }
     let mut batch = HudBatch::new(
         [4, 2],
@@ -358,20 +362,18 @@ fn coverage_follows_hud_blends_discard_scissor_and_depth_without_changing_colour
         },
     );
     for depth in [0.25, 0.75] {
-        quad(
-            &mut batch,
-            Blend::Alpha,
-            rgba(255, 255, 255, 128),
-            0.0,
-            0.25,
-        );
+        quad(&mut batch, Blend::Alpha, rgba(255, 255, 255, 51), 0.0, 0.25);
         let start = batch.vertices.len() - 6;
         for vertex in &mut batch.vertices[start..] {
             vertex.depth = depth;
         }
     }
     batch.blends.push((0..12, Blend::Depth([1, 0, 2, 2])));
-    gpu.check(&batch, 0.0, [0, 128, 0, 0]);
+    // Depth tests LessEqual: the 0.25 quad draws and writes depth, the 0.75 one then fails.
+    // The scissor x 1..3 leaves pixel 0 alone, pixels 2 and 3 lie outside the quads. One
+    // Alpha draw with c = 51/255 over a clear of 30/255: 51 + 0.8 * 30 = 75 bytes (a second
+    // blend would give 111).
+    gpu.check(&batch, 30.0 / 255.0, [30, 75, 30, 30]);
 }
 
 /// The HUD's target is 8-bit as vanilla's frame is, so each draw clips at white before the
