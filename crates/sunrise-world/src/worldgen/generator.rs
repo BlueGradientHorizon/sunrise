@@ -3882,7 +3882,7 @@ mod tests {
     /// The prepared resources' root for worldgen tests.
     pub(super) fn worldgen_root() -> std::path::PathBuf {
         crate::prepared_test_root::prepared_root(&[
-            crate::prepared_test_root::WORLDGEN_INPUTS,
+            sunrise_core::prepared_test_support::WORLDGEN_INPUTS,
             GENERATOR_INPUTS,
         ])
     }

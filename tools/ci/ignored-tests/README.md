@@ -57,7 +57,8 @@ must not be indiscriminately selected as prepared-resource daily tests. Ordinary
 use `daily` and one `resources` or `child-process` row here.
 
 A test gets prepared data one way: `prepared_test_root::prepared_root(&[INPUTS])` (`crates/sunrise-core/src/prepared_test_root.rs`,
-included with `#[path]` by each crate that reads prepared data and re-exported by `crates/sunrise-client/src/test_resources.rs`). It resolves `SUNRISE_TEST_RESOURCES`, else the checkout's
+included with `#[path]` by each target that reads prepared data, with input lists and stamp checks in
+`sunrise_core::prepared_test_support`). It resolves `SUNRISE_TEST_RESOURCES`, else the checkout's
 `.local/sunrise-client/<version>`, and fails the test naming each required input that is missing or unreadable; it
 returns no `Option` or `Result`. `check_ignored_test_rows.py` fails a test that reaches it unless the test is
 `#[ignore = "daily"]` with its exact row, and fails a path to it that the static check cannot follow. "Reaches" is

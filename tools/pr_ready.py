@@ -531,7 +531,7 @@ def _is_exact_int(value, low, high):
 
 def prepared_stamp_problems(root):
     """Why root is not a current full-profile prepared root, worded as Manifest::version_problems and
-    prepared_test_root.rs `stamp_problems` word it; empty when it is."""
+    prepared_test_support.rs `stamp_problems` word it; empty when it is."""
     if not (root / "sunrise-resources.json").is_file():
         return ["sunrise-resources.json is missing"]
     manifest = read_json_object(root / "sunrise-resources.json")
