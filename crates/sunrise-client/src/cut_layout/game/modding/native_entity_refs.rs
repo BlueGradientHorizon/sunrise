@@ -3122,7 +3122,7 @@ pub(crate) mod tests {
                 );
                 let world = [Some(false), Some(true), Some(false), Some(true)];
                 // A block callback's level follows the pack; the side a motion tick lends a
-                // friction part keeps the game's own tables (#ISSUE_FRICTION_TABLES).
+                // friction part keeps the game's own tables (#6626).
                 assert_eq!(views(game), [world, own]);
                 // The client's host keeps the client's own tables.
                 assert_eq!(client.block_states().is_suffocating(stone), Some(true));

@@ -105,7 +105,7 @@ vanilla's predicate says.
 Both reads use the same suffocation rules. On the server they are the open world's, where its data
 packs' `#minecraft:causes_suffocation` decides the default predicate, whether you ask through a host
 or inside a block callback's level. A friction part's level (the one a motion tick lends) reads the
-game's built-in rules (#ISSUE_FRICTION_TABLES). On the client they are the game's built-in rules,
+game's built-in rules (#6626). On the client they are the game's built-in rules,
 whatever the server's packs say, until the client receives the world's tables (#6597).
 `is_valid_spawn` needs no position: the game's spawning decides it from the state alone.
 

@@ -3,7 +3,7 @@
 //! reads the same facts in a level callback as through a `Host`. The reads a world's data packs
 //! change read the side's own tables: a host's through [`SideBlockTables`], a block callback's
 //! level's from the references it takes when it is built ([`BlockTables::with_side_tables`]).
-//! The motion views (`GameSide`) keep the game's own (#ISSUE_FRICTION_TABLES).
+//! The motion views (`GameSide`) keep the game's own (#6626).
 use super::{
     CommonGame, PackResources, Resources, WorldRest,
     api_values::TryIntoEngine,
