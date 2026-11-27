@@ -109,7 +109,7 @@ fn run_command(client: &mut ClientGame<'_>, server: &mut ServerGame<'_>, command
 
 #[test]
 #[ignore = "daily"]
-fn mod_raycasts_hit_loaded_blocks_only() {
+fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
     let mut resources = None;
     let (mut game, mut server) = game(&mut resources);
     // Looking straight down at the stone under the player.

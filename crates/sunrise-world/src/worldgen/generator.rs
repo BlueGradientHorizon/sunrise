@@ -3331,7 +3331,7 @@ mod tests {
     }
 
     #[test]
-    fn surface_sample_matches_undecorated_land_and_keeps_end_void() {
+    fn far_surface_matches_undecorated_land_and_keeps_end_void() {
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
             .or_else(|| std::env::var_os("SUNRISE_RESOURCES"))
             .map(std::path::PathBuf::from)
