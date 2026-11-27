@@ -226,5 +226,3 @@ impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
             .draw_gui_layer_body(self.batch, self.previous, self.vanilla.as_deref_mut());
     }
 }
-
-use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
