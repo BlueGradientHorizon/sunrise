@@ -40,6 +40,12 @@ pub(super) struct Imported {
     /// Whether the name is bound in the type namespace, where a module is: `None` when the source
     /// alone can't tell (an external crate, a glob or a cfg-gated declaration).
     pub(super) types: Option<bool>,
+    /// The same for the value namespace, where a function is.
+    pub(super) values: Option<bool>,
+    /// Whether the path starts at a name the module itself binds, so that from a module inside it
+    /// the path starts with `super::`. A relative `self` or `super` path does too; an external
+    /// crate, `crate` and a leading `::` do not.
+    pub(super) local: bool,
 }
 
 /// The names `item`, written in `module`, binds one by one: a mirror module decides for each of
@@ -57,11 +63,30 @@ pub(super) fn imported(source: &mut Source, module: &str, item: &ItemUse) -> Vec
     leaves
         .into_iter()
         .map(|(name, path)| {
-            let types = walk
-                .path(module, &path, Namespace::Type)
-                .ok()
-                .map(|binding| binding.is_some());
-            Imported { name, path, types }
+            let mut lookup = |space| {
+                walk.path(module, &path, space)
+                    .ok()
+                    .map(|binding| binding.is_some())
+            };
+            let (types, values) = (lookup(Namespace::Type), lookup(Namespace::Value));
+            let local = item.leading_colon.is_none()
+                && path.first().is_some_and(|head| {
+                    !matches!(head.as_str(), "crate" | "self" | "super")
+                        && (walk.scope(module).is_some_and(|scope| {
+                            scope.items[Namespace::Type as usize].contains_key(head)
+                                || scope.imports.contains_key(head)
+                        }) || matches!(
+                            walk.binding(module, head, Namespace::Type),
+                            Ok(Some(_))
+                        ))
+                });
+            Imported {
+                name,
+                path,
+                types,
+                values,
+                local,
+            }
         })
         .collect()
 }

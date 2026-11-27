@@ -1709,6 +1709,18 @@ impl Narrowing<'_> {
     }
 }
 
+/// Records that `ident` is re-exported under `cfg` as well as under the conditions already there.
+fn provide(
+    provided: &mut Vec<(syn::Ident, Vec<Vec<mod_source::modules::Cfg>>)>,
+    ident: syn::Ident,
+    cfg: Vec<mod_source::modules::Cfg>,
+) {
+    match provided.iter_mut().find(|(name, _)| *name == ident) {
+        Some((_, cfgs)) => cfgs.push(cfg),
+        None => provided.push((ident, vec![cfg])),
+    }
+}
+
 /// The mirror of module `path` and its children in `tree`.
 fn mirror(
     source: &mut Source,
@@ -1850,10 +1862,7 @@ fn mirror(
         } else {
             &mut names
         };
-        match exported.iter_mut().find(|(name, _)| *name == ident) {
-            Some((_, cfgs)) => cfgs.push(cfg),
-            None => exported.push((ident, vec![cfg])),
-        }
+        provide(exported, ident, cfg);
     }
     // A lower crate's import under one of its features binds whatever that crate's build chose;
     // staging made it public, so the glob re-exports that binding instead of a copy evaluated
@@ -1869,9 +1878,26 @@ fn mirror(
     if uses(&items).into_iter().any(feature_import) {
         glob = true;
     }
+    let gate = |cfgs: &[Vec<Cfg>]| match cfgs {
+        [cfg] => quote!(#(#[cfg(#cfg)])*),
+        _ if cfgs.iter().any(Vec::is_empty) => quote!(),
+        _ => {
+            let each = cfgs.iter().map(|cfg| quote!(all(#(#cfg),*)));
+            quote!(#[cfg(any(#(#each),*))])
+        }
+    };
+    // In a lower crate, only the listed functions' modules are widened: other private imports
+    // wouldn't resolve, so keep only names the copies and helpers refer to, and in a copy's module
+    // every import from std and the linked crates ([`Narrowing`]).
+    let narrowed = |name: &str, root: &syn::Ident| {
+        narrowing.is_none_or(|narrowing| {
+            narrowing.used.contains(name) || (!tree.copies.is_empty() && narrowing.resolves(root))
+        })
+    };
     // Each name an import binds has one provider per namespace: the mirror's own binding, the
     // prebuilt crate's re-export, or the import repeated.
     let mut replayed = Vec::new();
+    let mut hidden = Vec::new();
     for item in uses(&items)
         .into_iter()
         .filter(|item| !feature_import(item))
@@ -1881,7 +1907,7 @@ fn mirror(
             || crate::internals::widens_import(path, &[], item);
         let mut withheld = BTreeSet::new();
         for leaf in reexports::imported(source, path, item) {
-            let provided = names.iter().any(|(name, _)| name.to_string() == leaf.name);
+            let provided = names.iter().any(|(name, _)| *name == leaf.name);
             // A path through a private child the mirror doesn't have can't be repeated.
             let relative = leaf
                 .path
@@ -1894,11 +1920,43 @@ fn mirror(
                     )
                     && !mirrored(head)
                     && !own(head)
-                    && !names.iter().any(|(name, _)| name.to_string() == *head)
+                    && !names.iter().any(|(name, _)| *name == *head)
             });
-            if own(&leaf.name) || (mirrored(&leaf.name) && leaf.types != Some(false)) {
-                // A child mirror or a copy would collide with the import. A mirrored child takes
-                // only the type namespace: an import that binds a value alone stays.
+            let root = format_ident!("{}", leaf.path[0]);
+            if own(&leaf.name) {
+                // A copy takes the name in every namespace.
+                withheld.insert(leaf.name);
+            } else if mirrored(&leaf.name) && leaf.types != Some(false) {
+                // A mirrored child takes the type namespace, which the import may bind too, so
+                // the import itself would collide with it. What it may bind in the value
+                // namespace, which only a proven absence rules out, comes through a module of
+                // nothing else, as the base's own functions do.
+                if leaf.values != Some(false)
+                    && !mod_source::modules::test_only(&item.attrs)
+                    && narrowed(&leaf.name, &root)
+                {
+                    let cfg = cfg_predicates(&item.attrs);
+                    if exposed {
+                        provide(&mut values, format_ident!("{}", leaf.name), cfg);
+                    } else {
+                        // Written in the module's scope, from a module inside it.
+                        let from_here =
+                            leaf.local || matches!(leaf.path[0].as_str(), "self" | "super");
+                        let path = from_here
+                            .then(|| "super".to_owned())
+                            .into_iter()
+                            .chain(relative.iter().cloned())
+                            .map(|segment| format_ident!("{}", segment));
+                        let colon = item.leading_colon;
+                        let name = format_ident!("{}", leaf.name);
+                        let alone = format_ident!("__fnr_imports_{}", leaf.name);
+                        let gated = gate(&[cfg]);
+                        hidden.push(quote! {
+                            #gated mod #alone { pub(crate) use #colon #(#path)::* as #name; }
+                            #gated pub(crate) use self::#alone::*;
+                        });
+                    }
+                }
                 withheld.insert(leaf.name);
             } else if exposed
                 && !mod_source::modules::test_only(&item.attrs)
@@ -1907,40 +1965,22 @@ fn mirror(
                         && narrowing.is_none_or(|narrowing| narrowing.used.contains(&leaf.name))))
             {
                 // The prebuilt crate's own binding, once, under the conditions of any provider.
-                let cfg = cfg_predicates(&item.attrs);
-                match names
-                    .iter_mut()
-                    .find(|(name, _)| name.to_string() == leaf.name)
-                {
-                    Some((_, cfgs)) => cfgs.push(cfg),
-                    None => names.push((format_ident!("{}", leaf.name), vec![cfg])),
-                }
+                provide(
+                    &mut names,
+                    format_ident!("{}", leaf.name),
+                    cfg_predicates(&item.attrs),
+                );
                 withheld.insert(leaf.name);
             }
         }
         let mut item = item.clone();
         if let Some(kept) = filter_use_tree(item.tree, None, None, &|name, root| {
-            // In a lower crate, only the listed functions' modules are widened: other private
-            // imports wouldn't resolve, so keep only names the copies and helpers refer to, and in
-            // a copy's module every import from std and the linked crates ([`Narrowing`]).
-            !withheld.contains(name)
-                && narrowing.is_none_or(|narrowing| {
-                    narrowing.used.contains(name)
-                        || (!tree.copies.is_empty() && narrowing.resolves(root))
-                })
+            !withheld.contains(name) && narrowed(name, root)
         }) {
             item.tree = kept;
             replayed.push(item);
         }
     }
-    let gate = |cfgs: &[Vec<Cfg>]| match cfgs {
-        [cfg] => quote!(#(#[cfg(#cfg)])*),
-        _ if cfgs.iter().any(Vec::is_empty) => quote!(),
-        _ => {
-            let each = cfgs.iter().map(|cfg| quote!(all(#(#cfg),*)));
-            quote!(#[cfg(any(#(#each),*))])
-        }
-    };
     let explicit = names.into_iter().map(|(ident, cfgs)| {
         let cfg = gate(&cfgs);
         quote!(#cfg pub use #original::#ident;)
@@ -1988,6 +2028,7 @@ fn mirror(
         #(#macros)*
         #(#explicit)*
         #(#values)*
+        #(#hidden)*
         #(#replayed)*
         #(#children)*
         #(#copies)*
@@ -3129,7 +3170,7 @@ mod tests {
     }
 
     #[test]
-    fn a_type_import_gives_way_to_a_mirrored_child_and_differing_conditions_both_bind() {
+    fn an_import_the_source_cannot_resolve_is_kept_beside_a_mirrored_child_under_its_conditions() {
         let mut source = source_of(
             "sunrise_client::ui",
             "pub mod layout { pub fn place() {} }
@@ -3143,10 +3184,30 @@ mod tests {
         let mut tree = Tree::default();
         tree.children.insert("layout".to_owned(), with_a_copy());
         let out = mirrored_text(&mut source, "sunrise_client::ui", &tree);
-        // Whatever the imports bind, the child already has the name in the type namespace.
+        // The child takes the type namespace; the imports may still bind a value, which the
+        // source alone can't rule out, so each stays under its own condition in a module of
+        // nothing else, whose glob the child shadows in the type namespace only.
         assert!(out.contains("pubmodlayout{"), "{out}");
-        assert!(!out.contains("native::layout"), "{out}");
-        assert!(!out.contains("portable::layout"), "{out}");
+        assert!(
+            out.contains(
+                "#[cfg(unix)]mod__fnr_imports_layout{pub(crate)usenative::layoutaslayout;}"
+            ),
+            "{out}"
+        );
+        assert!(
+            out.contains(
+                "#[cfg(not(unix))]mod__fnr_imports_layout{pub(crate)useportable::layoutaslayout;}"
+            ),
+            "{out}"
+        );
+        assert!(
+            out.contains("#[cfg(unix)]pub(crate)useself::__fnr_imports_layout::*;"),
+            "{out}"
+        );
+        assert!(
+            out.contains("#[cfg(not(unix))]pub(crate)useself::__fnr_imports_layout::*;"),
+            "{out}"
+        );
         // Imports under other conditions are each repeated under their own.
         assert!(out.contains("#[cfg(unix)]usenative::shared;"), "{out}");
         assert!(
@@ -3162,6 +3223,103 @@ mod tests {
             "{out}"
         );
         assert!(!out.contains("portable::backend"), "{out}");
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_import_beside_a_mirrored_child_keeps_the_value_it_may_bind() {
+        use std::{fs, process::Command};
+
+        // The original compiles: a module and an imported function share a name, in the
+        // namespaces each takes, whether the import is public, private, aliased or reached through
+        // a name the module declares under a condition.
+        let modules = [
+            (
+                "hooks",
+                "render",
+                "pub mod render { pub fn draw() -> u8 { 2 } }
+                 pub use external::render;",
+            ),
+            (
+                "ui",
+                "place",
+                "pub mod place { pub fn draw() -> u8 { 2 } }
+                 use external::layout as place;",
+            ),
+            (
+                "nested",
+                "layout",
+                "pub mod layout { pub fn draw() -> u8 { 2 } }
+                 #[cfg(all())]
+                 pub mod inner { pub fn layout() -> u8 { 3 } }
+                 use inner::layout;",
+            ),
+        ];
+        let mut original = String::new();
+        let mut program = String::new();
+        for (module, child, body) in modules {
+            original += &format!("pub mod {module} {{ {body} }}\n");
+            let path = format!("sunrise_client::{module}");
+            let mut source = source_of(&path, body);
+            let mut tree = Tree::default();
+            tree.children.insert(child.to_owned(), with_a_copy());
+            let mirrored = mirror(&mut source, &path, &tree, &[], None).unwrap();
+            program += &format!("mod {module} {{ {mirrored} }}\n");
+        }
+        program += "fn main() {
+            assert_eq!(hooks::render(), 1);
+            hooks::render::copy();
+            assert_eq!(ui::place(), 5);
+            ui::place::copy();
+            assert_eq!(nested::layout(), 3);
+            nested::layout::copy();
+        }";
+
+        let dir = tempfile::tempdir().unwrap();
+        let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+        let compile = |name: &str, text: &str, kind: &str, externs: &[&str]| {
+            let file = dir.path().join(format!("{name}.rs"));
+            fs::write(&file, text).unwrap();
+            let mut command = Command::new(&rustc);
+            command
+                .args(["--edition=2024", "--crate-type", kind, "--crate-name", name])
+                .arg(&file)
+                .arg("--out-dir")
+                .arg(dir.path())
+                .arg("-L")
+                .arg(dir.path());
+            for krate in externs {
+                let rlib = dir.path().join(format!("lib{krate}.rlib"));
+                command
+                    .arg("--extern")
+                    .arg(format!("{krate}={}", rlib.display()));
+            }
+            let compiled = command.output().unwrap();
+            assert!(
+                compiled.status.success(),
+                "{}",
+                String::from_utf8_lossy(&compiled.stderr)
+            );
+        };
+        compile(
+            "external",
+            "pub fn render() -> u8 { 1 } pub fn layout() -> u8 { 5 }",
+            "rlib",
+            &[],
+        );
+        compile("sunrise_client", &original, "rlib", &["external"]);
+        compile("patch", &program, "bin", &["external", "sunrise_client"]);
+        let ran = Command::new(
+            dir.path()
+                .join(format!("patch{}", std::env::consts::EXE_SUFFIX)),
+        )
+        .output()
+        .unwrap();
+        assert!(
+            ran.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ran.stderr)
+        );
     }
 
     #[test]
