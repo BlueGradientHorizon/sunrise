@@ -1,11 +1,4 @@
 //! Per-level-tick state digest to `SUNRISE_STATE_DIGEST` (`_DETAIL=1` adds per-entity lines).
-use super::{
-    Dim, FallingBlock, Game,
-    boats_common::Boat,
-    entity::{Entity as _, EntityHandle, entity_lists_of, with_entity},
-    fireworks, general, minecarts,
-    tnt_common::PrimedTnt,
-};
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
     io::Write,
@@ -16,6 +9,13 @@ use std::{
     time::Instant,
 };
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+use sunrise_gameplay_common::game::{
+    Dim, FallingBlock,
+    boats_common::Boat,
+    entity::{Entity as _, EntityHandle, entity_lists_of, with_entity},
+    fireworks, general, minecarts,
+    tnt_common::PrimedTnt,
+};
 use sunrise_sim::{join_seq::JoinSeq, thrown_trident::ThrownTrident};
 
 #[path = "state_digest_groups.rs"]
@@ -160,7 +160,7 @@ impl crate::game::ServerGame<'_> {
         let mut shared = groups::EntityGroups::default();
         let (mut count, mut with_random) = (0u64, 0u64);
         let mut visit = |handle: EntityHandle, seq: JoinSeq| {
-            with_entity!(self, handle, e => {
+            with_entity!(self.common, handle, e => {
                 groups::typed_shared(self, &mut shared, e);
                 let mut one = hasher();
                 std::mem::discriminant(&handle).hash(&mut one);
@@ -203,11 +203,11 @@ impl crate::game::ServerGame<'_> {
                 }
             })
         };
-        let walk = entity_lists_of!(self).walk_in_join_order(&mut visit);
+        let walk = entity_lists_of!(self.common).walk_in_join_order(&mut visit);
         let walk_error = walk.err().map(|e| format!("{e:?}"));
         if walk_error.is_some() {
             // The join-order walk refused the lists; hash them list by list instead.
-            for handle in self.entity_handles() {
+            for handle in self.common.entity_handles() {
                 visit(handle, JoinSeq::UNJOINED);
             }
         }
@@ -252,7 +252,7 @@ impl crate::game::ServerGame<'_> {
             "tick={} dim={} run={} entities={count}:{:016x} randoms={with_random}:{:016x} {extra} entity_identity={:016x} entity_shared={:016x} \
              block_entities={be_count}:{:016x} level_random={:012x}/{:?}/{} counters={}/{} \
              scheduled={}/{}:{:016x}{}\n",
-            self.world.game_time,
+            self.common.world.game_time,
             dim.id(),
             match running {
                 Some(true) => "1",
@@ -266,8 +266,8 @@ impl crate::game::ServerGame<'_> {
             block_entities.finish(),
             level_random.0,
             level_random.1,
-            self.block_ticks.random_tick_value,
-            self.side.next_entity,
+            self.common.block_ticks.random_tick_value,
+            self.server.next_entity,
             next_join,
             block_ticks.len(),
             fluid_ticks.len(),
