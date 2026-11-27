@@ -52,9 +52,7 @@ mod section_gpu;
 mod static_entity;
 
 pub(crate) use section_gpu::collect_animated_layers;
-use section_gpu::{
-    Part, SectionGpu, begin_shrink, decide_fade, forget_records, hold_fading, mark_fades,
-};
+use section_gpu::{Part, SectionGpu, begin_shrink, decide_fade, forget_records, mark_fades};
 use static_entity::{GpuStaticEntitySection, StaticEntityUniform};
 pub mod outline;
 mod overlay;
@@ -64,6 +62,7 @@ use gpu_checks::GpuChecks;
 use outline::{debug_line_opaque, debug_lines_opaque_first, outline_vertices_into};
 pub use outline::{outline_params, outline_vertices, outline_width};
 use overlay::Overlay;
+mod dynamic_entity;
 mod entity_batch;
 mod entity_outline;
 #[cfg(any(test, feature = "test-support"))]
@@ -100,23 +99,28 @@ mod sprite_arrays_tests;
 mod terrain_model;
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) mod test_gpu;
+#[cfg(feature = "test-support")]
+pub use test_gpu::lock as lock_test_gpu;
 mod weather;
 mod world_text;
 use cull::occlusion_culling_requested;
 use entity_batch::EntityBatch;
 pub use entity_batch::{
-    ADDITIVE_PARTICLE_OVERLAY, BANNER_PATTERN_OVERLAY, DISSOLVE_OVERLAY, DRAGON_RAYS_OVERLAY,
-    ENERGY_SWIRL_OVERLAY, EntityQuadCapacity, EntityQuadScope, FLUID_OVERLAY, GLINT_ONLY_OVERLAY,
-    OIT_ENTITY, SHADOW_OVERLAY, TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY,
-    TERRAIN_MODEL_SOLID_OVERLAY, TERRAIN_MODEL_TRANSLUCENT_OVERLAY, TEXT_NORMAL_SOLID_OVERLAY,
-    TEXT_POLYGON_OFFSET_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY, TRANSLUCENT_DRAW_FLIP,
-    TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY,
-    WATER_MASK_OVERLAY, WORLD_TEXT_OVERLAY, WORLD_TEXT_POLYGON_OFFSET_OVERLAY, is_native_terrain,
-    mark_oit,
+    ADDITIVE_PARTICLE_OVERLAY, ARMOR_GLINT_ONLY_OVERLAY, BANNER_PATTERN_OVERLAY, DISSOLVE_OVERLAY,
+    DRAGON_RAYS_OVERLAY, DYNAMIC_TEXTURE_CUTOUT_OVERLAY, DYNAMIC_TEXTURE_SOLID_OVERLAY,
+    DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY, ENERGY_SWIRL_OVERLAY, EntityQuadCapacity, EntityQuadScope,
+    FLUID_OVERLAY, GLINT_ONLY_OVERLAY, OIT_ENTITY, SHADOW_OVERLAY,
+    TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY, TERRAIN_MODEL_SOLID_OVERLAY,
+    TERRAIN_MODEL_TRANSLUCENT_OVERLAY, TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_OVERLAY,
+    TEXT_POLYGON_OFFSET_SOLID_OVERLAY, TRANSLUCENT_DRAW_FLIP, TRANSLUCENT_GLINT_ITEM_OVERLAY,
+    TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY, WORLD_TEXT_OVERLAY,
+    WORLD_TEXT_POLYGON_OFFSET_OVERLAY, dynamic_texture_bits, is_native_terrain, mark_oit,
 };
+pub use entity_batch::{NAME_TAG_OVERLAY, NAME_TAG_SOLID_OVERLAY};
 use external::{shadow_box, shadow_runs};
-pub use frustum::{Cull, Frusta, JoinedFrusta, ShadowCull};
+pub use frustum::{Cull, JoinedFrusta, ShadowCull};
 use frustum::{block_entities_within_reach, frustum, shadow_casters, taa_frustum};
+pub use mod_gpu::ModGpuResources;
 pub use section_fade::{CHUNK_VISIBILITY_THRESHOLD, chunk_visibility, fade_millis};
 use section_fade::{FadeInputs, compiled_and_visible, section_instance, section_visibility};
 #[doc(hidden)]
@@ -222,7 +226,9 @@ mod hdr_start;
 mod hdr_stats;
 pub(crate) mod hud_coverage;
 mod in_flight;
-mod sourced_geometry;
+mod material_animation;
+#[cfg(test)]
+mod material_animation_renderer_tests;
 mod terrain_normals;
 use display_watch::DisplayWatch;
 #[cfg(test)]
@@ -230,23 +236,23 @@ use display_watch::{macos_hdr, os_reported};
 pub use hdr::{Calibration as HdrCalibration, Output as HdrOutput};
 pub use output::{DisplayReading, EffectiveOutput, FrameConfiguration, FrameRequest};
 
-pub mod block_light;
 mod custom_sky;
-mod displace;
 mod frame_policy;
 pub mod lightning;
 mod linear_blend;
 #[cfg(test)]
 use frame_policy::frame_format;
 use frame_policy::{frame_configuration, overlay_format, sunrise_tone_curve};
-mod lod;
+pub mod mod_compute;
+pub mod mod_frame_graph;
+pub mod mod_gpu;
+pub mod mod_meshes;
 pub mod mod_pipelines;
-mod native_material;
-mod native_pack;
-mod native_post;
+pub mod mod_readback;
+pub mod mod_render_targets;
+pub mod mod_storage;
+pub mod mod_uniforms;
 use crate::render_slots as native_render;
-mod native_shadow;
-mod native_sky;
 mod occlusion;
 mod oit;
 mod oit_features;
@@ -291,7 +297,6 @@ pub(crate) mod upload;
 mod view;
 mod view_sections;
 mod visbuffer;
-mod wgsl_prefix;
 mod world_handover;
 mod world_post;
 pub mod world_primitives;
@@ -677,7 +682,6 @@ impl Renderer {
                 self.frame_gen.on,
                 (self.pack_post.as_ref())
                     .map(|(_, p)| p.as_ref().is_some_and(|p| p.skins_entities())),
-                self.native.is_some(),
                 || native_render::needs().entity_spans,
             )
     }
@@ -810,50 +814,21 @@ impl Renderer {
             self.own_timing.as_mut(),
         );
         if let Some(arrays) = &self.pbr_maps {
-            for animation in &self.material_animations {
-                if !self.animations.changed().contains(&animation.layer) {
-                    continue;
-                }
-                let Some(pair) = arrays.get((animation.layer / self.sprite_split) as usize) else {
-                    continue;
-                };
-                for kind in 0..2 {
-                    let Some(pixels) = animation.material_pixels(kind, tick) else {
-                        continue;
-                    };
-                    let texture = &pair[kind];
-                    let from = (pixels.len() / 4).isqrt() as u32;
-                    for level in 0..texture.mip_level_count() {
-                        let size = texture.width() >> level;
-                        let pixels = crate::sprites::resample(pixels, from, size);
-                        self.uploads.texture(
-                            encoder,
-                            wgpu::TexelCopyTextureInfo {
-                                texture,
-                                mip_level: level,
-                                origin: wgpu::Origin3d {
-                                    x: 0,
-                                    y: 0,
-                                    z: animation.layer % self.sprite_split,
-                                },
-                                aspect: wgpu::TextureAspect::All,
-                            },
-                            size,
-                            size,
-                            &pixels,
-                        );
-                    }
-                }
-            }
+            let written = self.material_animations.upload(
+                encoder,
+                &mut self.uploads,
+                arrays,
+                self.sprite_split,
+                tick,
+                self.animations.changed(),
+            );
             if let Some(atlases) = &self.pack_material_atlases {
-                for kind in 0..2 {
+                for (kind, layers) in written.into_iter().enumerate() {
+                    if layers.is_empty() {
+                        continue;
+                    }
                     let arrays: Vec<_> = arrays.iter().map(|pair| pair[kind].clone()).collect();
-                    atlases[kind].copy(
-                        &self.device,
-                        encoder,
-                        &arrays,
-                        self.animations.changed().iter().copied(),
-                    );
+                    atlases[kind].copy(&self.device, encoder, &arrays, layers);
                 }
             }
         }
@@ -868,7 +843,11 @@ impl Renderer {
     }
     /// Device `max_buffer_size`, for instance-room checks while `Renderer` is borrowed by `render`.
     pub fn max_buffer_size(&self) -> u64 {
-        self.device.limits().max_buffer_size
+        self.mod_gpu.max_buffer_size()
+    }
+    /// See [`ModGpuResources::mod_binding_limits`].
+    pub fn mod_binding_limits(&self) -> (u64, u64) {
+        self.mod_gpu.mod_binding_limits()
     }
     /// Render `frame`, optionally driving mod world-render hooks (`FrameHooks`) at the renderer's
     /// real visibility, sky, prepare, pass-stage, and post-world boundaries.
@@ -899,7 +878,7 @@ impl Renderer {
         if self.device_lost() {
             return Err("the graphics device was lost".into());
         }
-        let patched = !frame.hud.patches.is_empty() || !frame.hud.image_patches.is_empty();
+        let patched = !frame.hud.patches.is_empty() || !frame.hud.dynamic_commands.is_empty();
         if !matches!(rendered, Ok(true)) && patched {
             let section_copies = self.section_copies.take();
             let has_section_copies = section_copies.is_some();
@@ -910,7 +889,7 @@ impl Renderer {
                     })
             });
             self.hud
-                .upload_patches(&mut self.uploads, &mut encoder, frame.hud);
+                .upload_patches(&self.device, &mut self.uploads, &mut encoder, frame.hud);
             self.uploads.finish(&encoder);
             if has_section_copies {
                 self.section_copy_bytes = 0;
@@ -922,6 +901,11 @@ impl Renderer {
         }
         // A scaled screenshot's frame never reached the window.
         rendered.map(|drawn| drawn && scaled.is_none())
+    }
+    /// The device's largest 2D texture side (`max_texture_dimension_2d`), the limit of a dynamic
+    /// texture.
+    pub fn max_texture_side(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
     }
     /// Whether the device's loss callback has fired. A surface reconfigure
     /// alone cannot restore resources belonging to a lost device.
@@ -1021,14 +1005,12 @@ pub(crate) fn world_projection(fov_degrees: f32, aspect: f32, far: f32) -> Mat4 
 /// face `eye` (`view::projection_center`), the mesh at the camera-relative
 /// `origin`; all of them when there is no eye.
 fn facing_runs(sides: &Sides, eye: Option<Vec3>, origin: [f32; 3], draw: impl FnMut(u32, u32)) {
-    facing_runs_from(sides, eye, None, origin, Quads::All, draw)
+    facing_runs_from(sides, eye, origin, Quads::All, draw)
 }
-/// `facing_runs` for the eye and, with `low`, every eye straight below it down to that
-/// camera-relative height (the water mirror's eye).
+/// `facing_runs` for one `part` of a mesh's solid quads.
 fn facing_runs_from(
     sides: &Sides,
     eye: Option<Vec3>,
-    low: Option<f32>,
     origin: [f32; 3],
     part: Quads,
     draw: impl FnMut(u32, u32),
@@ -1036,8 +1018,7 @@ fn facing_runs_from(
     match eye {
         Some(eye) => {
             let eye = eye - Vec3::from(origin);
-            let low = low.map_or(eye.y, |y| (y - origin[1]).min(eye.y));
-            sides.visible_from(eye.to_array(), low, part, draw)
+            sides.visible_from(eye.to_array(), eye.y, part, draw)
         }
         None => sides.every(part, draw),
     }
@@ -1065,7 +1046,13 @@ pub(crate) struct PackLoading {
     _cancel: CancelOnDrop,
     #[allow(clippy::type_complexity)]
     thread: std::thread::JoinHandle<
-        std::result::Result<std::result::Result<pack_post::PackPost, pack_post::Refused>, String>,
+        std::result::Result<
+            (
+                std::result::Result<pack_post::PackPost, pack_post::Refused>,
+                Vec<i32>,
+            ),
+            String,
+        >,
     >,
     label: String,
     started: std::time::Instant,
@@ -1074,6 +1061,10 @@ pub(crate) struct PackLoading {
     /// the frames drawn meanwhile keep (`Renderer::pack_pending`).
     draws: PackDraws,
 }
+
+/// A running `shaders/` pack's block ids (`Renderer::pack_block_ids`).
+#[derive(Debug)]
+pub(crate) struct PackBlockIds(pub(crate) Vec<i32>);
 
 /// What a pack's programs will draw, as the built pack's `has_terrain`, `has_shadow` and
 /// `draws_sections` will say.

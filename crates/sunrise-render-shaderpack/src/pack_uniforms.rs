@@ -83,8 +83,6 @@ pub struct PackInputs {
     /// times vanilla's 0.03 blocks a tick). Iris 1.11.7 gives it, though ShaderDoc doesn't list
     /// it: observed with a probe pack, three game times 0.03 apart per tick.
     pub cloud_time: f32,
-    /// The values native mods hand their packs (`frame.mods`, `native_shader_params`).
-    pub mod_params: [[f32; 4]; 8],
     /// The player's state, for Iris's status uniforms.
     pub status: PlayerStatus,
     /// The End flash: its intensity, 0..1 (0 outside the End), and its direction from the
@@ -93,6 +91,9 @@ pub struct PackInputs {
     pub end_flash_direction: Vec3,
     /// The dimension type's `ambient_light` (`ambientLight`).
     pub ambient_light: f32,
+    /// `bossBattle`: the kind of boss event the client's boss bars show, 0 none, 1 custom,
+    /// 2 ender dragon, 3 wither, 4 raid (`BossOverlay::boss_battle`, decision D-12).
+    pub boss_battle: i32,
     /// What the uniforms tied to the view read from the camera entity.
     pub view: ViewEntity,
     /// Under `SUNRISE_STILL`, the world's ticks: the pack's clock (`frameTimeCounter`,
@@ -415,6 +416,7 @@ pub const NAMES: &[&str] = &[
     "hasSkylight",
     "hasCeiling",
     "cloudTime",
+    "bossBattle",
     // Sunrise's own: Sunrise Extras' dynamic lights (`dynamic_light.rs`), nearest first: how
     // many, and each one's camera-relative position and light level (zeros past the count).
     "sunriseDynamicLightCount",
@@ -740,6 +742,28 @@ fn shadow_ortho(shadow: &Shadow) -> (Mat4, Mat4) {
     (projection, invert_affine(projection))
 }
 
+/// `shadowProjection` and its inverse for this frame: `shadow_ortho`'s, or the perspective
+/// `shadow_camera` gives with `shadowMapFov`.
+fn shadow_projection(frame: &Frame, shadow: &Shadow) -> (Mat4, Mat4) {
+    match shadow.fov {
+        Some(_) => {
+            let light = shadow_light(frame, shadow);
+            let (_, projection) = shadow_camera(light, frame.camera, shadow);
+            (projection, projection.inverse())
+        }
+        None => shadow_ortho(shadow),
+    }
+}
+
+/// The `shadowModelView` and `shadowProjection` a pack reads this frame, in that order, for a
+/// mod that draws into the shadow pass.
+pub fn shadow_view(frame: &Frame, shadow: &Shadow) -> (Mat4, Mat4) {
+    (
+        shadow_model_view(frame, shadow).0,
+        shadow_projection(frame, shadow).0,
+    )
+}
+
 /// JOML's `Matrix4f.invertAffine()`, operation by operation.
 fn invert_affine(m: Mat4) -> Mat4 {
     let g = |c: usize, r: usize| m.col(c)[r];
@@ -946,14 +970,7 @@ impl FrameUniforms {
             ),
             None => (frame.sky.fog_color, frame.distance * 0.9, frame.distance),
         };
-        let light = shadow_light(frame, &self.shadow);
-        let (shadow_projection, shadow_projection_inverse) = match self.shadow.fov {
-            Some(_) => {
-                let (_, projection) = shadow_camera(light, frame.camera, &self.shadow);
-                (projection, projection.inverse())
-            }
-            None => shadow_ortho(&self.shadow),
-        };
+        let (shadow_projection, shadow_projection_inverse) = shadow_projection(frame, &self.shadow);
         let (shadow_view, shadow_view_inverse) = shadow_model_view(frame, &self.shadow);
         let day_time = inputs.day_time.rem_euclid(24000) as i32;
         let world_day = inputs.day_time.div_euclid(24000);
@@ -1019,7 +1036,7 @@ impl FrameUniforms {
                 "viewHeight" => Value::f(&[size[1] as f32]),
                 "aspectRatio" => Value::f(&[aspect]),
                 "near" => Value::f(&[0.05]),
-                // The chunk render distance, not the distant terrain's reach.
+                // The chunk render distance.
                 "far" => Value::f(&[frame.detail_distance]),
                 "rainStrength" => Value::f(&[inputs.rain]),
                 "wetness" => Value::f(&[self.wetness]),
@@ -1085,6 +1102,7 @@ impl FrameUniforms {
                 "cloudHeight" => Value::f(&[inputs.cloud_height]),
                 "cloudTime" => Value::f(&[inputs.cloud_time]),
                 "ambientLight" => Value::f(&[inputs.ambient_light]),
+                "bossBattle" => Value::i(&[inputs.boss_battle]),
                 // Iris 1.11.7 gave both the same value in every scene measured.
                 "playerMood" | "constantMood" => Value::f(&[inputs.view.mood]),
                 // renderStage is NONE outside gbuffers draws.
@@ -2986,6 +3004,9 @@ fn dynamic_light_index(name: &str) -> Option<usize> {
     (k < sunrise_render_core::MAX_DYNAMIC_LIGHTS).then_some(k)
 }
 
+#[cfg(test)]
+#[path = "pack_uniforms/boss_battle_test.rs"]
+mod boss_battle_test;
 #[cfg(test)]
 #[path = "pack_uniforms/ftransform_test.rs"]
 mod ftransform_test;

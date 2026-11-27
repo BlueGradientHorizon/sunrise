@@ -235,7 +235,7 @@ fn two_separately_built_mods_share_custom_static_registry_and_tags() {
             "sunrise-resources.json",
             r#"{"schema":7,"minecraft":"26.3"}"#,
         ),
-        ("sunrise-prepare.json", r#"{"output_version":8}"#),
+        ("sunrise-prepare.json", r#"{"output_version":9}"#),
         ("registries.json", "{}"),
     ] {
         fs::write(stub_resources.join(name), json).unwrap();

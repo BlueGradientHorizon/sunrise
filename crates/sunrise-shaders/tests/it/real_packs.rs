@@ -77,9 +77,9 @@ fn real_packs_read() {
                         };
                         let p = preprocess(&pack, &path, &macros);
                         stages += 1;
-                        lines += p.lines.len();
+                        lines += p.lines().len();
                         diagnostics.extend(p.diagnostics.iter().map(|d| {
-                            let file = &p.files[d.origin.file as usize];
+                            let file = &p.files()[d.origin.file as usize];
                             format!("{file}:{}: {}", d.origin.line, d.message)
                         }));
                     }
@@ -229,7 +229,7 @@ fn real_packs_read() {
             };
                 let mut macros = macros.clone();
                 if std::env::var_os("SUBGROUPS").is_some() {
-                    macros.define("MC_GL_KHR_shader_subgroup_arithmetic", "");
+                    macros.define_subgroups();
                 }
                 for note in &feature_notes {
                     println!("    {note}");
@@ -322,31 +322,8 @@ fn real_packs_read() {
 /// Every module of `post` through the shader writers wgpu uses (SPIR-V for Vulkan, HLSL for
 /// DirectX 12, GLSL for OpenGL, MSL for Metal), printing each error and panic (`BACKENDS=1`).
 fn backends(post: &sunrise_shaders::Post) {
-    let optional = [
-        &post.terrain,
-        &post.terrain_cutout,
-        &post.water,
-        &post.sky,
-        &post.sky_textured,
-        &post.entities,
-        &post.block,
-        &post.entities_translucent,
-        &post.particles,
-        &post.clouds,
-        &post.weather,
-        &post.hand,
-        &post.shadow,
-        &post.shadow_water,
-        &post.shadow_entities,
-        &post.shadow_block,
-    ];
     let mut modules: Vec<(String, &naga::Module)> = Vec::new();
-    for p in post
-        .programs
-        .iter()
-        .chain(&post.shadow_comp)
-        .chain(optional.into_iter().flatten())
-    {
+    for p in post.every_program() {
         if let Some(program) = &p.program {
             modules.push((format!("{} vertex", p.name), &program.vertex));
             modules.push((format!("{} fragment", p.name), &program.fragment));

@@ -8,25 +8,46 @@
 //! - GLSL a GL compiler takes and naga doesn't is rewritten first ([`glsl_fixups`]: a helper
 //!   taking the `sampler2D` it reads, an array sized by its initializer only);
 //! - includes are inlined ([`Includes`]), under the defines the program is compiled with;
+//! - after the rewrites below, the directives run ([`run_directives`]): conditions and macros
+//!   are Sunrise's own preprocessor's ([`condition`], [`macros`]), and naga reads code with no
+//!   directive or define left but `#version`, `#extension` and `#pragma`;
 //! - the uniform blocks get the bindings of [`Inputs::blocks`], and each sampler of
 //!   [`Inputs::samplers`] is split into a texture and a sampler object, combined again where the
 //!   sampler is named;
 //! - the vertex inputs become globals the caller's [`Glue`] fills before the program's `main`
 //!   (renamed `hz_main`) runs, and `gl_VertexID` and `gl_VertexIndex` read the glue's expression;
+//!   the glue's [`Glue::fragment_finish`] runs after the fragment shader's `main`, renamed too;
 //! - varyings get locations by name across the stages, the fragment output location 0;
 //! - an integer texel buffer (`uniform isamplerBuffer Faces;`) becomes a read-only storage buffer
 //!   of `int`s (`uint`s for `usamplerBuffer`), and `texelFetch` on it reads one into the first
 //!   channel of an `ivec4`: wgpu has no texel buffers. Like any block the caller gives beyond
 //!   its own, it is bound at [`Translated::other_binding`], and refused when not given.
+//!
+//! Rewrites keep where the code came from ([`Expanded`]), so an error names the file (the
+//! stage's or an include's id), line and column the author wrote ([`Error`]).
+//!
+//! A caller that writes the stage as naga reads it itself (`sunrise-shaders`, for Iris/OptiFine
+//! programs) compiles it through [`compile_stage`] instead, its own resources moved through a
+//! [`BindingMap`].
 
 use std::collections::HashSet;
-use std::fmt::Write;
 
 use naga::ShaderStage;
 use naga::front::glsl::{Frontend, InterfaceLimits, Options};
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
+pub mod condition;
+mod directives;
 mod glsl_fixups;
+mod located;
+pub mod macros;
+mod stage;
+
+pub use directives::run_directives;
+pub use located::{Error, Expanded, Location, describe, shader_message};
+use located::{Lines, Origin};
+pub use macros::Macros;
+pub use stage::{BindingMap, Source, compile_stage};
 
 /// What a program's pipeline gives it, beyond its [`Glue`].
 pub struct Inputs<'a> {
@@ -34,6 +55,29 @@ pub struct Inputs<'a> {
     pub blocks: &'a [(&'a str, u32)],
     /// Samplers by name: the texture's binding in set 0, the sampler object's the next one.
     pub samplers: &'a [(&'a str, u32)],
+    /// Bind group set index for caller-declared extra bindings ([`Self::extra_blocks`],
+    /// [`Self::extra_samplers`], [`Self::extra_texel_buffers`], and
+    /// [`Self::push_constant_binding`]). Defaults to `0` for vanilla callers; mod pipelines
+    /// place their declared `BindGroupLayout` in set `1`.
+    pub extra_set: u32,
+    /// Extra uniform blocks by name with their binding in [`Self::extra_set`].
+    pub extra_blocks: &'a [(&'a str, u32)],
+    /// Extra combined samplers by name: texture at `b`, sampler object at `b + 1` in
+    /// [`Self::extra_set`].
+    pub extra_samplers: &'a [(&'a str, u32)],
+    /// Extra integer texel buffers by name: read-only storage buffer at `b` in
+    /// [`Self::extra_set`].
+    pub extra_texel_buffers: &'a [(&'a str, u32)],
+    /// Extra std430 storage buffer blocks by name: `(name, binding, read_only)` in
+    /// [`Self::extra_set`]. The block's `readonly` qualifier must agree with `read_only`.
+    pub extra_storage_buffers: &'a [(&'a str, u32, bool)],
+    /// Extra `image2D` storage images by name: `(name, binding, access)` in
+    /// [`Self::extra_set`]. The declaration's `readonly`/`writeonly` qualifiers must agree with
+    /// `access`, and its `layout(<format>)` names the texel format.
+    pub extra_storage_images: &'a [(&'a str, u32, ImageAccess)],
+    /// Optional binding in [`Self::extra_set`] onto which `layout(push_constant) uniform ...`
+    /// blocks are translated as a std140 uniform buffer. `None` refuses `layout(push_constant)`.
+    pub push_constant_binding: Option<u32>,
     /// Loose `uniform T name;` declarations dropped where they stand, as a block already declares
     /// the name (an older version of the block kept in an `#else` branch); any other loose
     /// uniform is an error.
@@ -57,7 +101,8 @@ pub struct Includes<'a> {
     pub once: &'a [&'a str],
 }
 
-/// What the caller's pipeline gives the program's vertex shader.
+/// What the caller's pipeline gives the program's vertex shader, and what it runs after the
+/// fragment shader's.
 pub struct Glue<'a> {
     /// The inputs the program's vertex shader may declare: name and GLSL type.
     pub inputs: &'a [(&'a str, &'a str)],
@@ -69,6 +114,11 @@ pub struct Glue<'a> {
     pub finish: &'a str,
     /// The expression the program's `gl_VertexID` and `gl_VertexIndex` read.
     pub vertex_id: &'a str,
+    /// Statements after the fragment shader's `main` (renamed `hz_main`, as the vertex
+    /// shader's is), on its outputs, once `main` returns; a `discard` ends the invocation
+    /// before them. None leaves the fragment shader as the program wrote it. Only [`translate`] runs it: a caller of [`compile_stage`]
+    /// writes its own `main`.
+    pub fragment_finish: Option<&'a str>,
     /// The stage interface limits the stages are translated with (a device's, or the lowest
     /// any device has when checking without one).
     pub interface: InterfaceLimits,
@@ -86,18 +136,58 @@ pub struct Translated {
     /// The resources of set 0 the stages' entry points read, each with those stages
     /// ([`bindings_read`], from the validation that made the program).
     pub read: Vec<(u32, wgpu_types::ShaderStages)>,
+    /// The resources of set 1 the stages' entry points read, each with those stages.
+    pub extra_read: Vec<(u32, wgpu_types::ShaderStages)>,
     /// First set-0 binding assigned to [`Translated::other`], strictly above every binding in
     /// [`Inputs::blocks`] and [`Inputs::samplers`].
     other_base: u32,
+    /// The code each stage was parsed from, with where its lines came from, and where the
+    /// fragment stage declares each output location (a byte of its code): what
+    /// [`Translated::declared_at`] and [`Translated::output_at`] read. None for a program made
+    /// from modules alone ([`Translated::new`]).
+    sources: Option<Box<Sources>>,
+}
+
+#[derive(Debug)]
+struct Sources {
+    code: [Expanded; 2],
+    outputs: Vec<(u32, usize)>,
+}
+
+/// Where the first of `stages` (each a module and the code it was parsed from) that declares
+/// the resource at `binding` of set 0 declares it, preferring one whose entry point reads it
+/// (`reading`, in the stages' order); the first stage's file with no line when none declares
+/// it.
+pub fn declared_at(
+    stages: [(&naga::Module, &Expanded); 2],
+    reading: [bool; 2],
+    binding: u32,
+) -> Location {
+    let location_of = |(module, code): (&naga::Module, &Expanded)| {
+        (module.global_variables.iter())
+            .find(|(_, g)| {
+                g.binding
+                    .as_ref()
+                    .is_some_and(|b| b.group == 0 && b.binding == binding)
+            })
+            .map(|(handle, _)| code.location_in(module.global_variables.get_span(handle)))
+    };
+    let order = [0, 1].into_iter().filter(|&i| reading[i]).chain([0, 1]);
+    order
+        .filter_map(|i| location_of(stages[i]))
+        .next()
+        .unwrap_or_else(|| Location {
+            file: stages[0].1.file().to_owned(),
+            line: 0,
+        })
 }
 
 /// The integer texel buffers a stage declares (`uniform isamplerBuffer` or `usamplerBuffer`).
 fn texel_buffers(text: &str) -> HashSet<&str> {
-    text.lines()
-        .flat_map(declaration_lines)
-        .filter_map(declaration)
-        .filter(|d| d.storage == "uniform" && matches!(d.ty, "isamplerBuffer" | "usamplerBuffer"))
-        .map(|d| d.name)
+    resources(text)
+        .into_iter()
+        .filter(|resource| resource.kind == ResourceKind::TexelBuffer)
+        .map(|resource| resource.name)
         .collect()
 }
 
@@ -105,40 +195,39 @@ fn texel_buffers(text: &str) -> HashSet<&str> {
 /// buffer's declaration defines (see `rewrite`); `texelFetch` on anything else is left alone.
 /// One pass over the text, however many buffers it declares: each `texelFetch` is looked at
 /// once, its first argument's name looked up among them.
-fn texel_fetches(text: &str) -> String {
+fn texel_fetches(lines: &mut Lines) {
+    let text = lines.text();
     let buffers = texel_buffers(text);
     if buffers.is_empty() {
-        return text.to_owned();
+        return;
     }
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find("texelFetch") {
-        out.push_str(&rest[..at]);
-        let after = &rest[at + "texelFetch".len()..];
+    let mut edits = Vec::new();
+    let mut from = 0;
+    while let Some(found) = text[from..].find("texelFetch") {
+        let at = from + found;
+        let after = at + "texelFetch".len();
+        from = after;
         // A name only ending in `texelFetch` is not it; one only starting with it has no `(`
         // next, so it isn't rewritten either.
-        let whole = !rest[..at].chars().next_back().is_some_and(is_ident);
-        let args = after.trim_start().strip_prefix('(').map(str::trim_start);
-        let name = args.map(|a| &a[..a.find(|c: char| !is_ident(c)).unwrap_or(a.len())]);
-        match (args, name) {
-            (Some(args), Some(name)) if whole && buffers.contains(name) => {
-                let tail = args[name.len()..].trim_start();
-                if let Some(tail) = tail.strip_prefix(',') {
-                    write!(out, "hz_fetch_{name}(").unwrap();
-                    rest = tail;
-                    continue;
-                }
-                out.push_str("texelFetch");
-                rest = after;
-            }
-            _ => {
-                out.push_str("texelFetch");
-                rest = after;
-            }
+        let whole = !text[..at].chars().next_back().is_some_and(is_ident);
+        let args = text[after..]
+            .trim_start()
+            .strip_prefix('(')
+            .map(str::trim_start);
+        let Some(args) = args.filter(|_| whole) else {
+            continue;
+        };
+        let name = &args[..args.find(|c: char| !is_ident(c)).unwrap_or(args.len())];
+        if !buffers.contains(name) {
+            continue;
+        }
+        if let Some(tail) = args[name.len()..].trim_start().strip_prefix(',') {
+            let end = text.len() - tail.len();
+            edits.push((at..end, format!("hz_fetch_{name}(")));
+            from = end;
         }
     }
-    out.push_str(rest);
-    out
+    lines.edit(edits);
 }
 
 impl Translated {
@@ -150,14 +239,50 @@ impl Translated {
         other: Vec<String>,
         other_base: u32,
     ) -> Self {
-        let read = bindings_read([(&vertex, &vertex_info), (&fragment, &fragment_info)]);
+        let read =
+            bindings_read_in_group([(&vertex, &vertex_info), (&fragment, &fragment_info)], 0);
+        let extra_read =
+            bindings_read_in_group([(&vertex, &vertex_info), (&fragment, &fragment_info)], 1);
         Self {
             vertex,
             fragment,
             other,
             read,
+            extra_read,
             other_base,
+            sources: None,
         }
+    }
+
+    /// Where a stage declares the resource at `binding` of set 0, a stage reading it first
+    /// ([`declared_at`]): what a refusal of that declaration names. Nowhere known for a program
+    /// made from modules alone.
+    pub fn declared_at(&self, binding: u32) -> Location {
+        let Some(sources) = &self.sources else {
+            return Location::default();
+        };
+        let stages = self.stages_reading(binding);
+        declared_at(
+            [
+                (&self.vertex, &sources.code[0]),
+                (&self.fragment, &sources.code[1]),
+            ],
+            [
+                stages.contains(wgpu_types::ShaderStages::VERTEX),
+                stages.contains(wgpu_types::ShaderStages::FRAGMENT),
+            ],
+            binding,
+        )
+    }
+
+    /// Where the fragment stage declares its output at `location`; its file with no line when
+    /// it declares none there (nowhere known for a program made from modules alone).
+    pub fn output_at(&self, location: u32) -> Location {
+        let Some(sources) = &self.sources else {
+            return Location::default();
+        };
+        let at = sources.outputs.iter().find(|(l, _)| *l == location);
+        sources.code[1].location_at(at.map(|(_, at)| *at))
     }
 
     /// The binding of the `index`th block or sampler of [`Translated::other`] in set 0.
@@ -165,11 +290,62 @@ impl Translated {
         self.other_base + 2 * index as u32
     }
 
+    /// The size the stages declare the uniform block at `binding` of set 0 with, the larger of
+    /// the two; 0 when neither declares one there.
+    pub fn declared_size(&self, binding: u32) -> u64 {
+        [&self.vertex, &self.fragment]
+            .into_iter()
+            .flat_map(|module| {
+                module
+                    .global_variables
+                    .iter()
+                    .filter_map(move |(_, global)| {
+                        let bound = global.binding.as_ref()?;
+                        (bound.group == 0
+                            && bound.binding == binding
+                            && global.space == naga::AddressSpace::Uniform)
+                            .then(|| u64::from(module.types[global.ty].inner.size(module.to_ctx())))
+                    })
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
     /// The stages whose entry points read the resource at `binding` of set 0, through any
     /// function they call: what a pipeline layout must make that binding visible to. Empty
     /// for one a stage only declares (or the preprocessor kept but nothing reads).
     pub fn stages_reading(&self, binding: u32) -> wgpu_types::ShaderStages {
         stages_reading(&self.read, binding)
+    }
+
+    /// The stages whose entry points read the resource at `(group, binding)`.
+    pub fn stages_reading_in_group(&self, group: u32, binding: u32) -> wgpu_types::ShaderStages {
+        match group {
+            0 => stages_reading(&self.read, binding),
+            1 => stages_reading(&self.extra_read, binding),
+            _ => wgpu_types::ShaderStages::NONE,
+        }
+    }
+
+    /// Maximum declared std140 byte span of the uniform block at `(group, binding)` across both
+    /// stages, or `None` if neither stage declares a uniform struct at that binding.
+    pub fn uniform_block_size(&self, group: u32, binding: u32) -> Option<u32> {
+        let mut max_span: Option<u32> = None;
+        for module in [&self.vertex, &self.fragment] {
+            for (_, global) in module.global_variables.iter() {
+                let matches = global
+                    .binding
+                    .as_ref()
+                    .is_some_and(|b| b.group == group && b.binding == binding);
+                if matches
+                    && global.space == naga::AddressSpace::Uniform
+                    && let naga::TypeInner::Struct { span, .. } = module.types[global.ty].inner
+                {
+                    max_span = Some(max_span.map_or(span, |prev| prev.max(span)));
+                }
+            }
+        }
+        max_span
     }
 
     /// Whether every stage that reads the block at `binding` of set 0 declares it as one float
@@ -242,13 +418,22 @@ impl Translated {
 pub fn bindings_read(
     stages: [(&naga::Module, &naga::valid::ModuleInfo); 2],
 ) -> Vec<(u32, wgpu_types::ShaderStages)> {
+    bindings_read_in_group(stages, 0)
+}
+
+/// The resources of bind group `group` that the entry points of each stage read, through any
+/// function they call, each with the stages reading it.
+pub fn bindings_read_in_group(
+    stages: [(&naga::Module, &naga::valid::ModuleInfo); 2],
+    group: u32,
+) -> Vec<(u32, wgpu_types::ShaderStages)> {
     let mut read: Vec<(u32, wgpu_types::ShaderStages)> = Vec::new();
     for ((module, info), stage) in stages.into_iter().zip([
         wgpu_types::ShaderStages::VERTEX,
         wgpu_types::ShaderStages::FRAGMENT,
     ]) {
         for (handle, global) in module.global_variables.iter() {
-            let Some(binding) = global.binding.as_ref().filter(|b| b.group == 0) else {
+            let Some(binding) = global.binding.as_ref().filter(|b| b.group == group) else {
                 continue;
             };
             let reads =
@@ -275,87 +460,536 @@ pub fn stages_reading(
         .map_or(wgpu_types::ShaderStages::NONE, |(_, stages)| *stages)
 }
 
-/// A program's two stages and the folder they are in (`ns:path/`), which their quoted (relative)
-/// includes start from.
+/// A program's authored stage sources, their diagnostic file names, and each stage's own
+/// folder (`ns:path/`) for quoted (relative) includes.
 pub struct Stages<'a> {
-    pub dir: &'a str,
+    pub vertex_dir: &'a str,
+    pub fragment_dir: &'a str,
     pub vertex: &'a str,
     pub fragment: &'a str,
+    pub vertex_file: &'a str,
+    pub fragment_file: &'a str,
 }
 
 /// The program of `sources` under `inputs`, its vertex stage fed by `glue`. Blocks and samplers
 /// beyond [`Inputs::blocks`] and [`Inputs::samplers`] are bound at [`Translated::other`]'s
 /// bindings when `provided` says yes to their name (a block's and a sampler's alike: the caller
-/// knows which kind each one is), and are an error otherwise.
+/// knows which kind each one is), and are an error otherwise. Each stage's quoted includes
+/// resolve from its own folder. Errors name the file, line and column the author wrote and the
+/// responsible stage when known ([`Error`]).
 pub fn translate(
     sources: &Stages,
     inputs: &Inputs,
     glue: &Glue,
     provided: &dyn Fn(&str) -> bool,
-) -> Result<Translated, String> {
+) -> Result<Translated, Vec<Error>> {
     let Stages {
-        dir,
+        vertex_dir,
+        fragment_dir,
         vertex,
         fragment,
+        vertex_file,
+        fragment_file,
     } = *sources;
-    let stage = |text: &str| -> Result<String, String> {
-        let expanded = expand_includes(text, dir, inputs.includes, Some(inputs.defines))
-            .map_err(|e| e.to_string())?;
-        Ok(texel_fetches(&glsl_fixups::fixups(&expanded)))
+    let stage = |text: &str, file: &str, dir: &str, stage| -> Result<Expanded, Vec<Error>> {
+        let mut expanded = expand_includes(text, file, dir, inputs.includes, Some(inputs.defines))
+            .map_err(|e| vec![Error::from(e).with_stage(stage)])?;
+        expanded.lines = glsl_fixups::fixups(expanded.lines);
+        texel_fetches(&mut expanded.lines);
+        Ok(expanded)
     };
-    let (vertex_text, fragment_text) = (stage(vertex)?, stage(fragment)?);
-    let mut names = Names::new(other_binding_base(inputs)?);
-    let vertex_code = rewrite(&vertex_text, ShaderStage::Vertex, inputs, glue, &mut names)
-        .map_err(|e| format!("vertex shader: {e}"))?;
-    let fragment_code = rewrite(
-        &fragment_text,
-        ShaderStage::Fragment,
-        inputs,
-        glue,
-        &mut names,
-    )
-    .map_err(|e| format!("fragment shader: {e}"))?;
-    let vertex = compile(
+    let vertex_text = stage(vertex, vertex_file, vertex_dir, ShaderStage::Vertex)?;
+    let fragment_text = stage(fragment, fragment_file, fragment_dir, ShaderStage::Fragment)?;
+    let base =
+        other_binding_base(inputs).map_err(|message| vec![Error::new(vertex_file, 0, message)])?;
+    let mut names = Names::new(base);
+    let rewritten = |text: &Expanded, stage, names: &mut Names| {
+        rewrite(text, stage, inputs, glue, names).map_err(|e| vec![e.with_stage(stage)])
+    };
+    let vertex_code = rewritten(&vertex_text, ShaderStage::Vertex, &mut names)?;
+    let fragment_code = rewritten(&fragment_text, ShaderStage::Fragment, &mut names)?;
+    // The directives run where naga's preprocessor ran them: on the rewritten stage, the
+    // program's defines first.
+    let directives = |code: &Expanded, stage| {
+        run_directives(code, inputs.defines).map_err(|e| vec![e.with_stage(stage)])
+    };
+    let vertex_parsed = directives(&vertex_code, ShaderStage::Vertex)?;
+    let fragment_parsed = directives(&fragment_code, ShaderStage::Fragment)?;
+    let mut vertex = compile(
         ShaderStage::Vertex,
-        &vertex_code,
-        inputs.defines,
+        &vertex_parsed,
         &names,
         provided,
         glue.interface,
-    )
-    .map_err(|e| format!("vertex shader: {e}"))?;
+    )?;
     let fragment = compile(
         ShaderStage::Fragment,
-        &fragment_code,
-        inputs.defines,
+        &fragment_parsed,
         &names,
         provided,
         glue.interface,
-    )
-    .map_err(|e| format!("fragment shader: {e}"))?;
-    let given = locations(&vertex.0, false);
-    if let Some(missing) = locations(&fragment.0, true)
-        .into_iter()
-        .find(|l| !given.contains(l))
-    {
-        return Err(format!(
-            "the fragment shader reads location {missing}, which the vertex shader doesn't write"
-        ));
+    )?;
+    if let Err(refusal) = link(&vertex.0, &fragment.0) {
+        // At the fragment shader's input of that location.
+        let at = (names.inputs.iter()).find(|(l, _)| *l == refusal.location());
+        return Err(vec![
+            fragment_code
+                .error_at(at.map(|(_, at)| *at), refusal.to_string())
+                .with_stage(ShaderStage::Fragment),
+        ]);
     }
-    Ok(Translated::new(
-        vertex,
-        fragment,
-        names.other,
-        names.other_base,
-    ))
+    follow_fragment_interpolation(&mut vertex.0, &fragment.0);
+    let mut program = Translated::new(vertex, fragment, names.other, names.other_base);
+    // Each output's declaration, at the start of its line in the code that was parsed: the
+    // directives keep every line where it was.
+    let outputs = (names.outputs.into_iter())
+        .map(|(location, at)| {
+            let line = fragment_code.lines.line_of(at);
+            (location, fragment_parsed.lines.line_start(line))
+        })
+        .collect();
+    program.sources = Some(Box::new(Sources {
+        code: [vertex_parsed, fragment_parsed],
+        outputs,
+    }));
+    Ok(program)
+}
+
+/// Why the two stages don't meet, by vanilla's check when it builds a pipeline
+/// (`PipelineBuilder`), at the location the fragment stage reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkRefusal {
+    /// The vertex stage doesn't write it.
+    Missing(u32),
+    /// Float, int or uint in one stage, another in the other.
+    BaseType(u32),
+    /// Another number of components.
+    Components(u32),
+    /// Flat in one stage only.
+    Flat(u32),
+}
+
+impl LinkRefusal {
+    /// The location the fragment stage reads, where the stages don't meet.
+    pub fn location(self) -> u32 {
+        match self {
+            Self::Missing(l) | Self::BaseType(l) | Self::Components(l) | Self::Flat(l) => l,
+        }
+    }
+}
+
+impl std::fmt::Display for LinkRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing(l) => write!(
+                f,
+                "the fragment shader reads location {l}, which the vertex shader doesn't write"
+            ),
+            Self::BaseType(l) => write!(f, "the stages' base types differ at location {l}"),
+            Self::Components(l) => write!(f, "the stages' vector lengths differ at location {l}"),
+            Self::Flat(l) => write!(
+                f,
+                "the stages' interpolation differs at location {l}: flat in one only"
+            ),
+        }
+    }
+}
+
+/// Vanilla's check of the two stages' interface when it builds a pipeline (`PipelineBuilder`):
+/// each location the fragment stage reads is written by the vertex stage, with the same base type
+/// (float, int or uint), the same number of components, and flat in both or in neither. It
+/// compares no other interpolation or sampling ([`follow_fragment_interpolation`]).
+fn link(vertex: &naga::Module, fragment: &naga::Module) -> Result<(), LinkRefusal> {
+    let given = varyings(vertex, false);
+    for (location, read) in varyings(fragment, true) {
+        let Some((_, written)) = given.iter().find(|(l, _)| *l == location) else {
+            return Err(LinkRefusal::Missing(location));
+        };
+        if read.kind != written.kind {
+            return Err(LinkRefusal::BaseType(location));
+        }
+        if read.components != written.components {
+            return Err(LinkRefusal::Components(location));
+        }
+        if read.flat() != written.flat() {
+            return Err(LinkRefusal::Flat(location));
+        }
+    }
+    Ok(())
+}
+
+/// The vertex stage's outputs given the interpolation and sampling the fragment stage reads each
+/// with (`noperspective`, `centroid`, `sample`): vanilla's check compares only flat-ness
+/// ([`link`]) and the fragment stage's qualifiers decide, while the device refuses any other
+/// difference. An output the fragment stage doesn't read keeps its own.
+fn follow_fragment_interpolation(vertex: &mut naga::Module, fragment: &naga::Module) {
+    let read = varyings(fragment, true);
+    let follow = |binding: &mut naga::Binding| {
+        if let naga::Binding::Location {
+            location,
+            interpolation,
+            sampling,
+            ..
+        } = binding
+            && let Some((_, wanted)) = read.iter().find(|(l, _)| l == location)
+        {
+            *interpolation = wanted.interpolation;
+            *sampling = wanted.sampling;
+        }
+    };
+    for entry in &mut vertex.entry_points {
+        let Some(result) = &mut entry.function.result else {
+            continue;
+        };
+        if let Some(binding) = &mut result.binding {
+            follow(binding);
+            continue;
+        }
+        let ty = &vertex.types[result.ty];
+        let naga::TypeInner::Struct { members, span } = &ty.inner else {
+            continue;
+        };
+        let mut members = members.clone();
+        for member in &mut members {
+            if let Some(binding) = &mut member.binding {
+                follow(binding);
+            }
+        }
+        let followed = naga::Type {
+            name: ty.name.clone(),
+            inner: naga::TypeInner::Struct {
+                members,
+                span: *span,
+            },
+        };
+        // The arena keeps one of each type: the same struct twice (nothing changed, or one
+        // already declared alike) stays as it is.
+        if vertex.types.get(&followed).is_none() {
+            vertex.types.replace(result.ty, followed);
+        }
+    }
+}
+
+/// What a stage passes at one location, as [`link`] compares it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Varying {
+    kind: Option<naga::ScalarKind>,
+    components: u8,
+    interpolation: Option<naga::Interpolation>,
+    sampling: Option<naga::Sampling>,
+}
+
+impl Varying {
+    fn flat(&self) -> bool {
+        self.interpolation == Some(naga::Interpolation::Flat)
+    }
+}
+
+/// The locations the entry point reads (`inputs`) or writes, each with what passes there.
+fn varyings(module: &naga::Module, inputs: bool) -> Vec<(u32, Varying)> {
+    let mut out = Vec::new();
+    let mut add = |ty: naga::Handle<naga::Type>, binding: Option<&naga::Binding>| {
+        let varying = |ty: naga::Handle<naga::Type>, binding: &naga::Binding| {
+            let (kind, components) = match module.types[ty].inner {
+                naga::TypeInner::Scalar(s) => (Some(s.kind), 1),
+                naga::TypeInner::Vector { size, scalar } => (Some(scalar.kind), size as u8),
+                _ => (None, 0),
+            };
+            let naga::Binding::Location {
+                location,
+                interpolation,
+                sampling,
+                ..
+            } = *binding
+            else {
+                return None;
+            };
+            Some((
+                location,
+                Varying {
+                    kind,
+                    components,
+                    interpolation,
+                    sampling,
+                },
+            ))
+        };
+        if let Some(binding) = binding {
+            out.extend(varying(ty, binding));
+        } else if let naga::TypeInner::Struct { members, .. } = &module.types[ty].inner {
+            for m in members {
+                out.extend(m.binding.as_ref().and_then(|b| varying(m.ty, b)));
+            }
+        }
+    };
+    for entry in &module.entry_points {
+        if inputs {
+            for arg in &entry.function.arguments {
+                add(arg.ty, arg.binding.as_ref());
+            }
+        } else if let Some(result) = &entry.function.result {
+            add(result.ty, result.binding.as_ref());
+        }
+    }
+    out
+}
+
+/// A limit of wgpu's default device a program is past, where vanilla's device takes more: the
+/// program draws natively and the pack stays, as before such a program failed the load (asking
+/// the adapter for its own limits would fit it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PastDeviceLimit {
+    /// More uniform blocks read by `stage` than `max_uniform_buffers_per_shader_stage`.
+    UniformBlocks {
+        stage: wgpu_types::ShaderStages,
+        blocks: u32,
+        limit: u32,
+    },
+    /// More varyings, or a varying at a higher location, than
+    /// `max_inter_stage_shader_variables` allows.
+    Varyings {
+        count: u32,
+        highest: u32,
+        limit: u32,
+    },
+    /// The fragment stage writes the colour target at `location` (of `target`'s format) with
+    /// another base type, or fewer components than the format has, than the device takes:
+    /// vanilla's builder doesn't check a stage's outputs.
+    ColourOutput {
+        location: u32,
+        kind: Option<naga::ScalarKind>,
+        components: u8,
+        target: wgpu_types::TextureFormat,
+    },
+}
+
+impl std::fmt::Display for PastDeviceLimit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UniformBlocks {
+                stage,
+                blocks,
+                limit,
+            } => write!(
+                f,
+                "its {stage:?} stage reads {blocks} uniform blocks, past the device's {limit}"
+            ),
+            Self::Varyings {
+                count,
+                highest,
+                limit,
+            } => write!(
+                f,
+                "its stages pass {count} varyings up to location {highest}, past the device's {limit}"
+            ),
+            Self::ColourOutput {
+                location,
+                kind,
+                components,
+                target,
+            } => write!(
+                f,
+                "its fragment stage writes colour target {location} ({target:?}) with {components} \
+                 {kind:?} components, which the device doesn't take there"
+            ),
+        }
+    }
+}
+
+impl Translated {
+    /// The first of `limits` (the device's) the program is past, as the device would refuse its
+    /// pipeline: the uniform blocks each stage reads (each bound only to the stages reading it),
+    /// the varyings either stage passes, and the colour it writes into each of `targets` (their
+    /// formats): the base type of the format, with at least as many components.
+    pub fn past_device_limit(
+        &self,
+        limits: &wgpu_types::Limits,
+        targets: &[wgpu_types::TextureFormat],
+    ) -> Option<PastDeviceLimit> {
+        for (location, written) in varyings(&self.fragment, false) {
+            let Some(&target) = targets.get(location as usize) else {
+                continue;
+            };
+            let kind = match target.sample_type(None, None) {
+                Some(wgpu_types::TextureSampleType::Sint) => naga::ScalarKind::Sint,
+                Some(wgpu_types::TextureSampleType::Uint) => naga::ScalarKind::Uint,
+                _ => naga::ScalarKind::Float,
+            };
+            if written.kind != Some(kind) || written.components < target.components() {
+                return Some(PastDeviceLimit::ColourOutput {
+                    location,
+                    kind: written.kind,
+                    components: written.components,
+                    target,
+                });
+            }
+        }
+        let stages = [
+            (&self.vertex, wgpu_types::ShaderStages::VERTEX),
+            (&self.fragment, wgpu_types::ShaderStages::FRAGMENT),
+        ];
+        for (module, stage) in stages {
+            let blocks = (module.global_variables.iter())
+                .filter(|(_, g)| g.space == naga::AddressSpace::Uniform)
+                .filter_map(|(_, g)| g.binding.as_ref())
+                .filter(|b| b.group == 0 && self.stages_reading(b.binding).contains(stage))
+                .count() as u32;
+            let limit = limits.max_uniform_buffers_per_shader_stage;
+            if blocks > limit {
+                return Some(PastDeviceLimit::UniformBlocks {
+                    stage,
+                    blocks,
+                    limit,
+                });
+            }
+        }
+        let limit = limits.max_inter_stage_shader_variables;
+        [(&self.vertex, false), (&self.fragment, true)]
+            .into_iter()
+            .find_map(|(module, inputs)| {
+                let locations = locations(module, inputs);
+                let count = locations.len() as u32;
+                let highest = locations.iter().copied().max()?;
+                (count > limit || highest >= limit).then_some(PastDeviceLimit::Varyings {
+                    count,
+                    highest,
+                    limit,
+                })
+            })
+    }
+}
+
+/// A compute shader, expanded, translated and validated ([`translate_compute`]).
+#[derive(Debug)]
+pub struct ComputeTranslated {
+    pub module: naga::Module,
+    /// The `local_size_x`, `local_size_y` and `local_size_z` the entry point declares.
+    pub workgroup_size: [u32; 3],
+    /// Bytes of `shared` (workgroup address space) variables the entry point uses
+    /// (`max_compute_workgroup_storage_size` bounds them).
+    pub workgroup_storage_bytes: u32,
+    /// Whether the shader uses subgroup operations (`GL_KHR_shader_subgroup_*`, `subgroupAdd` and
+    /// the like): a device without `Features::SUBGROUP` must refuse it.
+    pub uses_subgroup: bool,
+    /// The bindings of group 0 the entry point reads or writes.
+    pub read: Vec<u32>,
+}
+
+/// One GLSL 450 compute shader under `inputs`, whose extra bindings are in
+/// [`Inputs::extra_set`] (a compute pipeline has one bind group, the mod's, so callers use set
+/// `0`). `layout(local_size_x = ..., local_size_y = ..., local_size_z = ...) in;` declares the
+/// workgroup size; the caller checks it, [`ComputeTranslated::workgroup_storage_bytes`] and
+/// [`ComputeTranslated::uses_subgroup`] against the device's limits and features, as only it
+/// knows them. `in` and `out` variables are refused: a compute shader has no stage interface.
+/// A refusal carries the compute stage and the authored position when known ([`Error`]).
+pub fn translate_compute(
+    text: &str,
+    file: &str,
+    dir: &str,
+    inputs: &Inputs,
+    interface: InterfaceLimits,
+) -> Result<ComputeTranslated, Vec<Error>> {
+    let stage = ShaderStage::Compute;
+    let refused = |e: Error| vec![e.with_stage(stage)];
+    let mut expanded = expand_includes(text, file, dir, inputs.includes, Some(inputs.defines))
+        .map_err(|e| refused(e.into()))?;
+    expanded.lines = glsl_fixups::fixups(expanded.lines);
+    texel_fetches(&mut expanded.lines);
+    let glue = Glue {
+        inputs: &[],
+        prelude: "",
+        setup: "",
+        finish: "",
+        vertex_id: "0",
+        fragment_finish: None,
+        interface,
+    };
+    let mut names = Names::new(
+        other_binding_base(inputs).map_err(|message| refused(Error::new(file, 0, message)))?,
+    );
+    let code = rewrite(&expanded, stage, inputs, &glue, &mut names).map_err(refused)?;
+    // The directives run on the rewritten stage, the program's defines first, as for the other
+    // stages.
+    let parsed = run_directives(&code, inputs.defines).map_err(refused)?;
+    let (module, info) = compile(stage, &parsed, &names, &|_| false, interface)?;
+    let Some(entry) = module.entry_points.first() else {
+        return Err(refused(Error::new(
+            file,
+            0,
+            "the compute shader has no `main`",
+        )));
+    };
+    let workgroup_size = entry.workgroup_size;
+    let uses_subgroup = module_uses_subgroup(&module);
+    let used = info.get_entry_point(0);
+    let mut workgroup_storage_bytes = 0u32;
+    let mut read = Vec::new();
+    for (handle, global) in module.global_variables.iter() {
+        if used[handle].is_empty() {
+            continue;
+        }
+        if global.space == naga::AddressSpace::WorkGroup {
+            workgroup_storage_bytes = workgroup_storage_bytes
+                .saturating_add(module.types[global.ty].inner.size(module.to_ctx()));
+        }
+        if let Some(binding) = global.binding.as_ref().filter(|b| b.group == 0) {
+            read.push(binding.binding);
+        }
+    }
+    Ok(ComputeTranslated {
+        module,
+        workgroup_size,
+        workgroup_storage_bytes,
+        uses_subgroup,
+        read,
+    })
+}
+
+/// Whether `module` has a subgroup operation (each of the ballot, gather and collective
+/// statements yields a result expression, which is what is looked for, so no statement walk is
+/// needed) or an entry point that reads a subgroup built-in.
+fn module_uses_subgroup(module: &naga::Module) -> bool {
+    let operation = |expression: &naga::Expression| {
+        matches!(
+            expression,
+            naga::Expression::SubgroupBallotResult
+                | naga::Expression::SubgroupOperationResult { .. }
+        )
+    };
+    let built_in = |argument: &naga::FunctionArgument| {
+        matches!(
+            argument.binding,
+            Some(naga::Binding::BuiltIn(
+                naga::BuiltIn::SubgroupSize
+                    | naga::BuiltIn::SubgroupInvocationId
+                    | naga::BuiltIn::NumSubgroups
+                    | naga::BuiltIn::SubgroupId
+            ))
+        )
+    };
+    module
+        .functions
+        .iter()
+        .map(|(_, function)| function)
+        .chain(module.entry_points.iter().map(|entry| &entry.function))
+        .any(|function| {
+            function.expressions.iter().any(|(_, e)| operation(e))
+                || function.arguments.iter().any(built_in)
+        })
 }
 
 /// A bound on a program's includes, which are pasted every time.
 const MAX_PASTES: u32 = 1024;
 pub const MAX_EXPANDED: usize = 1 << 20;
 /// A bound on the bytes the expansion scans (each pasted file, every time), however little of
-/// them it keeps: lines of imports already pasted add nothing to the shader.
-const MAX_SCANNED: usize = 8 * MAX_EXPANDED;
+/// them it keeps: lines of imports already pasted add nothing to the shader. The directives'
+/// macro expansion takes it as a count of tokens ([`run_directives`], [`Macros::checked`]): a
+/// token is at least a byte, so that bound is no looser than the bytes'. Each token the expansion
+/// holds is a small allocation of its own (its text and the macros hidden from it), so a stage
+/// that reaches the bound holds a few GiB at its peak (3.3 GiB measured). A shader pack's files
+/// spend as many units each, in what their expansion holds (`sunrise-shaders`'
+/// `MAX_EXPANSION_WORK`, [`Macros::bound`]).
+pub const MAX_SCANNED: usize = 8 * MAX_EXPANDED;
 
 /// Why a shader's includes refuse it ([`expand_includes`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -397,175 +1031,288 @@ impl std::fmt::Display for ImportRefusal {
     }
 }
 
-/// The file with its includes inlined (`#include <ns:path>`, `#include "relative"` to the
-/// including file's folder, and the same with each of [`Includes::once`]), `#version` and
-/// `#extension` lines dropped. An `#include` is pasted every time, as a GL compiler's includes
-/// are (the files' `#ifndef` guards keep one copy); a once-directive pastes a file once per
-/// stage. With `defines`, only the includes the compiler reaches under them are resolved, and
-/// macros an included file defines govern the rest of its caller; without, every branch's are.
-/// The expansion is bounded (16 levels, [`MAX_PASTES`] pastes, [`MAX_EXPANDED`] bytes kept,
-/// [`MAX_SCANNED`] bytes scanned).
+/// An [`ImportRefusal`] at the file and line of the directive it stops at (line 0: the file as
+/// a whole, as for an `#if` it leaves open).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportError {
+    pub file: String,
+    pub line: u32,
+    pub refusal: ImportRefusal,
+}
+
+impl From<ImportError> for Error {
+    fn from(e: ImportError) -> Self {
+        Error::new(e.file, e.line, e.refusal.to_string())
+    }
+}
+
+impl std::fmt::Display for ImportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Error::from(self.clone()).fmt(f)
+    }
+}
+
+/// The file `file` (its id, `ns:path`) with its includes inlined (`#include <ns:path>`,
+/// `#include "relative"` to the including file's folder, and the same with each of
+/// [`Includes::once`]), `#version` and `#extension` lines dropped. An `#include` is pasted every
+/// time, as a GL compiler's includes are (the files' `#ifndef` guards keep one copy); a
+/// once-directive pastes a file once per stage. With `defines`, only the includes the compiler
+/// reaches under them are resolved, and macros an included file defines govern the rest of its
+/// caller; without, every branch's are. The expansion is bounded (16 levels, [`MAX_PASTES`]
+/// pastes, [`MAX_EXPANDED`] bytes kept, [`MAX_SCANNED`] bytes scanned). Each line of the result
+/// keeps the file, line and columns it came from ([`Expanded`]), and a refusal names its
+/// directive's file and line.
 pub fn expand_includes(
     text: &str,
+    file: &str,
     dir: &str,
     includes: &Includes,
     defines: Option<&[&str]>,
-) -> Result<String, ImportRefusal> {
-    expand_with(
-        text,
-        dir,
-        includes,
-        defines.map(import_conditions::Conditions::new),
-    )
+) -> Result<Expanded, ImportError> {
+    expand_with(text, file, dir, includes, defines)
 }
 
-/// naga's options for one `stage` of a program with its `defines` (`NAME` or `NAME value`, in
-/// order) and the device's stage interface `limits`.
-pub fn glsl_options(stage: ShaderStage, defines: &[&str], limits: InterfaceLimits) -> Options {
-    let mut options = Options {
+/// naga's options for one `stage` of code whose directives have run ([`run_directives`]),
+/// under the device's stage interface `limits`: no defines, as no macro is left.
+pub fn glsl_options(stage: ShaderStage, limits: InterfaceLimits) -> Options {
+    Options {
         interface_limits: limits,
         ..Options::from(stage)
-    };
-    for define in defines {
-        let (name, value) = define.split_once(' ').unwrap_or((define, ""));
-        options.defines.insert(name.to_owned(), value.to_owned());
     }
-    options
 }
 
 mod import_conditions;
 
 fn expand_with(
     text: &str,
+    file: &str,
     dir: &str,
     includes: &Includes,
-    conditions: Option<import_conditions::Conditions>,
-) -> Result<String, ImportRefusal> {
+    defines: Option<&[&str]>,
+) -> Result<Expanded, ImportError> {
     struct Walk<'a> {
         includes: &'a Includes<'a>,
         conditions: Option<import_conditions::Conditions>,
         seen: HashSet<String>,
         pastes: u32,
         scanned: usize,
-        out: String,
+        out: Lines,
+        /// The ids of the files read, the stage's first, and each one's index.
+        files: Vec<String>,
+        index: std::collections::HashMap<String, u32>,
     }
     impl Walk<'_> {
-        fn walk(&mut self, text: &str, dir: &str, depth: u32) -> Result<(), ImportRefusal> {
-            if depth > 16 {
-                return Err(ImportRefusal::TooDeep);
+        /// The index of the file `id`, added the first time.
+        fn file(&mut self, id: &str) -> u32 {
+            if let Some(&index) = self.index.get(id) {
+                return index;
             }
+            let index = u32::try_from(self.files.len()).unwrap_or(u32::MAX);
+            self.files.push(id.to_owned());
+            self.index.insert(id.to_owned(), index);
+            index
+        }
+
+        fn refused(&self, file: u32, line: u32, refusal: ImportRefusal) -> ImportError {
+            ImportError {
+                file: self.files[file as usize].clone(),
+                line,
+                refusal,
+            }
+        }
+
+        /// Counts `text` against [`MAX_SCANNED`].
+        fn scan(&mut self, text: &str) -> Result<(), ImportRefusal> {
             self.scanned += text.len();
             if self.scanned > MAX_SCANNED {
                 return Err(ImportRefusal::TooMuchScanned);
             }
-            let clean;
-            let mut physical = Vec::new();
-            let text = if self.conditions.is_some() {
-                // Splicing precedes comment removal. Remember the first physical line of
-                // each logical line, including in continued directives and line comments.
-                let mut joined = String::with_capacity(text.len());
-                physical.push(1u32);
-                for (n, line) in text.split_inclusive('\n').enumerate() {
-                    if let Some(part) = line
+            Ok(())
+        }
+
+        fn walk(
+            &mut self,
+            text: &str,
+            file: u32,
+            dir: &str,
+            depth: u32,
+        ) -> Result<(), ImportError> {
+            let mut authored = Lines::default();
+            let mut physical = vec![1u32];
+            let splice = self.conditions.is_some();
+            for (n, line) in text.split_inclusive('\n').enumerate() {
+                let origin = Origin {
+                    file,
+                    line: n as u32 + 1,
+                };
+                // Splicing precedes comment removal. The directive's line is the first one
+                // of the logical line; each piece still has its own physical position.
+                if splice
+                    && let Some(part) = line
                         .strip_suffix("\\\r\n")
                         .or_else(|| line.strip_suffix("\\\n"))
-                    {
-                        joined.push_str(part);
-                    } else {
-                        joined.push_str(line);
-                        physical.push(n as u32 + 2);
-                    }
+                {
+                    authored.push_authored(part, origin);
+                } else {
+                    authored.push_authored(line, origin);
+                    physical.push(n as u32 + 2);
                 }
-                clean = strip_comments(&joined);
+            }
+            let clean;
+            let text = if splice {
+                clean = strip_comments(authored.text());
                 &clean
             } else {
-                text
+                authored.text()
             };
             let mut branches = import_conditions::Conditionals::default();
             let mut line_offset = 0i64;
             for (n, line) in text.lines().enumerate() {
+                // The line the author wrote it on: the first of a continued line.
+                let written = physical[n];
+                let origin = Some(Origin {
+                    file,
+                    line: written,
+                });
                 let directive = line.trim_start().strip_prefix('#').map(str::trim_start);
                 let (word, rest) = directive.map_or(("", ""), |d| {
                     let i = d.find(|c| !is_ident(c)).unwrap_or(d.len());
                     (&d[..i], d[i..].trim())
                 });
                 if let Some(state) = &mut self.conditions {
-                    let location =
-                        u32::try_from(i64::from(physical[n]) + line_offset).map_err(|_| {
-                            ImportRefusal::Directive("line number outside GLSL range".into())
-                        })?;
-                    if branches
-                        .apply_with(word, |kind| state.test(kind, rest, location))
-                        .map_err(ImportRefusal::Directive)?
-                        || !branches.active()
-                    {
-                        continue;
-                    }
-                    match word {
-                        "define" => state.define(rest),
-                        "undef" => state.undef(rest),
-                        "version" if depth == 0 => {
-                            state.define(&format!(
-                                "__VERSION__ {}",
-                                rest.split_whitespace().next().unwrap_or("110")
+                    // Whether the line is the preprocessor's alone (a branch's or `#line`).
+                    let consumed: Result<bool, ImportRefusal> = 'directive: {
+                        let location = u32::try_from(i64::from(physical[n]) + line_offset);
+                        let Ok(location) = location else {
+                            break 'directive Err(ImportRefusal::Directive(
+                                "line number outside GLSL range".into(),
                             ));
+                        };
+                        match branches.apply_with(word, |kind| state.test(kind, rest, location)) {
+                            Ok(skipped) if skipped || !branches.active() => {
+                                break 'directive Ok(true);
+                            }
+                            Ok(_) => {}
+                            Err(why) => break 'directive Err(ImportRefusal::Directive(why)),
                         }
-                        "line" => {
-                            let next = state
-                                .line(rest, location)
-                                .map_err(ImportRefusal::Directive)?;
-                            line_offset = i64::from(next)
-                                - i64::from(
-                                    physical.get(n + 1).copied().unwrap_or(physical[n] + 1),
-                                );
-                            continue;
+                        match word {
+                            "define" => state.define(rest),
+                            "undef" => state.undef(rest),
+                            "line" => {
+                                let next = match state.line(rest, location) {
+                                    Ok(next) => next,
+                                    Err(why) => {
+                                        break 'directive Err(ImportRefusal::Directive(why));
+                                    }
+                                };
+                                line_offset = i64::from(next)
+                                    - i64::from(
+                                        physical.get(n + 1).copied().unwrap_or(physical[n] + 1),
+                                    );
+                                break 'directive Ok(true);
+                            }
+                            "" if state.uses_line(line) => {
+                                let directive = format!("#line {}\n", location.saturating_sub(1));
+                                self.out.push(&directive, origin);
+                            }
+                            _ => {}
                         }
-                        "" if state.uses_line(line) => {
-                            writeln!(self.out, "#line {}", location.saturating_sub(1)).unwrap();
-                        }
-                        _ => {}
+                        Ok(false)
+                    };
+                    match consumed {
+                        Ok(true) => continue,
+                        Ok(false) => {}
+                        Err(refusal) => return Err(self.refused(file, written, refusal)),
                     }
                 }
                 match word {
                     _ if word == "include" || self.includes.once.contains(&word) => {
-                        let id = include_id(rest, dir, self.includes)
-                            .ok_or_else(|| ImportRefusal::Bad(rest.to_owned()))?;
-                        if self.seen.insert(id.clone()) || word == "include" {
-                            self.pastes += 1;
-                            if self.pastes > MAX_PASTES {
-                                return Err(ImportRefusal::TooManyPastes);
+                        match self.include(word, rest, dir, depth) {
+                            Ok(()) => {}
+                            Err(Included::Here(refusal)) => {
+                                return Err(self.refused(file, written, refusal));
                             }
-                            let file = (self.includes.read)(&id)
-                                .map_err(ImportRefusal::Unreadable)?
-                                .ok_or_else(|| ImportRefusal::NotFound(id.clone()))?;
-                            let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
-                            self.walk(&file, parent, depth + 1)?;
+                            Err(Included::Inside(error)) => return Err(error),
                         }
                     }
                     "version" | "extension" => {}
-                    _ => self.out.push_str(line),
+                    _ => {
+                        let at = line.as_ptr() as usize - text.as_ptr() as usize;
+                        self.out
+                            .push_spanned(line, origin, &authored, at..at + line.len());
+                    }
                 }
-                self.out.push('\n');
-                if self.out.len() > MAX_EXPANDED {
-                    return Err(ImportRefusal::TooLarge);
+                self.out.push("\n", origin);
+                if self.out.text().len() > MAX_EXPANDED {
+                    return Err(self.refused(file, written, ImportRefusal::TooLarge));
                 }
             }
             if branches.open() {
-                return Err(ImportRefusal::Directive("#if without #endif".into()));
+                return Err(self.refused(
+                    file,
+                    0,
+                    ImportRefusal::Directive("#if without #endif".into()),
+                ));
             }
             Ok(())
         }
+
+        /// The file an include directive `word` names (`rest`) pasted, when it is to be.
+        fn include(
+            &mut self,
+            word: &str,
+            rest: &str,
+            dir: &str,
+            depth: u32,
+        ) -> Result<(), Included> {
+            let id = include_id(rest, dir, self.includes)
+                .ok_or_else(|| Included::Here(ImportRefusal::Bad(rest.to_owned())))?;
+            if !(self.seen.insert(id.clone()) || word == "include") {
+                return Ok(());
+            }
+            self.pastes += 1;
+            if self.pastes > MAX_PASTES {
+                return Err(Included::Here(ImportRefusal::TooManyPastes));
+            }
+            let text = (self.includes.read)(&id)
+                .map_err(|why| Included::Here(ImportRefusal::Unreadable(why)))?
+                .ok_or_else(|| Included::Here(ImportRefusal::NotFound(id.clone())))?;
+            if depth + 1 > 16 {
+                return Err(Included::Here(ImportRefusal::TooDeep));
+            }
+            self.scan(&text).map_err(Included::Here)?;
+            let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
+            let file = self.file(&id);
+            self.walk(&text, file, parent, depth + 1)
+                .map_err(Included::Inside)
+        }
+    }
+    /// Why an include isn't pasted: at its directive, or inside the file.
+    enum Included {
+        Here(ImportRefusal),
+        Inside(ImportError),
     }
     let mut walk = Walk {
         includes,
-        conditions,
+        conditions: None,
         seen: HashSet::new(),
         pastes: 0,
         scanned: 0,
-        out: String::new(),
+        out: Lines::default(),
+        files: Vec::new(),
+        index: std::collections::HashMap::new(),
     };
-    walk.walk(text, dir, 0)?;
-    Ok(walk.out)
+    let top = walk.file(file);
+    walk.scan(text)
+        .map_err(|refusal| walk.refused(top, 0, refusal))?;
+    let version = stage_version(text);
+    walk.conditions = defines.map(|defines| import_conditions::Conditions::new(defines, version));
+    walk.walk(text, top, dir, 0)?;
+    Ok(Expanded {
+        lines: walk.out,
+        files: walk.files,
+        version,
+    })
 }
 
 /// `<ns:path>` under [`Includes::folder`] ([`Includes::namespace`] when there's no namespace), or
@@ -588,6 +1335,30 @@ fn include_id(target: &str, dir: &str, includes: &Includes) -> Option<String> {
         }
     }
     Some(format!("{ns}:{}", parts.join("/")))
+}
+
+/// The GLSL version a stage file declares (GLSL 4.60 §3.3), what its `__VERSION__` reads in
+/// every condition and in its code: the number of its first `#version` line, comments and
+/// continued lines read as the preprocessor reads them. As the GLSL spec allows nothing but
+/// comments and white space before `#version`, the first one counts whatever branch it sits in,
+/// and one in an include is not the stage's. A stage without `#version` targets 1.10 (§3.3), and
+/// a `#version` without a decimal number (or one past `u32`) reads as that too.
+pub(crate) fn stage_version(text: &str) -> u32 {
+    let mut joined = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let part = line
+            .strip_suffix("\\\r\n")
+            .or_else(|| line.strip_suffix("\\\n"));
+        joined.push_str(part.unwrap_or(line));
+    }
+    let clean = strip_comments(&joined);
+    (clean.lines())
+        .filter_map(directives::directive)
+        .find(|(word, _)| *word == "version")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .filter(|number| number.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|number| number.parse().ok())
+        .unwrap_or(110)
 }
 
 /// Comments as spaces, line breaks kept.
@@ -633,105 +1404,390 @@ fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-/// `text` with each whole identifier `from` written as `to`.
-fn replace_ident(text: &str, from: &str, to: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find(from) {
-        let before = rest[..at].chars().next_back();
-        let after = rest[at + from.len()..].chars().next();
-        out.push_str(&rest[..at]);
-        if before.is_some_and(is_ident) || after.is_some_and(is_ident) {
-            out.push_str(from);
-        } else {
-            out.push_str(to);
+/// How a shader uses a storage image, as its `readonly`/`writeonly` qualifiers say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ImageAccess {
+    /// `readonly`.
+    ReadOnly,
+    /// `writeonly`.
+    WriteOnly,
+    /// Neither qualifier.
+    ReadWrite,
+}
+
+impl ImageAccess {
+    /// The access the memory `qualifiers` of an `image2D` declaration say.
+    pub fn of_qualifiers(qualifiers: &[&str]) -> Self {
+        match (
+            qualifiers.contains(&"readonly"),
+            qualifiers.contains(&"writeonly"),
+        ) {
+            (true, false) => Self::ReadOnly,
+            (false, true) => Self::WriteOnly,
+            _ => Self::ReadWrite,
         }
-        rest = &rest[at + from.len()..];
     }
-    out.push_str(rest);
-    out
+}
+
+/// What a resource a stage declares is, as [`resources`] lists it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceKind {
+    /// A `uniform Name { ... }` block.
+    UniformBlock,
+    /// A `layout(push_constant) uniform Name { ... }` block.
+    PushConstantBlock,
+    /// `uniform sampler2D Name;`.
+    Sampler2D,
+    /// `uniform isamplerBuffer Name;` or `uniform usamplerBuffer Name;`.
+    TexelBuffer,
+    /// A `buffer Name { ... }` block.
+    StorageBuffer {
+        /// Whether the block says `readonly`.
+        read_only: bool,
+    },
+    /// `layout(<format>) uniform image2D Name;`.
+    StorageImage {
+        /// What the declaration's `readonly` and `writeonly` qualifiers say.
+        access: ImageAccess,
+    },
+}
+
+/// A resource a stage declares: what `rewrite` binds by name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Resource<'a> {
+    pub name: &'a str,
+    pub kind: ResourceKind,
+}
+
+/// The resources the text of a stage declares, in the order it declares them (a name declared
+/// twice is listed twice). It finds them as `rewrite` does when it binds them, so a caller
+/// that needs to know which names a program declares (a static check, which has no layout to ask)
+/// never disagrees with the translator: a declaration is read whatever else is on its line, and
+/// whatever real GLSL qualifier (interpolation, precision, `invariant`, memory) stands before
+/// `uniform`; any other word before it makes the statement no declaration. The text is read as
+/// `rewrite` reads it: with comments gone and includes inlined ([`expand_includes`]).
+pub fn resources(text: &str) -> Vec<Resource<'_>> {
+    text.lines()
+        .flat_map(declaration_lines)
+        .filter_map(|(_, line)| declared(line))
+        .filter_map(|declared| {
+            let (name, kind) = match declared {
+                Declared::Storage(block) => (
+                    block.name,
+                    ResourceKind::StorageBuffer {
+                        read_only: block.qualifiers.contains(&"readonly"),
+                    },
+                ),
+                Declared::Block {
+                    name,
+                    push_constant: true,
+                    ..
+                } => (name, ResourceKind::PushConstantBlock),
+                Declared::Block { name, .. } => (name, ResourceKind::UniformBlock),
+                Declared::TexelBuffer(decl) => (decl.name, ResourceKind::TexelBuffer),
+                Declared::Image(decl) => (
+                    decl.name,
+                    ResourceKind::StorageImage {
+                        access: ImageAccess::of_qualifiers(&decl.qualifiers),
+                    },
+                ),
+                Declared::Sampler(decl) => (decl.name, ResourceKind::Sampler2D),
+                Declared::Other(_) => return None,
+            };
+            Some(Resource { name, kind })
+        })
+        .collect()
+}
+
+/// The `in` declarations of a stage's text as `(offset, name, type)`, in the order it declares
+/// them (a name declared twice is listed twice); `offset` is the byte of `text` where the name
+/// stands. They are found as [`resources`] finds its own: through the one declaration
+/// classifier, whatever else is on the line, and the text is read as `rewrite` reads it, with
+/// comments gone and includes inlined ([`expand_includes`]).
+pub fn stage_inputs(text: &str) -> Vec<(usize, &str, &str)> {
+    lines_at(text)
+        .flat_map(|(line_at, line)| {
+            declaration_lines(line)
+                .into_iter()
+                .map(move |(at, piece)| (line_at + at, piece))
+        })
+        .filter_map(|(piece_at, piece)| match declared(piece)? {
+            Declared::Other(decl) if decl.storage == "in" => {
+                Some((piece_at + decl.name_at, decl.name, decl.ty))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The lines of `text` (as [`str::lines`] splits them), each with the byte where it starts.
+fn lines_at(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    let mut start = 0;
+    text.lines().map(move |line| {
+        let at = start;
+        start += text[start..]
+            .find('\n')
+            .map_or(text.len() - start, |n| n + 1);
+        (at, line)
+    })
+}
+
+/// A declaration on one line, classified: the one reading of a line that [`rewrite`] binds from
+/// and [`resources`] and [`stage_inputs`] list from.
+enum Declared<'a> {
+    /// A `buffer Name {` block.
+    Storage(StorageBlock<'a>),
+    /// A `uniform Name {` block, a push-constant one when its `layout(...)` says so, with the
+    /// line from its `uniform` token on.
+    Block {
+        name: &'a str,
+        tail: &'a str,
+        push_constant: bool,
+    },
+    /// `uniform isamplerBuffer Name;` or `uniform usamplerBuffer Name;`.
+    TexelBuffer(Decl<'a>),
+    /// `uniform image2D Name;`.
+    Image(Decl<'a>),
+    /// `uniform sampler2D Name;`.
+    Sampler(Decl<'a>),
+    /// Any other declaration: a loose uniform, an `in` or an `out`.
+    Other(Decl<'a>),
+}
+
+/// What `line` declares, if it declares anything: a storage block first, then a uniform block,
+/// then any other declaration. Its `layout(...)` is split off once ([`layout_prefix`]) and each
+/// reader gets the parts.
+fn declared(line: &str) -> Option<Declared<'_>> {
+    let (layout, rest, rest_at) = layout_prefix(line)?;
+    if let Some(block) = storage_block(layout, rest) {
+        return Some(Declared::Storage(block));
+    }
+    if let Some((name, tail)) = block_name(rest) {
+        return Some(Declared::Block {
+            name,
+            tail,
+            push_constant: layout.split(',').any(|item| item.trim() == "push_constant"),
+        });
+    }
+    let decl = declaration(layout, rest, rest_at)?;
+    Some(match (decl.storage, decl.ty) {
+        ("uniform", "isamplerBuffer" | "usamplerBuffer") => Declared::TexelBuffer(decl),
+        ("uniform", "image2D") => Declared::Image(decl),
+        ("uniform", "sampler2D") => Declared::Sampler(decl),
+        _ => Declared::Other(decl),
+    })
 }
 
 /// A global declaration on one line: `layout(...) qualifiers storage type name;`.
 struct Decl<'a> {
+    /// What stood inside `layout(...)`, empty without one.
+    layout: &'a str,
     /// `layout(location = N)`'s N.
     location: Option<u32>,
     qualifiers: Vec<&'a str>,
     storage: &'a str,
     ty: &'a str,
     name: &'a str,
+    /// The byte of the line given to [`declaration`] where `name` stands.
+    name_at: usize,
 }
 
-fn declaration(line: &str) -> Option<Decl<'_>> {
-    let mut rest = line.trim();
-    let mut location = None;
-    if let Some(after) = rest.strip_prefix("layout") {
-        let after = after.trim_start().strip_prefix('(')?;
-        let close = after.find(')')?;
-        location = after[..close].split(',').find_map(|q| {
-            let (key, value) = q.split_once('=')?;
-            (key.trim() == "location").then(|| value.trim().parse().ok())?
-        });
-        rest = after[close + 1..].trim_start();
-    }
+/// The precision qualifiers, which GLSL takes before or after the storage word (`in highp vec4 X;`).
+const PRECISION_QUALIFIERS: [&str; 3] = ["highp", "mediump", "lowp"];
+
+/// The memory qualifiers of a declaration: before its storage word, or after it
+/// (`uniform readonly image2D img;`).
+const MEMORY_QUALIFIERS: [&str; 5] = ["readonly", "writeonly", "coherent", "volatile", "restrict"];
+
+/// The other qualifiers that may stand before a declaration's `in`, `out` or `uniform`:
+/// interpolation, auxiliary storage and `invariant`/`precise`.
+const LEADING_QUALIFIERS: [&str; 8] = [
+    "flat",
+    "smooth",
+    "noperspective",
+    "centroid",
+    "sample",
+    "patch",
+    "invariant",
+    "precise",
+];
+
+/// A line's leading `layout(...)` qualifier split off: what stood inside it (trimmed, empty
+/// without one), the line after it, and the byte of `line` where that rest starts. `None` for a
+/// `layout` with no closed parenthesis.
+fn layout_prefix(line: &str) -> Option<(&str, &str, usize)> {
+    let trimmed = line.trim();
+    let lead = line.len() - line.trim_start().len();
+    let Some(after) = trimmed.strip_prefix("layout") else {
+        return Some(("", trimmed, lead));
+    };
+    let after = after.trim_start().strip_prefix('(')?;
+    let close = after.find(')')?;
+    let rest = after[close + 1..].trim_start();
+    Some((
+        after[..close].trim(),
+        rest,
+        lead + trimmed.len() - rest.len(),
+    ))
+}
+
+/// The declaration `line` is, if it is one: a statement of `layout(...)`, then only real
+/// qualifiers (`LEADING_QUALIFIERS`, `PRECISION_QUALIFIERS`, `MEMORY_QUALIFIERS`), then `in`,
+/// `out` or `uniform`, then precision and memory qualifiers, the type and the name. Any other
+/// word before the storage word makes it some other statement (`x = in vec2 y;`,
+/// `return out vec4 c;`). `layout`, `rest` and `rest_at` are the parts of the line
+/// [`layout_prefix`] split off.
+fn declaration<'a>(layout: &'a str, rest: &'a str, rest_at: usize) -> Option<Decl<'a>> {
+    let location = layout.split(',').find_map(|q| {
+        let (key, value) = q.split_once('=')?;
+        (key.trim() == "location").then(|| value.trim().parse().ok())?
+    });
     let body = rest.strip_suffix(';')?.trim_end();
     let words: Vec<&str> = body.split_whitespace().collect();
     let storage_at = words
         .iter()
         .position(|w| matches!(*w, "in" | "out" | "uniform"))?;
-    let [ty, name] = words[storage_at + 1..] else {
+    let mut qualifiers = words[..storage_at].to_vec();
+    if !qualifiers.iter().all(|w| {
+        [
+            &LEADING_QUALIFIERS[..],
+            &PRECISION_QUALIFIERS,
+            &MEMORY_QUALIFIERS,
+        ]
+        .iter()
+        .any(|set| set.contains(w))
+    }) {
+        return None;
+    }
+    let mut tail = &words[storage_at + 1..];
+    while let [word, others @ ..] = tail
+        && (PRECISION_QUALIFIERS.contains(word) || MEMORY_QUALIFIERS.contains(word))
+    {
+        qualifiers.push(*word);
+        tail = others;
+    }
+    let [ty, name] = *tail else {
         return None;
     };
     if !name.chars().all(is_ident) || !ty.chars().all(is_ident) {
         return None;
     }
     Some(Decl {
+        layout,
         location,
-        qualifiers: words[..storage_at].to_vec(),
+        qualifiers,
         storage: words[storage_at],
         ty,
         name,
+        // The name is the body's last word.
+        name_at: rest_at + body.len() - name.len(),
     })
 }
 
-/// GLSL pack shaders are often minified, with several global declarations on one line.
-/// Keep the line-oriented rewriter simple by separating only declaration statements; ordinary
-/// statements and function bodies remain untouched.
-fn declaration_lines(line: &str) -> Vec<&str> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    while let Some(relative) = line[start..].find(';') {
-        let end = start + relative + 1;
-        if declaration(&line[start..end]).is_some() {
-            lines.push(&line[start..end]);
-            start = end;
-        } else {
-            break;
+/// GLSL pack shaders are often minified, with several global declarations on one line, some after
+/// code (`void f() { } uniform sampler2D Late;`). Keep the line-oriented rewriter simple by
+/// separating every declaration statement ([`declared`]) wherever it stands on the line; the
+/// code around them stays as it is, in pieces, each with the byte of `line` where it starts. A
+/// statement ends at a `;` outside braces, and a declaration may start where the line does or
+/// after a `}` that closes a braced body.
+fn declaration_lines(line: &str) -> Vec<(usize, &str)> {
+    let mut parts = Vec::new();
+    let mut taken = 0;
+    let mut depth = 0usize;
+    let mut starts = vec![0];
+    for (at, c) in line.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    starts.push(at + 1);
+                }
+            }
+            ';' if depth == 0 => {
+                let end = at + 1;
+                // The latest start wins: `void f() { int x; } uniform sampler2D T;` declares T.
+                if let Some(&start) = starts
+                    .iter()
+                    .rev()
+                    .find(|&&start| declared(&line[start..end]).is_some())
+                {
+                    if taken < start {
+                        parts.push((taken, &line[taken..start]));
+                    }
+                    parts.push((start, &line[start..end]));
+                    taken = end;
+                }
+                starts = vec![end];
+            }
+            _ => {}
         }
     }
-    if start == 0 {
-        vec![line]
-    } else {
-        if start < line.len() {
-            lines.push(&line[start..]);
-        }
-        lines
+    if parts.is_empty() {
+        return vec![(0, line)];
     }
+    if taken < line.len() {
+        parts.push((taken, &line[taken..]));
+    }
+    parts
 }
 
-/// The block a `uniform Name {` line opens, with the line's text before `uniform`.
-fn block_name(line: &str) -> Option<&str> {
-    let at = line.find("uniform")?;
-    let head = line[..at].trim();
-    if !(head.is_empty() || head.starts_with("layout")) {
-        return None;
-    }
-    let rest = line[at + "uniform".len()..].trim();
+/// The block a `[layout(...)] uniform Name {` line opens, with its name and the line from the
+/// `uniform` token on (`tail`, what the line leaves after its `layout(...)`, which is rewritten).
+/// `uniform` is a whole word, never the start of an identifier such as `uniformColor`.
+fn block_name(tail: &str) -> Option<(&str, &str)> {
+    let rest = tail
+        .strip_prefix("uniform")
+        .filter(|after| !after.starts_with(is_ident))?
+        .trim();
     let name_end = rest.find(|c: char| !is_ident(c)).unwrap_or(rest.len());
-    let (name, tail) = rest.split_at(name_end);
+    let (name, after) = rest.split_at(name_end);
     // `{` alone, or the whole block on the line (`uniform Day { float daylight; };`).
-    (!name.is_empty() && (tail.trim().is_empty() || tail.trim_start().starts_with('{')))
-        .then_some(name)
+    (!name.is_empty() && (after.trim().is_empty() || after.trim_start().starts_with('{')))
+        .then_some((name, tail))
+}
+
+/// A `[layout(..)] [memory qualifiers] buffer Name {` line: a std430 storage buffer block.
+#[derive(Debug, PartialEq, Eq)]
+struct StorageBlock<'a> {
+    /// What the `layout(...)` qualifier lists, empty when the line has none.
+    layout: &'a str,
+    /// The block's name.
+    name: &'a str,
+    /// Its memory qualifiers (`readonly`, `writeonly`, `coherent`, `volatile`, `restrict`).
+    qualifiers: Vec<&'a str>,
+    /// The line from the block's `{` on, empty when the brace is on the next line.
+    tail: &'a str,
+}
+
+/// The storage buffer block a line opens, if it opens one: `layout` is what stood inside its
+/// `layout(...)` and `rest` the line after it.
+fn storage_block<'a>(layout: &'a str, mut rest: &'a str) -> Option<StorageBlock<'a>> {
+    let word_end = |s: &str| s.find(|c: char| !is_ident(c)).unwrap_or(s.len());
+    let mut qualifiers = Vec::new();
+    loop {
+        let (word, after) = rest.split_at(word_end(rest));
+        let after = after.trim_start();
+        match word {
+            memory if MEMORY_QUALIFIERS.contains(&memory) => {
+                qualifiers.push(word);
+                rest = after;
+            }
+            "buffer" => {
+                let (name, tail) = after.split_at(word_end(after));
+                let tail = tail.trim_start();
+                return (!name.is_empty() && (tail.is_empty() || tail.starts_with('{'))).then_some(
+                    StorageBlock {
+                        layout,
+                        name,
+                        qualifiers,
+                        tail,
+                    },
+                );
+            }
+            _ => return None,
+        }
+    }
 }
 
 /// First set-0 binding strictly above every caller-declared block (`b`) and sampler (`b`, `b + 1`).
@@ -749,6 +1805,44 @@ fn other_binding_base(inputs: &Inputs) -> Result<u32, String> {
             .ok_or_else(|| "sampler binding index overflow".to_owned())?;
         base = base.max(next);
     }
+    if inputs.extra_set == 0 {
+        for &(_, b) in inputs.extra_blocks {
+            let next = b
+                .checked_add(1)
+                .ok_or_else(|| "block binding index overflow".to_owned())?;
+            base = base.max(next);
+        }
+        for &(_, b) in inputs.extra_samplers {
+            let next = b
+                .checked_add(2)
+                .ok_or_else(|| "sampler binding index overflow".to_owned())?;
+            base = base.max(next);
+        }
+        for &(_, b) in inputs.extra_texel_buffers {
+            let next = b
+                .checked_add(1)
+                .ok_or_else(|| "texel buffer binding index overflow".to_owned())?;
+            base = base.max(next);
+        }
+        for &(_, b, _) in inputs.extra_storage_buffers {
+            let next = b
+                .checked_add(1)
+                .ok_or_else(|| "storage buffer binding index overflow".to_owned())?;
+            base = base.max(next);
+        }
+        for &(_, b, _) in inputs.extra_storage_images {
+            let next = b
+                .checked_add(1)
+                .ok_or_else(|| "storage image binding index overflow".to_owned())?;
+            base = base.max(next);
+        }
+        if let Some(b) = inputs.push_constant_binding {
+            let next = b
+                .checked_add(1)
+                .ok_or_else(|| "push constant binding index overflow".to_owned())?;
+            base = base.max(next);
+        }
+    }
     Ok(base)
 }
 
@@ -758,6 +1852,11 @@ struct Names {
     varyings: Vec<(String, u32)>,
     other: Vec<String>,
     other_base: u32,
+    /// The fragment stage's inputs: each one's location and where the rewritten stage declares
+    /// it (a byte of its text), which an error about the location names.
+    inputs: Vec<(u32, usize)>,
+    /// The fragment stage's outputs, the same way.
+    outputs: Vec<(u32, usize)>,
 }
 
 impl Names {
@@ -766,6 +1865,8 @@ impl Names {
             varyings: Vec::new(),
             other: Vec::new(),
             other_base,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
         }
     }
 
@@ -800,244 +1901,400 @@ impl Names {
     }
 }
 
-/// One stage written again for naga (see the module's notes).
+/// One stage written again for naga (see the module's notes). Generated code points back to
+/// the declarations it replaces; copied block tails keep the positions of their own bytes.
 fn rewrite(
-    text: &str,
+    source: &Expanded,
     stage: ShaderStage,
     inputs: &Inputs,
     glue: &Glue,
     names: &mut Names,
-) -> Result<String, String> {
+) -> Result<Expanded, Error> {
+    let text = source.text();
     let vertex = stage == ShaderStage::Vertex;
-    let mut out = String::from("#version 450 core\n");
+    let mut out = Lines::uniform("#version 450 core\n", None);
     if vertex {
-        out.push_str(glue.prelude);
-        out.push('\n');
+        out.push(glue.prelude, None);
+        out.push("\n", None);
         for (name, ty) in glue.inputs {
-            writeln!(out, "{ty} {name};").unwrap();
+            out.push(&format!("{ty} {name};\n"), None);
         }
     }
     // Where the program's own code starts: the glue above it is left as it is.
-    let pack_start = out.len();
+    let pack_start = out.text().len();
     let mut outputs: Vec<&str> = Vec::new();
     let explicit: Vec<u32> = if vertex {
         text.lines()
             .flat_map(declaration_lines)
-            .filter_map(declaration)
+            .filter_map(|(_, line)| {
+                let (layout, rest, rest_at) = layout_prefix(line)?;
+                declaration(layout, rest, rest_at)
+            })
             .filter(|d| d.storage == "out")
             .filter_map(|d| d.location)
             .collect()
     } else {
         Vec::new()
     };
-    for source_line in text.lines() {
-        for line in declaration_lines(source_line) {
-            if let Some(name) = block_name(line) {
-                let binding = match inputs.blocks.iter().find(|(block, _)| *block == name) {
-                    Some((_, b)) => *b,
-                    None => names.other_binding(name)?,
-                };
-                let tail = line[line.find("uniform").unwrap_or(0)..].trim();
-                writeln!(out, "layout(std140, set = 0, binding = {binding}) {tail}").unwrap();
-                continue;
-            }
-            let Some(decl) = declaration(line) else {
-                out.push_str(line);
-                out.push('\n');
+    for (n, (here, source_line)) in lines_at(text).enumerate() {
+        let origin = source.lines.origin(n);
+        for (offset, line) in declaration_lines(source_line) {
+            let from = here + offset;
+            let Some(found) = declared(line) else {
+                out.push_spanned(line, origin, &source.lines, from..from + line.len());
+                out.push("\n", origin);
                 continue;
             };
-            let qualifiers = decl.qualifiers.join(" ");
-            match decl.storage {
-                "uniform" if matches!(decl.ty, "isamplerBuffer" | "usamplerBuffer") => {
-                    let binding = names.other_binding(decl.name)?;
+            let declaration_at = from + line.len() - line.trim_start().len();
+            let at = |message: String| source.error_at(Some(declaration_at), message);
+            let write = |out: &mut Lines, code: &str| {
+                out.push_replacement(code, origin, &source.lines, declaration_at);
+            };
+            match found {
+                Declared::Storage(block) => {
+                    let Some(&(_, binding, read_only)) = inputs
+                        .extra_storage_buffers
+                        .iter()
+                        .find(|(buffer, _, _)| *buffer == block.name)
+                    else {
+                        return Err(at(format!(
+                            "storage buffer {} is not declared on this pipeline",
+                            block.name
+                        )));
+                    };
+                    if block.qualifiers.contains(&"readonly") != read_only {
+                        return Err(at(format!(
+                            "storage buffer {} is declared {} in the layout but {} in the shader",
+                            block.name,
+                            if read_only { "read-only" } else { "read-write" },
+                            if read_only {
+                                "without `readonly`"
+                            } else {
+                                "`readonly`"
+                            },
+                        )));
+                    }
+                    if let Some(packing) = block
+                        .layout
+                        .split(',')
+                        .map(str::trim)
+                        .find(|item| matches!(*item, "std140" | "shared" | "packed"))
+                    {
+                        return Err(at(format!(
+                            "storage buffer {} is declared `layout({packing})`; a storage block is std430",
+                            block.name
+                        )));
+                    }
+                    let set = inputs.extra_set;
+                    let (name, qualifiers, tail) =
+                        (block.name, block.qualifiers.join(" "), block.tail);
+                    write(
+                        &mut out,
+                        &format!(
+                            "layout(std430, set = {set}, binding = {binding}) {qualifiers} buffer {name} "
+                        ),
+                    );
+                    // `tail` is a suffix of the trimmed declaration, even if it is empty.
+                    let tail_at = from + line.trim_end().len() - tail.len();
+                    out.push_spanned(tail, origin, &source.lines, tail_at..tail_at + tail.len());
+                    write(&mut out, "\n");
+                }
+                Declared::Block {
+                    name,
+                    tail,
+                    push_constant,
+                } => {
+                    let (set, binding) = if push_constant {
+                        let Some(b) = inputs.push_constant_binding else {
+                            return Err(at(format!(
+                                "push_constant block {name} is not declared on this pipeline"
+                            )));
+                        };
+                        (inputs.extra_set, b)
+                    } else if let Some((_, b)) =
+                        inputs.blocks.iter().find(|(block, _)| *block == name)
+                    {
+                        (0, *b)
+                    } else if let Some((_, b)) =
+                        inputs.extra_blocks.iter().find(|(block, _)| *block == name)
+                    {
+                        (inputs.extra_set, *b)
+                    } else {
+                        (0, names.other_binding(name).map_err(at)?)
+                    };
+                    write(
+                        &mut out,
+                        &format!("layout(std140, set = {set}, binding = {binding}) "),
+                    );
+                    let tail_at = tail.as_ptr() as usize - text.as_ptr() as usize;
+                    out.push_spanned(tail, origin, &source.lines, tail_at..tail_at + tail.len());
+                    write(&mut out, "\n");
+                }
+                Declared::TexelBuffer(decl) => {
+                    let (set, binding) = match inputs
+                        .extra_texel_buffers
+                        .iter()
+                        .find(|(buf, _)| *buf == decl.name)
+                    {
+                        Some((_, b)) => (inputs.extra_set, *b),
+                        None => (0, names.other_binding(decl.name).map_err(at)?),
+                    };
                     let name = decl.name;
                     let (scalar, vector) = if decl.ty == "isamplerBuffer" {
                         ("int", "ivec4")
                     } else {
                         ("uint", "uvec4")
                     };
-                    writeln!(
-                        out,
-                        "layout(std430, set = 0, binding = {binding}) readonly buffer hz_buffer_{name} {{ {scalar} hz_data_{name}[]; }};\n\
-                         {vector} hz_fetch_{name}(int i) {{ return {vector}(hz_data_{name}[i], 0, 0, 1); }}"
-                    )
-                    .unwrap();
+                    write(
+                        &mut out,
+                        &format!(
+                            "layout(std430, set = {set}, binding = {binding}) readonly buffer hz_buffer_{name} {{ {scalar} hz_data_{name}[]; }};\n\
+                             {vector} hz_fetch_{name}(int i) {{ return {vector}(hz_data_{name}[i], 0, 0, 1); }}\n"
+                        ),
+                    );
                 }
-                "uniform" if decl.ty == "sampler2D" => {
-                    let binding = match inputs
+                Declared::Image(decl) => {
+                    let Some(&(_, binding, access)) = inputs
+                        .extra_storage_images
+                        .iter()
+                        .find(|(image, _, _)| *image == decl.name)
+                    else {
+                        return Err(at(format!(
+                            "storage image {} is not declared on this pipeline",
+                            decl.name
+                        )));
+                    };
+                    if ImageAccess::of_qualifiers(&decl.qualifiers) != access {
+                        return Err(at(format!(
+                            "storage image {} is declared {access:?} in the layout but its qualifiers say {:?}",
+                            decl.name,
+                            ImageAccess::of_qualifiers(&decl.qualifiers),
+                        )));
+                    }
+                    if decl.layout.is_empty() || decl.layout.contains(['=', ',']) {
+                        return Err(at(format!(
+                            "storage image {} needs exactly `layout(<texel format>)`, such as `layout(rgba8)`",
+                            decl.name
+                        )));
+                    }
+                    let qualifiers = decl.qualifiers.join(" ");
+                    let (set, format, name) = (inputs.extra_set, decl.layout, decl.name);
+                    write(
+                        &mut out,
+                        &format!(
+                            "layout({format}, set = {set}, binding = {binding}) {qualifiers} uniform image2D {name};\n"
+                        ),
+                    );
+                }
+                Declared::Sampler(decl) => {
+                    let (set, binding) = match inputs
                         .samplers
                         .iter()
                         .find(|(sampler, _)| *sampler == decl.name)
                     {
-                        Some((_, b)) => *b,
-                        None => names.other_binding(decl.name)?,
+                        Some((_, b)) => (0, *b),
+                        None => match inputs
+                            .extra_samplers
+                            .iter()
+                            .find(|(sampler, _)| *sampler == decl.name)
+                        {
+                            Some((_, b)) => (inputs.extra_set, *b),
+                            None => (0, names.other_binding(decl.name).map_err(at)?),
+                        },
                     };
                     let name = decl.name;
-                    writeln!(
-                        out,
-                        "layout(set = 0, binding = {binding}) uniform texture2D hz_tex_{name};\n\
-                     layout(set = 0, binding = {}) uniform sampler hz_smp_{name};\n\
-                     #define {name} sampler2D(hz_tex_{name}, hz_smp_{name})",
-                        binding + 1
-                    )
-                    .unwrap();
+                    write(
+                        &mut out,
+                        &format!(
+                            "layout(set = {set}, binding = {binding}) uniform texture2D hz_tex_{name};\n\
+                         layout(set = {set}, binding = {}) uniform sampler hz_smp_{name};\n\
+                         #define {name} sampler2D(hz_tex_{name}, hz_smp_{name})\n",
+                            binding + 1
+                        ),
+                    );
                 }
-                "uniform" => {
-                    // A loose declaration of a name a block declares (an older version kept in
-                    // an `#else` branch): the preprocessor picks the branch later, but this pass
-                    // sees both.
-                    if inputs.loose.contains(&decl.name) {
-                        out.push('\n');
-                        continue;
+                Declared::Other(decl) => {
+                    if stage == ShaderStage::Compute && matches!(decl.storage, "in" | "out") {
+                        return Err(at(format!(
+                            "{} {} is not allowed in a compute shader, which has no stage interface",
+                            decl.storage, decl.name
+                        )));
                     }
-                    return Err(format!("uniform {} outside a block", decl.name));
-                }
-                "in" if vertex => {
-                    if glue.inputs.iter().any(|(name, _)| *name == decl.name) {
-                        // Declared by the glue as a global.
-                        out.push('\n');
-                    } else {
-                        // Another format's input (`UV2` behind `#if !defined(IS_GUI)`): the
-                        // preprocessor drops it when it is for another pipeline, else it reads 0.
-                        writeln!(out, "{} {};", decl.ty, decl.name).unwrap();
+                    let qualifiers = decl.qualifiers.join(" ");
+                    match decl.storage {
+                        "uniform" => {
+                            // A loose declaration of a name a block declares (an older version
+                            // kept in an `#else` branch): the preprocessor picks the branch
+                            // later, but this pass sees both.
+                            if !inputs.loose.contains(&decl.name) {
+                                return Err(at(format!("uniform {} outside a block", decl.name)));
+                            }
+                            write(&mut out, "\n");
+                        }
+                        "in" if vertex => {
+                            if glue.inputs.iter().any(|(name, _)| *name == decl.name) {
+                                // Declared by the glue as a global.
+                                write(&mut out, "\n");
+                            } else {
+                                // Another format's input (`UV2` behind `#if !defined(IS_GUI)`):
+                                // the preprocessor drops it when it is for another pipeline,
+                                // else it reads 0.
+                                write(&mut out, &format!("{} {};\n", decl.ty, decl.name));
+                            }
+                        }
+                        "out" if vertex => {
+                            // One location each: naga takes scalars and vectors only.
+                            let location = decl
+                                .location
+                                .or_else(|| names.location(decl.name))
+                                .unwrap_or_else(|| {
+                                    (0..)
+                                        .find(|l| {
+                                            !explicit.contains(l)
+                                                && names.varyings.iter().all(|(_, v)| v != l)
+                                        })
+                                        .unwrap_or_default()
+                                });
+                            let varying = (decl.name.to_owned(), location);
+                            if !names.varyings.contains(&varying) {
+                                names.varyings.push(varying);
+                            }
+                            write(
+                                &mut out,
+                                &format!(
+                                    "layout(location = {location}) {qualifiers} out {} {};\n",
+                                    decl.ty, decl.name
+                                ),
+                            );
+                        }
+                        "in" => {
+                            let location = decl
+                                .location
+                                .or_else(|| names.location(decl.name))
+                                .ok_or_else(|| {
+                                    at(format!(
+                                        "input {} isn't written by the vertex shader",
+                                        decl.name
+                                    ))
+                                })?;
+                            names.inputs.push((location, out.text().len()));
+                            write(
+                                &mut out,
+                                &format!(
+                                    "layout(location = {location}) {qualifiers} in {} {};\n",
+                                    decl.ty, decl.name
+                                ),
+                            );
+                        }
+                        _ => {
+                            // Pipelines with more targets (OIT's, behind `#ifdef OIT`) name
+                            // them; the colour this pipeline draws is the one at location 0.
+                            let location = decl.location.unwrap_or_else(|| {
+                                let at = outputs.iter().position(|o| *o == decl.name);
+                                at.unwrap_or_else(|| {
+                                    outputs.push(decl.name);
+                                    outputs.len() - 1
+                                }) as u32
+                            });
+                            names.outputs.push((location, out.text().len()));
+                            write(
+                                &mut out,
+                                &format!(
+                                    "layout(location = {location}) out {} {};\n",
+                                    decl.ty, decl.name
+                                ),
+                            );
+                        }
                     }
-                }
-                "out" if vertex => {
-                    // One location each: naga takes scalars and vectors only.
-                    let location = decl
-                        .location
-                        .or_else(|| names.location(decl.name))
-                        .unwrap_or_else(|| {
-                            (0..)
-                                .find(|l| {
-                                    !explicit.contains(l)
-                                        && names.varyings.iter().all(|(_, v)| v != l)
-                                })
-                                .unwrap_or_default()
-                        });
-                    let varying = (decl.name.to_owned(), location);
-                    if !names.varyings.contains(&varying) {
-                        names.varyings.push(varying);
-                    }
-                    writeln!(
-                        out,
-                        "layout(location = {location}) {qualifiers} out {} {};",
-                        decl.ty, decl.name
-                    )
-                    .unwrap();
-                }
-                "in" => {
-                    let location = decl
-                        .location
-                        .or_else(|| names.location(decl.name))
-                        .ok_or_else(|| {
-                            format!("input {} isn't written by the vertex shader", decl.name)
-                        })?;
-                    writeln!(
-                        out,
-                        "layout(location = {location}) {qualifiers} in {} {};",
-                        decl.ty, decl.name
-                    )
-                    .unwrap();
-                }
-                _ => {
-                    // Pipelines with more targets (OIT's, behind `#ifdef OIT`) name them; the
-                    // colour this pipeline draws is the one at location 0.
-                    let location = decl.location.unwrap_or_else(|| {
-                        let at = outputs.iter().position(|o| *o == decl.name);
-                        at.unwrap_or_else(|| {
-                            outputs.push(decl.name);
-                            outputs.len() - 1
-                        }) as u32
-                    });
-                    writeln!(
-                        out,
-                        "layout(location = {location}) out {} {};",
-                        decl.ty, decl.name
-                    )
-                    .unwrap();
                 }
             }
         }
     }
-    if !vertex {
-        return Ok(out);
+    if let (false, Some(finish)) = (vertex, glue.fragment_finish) {
+        let code = &out.text()[pack_start..];
+        let edits = main_at(code)
+            .map(|at| (at + pack_start..at + pack_start + 4, "hz_main".to_owned()))
+            .collect();
+        out.edit(edits);
+        out.push(&format!("void main() {{\nhz_main();\n{finish}\n}}\n"), None);
     }
-    // The program's `gl_VertexID` and `gl_VertexIndex` both read the glue's expression (a
-    // pipeline drawing six vertices per quad turns its own index back into the program's four
-    // per quad). Only the program's code is rewritten, so the glue's expression keeps reading
-    // the real index.
-    let vertex_id = format!("({})", glue.vertex_id);
-    let pack = replace_ident(
-        &rename_main(&out[pack_start..]),
-        "gl_VertexIndex",
-        &vertex_id,
-    );
-    let pack = replace_ident(&pack, "gl_VertexID", &vertex_id);
-    let mut code = format!("{}{pack}", &out[..pack_start]);
-    write!(
-        code,
-        "void main() {{\n{}\nhz_main();\n{}\n}}\n",
-        glue.setup, glue.finish
-    )
-    .unwrap();
-    Ok(code)
+    if vertex {
+        // The program's `gl_VertexID` and `gl_VertexIndex` both read the glue's expression (a
+        // pipeline drawing six vertices per quad turns its own index back into the program's
+        // four per quad). Only the program's code is rewritten, so the glue's expression keeps
+        // reading the real index.
+        let vertex_id = format!("({})", glue.vertex_id);
+        let code = &out.text()[pack_start..];
+        let mut edits: Vec<(std::ops::Range<usize>, String)> = main_at(code)
+            .map(|at| (at..at + 4, "hz_main".to_owned()))
+            .chain(ident_at(code, "gl_VertexIndex").map(|r| (r, vertex_id.clone())))
+            .chain(ident_at(code, "gl_VertexID").map(|r| (r, vertex_id.clone())))
+            .map(|(r, with)| (r.start + pack_start..r.end + pack_start, with))
+            .collect();
+        edits.sort_by_key(|(r, _)| r.start);
+        out.edit(edits);
+        out.push(
+            &format!(
+                "void main() {{\n{}\nhz_main();\n{}\n}}\n",
+                glue.setup, glue.finish
+            ),
+            None,
+        );
+    }
+    Ok(Expanded {
+        lines: out,
+        files: source.files.clone(),
+        version: source.version,
+    })
 }
 
-/// `void main()` becomes `void hz_main()`.
-fn rename_main(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find("main") {
-        let before = rest[..at].trim_end();
-        let after = rest[at + 4..].trim_start();
-        let whole = !rest[..at].chars().next_back().is_some_and(is_ident)
-            && !rest[at + 4..].chars().next().is_some_and(is_ident);
-        out.push_str(&rest[..at]);
-        if whole && after.starts_with('(') && before.ends_with("void") {
-            out.push_str("hz_main");
-        } else {
-            out.push_str("main");
-        }
-        rest = &rest[at + 4..];
-    }
-    out.push_str(rest);
-    out
+/// Where `text` has `from` as a whole identifier.
+fn ident_at<'a>(text: &'a str, from: &'a str) -> impl Iterator<Item = std::ops::Range<usize>> + 'a {
+    text.match_indices(from)
+        .map(|(at, _)| at..at + from.len())
+        .filter(|r| {
+            !text[..r.start].chars().next_back().is_some_and(is_ident)
+                && !text[r.end..].chars().next().is_some_and(is_ident)
+        })
 }
 
-/// Parses and validates one stage; errors name the line of the rewritten code.
+/// Where the `main` of each `void main(` is, which becomes `hz_main`.
+fn main_at(text: &str) -> impl Iterator<Item = usize> + '_ {
+    ident_at(text, "main")
+        .filter(|r| {
+            text[..r.start].trim_end().ends_with("void")
+                && text[r.end..].trim_start().starts_with('(')
+        })
+        .map(|r| r.start)
+}
+
+/// Parse and validate one stage, attaching it and the authored position to each error. Parse
+/// refusals quote the rewritten line naga read. A block or sampler the pipeline does not
+/// provide is refused with its name in [`Error::unprovided`].
 fn compile(
     stage: ShaderStage,
-    code: &str,
-    defines: &[&str],
+    code: &Expanded,
     names: &Names,
     provided: &dyn Fn(&str) -> bool,
     limits: InterfaceLimits,
-) -> Result<(naga::Module, naga::valid::ModuleInfo), String> {
-    let options = glsl_options(stage, defines, limits);
-    let module = Frontend::default().parse(&options, code).map_err(|e| {
-        e.errors
-            .iter()
-            .map(|e| {
-                let start = e.meta.to_range().map_or(0, |r| r.start);
-                let line = code[..start.min(code.len())].matches('\n').count() + 1;
-                let source = code.lines().nth(line - 1).unwrap_or("").trim();
-                format!("line {line} ({source}): {}", e.kind)
-            })
-            .collect::<Vec<_>>()
-            .join("; ")
+) -> Result<(naga::Module, naga::valid::ModuleInfo), Vec<Error>> {
+    let options = glsl_options(stage, limits);
+    let text = code.text();
+    let module = Frontend::default().parse(&options, text).map_err(|e| {
+        code.errors_in(stage, &e, |kind, line| format!("({}): {kind}", line.trim()))
     })?;
     let info = Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)
         .map_err(|e| {
-            let inner = e.into_inner();
-            let mut message = inner.to_string();
-            let mut source = std::error::Error::source(&inner);
-            while let Some(s) = source {
-                write!(message, ": {s}").unwrap();
-                source = s.source();
-            }
-            message
+            // The innermost span naga gives (an expression inside the function the error names).
+            let span = (e.spans().map(|(s, _)| *s))
+                .filter(|s| s.to_range().is_some())
+                .last();
+            let span = span.unwrap_or_default();
+            vec![
+                code.error_in(span, stage::validation_message(e.into_inner()))
+                    .with_stage(stage),
+            ]
         })?;
     let entry = info.get_entry_point(0);
     for (handle, global) in module.global_variables.iter() {
@@ -1056,7 +2313,14 @@ fn compile(
             if provided(name) {
                 continue;
             }
-            return Err(format!("{name} is not a block or sampler of this pipeline"));
+            return Err(vec![
+                code.error_in(
+                    module.global_variables.get_span(handle),
+                    format!("{name} is not a block or sampler of this pipeline"),
+                )
+                .with_unprovided(name)
+                .with_stage(stage),
+            ]);
         }
     }
     Ok((module, info))
@@ -1064,729 +2328,22 @@ fn compile(
 
 /// The locations the entry point reads (`inputs`) or writes.
 fn locations(module: &naga::Module, inputs: bool) -> Vec<u32> {
-    let mut out = Vec::new();
-    let mut add = |ty: naga::Handle<naga::Type>, binding: Option<&naga::Binding>| {
-        if let Some(naga::Binding::Location { location, .. }) = binding {
-            out.push(*location);
-        } else if let naga::TypeInner::Struct { members, .. } = &module.types[ty].inner {
-            for m in members {
-                if let Some(naga::Binding::Location { location, .. }) = &m.binding {
-                    out.push(*location);
-                }
-            }
-        }
-    };
-    for entry in &module.entry_points {
-        if inputs {
-            for arg in &entry.function.arguments {
-                add(arg.ty, arg.binding.as_ref());
-            }
-        } else if let Some(result) = &entry.function.result {
-            add(result.ty, result.binding.as_ref());
-        }
-    }
-    out
+    varyings(module, inputs)
+        .into_iter()
+        .map(|(l, _)| l)
+        .collect()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Blocks, samplers and loose uniforms in a game's shape: the tests' own.
-    pub(crate) const BLOCKS: [(&str, u32); 4] = [
-        ("Globals", 0),
-        ("Projection", 1),
-        ("DynamicTransforms", 2),
-        ("Fog", 3),
-    ];
-    pub(crate) const SAMPLERS: [(&str, u32); 3] =
-        [("Sampler0", 4), ("Sampler1", 6), ("Sampler2", 8)];
-    const LOOSE: [&str; 3] = ["ProjMat", "ModelViewMat", "GameTime"];
-    /// The lowest stage interface limits a device has.
-    pub(crate) const LIMITS: InterfaceLimits = InterfaceLimits {
-        inter_stage_variables: 32,
-        vertex_attributes: 32,
-    };
-
-    fn includes<'a>(read: &'a dyn Fn(&str) -> Result<Option<String>, String>) -> Includes<'a> {
-        Includes {
-            read,
-            namespace: "minecraft",
-            folder: "shaders/include/",
-            once: &["moj_import"],
-        }
-    }
-
-    pub(crate) fn translate_core_at(
-        sources: &Stages,
-        defines: &[&str],
-        read: &dyn Fn(&str) -> Result<Option<String>, String>,
-        glue: &Glue,
-        provided: &dyn Fn(&str) -> bool,
-    ) -> Result<Translated, String> {
-        let inputs = Inputs {
-            blocks: &BLOCKS,
-            samplers: &SAMPLERS,
-            loose: &LOOSE,
-            defines,
-            includes: &includes(read),
-        };
-        translate(sources, &inputs, glue, provided)
-    }
-
-    pub(crate) fn translate_core_with(
-        vertex: &str,
-        fragment: &str,
-        defines: &[&str],
-        include: &dyn Fn(&str) -> Option<String>,
-        glue: &Glue,
-        provided: &dyn Fn(&str) -> bool,
-    ) -> Result<Translated, String> {
-        let sources = Stages {
-            dir: "minecraft:shaders/core/",
-            vertex,
-            fragment,
-        };
-        translate_core_at(&sources, defines, &|id| Ok(include(id)), glue, provided)
-    }
-
-    pub(crate) fn translate_core(
-        vertex: &str,
-        fragment: &str,
-        defines: &[&str],
-        include: &dyn Fn(&str) -> Option<String>,
-        glue: &Glue,
-    ) -> Result<Translated, String> {
-        translate_core_with(vertex, fragment, defines, include, glue, &|_| false)
-    }
-
-    fn expand_imports(
-        text: &str,
-        dir: &str,
-        read: &dyn Fn(&str) -> Result<Option<String>, String>,
-    ) -> Result<String, ImportRefusal> {
-        expand_includes(text, dir, &includes(read), None)
-    }
-
-    fn expand(
-        text: &str,
-        dir: &str,
-        include: &dyn Fn(&str) -> Option<String>,
-    ) -> Result<String, ImportRefusal> {
-        expand_imports(text, dir, &|id| Ok(include(id)))
-    }
-
-    fn expand_core_imports(
-        text: &str,
-        dir: &str,
-        defines: &[&str],
-        read: &dyn Fn(&str) -> Result<Option<String>, String>,
-    ) -> Result<String, ImportRefusal> {
-        expand_includes(text, dir, &includes(read), Some(defines))
-    }
-
-    const INCLUDES: [(&str, &str); 4] = [
-        (
-            "minecraft:shaders/include/dynamictransforms.glsl",
-            "#ifndef DT\n#define DT\nlayout(std140) uniform DynamicTransforms {\n    mat4 ModelViewMat;\n    mat4 TextureMat;\n    vec4 ColorModulator;\n    vec3 ModelOffset;\n};\n#endif\n",
-        ),
-        (
-            "minecraft:shaders/include/projection.glsl",
-            "layout(std140) uniform Projection {\n    mat4 ProjMat;\n};\n",
-        ),
-        (
-            "minecraft:shaders/include/globals.glsl",
-            "layout(std140) uniform Globals {\n    ivec3 CameraBlockPos;\n    float GlintAlpha;\n    vec3 CameraOffset;\n    float GameTime;\n    vec2 ScreenSize;\n    int MenuBlurRadius;\n    int UseRgss;\n};\n",
-        ),
-        (
-            "minecraft:shaders/include/fog.glsl",
-            "layout(std140) uniform Fog {\n    vec4 FogColor;\n    float FogEnvironmentalStart;\n};\nvec4 apply_fog(vec4 c) { return mix(c, FogColor, FogEnvironmentalStart); }\n",
-        ),
-    ];
-
-    fn include(id: &str) -> Option<String> {
-        INCLUDES
-            .iter()
-            .find(|(path, _)| *path == id)
-            .map(|(_, text)| (*text).to_owned())
-    }
-
-    const GLUE: Glue = Glue {
-        inputs: &[("Position", "vec3"), ("Color", "vec4"), ("UV0", "vec2")],
-        prelude: "layout(location = 0) in vec2 hz_pos;\nlayout(location = 1) in vec2 hz_uv;\nlayout(location = 2) in vec4 hz_color;\n\
-                  const int hz_corner[6] = int[6](0, 3, 2, 0, 2, 1);\n\
-                  int hz_vertex_id() { int i = int(gl_VertexIndex) - int(gl_InstanceIndex); return i / 6 * 4 + hz_corner[i % 6]; }",
-        setup: "Position = vec3(hz_pos, 0.0); Color = hz_color; UV0 = hz_uv;",
-        finish: "gl_Position.z = 0.5 * gl_Position.w;",
-        vertex_id: "hz_vertex_id()",
-        interface: LIMITS,
-    };
-
-    /// 26.3's `text.vsh` and `text.fsh` in shape: `#include`, explicit locations, an extension.
-    const VANILLA_VSH: &str = "#version 330\n#extension GL_ARB_separate_shader_objects : require\n\
-        #if !defined(IS_GUI)\n#include <minecraft:fog.glsl>\n#endif\n\
-        #include <minecraft:dynamictransforms.glsl>\n#include <minecraft:projection.glsl>\n\
-        layout(location = 0) in vec3 Position;\nlayout(location = 1) in vec4 Color;\nlayout(location = 2) in vec2 UV0;\n\
-        layout(location = 2) out vec4 vertexColor;\nlayout(location = 3) out vec2 texCoord0;\n\
-        void main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n    vertexColor = Color;\n    texCoord0 = UV0;\n}\n";
-    const VANILLA_FSH: &str = "#version 330\n#extension GL_ARB_separate_shader_objects : require\n\
-        #include <minecraft:dynamictransforms.glsl>\n\
-        uniform sampler2D Sampler0;\n\
-        layout(location = 2) in vec4 vertexColor;\nlayout(location = 3) in vec2 texCoord0;\n\
-        layout(location = 0) out vec4 fragColor;\n\
-        void main() {\n    vec4 color = texture(Sampler0, texCoord0) * vertexColor * ColorModulator;\n    if (color.a < 0.1) {\n        discard;\n    }\n    fragColor = color;\n}\n";
-
-    #[test]
-    fn vanilla_26_3_text_shaders_translate() {
-        let program =
-            translate_core(VANILLA_VSH, VANILLA_FSH, &["IS_GUI"], &include, &GLUE).unwrap();
-        assert_eq!(program.vertex.entry_points.len(), 1);
-        assert_eq!(program.fragment.entry_points.len(), 1);
-    }
-
-    /// A 26.3 pack's `gl_VertexIndex` means vanilla's vertex number, four per quad. The text
-    /// pipeline draws six per glyph, so the pack's code must read the glue's `hz_vertex_id()`
-    /// (as `gl_VertexID` does), never the raw index.
-    #[test]
-    fn a_packs_gl_vertex_index_reads_the_glues_vertex_number() {
-        let vsh = "#version 330\n#include <minecraft:dynamictransforms.glsl>\n#include <minecraft:projection.glsl>\n\
-            layout(location = 0) in vec3 Position;\nlayout(location = 1) in vec4 Color;\nlayout(location = 2) in vec2 UV0;\n\
-            layout(location = 2) out vec4 vertexColor;\nlayout(location = 3) out vec2 texCoord0;\n\
-            void main() {\n    int corner = gl_VertexIndex % 4;\n\
-                gl_Position = ProjMat * ModelViewMat * vec4(Position + vec3(float(corner), 0.0, 0.0), 1.0);\n\
-                vertexColor = Color;\n    texCoord0 = UV0;\n}\n";
-        let program = translate_core(vsh, VANILLA_FSH, &["IS_GUI"], &include, &GLUE).unwrap();
-        let module = &program.vertex;
-        let named = |name: &str| {
-            module
-                .functions
-                .iter()
-                .find(|(_, f)| f.name.as_deref() == Some(name))
-                .unwrap_or_else(|| panic!("no {name}"))
-        };
-        let (vertex_id, _) = named("hz_vertex_id");
-        let (_, pack_main) = named("hz_main");
-        fn calls(block: &naga::Block, target: naga::Handle<naga::Function>) -> bool {
-            block.iter().any(|statement| match statement {
-                naga::Statement::Call { function, .. } => *function == target,
-                naga::Statement::Block(inner) => calls(inner, target),
-                naga::Statement::If { accept, reject, .. } => {
-                    calls(accept, target) || calls(reject, target)
-                }
-                naga::Statement::Loop {
-                    body, continuing, ..
-                } => calls(body, target) || calls(continuing, target),
-                _ => false,
-            })
-        }
-        assert!(calls(&pack_main.body, vertex_id));
-    }
-
-    /// A 26.2-style pack shader as a HUD pack writes it: `#moj_import`, no locations, a flat
-    /// varying, `gl_VertexID`, `texelFetch` and `textureSize` on the glyph atlas, `GameTime`.
-    #[test]
-    fn a_hud_pack_text_shader_translates() {
-        let vsh = "#version 330\n\
-            #moj_import <minecraft:dynamictransforms.glsl>\n#moj_import <minecraft:projection.glsl>\n\
-            in vec3 Position;\nin vec4 Color;\nin vec2 UV0;\n\
-            out vec4 vertexColor;\nout vec2 texCoord0;\n\
-            #ifdef IS_GUI\n#moj_import <minecraft:globals.glsl>\nuniform sampler2D Sampler0; // the glyphs\nflat out vec4 effect;\n#endif\n\
-            /* moved\n   glyphs */\n\
-            void main() {\n    vec3 p = Position;\n#ifdef IS_GUI\n    int corner = gl_VertexID % 4;\n\
-                ivec2 size = textureSize(Sampler0, 0);\n\
-                if (ivec4(round(texelFetch(Sampler0, ivec2(UV0 * vec2(size)), 0) * 255.0)) == ivec4(177, 126, 91, 1)) {\n\
-                    p.x += float(corner) + ScreenSize.x * GameTime;\n    }\n    effect = vec4(float((ivec3(Color.rgb * 255.0) >> 4) == ivec3(3, 14, 10)));\n#endif\n\
-                gl_Position = ProjMat * ModelViewMat * vec4(p, 1.0);\n    vertexColor = Color;\n    texCoord0 = UV0;\n}\n";
-        let fsh = "#version 330\n#moj_import <minecraft:dynamictransforms.glsl>\n#moj_import <minecraft:globals.glsl>\n\
-            uniform sampler2D Sampler0;\nin vec4 vertexColor;\nin vec2 texCoord0;\nflat in vec4 effect;\nout vec4 fragColor;\n\
-            void main() {\n    vec4 color = texture(Sampler0, texCoord0) * vertexColor;\n    if (effect.x > 0.5) {\n        fragColor = vertexColor * ColorModulator;\n        return;\n    }\n\
-                if (color.a < 0.1) {\n        discard;\n    }\n    fragColor = color * sin(GameTime);\n}\n";
-        translate_core(vsh, fsh, &["IS_GUI"], &include, &GLUE).unwrap();
-    }
-
-    #[test]
-    fn varyings_meet_at_the_same_locations() {
-        let vsh = "#version 330\nin vec3 Position;\nout float b;\nout vec2 m;\nout vec4 a;\n\
-            void main() { gl_Position = vec4(Position, 1.0); b = 1.0; m = vec2(1.0); a = vec4(b); }\n";
-        let fsh = "#version 330\nin vec4 a;\nin float b;\nout vec4 fragColor;\nvoid main() { fragColor = a * b; }\n";
-        let program = translate_core(vsh, fsh, &[], &include, &GLUE).unwrap();
-        let mut read = locations(&program.fragment, true);
-        read.sort_unstable();
-        assert_eq!(read, [0, 2]);
-    }
-
-    #[test]
-    fn explicit_varying_locations_are_kept() {
-        let vsh = "#version 330\nin vec3 Position;\n\
-            #ifdef IS_GUI\nlayout(location = 4) out float gui;\n#else\nlayout(location = 4) out float world;\n#endif\n\
-            layout(location = 13) out vec4 a;\nout float b;\n\
-            void main() { gl_Position = vec4(Position, 1.0); a = vec4(1.0); b = 1.0;\n\
-            #ifdef IS_GUI\ngui = 1.0;\n#else\nworld = 1.0;\n#endif\n}\n";
-        let fsh = "#version 330\n#ifdef IS_GUI\nlayout(location = 4) in float gui;\n#endif\n\
-            layout(location = 13) in vec4 a;\nin float b;\nout vec4 fragColor;\n\
-            void main() { fragColor = a * b;\n#ifdef IS_GUI\nfragColor *= gui;\n#endif\n}\n";
-        let program = translate_core(vsh, fsh, &["IS_GUI"], &include, &GLUE).unwrap();
-        let mut read = locations(&program.fragment, true);
-        read.sort_unstable();
-        assert_eq!(read, [0, 4, 13]);
-    }
-
-    #[test]
-    fn an_include_is_pasted_every_time_and_a_moj_import_once() {
-        let file = |id: &str| {
-            (id == "minecraft:shaders/include/g.glsl")
-                .then(|| "#ifndef G\n#define G\nconst float g = 1.0;\n#endif\n".to_owned())
-        };
-        let twice =
-            "#ifdef A\n#include <minecraft:g.glsl>\n#else\n#include <minecraft:g.glsl>\n#endif\n";
-        let expanded = expand(twice, "minecraft:shaders/core/", &file).unwrap();
-        assert_eq!(expanded.matches("const float g").count(), 2);
-        let imported = expand(
-            &twice.replace("#include", "#moj_import"),
-            "minecraft:shaders/core/",
-            &file,
-        )
-        .unwrap();
-        assert_eq!(imported.matches("const float g").count(), 1);
-    }
-
-    #[test]
-    fn a_location_another_branch_gave_the_same_name_isnt_reused() {
-        let vsh = "#version 330\nin vec3 Position;\n\
-            #ifdef IS_GUI\nlayout(location = 0) out vec4 vertexColor;\n\
-            #else\nlayout(location = 1) out vec4 vertexColor;\nlayout(location = 0) out vec4 worldOther;\n#endif\n\
-            void main() { gl_Position = vec4(Position, 1.0); vertexColor = vec4(1.0);\n\
-            #ifndef IS_GUI\nworldOther = vec4(0.5);\n#endif\n}\n";
-        let fsh = "#version 330\n\
-            #ifdef IS_GUI\nlayout(location = 0) in vec4 vertexColor;\n\
-            #else\nlayout(location = 1) in vec4 vertexColor;\nlayout(location = 0) in vec4 worldOther;\n#endif\n\
-            out vec4 fragColor;\nvoid main() { fragColor = vertexColor;\n\
-            #ifndef IS_GUI\nfragColor *= worldOther;\n#endif\n}\n";
-        let world = translate_core(vsh, fsh, &[], &include, &GLUE).unwrap();
-        let mut written = locations(&world.vertex, false);
-        written.sort_unstable();
-        assert_eq!(written, [0, 1]);
-        let mut read = locations(&world.fragment, true);
-        read.sort_unstable();
-        assert_eq!(read, [0, 1]);
-        let gui = translate_core(vsh, fsh, &["IS_GUI"], &include, &GLUE).unwrap();
-        assert_eq!(locations(&gui.vertex, false), [0]);
-    }
-
-    #[test]
-    fn includes_that_multiply_are_refused_once_over_budget() {
-        let file = |id: &str| {
-            let level: u32 = id
-                .strip_prefix("minecraft:shaders/include/l")?
-                .strip_suffix(".glsl")?
-                .parse()
-                .ok()?;
-            let next = format!("#include <minecraft:l{}.glsl>\n", level + 1).repeat(4);
-            Some(format!(
-                "#ifndef L{level}\n#define L{level}\n{}#endif\n",
-                if level < 15 { next.as_str() } else { "" }
-            ))
-        };
-        let error = expand(
-            "#include <minecraft:l0.glsl>\n",
-            "minecraft:shaders/core/",
-            &file,
-        )
-        .unwrap_err();
-        assert_eq!(error, ImportRefusal::TooManyPastes);
-    }
-
-    /// The bytes scanned are bounded too, not only those kept: a file of imports already pasted
-    /// keeps a line break each, and is still read in full every time it is included. Seven
-    /// pastes of 1.05 MB fit [`MAX_SCANNED`] (8 MiB), the eighth is refused.
-    #[test]
-    fn includes_that_keep_little_are_refused_once_scanned_past_the_budget() {
-        let seen = "#moj_import <b.glsl>\n".repeat(50_000);
-        let file = |id: &str| match id {
-            "minecraft:shaders/include/a.glsl" => Some(seen.clone()),
-            "minecraft:shaders/include/b.glsl" => Some(String::new()),
-            _ => None,
-        };
-        let main = |n: usize| format!("#moj_import <b.glsl>\n{}", "#include <a.glsl>\n".repeat(n));
-        let dir = "minecraft:shaders/core/";
-        assert!(expand(&main(7), dir, &file).is_ok());
-        assert_eq!(
-            expand(&main(8), dir, &file),
-            Err(ImportRefusal::TooMuchScanned)
-        );
-    }
-
-    #[test]
-    fn a_define_with_a_value_is_defined_to_it() {
-        let vsh = "#version 330\nin vec3 Position;\n\
-            void main() { gl_Position = vec4(Position, float(COUNT)); }\n";
-        let fsh =
-            "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(COUNT / 4); }\n";
-        assert!(translate_core(vsh, fsh, &["COUNT 8"], &include, &GLUE).is_ok());
-    }
-
-    #[test]
-    fn minified_varying_declarations_are_rewritten() {
-        let vsh = "#version 330\nout float sphericalVertexDistance;out float cylindricalVertexDistance;\
-            void main() { sphericalVertexDistance = 0.0; cylindricalVertexDistance = 0.0; \
-            gl_Position = vec4(0.0); }\n";
-        let fsh = "#version 330\nin float sphericalVertexDistance;in float cylindricalVertexDistance;\
-            out vec4 fragColor;void main() { fragColor = vec4(sphericalVertexDistance + cylindricalVertexDistance); }\n";
-        translate_core(vsh, fsh, &[], &include, &GLUE).unwrap();
-    }
-
-    #[test]
-    fn legacy_uniforms_next_to_modern_blocks_are_ignored() {
-        let vsh = "#version 330\n#include <minecraft:projection.glsl>\n\
-            uniform mat4 ProjMat;out vec4 vertexColor;\
-            void main() { vertexColor = vec4(1.0); gl_Position = ProjMat[0]; }\n";
-        let fsh = "#version 330\nin vec4 vertexColor;out vec4 fragColor;\
-            void main() { fragColor = vertexColor; }\n";
-        translate_core(vsh, fsh, &[], &include, &GLUE).unwrap();
-    }
-
-    /// A block declared on one line, as packs write a one-float uniform, is bound like one
-    /// over several lines; the blocks and samplers the caller provides are accepted, in binding
-    /// order, and one it doesn't provide is not.
-    #[test]
-    fn a_block_on_one_line_is_bound_and_provided_blocks_are_accepted() {
-        let vsh = "#version 330\nlayout(std140) uniform Day { float daylight; };\nout vec4 vertexColor;\n\
-            void main() { vertexColor = vec4(daylight); gl_Position = vec4(0.0); }\n";
-        let fsh = "#version 330\nuniform sampler2D Bounds;\nin vec4 vertexColor;\nout vec4 fragColor;\n\
-            void main() { fragColor = vertexColor * texture(Bounds, vec2(0.5)); }\n";
-        let both = |name: &str| name == "Day" || name == "Bounds";
-        let program = translate_core_with(vsh, fsh, &[], &include, &GLUE, &both).unwrap();
-        assert_eq!(program.other, ["Day", "Bounds"]);
-        // The bindings the caller gives them at.
-        let bindings = |module: &naga::Module| -> Vec<(Option<String>, u32)> {
-            module
-                .global_variables
-                .iter()
-                .filter_map(|(_, g)| Some((g.name.clone(), g.binding.as_ref()?.binding)))
-                .collect()
-        };
-        assert!(
-            bindings(&program.vertex)
-                .iter()
-                .any(|(_, b)| *b == program.other_binding(0)),
-            "{:?}",
-            bindings(&program.vertex)
-        );
-        let fragment = bindings(&program.fragment);
-        assert!(
-            fragment.contains(&(Some("hz_tex_Bounds".into()), program.other_binding(1))),
-            "{fragment:?}"
-        );
-        assert!(
-            fragment.contains(&(Some("hz_smp_Bounds".into()), program.other_binding(1) + 1)),
-            "{fragment:?}"
-        );
-        let error = translate_core(vsh, fsh, &[], &include, &GLUE).unwrap_err();
-        assert!(error.contains("Day is not a block or sampler"), "{error}");
-        let only_day = |name: &str| name == "Day";
-        let error = translate_core_with(vsh, fsh, &[], &include, &GLUE, &only_day).unwrap_err();
-        assert!(
-            error.contains("Bounds is not a block or sampler"),
-            "{error}"
-        );
-    }
-
-    /// Only a uniform block's declaration names a block, written over several lines or on one.
-    #[test]
-    fn block_names_are_read_from_block_declarations_only() {
-        assert_eq!(block_name("layout(std140) uniform Day {"), Some("Day"));
-        assert_eq!(block_name("uniform Day { float daylight; };"), Some("Day"));
-        assert_eq!(block_name("uniform Foo{"), Some("Foo"));
-        assert_eq!(block_name("uniform Globals"), Some("Globals"));
-        assert_eq!(block_name("uniform float x;"), None);
-        assert_eq!(block_name("uniform sampler2D Sampler0;"), None);
-    }
-
-    /// An array too large to lay out (#4134) is the shader's error at its line, not a panic.
-    #[test]
-    fn an_array_too_large_to_lay_out_is_an_error() {
-        let vsh = "#version 330\nout vec4 vertexColor;\nvoid main() { vertexColor = vec4(1.0); }\n";
-        let fsh = "#version 330\nin vec4 vertexColor;\nfloat big[0x7fffffff];\nout vec4 fragColor;\n\
-            void main() { fragColor = vertexColor; }\n";
-        let error = translate_core(vsh, fsh, &[], &include, &GLUE).unwrap_err();
-        assert!(error.starts_with("fragment shader: line "), "{error}");
-        assert!(error.contains("(float big[0x7fffffff];)"), "{error}");
-    }
-
-    /// An output array whose second element would take location 2^32 (#4912) is the shader's
-    /// error at its line, not an overflow.
-    #[test]
-    fn an_output_whose_locations_pass_u32_is_an_error() {
-        let vsh = "#version 330\nout vec4 vertexColor;\nvoid main() { vertexColor = vec4(1.0); }\n";
-        let fsh = "#version 330\nin vec4 vertexColor;\nout vec4 fragColor;\n\
-            layout(location = 4294967295u) out vec4 extra[2];\n\
-            void main() { fragColor = vertexColor; extra[0] = vertexColor; extra[1] = vertexColor; }\n";
-        let error = translate_core(vsh, fsh, &[], &include, &GLUE).unwrap_err();
-        assert!(error.starts_with("fragment shader: line "), "{error}");
-        assert!(
-            error.contains("(layout(location = 4294967295u) out vec4 extra[2];)"),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn what_sunrise_does_not_provide_is_an_error() {
-        let fsh = "#version 330\nin vec4 vertexColor;\nout vec4 fragColor;\nvoid main() { fragColor = vertexColor; }\n";
-        // Another format's input is a global the shader may read: not an error.
-        let normal = "#version 330\nin vec3 Normal;\nout vec4 vertexColor;\nvoid main() { vertexColor = vec4(Normal, 1.0); }\n";
-        translate_core(normal, fsh, &[], &include, &GLUE).unwrap();
-        let lightmap = "#version 330\nuniform sampler2D Lightmap;\nout vec4 vertexColor;\nvoid main() { vertexColor = texelFetch(Lightmap, ivec2(0), 0); }\n";
-        let error = translate_core(lightmap, fsh, &[], &include, &GLUE).unwrap_err();
-        assert!(
-            error.contains("Lightmap is not a block or sampler"),
-            "{error}"
-        );
-        // Behind a define the pipeline doesn't have, it is no error.
-        let oit = "#version 330\n#ifdef OIT\nuniform sampler2D Coeff0;\n#endif\nout vec4 vertexColor;\n\
-            void main() {\n#ifdef OIT\n    vertexColor = texelFetch(Coeff0, ivec2(0), 0);\n#endif\n}\n";
-        translate_core(oit, fsh, &[], &include, &GLUE).unwrap();
-        let missing = "#version 330\n#moj_import <minecraft:nothing.glsl>\n\
-            out vec4 vertexColor;\nvoid main() { vertexColor = vec4(1.0); }\n";
-        let error = translate_core(missing, fsh, &[], &include, &GLUE).unwrap_err();
-        assert_eq!(error, "minecraft:shaders/include/nothing.glsl not found");
-        // An include the defines drop is never read, as shaderc preprocesses: missing, it is no
-        // error; kept by a define, it is.
-        let branch = "#version 330\n#ifdef WANTS\n#moj_import <minecraft:nothing.glsl>\n#endif\n\
-            out vec4 vertexColor;\nvoid main() { vertexColor = vec4(1.0); }\n";
-        translate_core(branch, fsh, &[], &include, &GLUE).unwrap();
-        let error = translate_core(branch, fsh, &["WANTS"], &include, &GLUE).unwrap_err();
-        assert_eq!(error, "minecraft:shaders/include/nothing.glsl not found");
-        let active_after_skipped =
-            branch.replace("#endif", "#endif\n#moj_import <minecraft:nothing.glsl>");
-        let error = translate_core(&active_after_skipped, fsh, &[], &include, &GLUE).unwrap_err();
-        assert_eq!(error, "minecraft:shaders/include/nothing.glsl not found");
-        let unreadable = |id: &str| -> Result<Option<String>, String> {
-            if id.ends_with("nothing.glsl") {
-                Err(format!("{id}: not text"))
-            } else {
-                Ok(include(id))
-            }
-        };
-        let stages = Stages {
-            dir: "minecraft:shaders/core/",
-            vertex: branch,
-            fragment: fsh,
-        };
-        translate_core_at(&stages, &[], &unreadable, &GLUE, &|_| false).unwrap();
-        let error =
-            translate_core_at(&stages, &["WANTS"], &unreadable, &GLUE, &|_| false).unwrap_err();
-        assert_eq!(error, "minecraft:shaders/include/nothing.glsl: not text");
-    }
-
-    #[test]
-    fn unconditional_imports_share_their_dependency() {
-        let large = " ".repeat(MAX_EXPANDED / 2 + 1);
-        let calls = std::cell::Cell::new(0);
-        let read = |id: &str| {
-            if id.ends_with("/shared") {
-                calls.set(calls.get() + 1);
-                Ok(Some(large.clone()))
-            } else {
-                Ok(Some("#moj_import <shared>".to_owned()))
-            }
-        };
-        expand_core_imports("#moj_import <left>\n#moj_import <right>", "", &[], &read).unwrap();
-        assert_eq!(calls.get(), 1);
-        calls.set(0);
-        expand_core_imports(
-            "#ifdef ENABLED\n#moj_import <left>\n#moj_import <right>\n#endif",
-            "",
-            &["ENABLED"],
-            &read,
-        )
-        .unwrap();
-        assert_eq!(calls.get(), 1);
-        let repeated = expand_core_imports("#include <shared>\n#include <shared>", "", &[], &read);
-        assert_eq!(repeated.unwrap_err(), ImportRefusal::TooLarge);
-    }
-
-    #[test]
-    fn includes_follow_glsl_line_numbers_and_macros_from_the_caller_and_child() {
-        let read = |id: &str| match id.rsplit('/').next() {
-            Some("switch") => Ok(Some("#define ENABLE(x) ((x) + 2)".into())),
-            Some("active") => Ok(Some("float kept;".into())),
-            _ => panic!("read skipped include {id}"),
-        };
-        let source = "#version 330\n#if __LINE__ == 2\n#include <switch>\n#endif\n#if __LINE__ == 5 && ENABLE(3) == 5\n#include <active>\n#else\n#include <skipped>\n#endif";
-        assert!(
-            expand_core_imports(source, "", &[], &read)
-                .unwrap()
-                .contains("float kept;")
-        );
-    }
-
-    #[test]
-    fn line_directives_and_continuations_keep_the_callers_include_location() {
-        let source = "#line 40\n#if defined(__LINE__) && \\\n__LINE__ == 41\n#include <inner>\n#endif\n#if __LINE__ == 46\n#include <wrong>\n#endif";
-        let read = |id: &str| {
-            assert!(id.ends_with("/inner"), "{id}");
-            Ok(Some("#if __LINE__ == 1\nfloat included;\n#endif".into()))
-        };
-        assert!(
-            expand_core_imports(source, "", &[], &read)
-                .unwrap()
-                .contains("float included;")
-        );
-    }
-
-    #[test]
-    fn independent_guards_do_not_replay_unrelated_definitions() {
-        let source = format!(
-            "#define UNUSED {}\n{}",
-            "a".repeat(50_000),
-            "#if 1\nfloat a;\n#endif\n".repeat(210)
-        );
-        assert_eq!(
-            expand_core_imports(&source, "", &[], &|_| Ok(None))
-                .unwrap()
-                .matches("float a;")
-                .count(),
-            210
-        );
-    }
-
-    #[test]
-    fn only_an_active_include_consumes_a_legacy_import() {
-        let fragment = "out vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }";
-        let include = |_: &str| Some("float imported() { return 1.0; }".to_owned());
-        let siblings = "#if 0\n#moj_import <a>\n#elif 0\n#moj_import <a>\n#else\n#moj_import <a>\n#endif\nvoid main() { gl_Position = vec4(imported()); }";
-        translate_core(siblings, fragment, &[], &include, &GLUE).unwrap();
-        for first in ["#include", "#moj_import"] {
-            let vertex = format!(
-                "#define hz_moj_import_0\n#if 0\n#moj_import <a>\n#endif\n{first} <a>\n#moj_import <a>\nvoid main() {{ gl_Position = vec4(imported()); }}"
-            );
-            translate_core(&vertex, fragment, &[], &include, &GLUE).unwrap();
-        }
-    }
-
-    #[test]
-    fn includes_resolve_by_id_or_from_the_including_folder() {
-        assert_eq!(
-            include_id(
-                "<fog.glsl>",
-                "minecraft:shaders/core/",
-                &includes(&|_| Ok(None))
-            )
-            .as_deref(),
-            Some("minecraft:shaders/include/fog.glsl")
-        );
-        assert_eq!(
-            include_id(
-                "<bitmade:hud/lanes.glsl>",
-                "minecraft:shaders/core/",
-                &includes(&|_| Ok(None))
-            )
-            .as_deref(),
-            Some("bitmade:shaders/include/hud/lanes.glsl")
-        );
-        assert_eq!(
-            include_id(
-                "\"../include/fog.glsl\"",
-                "minecraft:shaders/core/",
-                &includes(&|_| Ok(None))
-            )
-            .as_deref(),
-            Some("minecraft:shaders/include/fog.glsl")
-        );
-    }
-
-    #[test]
-    fn translate_supports_caller_high_bindings_and_custom_includes() {
-        let read = |id: &str| -> Result<Option<String>, String> {
-            match id {
-                "demo:custom/inc/scale.glsl" => {
-                    Ok(Some("float scale_it(float v) { return v * 0.5; }\n".into()))
-                }
-                _ => Ok(None),
-            }
-        };
-        let custom_includes = Includes {
-            read: &read,
-            namespace: "demo",
-            folder: "custom/inc/",
-            once: &[],
-        };
-        let inputs = Inputs {
-            blocks: &[("Camera", 17), ("Params", 24)],
-            samplers: &[("Albedo", 15)],
-            loose: &[],
-            defines: &[],
-            includes: &custom_includes,
-        };
-        let vsh = "#version 330\n\
-            #include <scale.glsl>\n\
-            layout(std140) uniform Camera { mat4 ViewProj; };\n\
-            layout(std140) uniform Extra { float extra_v; };\n\
-            out vec2 uv;\n\
-            void main() {\n\
-                uv = vec2(scale_it(extra_v), 0.5);\n\
-                gl_Position = ViewProj * vec4(0.0, 0.0, 0.0, 1.0);\n\
-            }\n";
-        let fsh = "#version 330\n\
-            layout(std140) uniform Params { vec4 Tint; };\n\
-            uniform sampler2D Albedo;\n\
-            uniform sampler2D ExtraTex;\n\
-            in vec2 uv;\n\
-            out vec4 fragColor;\n\
-            void main() {\n\
-                fragColor = Tint * texture(Albedo, uv) * texture(ExtraTex, uv);\n\
-            }\n";
-        let stages = Stages {
-            dir: "demo:custom/core/",
-            vertex: vsh,
-            fragment: fsh,
-        };
-        let provided = |name: &str| name == "Extra" || name == "ExtraTex";
-        let program = translate(&stages, &inputs, &GLUE, &provided)
-            .expect("caller bindings >= 15 and provided others must translate");
-        assert_eq!(program.other, ["Extra", "ExtraTex"]);
-        // Highest caller binding is Params at 24 (Albedo uses 15 and 16, Camera uses 17),
-        // so `other` starts at 25 without colliding with any caller binding.
-        assert_eq!(program.other_binding(0), 25);
-        assert_eq!(program.other_binding(1), 27);
-        assert_eq!(
-            program.stages_reading(15),
-            wgpu_types::ShaderStages::FRAGMENT
-        );
-        assert_eq!(
-            program.stages_reading(16),
-            wgpu_types::ShaderStages::FRAGMENT
-        );
-        assert_eq!(program.stages_reading(17), wgpu_types::ShaderStages::VERTEX);
-        assert_eq!(
-            program.stages_reading(24),
-            wgpu_types::ShaderStages::FRAGMENT
-        );
-        assert_eq!(program.stages_reading(25), wgpu_types::ShaderStages::VERTEX);
-        assert_eq!(
-            program.stages_reading(27),
-            wgpu_types::ShaderStages::FRAGMENT
-        );
-
-        // An unprovided extra block is still refused by its real name.
-        let err = translate(&stages, &inputs, &GLUE, &|_| false).unwrap_err();
-        assert!(err.contains("Extra is not a block or sampler"), "{err}");
-
-        // With `once: &[]`, `#moj_import` is not treated as an include directive.
-        let untouched = expand_includes(
-            "#moj_import <scale.glsl>\nfloat x;\n",
-            "demo:custom/core/",
-            &custom_includes,
-            None,
-        )
-        .unwrap();
-        assert!(
-            untouched.contains("#moj_import <scale.glsl>"),
-            "{untouched}"
-        );
-    }
-}
+mod tests;
 
 #[cfg(test)]
 #[path = "texel_tests.rs"]
 mod texel_buffer_tests;
+
+#[cfg(test)]
+#[path = "located_tests.rs"]
+mod located_program_tests;
+
+#[cfg(test)]
+mod directives_tests;

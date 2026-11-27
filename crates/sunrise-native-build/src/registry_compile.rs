@@ -156,16 +156,7 @@ pub(super) fn stage_and_cargo(
         .catalog
         .prepare(projects.iter().map(|project| &project.bundle.manifest))
         .map_err(|e| e.to_string())?;
-    // The last build's staging, kept aside until this one's is written: a file whose bytes didn't
-    // change gets its old modified time back, so cargo's fingerprints reuse what it built from it.
-    let previous = out.with_extension("old");
-    if previous.exists() {
-        fs::remove_dir_all(&previous).map_err(|e| e.to_string())?;
-    }
-    if out.exists() {
-        fs::rename(out, &previous).map_err(|e| e.to_string())?;
-    }
-    fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let previous = rotate_stage(out)?;
     let mut bindings = BTreeMap::new();
     let mut members = Vec::new();
     let mut wrapper_deps = toml::Table::new();
@@ -322,6 +313,8 @@ pub(super) fn stage_and_cargo(
     )?;
     if let Some(patch) = &patch {
         for name in &patch.names {
+            let owner = &patch.owners[name];
+            let game_features = sdk.patch_features(owner)?;
             let dir = patch.dir.join(name);
             let mut manifest = toml::toml! { [package] name = (name.clone()) version = "0.0.0" edition = "2024" [lib] path = "src/lib.rs" };
             let mut dependencies = toml::Table::new();
@@ -339,15 +332,13 @@ pub(super) fn stage_and_cargo(
                 );
             }
             manifest.insert("dependencies".into(), dependencies.into());
-            let features: toml::Table = sdk
-                .game_features()
+            let features: toml::Table = game_features
                 .iter()
                 .map(|feature| (feature.clone(), toml::Value::Array(Vec::new())))
                 .collect();
             manifest.insert("features".into(), features.into());
             fs::write(dir.join("Cargo.toml"), manifest.to_string()).map_err(|e| e.to_string())?;
-            let externs: BTreeMap<_, _> =
-                super::patch::sdk_externs(game, sdk)?.into_iter().collect();
+            let externs = super::patch::sdk_externs(game, sdk, owner)?;
             for (krate, path) in &externs {
                 prebuilt::refuse_closure_rlib("sunrise_patch", krate, path)?;
             }
@@ -369,7 +360,7 @@ pub(super) fn stage_and_cargo(
             members.push(relative.clone());
             wrapper_deps.insert(
                 name.clone(),
-                toml::toml! { path = (relative) features = (sdk.game_features().iter().cloned().map(toml::Value::String).collect::<Vec<_>>()) }.into(),
+                toml::toml! { path = (relative) features = (game_features.iter().cloned().map(toml::Value::String).collect::<Vec<_>>()) }.into(),
             );
         }
         // The tool's workspace files would make the crates a second workspace inside this one.
@@ -517,9 +508,13 @@ pub(super) fn stage_and_cargo(
         }
     }
     super::crates::check_game_graph_names(projects, &generated_facades, &resolved, &game_names)?;
-    let inventory = metadata.inventory(&plan, &sdk.native_links)?;
-    if inventory.added_crates > 0 && !options.consent.is_some_and(|ask| ask(&inventory)) {
-        return Err(crate::host::tr("The mods' crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; their build scripts and proc macros then run on this computer").into());
+    let inventory = metadata.inventory(&plan, &sdk.native_links, &mod_dirs)?;
+    // The mods' own build scripts run under the same yes as the registry crates', so a mod with a
+    // build script and no registry crate still asks.
+    if (inventory.added_crates > 0 || !inventory.build_scripts.is_empty())
+        && !options.consent.is_some_and(|ask| ask(&inventory))
+    {
+        return Err(crate::host::tr("The mods' build scripts and crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; the mods' own build scripts, their dependencies' build scripts and proc macros then run on this computer").into());
     }
     let externs = prebuilt::wrapper_externs(&deps)?;
     for (name, path) in &externs {
@@ -529,7 +524,10 @@ pub(super) fn stage_and_cargo(
         out.to_path_buf(),
         registry_rustc::Bindings { externs, link_args },
     );
-    if previous.exists() {
+    if existing_owned_stage(&previous)? {
+        if !existing_owned_stage(out)? {
+            return Err(format!("{}: registry stage disappeared", out.display()));
+        }
         keep_unchanged_times(out, &previous).map_err(|e| e.to_string())?;
         fs::remove_dir_all(&previous).map_err(|e| e.to_string())?;
     }
@@ -662,37 +660,140 @@ pub(super) fn stage_and_cargo(
     Ok(Some((binary, runtime)))
 }
 
+fn existing_owned_stage(stage: &Path) -> Result<bool, String> {
+    match fs::symlink_metadata(stage) {
+        Ok(_) => {
+            let parent = stage
+                .parent()
+                .ok_or_else(|| format!("{}: no folder above the stage", stage.display()))?;
+            prebuilt::own_folder(parent, stage)?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("{}: {error}", stage.display())),
+    }
+}
+
+/// Keep the last stage until its unchanged files and folders can supply their old mtimes.
+fn rotate_stage(out: &Path) -> Result<PathBuf, String> {
+    let previous = out.with_extension("old");
+    let current_exists = existing_owned_stage(out)?;
+    if existing_owned_stage(&previous)? {
+        fs::remove_dir_all(&previous).map_err(|e| format!("{}: {e}", previous.display()))?;
+    }
+    if current_exists {
+        fs::rename(out, &previous).map_err(|e| format!("{}: {e}", out.display()))?;
+    }
+    fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
+    Ok(previous)
+}
+
 /// Gives each file under `staged` whose bytes equal the file at the same place under `previous`
-/// that file's modified time.
+/// that file's modified time, and each folder whose entries have the same names as the folder at
+/// the same place that folder's: a build script whose `rerun-if-changed` names a folder reruns
+/// when anything in it, the folder itself included, is newer than its last run.
 fn keep_unchanged_times(staged: &Path, previous: &Path) -> std::io::Result<()> {
+    let mut names = Vec::new();
     for entry in fs::read_dir(staged)? {
         let entry = entry?;
         let kind = entry.file_type()?;
         let old = previous.join(entry.file_name());
-        if kind.is_dir() {
-            if old.is_dir() {
-                keep_unchanged_times(&entry.path(), &old)?;
-            }
-        } else if kind.is_file() {
-            let Ok(meta) = fs::symlink_metadata(&old) else {
-                continue;
-            };
-            if meta.is_file()
-                && meta.len() == entry.metadata()?.len()
-                && fs::read(&old)? == fs::read(entry.path())?
-            {
-                fs::File::options()
-                    .write(true)
-                    .open(entry.path())?
-                    .set_modified(meta.modified()?)?;
-            }
+        names.push(entry.file_name());
+        let Ok(meta) = fs::symlink_metadata(&old) else {
+            continue;
+        };
+        // The file and directory checks below already exclude symlinks; Windows junctions
+        // can still report themselves as directories.
+        #[cfg(windows)]
+        if super::crates::is_link_or_junction(&meta) {
+            continue;
         }
+        if kind.is_dir() && meta.is_dir() {
+            keep_unchanged_times(&entry.path(), &old)?;
+        } else if kind.is_file()
+            && meta.is_file()
+            && meta.len() == entry.metadata()?.len()
+            && fs::read(&old)? == fs::read(entry.path())?
+        {
+            fs::File::options()
+                .write(true)
+                .open(entry.path())?
+                .set_modified(meta.modified()?)?;
+        }
+    }
+    let mut old_names = fs::read_dir(previous)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    names.sort();
+    old_names.sort();
+    // Setting a time inside a folder leaves the folder's own time alone, so this comes last.
+    if names == old_names {
+        filetime::set_file_mtime(
+            staged,
+            filetime::FileTime::from_last_modification_time(&fs::metadata(previous)?),
+        )?;
     }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn rotation_refuses_linked_current_and_previous_stages_before_mutating_either() {
+        use std::os::unix::fs::symlink;
+        for link_current in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let stage = root.path().join("stage");
+            let previous = stage.with_extension("old");
+            let outside = root.path().join("outside");
+            let (linked, real) = if link_current {
+                (&stage, &previous)
+            } else {
+                (&previous, &stage)
+            };
+            fs::create_dir(real).unwrap();
+            fs::write(real.join("keep"), "stage").unwrap();
+            fs::create_dir(&outside).unwrap();
+            fs::write(outside.join("keep"), "outside").unwrap();
+            symlink(&outside, linked).unwrap();
+
+            let error = rotate_stage(&stage).unwrap_err();
+            assert!(
+                error.contains(&format!("{}: not a folder of its own", linked.display())),
+                "{error}"
+            );
+            assert_eq!(fs::read_link(linked).unwrap(), outside);
+            assert_eq!(fs::read_to_string(real.join("keep")).unwrap(), "stage");
+            assert_eq!(fs::read_to_string(outside.join("keep")).unwrap(), "outside");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timestamps_are_not_reused_through_a_linked_prior_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let old = root.path().join("stage.old");
+        let new = root.path().join("stage");
+        let outside = root.path().join("outside");
+        for folder in [&old, &new.join("src"), &outside] {
+            fs::create_dir_all(folder).unwrap();
+        }
+        let file = new.join("src/lib.rs");
+        fs::write(&file, "same").unwrap();
+        fs::write(outside.join("lib.rs"), "same").unwrap();
+        let then = filetime::FileTime::from_unix_time(1_000_000, 0);
+        filetime::set_file_mtime(outside.join("lib.rs"), then).unwrap();
+        filetime::set_file_mtime(&outside, then).unwrap();
+        std::os::unix::fs::symlink(&outside, old.join("src")).unwrap();
+        let modified = |path: &Path| fs::metadata(path).unwrap().modified().unwrap();
+        let before = (modified(&new.join("src")), modified(&file));
+
+        keep_unchanged_times(&new, &old).unwrap();
+
+        assert_eq!((modified(&new.join("src")), modified(&file)), before);
+    }
+
     /// A restaged file whose bytes didn't change keeps its old modified time, so cargo reuses
     /// what it built from it; a changed or new file keeps its new one.
     #[test]
@@ -721,6 +822,85 @@ mod tests {
         assert_eq!(modified("src/lib.rs"), then);
         assert_ne!(modified("Cargo.toml"), then);
         assert_ne!(modified("src/added.rs"), then);
+    }
+
+    /// A restaged folder whose entries didn't change keeps its old modified time; one that gained
+    /// an entry keeps its new one.
+    #[test]
+    fn only_folders_with_the_same_entries_keep_their_old_time() {
+        let root = tempfile::tempdir().unwrap();
+        let (old, new) = (root.path().join("stage.old"), root.path().join("stage"));
+        for dir in [&old, &new] {
+            for folder in ["data/inner", "grown"] {
+                fs::create_dir_all(dir.join(folder)).unwrap();
+            }
+            fs::write(dir.join("data/inner/a.bin"), "a").unwrap();
+        }
+        fs::write(new.join("grown/added.rs"), "added").unwrap();
+        let then = filetime::FileTime::from_unix_time(1_000_000, 0);
+        for folder in ["data/inner", "data", "grown"] {
+            filetime::set_file_mtime(old.join(folder), then).unwrap();
+        }
+        keep_unchanged_times(&new, &old).unwrap();
+        let modified = |name: &str| {
+            filetime::FileTime::from_last_modification_time(&fs::metadata(new.join(name)).unwrap())
+        };
+        assert_eq!(modified("data"), then);
+        assert_eq!(modified("data/inner"), then);
+        assert_ne!(modified("grown"), then);
+    }
+
+    /// Restaged twice with nothing changed, a build script whose `rerun-if-changed` names a folder
+    /// runs only in the first build: cargo finds nothing in the folder newer than that run.
+    #[test]
+    #[ignore = "daily"]
+    fn a_build_script_watching_a_restaged_folder_stays_fresh() {
+        let root = tempfile::tempdir().unwrap();
+        let (stage, previous) = (root.path().join("stage"), root.path().join("stage.old"));
+        let runs = root.path().join("runs");
+        let write_stage = || {
+            fs::create_dir_all(stage.join("src/data")).unwrap();
+            fs::write(
+                stage.join("Cargo.toml"),
+                "[package]\nname = \"watcher\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n",
+            )
+            .unwrap();
+            fs::write(stage.join("src/lib.rs"), "").unwrap();
+            fs::write(stage.join("src/data/table.txt"), "rows").unwrap();
+            fs::write(
+                stage.join("build.rs"),
+                format!(
+                    "fn main() {{\n    println!(\"cargo::rerun-if-changed=src/data\");\n    \
+                     let mut runs = std::fs::OpenOptions::new().create(true).append(true).open({:?}).unwrap();\n    \
+                     std::io::Write::write_all(&mut runs, b\"run\\n\").unwrap();\n}}\n",
+                    runs
+                ),
+            )
+            .unwrap();
+        };
+        let build = || {
+            let status =
+                std::process::Command::new(std::env::var_os("CARGO").unwrap_or("cargo".into()))
+                    .args(["build", "--offline", "--quiet", "--target-dir"])
+                    .arg(root.path().join("target"))
+                    .current_dir(&stage)
+                    .status()
+                    .unwrap();
+            assert!(status.success());
+        };
+        write_stage();
+        build();
+        for _ in 0..2 {
+            // A second's gap, so a folder written again is newer than the last run even where
+            // the filesystem keeps whole seconds.
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            assert_eq!(rotate_stage(&stage).unwrap(), previous);
+            write_stage();
+            keep_unchanged_times(&stage, &previous).unwrap();
+            fs::remove_dir_all(&previous).unwrap();
+            build();
+        }
+        assert_eq!(fs::read_to_string(&runs).unwrap(), "run\n");
     }
 
     use super::*;

@@ -373,10 +373,7 @@ pub enum Pipeline {
     Render(Slot<wgpu::RenderPipeline>),
     Compute {
         pipeline: Slot<wgpu::ComputePipeline>,
-        /// `workGroups`, else `workGroupsRender` and the local size.
-        groups: Option<[u32; 3]>,
-        render: [f32; 2],
-        local: [u32; 3],
+        dispatch: Dispatch,
     },
     /// A composite-style program whose fragment stage writes no buffer and no image: it draws
     /// nothing, and only its compute stages (2.6) and forced flips (6.1.6) run at its place in
@@ -439,6 +436,9 @@ pub struct Pass {
     pub groups: HashMap<u64, wgpu::BindGroup>,
     /// The same for End portal draws, with `end_portal.png` bound as the atlas.
     pub portal_groups: HashMap<u64, wgpu::BindGroup>,
+    /// The same for a mod's dynamic textures (`Draw::texture`), by texture handle: the revision
+    /// of the texture the groups were made for, and the groups.
+    pub dynamic_groups: HashMap<u64, (u64, HashMap<u64, wgpu::BindGroup>)>,
     /// The same for native terrain quads (`Draw::block_atlas`), with the block atlas bound as
     /// the atlas (`PackPost::block_atlas_group`).
     pub block_atlas_groups: HashMap<u64, wgpu::BindGroup>,
@@ -477,12 +477,33 @@ impl Pass {
         }
     }
 
-    /// Drops every cached bind group of the pass: the plain ones, the End portal ones and the
-    /// block atlas ones, which all name the same buffers.
+    /// Drops every cached bind group of the pass: the plain ones, the End portal ones, the
+    /// dynamic texture ones and the block atlas ones, which all name the same buffers.
     pub fn forget_groups(&mut self) {
         self.groups.clear();
         self.portal_groups.clear();
+        self.dynamic_groups.clear();
         self.block_atlas_groups.clear();
+        if let Pipeline::Compute {
+            dispatch: Dispatch::Indirect(indirect),
+            ..
+        } = &mut self.pipeline
+        {
+            indirect.forget_group();
+        }
+    }
+
+    /// Whether what the pass does depends on the pack's storage buffers: it binds them, or
+    /// reads its work-group counts from one (`indirect.<pass>`).
+    pub fn reads_buffers(&self) -> bool {
+        self.buffers
+            || matches!(
+                self.pipeline,
+                Pipeline::Compute {
+                    dispatch: Dispatch::Indirect(_),
+                    ..
+                }
+            )
     }
 
     pub fn render(&self) -> &wgpu::RenderPipeline {
@@ -494,6 +515,19 @@ impl Pass {
             }
         }
     }
+}
+
+/// How many work groups a compute pass runs, decided once when it is built.
+#[derive(Clone)]
+pub enum Dispatch {
+    /// `workGroups`, else `workGroupsRender` and the local size.
+    Direct {
+        groups: Option<[u32; 3]>,
+        render: [f32; 2],
+        local: [u32; 3],
+    },
+    /// `indirect.<pass>`: the counts are read from a storage buffer.
+    Indirect(Box<crate::pack_post::indirect::IndirectDispatch>),
 }
 
 /// One side of a buffer with mipmaps.

@@ -94,7 +94,8 @@ pub fn properties_macros(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
 
 /// A pack's `shaders.properties` as the game reads it before the programs: parsed with
 /// `properties_macros` over `macros` (the standard set and the renderer's). Returns the
-/// properties and a note for each required feature Sunrise lacks (`Macros::feature_notes`).
+/// properties and a note for each required feature Sunrise lacks with `macros`' device
+/// (`Macros::feature_notes`).
 /// Whatever reads a pack's programs (the game, the `real_packs` test) reads them with `macros`.
 pub fn read_properties(
     pack: &Pack,
@@ -102,7 +103,7 @@ pub fn read_properties(
 ) -> (crate::Properties, Vec<String>) {
     let text = pack.read_text("shaders.properties").unwrap_or_default();
     let properties = crate::Properties::parse(&text, &properties_macros(pack, macros));
-    let notes = crate::Macros::feature_notes(&properties);
+    let notes = macros.feature_notes(&properties);
     (properties, notes)
 }
 
@@ -342,6 +343,26 @@ pub fn apply(text: &str, chosen: &BTreeMap<String, String>) -> String {
         out.push_str(end);
     }
     out
+}
+
+/// Sets option `name` to `value` in `chosen` as the options screen does: a value the option doesn't
+/// list, or an option the pack doesn't have, is ignored (`false`); the option's default takes it
+/// out of `chosen`.
+pub fn choose(
+    chosen: &mut BTreeMap<String, String>,
+    options: &BTreeMap<String, PackOption>,
+    name: &str,
+    value: String,
+) -> bool {
+    let Some(option) = options.get(name).filter(|o| o.values.contains(&value)) else {
+        return false;
+    };
+    if value == option.default {
+        chosen.remove(name);
+    } else {
+        chosen.insert(name.to_owned(), value);
+    }
+    true
 }
 
 /// The file the player's choices for pack `name` are kept in, beside it in `shaderpacks/`.

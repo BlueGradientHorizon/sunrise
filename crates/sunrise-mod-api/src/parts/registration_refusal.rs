@@ -97,6 +97,7 @@ impl PartRegistrar {
             game_rules,
             custom_stats,
             custom_stat_owners,
+            enchanting_table_offsets,
             block_entity_types,
             block_entity_ticker_selectors,
             entity_attributes,
@@ -176,6 +177,7 @@ fn discard_rejected_parts(owner: &'static str, parts: Parts) {
         parts.command_arguments,
         parts.recipe_serializers.into_values(),
         parts.entity_selectors,
+        parts.mod_events.into_values().flatten(),
     );
     if let Some(payloads) = parts.payloads.and_then(Arc::into_inner) {
         for row in payloads.phases.into_iter().flat_map(HashMap::into_values) {

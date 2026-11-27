@@ -17,6 +17,7 @@ pub(crate) const GLUE: Glue = Glue {
     setup: "",
     finish: "gl_Position.y = -gl_Position.y;",
     vertex_id: "int(gl_VertexIndex)",
+    fragment_finish: None,
     interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
@@ -140,10 +141,6 @@ struct Readback {
     /// Each buffer's copy, numbered in frame order, so the newest one wins.
     serials: [u64; 2],
     next: u64,
-    /// Each buffer's copy's epoch, and the current one: a copy from an earlier epoch (made
-    /// before fullbright stopped the pack's shader) is dropped, never shown.
-    epochs: [u64; 2],
-    epoch: u64,
 }
 
 impl Readback {
@@ -162,8 +159,6 @@ impl Readback {
             copied: None,
             serials: [0; 2],
             next: 0,
-            epochs: [0; 2],
-            epoch: 0,
         }
     }
 }
@@ -186,23 +181,32 @@ pub(crate) struct CoreLightmap {
 
 impl CoreLightmap {
     /// The pipeline for `program`, drawing into an `Rgba8Unorm` texture, with `expressions`
-    /// (resolved when it loaded: the expression blocks its stages read); `None` when the pack's
-    /// shader does not compile for the backend or a stage reads more blocks than the device
-    /// binds to one (each caught by the error scope, whose message names the limit). Each
-    /// block is bound only to the stages that read it: one only declared takes no binding.
+    /// (resolved when it loaded: the expression blocks its stages read); or the device's refusal,
+    /// named by vanilla's `LIGHTMAP`, when the pack's shader does not compile for the backend or
+    /// a stage reads more blocks than the device binds to one (each caught by the error scope,
+    /// whose message names the limit). Each block is bound only to the stages that read it: one
+    /// only declared takes no binding.
     pub(super) fn new(
         device: &wgpu::Device,
         program: &Translated,
         expressions: &[ExpressionUniform],
-    ) -> Option<Self> {
+    ) -> Result<Self, String> {
+        let pipeline = crate::hud::pack_text::LIGHTMAP[0].pipeline;
+        crate::core_shader::scoped(device, pipeline, || {
+            Self::made(device, program, expressions)
+        })
+    }
+
+    fn made(
+        device: &wgpu::Device,
+        program: &Translated,
+        expressions: &[ExpressionUniform],
+    ) -> Self {
         let info_binding = program
             .other
             .iter()
             .position(|n| n == INFO_BLOCK)
             .map(|i| program.other_binding(i));
-        // A pack's shader is untrusted: the backend failing to compile it is an internal error.
-        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
         let module = |label, module: &naga::Module| {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(label),
@@ -224,7 +228,10 @@ impl CoreLightmap {
         });
         // Every block a stage reads, at its offset and size, visible to the stages reading it:
         // vanilla's four and `LightmapInfo`, then the expression uniforms.
-        let info = info_binding.map(|b| (b, INFO_OFFSET, INFO_SIZE, program.stages_reading(b)));
+        let info = info_binding.map(|b| {
+            let size = super::expression_blocks::block_size(program, b, INFO_SIZE);
+            (b, INFO_OFFSET, size, program.stages_reading(b))
+        });
         let mut blocks = super::expression_blocks::vanilla_blocks(program);
         blocks.extend(info.filter(|(.., stages)| !stages.is_empty()));
         let (entries, resources) = super::expression_blocks::bindings(&blocks, &extra, &uniform);
@@ -267,19 +274,14 @@ impl CoreLightmap {
             multiview_mask: None,
             cache: None,
         });
-        let internal = pollster::block_on(internal.pop());
-        if let Some(e) = internal.or(pollster::block_on(validation.pop())) {
-            log::warn!("the resource pack's lightmap shader is not used: {e}");
-            return None;
-        }
-        Some(Self {
+        Self {
             pipeline,
             group,
             uniform,
             bytes: [0; UNIFORM_BYTES],
             extra,
             readback: None,
-        })
+        }
     }
 
     /// Whether the drawn texture is read back (`on`: F3's lightmap chart is shown). Off, the
@@ -368,7 +370,6 @@ impl CoreLightmap {
         readback.copied = Some(i);
         readback.next += 1;
         readback.serials[i] = readback.next;
-        readback.epochs[i] = readback.epoch;
     }
 
     /// The readback to start once the frame is submitted: mapping the buffer it copied into.
@@ -390,14 +391,6 @@ impl CoreLightmap {
         }))
     }
 
-    /// Copies made so far, mapped or still in flight, are of a texture no longer drawn (fullbright
-    /// took over): they are dropped as they land, and only later copies are read.
-    fn forget_copies(&mut self) {
-        if let Some(readback) = self.readback.as_mut() {
-            readback.epoch += 1;
-        }
-    }
-
     /// The newest texture read back, into `pixels`; whether one was.
     fn collect(&self, pixels: &mut [u8; 16 * 16 * 4]) -> bool {
         let Some(readback) = &self.readback else {
@@ -411,8 +404,7 @@ impl CoreLightmap {
             if state.load(Ordering::Acquire) != MAPPED {
                 continue;
             }
-            let current = readback.epochs[i] == readback.epoch;
-            if current && let Ok(range) = buffer.slice(..).get_mapped_range() {
+            if let Ok(range) = buffer.slice(..).get_mapped_range() {
                 for row in 0..16 {
                     let at = row * ROW as usize;
                     pixels[row * 64..][..64].copy_from_slice(&range[at..at + 64]);
@@ -426,8 +418,7 @@ impl CoreLightmap {
     }
 }
 
-/// What drew the light texture: the native path (computed here, white under fullbright), or a
-/// pack's shader.
+/// What drew the light texture: the native path (computed here), or a pack's shader.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Drawn {
     Native,
@@ -435,14 +426,9 @@ pub(crate) enum Drawn {
 }
 
 impl Drawn {
-    /// What draws the frame's light texture: a pack's shader when one is loaded, unless
-    /// fullbright keeps the texture white.
-    pub(crate) fn now(fullbright: bool, pack: bool) -> Self {
-        if pack && !fullbright {
-            Self::Pack
-        } else {
-            Self::Native
-        }
+    /// What draws the frame's light texture: a pack's shader when one is loaded.
+    pub(crate) fn now(pack: bool) -> Self {
+        if pack { Self::Pack } else { Self::Native }
     }
 }
 
@@ -450,8 +436,7 @@ impl Drawn {
 /// with what drew them. The native path's are current as soon as it computes them; a
 /// pack-drawn texture's arrive through the readback a frame later, and only while the chart is
 /// open. A sample from another source than the one drawing now is never shown: after the chart
-/// closes and opens again, or fullbright turns on or off, it paints nothing until the texture
-/// being drawn comes back.
+/// closes and opens again, it paints nothing until the texture being drawn comes back.
 pub(crate) struct LightmapChart {
     pub(crate) pixels: [u8; 16 * 16 * 4],
     drawn: Option<Drawn>,
@@ -490,11 +475,32 @@ impl LightmapChart {
     }
 }
 
+/// The pack's lightmap pipeline for `program`, none without one or when it is past the device's
+/// limits (`sunrise_glsl::PastDeviceLimit`: the light texture is then computed natively), or the
+/// device's refusal of `LIGHTMAP`.
+pub(super) fn lightmap_for(
+    device: &wgpu::Device,
+    program: Option<&Translated>,
+    expressions: &[ExpressionUniform],
+) -> Result<Option<CoreLightmap>, String> {
+    let pipeline = crate::hud::pack_text::LIGHTMAP[0].pipeline;
+    (program.filter(|p| {
+        crate::core_shader::within_device_limits(
+            device,
+            p,
+            pipeline,
+            &[wgpu::TextureFormat::Rgba8Unorm],
+        )
+    }))
+    .map(|p| CoreLightmap::new(device, p, expressions))
+    .transpose()
+}
+
 /// The renderer's light texture: the pack's shader draws it, or it is computed here.
 impl super::Renderer {
     /// The resource packs' `core/lightmap` (`HudAtlas::lightmap_shader`), or the native one.
-    /// The pipeline is built here, so a shader the backend refuses leaves the native texture
-    /// from the first frame. Unlike the sky's and the block outline's, a pack's lightmap is kept
+    /// The pipeline is built here: the backend's refusal of it, a pipeline vanilla requires, is
+    /// returned and fails the pack reload. Unlike the sky's and the block outline's, a pack's lightmap is kept
     /// on a frame of linear light (docs/hdr-passes.md): it draws the 8-bit light texture, never
     /// the frame, and the world's shaders read that texture the same way under either encoding
     /// (they decode their result at the end, `linear_blend`), as they do the native one.
@@ -502,9 +508,10 @@ impl super::Renderer {
         &mut self,
         program: Option<&Translated>,
         expressions: &[ExpressionUniform],
-    ) {
-        self.core_lightmap = program.and_then(|p| CoreLightmap::new(&self.device, p, expressions));
+    ) -> Result<(), String> {
+        self.core_lightmap = lightmap_for(&self.device, program, expressions)?;
         self.lightmap_uploaded = false;
+        Ok(())
     }
 
     /// Whether F3's lightmap chart is shown (the game's `debug_shows_lightmap`): only then is a
@@ -522,13 +529,13 @@ impl super::Renderer {
     /// The light texture's pixels for F3's lightmap chart, RGBA rows of sky level by block
     /// level: none until the texture drawn now has been read (`LightmapChart`).
     pub fn lightmap_sample(&self) -> Option<&[u8; 16 * 16 * 4]> {
-        let drawing = Drawn::now(self.fullbright, self.core_lightmap.is_some());
+        let drawing = Drawn::now(self.core_lightmap.is_some());
         self.lightmap_chart.shown(drawing)
     }
 
     /// The frame's light texture (`LightmapRenderStateExtractor.extract`, then
     /// `Lightmap.render`): a pack's `core/lightmap` draws it from the frame's `LightmapInfo`,
-    /// or its pixels are computed and uploaded when they change. Fullbright keeps it white.
+    /// or its pixels are computed and uploaded when they change.
     pub(super) fn update_lightmap(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
@@ -549,8 +556,10 @@ impl super::Renderer {
             night_vision_color: [0.6; 3],
         };
         // Only a pack's shader reads the globals: none are made without one.
-        let globals =
-            (!self.fullbright && self.core_lightmap.is_some()).then(|| self.pack_globals(frame));
+        let globals = self
+            .core_lightmap
+            .is_some()
+            .then(|| self.pack_globals(frame));
         if let Some(globals) = globals
             && let Some(core) = self.core_lightmap.as_mut()
         {
@@ -563,15 +572,7 @@ impl super::Renderer {
             self.lightmap_uploaded = false;
             return;
         }
-        // Fullbright stops a pack's shader: what it copied before must not be read as current
-        // when it draws again.
-        if let Some(core) = self.core_lightmap.as_mut() {
-            core.forget_copies();
-        }
-        let mut pixels = native_lightmap(&info);
-        if self.fullbright {
-            pixels.fill(255);
-        }
+        let pixels = native_lightmap(&info);
         // The lightmap changes with the time of day, flicker and effects,
         // not every frame: upload only what differs from the texture.
         if pixels == self.lightmap_chart.pixels && self.lightmap_uploaded {

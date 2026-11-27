@@ -177,11 +177,10 @@ pub fn cull_frustum(
 
 impl Renderer {
     /// Whether order-independent transparency is active for the given option value on this
-    /// renderer (no shader pack post-chain, no native pack, and device supports OIT).
+    /// renderer (no shader pack post-chain, and device supports OIT).
     pub fn oit_active_for(&self, improved_transparency: bool) -> bool {
         improved_transparency
             && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
-            && self.native.is_none()
             && super::oit::supported(&self.device)
     }
 
@@ -226,8 +225,8 @@ impl Renderer {
             .taa_render_size([self.config.width, self.config.height]);
         self.asked_world_views(taa_frustum(views.cull_view_proj(view_transform), size))
     }
-    /// Validator for the live bob transform. The world/shadow cull, the native post
-    /// projection and the shader-pack model-view do not invert the same product.
+    /// Validator for the live bob transform. The world/shadow cull and the shader-pack
+    /// model-view do not invert the same product.
     pub fn view_transform_validator(
         &self,
         [yaw, pitch, roll]: [f32; 3],
@@ -246,21 +245,6 @@ impl Renderer {
         let pack_post = self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
         let pack_rotation = pack_post
             .then(|| sunrise_render_shaderpack::joml::view_rotation_matrix(yaw, pitch, roll).0);
-        let native_projections = self.native.as_ref().map(|native| {
-            let taa = !pack_post && native.post.is_none();
-            let scale = self.world_post.scale;
-            let window_sizes = self.world_post.render_sizes(window, scale, taa);
-            let capture_sizes = capture.map(|size| {
-                self.world_post.render_sizes(
-                    size,
-                    super::screenshot::screenshot_world_scale(scale),
-                    taa,
-                )
-            });
-            window_sizes
-                .chain(capture_sizes.into_iter().flatten())
-                .map(move |[w, h]| super::world_projection(fov, w as f32 / h.max(1) as f32, far))
-        });
         move |matrix| {
             let bob = vanilla_bob * Mat4::from_cols_array(&matrix);
             let pose = bob * spin;
@@ -269,13 +253,6 @@ impl Renderer {
                 .flatten()
                 .all(|view| usable_view_transform(view, bob, spin))
                 && pack_rotation.is_none_or(|rotation| invertible(pose * rotation))
-                && native_projections
-                    .clone()
-                    .into_iter()
-                    .flatten()
-                    .all(|projection| {
-                        invertible(super::native_post::view_projection(projection, bob, spin))
-                    })
         }
     }
 
@@ -294,11 +271,7 @@ fn invertible(matrix: Mat4) -> bool {
 }
 
 fn usable_view_transform(view: &View, bob: Mat4, spin: Mat4) -> bool {
-    invertible(super::native_post::view_projection(
-        view.projection,
-        bob,
-        spin,
-    )) && invertible(view.view_proj(bob * spin))
+    invertible(view.projection * bob * spin) && invertible(view.view_proj(bob * spin))
 }
 
 /// Where a perspective `view_proj` sees from, in its own (camera-relative)
@@ -318,25 +291,6 @@ pub(super) fn projection_center(view_proj: Mat4) -> Option<Vec3> {
     }
     let b = DVec3::new(rows[0].w, rows[1].w, rows[2].w);
     Some((a.inverse() * -b).as_vec3())
-}
-
-/// `view_proj` mirrored about the horizontal plane at the camera-relative height `plane`:
-/// with F the mirror (y flips and moves to 2 * plane), `view_proj * F` negates column 1
-/// and moves column 3 by 2 * plane times column 1.
-///
-/// `mirror_inverse_view` is the inverse's other side: F * `inverse_view`.
-pub(super) fn mirror_view_projection(view_proj: Mat4, plane: f32) -> Mat4 {
-    let mut m = view_proj.to_cols_array_2d();
-    let col1 = m[1];
-    m[1] = col1.map(|v| -v);
-    m[3] = std::array::from_fn(|i| m[3][i] + 2.0 * plane * col1[i]);
-    Mat4::from_cols_array_2d(&m)
-}
-
-/// The mirror's `inverse_view` (the sky's rays): what the view sees, mirrored about the
-/// horizontal plane at the camera-relative height `plane`, so F * `inverse_view`.
-pub(super) fn mirror_inverse_view(inverse_view: [[f32; 4]; 4], plane: f32) -> [[f32; 4]; 4] {
-    inverse_view.map(|[x, y, z, w]| [x, 2.0 * plane * w - y, z, w])
 }
 
 #[cfg(feature = "test-support")]
@@ -444,7 +398,7 @@ mod tests {
 
     #[test]
     fn primary_renderable_sections_include_compiled_air_and_apply_canonical_culling() {
-        use crate::fast_hash::{FxHashMap, FxHashSet};
+        use crate::fast_hash::FxHashMap;
         use crate::section_mask::SectionMask;
 
         let mut detail_columns: FxHashMap<(i32, i32), SectionMask> = FxHashMap::default();
@@ -453,9 +407,8 @@ mod tests {
         // (0, 0, -1): compiled air section in front of camera -> included with empty = true.
         // (0, 0, -2): non-empty resident section in front -> included with empty = false.
         // (0, 0, 2): behind the primary camera -> excluded by primary frustum.
-        // (0, 0, -3): in front, within detail radius, but unreachable under cave culling -> excluded.
-        // (0, 0, -6): past detail radius (radius = 3), not in lod_cutout -> excluded.
-        // (0, 0, -7): past detail radius, in lod_cutout -> included.
+        // (0, 0, -3): inside the render distance but unreachable under cave culling.
+        // (0, 0, -6): beyond the render distance.
         let mut mask = SectionMask::EMPTY;
         mask.insert(0);
         detail_columns.insert((0, -1), mask);
@@ -463,19 +416,14 @@ mod tests {
         detail_columns.insert((0, 2), mask);
         detail_columns.insert((0, -3), mask);
         detail_columns.insert((0, -6), mask);
-        detail_columns.insert((0, -7), mask);
 
         let mut sections = super::super::resident::Resident::<bool>::default();
         sections.set_min_y(0);
-        // Only (0, 0, -2) and (0, 0, -7) have non-empty meshes (`false` means non-empty here).
+        // Non-empty meshes are represented by `false`.
         sections.insert((0, 0, -2), false);
         sections.insert((0, 0, 2), false);
         sections.insert((0, 0, -3), false);
         sections.insert((0, 0, -6), false);
-        sections.insert((0, 0, -7), false);
-
-        let mut lod_cutout: FxHashSet<(i32, i32)> = FxHashSet::default();
-        lod_cutout.insert((0, -7));
 
         let camera = DVec3::new(8.0, 8.0, 8.0);
         let view = View::screen(180.0, 0.0, 70.0, 16.0 / 9.0, 512.0);
@@ -490,7 +438,6 @@ mod tests {
             3,
             &frustum,
             |key| key != (0, 0, -3),
-            |x, z| lod_cutout.contains(&(x, z)),
             true,
             &mut draws,
             Some(super::super::resident::PrimarySelection {
@@ -504,12 +451,9 @@ mod tests {
                 .iter()
                 .map(|&(_, key, slot)| (key, slot.is_none()))
                 .collect::<Vec<_>>(),
-            [((0, 0, -1), true), ((0, 0, -2), false), ((0, 0, -7), false)]
+            [((0, 0, -1), true), ((0, 0, -2), false)]
         );
-        assert_eq!(
-            draws.iter().map(|v| v.key).collect::<Vec<_>>(),
-            [(0, 0, -7)]
-        );
+        assert!(draws.is_empty());
     }
 
     #[test]
@@ -672,7 +616,6 @@ mod tests {
                     8,
                     &transforms.cull_frustum,
                     |_| true,
-                    |_, _| false,
                     &mut visible_unposed,
                 );
                 let mut visible_bobbed = Vec::new();
@@ -681,7 +624,6 @@ mod tests {
                     8,
                     &bobbed_frustum,
                     |_| true,
-                    |_, _| false,
                     &mut visible_bobbed,
                 );
                 let mut visible_narrow = Vec::new();
@@ -690,7 +632,6 @@ mod tests {
                     8,
                     &raw_fov_frustum,
                     |_| true,
-                    |_, _| false,
                     &mut visible_narrow,
                 );
                 assert_eq!(

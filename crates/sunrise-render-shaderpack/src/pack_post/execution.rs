@@ -13,7 +13,7 @@ use sunrise_render_core::UniformFrameView;
 use sunrise_shaders::{BUFFERS, Group, SHADOW_COLORS};
 
 use super::construction::*;
-use super::mod_pack::{ModDrawChunk, ModPassSlot, ModUniformValue};
+use super::mod_pack::{MOD_SET_BASE, ModDrawChunk, ModDrawKind, ModPassSlot, ModUniformValue};
 use crate::PollLive;
 use crate::pack_entities::{
     BEAM, BLOCK, BLOCK_TRANSLUCENT, DESTROY, ENTITY, PARTICLE, PARTICLE_TRANSLUCENT, TRANSLUCENT,
@@ -200,6 +200,24 @@ impl PackPost {
     /// Mod pipeline slots currently bound to compiled shader-pack programs in this pack.
     pub fn bound_mod_slots(&self) -> &[usize] {
         &self.bound_mod_slots
+    }
+
+    /// The shadow pass as `frame` sees it, or `None` when the pack has no shadow pass: the map's
+    /// side in texels, `shadowDistance`, and the column-major `shadowModelView` and
+    /// `shadowProjection` (camera-relative space).
+    pub fn shadow_state(
+        &self,
+        frame: &UniformFrameView<'_>,
+    ) -> Option<(u32, f32, [f32; 16], [f32; 16])> {
+        let targets = self.shadow_targets.as_ref()?;
+        let shadow = &self.uniforms.shadow;
+        let (model_view, projection) = crate::pack_uniforms::shadow_view(frame, shadow);
+        Some((
+            targets.size,
+            shadow.distance,
+            model_view.to_cols_array(),
+            projection.to_cols_array(),
+        ))
     }
 
     /// Counts of currently allocated mod auxiliary `(depth, opaque_depth)` targets.
@@ -768,10 +786,12 @@ impl PackPost {
                 .zip(e.late)
                 .any(|(p, late)| p.is_some() && late)
         });
+        // The hand's translucent quads draw in the translucent phase too (`draw_hand_water`).
         let mut water_drawn = !boundaries.translucent_blocks
             && !boundaries.weather
             && !boundaries.custom_geometry
             && self.water.is_none()
+            && self.hand_water.is_none()
             && self.weather.is_none()
             && !late_entities
             && !self.has_mod_slot(ModPassSlot::AfterTranslucentGbuffers)
@@ -1386,31 +1406,38 @@ impl PackPost {
         pass: &mut Pass,
         size: [u32; 2],
     ) {
-        let Pipeline::Compute {
-            pipeline,
-            groups,
-            render,
-            local,
-        } = &pass.pipeline
-        else {
+        let Pipeline::Compute { pipeline, dispatch } = &mut pass.pipeline else {
             return;
         };
-        let pipeline = pipeline.get().expect("compiled with its pack");
-        let groups = groups.unwrap_or_else(|| {
-            let n = |k: usize| (size[k] as f32 * render[k] / local[k] as f32).ceil() as u32;
-            [n(0), n(1), 1]
-        });
-        let (pipeline, groups) = (pipeline.clone(), groups);
-        // wgpu panics on a dispatch over its limit. The translator reshapes a large
-        // `workGroups`; a `workGroupsRender` that large is not run.
-        let most = device.limits().max_compute_workgroups_per_dimension;
-        if groups.iter().any(|&n| n > most) {
-            log::warn!(
-                "shader pack: {}: {groups:?} work groups is over {most} per dimension; not run",
-                pass.name
-            );
-            return;
-        }
+        let pipeline = pipeline.get().expect("compiled with its pack").clone();
+        let run = match dispatch {
+            Dispatch::Direct {
+                groups,
+                render,
+                local,
+            } => {
+                let groups = groups.unwrap_or_else(|| {
+                    let n = |k: usize| (size[k] as f32 * render[k] / local[k] as f32).ceil() as u32;
+                    [n(0), n(1), 1]
+                });
+                // wgpu panics on a dispatch over its limit. The translator reshapes a large
+                // `workGroups`; a `workGroupsRender` that large is not run.
+                let most = device.limits().max_compute_workgroups_per_dimension;
+                if groups.iter().any(|&n| n > most) {
+                    log::warn!(
+                        "shader pack: {}: {groups:?} work groups is over {most} per dimension; not run",
+                        pass.name
+                    );
+                    return;
+                }
+                Run::Groups(groups)
+            }
+            // The counts, copied and checked, after every pass before this one wrote them.
+            Dispatch::Indirect(indirect) => match indirect.record(device, encoder, &self.buffers) {
+                Some(counts) => Run::Counts(counts),
+                None => return,
+            },
+        };
         for image in (0..self.images.len()).filter(|k| pass.snapshots & 1 << k != 0) {
             pack_images::snapshot(encoder, &self.images[image]);
         }
@@ -1429,7 +1456,10 @@ impl PackPost {
         {
             cp.set_bind_group(4, g, &[]);
         }
-        cp.dispatch_workgroups(groups[0], groups[1], groups[2]);
+        match &run {
+            Run::Groups([x, y, z]) => cp.dispatch_workgroups(*x, *y, *z),
+            Run::Counts(counts) => cp.dispatch_workgroups_indirect(counts, 0),
+        }
         drop(cp);
         self.mips_valid &= !pass.written;
     }
@@ -1532,7 +1562,7 @@ impl PackPost {
             let has_draws = self
                 .mod_draws
                 .iter()
-                .any(|d| d.slot == m.slot && !d.quads.is_empty());
+                .any(|d| d.slot == m.slot && !d.is_empty());
             if !has_draws {
                 continue;
             }
@@ -1555,12 +1585,66 @@ impl PackPost {
                     self.draws.bind(&mut rp, stage);
                 }
                 for chunk in &self.mod_draws {
-                    if chunk.slot != m.slot || chunk.quads.is_empty() {
+                    if chunk.slot != m.slot || chunk.is_empty() {
                         continue;
                     }
-                    rp.set_vertex_buffer(0, chunk.vertices.slice(..));
-                    rp.set_index_buffer(chunk.indices.slice(..), wgpu::IndexFormat::Uint32);
-                    rp.draw_indexed(chunk.quads.start * 6..chunk.quads.end * 6, 0, 0..1);
+                    // The mod's own vertex stage has its frame uniforms and set 1 after the
+                    // pack's sets; the pack's vertex stage reads the mod's set 1 at index 1.
+                    let mut set1 = 1;
+                    if m.mod_vertex {
+                        let Some(globals) = &chunk.mod_globals else {
+                            continue;
+                        };
+                        rp.set_bind_group(MOD_SET_BASE, globals, &[]);
+                        set1 = MOD_SET_BASE + 1;
+                    }
+                    if m.has_mod_bind_group {
+                        let Some((ref bg, ref offsets)) = chunk.mod_bind_group else {
+                            continue;
+                        };
+                        rp.set_bind_group(set1, bg, offsets);
+                    }
+                    for (binding, buffer, range) in &chunk.vertex_buffers {
+                        rp.set_vertex_buffer(*binding, buffer.slice(range.clone()));
+                    }
+                    match &chunk.kind {
+                        ModDrawKind::Vertices { vertices } => {
+                            rp.draw(vertices.clone(), chunk.instances.clone());
+                        }
+                        ModDrawKind::Indexed {
+                            buffer,
+                            format,
+                            indices,
+                            base_vertex,
+                        } => {
+                            rp.set_index_buffer(buffer.slice(..), *format);
+                            rp.draw_indexed(indices.clone(), *base_vertex, chunk.instances.clone());
+                        }
+                        ModDrawKind::Indirect {
+                            buffer,
+                            offset,
+                            count,
+                            count_buffer,
+                            index,
+                        } => {
+                            if let Some((index_buffer, format)) = index {
+                                rp.set_index_buffer(index_buffer.slice(..), *format);
+                            }
+                            match (index, count_buffer) {
+                                (Some(_), Some((count_buf, at))) => rp
+                                    .multi_draw_indexed_indirect_count(
+                                        buffer, *offset, count_buf, *at, *count,
+                                    ),
+                                (Some(_), None) => {
+                                    rp.multi_draw_indexed_indirect(buffer, *offset, *count)
+                                }
+                                (None, Some((count_buf, at))) => rp.multi_draw_indirect_count(
+                                    buffer, *offset, count_buf, *at, *count,
+                                ),
+                                (None, None) => rp.multi_draw_indirect(buffer, *offset, *count),
+                            }
+                        }
+                    }
                 }
             }
             if slot != ModPassSlot::Shadow {
@@ -1790,6 +1874,9 @@ impl PackPost {
                 pass,
                 (geometry.draws.iter()).any(|d| d.pack && d.program == program && d.block_atlas),
             );
+            let dynamic = self.dynamic_groups(device, pass, geometry, |d| {
+                d.pack && d.program == program && !d.water_mask
+            });
             {
                 let mut rp = self.begin(encoder, pass);
                 rp.set_pipeline(pass.render());
@@ -1809,7 +1896,7 @@ impl PackPost {
                 let offset = pass.polygon_offset.as_ref().and_then(|p| p.get());
                 let mut on_offset = false;
                 for d in draws {
-                    bind_atlas(&mut rp, d, groups, &mut bound);
+                    bind_atlas(&mut rp, d, groups, &dynamic, &mut bound);
                     if let Some(offset) = offset
                         && d.polygon_offset != on_offset
                     {
@@ -1899,6 +1986,52 @@ impl PackPost {
         Some(group)
     }
 
+    /// A bind group for each dynamic texture (`Draw::texture`) that a draw of `geometry` selected
+    /// by `wanted` binds as the atlas, as the texture's view and revision were resolved
+    /// (`PackEntities::resolve_textures`): its own texture instead of the shared atlas, with no
+    /// paged maps. Made again for a texture of a new revision; a texture no draw binds loses its
+    /// groups.
+    pub fn dynamic_groups(
+        &self,
+        device: &wgpu::Device,
+        pass: &mut Pass,
+        geometry: &crate::pack_entities::PackEntities,
+        wanted: impl Fn(&crate::pack_entities::Draw) -> bool,
+    ) -> Vec<(u64, wgpu::BindGroup)> {
+        let mut handles: Vec<u64> = (geometry.draws.iter())
+            .filter(|d| wanted(d))
+            .filter_map(|d| d.texture)
+            .collect();
+        handles.sort_unstable();
+        handles.dedup();
+        pass.dynamic_groups
+            .retain(|handle, _| handles.binary_search(handle).is_ok());
+        let mut out = Vec::with_capacity(handles.len());
+        for handle in handles {
+            let Some((view, revision)) = geometry.texture_view(handle) else {
+                continue;
+            };
+            // `bind` caches groups by a key without the atlas: each texture's are kept in a
+            // cache of their own, swapped in with the texture.
+            let mut cache = match pass.dynamic_groups.remove(&handle) {
+                Some((held, cache)) if held == *revision => cache,
+                _ => std::collections::HashMap::new(),
+            };
+            let saved = (
+                pass.atlas.replace(view.clone()),
+                std::mem::replace(&mut pass.paged, false),
+                std::mem::replace(&mut pass.material_maps, false),
+            );
+            std::mem::swap(&mut pass.groups, &mut cache);
+            let group = self.cached_group(device, pass);
+            std::mem::swap(&mut pass.groups, &mut cache);
+            (pass.atlas, pass.paged, pass.material_maps) = saved;
+            pass.dynamic_groups.insert(handle, (*revision, cache));
+            out.push((handle, group));
+        }
+        out
+    }
+
     /// Native terrain quads (`Draw::block_atlas`) bind the block atlas, the one
     /// the pack's terrain samples, as the atlas. The program reads its `normals` and `specular`
     /// as paged maps of the shared atlas (`Pass::paged`), whose pages say nothing of the block
@@ -1971,6 +2104,9 @@ impl PackPost {
                         && d.block_atlas
                 }),
             );
+            let dynamic = self.dynamic_groups(device, pass, geometry, |d| {
+                d.shadow && crate::pack_entities::shadow_program(d.program) == program
+            });
             let groups = [Some(&group), portal_group.as_ref(), block_group.as_ref()];
             let mut bound = 0;
             let mut rp = self.begin(encoder, pass);
@@ -1985,7 +2121,7 @@ impl PackPost {
             rp.set_vertex_buffer(0, geometry.vertices());
             rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
             for d in draws {
-                bind_atlas(&mut rp, d, groups, &mut bound);
+                bind_atlas(&mut rp, d, groups, &dynamic, &mut bound);
                 if pass.draw {
                     rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
                 }
@@ -2108,6 +2244,11 @@ impl PackPost {
         geometry.prepare(device, queue, hand.vertices, hand.items, projection);
         if geometry.quads > 0 {
             let group = self.bind(device, queue, encoder, &mut pass, size);
+            // Translucent quads wait for `gbuffers_hand_water` when the pack has one.
+            let late = self.hand_water.is_some();
+            let runs =
+                || (geometry.runs.iter()).chain(geometry.translucent_runs.iter().filter(|_| !late));
+            let block_group = self.block_atlas_group(device, &mut pass, runs().any(|r| r.3));
             {
                 let mut rp = self.begin(encoder, &pass);
                 rp.set_pipeline(pass.render());
@@ -2120,19 +2261,15 @@ impl PackPost {
                 rp.set_bind_group(1, &geometry.group, &[]);
                 rp.set_vertex_buffer(0, geometry.vertices());
                 rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-                // The arm and each held item: their own `currentRenderedItemId`. Translucent
-                // quads wait for `gbuffers_hand_water` when the pack has one.
-                let late = self.hand_water.is_some();
-                let runs = geometry
-                    .runs
-                    .iter()
-                    .chain(geometry.translucent_runs.iter().filter(|_| !late));
-                for &(first, quads, offset) in runs {
-                    if pass.draw {
-                        rp.set_bind_group(2, &geometry.slot_group, &[offset]);
-                    }
-                    rp.draw_indexed(first * 6..(first + quads) * 6, 0, 0..1);
-                }
+                // The arm and each held item: their own `currentRenderedItemId`.
+                hand_runs(
+                    &mut rp,
+                    &pass,
+                    &geometry,
+                    runs(),
+                    &group,
+                    block_group.as_ref(),
+                );
             }
             self.mips_valid &= !pass.written;
         }
@@ -2301,6 +2438,8 @@ impl PackPost {
             .filter(|(_, g)| g.quads > 0 && !g.translucent_runs.is_empty())
         {
             let group = self.bind(device, queue, encoder, &mut pass, size);
+            let runs = &geometry.translucent_runs;
+            let block_group = self.block_atlas_group(device, &mut pass, runs.iter().any(|r| r.3));
             {
                 let mut rp = self.begin(encoder, &pass);
                 rp.set_pipeline(pass.render());
@@ -2313,12 +2452,7 @@ impl PackPost {
                 rp.set_bind_group(1, &geometry.group, &[]);
                 rp.set_vertex_buffer(0, geometry.vertices());
                 rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-                for &(first, quads, offset) in &geometry.translucent_runs {
-                    if pass.draw {
-                        rp.set_bind_group(2, &geometry.slot_group, &[offset]);
-                    }
-                    rp.draw_indexed(first * 6..(first + quads) * 6, 0, 0..1);
-                }
+                hand_runs(&mut rp, &pass, geometry, runs, &group, block_group.as_ref());
             }
             self.mips_valid &= !pass.written;
         }
@@ -2464,7 +2598,7 @@ impl PackPost {
         for pass in passes {
             pass.forget_groups();
             for c in &mut pass.compute {
-                c.groups.clear();
+                c.forget_groups();
             }
         }
     }
@@ -2479,7 +2613,10 @@ impl PackPost {
         if pack_images::resize_images(device, &mut self.images, size) {
             self.forget_groups();
         }
-        self.buffers.resize(device, size);
+        // The storage buffers made again: the passes reading counts from them bind the old ones.
+        if self.buffers.resize(device, size) {
+            self.forget_groups();
+        }
         if self.targets.as_ref().is_some_and(|t| t.size == size) {
             return Ok(());
         }
@@ -2752,7 +2889,7 @@ impl PackPost {
                 && self
                     .mod_draws
                     .iter()
-                    .any(|d| d.slot == m.slot && !d.quads.is_empty())
+                    .any(|d| d.slot == m.slot && !d.is_empty())
         });
         let cache_hit = !has_shadow_entities
             && !has_shadow_mod_draws
@@ -2982,27 +3119,71 @@ impl PackPost {
     }
 }
 
-/// Set 0 for draw `d` of an entity pass: of `groups` (plain, End portal, block atlas), the one
-/// of the atlas it samples (`Draw::portal`, `Draw::block_atlas`), the plain one when that atlas's
-/// is missing. `bound`: the index of the group set now.
+/// Draws the hand's `runs` (`PackHand::runs`), each with its slot of `HzDraw` and set 0 of the
+/// atlas it samples: `block` for native terrain quads placed in the block atlas, `plain` (bound
+/// at the start) for the others. Without a block atlas group no run is placed (`PackHand`'s
+/// block atlas comes from the same atlas).
+fn hand_runs<'a>(
+    rp: &mut wgpu::RenderPass<'_>,
+    pass: &Pass,
+    geometry: &pack_hand::PackHand,
+    runs: impl IntoIterator<Item = &'a (u32, u32, u32, bool)>,
+    plain: &wgpu::BindGroup,
+    block: Option<&wgpu::BindGroup>,
+) {
+    let mut on_block = false;
+    for &(first, quads, offset, block_atlas) in runs {
+        if let Some(block) = block
+            && block_atlas != on_block
+        {
+            rp.set_bind_group(0, if block_atlas { block } else { plain }, &[]);
+            on_block = block_atlas;
+        }
+        if pass.draw {
+            rp.set_bind_group(2, &geometry.slot_group, &[offset]);
+        }
+        rp.draw_indexed(first * 6..(first + quads) * 6, 0, 0..1);
+    }
+}
+
+/// Set 0 for draw `d` of an entity pass: of `groups` (plain, End portal, block atlas) and
+/// `dynamic` (a group for each dynamic texture), the one of the atlas it samples (`Draw::portal`,
+/// `Draw::block_atlas`, `Draw::texture`), the plain one when that atlas's is missing. `bound`: the
+/// index now set (`groups`, then `dynamic` after them).
 fn bind_atlas(
     rp: &mut wgpu::RenderPass<'_>,
     d: &crate::pack_entities::Draw,
     groups: [Option<&wgpu::BindGroup>; 3],
+    dynamic: &[(u64, wgpu::BindGroup)],
     bound: &mut usize,
 ) {
-    let wanted = if d.portal {
-        1
-    } else if d.block_atlas {
-        2
-    } else {
-        0
+    let (wanted, group) = match d
+        .texture
+        .and_then(|handle| dynamic.iter().position(|(h, _)| *h == handle))
+    {
+        Some(i) => (groups.len() + i, Some(&dynamic[i].1)),
+        None => {
+            let wanted = if d.portal {
+                1
+            } else if d.block_atlas {
+                2
+            } else {
+                0
+            };
+            (wanted, groups[wanted])
+        }
     };
-    let wanted = if groups[wanted].is_some() { wanted } else { 0 };
+    let wanted = if group.is_some() { wanted } else { 0 };
     if wanted != *bound
-        && let Some(group) = groups[wanted]
+        && let Some(group) = group.or(groups[0])
     {
         rp.set_bind_group(0, group, &[]);
         *bound = wanted;
     }
+}
+
+/// What a compute pass dispatches this frame: its own counts, or the buffer holding them.
+enum Run {
+    Groups([u32; 3]),
+    Counts(wgpu::Buffer),
 }

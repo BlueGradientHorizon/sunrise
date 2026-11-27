@@ -101,6 +101,14 @@ pub enum GuiDraw {
 pub type Pose = [f32; 6];
 pub const IDENTITY: Pose = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 
+/// `Matrix3x2f.equals(new Matrix3x2f())`: the identity to the bit (JOML compares
+/// `floatToIntBits`), so a pose with `-0.0` where the identity has `0.0` is not the identity.
+pub fn is_identity(pose: &Pose) -> bool {
+    pose.iter()
+        .zip(IDENTITY)
+        .all(|(a, b)| a.to_bits() == b.to_bits())
+}
+
 /// Applies `op` like JOML's `translate` / `scale` / `rotate` (same float order).
 /// A `Rotate` by a NaN or infinite angle leaves `m` as it was.
 pub fn pose_apply(m: &mut Pose, op: PoseOp) {
@@ -565,6 +573,12 @@ impl StatusBarHeights {
     /// The left and right columns' heights (NeoForge's `Hud.leftHeight`, `rightHeight`).
     pub fn heights(&self) -> [i32; 2] {
         [self.left.height, self.right.height]
+    }
+    /// Assigns both columns, as a NeoForge layer assigns `Hud.leftHeight` and `rightHeight`:
+    /// rows that draw afterwards start from these heights.
+    pub fn set(&mut self, [left, right]: [i32; 2]) {
+        self.left.height = left;
+        self.right.height = right;
     }
 }
 
@@ -1057,13 +1071,13 @@ pub fn paint_player_face(
     flip: bool,
     color: u32,
 ) -> bool {
-    let Some(&rect) = atlas.blit_rect(skin) else {
+    let Some(&rect) = atlas.texture_rect(skin) else {
         return false;
     };
     for (uv, src) in crate::tab_list::face_blits(hat, flip) {
         ResolvedGuiQuad { rect, dst, color }.paint_blit(
             batch,
-            atlas.blit_atlas_page(skin),
+            atlas.texture_atlas_page(skin),
             uv,
             src,
             crate::tab_list::SKIN_TEX,
@@ -1153,7 +1167,7 @@ fn paint_with<'a>(
                 tex,
                 color,
             } => {
-                let Some(rect) = atlas.blit_rect(texture.as_ref()).copied() else {
+                let Some(rect) = atlas.texture_rect(texture.as_ref()).copied() else {
                     continue;
                 };
                 ResolvedGuiQuad {
@@ -1163,7 +1177,7 @@ fn paint_with<'a>(
                 }
                 .paint_blit(
                     batch,
-                    atlas.blit_atlas_page(texture.as_ref()),
+                    atlas.texture_atlas_page(texture.as_ref()),
                     *uv,
                     *src,
                     *tex,
@@ -1267,6 +1281,21 @@ mod gradient_tests;
 #[cfg(test)]
 #[path = "hud_layout_rotate_tests.rs"]
 mod rotate_tests;
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    /// A pose JOML's `equals` keeps apart from the identity, though float `==` calls them equal:
+    /// the probe prints it, as vanilla's oracle does.
+    #[test]
+    fn a_negative_zero_pose_is_not_the_identity() {
+        let negative = [1.0, -0.0, 0.0, 1.0, 0.0, -0.0];
+        assert_eq!(negative, IDENTITY, "float equality can't tell them apart");
+        assert!(!is_identity(&negative));
+        assert!(is_identity(&IDENTITY));
+    }
+}
 
 #[cfg(test)]
 mod player_health_tests {

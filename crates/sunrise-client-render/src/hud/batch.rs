@@ -11,6 +11,10 @@ pub struct HudVertex {
     /// The `GLINT_TEXTURING` UV into the repeating glint texture, unused
     /// unless `uv.x >= 2`.
     pub glint_uv: [f32; 2],
+    /// Optional explicit packed lightmap coordinates and alpha-cutoff flags for special item
+    /// submissions (`0` for normal HUD draws): bit 24 enables frame lightmap sampling (bits
+    /// `0..8` = block byte, bits `8..16` = sky byte), bit 25 selects `0.1` item alpha cutoff.
+    pub light: u32,
     /// 1 for the GUI's text (`RenderPipelines.GUI_TEXT`), which a resource
     /// pack's text shader draws when it has one.
     pub text: u32,
@@ -98,9 +102,9 @@ pub struct HudBatch {
     viewport: [u32; 2],
     /// Glyph pixels to upload into the atlas before drawing.
     pub patches: Vec<crate::font::Patch>,
-    /// Client mods' dynamic textures to upload into their atlas slots before drawing, sharing
-    /// the pixels the game keeps of them.
-    pub image_patches: Vec<dynamic_textures::ImagePatch>,
+    /// The changes to client mods' dynamic textures, applied in order before drawing. Never
+    /// rolled back: a change a refused draw would have followed was still made.
+    pub dynamic_commands: Vec<dynamic_textures::Command>,
     /// Vertex ranges with another blend or depth/scissor state, in order.
     pub blends: Vec<(Range<u32>, Blend)>,
     /// Disjoint, ordered vertex ranges with a screen-space scissor in GUI pixels.
@@ -109,8 +113,6 @@ pub struct HudBatch {
     pub end_portal: EndPortalFill,
     /// `options.glintStrength` for the glint pass (`GlintAlpha`).
     pub glint_alpha: f32,
-    /// PvP & HUD's glint colour (`pvp::Tweaks::glint_texel`), 0 for vanilla's.
-    pub glint_colour: u32,
     /// A resource pack text shader's `GameTime`: the day's fraction
     /// (`gameTime % 24000` and the partial tick, over 24000).
     pub game_time: f32,
@@ -123,7 +125,6 @@ struct HudTail {
     vertices: usize,
     pictures: usize,
     patches: usize,
-    image_patches: usize,
     inline_profiles: usize,
     blends: usize,
     last_blend: Option<(std::ops::Range<u32>, Blend)>,
@@ -143,7 +144,6 @@ impl Drop for HudDrawRollback<'_> {
         self.batch.truncate_vertices(tail.vertices);
         self.batch.pictures.truncate(tail.pictures);
         self.batch.patches.truncate(tail.patches);
-        self.batch.image_patches.truncate(tail.image_patches);
         self.batch.inline_profiles.truncate(tail.inline_profiles);
         self.batch.blends.truncate(tail.blends);
         // `blend_since` can extend the preceding run instead of appending a new one.
@@ -189,6 +189,8 @@ impl HudPaintCheckpoint {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Blend {
     Picture(u64),
+    /// A run sampling the dynamic texture with this handle (`dynamic_textures::Command`).
+    Dynamic(u64),
     /// A run sampling a separately stitched registered atlas page.
     AtlasPage(usize, AtlasBlend),
     /// `BlendFunction.TRANSLUCENT`.
@@ -220,14 +222,6 @@ impl Blend {
             _ => None,
         }
     }
-}
-
-/// The backend scissor, intersected with its viewport in device pixels.
-pub(super) fn hud_scissor(clip: [u32; 4], size: [u32; 2], zoom: f32) -> Option<[u32; 4]> {
-    let [x, y, w, h] = clip.map(|v| (v as f32 * zoom) as u32);
-    let (x, y) = (x.min(size[0]), y.min(size[1]));
-    let (w, h) = (w.min(size[0] - x), h.min(size[1] - y));
-    (w != 0 && h != 0).then_some([x, y, w, h])
 }
 
 /// The 2D sampling pipelines that can draw a registered atlas's sprite.
@@ -263,12 +257,11 @@ impl HudBatch {
             height: gui.size[1] as f32,
             viewport: window,
             patches: Vec::new(),
-            image_patches: Vec::new(),
+            dynamic_commands: Vec::new(),
             blends: Vec::new(),
             scissors: SmallVec::new(),
             end_portal: EndPortalFill::default(),
             glint_alpha: 0.75,
-            glint_colour: 0,
             game_time: 0.0,
             blur_at: 0,
             inline_profiles: Vec::new(),
@@ -305,7 +298,6 @@ impl HudBatch {
             vertices: self.vertices.len(),
             pictures: self.pictures.len(),
             patches: self.patches.len(),
-            image_patches: self.image_patches.len(),
             inline_profiles: self.inline_profiles.len(),
             blends: self.blends.len(),
             last_blend: self.blends.last().cloned(),
@@ -418,6 +410,10 @@ impl HudBatch {
         )
     }
     pub fn quad(&mut self, p: [[f32; 2]; 4], uv: [[f32; 2]; 4], color: u32) {
+        self.quad_lit(p, uv, color, 0);
+    }
+    /// [`Self::quad`] carrying an explicit [`HudVertex::light`] word for lightmapped GUI items.
+    pub fn quad_lit(&mut self, p: [[f32; 2]; 4], uv: [[f32; 2]; 4], color: u32, light: u32) {
         for i in [0, 1, 2, 0, 2, 3] {
             self.vertices.push(HudVertex {
                 pos: p[i],
@@ -425,6 +421,7 @@ impl HudBatch {
                 color,
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
+                light,
                 text: 0,
             });
         }
@@ -445,11 +442,16 @@ impl HudBatch {
                 color,
                 depth: 0.0,
                 glint_uv: glint_uv[i],
+                light: 0,
                 text: 0,
             });
         }
     }
     pub fn quad_3d(&mut self, p: [[f32; 3]; 4], uv: [[f32; 2]; 4], color: u32) {
+        self.quad_3d_lit(p, uv, color, 0);
+    }
+    /// [`Self::quad_3d`] carrying an explicit [`HudVertex::light`] word for lightmapped GUI items.
+    pub fn quad_3d_lit(&mut self, p: [[f32; 3]; 4], uv: [[f32; 2]; 4], color: u32, light: u32) {
         for i in [0, 1, 2, 0, 2, 3] {
             self.vertices.push(HudVertex {
                 pos: [p[i][0], p[i][1]],
@@ -457,6 +459,7 @@ impl HudBatch {
                 color,
                 depth: p[i][2],
                 glint_uv: [0.0, 0.0],
+                light,
                 text: 0,
             });
         }
@@ -481,6 +484,7 @@ impl HudBatch {
                 color: u32::MAX,
                 depth: p[i][2],
                 glint_uv: glint_uv[i],
+                light: 0,
                 text: 0,
             });
         }
@@ -690,6 +694,35 @@ impl HudBatch {
         })
     }
 
+    /// The nonempty draws within one blend run, with their physical `[x, y, w, h]` scissors.
+    pub(super) fn scissored_intervals(
+        &self,
+        vertices: Range<u32>,
+        blend: Blend,
+        size: [u32; 2],
+        zoom: f32,
+    ) -> impl Iterator<Item = (Range<u32>, [u32; 4])> + '_ {
+        let [x0, y0, x1, y1] = blend.scissor().map_or([0, 0, size[0], size[1]], |clip| {
+            let [x, y, w, h] = clip.map(|v| (v as f32 * zoom) as u32);
+            [
+                x.min(size[0]),
+                y.min(size[1]),
+                x.saturating_add(w).min(size[0]),
+                y.saturating_add(h).min(size[1]),
+            ]
+        });
+        let scale = self.scale * zoom;
+        self.scissors_in(vertices).filter_map(move |(range, clip)| {
+            let [l, t, r, b] = clip.map_or([x0, y0, x1, y1], |rect| {
+                // Fractional clips select pixels by their centres; integer GUI edges
+                // at vanilla's integer scale already fall on device pixel boundaries.
+                let [l, t, r, b] = rect.map(|v| (v * scale - 0.5).ceil() as u32);
+                [l.max(x0), t.max(y0), r.min(x1), b.min(y1)]
+            });
+            (l < r && t < b).then(|| (range, [l, t, r - l, b - t]))
+        })
+    }
+
     /// Each six-vertex quad's box `[x0, y0, x1, y1]` with the scissor the rasterizer gates it
     /// by, if any.
     pub fn quad_scissors(&self) -> impl Iterator<Item = ([f32; 4], Option<[f32; 4]>)> + '_ {
@@ -788,6 +821,7 @@ impl HudBatch {
                 color: c[i],
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
+                light: 0,
                 text: 0,
             });
         }
@@ -843,6 +877,17 @@ impl HudBatch {
                         tint,
                     );
                 }
+            }
+            InlineObject::Dynamic { handle, size, .. } => {
+                let side = crate::font::INLINE_OBJECT_SIZE;
+                self.dynamic_texture(
+                    *handle,
+                    *size,
+                    [x, y, side, side],
+                    [0.0, 0.0],
+                    [[1, 1], [1, 1]],
+                    tint,
+                );
             }
             InlineObject::Atlas { .. } => {
                 if let Some(rect) = atlas.inline_object_sprite(object) {
@@ -907,15 +952,10 @@ impl HudBatch {
             bounds[2] = bounds[2].max(x);
             bounds[3] = bounds[3].max(y);
         };
-        for (range, blend) in self.runs_in(start as u32..self.vertices.len() as u32) {
-            let [x, y, w, h] = if let Some(clip) = blend.scissor() {
-                let Some(scissor) = hud_scissor(clip, self.viewport, 1.0) else {
-                    continue;
-                };
-                scissor
-            } else {
-                [0, 0, self.viewport[0], self.viewport[1]]
-            };
+        let intervals = self
+            .runs_in(start as u32..self.vertices.len() as u32)
+            .flat_map(|(range, blend)| self.scissored_intervals(range, blend, self.viewport, 1.0));
+        for (range, [x, y, w, h]) in intervals {
             let [x0, y0, x1, y1] = [x, y, x + w, y + h].map(|v| v as f32 / self.scale);
             let vertices = &self.vertices[range.start as usize..range.end as usize];
             for triangle in vertices.as_chunks::<3>().0 {
@@ -968,19 +1008,13 @@ pub(super) struct HudUniform {
     end_portal: [[f32; 4]; 3],
 }
 impl HudUniform {
-    pub(super) fn new(size: [f32; 4], fill: EndPortalFill, glint_colour: u32) -> Self {
-        let [r, g, b, _] = glint_colour.to_le_bytes().map(|c| f32::from(c) / 255.0);
-        let tint = if glint_colour == 0 {
-            [-1.0, 0.0, 0.0]
-        } else {
-            [r, g, b]
-        };
+    pub(super) fn new(size: [f32; 4], fill: EndPortalFill) -> Self {
         Self {
             size,
             end_portal: [
                 fill.sprites[0],
                 fill.sprites[1],
-                [fill.game_time, tint[0], tint[1], tint[2]],
+                [fill.game_time, 0.0, 0.0, 0.0],
             ],
         }
     }

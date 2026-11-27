@@ -43,6 +43,17 @@ return `Flow::Cancel` to suppress the vanilla sound for that hit.
 The default plays the state's hit sound at volume `(volume + 1) / 8` and pitch
 `pitch * 0.5`. Sculk growth sounds do not use this hook.
 
+## Block break sounds
+
+A block part's `play_break_sound` is asked before the client plays a block's break sound
+(level event 2001, sent for a broken block and played by the client's own predicted break). The
+event supplies the block state and position. Play your sound through the supplied `ClientHost`
+and return `Flow::Cancel` to suppress the vanilla sound; the destroy particles still follow
+(`add_destroy_effects` decides those). Air is never asked.
+
+The default plays the state's break sound at the block's centre, at volume `(volume + 1) / 2`
+and pitch `pitch * 0.8`.
+
 ## Playing a level sound from a server mod
 
 `LevelRef::play_sound(host, sound, at, source, volume, pitch, except)` is `ServerLevel.playSound(except, ...)`:
@@ -144,5 +155,5 @@ sound-seed stream, so a hit a listener cancels still plays them. `with_random(ho
 the entity's real random stream: a callback can make several draws on that loan (`next_float`,
 `next_double`, `next_bool`, `next_int_bound(bound)`, which returns `0` without drawing for a bound
 below 1), and they advance the stream in listener order. A hit lends the entity the hit's source names as its causing entity, where the game has it at hand: the attacking player or mob of a melee hit (player → mob, mob → mob and mob → player) or of Thorns, the shooter or owner of a projectile, a firework rocket, evoker fangs, a wither skull, a thrown trident or a wind charge, the igniter or owner of an explosion, and a pufferfish stinging a mob inside its own tick. A guest that is not in place is lent from its hub record, for its reads only (it lends no random and plays no sound); the integrated owner displaced by another player's turn is not lent. Other damage lends none: damage with no causing entity (environment, fall, fire, drowning) and the sites that do not lend theirs (a thrown potion's or an effect cloud's owner, among others). When the victim caused its own hit (a player's own TNT hurting that player), the source names the victim and `causing()` answers `None`: the listener reads it through `victim()`. The attacking mob's own random is the one its AI draws from. Any other entity, a stale handle and a client answer `None` without entering the callback (`false` for a sound). Where a hit lends no sound queue (a client's prediction, piston restitution) `play_sound_at` and `play_sound_from` return false.
-Hooks: `living_incoming_damage`, `living_damage_pre`, `living_damage_post`, `living_shield_block` and
-`living_use_totem`.
+Hooks: `living_incoming_damage`, `living_damage_pre`, `living_damage_post`, `living_shield_block`,
+`living_use_totem` and `living_death_protection`.

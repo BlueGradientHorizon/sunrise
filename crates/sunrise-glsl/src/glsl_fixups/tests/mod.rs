@@ -2,6 +2,29 @@
 
 use super::*;
 
+// The rewrites on text alone: where its lines came from is the located tests' (`crate::tests`).
+fn specialize_sampler_params(text: &str) -> String {
+    super::specialize_sampler_params(Lines::from_text(text))
+        .text()
+        .to_owned()
+}
+
+fn size_by_int_constants(text: &str) -> String {
+    super::size_by_int_constants(Lines::from_text(text))
+        .text()
+        .to_owned()
+}
+
+fn size_unsized_arrays(text: &str) -> String {
+    super::size_unsized_arrays(Lines::from_text(text))
+        .text()
+        .to_owned()
+}
+
+fn fixups(text: &str) -> String {
+    super::fixups(Lines::from_text(text)).text().to_owned()
+}
+
 #[test]
 fn a_sampler_parameter_becomes_a_copy_per_sampler_passed() {
     let text = "vec4 blur(sampler2D tex, vec2 uv);\n\
@@ -176,6 +199,12 @@ fn sampler_parameters_are_replaced_at_once_and_not_as_members() {
     );
 }
 
+fn replace_ident(text: &str, from: &str, to: &str) -> String {
+    let mut lines = Lines::from_text(text);
+    super::replace_ident(&mut lines, from, to);
+    lines.text().to_owned()
+}
+
 #[test]
 fn a_parameter_matched_twice_in_one_identifier_stays_whole() {
     assert_eq!(replace_ident("c.ss + ss * s", "s", "t"), "c.ss + ss * t");
@@ -183,7 +212,7 @@ fn a_parameter_matched_twice_in_one_identifier_stays_whole() {
 }
 
 /// `fsh` translated beside a vertex shader that passes its position on.
-fn translate(fsh: &str) -> Result<crate::Translated, String> {
+fn translate(fsh: &str) -> Result<crate::Translated, Vec<crate::Error>> {
     let vsh = "#version 330\nin vec3 Position;\nout vec2 texCoord0;\n\
         void main() {\n    gl_Position = vec4(Position, 1.0);\n    texCoord0 = Position.xy;\n}\n";
     let glue = crate::Glue {
@@ -192,6 +221,7 @@ fn translate(fsh: &str) -> Result<crate::Translated, String> {
         setup: "Position = hz_position;",
         finish: "",
         vertex_id: "int(gl_VertexIndex)",
+        fragment_finish: None,
         interface: crate::tests::LIMITS,
     };
     crate::tests::translate_core(vsh, fsh, &[], &|_| None, &glue)
@@ -213,6 +243,24 @@ fn a_helper_taking_its_sampler_translates() {
         .collect();
     assert!(names.contains(&"tap_hz_Sampler0"), "{names:?}");
     assert!(!names.contains(&"tap"), "{names:?}");
+}
+
+/// A bad type in a retained parameter points to the type, not the specialized header's start.
+#[test]
+fn an_error_in_a_specialized_signature_names_the_retained_type() {
+    let fsh = "#version 330\nuniform sampler2D Sampler0;\nin vec2 texCoord0;\nout vec4 fragColor;\n\
+        vec4 tap(sampler2D s, UnknownType uv) { return texture(s, uv); }\n\
+        void main() { fragColor = tap(Sampler0, texCoord0); }\n";
+    let errors = translate(fsh).unwrap_err();
+    let error = &errors[0];
+    assert!(
+        error.message.ends_with("found Identifier(\"UnknownType\")"),
+        "{errors:?}"
+    );
+    assert_eq!(
+        (error.file.as_str(), error.line, error.column),
+        (crate::tests::FSH_FILE, 5, 23)
+    );
 }
 
 /// A sampler parameter with no name used to hand `replace_ident` an empty name to replace,
