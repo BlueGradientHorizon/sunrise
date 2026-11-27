@@ -868,13 +868,96 @@ struct Set1CacheKey {
 struct PipelineSource {
     recipe: Arc<Built>,
     group: wgpu::BindGroup,
-    pack_group: wgpu::BindGroup,
     globals_layout: wgpu::BindGroupLayout,
     sprite: Option<(wgpu::TextureView, [f32; 4])>,
+    /// The sprite's rect uniform, kept to bind it again in a shader pack's set-0 group.
+    sprite_rect: Option<wgpu::Buffer>,
     vertex_shader: wgpu::ShaderModule,
     fragment_shader: wgpu::ShaderModule,
-    pack_fragment_shader: Option<wgpu::ShaderModule>,
     vertex_layouts: Vec<OwnedVertexBufferLayout>,
+}
+
+/// What a pipeline's set-0 group binds besides its uniform blocks: the same for the world's
+/// group and a shader pack's.
+struct GlobalsBindings<'a> {
+    layout: &'a wgpu::BindGroupLayout,
+    program: &'a sunrise_glsl::Translated,
+    sprite: Option<&'a wgpu::TextureView>,
+    sprite_rect: Option<&'a wgpu::Buffer>,
+    sampler: &'a wgpu::Sampler,
+}
+
+impl GlobalsBindings<'_> {
+    /// The set-0 group binding the 1024-byte vanilla blocks of `uniforms`.
+    fn group(
+        &self,
+        device: &wgpu::Device,
+        label: &str,
+        uniforms: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        let program = self.program;
+        let mut entries = Vec::new();
+        for b in 0..4u32 {
+            if !program.stages_reading(b).is_empty() {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: b,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: uniforms,
+                        offset: VANILLA_OFFSETS[b as usize],
+                        size: wgpu::BufferSize::new(VANILLA_SIZES[b as usize]),
+                    }),
+                });
+            }
+        }
+        let sampler0_stages = program.stages_reading(4) | program.stages_reading(5);
+        if !sampler0_stages.is_empty()
+            && let Some(view) = self.sprite
+        {
+            entries.push(wgpu::BindGroupEntry {
+                binding: 4,
+                resource: wgpu::BindingResource::TextureView(view),
+            });
+            entries.push(wgpu::BindGroupEntry {
+                binding: 5,
+                resource: wgpu::BindingResource::Sampler(self.sampler),
+            });
+        }
+        if !program.stages_reading(SPRITE_RECT_BINDING).is_empty()
+            && let Some(buf) = self.sprite_rect
+        {
+            entries.push(wgpu::BindGroupEntry {
+                binding: SPRITE_RECT_BINDING,
+                resource: buf.as_entire_binding(),
+            });
+        }
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: self.layout,
+            entries: &entries,
+        })
+    }
+}
+
+/// The shader-pack state of a load's pipelines. It exists only while a shader pack is selected
+/// ([`ModPipelines::select_pack`]): without one, nothing here is built, computed or uploaded.
+struct PackState {
+    /// The frame's `vanilla` blocks with `Projection` adapted to shader-pack GL coordinates
+    /// (`pack_clip_matrix`).
+    vanilla: wgpu::Buffer,
+    /// The load (`ModPipelines::generation`) `sources` were built for.
+    generation: u64,
+    /// Per pipeline slot, its objects for a pack target; `None` for an empty slot or one the
+    /// GPU refused them for.
+    sources: Vec<Option<PackSource>>,
+}
+
+/// One pipeline's objects for a shader pack's target.
+struct PackSource {
+    /// Set 0 over `PackState::vanilla`.
+    group: wgpu::BindGroup,
+    /// Under linear light, the gamma fragment module a pack's target draws with (the world's
+    /// is the linear one); `None` draws with the world's.
+    fragment_shader: Option<wgpu::ShaderModule>,
 }
 
 /// A GPU pipeline built for one sampler layout and one set of attachments.
@@ -917,8 +1000,8 @@ pub struct ModPipelines {
     /// CPU copy of the most recently uploaded `vanilla` blocks so offscreen passes can override
     /// `Projection`/`ModelViewMat`/`ScreenSize` and restore afterwards in command-buffer order.
     last_vanilla_blocks: [u8; 1024],
-    /// Same blocks with `Projection` adapted to shader-pack GL coordinates (`pack_clip_matrix`).
-    pack_vanilla: wgpu::Buffer,
+    /// The pipelines' shader-pack state, `None` while no shader pack is selected.
+    pack: Option<PackState>,
     vertices: VertexPages,
     oit_vertices: VertexPages,
     transient_vbuf: Option<wgpu::Buffer>,
@@ -1430,7 +1513,6 @@ impl ModPipelines {
             })
         };
         let vanilla = buffer("Mod pipeline vanilla uniforms");
-        let pack_vanilla = buffer("Mod pipeline pack vanilla uniforms");
         Self {
             color_format,
             linear_light,
@@ -1438,7 +1520,7 @@ impl ModPipelines {
             non_filtering_sampler,
             vanilla,
             last_vanilla_blocks: fallback_vanilla_blocks(Mat4::IDENTITY, [1, 1], 0.0),
-            pack_vanilla,
+            pack: None,
             vertices: VertexPages::default(),
             oit_vertices: VertexPages::default(),
             transient_vbuf: None,
@@ -1810,7 +1892,7 @@ impl ModPipelines {
     }
 
     /// One load's pipeline: its translated GLSL naga modules with the fixed state it registered,
-    /// its per-pipeline set-0 layout and bind groups (`vanilla` and `pack_vanilla`), and its
+    /// its per-pipeline set-0 layout and its bind group over `vanilla`, and its
     /// sprite texture/rect when textured — or the GPU's error.
     fn pipeline_source(
         &self,
@@ -1885,18 +1967,9 @@ impl ModPipelines {
             })
         };
         let vertex_shader = make_module("Mod pipeline (vertex)", &built.program.vertex);
-        let (fragment_shader, pack_fragment_shader) = match &linear_fragment_module {
-            Some(linear_mod) => (
-                make_module("Mod pipeline (fragment, linear)", linear_mod),
-                Some(make_module(
-                    "Mod pipeline (fragment, gamma)",
-                    &built.program.fragment,
-                )),
-            ),
-            None => (
-                make_module("Mod pipeline (fragment)", &built.program.fragment),
-                None,
-            ),
+        let fragment_shader = match &linear_fragment_module {
+            Some(linear_mod) => make_module("Mod pipeline (fragment, linear)", linear_mod),
+            None => make_module("Mod pipeline (fragment)", &built.program.fragment),
         };
 
         let sprite_rect_buf = sprite_binding.as_ref().map(|(_, rect)| {
@@ -1943,48 +2016,14 @@ impl ModPipelines {
             label: Some("Mod pipeline"),
             entries: &layout_entries,
         });
-        let make_group = |label: &str, uniform_buf: &wgpu::Buffer| {
-            let mut entries = Vec::with_capacity(layout_entries.len());
-            for b in 0..4u32 {
-                if !program.stages_reading(b).is_empty() {
-                    entries.push(wgpu::BindGroupEntry {
-                        binding: b,
-                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: uniform_buf,
-                            offset: VANILLA_OFFSETS[b as usize],
-                            size: wgpu::BufferSize::new(VANILLA_SIZES[b as usize]),
-                        }),
-                    });
-                }
-            }
-            if !sampler0_stages.is_empty()
-                && let Some((view, _)) = &sprite_binding
-            {
-                entries.push(wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(view),
-                });
-                entries.push(wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                });
-            }
-            if !sprite_rect_stages.is_empty()
-                && let Some(buf) = &sprite_rect_buf
-            {
-                entries.push(wgpu::BindGroupEntry {
-                    binding: SPRITE_RECT_BINDING,
-                    resource: buf.as_entire_binding(),
-                });
-            }
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some(label),
-                layout: &group_layout,
-                entries: &entries,
-            })
-        };
-        let group = make_group("Mod pipeline", &self.vanilla);
-        let pack_group = make_group("Mod pipeline (pack)", &self.pack_vanilla);
+        let group = GlobalsBindings {
+            layout: &group_layout,
+            program,
+            sprite: sprite_binding.as_ref().map(|(view, _)| view),
+            sprite_rect: sprite_rect_buf.as_ref(),
+            sampler: &self.sampler,
+        }
+        .group(device, "Mod pipeline", &self.vanilla);
         let internal = pollster::block_on(internal.pop());
         let validation = pollster::block_on(validation.pop());
         if let Some(error) = internal.or(validation) {
@@ -1993,14 +2032,123 @@ impl ModPipelines {
         Ok(Arc::new(PipelineSource {
             recipe: Arc::clone(built),
             group,
-            pack_group,
             globals_layout: group_layout,
             sprite: sprite_binding,
+            sprite_rect: sprite_rect_buf,
             vertex_shader,
             fragment_shader,
-            pack_fragment_shader,
             vertex_layouts,
         }))
+    }
+
+    /// `source`'s objects for a shader pack's target: its set-0 group over `vanilla` (the
+    /// pack's blocks) and, under linear light, its gamma fragment module — or the GPU's error.
+    fn pack_source(
+        &self,
+        device: &wgpu::Device,
+        source: &PipelineSource,
+        vanilla: &wgpu::Buffer,
+    ) -> Result<PackSource, String> {
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+        let program = &source.recipe.program;
+        let group = GlobalsBindings {
+            layout: &source.globals_layout,
+            program,
+            sprite: source.sprite.as_ref().map(|(view, _)| view),
+            sprite_rect: source.sprite_rect.as_ref(),
+            sampler: &self.sampler,
+        }
+        .group(device, "Mod pipeline (pack)", vanilla);
+        let fragment_shader = self.linear_light.then(|| {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Mod pipeline (fragment, gamma)"),
+                source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(program.fragment.clone())),
+            })
+        });
+        let internal = pollster::block_on(internal.pop());
+        let validation = pollster::block_on(validation.pop());
+        if let Some(error) = internal.or(validation) {
+            return Err(error.to_string());
+        }
+        Ok(PackSource {
+            group,
+            fragment_shader,
+        })
+    }
+
+    /// Builds the pipelines' shader-pack state on a shader pack's selection, for every
+    /// pipeline of the current load, those built before the selection included; a later load
+    /// rebuilds it ([`Self::build`]). The pack's blocks start as the frame's last `vanilla`
+    /// blocks, so a pack pass that selects the pack after [`Self::prepare`] reads this frame's.
+    /// Idempotent while the load stays the same.
+    pub fn select_pack(&mut self, device: &wgpu::Device) {
+        use wgpu::util::DeviceExt;
+        let generation = self.generation;
+        if self
+            .pack
+            .as_ref()
+            .is_some_and(|pack| pack.generation == generation)
+        {
+            return;
+        }
+        let vanilla = match self.pack.take() {
+            Some(pack) => pack.vanilla,
+            None => device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Mod pipeline pack vanilla uniforms"),
+                contents: &pack_vanilla_blocks(&self.last_vanilla_blocks),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }),
+        };
+        let sources = self
+            .pipelines
+            .iter()
+            .map(|slot| {
+                let compiled = slot.as_ref()?;
+                self.pack_source(device, &compiled.source, &vanilla)
+                    .map_err(|error| {
+                        log::warn!(
+                            "Sunrise: mod pipeline {} refused for shader packs by the GPU: {error}",
+                            compiled.source.recipe.id
+                        );
+                    })
+                    .ok()
+            })
+            .collect();
+        self.pack = Some(PackState {
+            vanilla,
+            generation,
+            sources,
+        });
+    }
+
+    /// Drops the pipelines' shader-pack state and their pack-target variants when no shader
+    /// pack is selected any more; the next [`Self::select_pack`] builds them again.
+    pub fn deselect_pack(&mut self) {
+        if self.pack.take().is_some() || self.pack_target.is_some() {
+            self.variants
+                .retain(|(_, _, target), _| !matches!(target, VariantTarget::Pack(..)));
+            self.pack_target = None;
+        }
+    }
+
+    /// Slot's objects for a shader pack's target, while a pack is selected.
+    fn pack_source_of(&self, slot: usize) -> Option<&PackSource> {
+        self.pack.as_ref()?.sources.get(slot)?.as_ref()
+    }
+
+    /// The fragment module slot's pipeline draws a shader pack's target with.
+    fn pack_fragment_of<'a>(
+        &'a self,
+        slot: usize,
+        source: &'a PipelineSource,
+    ) -> Option<&'a wgpu::ShaderModule> {
+        let pack = self.pack_source_of(slot)?;
+        Some(
+            pack.fragment_shader
+                .as_ref()
+                .unwrap_or(&source.fragment_shader),
+        )
     }
 
     /// The sole constructor for GPU render pipeline variants. Pack passes drawing the mod's
@@ -2009,6 +2157,7 @@ impl ModPipelines {
         &self,
         device: &wgpu::Device,
         source: Arc<PipelineSource>,
+        frag: &wgpu::ShaderModule,
         target: &VariantTarget,
         sampler_layout: &SamplerLayout,
         shared_layout: Option<&Compiled>,
@@ -2046,14 +2195,6 @@ impl ModPipelines {
                 return Err(error.to_string());
             }
             layout?
-        };
-        let frag = if matches!(target, VariantTarget::Pack(..)) {
-            source
-                .pack_fragment_shader
-                .as_ref()
-                .unwrap_or(&source.fragment_shader)
-        } else {
-            &source.fragment_shader
         };
         let pipeline = Self::build_render_pipeline(
             device,
@@ -2161,7 +2302,13 @@ impl ModPipelines {
             _ => None,
         };
         let id = base.source.recipe.id.clone();
-        let result = self.compile(device, base.source.clone(), target, sampler_layout, shared).map_err(|cause| {
+        let frag = match target {
+            VariantTarget::Pack(..) => self
+                .pack_fragment_of(slot, &base.source)
+                .ok_or(PipelineDrawError::VariantBuildFailed)?,
+            _ => &base.source.fragment_shader,
+        };
+        let result = self.compile(device, base.source.clone(), frag, target, sampler_layout, shared).map_err(|cause| {
             let error = PipelineDrawError::VariantBuildFailed;
             if self.warned_variants.insert(slot) {
                 log::warn!("Sunrise: mod pipeline {id} {error:?} ({target:?}, nearest sampler ordinals {:?}): {cause}", sampler_layout.ordinals());
@@ -2181,6 +2328,7 @@ impl ModPipelines {
         format: wgpu::TextureFormat,
         rgb: bool,
     ) {
+        self.select_pack(device);
         if self.pack_target != Some((format, rgb)) {
             self.variants
                 .retain(|(_, _, target), _| !matches!(target, VariantTarget::Pack(..)));
@@ -2244,6 +2392,9 @@ impl ModPipelines {
         };
         let pack = self.variants[&key].as_ref().expect("prepared pack variant");
         let source = &pack.source;
+        let Some(frag) = self.pack_fragment_of(slot, source) else {
+            return;
+        };
         let result = if *modified == source.recipe.state {
             CachedVariant::Base
         } else {
@@ -2252,10 +2403,7 @@ impl ModPipelines {
                 &format!("{label}/pack"),
                 &pack.pipeline_layout,
                 &source.vertex_shader,
-                source
-                    .pack_fragment_shader
-                    .as_ref()
-                    .unwrap_or(&source.fragment_shader),
+                frag,
                 &source.vertex_layouts,
                 *modified,
                 &source.recipe.color_targets,
@@ -2300,15 +2448,20 @@ impl ModPipelines {
     ) -> Result<(), String> {
         self.build_with(set, |this, built| {
             let source = this.pipeline_source(device, built, textures)?;
+            let frag = source.fragment_shader.clone();
             this.compile(
                 device,
                 source,
+                &frag,
                 &VariantTarget::World,
                 &SamplerLayout::EMPTY,
                 None,
             )
         })?;
         self.compute.build(device, set.compute());
+        if self.pack.is_some() {
+            self.select_pack(device);
+        }
         Ok(())
     }
 
@@ -2840,8 +2993,7 @@ impl ModPipelines {
             if let Some(blocks) = vanilla_blocks {
                 self.last_vanilla_blocks.copy_from_slice(blocks);
                 upload(&self.vanilla, blocks);
-                let pack_blocks = pack_vanilla_blocks(blocks);
-                upload(&self.pack_vanilla, &pack_blocks);
+                self.upload_pack_blocks(upload, blocks);
             }
             return 0;
         }
@@ -2916,9 +3068,15 @@ impl ModPipelines {
         };
         self.last_vanilla_blocks.copy_from_slice(blocks);
         upload(&self.vanilla, blocks);
-        let pack_blocks = pack_vanilla_blocks(blocks);
-        upload(&self.pack_vanilla, &pack_blocks);
+        self.upload_pack_blocks(upload, blocks);
         max_index_quads
+    }
+
+    /// Uploads `blocks` adapted to shader-pack GL coordinates while a shader pack is selected.
+    fn upload_pack_blocks(&self, upload: Upload<'_>, blocks: &[u8; 1024]) {
+        if let Some(pack) = &self.pack {
+            upload(&pack.vanilla, &pack_vanilla_blocks(blocks));
+        }
     }
 
     /// Start a frame's offscreen passes: their persistent buffers are written from the start
@@ -3579,10 +3737,24 @@ impl ModPipelines {
         }
     }
 
-    /// Slot's frame-uniform group for a shader pack's target.
+    /// The set-0 group slot's `compiled` pipeline draws with: the world's, or on a shader
+    /// pack's target (`pack`) the pack's while a pack is selected.
+    fn globals_of<'a>(
+        &'a self,
+        pack: bool,
+        slot: usize,
+        compiled: &'a Compiled,
+    ) -> Option<&'a wgpu::BindGroup> {
+        if pack {
+            Some(&self.pack_source_of(slot)?.group)
+        } else {
+            Some(&compiled.source.group)
+        }
+    }
+
+    /// Slot's frame-uniform group for a shader pack's target, while a pack is selected.
     fn pack_globals(&self, slot: usize) -> Option<wgpu::BindGroup> {
-        let compiled = self.pipelines.get(slot)?.as_ref()?;
-        Some(compiled.source.pack_group.clone())
+        Some(self.pack_source_of(slot)?.group.clone())
     }
 
     /// Stage all per-frame inline uniforms, push constants, and texel buffers from `batch` into
@@ -4592,16 +4764,11 @@ impl ModPipelines {
                     _ => continue,
                 }
             };
+            let Some(group) = self.globals_of(pack, cmd.slot, compiled) else {
+                continue;
+            };
             pass.set_pipeline(pipeline);
-            pass.set_bind_group(
-                0,
-                if pack {
-                    &compiled.source.pack_group
-                } else {
-                    &compiled.source.group
-                },
-                &[],
-            );
+            pass.set_bind_group(0, group, &[]);
             if compiled.set1_layout.is_some() {
                 let Some((ref bg, ref offsets)) = cmd.set1_bind_group else {
                     continue;
@@ -4750,16 +4917,11 @@ impl ModPipelines {
                 index_bound = true;
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
             }
+            let Some(group) = self.globals_of(pack, run.slot, compiled) else {
+                continue;
+            };
             pass.set_pipeline(pipeline);
-            pass.set_bind_group(
-                0,
-                if pack {
-                    &compiled.source.pack_group
-                } else {
-                    &compiled.source.group
-                },
-                &[],
-            );
+            pass.set_bind_group(0, group, &[]);
             for (buffer, range) in self.vertices.ranges(0, range) {
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw_indexed(range.start * 6..range.end * 6, 0, 0..1);
@@ -4800,6 +4962,8 @@ impl super::Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod pack_state;
 
     /// Vanilla's sampler blends between mip levels whenever `maxLod` is above 0.25, an absent
     /// one being 1000 (#6000): `Sampler::new` blends. A texture wgpu cannot filter (a depth
@@ -5151,9 +5315,11 @@ void main() {
         let result = renderer
             .pipeline_source(&device, &Arc::new(broken), None)
             .and_then(|source| {
+                let frag = source.fragment_shader.clone();
                 renderer.compile(
                     &device,
                     source,
+                    &frag,
                     &VariantTarget::World,
                     &SamplerLayout::EMPTY,
                     None,
