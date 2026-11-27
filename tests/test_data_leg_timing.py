@@ -68,7 +68,7 @@ class DataLegTimingTests(unittest.TestCase):
         run = next(i for i, s in enumerate(steps) if s.get("name") == "Run the ignored tests that need prepared data")
         self.assertLess(start, run)
         self.assertLess(run, end)
-        self.assertEqual(steps[end]["if"], "always()")
+        self.assertEqual(steps[end]["if"], "always() && steps.seed.outcome == 'success'")
         self.assertEqual(steps[run]["env"]["SUNRISE_DATA_LEG_TIMING"], "1")
         # The workflow may invoke only the existing filtered runner, not raw cargo
         # or a tee/cat pipeline forwarding its captured output.

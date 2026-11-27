@@ -82,6 +82,16 @@ jobs:
     runs-on: dyna-medium
     timeout-minutes: 150
     steps:
+      # Check the runner's seed before checking out any (possibly older) commit.
+      - name: Check runner prepared data
+        run: |
+          for dir in minecraft datagen sunrise-client tools; do
+            path="/cache/sunrise-local/$dir"
+            if [[ ! -d "$path" || ! -r "$path" || ! -x "$path" ]]; then
+              echo "::error::prepared data unavailable on this runner: $dir"
+              exit 1
+            fi
+          done
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit || github.sha }}
@@ -108,14 +118,7 @@ jobs:
       - name: Cap build parallelism to the runner
         run: python3 tools/ci/cargo_jobs.py --job-mib 3072 --cap
       - name: Prepare checkout-keyed vanilla data
-        run: |
-          for dir in minecraft datagen sunrise-client tools; do
-            if [ ! -d "/cache/sunrise-local/$dir" ]; then
-              echo "::error::prepared data unavailable on this runner: $dir"
-              exit 1
-            fi
-          done
-          SUNRISE_DYNA_CACHE=true SUNRISE_PREPARED_CACHE="$DYNA_CI_BUILD/vanilla" SUNRISE_SHARED_SOURCE=/cache/sunrise-local bash tools/ci/vanilla-data.sh
+        run: SUNRISE_DYNA_CACHE=true SUNRISE_PREPARED_CACHE="$DYNA_CI_BUILD/vanilla" SUNRISE_SHARED_SOURCE=/cache/sunrise-local bash tools/ci/vanilla-data.sh
       # The profile players get, on the server build (no audio, no controllers). sunrise-hot-paths-game is
       # sunrise-game's entry, with one native listener mod it installs only for the hook workload.
       - name: Build the release game

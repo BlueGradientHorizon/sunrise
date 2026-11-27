@@ -215,7 +215,7 @@ class Visibility(unittest.TestCase):
     def test_data_end_memory_telemetry_is_bounded_best_effort(self):
         steps = yaml.safe_load((ROOT / '.github/workflows/ignored-tests.yml').read_text())["jobs"]["ignored-tests-shards"]["steps"]
         step = next(s for s in steps if s.get("name") == "Record data-leg end and compiler cache")
-        self.assertEqual(step["if"], "always()")
+        self.assertEqual(step["if"], "always() && steps.seed.outcome == 'success'")
         script = step["run"]
         self.assertIn("/sys/fs/cgroup/$metric", script)
         self.assertIn("memory.peak memory.max memory.swap.peak memory.swap.max", script)

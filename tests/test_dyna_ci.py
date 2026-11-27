@@ -624,20 +624,94 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertIn("steps.setup.outcome == 'success'", condition)
         self.assertNotIn("always()", condition)
 
-    @unittest.skipUnless(POSIX_BASH, "needs a bash that is not WSL's")
-    def test_missing_prepared_data_fails_the_leg(self):
-        shard = workflow("ignored-tests.yml")["jobs"]["ignored-tests-shards"]
-        script = next(step["run"] for step in shard["steps"] if step.get("run", "").startswith("for dir "))
-        with tempfile.TemporaryDirectory() as directory:
-            script = script.replace("/cache/sunrise-local", directory + "/missing")
-            summary = Path(directory) / "summary"
-            for event in ("push", "workflow_dispatch"):
+    @needs_runner_shell
+    @needs_symlinks
+    def test_prepared_data_is_checked_before_checkout_or_setup(self):
+        names = ("minecraft", "datagen", "sunrise-client", "tools")
+        event = "workflow_dispatch"
+        for filename, job_name in (("hot-paths.yml", "measure"), ("ignored-tests.yml", "ignored-tests-shards")):
+            with self.subTest(job=job_name), tempfile.TemporaryDirectory() as directory:
+                job = workflow(filename)["jobs"][job_name]
+                step = job["steps"][0]
+                self.assertEqual(step["name"], "Check runner prepared data")
+                self.assertNotIn("if", step)
+                self.assertNotEqual(step.get("continue-on-error"), "true")
+                is_shard = job_name == "ignored-tests-shards"
+                if is_shard:
+                    self.assertEqual(step["env"]["EVENT"], "${{ github.event_name }}")
+
+                root = Path(directory)
+                seed = root / "sunrise-local"
+                for name in names:
+                    (seed / name).mkdir(parents=True)
+                script = step["run"].replace("/cache/sunrise-local", seed.as_posix())
+                summary = root / "summary"
                 env = dict(os.environ, EVENT=event, GITHUB_STEP_SUMMARY=str(summary))
-                run = subprocess.run(["bash", "-e", "-c", script], env=env,
-                                     capture_output=True, text=True)
-                self.assertEqual(run.returncode, 1)
-                self.assertIn(f"Prepared data unavailable: minecraft ({event})", summary.read_text())
-                summary.unlink()
+
+                def check(unavailable=None):
+                    summary.write_text("")
+                    run = subprocess.run(["bash", "-e", "-c", script], cwd=root, env=env,
+                                         capture_output=True, text=True)
+                    self.assertEqual(run.stderr, "")
+                    self.assertEqual(run.returncode, 1 if unavailable else 0, run.stdout)
+                    self.assertEqual(run.stdout, f"::error::prepared data unavailable on this runner: {unavailable}\n"
+                                     if unavailable else "")
+                    self.assertEqual(summary.read_text(), f"Prepared data unavailable: {unavailable} ({event})\n"
+                                     if unavailable and is_shard else "")
+
+                check()
+                for name in names:
+                    with self.subTest(missing=name):
+                        (seed / name).rmdir()
+                        try:
+                            check(name)
+                        finally:
+                            (seed / name).mkdir()
+
+                tools = seed / "tools"
+                tools.rmdir()
+                tools.touch(mode=0o755)
+                check("tools")
+                tools.unlink()
+                tools.mkdir()
+
+                client = seed / "sunrise-client"
+                legacy = client.rename(seed / "horizon-client")
+                client.symlink_to(legacy.name, target_is_directory=True)
+                check()
+                for mode, denied in ((0o100, os.R_OK), (0o400, os.X_OK)):
+                    with self.subTest(alias_target_mode=oct(mode)):
+                        legacy.chmod(mode)
+                        try:
+                            # A privileged user or a filesystem without Unix modes may still have access.
+                            if not os.access(client, denied):
+                                check("sunrise-client")
+                        finally:
+                            legacy.chmod(0o700)
+                legacy.rmdir()
+                check("sunrise-client")
+
+    def test_ignored_shard_finalizers_run_only_after_seed_readiness(self):
+        job = workflow("ignored-tests.yml")["jobs"]["ignored-tests-shards"]
+        seed_id = job["steps"][0]["id"]
+        finalizers = ("Keep a failed run's full output beyond this slot", "Upload the leg report",
+                      "Record data-leg end and compiler cache")
+        diagnostic = step_named(job, "Retain typed preparation diagnostics only")["if"]
+        for case, seed, data, job_status, finalize, diagnose in (
+            ("preflight refusal", "failure", "skipped", "failure", False, False),
+            ("preparation failure", "success", "failure", "failure", True, True),
+            ("test failure", "success", "success", "failure", True, False),
+            ("clean run", "success", "success", "success", True, False),
+        ):
+            steps = {seed_id: {"outcome": seed}, "data": {"outcome": data}}
+            with self.subTest(case=case, step="preparation diagnostic"):
+                # This step is evaluated before the tests, even if they later fail.
+                prep_status = "success" if data == "success" else "failure"
+                self.assertIs(expression_value(diagnostic, {}, steps=steps, job_status=prep_status), diagnose)
+            for name in finalizers:
+                with self.subTest(case=case, step=name):
+                    condition = step_named(job, name)["if"]
+                    self.assertIs(expression_value(condition, {}, steps=steps, job_status=job_status), finalize)
 
     def test_telemetry_ingest_checks_require_manual_dispatch(self):
         self.assertEqual(set(workflow("telemetry-server.yml")["on"]), {"workflow_dispatch"})
@@ -780,7 +854,7 @@ class IgnoredTestsKeepTests(unittest.TestCase):
     def test_the_run_step_writes_where_the_keep_step_reads(self):
         run = self.steps["Run the ignored tests that need prepared data"]["env"]
         step = self.steps[self.STEP]
-        self.assertEqual(step["if"], "always()")
+        self.assertEqual(step["if"], "always() && steps.seed.outcome == 'success'")
         self.assertEqual(run["IGNORED_TESTS_PRIVATE_LOGS"], step["env"]["PRIVATE_LOGS"])
         self.assertEqual(step["env"]["NAME"],
                          "${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}")
