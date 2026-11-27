@@ -2007,7 +2007,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn render_distance_keeps_the_vanilla_chunk_count() {
         struct Vanilla;
         impl lang::ResourceSource for Vanilla {

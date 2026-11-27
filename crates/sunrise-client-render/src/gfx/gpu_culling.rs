@@ -3404,7 +3404,7 @@ pub(super) mod tests {
                 );
                 assert!(gpu.collect().is_empty());
                 assert!(frame(&mut gpu, 5));
-                assert_eq!(landed(&mut gpu), vec![(5, [5 + 5, 10 + 7, 3], false)]);
+                assert_eq!(landed(&mut gpu), vec![(5, [5 + 5, 10 + 7, 3])]);
                 // Frame 6's buffer destroyed after its mapping (#6320).
                 let lost = gpu.next;
                 assert!(frame(&mut gpu, 6));

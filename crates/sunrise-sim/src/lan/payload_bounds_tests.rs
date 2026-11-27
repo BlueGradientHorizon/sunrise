@@ -8,7 +8,7 @@ use sunrise_protocol::{
 #[test]
 fn every_registered_engine_codec_refuses_a_hostile_oversized_body() {
     type Rejects = fn(&[u8]) -> bool;
-    let cases: [(&str, Rejects); 15] = [
+    let cases: [(&str, Rejects); _] = [
         ("minecraft:brand", |body| {
             let mut packet = Writer::new();
             packet.string("minecraft:brand");
