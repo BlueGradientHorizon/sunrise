@@ -159,7 +159,7 @@ or declarations. A mod with no declared internals needs no catalogs to update. Q
 Rust lifetimes or other shell metacharacters, for example:
 
 ```sh
-cargo sunrise-mod internals add 'sunrise_client::game::Game' "sunrise_client::game::maps::Game<'_>::dimension_id"
+cargo sunrise-mod internals add 'sunrise_gameplay::game::ServerGame' "sunrise_gameplay::game::server_side::maps_server::ServerGame<'_>::dimension_id"
 cargo sunrise-mod internals sync
 cargo sunrise-mod pin
 ```

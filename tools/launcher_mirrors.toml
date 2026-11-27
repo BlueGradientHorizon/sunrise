@@ -12,7 +12,7 @@ surface = "sha256:e685b79eb756c20a9d1e0ccd21aa7dc806286ae7b16e48b0522955d2107d19
 launcher = "sdk"
 sources = ["crates/sunrise-mod-package/src", "crates/sunrise-native-build/src"]
 note = "the read-only half of the SDK index (sdk.json) and the native-build contract"
-surface = "sha256:38df60271ebf44b028997185d996dadd3bc6a76ead1e6a488bd9b0f2e7dec06b"
+surface = "sha256:f133100b2405cc7703e3c1d068bb863dc9e3ce8f75ab4aed9d64ab67eb66c7e3"
 
 [[mirror]]
 launcher = "nbt"
