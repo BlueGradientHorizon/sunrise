@@ -20,6 +20,7 @@ names and same/different belong in a public report; `--md` is for local reading.
 `diff` exits 0 when every row matches and 1 whenever any row differs.
 """
 import argparse
+import contextlib
 import json
 import os
 import select
@@ -47,15 +48,11 @@ def headless_game(bins, resources, work):
                 log=work / 'home' / 'logs' / 'latest.log')
 
 
-def _read_display(read_fd, xvfb, timeout=30.0):
+def _read_display(read_fd, xvfb):
     """Read Xvfb's display number from its -displayfd pipe without hanging if Xvfb exits."""
     chunks = bytearray()
-    deadline = time.monotonic() + timeout
     while b'\n' not in chunks:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise RuntimeError(f'Xvfb did not report a display within {timeout:g}s')
-        ready, _, _ = select.select([read_fd], [], [], min(0.2, remaining))
+        ready, _, _ = select.select([read_fd], [], [], 0.2)
         if ready:
             chunk = os.read(read_fd, 64)
             if not chunk:
@@ -80,14 +77,10 @@ def stop_process(process):
         return
     if process.poll() is None:
         process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+    process.wait()
 
 
-def start_vanilla_client(address, work, log, xvfb_timeout=30.0):
+def start_vanilla_client(address, work, log):
     from tools import vanilla_client as vc
     args = argparse.Namespace(name=PLAYER, join=address, world=None, game_dir=work / 'client', assets=None,
                               heap='2G', width=854, height=480, lan_port=None, backend=None)
@@ -116,7 +109,7 @@ def start_vanilla_client(address, work, log, xvfb_timeout=30.0):
     os.close(write_fd)
     try:
         try:
-            display = _read_display(read_fd, xvfb, timeout=xvfb_timeout)
+            display = _read_display(read_fd, xvfb)
         finally:
             os.close(read_fd)
         env['DISPLAY'] = display
@@ -151,9 +144,9 @@ def record(args):
     _, jars, libraries = base.verify_artifacts()
     deps = os.pathsep.join(map(str, [jars['server'], *libraries]))
     vanilla = ['java', '-Xmx1g', '-cp', deps, 'net.minecraft.server.Main', 'nogui']
-    work = Path(tempfile.mkdtemp(prefix='join-announce-'))
-    server = game = xvfb = process = stop = None
-    try:
+    with contextlib.ExitStack() as stack:
+        work = Path(tempfile.mkdtemp(prefix='join-announce-'))
+        stack.callback(shutil.rmtree, work, ignore_errors=True)
         for var, sub in (('SUNRISE_HOME', 'home'), ('SUNRISE_LAUNCHER_HOME', 'launcher'), ('XDG_DATA_HOME', 'data'),
                          ('XDG_CONFIG_HOME', 'config')):
             (work / 'servers' / sub).mkdir(parents=True)
@@ -170,15 +163,21 @@ def record(args):
         capture = out / 'capture.jsonl'
         capture.touch()
         server = Server(vanilla, directory, 'server')
+        stack.callback(server.stop)
         server.wait_for(r'Done \(', timeout=300)
         listen = free_port()
         stop = net_capture.start_background(listen, f'127.0.0.1:{port}', capture, full=True)
+        stack.callback(stop.close)
         address = f'127.0.0.1:{listen}'
         if args.client == 'vanilla':
             process, xvfb, _ = start_vanilla_client(address, work, out / 'client.log')
+            stack.callback(stop_process, xvfb)
+            stack.callback(stop_process, process)
         else:
             game = headless_game(Path(args.bin), lab.RESOURCES, work / 'game')
+            stack.callback(game.quit)
             game('connect', address, PLAYER)
+            stack.callback(game, 'disconnect', ok=False)
         deadline = time.time() + 240
         joined = False
         while time.time() < deadline:
@@ -189,17 +188,6 @@ def record(args):
         if not joined:
             sys.exit('timed out after 240s waiting for play/login packet')
         time.sleep(PLAY_SECONDS)
-    finally:
-        if game is not None:
-            game('disconnect', ok=False)
-            game.quit()
-        stop_process(process)
-        stop_process(xvfb)
-        if server is not None:
-            server.stop()
-        if stop is not None:
-            stop.set()
-        shutil.rmtree(work, ignore_errors=True)
     entries = [e for e in net_capture.load(capture) if e.get('conn') == 1 and 'name' in e and e['dir'] == 'c2s']
     sent = [{k: e[k] for k in ('state', 'id', 'name', 'data') if k in e} for e in entries]
     (out / 'serverbound.json').write_text(json.dumps(sent, indent=1))

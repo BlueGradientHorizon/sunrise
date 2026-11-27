@@ -34,6 +34,7 @@ them publicly. Only probe names and same/different belong in a public report; `-
 `diff` exits 0 when every probe matches and 1 whenever any row differs (expected for `sunrise-signals`).
 """
 import argparse
+import contextlib
 import json
 import os
 import shutil
@@ -218,11 +219,12 @@ def make_hooks(steps, names, pause=0.05):
             for packet_state, packet_name, body in packets:
                 pid = names[(packet_state, 'clientbound')].index(packet_name)
                 packet = varint(pid) + body
-                dst.sendall(frame(session.threshold, packet))
-                entry = {'conn': session.id, 't': round(time.time() - session.start, 4), 'dir': 's2c',
-                         'state': packet_state, 'id': pid, 'name': packet_name, 'size': len(body),
-                         'data': body.hex(), 'injected': True}
+                raw = frame(session.threshold, packet)
                 with session.lock:
+                    dst.sendall(raw)
+                    entry = {'conn': session.id, 't': round(time.time() - session.start, 4), 'dir': 's2c',
+                             'state': packet_state, 'id': pid, 'name': packet_name, 'size': len(body),
+                             'data': body.hex(), 'injected': True}
                     session.out.write(json.dumps(entry) + '\n')
                     session.out.flush()
                 if pause:
@@ -243,9 +245,9 @@ def record(args):
     names = net_capture.load_names()
     deps = os.pathsep.join(map(str, [jars['server'], *libraries]))
     vanilla = ['java', '-Xmx1g', '-cp', deps, 'net.minecraft.server.Main', 'nogui']
-    work = Path(tempfile.mkdtemp(prefix='join-probe-'))
-    server = game = xvfb = process = display = stop = None
-    try:
+    with contextlib.ExitStack() as stack:
+        work = Path(tempfile.mkdtemp(prefix='join-probe-'))
+        stack.callback(shutil.rmtree, work, ignore_errors=True)
         for var, sub in (('SUNRISE_HOME', 'home'), ('SUNRISE_LAUNCHER_HOME', 'launcher'), ('XDG_DATA_HOME', 'data'),
                          ('XDG_CONFIG_HOME', 'config')):
             (work / 'servers' / sub).mkdir(parents=True)
@@ -265,15 +267,22 @@ def record(args):
         steps = plan(args.scenario, listen)
         swallow_hook, after_forward = make_hooks(steps, names)
         server = Server(vanilla, directory, 'server')
+        stack.callback(server.stop)
         server.wait_for(r'Done \(', timeout=300)
         stop = net_capture.start_background(listen, f'127.0.0.1:{port}', capture, full=True,
                                             swallow=swallow_hook, after_forward=after_forward, names=names)
+        stack.callback(stop.close)
         address = f'127.0.0.1:{listen}'
+        game = display = None
         if args.client == 'vanilla':
             process, xvfb, display = start_vanilla_client(address, work, out / 'client.log')
+            stack.callback(stop_process, xvfb)
+            stack.callback(stop_process, process)
         else:
             game = headless_game(Path(args.bin), lab.RESOURCES, work / 'game')
+            stack.callback(game.quit)
             game('connect', address, PLAYER)
+            stack.callback(game, 'disconnect', ok=False)
         last = {'sunrise-signals': 'custom_payload', 'transfer': 'transfer'}.get(args.scenario, 'open_sign_editor')
         expected_injected = sum(len(packets) for _, packets in steps)
         deadline = time.time() + 240
@@ -294,17 +303,6 @@ def record(args):
             else:
                 press_escape('vanilla', display)
             time.sleep(3)
-    finally:
-        if game is not None:
-            game('disconnect', ok=False)
-            game.quit()
-        stop_process(process)
-        stop_process(xvfb)
-        if server is not None:
-            server.stop()
-        if stop is not None:
-            stop.set()
-        shutil.rmtree(work, ignore_errors=True)
     entries = [e for e in net_capture.load(capture) if 'name' in e and (args.scenario == 'transfer' or e.get('conn') == 1)]
     (out / 'all.json').write_text(json.dumps(entries, indent=1))
     print(f'{len(entries)} packets in {out / "all.json"}')
@@ -319,12 +317,12 @@ def describe(e):
     if e['name'] == 'intention':
         version, p = net_capture.read_varint(data, 0)
         n, q = net_capture.read_varint(data, p)
-        host = data[q:q + n].decode(errors='replace')
+        host = data[q:q + n].decode()
         port = int.from_bytes(data[q + n:q + n + 2], 'big')
         return f"{text} protocol={version} host={host} port={'(proxy port)' if port else 0} intent={data[q + n + 2]}"
     if e['name'] == 'transfer' and data:
         n, q = net_capture.read_varint(data, 0)
-        host = data[q:q + n].decode(errors='replace')
+        host = data[q:q + n].decode()
         port, _ = net_capture.read_varint(data, q + n)
         return f"{text} host={host} port={'(proxy port)' if port else 0}"
     if e['name'] == 'sign_update':
@@ -345,8 +343,8 @@ def probe_key(e):
     if e['name'] == 'transfer' and body:
         data = bytes.fromhex(body)
         n, q = net_capture.read_varint(data, 0)
-        host = data[q:q + n].decode(errors='replace')
-        return (e['state'], e['name'], f'host={host}')
+        _, end = net_capture.read_varint(data, q + n)
+        return (e['state'], e['name'], data[:q + n].hex(), data[end:].hex())
     return (e['state'], e['name'], body)
 
 
