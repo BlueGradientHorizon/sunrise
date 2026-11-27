@@ -21,7 +21,7 @@ fn serve(index: &'static [u8]) -> impl Fn(&str, u64) -> Result<Vec<u8>, String> 
 fn the_index_needs_the_registry_signature_and_a_serial_no_older_than_the_last_accepted() {
     let cache = tempfile::tempdir().unwrap();
     let serial = cache.path().join(SERIAL);
-    let index = read_index(cache.path(), URL, &serve(FIRST), KEY).unwrap();
+    let index = read_index(&serial, URL, &serve(FIRST), KEY).unwrap();
     assert_eq!(index.serial, FIRST_SERIAL);
     assert_eq!(
         fs::read_to_string(&serial).unwrap(),
@@ -30,11 +30,11 @@ fn the_index_needs_the_registry_signature_and_a_serial_no_older_than_the_last_ac
 
     // Every byte is signed, whitespace included: the bytes are never reserialized to check them.
     let edited: &'static [u8] = Vec::leak(FIRST.iter().copied().chain(*b" ").collect());
-    let error = read_index(cache.path(), URL, &serve(edited), KEY).unwrap_err();
+    let error = read_index(&serial, URL, &serve(edited), KEY).unwrap_err();
     assert!(error.contains("registry's key"), "{error}");
 
     fs::write(&serial, (FIRST_SERIAL + 1).to_string()).unwrap();
-    let error = read_index(cache.path(), URL, &serve(FIRST), KEY).unwrap_err();
+    let error = read_index(&serial, URL, &serve(FIRST), KEY).unwrap_err();
     assert!(
         error.contains(&format!(
             "serial {FIRST_SERIAL} is older than {}",
@@ -43,15 +43,24 @@ fn the_index_needs_the_registry_signature_and_a_serial_no_older_than_the_last_ac
         "{error}"
     );
     fs::write(&serial, (FIRST_SERIAL - 1).to_string()).unwrap();
-    read_index(cache.path(), URL, &serve(FIRST), KEY).unwrap();
+    read_index(&serial, URL, &serve(FIRST), KEY).unwrap();
     assert_eq!(
         fs::read_to_string(&serial).unwrap(),
         FIRST_SERIAL.to_string()
     );
     // An unreadable floor is named, never taken as no floor.
     fs::write(&serial, "").unwrap();
-    let error = read_index(cache.path(), URL, &serve(FIRST), KEY).unwrap_err();
+    let error = read_index(&serial, URL, &serve(FIRST), KEY).unwrap_err();
     assert!(error.contains(&serial.display().to_string()), "{error}");
+}
+
+#[test]
+fn the_serial_lock_keeps_the_serial_filename_extension() {
+    let cache = tempfile::tempdir().unwrap();
+    let serial = cache.path().join("v2.serial");
+    read_index(&serial, URL, &serve(FIRST), KEY).unwrap();
+    assert!(cache.path().join("v2.serial.lock").is_file());
+    assert!(!cache.path().join("v2.lock").exists());
 }
 
 #[cfg(unix)]
@@ -59,11 +68,11 @@ fn the_index_needs_the_registry_signature_and_a_serial_no_older_than_the_last_ac
 fn a_linked_serial_lock_is_refused_without_creating_its_target() {
     let cache = tempfile::tempdir().unwrap();
     let serial = cache.path().join(SERIAL);
-    let lock = serial.with_extension("lock");
+    let lock = cache.path().join("registry/v2-serial.lock");
     fs::create_dir_all(lock.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink("unused-lock", &lock).unwrap();
 
-    let error = read_index(cache.path(), URL, &serve(FIRST), KEY).unwrap_err();
+    let error = read_index(&serial, URL, &serve(FIRST), KEY).unwrap_err();
     assert!(
         error.starts_with(&format!("{}: ", lock.display())),
         "{error}"
