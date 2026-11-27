@@ -339,70 +339,20 @@ pub struct CompiledFrameGraph {
     pub release_after: Vec<Vec<TransientTargetId>>,
 }
 
-/// Find cycle members in the residual graph left by Kahn's sort. Iterative strongly connected
-/// component traversals keep mod-controlled graph depth off the call stack.
-fn cycle_members(adj: &[BTreeSet<usize>], in_degree: &[usize]) -> Vec<bool> {
-    let mut reverse = vec![Vec::new(); adj.len()];
-    for (node, edges) in adj.iter().enumerate() {
+/// Discard resolved nodes, then find cycle members in the residual graph left by Kahn's sort.
+fn cycle_members(adj: &mut [BTreeSet<usize>], in_degree: &[usize]) -> Vec<bool> {
+    for (node, edges) in adj.iter_mut().enumerate() {
         if in_degree[node] == 0 {
-            continue;
-        }
-        for &next in edges {
-            if in_degree[next] > 0 {
-                reverse[next].push(node);
-            }
+            edges.clear();
+        } else {
+            edges.retain(|&next| in_degree[next] > 0);
         }
     }
-
-    // Kosaraju's first traversal records finish order in the residual graph.
-    let mut seen = vec![false; adj.len()];
-    let mut finished = Vec::new();
-    let mut traversal = Vec::new();
-    for (node, edges) in adj.iter().enumerate() {
-        if in_degree[node] == 0 || seen[node] {
-            continue;
-        }
-        seen[node] = true;
-        traversal.push((node, edges.iter()));
-        while let Some((node, edges)) = traversal.last_mut() {
-            match edges.next() {
-                Some(&next) if in_degree[next] > 0 && !seen[next] => {
-                    seen[next] = true;
-                    traversal.push((next, adj[next].iter()));
-                }
-                Some(_) => {}
-                None => {
-                    finished.push(*node);
-                    traversal.pop();
-                }
-            }
-        }
-    }
-
-    // Reverse finish order on the reversed graph visits one component at a time. Only a
-    // multi-node component (or a self-loop) is cyclic; downstream singleton nodes are not.
-    seen.fill(false);
     let mut cyclic = vec![false; adj.len()];
-    let mut pending = Vec::new();
-    let mut component = Vec::new();
-    for node in finished.into_iter().rev() {
-        if seen[node] {
-            continue;
-        }
-        component.clear();
-        seen[node] = true;
-        pending.push(node);
-        while let Some(node) = pending.pop() {
-            component.push(node);
-            for &next in &reverse[node] {
-                if !seen[next] {
-                    seen[next] = true;
-                    pending.push(next);
-                }
-            }
-        }
+    for component in sunrise_core::graph::strongly_connected_components(adj) {
+        let node = component[0];
         if component.len() > 1 || adj[node].contains(&node) {
-            for &member in &component {
+            for member in component {
                 cyclic[member] = true;
             }
         }
@@ -604,7 +554,7 @@ fn compile_specs(
     }
 
     if visited < active_count {
-        let cyclic = cycle_members(&adj, &in_degree);
+        let cyclic = cycle_members(&mut adj, &in_degree);
         let mut involved = Vec::new();
         for (p, spec) in passes.iter().enumerate() {
             let node = pass_node(p);
