@@ -119,7 +119,7 @@ pub fn read_properties(
     let text = pack.read_text("shaders.properties").unwrap_or_default();
     let mut options = with_options(pack, macros);
     let listed = crate::Properties::parse(&text, &options);
-    let notes = crate::Macros::feature_notes(&listed);
+    let notes = macros.feature_notes(&listed);
     if !macros.define_features(&listed) {
         return (listed, notes);
     }

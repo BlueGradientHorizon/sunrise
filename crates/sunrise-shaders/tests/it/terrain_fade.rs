@@ -10,7 +10,7 @@ fn requested_fade_feature_loads() {
         "iris.features.optional=FADE_VARIABLE\niris.features.required=FADE_VARIABLE\n",
         &Macros::standard(),
     );
-    let notes = Macros::feature_notes(&properties);
+    let notes = Macros::standard().feature_notes(&properties);
     assert!(notes.is_empty(), "requested fade rejected: {notes:?}");
 }
 
