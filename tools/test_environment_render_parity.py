@@ -7,9 +7,10 @@ weather layers) and prints every visual/gameplay attribute for a grid of
 dimensions, world times, rain/thunder levels and biomes.
 `examples/probe/environment_fixture` samples the same cases through Sunrise's
 `Environment::sample` + `apply_weather`; every attribute Sunrise computes must
-agree with vanilla.
+agree with vanilla, bit for bit: both sides print binary32 values (Float.toString,
+Rust's `{:?}` of f32), compared on their bits.
 
-  test_environment_render_parity.py [--tolerance EPS]
+  test_environment_render_parity.py
 """
 import argparse
 import json
@@ -46,8 +47,7 @@ def cases(resources):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--tolerance', type=float, default=2e-5)
-    args = parser.parse_args()
+    parser.parse_args()
     lock, jars, libraries = base.verify_artifacts()
     build = lab.LOCAL / 'rust-environment-parity'; build.mkdir(parents=True, exist_ok=True)
     resources = lab.RESOURCES
@@ -67,8 +67,8 @@ def main():
          'dev.sunriselab.parity.VanillaEnvironmentOracle', inputs, build / 'vanilla.jsonl'], 'vanilla')
     run(['cargo', 'run', '--quiet', '--profile', 'fast', '-p', 'sunrise-client-lib', '--example', 'client_probe', '--',
          'environment_fixture', resources, inputs, build / 'rust.jsonl'], 'rust')
-    vanilla = [json.loads(l) for l in (build / 'vanilla.jsonl').read_text().splitlines()]
-    rust = [json.loads(l) for l in (build / 'rust.jsonl').read_text().splitlines()]
+    vanilla = [lab.exact_json(l) for l in (build / 'vanilla.jsonl').read_text().splitlines()]
+    rust = [lab.exact_json(l) for l in (build / 'rust.jsonl').read_text().splitlines()]
     assert len(vanilla) == len(rust), (len(vanilla), len(rust))
     bad = {}
     uncovered = set()
@@ -79,12 +79,21 @@ def main():
             if key not in r:
                 uncovered.add(key); continue
             got = r[key]
+            if isinstance(expected, list) != isinstance(got, list) or isinstance(expected, list) and len(expected) != len(got):
+                bad.setdefault(key, []).append((v['case'], expected, got, 'shape'))
+                continue
             pairs = zip(expected, got) if isinstance(expected, list) else [(expected, got)]
-            if any(abs(a - b) > args.tolerance * (1 + abs(a)) for a, b in pairs):
-                bad.setdefault(key, []).append((v['case'], expected, got))
+            if isinstance(expected, (bool, str)) or isinstance(got, (bool, str)):
+                distances = [None if a == b and type(a) is type(b) else 'differs' for a, b in pairs]
+            else:
+                distances = [lab.float_difference(a, b) for a, b in pairs]
+            if any(distances):
+                bad.setdefault(key, []).append((v['case'], expected, got, distances))
     print(f'{len(vanilla)} cases compared')
     for key, items in sorted(bad.items()):
-        print(f'MISMATCH {key}: {len(items)} cases, e.g. {items[0]}')
+        print(f'MISMATCH {key}: {len(items)} cases (case, vanilla, Sunrise, distance per component), e.g.')
+        for item in items[:3]:
+            print(f'  {item}')
     if uncovered:
         print('attributes Sunrise does not model:', ', '.join(sorted(uncovered)))
     if bad:

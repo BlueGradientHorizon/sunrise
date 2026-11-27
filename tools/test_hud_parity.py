@@ -7,7 +7,8 @@ GuiGraphicsExtractor blit (sprite, texture, position, size, region, colour,
 pose), fill, text call (string, style runs, position, colour, shadow, pose)
 and hotbar item (slot, position, seed, pose). `examples/probe/hud_fixture` lays
 out the same state with `sunrise_client::hud_layout`, `hud_overlays` and
-`chat`; the ordered call lists (and any state read back) must agree.
+`chat`; the ordered call lists (and any state read back) must agree. Every number vanilla
+records as a float (pose matrices, UVs, scopeScale) must have the same binary32 bits.
 
 Case kinds (`tools/hud_parity_cases.py`), drawn round-robin:
   decorations  extractCrosshair, extractItemHotbar, extractPlayerHealth,
@@ -58,8 +59,19 @@ def cases(count, kinds):
 
 def close(p, q):
     if (isinstance(p, float) or isinstance(q, float)) and not isinstance(p, bool) and not isinstance(q, bool):
-        return abs(p - q) <= 1e-4 * (1 + abs(p))
+        return isinstance(p, (int, float)) and isinstance(q, (int, float)) and lab.f32_bits(p) == lab.f32_bits(q)
     return p == q
+
+
+def float_differences(x, y):
+    """The float fields of two draws that differ, with their distance in ULPs."""
+    out = []
+    for k in x.keys() & y.keys():
+        pairs = zip(x[k], y[k]) if isinstance(x[k], list) and isinstance(y[k], list) else [(x[k], y[k])]
+        for i, (p, q) in enumerate(pairs):
+            if not close(p, q) and isinstance(p, float) and isinstance(q, (int, float)) and not isinstance(q, bool):
+                out.append(f'{k}[{i}] {p!r} != {q!r} ({lab.ulps(lab.f32_bits(p), lab.f32_bits(q))} ulp)')
+    return out
 
 
 IDENTITY = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
@@ -116,8 +128,8 @@ def main():
          inputs, build / 'vanilla.jsonl'], 'vanilla')
     run(['cargo', 'run', '--quiet', '--profile', 'fast', '-p', 'sunrise-client-lib', '--example', 'client_probe', '--',
          'hud_fixture', resources, inputs, build / 'rust.jsonl'], 'rust')
-    vanilla = [json.loads(l) for l in (build / 'vanilla.jsonl').read_text().splitlines()]
-    rust = [json.loads(l) for l in (build / 'rust.jsonl').read_text().splitlines()]
+    vanilla = [lab.exact_json(l) for l in (build / 'vanilla.jsonl').read_text().splitlines()]
+    rust = [lab.exact_json(l) for l in (build / 'rust.jsonl').read_text().splitlines()]
     assert len(vanilla) == len(rust)
     errors, bad = [], []
     totals = {}
@@ -143,6 +155,9 @@ def main():
     for case, i, a, b, la, lb in bad[:args.detail]:
         print('MISMATCH', json.dumps(case))
         print(f'   at call {i} ({la} vanilla, {lb} Sunrise calls)\n   vanilla {a}\n   sunrise {b}')
+        if a and b:
+            for difference in float_differences(a[0], b[0]):
+                print(f'   {difference}')
     for kind, (ok, n) in sorted(totals.items()):
         print(f'  {kind:12} {ok}/{n}')
     print(f'{len(vanilla) - len(bad) - len(errors)}/{len(vanilla)} HUD states match; {len(errors)} oracle errors')
