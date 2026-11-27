@@ -77,6 +77,7 @@ READERS = {
     "sunrise-sim": [
         "crates/sunrise-client/tests/fixtures/advancement-icons/data",
         "crates/sunrise-client/tests/fixtures/dialog_codec_cases.json",
+        "crates/sunrise-core/src/prepared_test_root.rs",
         "docs/parity/random-chance-seeded.jsonl",
     ],
     # lang.rs embeds the bundled language files.
