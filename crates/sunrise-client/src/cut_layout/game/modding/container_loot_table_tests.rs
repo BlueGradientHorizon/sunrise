@@ -269,7 +269,7 @@ fn a_saved_mod_container_loads_its_table_before_its_items() {
             sunrise_sim::save::block_mod_item_slots("fixture:crate"),
             SLOTS
         );
-        assert_eq!(entity.slots(), &[], "from a chunk");
+        assert_eq!(entity.slots(), vec![None; SLOTS].as_slice(), "from a chunk");
         let BlockEntity::Mod(loaded_entity) = entity else {
             panic!("the crate's block entity")
         };
@@ -287,7 +287,11 @@ fn a_saved_mod_container_loads_its_table_before_its_items() {
             sunrise_sim::structure_blocks::generated_container("fixture:crate", &structure)
                 .unwrap();
         assert_eq!(pending.map(|p| p.table_id()), Some(TABLE.to_owned()));
-        assert_eq!(entity.slots(), &[], "from a structure");
+        assert_eq!(
+            entity.slots(),
+            vec![None; SLOTS].as_slice(),
+            "from a structure"
+        );
     });
 }
 
