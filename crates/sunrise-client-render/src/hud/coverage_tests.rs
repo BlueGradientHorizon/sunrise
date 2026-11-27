@@ -42,8 +42,9 @@ fn repeated_partial_scissors_preserve_the_unclipped_gradient_pixels() {
     let whole = draw(false);
     let clipped = draw(true);
     // At the first row's centre (y = 0.5), red is exactly 128 / 4 = 32 in
-    // byte units. This is not a rounding tie. For the scissor comparison use
-    // this adapter's own unclipped pixels, not an expected rounding of the gradient.
+    // byte units. At the second row's centre (y = 1.5, t = 0.5), red is exactly
+    // 128 * 0.5 = 64 in byte units. Neither is a rounding tie. For the scissor
+    // comparison use this adapter's own unclipped pixels.
     let (whole, []) = whole.as_chunks::<4>() else {
         panic!("partial texel in unclipped readback");
     };
@@ -53,11 +54,7 @@ fn repeated_partial_scissors_preserve_the_unclipped_gradient_pixels() {
     assert_eq!(whole.len(), 8);
     assert_eq!(clipped.len(), 8);
     assert_eq!(whole[..4], [[32, 0, 0, 255]; 4]);
-    assert!(
-        whole[4][0] > whole[0][0],
-        "red must increase down the gradient"
-    );
-    assert_eq!(whole[4..], [whole[4]; 4]);
+    assert_eq!(whole[4..], [[64, 0, 0, 255]; 4]);
     for (i, (&pixel, &reference)) in clipped.iter().zip(whole).enumerate() {
         let expected = if matches!(i, 0 | 1 | 4) {
             [0; 4]
