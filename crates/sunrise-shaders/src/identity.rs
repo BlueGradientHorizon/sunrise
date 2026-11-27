@@ -32,8 +32,9 @@ impl Macros {
 /// macros, as `file:line`: the first conditional directive whose evaluation looks one of them
 /// up (`preprocess::first_lookup`), in the stage files the loader reads (`post::program_stages`,
 /// the programs mods request, `mod_programs`, among them) of its base folder and of each folder
-/// a dimension may load (`dimension_folders`), their includes with them. Only the directives
-/// are read, and the scan stops at the first lookup. They are read with the macros the scan
+/// a dimension may load (`dimension_folders`), their includes with them. They are read as the
+/// load's preprocessor reads them, without output, and the scan stops at the first lookup. They
+/// are read with the macros the scan
 /// gives every reader (decision D-8): the standard set and the pack's options and feature
 /// answers, as `read_properties` leaves them over it, with no identity macro. `None`: the pack
 /// never tests them in the branches those settings reach.
@@ -263,6 +264,72 @@ mod tests {
             ],
         ] {
             assert_eq!(found(files), None, "{files:?}");
+        }
+    }
+
+    /// The scan picks a program's stages as the load does (`post::program_read`), each case one
+    /// it once got wrong one way or the other. Read: a `setup` program's compute stages beside
+    /// its vertex and fragment stages (`setup` is compute programs alone), the fragment stage of
+    /// a shadow program with a tessellation stage (read for its buffer formats while the shadow
+    /// pass is off), and `final`'s compute stage beside its drawn stages. Not read: a lone
+    /// `final.csh` (`final` is never compute programs alone), `setup.vsh` and `setup.fsh`, and
+    /// a composite program with a tessellation stage (skipped unread).
+    #[test]
+    fn the_scan_picks_a_programs_stages_as_the_load_does() {
+        let check = "#ifdef IS_IRIS\n#endif\n";
+        let found = |files: &[(&str, &str)]| asked(&pack(files), &[]);
+        for (files, at) in [
+            (&[("setup.fsh", ""), ("setup.csh", check)][..], "setup.csh"),
+            (&[("setup.fsh", ""), ("setup_c.csh", check)], "setup_c.csh"),
+            (&[("setup.csh", check)], "setup.csh"),
+            (&[("shadow.fsh", check), ("shadow.tcs", "")], "shadow.fsh"),
+            (&[("shadow.fsh", check), ("shadow.tes", "")], "shadow.fsh"),
+            (&[("final.fsh", ""), ("final.csh", check)], "final.csh"),
+        ] {
+            assert_eq!(found(files), Some(format!("{at}:1")), "{files:?}");
+        }
+        for files in [
+            &[("final.csh", check)][..],
+            &[("final_a.csh", check)],
+            &[("setup.fsh", check)],
+            &[("setup.vsh", check)],
+            &[("composite.fsh", check), ("composite.tcs", "")],
+        ] {
+            assert_eq!(found(files), None, "{files:?}");
+        }
+    }
+
+    /// The scan keeps the conditional state the load's preprocessor keeps: a code line defines
+    /// `__LINE__` for the directives after it, and a macro call over several lines gives the line
+    /// it starts on. Each case asks where, and only where, the load with the answer on takes the
+    /// branch behind the check.
+    #[test]
+    fn the_scan_sees_line_as_the_load_does() {
+        for (fsh, at) in [
+            (
+                "float a;\n#ifdef __LINE__\n#ifdef IS_IRIS\nfloat taken;\n#endif\n#endif\n",
+                Some(3),
+            ),
+            (
+                "#ifdef __LINE__\n#ifdef IS_IRIS\nfloat taken;\n#endif\n#endif\n",
+                None,
+            ),
+            (
+                "#define F(a, b) a\nfloat x = F(1,\n2);\n#if __LINE__ == 2\n#ifdef IS_IRIS\n\
+                 float taken;\n#endif\n#endif\n",
+                Some(5),
+            ),
+            (
+                "#define F(a, b) a\nfloat x = F(1,\n2);\n#if __LINE__ == 3\n#ifdef IS_IRIS\n\
+                 float taken;\n#endif\n#endif\n",
+                None,
+            ),
+        ] {
+            assert_eq!(asks(fsh), at.map(|n| format!("final.fsh:{n}")), "{fsh}");
+            let mut m = Macros::standard();
+            m.set_identity(true);
+            let code = crate::preprocess(&pack(&[("final.fsh", fsh)]), "final.fsh", &m);
+            assert_eq!(code.code().contains("float taken;"), at.is_some(), "{fsh}");
         }
     }
 

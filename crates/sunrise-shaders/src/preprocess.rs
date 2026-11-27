@@ -208,8 +208,9 @@ pub fn preprocess(pack: &Pack, path: &str, macros: &Macros) -> Preprocessed {
 
 /// Where the stage file `path` of `pack`, preprocessed with `macros`, first evaluates a
 /// conditional directive that looks up one of `names` ([`condition::apply_noting`]), as `file`
-/// and line: the directives alone are read, as [`preprocess`] reads them, its includes with them,
-/// and the read stops there. No code line is expanded and no output is made.
+/// and line: the file is read as [`preprocess`] reads it, its includes with them, and the read
+/// stops there. Its code lines are joined and expanded as there too, so what a directive sees
+/// after them is the same (`__LINE__`, the file's expansion work spent); no output is made.
 /// `texts` keeps the files read, without their comments, for the next scans of the same pack
 /// and options.
 pub(crate) fn first_lookup(
@@ -245,7 +246,7 @@ struct Run<'p> {
     code: Vec<String>,
     /// Files already read: a guarded header is included many times.
     texts: Texts,
-    /// Only the directives are read, until one looks up a name the scan looks for.
+    /// No output is made, and the read stops once a directive looks up a name the scan looks for.
     scan: Option<Scan<'p>>,
 }
 
@@ -311,11 +312,7 @@ impl<'p> Run<'p> {
             // A macro call's arguments may span lines: they join the line the call starts on.
             // Telling whether a call goes on expands the line so far, from the file's work too,
             // so a joined line spends its work up to twice.
-            // A scan reads no code line: a call joins none of the directives after it.
-            if self.scan.is_none()
-                && !line.trim_start().starts_with('#')
-                && self.conditionals.active()
-            {
+            if !line.trim_start().starts_with('#') && self.conditionals.active() {
                 n += self.macros.join_call(&mut line, &lines[n..], n - first - 1);
             }
             let origin = Origin {
@@ -345,9 +342,6 @@ impl<'p> Run<'p> {
 
     fn line(&mut self, line: &str, origin: Origin, path: &str, depth: usize) {
         let Some(after) = line.trim_start().strip_prefix('#') else {
-            if self.scan.is_some() {
-                return;
-            }
             let code = if self.conditionals.active() {
                 self.macros.define("__LINE__", origin.line.to_string());
                 // A call nested past `MAX_ARGUMENT_DEPTH`, or an expansion past the file's
