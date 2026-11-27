@@ -366,6 +366,9 @@ mod translucent_color_tests;
 mod water_blend_tests;
 
 #[cfg(test)]
+mod per_buffer_blending_tests;
+
+#[cfg(test)]
 mod noise_resolution_tests;
 
 #[cfg(test)]

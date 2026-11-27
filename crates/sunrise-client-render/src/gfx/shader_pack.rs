@@ -519,9 +519,11 @@ impl Renderer {
     }
     /// The macros this renderer gives shader packs: the GL extensions this device has
     /// (subgroups, when it has them), and the vendor, renderer and mipmap levels
-    /// (`Macros::define_renderer`).
+    /// (`Macros::define_renderer`); with them, the feature flags this device decides
+    /// (`define_device_features`).
     pub fn define_pack_macros(&self, macros: &mut sunrise_shaders::Macros) {
         macros.define_renderer(self.mipmaps);
+        define_device_features(macros, self.adapter.get_downlevel_capabilities().flags);
         if self.device.features().contains(wgpu::Features::SUBGROUP) {
             macros.define_subgroups();
         }
@@ -585,4 +587,14 @@ fn terrain_buffer_count(draws: pack_atlas::TerrainDraws) -> usize {
     } else {
         2
     }
+}
+
+/// The answers a device with `flags` gives to a pack's feature flags (spec 3.2) that depend on
+/// it: `PER_BUFFER_BLENDING` where wgpu draws colour targets that differ in blend
+/// (`DownlevelFlags::INDEPENDENT_BLEND`).
+pub(crate) fn define_device_features(
+    macros: &mut sunrise_shaders::Macros,
+    flags: wgpu::DownlevelFlags,
+) {
+    macros.set_per_buffer_blending(flags.contains(wgpu::DownlevelFlags::INDEPENDENT_BLEND));
 }
