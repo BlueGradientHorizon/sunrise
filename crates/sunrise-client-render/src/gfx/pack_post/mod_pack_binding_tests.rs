@@ -879,6 +879,74 @@ fn mod_pack_type_mismatch_uniform_and_unbound_pipeline_never_panic() {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn mod_pack_frame_uniform_type_mismatch_draws_with_zero() {
+    use crate::mod_pipelines::{pack_program_requests_of, pack_runtime_specs_of};
+    use mod_api::{
+        Identifier, PackBinding, PackPassSlot, PackUniformDecl, PackUniformType, PipelineBlend,
+        RenderPipeline, WorldDepth,
+    };
+
+    let _gpu_guard = crate::gfx::test_gpu::lock();
+    let gpu = Gpu::new().expect("graphics adapter required for mod pack frame uniform draws");
+    let id = Identifier::parse("example:mod_uniform").unwrap();
+    let pipelines = [RenderPipeline::new(
+        id.clone(),
+        id,
+        PipelineBlend::Opaque,
+        WorldDepth::ThroughWalls,
+    )
+    .pack_binding(
+        PackBinding::new()
+            .program("mod_terrain")
+            .slot(PackPassSlot::AfterOpaqueGbuffers)
+            .frame_uniform(PackUniformDecl::new("modScale", PackUniformType::Int)),
+    )];
+    let runtime = pack_runtime_specs_of(&pipelines);
+
+    // Green marks a draw. Red is zero for the mismatched uniform and 1 for the exact staged int
+    // in the control (bytes 0 and 255). Neither pack default is zero: 0.25 * 255 = 63.75 and
+    // 0.75 * 255 = 191.25. The staged int's bits encode 1.0 as float, so a raw write also fails.
+    for (decl, red, expected) in [
+        ("float modScale = 0.25", "modScale", 0),
+        ("int modScale", "modScale == 1065353216 ? 1.0 : 0.0", 255),
+    ] {
+        let fragment = format!(
+            "#version 120\n/* DRAWBUFFERS:0 */\nuniform {decl};\n\
+             void main(){{gl_FragData[0]=vec4({red},1.0,0.0,1.0);}}"
+        );
+        let files = [
+            ("shaders.properties", "uniform.float.modScale = 0.75\n"),
+            (
+                "mod_terrain.vsh",
+                "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xyz,1.0);}",
+            ),
+            ("mod_terrain.fsh", fragment.as_str()),
+            ("final.vsh", VERTEX),
+            (
+                "final.fsh",
+                "#version 120\nuniform sampler2D colortex0;varying vec2 uv;\n\
+                 /*\nconst int colortex0Format = RGBA8;\n*/\n\
+                 void main(){gl_FragColor=texture2D(colortex0,uv);}",
+            ),
+        ]
+        .map(|(name, source)| (name.into(), source.into()))
+        .into();
+        let (mut post, color, depth) =
+            load_with_mods(&gpu, files, pack_program_requests_of(&pipelines), &runtime);
+        assert!(post.is_mod_pipeline_bound(0), "{decl}: {:?}", post.notes);
+        assert!(post.set_mod_uniform("modScale", ModUniformValue::Int(0x3f80_0000)));
+        let (vertices, indices) = mod_quad_buffers(&gpu.device, -0.5);
+        post.set_mod_draws(vec![ModDrawChunk::quads(0, vertices, indices, 0..1)]);
+        assert_eq!(
+            run_frame_and_sample_center(&gpu, &mut post, &color, &depth),
+            [expected, 255, 0, 255],
+            "{decl}",
+        );
+    }
+}
+
 /// A mod pipeline bound to the pack's shadow pass draws into the shadow map, and its geometry
 /// forces the pass to run again while the shadow cache is on: the quad's colour comes from a
 /// per-frame uniform, so a kept map would show the first frame's colour on the second. Covers

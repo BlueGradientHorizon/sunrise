@@ -611,7 +611,7 @@ pub struct Resources<'a> {
     pub mod_depth_targets: &'a [ModDepthTargetDecl],
     /// Mod-declared per-frame uniforms for uniform resolution and type validation.
     pub mod_uniforms: &'a [ModUniformDecl],
-    /// Deduplicates warnings when a pack declares a mod uniform with an incompatible GLSL type.
+    /// Deduplicates mod frame-uniform mismatch warnings by program and uniform name.
     pub mod_uniform_mismatches: &'a std::cell::RefCell<HashSet<(String, String)>>,
     /// Auxiliary depth target index written by the mod geometry pass currently being built, if any.
     pub mod_depth_target: std::cell::Cell<Option<usize>>,
@@ -1200,18 +1200,18 @@ const POLYGON_OFFSET: wgpu::DepthBiasState = wgpu::DepthBiasState {
     clamp: 0.0,
 };
 
-/// Match a pass's declared GLSL uniforms against mod-declared per-frame uniforms.
-/// Incompatible GLSL types leave the uniform unbound, record a note, and log a warning once
-/// per `(name, declared_ty)` without panicking.
+/// Resolve mod frame uniforms before the ordinary pack uploads are assigned. A mismatch
+/// keeps its shader slot at zero without refusing the program.
 fn resolve_mod_uniforms<'a>(
-    interface: &'a sunrise_shaders::Interface,
+    uniforms: &'a [sunrise_shaders::Uniform],
+    initial_block: &mut [u8],
     pass_name: &str,
     pack: &Resources<'_>,
     notes: &mut Vec<String>,
 ) -> (Vec<(usize, bool, u32)>, HashSet<&'a str>) {
     let mut bound = Vec::new();
     let mut handled = HashSet::new();
-    for u in &interface.uniforms {
+    for (i, u) in uniforms.iter().enumerate() {
         match match_mod_uniform(pack.mod_uniforms, &u.name, &u.ty) {
             ModUniformMatch::None => {}
             ModUniformMatch::Bound { index, previous } => {
@@ -1220,18 +1220,23 @@ fn resolve_mod_uniforms<'a>(
             }
             ModUniformMatch::TypeMismatch { expected } => {
                 handled.insert(u.name.as_str());
-                let key = (u.name.clone(), u.ty.clone());
-                let first = pack.mod_uniform_mismatches.borrow_mut().insert(key);
-                let msg = format!(
-                    "{pass_name}: mod uniform `{}` declared as `{}` (mod provides `{}`); left unbound",
-                    u.name,
-                    u.ty,
-                    expected.glsl_name()
-                );
-                if first {
+                // The translator lists members in block order. Clear only this member and
+                // its padding, including any GLSL initializer.
+                let end = uniforms
+                    .get(i + 1)
+                    .map_or(initial_block.len(), |next| next.offset as usize);
+                initial_block[u.offset as usize..end].fill(0);
+                let key = (pass_name.to_owned(), u.name.clone());
+                if pack.mod_uniform_mismatches.borrow_mut().insert(key) {
+                    let msg = format!(
+                        "{pass_name}: mod uniform `{}` declared as `{}` (mod provides `{}`); left unbound, reads zero",
+                        u.name,
+                        u.ty,
+                        expected.glsl_name()
+                    );
                     log::warn!("shader pack: {msg}");
+                    notes.push(msg);
                 }
-                notes.push(msg);
             }
         }
     }
@@ -1577,8 +1582,14 @@ pub fn build_pass(
             return None;
         }
     };
-    let interface = &program.interface;
-    let (mod_uniforms, mod_handled) = resolve_mod_uniforms(interface, &p.name, pack, notes);
+    let interface = &mut program.interface;
+    let (mod_uniforms, mod_handled) = resolve_mod_uniforms(
+        &interface.uniforms,
+        &mut interface.initial_values,
+        &p.name,
+        pack,
+        notes,
+    );
     let missing: Vec<&str> = interface
         .uniforms
         .iter()
@@ -1610,6 +1621,7 @@ pub fn build_pass(
         uniforms: interface
             .uniforms
             .iter()
+            .filter(|u| !mod_handled.contains(u.name.as_str()))
             .map(|u| (index(&u.name, &u.ty), u.ty.clone(), u.offset))
             .collect(),
         mod_uniforms,
@@ -1727,7 +1739,7 @@ pub fn build_compute(
     device: &wgpu::Device,
     name: String,
     group: Group,
-    c: sunrise_shaders::ComputeProgram,
+    mut c: sunrise_shaders::ComputeProgram,
     formats: &[wgpu::TextureFormat; BUFFERS],
     shadow: Option<&[wgpu::TextureFormat; SHADOW_COLORS]>,
     notes: &mut Vec<String>,
@@ -1809,7 +1821,14 @@ pub fn build_compute(
     let image_copies = image_copies(&samplers, &images);
     let (before_colors, snapshots) = befores(&images);
     let (shadow_own, shadow_before) = shadow_images(&images);
-    let (mod_uniforms, _) = resolve_mod_uniforms(interface, &name, pack, notes);
+    let interface = &mut c.interface;
+    let (mod_uniforms, mod_handled) = resolve_mod_uniforms(
+        &interface.uniforms,
+        &mut interface.initial_values,
+        &name,
+        pack,
+        notes,
+    );
     Some(Pass {
         ubo: device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&name),
@@ -1822,6 +1841,7 @@ pub fn build_compute(
         uniforms: interface
             .uniforms
             .iter()
+            .filter(|u| !mod_handled.contains(u.name.as_str()))
             .map(|u| (index(&u.name, &u.ty), u.ty.clone(), u.offset))
             .collect(),
         mod_uniforms,
