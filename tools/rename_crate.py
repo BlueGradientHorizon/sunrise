@@ -79,7 +79,7 @@ def verify(base):
         raise SystemExit("unexpected file inventory")
     if (ROOT / OLD_PATH).exists():
         raise SystemExit("old crate directory still exists")
-    changed = set(run("git", "diff", "--name-only", "--no-renames", base).decode().splitlines())
+    changed = {name for name in run("git", "diff", "--name-only", "-z", "--no-renames", base).decode().split("\0") if name}
     text = text_paths(base)
     files = 0
     for path in sorted(before - OWN_FILES):

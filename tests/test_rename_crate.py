@@ -96,6 +96,33 @@ let registry = "https://github.com/horizon-rust/horizon-mods";
         self.assertEqual(verified.returncode, 0, verified.stderr)
         self.assertIn("Verified 2 rename-normalized files\n", verified.stdout)
 
+    def test_verify_rejects_an_edit_to_a_non_ascii_path_without_the_old_name(self):
+        root = Path(self.enterContext(TemporaryDirectory()))
+        crate = root / rename.OLD_PATH
+        crate.mkdir(parents=True)
+        (crate / "Cargo.toml").write_bytes(b'[package]\nname = "sunrise-mods"\n')
+        notes = root / "notes-caf\u00e9.txt"
+        baseline = "unrelated notes\n".encode()
+        notes.write_bytes(baseline)
+        git = git_in(root)
+        git("init", "-q")
+        git("config", "core.quotePath", "true")
+        git("add", "--", rename.OLD_PATH, "notes-caf\u00e9.txt")
+        git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "Baseline")
+        git("mv", rename.OLD_PATH, rename.NEW_PATH)
+        (root / rename.NEW_PATH / "Cargo.toml").write_bytes(b'[package]\nname = "sunrise-mod-package"\n')
+
+        run = copy_optimized_cli(root)
+        notes.write_bytes(b"unrelated edit\n")
+        refused = run("--verify", "HEAD")
+        self.assertNotEqual(refused.returncode, 0, refused.stdout)
+        self.assertIn("unexpected content change: notes-caf\u00e9.txt", refused.stderr)
+        self.assertNotIn("Verified ", refused.stdout)
+
+        notes.write_bytes(baseline)
+        verified = run("--verify", "HEAD")
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+
     def test_apply_rejects_both_crate_directories_before_rewriting(self):
         root = Path(self.enterContext(TemporaryDirectory()))
         # Empty crate directories make a missed guard fail at git mv, before Cargo runs.
