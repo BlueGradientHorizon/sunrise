@@ -7,7 +7,9 @@ use crate::{
     motion::{MotionEvent, PlayerMotion},
 };
 pub use mod_api::entity::health::{HurtSource, ShieldBlock, Victim};
-use std::{fs, io, path::Path};
+#[cfg(test)]
+use std::fs;
+use std::{io, path::Path};
 use sunrise_world::{
     attributes::live::LiveAttributes,
     block_landing::LandingDamage,
