@@ -5170,7 +5170,7 @@ layout(rgba8) writeonly uniform image2D OutImage;
 uniform sampler2D DepthTex;
 void main() {
     float depth = textureLod(DepthTex, vec2(0.5), 0.0).r;
-    imageStore(OutImage, ivec2(0), vec4(depth, 0.5, 1.0 - depth, 1.0));
+    imageStore(OutImage, ivec2(0), vec4(depth, 0.4, 1.0 - depth, 1.0));
 }
 ",
             )
@@ -5297,9 +5297,11 @@ void main() {
                 .device
                 .poll(wgpu::PollType::wait_indefinitely())
                 .unwrap();
+            // Depth 0.25: red 0.25 * 255 = 63.75 rounds to 64, green 0.4 * 255 = 102
+            // exactly, blue 0.75 * 255 = 191.25 rounds to 191; no channel is a tie.
             assert_eq!(
                 &slice.get_mapped_range().unwrap()[..4],
-                &[64, 128, 191, 255]
+                &[64, 102, 191, 255]
             );
             drop(game.client.renderer.0.take());
             drop(game.client.mod_gpu.take());
