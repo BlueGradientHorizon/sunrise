@@ -56,9 +56,8 @@ revision disagrees, remove it to use the SDK's revision.
 
 A native build writes the revision into the package, not the project. For a mod that doesn't use mixins, the
 package keeps an explicit revision or records the SDK's revision if none was written, without requiring a match.
-A project in a game checkout uses the checkout's API surface instead of fetching one into the project, but its
-native compile and package revision still come from the pinned SDK. `cargo sunrise-mod pin` moves the Sunrise
-build pin after checking the destination SDK; it leaves any explicit mixins revision alone.
+`cargo sunrise-mod pin` moves the Sunrise build pin after checking the destination SDK; it leaves any explicit
+mixins revision alone.
 
 ### Build names
 

@@ -220,17 +220,23 @@ fn build_command(
         ));
     }
     let output = PackageOutput::in_project(root)?;
-    if package.is_native() {
+    let bundle = package
+        .is_native()
+        .then(|| dev::project_bundle(root, &package))
+        .transpose()?;
+    // The SDK source is refused (`E_SDK_SOURCE`) before any SDK is fetched.
+    let cargo = bundle
+        .as_ref()
+        .map(|bundle| sunrise_native_build::api::Project::read(bundle).map_err(|e| e.to_string()))
+        .transpose()?;
+    if cargo.is_some() {
         fetched(root)?;
     }
-    let built = package
-        .is_native()
-        .then(|| {
-            let bundle = dev::project_bundle(root, &package)?;
-            let cargo =
-                sunrise_native_build::api::Project::read(&bundle).map_err(|e| e.to_string())?;
+    let built = cargo
+        .as_ref()
+        .map(|cargo| {
             dev::build(
-                &cargo,
+                cargo,
                 &package,
                 &with,
                 update_lock,
@@ -257,13 +263,8 @@ fn read_manifest(dir: &Path) -> Result<Manifest, String> {
     Manifest::parse(&bounded::read(&dir.join(MANIFEST), bounded::MAX_MANIFEST)?)
 }
 
-/// The SDK the project at `dir` pins, fetched into its `.sunrise/sdk/` when missing or stale; a
-/// project inside a game checkout builds against that tree instead.
+/// The SDK the project at `dir` pins, fetched into its `.sunrise/sdk/` when missing or stale.
 fn fetched(dir: &Path) -> Result<(), String> {
-    if let Some(tree) = sdk_fetch::game_tree(dir)? {
-        println!("Building against the game checkout {}", tree.display());
-        return Ok(());
-    }
     let sdk = sdk_fetch::ensure_sdk(dir)?;
     println!(
         "SDK {} (build {}) in {}",
@@ -555,8 +556,7 @@ fn new_native(
 
 /// Packs the mod in the current folder into `target/sunrise-mod/<id>.smod`: the manifest and
 /// the files in `assets/` and `data/`, and for a code mod its source and its uses table, scanned
-/// against the pinned build (none for a mod with rows no list can judge, or built against the game
-/// checkout it lies in, which has no published surface to scan against).
+/// against the pinned build (none for a mod with rows no list can judge).
 fn build(
     entry: mod_surface::child::ChildEntry,
     package: &Package,
@@ -564,9 +564,7 @@ fn build(
     mixins: Option<&str>,
 ) -> Result<PathBuf, String> {
     let root = Path::new(".");
-    let uses = if let Some(native) = &package.manifest.native
-        && sdk_fetch::game_tree(root)?.is_none()
-    {
+    let uses = if let Some(native) = &package.manifest.native {
         let sdk = sdk_fetch::fetch_pinned(root, &native.sunrise)?;
         let surface = uses_table::surface_of(&sdk)?;
         let scanned = uses_table::scan(entry, root, &package.manifest, &surface)?;
