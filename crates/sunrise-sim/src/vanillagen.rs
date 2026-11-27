@@ -147,7 +147,6 @@ pub struct VanillaTerrain {
     tick_states: Vec<u32>,
     /// Block state id -> the block entity type of its block, if it has one.
     block_entity_types: Vec<Option<&'static str>>,
-    seed: i64,
     /// The start chunks an exploration map pointed at, by structure name: a
     /// skip check reads the set by name, without a String per candidate.
     referenced: std::sync::Mutex<
@@ -162,10 +161,6 @@ pub struct VanillaTerrain {
     saved_checked: std::sync::Mutex<
         crate::fast_hash::FxHashMap<String, crate::fast_hash::FxHashMap<(i32, i32), i32>>,
     >,
-    /// The world preset the terrain was generated with (`minecraft:normal`
-    /// unless a saved world says otherwise); far decoration uses it too.
-    preset: String,
-    dimension: String,
     /// When the last proto chunk was generated, in milliseconds since
     /// `created`: the ring search waits for a pause in generation.
     last_proto: std::sync::atomic::AtomicU64,
@@ -352,7 +347,7 @@ impl VanillaTerrain {
         let generator = OverworldGenerator::for_world_with_settings(
             data, seed, preset, dimension, structures, saved_stem, regions,
         )?;
-        Self::assemble(resources, generator, seed, preset, dimension)
+        Self::assemble(resources, generator, dimension)
     }
     /// A superflat overworld with the structures its settings allow
     /// (`FlatLevelSource`: its layers, `structure_overrides` and the fixed biome).
@@ -393,8 +388,7 @@ impl VanillaTerrain {
             structures,
             shape.map(|s| (s.min_y, s.height)),
         )?;
-        let mut terrain =
-            Self::assemble(resources, generator, seed, "minecraft:normal", dimension)?;
+        let mut terrain = Self::assemble(resources, generator, dimension)?;
         terrain.flat = true;
         Ok(terrain)
     }
@@ -414,8 +408,7 @@ impl VanillaTerrain {
         let generator = OverworldGenerator::for_mod(
             data, seed, dimension, stem, generator, source, structures,
         )?;
-        let mut terrain =
-            Self::assemble(resources, generator, seed, "minecraft:normal", dimension)?;
+        let mut terrain = Self::assemble(resources, generator, dimension)?;
         terrain.mod_terrain = true;
         Ok(terrain)
     }
@@ -439,8 +432,6 @@ impl VanillaTerrain {
     fn assemble(
         resources: TerrainResources<'_>,
         generator: OverworldGenerator,
-        seed: i64,
-        preset: &str,
         dimension: &str,
     ) -> crate::Result<Self> {
         let TerrainResources {
@@ -518,13 +509,10 @@ impl VanillaTerrain {
             tick_blocks,
             tick_states,
             block_entity_types,
-            seed,
             referenced: Default::default(),
             saved_checked: Default::default(),
             reference_file: Default::default(),
             saved_references: Default::default(),
-            preset: preset.to_owned(),
-            dimension: dimension.to_owned(),
             last_proto: std::sync::atomic::AtomicU64::new(0),
             created: std::time::Instant::now(),
             flat: false,

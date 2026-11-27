@@ -2574,7 +2574,7 @@ pub(super) mod tests {
                 }
             }
             let mut out = Vec::new();
-            r.visible(camera, radius, &frustum, |_| true, |_, _| false, &mut out);
+            r.visible(camera, radius, &frustum, |_| true, &mut out);
             for v in &out {
                 let record = Record::new(v.key, 0, 0, 1, *r.get(v.slot));
                 assert!(

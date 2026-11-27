@@ -1,7 +1,7 @@
 //! `ChunkHolder.broadcastChanges`: the light and blocks that changed in the level in place, to
 //! the players sent those chunks, and, wrapped with the level, to the players whose client views
 //! it (`viewed_levels`).
-use super::{Guest, Hub};
+use super::Hub;
 use crate::{
     chunk::Chunk,
     fast_hash::FxHashSet,

@@ -1,4 +1,5 @@
 use crate::mobs::spawner::SpawnDataExt;
+use sunrise_world::region::ChunkRecord;
 
 #[test]
 fn saved_preset_editor_stems_supply_shapes_and_facts_below_pack_stems() {
