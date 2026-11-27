@@ -103,6 +103,10 @@ impl ModGpuResources {
     /// Before publishing a replacement renderer, continue the old handle ID sequences in
     /// any fresh stores. The retired allocations and pending work stay on the old device.
     pub fn continue_ids_from(&self, previous: &Self) {
+        carry_counter(&self.meshes, &previous.meshes, |s| &mut s.next_generation);
+        carry_counter(&self.uniforms, &previous.uniforms, |s| {
+            &mut s.next_generation
+        });
         carry_counter(&self.storage, &previous.storage, |s| &mut s.next_generation);
         carry_counter(&self.readbacks, &previous.readbacks, |s| &mut s.next_id);
         carry_counter(&self.render_targets, &previous.render_targets, |s| {

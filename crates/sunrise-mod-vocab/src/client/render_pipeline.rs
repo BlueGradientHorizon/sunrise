@@ -1922,7 +1922,9 @@ impl<H: crate::ClientHost + ?Sized> MeshContext for H {
 ///
 /// Drawing a [`MeshRef`] via [`crate::WorldDrawContext::draw_mesh`] records a small POD draw
 /// command with zero CPU vertex copying per frame. Handles are owner-checked and retired
-/// automatically on mod disable, world close, resource reload, or [`Self::release`].
+/// automatically on mod disable, world close, resource reload, renderer rebuild (even on
+/// the same device), or [`Self::release`]. A later allocation by the same mod never makes
+/// a retired handle valid again.
 // no wire: process-local generational handle to retained GPU buffers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the engine creates handles.
@@ -2582,7 +2584,8 @@ impl<H: crate::ClientHost + ?Sized> UniformBufferContext for H {
 /// [`crate::prelude::ClientRenderClientHost::create_uniform_buffer`].
 ///
 /// Handles are owner-checked and retired automatically on mod disable, world close, resource
-/// reload, or [`Self::release`].
+/// reload, renderer rebuild (even on the same device), or [`Self::release`]. A later allocation
+/// by the same mod never makes a retired handle valid again.
 // no wire: process-local generational handle to a retained GPU uniform buffer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the engine creates handles.
