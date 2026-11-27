@@ -308,7 +308,7 @@ include `STORAGE_WRITE_ONLY`, `STORAGE_READ_ONLY` or `STORAGE_READ_WRITE` for th
 or access the adapter lacks is refused when the target is created, with
 `RenderTargetError::UnsupportedStorage`. `host.render_capabilities()` lists the formats with
 read-write storage in `read_write_storage`, and `float32_filterable` says whether an `R32Float`
-target can be sampled with `SamplerFilter::Linear`. A device refusal of the allocation itself is
+target can be sampled with `SamplerFilter::Linear`; where it cannot, the target is read with nearest filtering. A device refusal of the allocation itself is
 `RenderTargetError::Device`.
 
 A render target survives a resource reload and a world close, and is freed by
@@ -325,9 +325,17 @@ For anything else set the public fields of the descriptor: `address_u`, `address
 detail: a `max_lod` above `0.25` blends linearly between the two nearest mip levels (vanilla's
 `NEAREST_MIPMAP_LINEAR` and `LINEAR_MIPMAP_LINEAR`, and Vulkan's linear mipmap mode for `maxLod > 0.25`), and
 `Some(0.0)` reads only the base level. `None` is what `Sampler::new` gives: vanilla's absent `maxLod` (1000),
-so it blends between levels too. A sampler that blends is a filtering one: to sample a depth target, or an
-`R32Float` target where `float32_filterable` is false, set `max_lod = Some(0.0)` with `SamplerFilter::Nearest`.
-A negative or non-finite `max_lod` is `BindGroupLayoutError::BadMaxLod`. Anisotropy is not offered.
+so it blends between levels too. A depth texture, or an `R32Float` one where `float32_filterable` is false,
+cannot be filtered: standalone draw and compute pipelines read it with nearest filtering and no
+blending between levels, without changing the sampler you declared. This also applies to direct
+mod draws during shader-pack rendering. A translated shader-pack program has a fixed sampler layout:
+if it is linked to your draw slot and the binding needs a non-filtering variant, submission returns
+`PipelineDrawError::PackSamplerLayout`. A negative or non-finite `max_lod` is
+`BindGroupLayoutError::BadMaxLod`. Anisotropy is not offered.
+
+The engine checks the bindings at submission and prepares any needed GPU variant before the pass.
+If the device refuses that variant, the affected draws or dispatches are skipped and the renderer
+logs the pipeline and device error once.
 
 A dynamic texture (see [Textures made at run time](dynamic-textures.md)) made with `mip_levels` above 1 is
 bound to such a sampler by its id, `TextureSource::DynamicTexture(id)`, and the shader's `texture`,
@@ -642,11 +650,13 @@ same `register_render_pipelines` hook as a draw pipeline.
    give it, and is never culled. `dispatch_indirect` reads the three counts from a storage buffer
    created with `indirect: true`.
 
-Everything a mod can get wrong comes back as an `Err`: a workgroup size, workgroup storage or
-binding count over the device's limits makes the pipeline resolve `Invalid`, a shader that needs
-subgroup operations resolves `UnsupportedFeature` when `RenderCapabilities::subgroup` is false,
-and a dispatch over `max_compute_workgroups_per_dimension` is `TooManyWorkgroups`. Your GPU
-objects survive a resource reload and a world close; free them with `release`.
+A workgroup size, workgroup storage or binding count over the device's limits makes the pipeline
+resolve `Invalid`. A shader that needs subgroup operations resolves `UnsupportedFeature` when
+`RenderCapabilities::subgroup` is false, and a dispatch over
+`max_compute_workgroups_per_dimension` returns `TooManyWorkgroups`. To sample the live world depth
+from a compute node, declare `.reads(FrameTarget::MainDepth)` and bind `TextureSource::WorldDepth`.
+The same sampler rules apply as for standalone draws. Your GPU objects survive a resource reload
+and a world close; free them with `release`.
 
 ## Indirect draws
 
