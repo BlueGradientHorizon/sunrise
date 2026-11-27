@@ -164,12 +164,12 @@ mod tests {
             let manifest = root.join("crates").join("discovery");
             let tokens = quote::quote!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/.././../tests/temporary/../",
+                "/.././../fixture-dir/temporary/../",
                 "fixture.rs"
             ));
             assert_eq!(
                 env_concat_include(tokens, "CARGO_MANIFEST_DIR", &manifest).unwrap(),
-                Some(root.join("tests").join("fixture.rs"))
+                Some(root.join("fixture-dir").join("fixture.rs"))
             );
         }
     }
