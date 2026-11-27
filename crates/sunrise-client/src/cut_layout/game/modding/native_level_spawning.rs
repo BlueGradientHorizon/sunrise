@@ -312,8 +312,144 @@ mod tests {
                         before,
                         "the level random is not moved"
                     );
+
+                    // `SpawnPlacements.checkSpawnRules` refuses a type not allowed in
+                    // Peaceful before its predicate: neither the registered rule nor the hook
+                    // runs, whatever the light.
+                    game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Peaceful;
+                    rules.lock().unwrap().clear();
+                    hooks.lock().unwrap().clear();
+                    let host: &dyn Host = game;
+                    assert_eq!(
+                        level.check_spawn_rules(
+                            host,
+                            "minecraft:zombie",
+                            at,
+                            SpawnReason::Natural,
+                            LightOverride::Any
+                        ),
+                        Ok(false),
+                        "a zombie in Peaceful"
+                    );
+                    assert!(rules.lock().unwrap().is_empty(), "the rule is not asked");
+                    assert!(hooks.lock().unwrap().is_empty(), "nor the hook");
                 });
             },
+        );
+    }
+
+    /// What `LentProbe`'s placement listener heard: its own `check_spawn_rules` answer, or None
+    /// when it was told not to ask.
+    type LentHeard = Arc<Mutex<Vec<Option<Result<bool, mod_api::LevelReadError>>>>>;
+    /// A `mob_spawn_placement_check` listener that asks `check_spawn_rules` from inside the
+    /// engine's pass when `.0` is set, and fails every check so no mob joins.
+    struct LentProbe(bool, LentHeard);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for LentProbe {
+        fn mob_spawn_placement_check(
+            &self,
+            host: &dyn Host,
+            event: &mut mod_api::MobSpawnPlacementCheckEvent<'_>,
+        ) {
+            let pos = [event.pos.x, event.pos.y, event.pos.z];
+            let nested = self.0.then(|| {
+                event.level.check_spawn_rules(
+                    host,
+                    event.kind,
+                    pos,
+                    event.reason,
+                    mod_api::LightOverride::Real,
+                )
+            });
+            self.1.lock().unwrap().push(nested);
+            *event.result = mod_api::SpawnCheck::Fail;
+        }
+    }
+
+    /// `LevelRef::check_spawn_rules` (#6042) from a listener an engine pass calls: a spawner
+    /// block's tick (`BaseSpawner.serverTick`) holds the level random out of the level while
+    /// its spawn checks run, so the call is refused rather than copying the placeholder there,
+    /// and the level's live draws after the tick are the ones a tick without the call leaves.
+    #[test]
+    #[ignore = "daily"]
+    fn a_listener_inside_an_engine_pass_is_refused_and_the_live_draws_are_unchanged() {
+        use sunrise_core::random::{LegacyRandom, LevelRandom};
+        use sunrise_level::chunk::block_entity::{Next, SpawnData, Spawner};
+        use sunrise_level::containers::BlockEntity;
+        let run = |ask: bool| {
+            let heard = LentHeard::default();
+            let probe = LentProbe(ask, heard.clone());
+            let mut after = None;
+            mod_platform::testing::with_mods(
+                vec![mod_api::ModEntry::new("lent-probe", Box::new(probe))].into(),
+                || {
+                    with_game(|game| {
+                        game.options.dedicated = Some(Vec::new());
+                        game.world
+                            .chunks
+                            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                        game.world.health_rules.difficulty =
+                            sunrise_world::food::Difficulty::Normal;
+                        game.player = Some(
+                            sunrise_sim::motion::PlayerMotion::new(
+                                game.motion,
+                                Vec3::new(8.5, 64.0, 8.5),
+                            )
+                            .unwrap(),
+                        );
+                        let mut mob = sunrise_core::nbt::Compound::new();
+                        mob.insert(
+                            "id".into(),
+                            sunrise_core::nbt::Tag::String("minecraft:zombie".into()),
+                        );
+                        let key = (8, 64, 8);
+                        let spawner = Spawner {
+                            spawn_delay: 0,
+                            next: Some(Next::Own(SpawnData {
+                                entity: mob,
+                                ..Default::default()
+                            })),
+                            ..Spawner::default()
+                        };
+                        game.world
+                            .block_entities
+                            .insert(key, BlockEntity::Spawner(Box::new(spawner)));
+                        // A known nonzero stream, not the seed-zero placeholder.
+                        game.world.random = LevelRandom::for_level(LegacyRandom::new(0x5eed_6042));
+                        game.tick_spawner(key).unwrap();
+                        let delay = match game.world.block_entities.get(&key) {
+                            Some(BlockEntity::Spawner(s)) => s.spawn_delay,
+                            _ => panic!("the spawner is gone"),
+                        };
+                        after = Some((
+                            <(u64, Option<f64>)>::from(&*game.world.random),
+                            delay,
+                            game.mobs.len(),
+                        ));
+                    });
+                },
+            );
+            (after.unwrap(), std::mem::take(&mut *heard.lock().unwrap()))
+        };
+        let (asked, asked_heard) = run(true);
+        let (plain, plain_heard) = run(false);
+        assert!(!asked_heard.is_empty(), "the tick ran its spawn checks");
+        assert!(
+            asked_heard
+                .iter()
+                .all(|h| *h == Some(Err(mod_api::LevelReadError::Unavailable))),
+            "{asked_heard:?}"
+        );
+        assert_eq!(asked_heard.len(), plain_heard.len());
+        assert_eq!(asked.2, 0, "every check failed");
+        assert_eq!(
+            asked, plain,
+            "the live stream and the spawner after the tick are the ones without the call"
+        );
+        assert_ne!(
+            asked.0,
+            <(u64, Option<f64>)>::from(&*LevelRandom::for_level(LegacyRandom::new(0x5eed_6042))),
+            "the tick drew from the live stream"
         );
     }
 

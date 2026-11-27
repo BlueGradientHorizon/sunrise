@@ -33,6 +33,11 @@ pub trait LevelSpawningBackend {
     /// included, passes its vanilla rule, as in `SpawnPlacements.checkSpawnRules`; registered
     /// predicates and the hook still answer for it.
     ///
+    /// Peaceful: `SpawnPlacements.checkSpawnRules` refuses a type `EntityType.isAllowedInPeaceful`
+    /// refuses before it asks the predicate, so at Peaceful difficulty such a type (a zombie)
+    /// answers `Ok(false)` whatever `light` says, and neither the predicate nor the hook is
+    /// called.
+    ///
     /// The override reaches the predicate and so `default_result`; the hook's `level` handle
     /// reads the level's real light (NeoForge's event would carry the light-lying level).
     /// With [`LightOverride::Any`] the rule and the hook run once per light level, from 0 up,
@@ -49,7 +54,10 @@ pub trait LevelSpawningBackend {
     /// `Err(Stale)` for a stale handle. `Err(Unavailable)` on a client, for a level not in
     /// place, for a light override this build does not know, and for a call made while
     /// another runs on this thread (a `mob_spawn_placement_check` listener asking again), so a
-    /// listener cannot recurse.
+    /// listener cannot recurse. Also `Err(Unavailable)` while the engine holds the level random
+    /// out of the level for its own pass (natural spawning, a spawner's or trial spawner's tick,
+    /// a vault's, a raid's, zombie reinforcements): a listener those passes call cannot ask,
+    /// since there is no level stream to copy until the pass ends.
     fn level_check_spawn_rules(
         &self,
         level: LevelRef,

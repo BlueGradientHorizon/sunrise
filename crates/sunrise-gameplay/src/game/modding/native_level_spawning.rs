@@ -44,6 +44,36 @@ impl Drop for CheckingSpawnRules {
     }
 }
 
+thread_local! {
+    /// How many engine passes on this thread hold the level random out of `world.random`.
+    static LEVEL_RANDOM_LENT: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Marks the level random as lent out of `world.random` until it is dropped, unwinding
+/// included. Natural spawning, a spawner block's or minecart's tick, a trial spawner's, a
+/// vault's, a raid's and zombie reinforcements move the live stream out of the field and leave
+/// a seed-zero placeholder there while their mod callbacks run; `level_check_spawn_rules`
+/// refuses while one is held instead of copying the placeholder.
+pub(in crate::game) struct LevelRandomLent(());
+
+impl LevelRandomLent {
+    /// Starts a lend; held ones nest.
+    pub(in crate::game) fn start() -> Self {
+        LEVEL_RANDOM_LENT.with(|lent| lent.set(lent.get() + 1));
+        Self(())
+    }
+    /// Whether a lend is held on this thread.
+    fn held() -> bool {
+        LEVEL_RANDOM_LENT.with(|lent| lent.get() > 0)
+    }
+}
+
+impl Drop for LevelRandomLent {
+    fn drop(&mut self) {
+        LEVEL_RANDOM_LENT.with(|lent| lent.set(lent.get().saturating_sub(1)));
+    }
+}
+
 impl crate::game::ServerGame<'_> {
     /// `LevelRef::spawn_entity`: a thrown projectile, a mob or a general row of
     /// `kind` at `pos`, each through its family's own route (`Projectile.spawnProjectile`,
@@ -267,7 +297,9 @@ impl crate::game::ServerGame<'_> {
     /// `SpawnPlacements.checkSpawnRules` and the `mob_spawn_placement_check` hook with the light
     /// reads `light` names: see `LevelSpawningBackend::level_check_spawn_rules`. A call made
     /// while another runs on this thread (a listener asking again) is refused before it reads
-    /// anything, so a listener cannot recurse.
+    /// anything, so a listener cannot recurse. A call made while the engine holds the level random
+    /// out of `world.random` (`LevelRandomLent`) is refused too: the field holds a placeholder.
+    #[inline(always)]
     pub fn level_check_spawn_rules(
         &self,
         level: LevelRef,
@@ -293,6 +325,9 @@ impl crate::game::ServerGame<'_> {
             // A variant this build does not know is refused, not read as another.
             _ => return Err(LevelReadError::Unavailable),
         };
+        if LevelRandomLent::held() {
+            return Err(LevelReadError::Unavailable);
+        }
         let Some(_checking) = CheckingSpawnRules::enter() else {
             return Err(LevelReadError::Unavailable);
         };

@@ -1321,7 +1321,10 @@ impl<'a> crate::game::ServerGame<'a> {
     ///
     /// The tries draw in turn from one copy of the level random (`LevelRandom::clone`, never
     /// written back): the level's stream does not move, so a call at an unchanged state
-    /// replays the same rolls, and each try draws after the one before it.
+    /// replays the same rolls, and each try draws after the one before it. It reads
+    /// `world.random` as it is: the caller refuses while the engine holds the live stream out
+    /// of it (`LevelRandomLent`).
+    #[inline(always)]
     pub(in crate::game) fn check_spawn_rules_with_light(
         &self,
         kind: &str,
@@ -1647,6 +1650,7 @@ impl<'a> crate::game::ServerGame<'a> {
             &mut self.common.world.random,
             sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(0)),
         );
+        let lent = crate::game::server_side::native_level_spawning::LevelRandomLent::start();
         scratch.pass.players.refresh(self);
         scratch.pass.costed.clear();
         for kind in world_biomes!(self)
@@ -1721,6 +1725,7 @@ impl<'a> crate::game::ServerGame<'a> {
         sunrise_threads::work::clear_work();
         spawn_selection::attempt_counters(true);
         laps.lap("sn_attempts");
+        drop(lent);
         self.common.world.random = random;
         self.server.spawn_counts.insert(self.common.dim, last_state);
         scratch.spawn_buffers = state.into_parts().1;
