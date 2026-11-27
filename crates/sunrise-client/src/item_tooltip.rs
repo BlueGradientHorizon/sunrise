@@ -3218,7 +3218,7 @@ mod stack_modifier_tests {
     #[test]
     fn a_raid_banner_keeps_its_tooltip_display_across_the_wire() {
         let (renamed, hidden) = crate::item_sync::raid_banner_round_trip_fixture();
-        assert!(!super::tooltip_display(&renamed).shows("minecraft:banner_patterns"));
-        assert!(!super::tooltip_display(&hidden).shows("minecraft:banner_patterns"));
+        assert!(!super::tooltip_display(&renamed, None).shows("minecraft:banner_patterns"));
+        assert!(!super::tooltip_display(&hidden, None).shows("minecraft:banner_patterns"));
     }
 }
