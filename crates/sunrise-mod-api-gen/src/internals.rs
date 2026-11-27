@@ -1031,7 +1031,7 @@ impl Pass {
                 let (ident, generics) = (&value.ident, &value.generics);
                 let signature = shape_signature(item).expect("a struct");
                 expose!(value, "struct", value.struct_token.span(), signature);
-                if children || self.reaching {
+                if include_scope.is_some() || self.reaching {
                     self.fields(
                         file,
                         module,
@@ -1052,7 +1052,7 @@ impl Pass {
                 };
                 signature.fields = fields;
                 expose!(value, "struct", value.union_token.span(), signature);
-                if children || self.reaching {
+                if include_scope.is_some() || self.reaching {
                     self.fields(
                         file,
                         module,
@@ -1066,7 +1066,7 @@ impl Pass {
             Item::Enum(value) => {
                 let signature = shape_signature(item).expect("an enum");
                 let path = expose!(value, "enum", value.enum_token.span(), signature);
-                if children {
+                if include_scope.is_some() {
                     for variant in &value.variants {
                         if !test_only(&variant.attrs) {
                             self.fields(
