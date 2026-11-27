@@ -34,15 +34,8 @@ impl Renderer {
         let landing = Instant::now();
         self.land_frame();
         self.refresh_mod_frame_views();
-        // Mod pipelines keep shader-pack state only while a pack that runs is selected.
-        let pack_selected = self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
         if let Some(world_primitives) = self.world_primitives.as_mut() {
             world_primitives.pipelines.begin_frame();
-            if pack_selected {
-                world_primitives.pipelines.select_pack(&self.device);
-            } else {
-                world_primitives.pipelines.deselect_pack();
-            }
         }
         // The frame's one poll takes in what earlier frames read back (GPU times, GPU
         // culling's statistics, occlusion results, a shader pack's centre depth); their
@@ -53,6 +46,15 @@ impl Renderer {
             super::in_flight::poll_live(&self.device, &self.device_lost, wgpu::PollType::Poll);
         if self.device_lost() {
             return Err(super::in_flight::LOST.into());
+        }
+        // Mod pipelines keep shader-pack state only while a pack that runs is selected.
+        let pack_selected = self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
+        if let Some(world_primitives) = self.world_primitives.as_mut() {
+            if pack_selected {
+                world_primitives.pipelines.select_pack(&self.device);
+            } else {
+                world_primitives.pipelines.deselect_pack();
+            }
         }
         if polled.is_ok()
             && let Some(timer) = &mut self.gpu_timer

@@ -946,18 +946,29 @@ struct PackState {
     vanilla: wgpu::Buffer,
     /// The load (`ModPipelines::generation`) `sources` were built for.
     generation: u64,
-    /// Per pipeline slot, its objects for a pack target; `None` for an empty slot or one the
-    /// GPU refused them for.
+    /// Per pipeline slot, its objects for a pack target; `None` for an empty slot or one whose
+    /// pack group the GPU refused.
     sources: Vec<Option<PackSource>>,
 }
 
 /// One pipeline's objects for a shader pack's target.
 struct PackSource {
-    /// Set 0 over `PackState::vanilla`.
+    /// Set 0 over `PackState::vanilla`: the mod's own pipeline on a pack target, and a pack
+    /// program running the mod's vertex stage (`pack_globals`), bind it.
     group: wgpu::BindGroup,
-    /// Under linear light, the gamma fragment module a pack's target draws with (the world's
-    /// is the linear one); `None` draws with the world's.
-    fragment_shader: Option<wgpu::ShaderModule>,
+    /// The fragment module the mod's own pipeline draws a pack's target with.
+    fragment: PackFragment,
+}
+
+/// The fragment module a mod pipeline draws a shader pack's target with.
+enum PackFragment {
+    /// The world's: without linear light it is already the gamma one.
+    World,
+    /// Under linear light, the gamma module (the world's is the linear one).
+    Gamma(wgpu::ShaderModule),
+    /// Under linear light, the GPU refused the gamma module: the mod's own pipeline draws
+    /// nothing on a pack's target, while pack programs that bind `PackSource::group` still do.
+    Refused,
 }
 
 /// A GPU pipeline built for one sampler layout and one set of attachments.
@@ -2042,39 +2053,48 @@ impl ModPipelines {
     }
 
     /// `source`'s objects for a shader pack's target: its set-0 group over `vanilla` (the
-    /// pack's blocks) and, under linear light, its gamma fragment module — or the GPU's error.
+    /// pack's blocks), or the GPU's error, and under linear light its gamma fragment module,
+    /// refused alone when the GPU refuses it.
     fn pack_source(
         &self,
         device: &wgpu::Device,
         source: &PipelineSource,
         vanilla: &wgpu::Buffer,
     ) -> Result<PackSource, String> {
-        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
         let program = &source.recipe.program;
-        let group = GlobalsBindings {
-            layout: &source.globals_layout,
-            program,
-            sprite: source.sprite.as_ref().map(|(view, _)| view),
-            sprite_rect: source.sprite_rect.as_ref(),
-            sampler: &self.sampler,
-        }
-        .group(device, "Mod pipeline (pack)", vanilla);
-        let fragment_shader = self.linear_light.then(|| {
-            device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Mod pipeline (fragment, gamma)"),
-                source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(program.fragment.clone())),
-            })
-        });
-        let internal = pollster::block_on(internal.pop());
-        let validation = pollster::block_on(validation.pop());
-        if let Some(error) = internal.or(validation) {
-            return Err(error.to_string());
-        }
-        Ok(PackSource {
-            group,
-            fragment_shader,
-        })
+        let group = gpu_scoped(device, || {
+            GlobalsBindings {
+                layout: &source.globals_layout,
+                program,
+                sprite: source.sprite.as_ref().map(|(view, _)| view),
+                sprite_rect: source.sprite_rect.as_ref(),
+                sampler: &self.sampler,
+            }
+            .group(device, "Mod pipeline (pack)", vanilla)
+        })?;
+        let fragment = if !self.linear_light {
+            PackFragment::World
+        } else {
+            let gamma = gpu_scoped(device, || {
+                device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("Mod pipeline (fragment, gamma)"),
+                    source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(
+                        program.fragment.clone(),
+                    )),
+                })
+            });
+            match gamma {
+                Ok(module) => PackFragment::Gamma(module),
+                Err(error) => {
+                    log::warn!(
+                        "Sunrise: mod pipeline {} draws nothing on shader-pack targets: its gamma fragment module was refused by the GPU: {error}",
+                        source.recipe.id
+                    );
+                    PackFragment::Refused
+                }
+            }
+        };
+        Ok(PackSource { group, fragment })
     }
 
     /// Builds the pipelines' shader-pack state on a shader pack's selection, for every
@@ -2108,7 +2128,7 @@ impl ModPipelines {
                 self.pack_source(device, &compiled.source, &vanilla)
                     .map_err(|error| {
                         log::warn!(
-                            "Sunrise: mod pipeline {} refused for shader packs by the GPU: {error}",
+                            "Sunrise: mod pipeline {} draws nothing on shader-pack targets: its pack group was refused by the GPU: {error}",
                             compiled.source.recipe.id
                         );
                     })
@@ -2137,18 +2157,18 @@ impl ModPipelines {
         self.pack.as_ref()?.sources.get(slot)?.as_ref()
     }
 
-    /// The fragment module slot's pipeline draws a shader pack's target with.
+    /// The fragment module slot's pipeline draws a shader pack's target with, `None` without
+    /// a pack or when the GPU refused it.
     fn pack_fragment_of<'a>(
         &'a self,
         slot: usize,
         source: &'a PipelineSource,
     ) -> Option<&'a wgpu::ShaderModule> {
-        let pack = self.pack_source_of(slot)?;
-        Some(
-            pack.fragment_shader
-                .as_ref()
-                .unwrap_or(&source.fragment_shader),
-        )
+        match &self.pack_source_of(slot)?.fragment {
+            PackFragment::World => Some(&source.fragment_shader),
+            PackFragment::Gamma(module) => Some(module),
+            PackFragment::Refused => None,
+        }
     }
 
     /// The sole constructor for GPU render pipeline variants. Pack passes drawing the mod's
@@ -4930,6 +4950,19 @@ impl ModPipelines {
     }
 }
 
+/// `create`'s result, or the validation or internal error the GPU raised while it ran.
+fn gpu_scoped<T>(device: &wgpu::Device, create: impl FnOnce() -> T) -> Result<T, String> {
+    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+    let made = create();
+    let internal = pollster::block_on(internal.pop());
+    let validation = pollster::block_on(validation.pop());
+    match internal.or(validation) {
+        Some(error) => Err(error.to_string()),
+        None => Ok(made),
+    }
+}
+
 fn gpu_refusal(built: &Built, error: &str) -> String {
     format!(
         "render pipeline {} from mod {} refused by the GPU: {error}",
@@ -4951,11 +4984,17 @@ impl super::Renderer {
             atlas: &self.entity_atlas,
             sprite,
         };
-        self.world_primitives
+        let pipelines = &mut self
+            .world_primitives
             .as_mut()
             .expect("world primitives")
-            .pipelines
-            .build(&self.device, set, Some(textures))
+            .pipelines;
+        // A pack turned off since the last frame takes its state with it now, so this load
+        // builds none for it.
+        if !self.pack_post.as_ref().is_some_and(|p| p.1.is_some()) {
+            pipelines.deselect_pack();
+        }
+        pipelines.build(&self.device, set, Some(textures))
     }
 }
 

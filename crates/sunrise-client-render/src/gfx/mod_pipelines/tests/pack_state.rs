@@ -15,7 +15,9 @@ impl ModPipelines {
         [
             1,
             sources().count(),
-            sources().filter(|s| s.fragment_shader.is_some()).count(),
+            sources()
+                .filter(|s| matches!(s.fragment, PackFragment::Gamma(_)))
+                .count(),
         ]
     }
 }
@@ -31,8 +33,19 @@ fn pipelines(generation: u64, n: usize) -> Pipelines {
     load(generation, &shaders)
 }
 
-/// The 1024-byte vanilla block uploads one `prepare` of `vertices` drawn by `runs` makes, or of
-/// no runs with the frame's vanilla blocks when `runs` is empty.
+/// Vanilla blocks other than the ones `render_target` draws with: its projection, but a
+/// `ColorModulator` of `(0.5, 0.25, 0.75, 1)`, under which the quad would show as
+/// `[100, 10, 90, 255]`.
+fn other_blocks() -> [u8; 1024] {
+    let mut blocks = fallback_vanilla_blocks(view_proj(), [SIZE, SIZE], 0.0);
+    // `DynamicTransforms` at byte 512: `ModelViewMat`, `TextureMat`, then `ColorModulator`.
+    let modulator: [f32; 4] = [0.5, 0.25, 0.75, 1.0];
+    blocks[640..656].copy_from_slice(bytemuck::cast_slice(&modulator));
+    blocks
+}
+
+/// The 1024-byte vanilla block uploads one `prepare` of `vertices` drawn by `runs` with
+/// [`other_blocks`] makes, or of no runs with those blocks when `runs` is empty.
 fn block_uploads(
     (device, queue): &(wgpu::Device, wgpu::Queue),
     primitives: &mut WorldPrimitives,
@@ -54,7 +67,7 @@ fn block_uploads(
         usage: wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
-    let blocks = fallback_vanilla_blocks(view_proj(), [SIZE, SIZE], 0.0);
+    let blocks = other_blocks();
     let mut uploads = 0;
     primitives.prepare(
         device,
@@ -144,7 +157,9 @@ fn pack_state_exists_only_while_a_pack_is_selected() {
         );
         assert_eq!(block_uploads(&gpu, &mut primitives, &two, &[], &[]), 1);
 
-        // The first selection builds them for the two pipelines built before it.
+        // The first selection builds them for the two pipelines built before it. The pack pass
+        // selects after this frame's `prepare`, whose blocks differ from the frame before's
+        // (`other_blocks`): the quad's colour shows the pack reads this frame's.
         let gamma = usize::from(linear) * 2;
         let at = render_target(&gpu, &mut primitives, format, batch(&two), STAGES - 1, true);
         assert_drawn(&at, true, &what("pack on"));
@@ -184,7 +199,10 @@ fn pack_state_exists_only_while_a_pack_is_selected() {
             1
         );
 
-        // On again: built again, and the pack's target draws as before.
+        // On again, selected before the frame as the renderer does: built again from the frame
+        // before's blocks (`other_blocks`), then this frame's upload, and the pack's target
+        // draws as before.
+        primitives.pipelines.select_pack(&gpu.0);
         let at = render_target(&gpu, &mut primitives, format, batch(&two), STAGES - 1, true);
         assert_drawn(&at, true, &what("pack on again"));
         assert_eq!(
@@ -214,6 +232,101 @@ fn pack_state_exists_only_while_a_pack_is_selected() {
         );
         assert_drawn(&at, true, &what("reload"));
     }
+}
+
+/// `module` with an unused ray-query acceleration structure: naga accepts it under every
+/// capability, while a device without ray queries (the test device asks for no feature)
+/// refuses the module.
+fn refused_here(mut module: naga::Module) -> naga::Module {
+    let ty = module.types.insert(
+        naga::Type {
+            name: None,
+            inner: naga::TypeInner::AccelerationStructure {
+                vertex_return: false,
+            },
+        },
+        naga::Span::UNDEFINED,
+    );
+    module.global_variables.append(
+        naga::GlobalVariable {
+            name: Some("refused_here".into()),
+            space: naga::AddressSpace::Handle,
+            binding: Some(naga::ResourceBinding {
+                group: 3,
+                binding: 0,
+            }),
+            ty,
+            init: None,
+            memory_decorations: naga::MemoryDecorations::empty(),
+        },
+        naga::Span::UNDEFINED,
+    );
+    module
+}
+
+/// Under linear light, a GPU refusal of a pipeline's gamma fragment module refuses only the
+/// draws that need it: the mod's own pipeline on a pack's target. The pack group stays, which
+/// a pack program running the mod's vertex stage binds (`pack_globals`), and the world draws.
+#[test]
+#[ignore = "daily"]
+fn a_refused_gamma_module_keeps_the_pack_group() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = device() else {
+        panic!("no GPU adapter");
+    };
+    let format = wgpu::TextureFormat::Rgba8Unorm;
+    let set = pipelines(81, 1);
+    let mut primitives = WorldPrimitives::new(&gpu.0, (format, true));
+    // The world's fragment module under linear light is translated from the GLSL again
+    // (`translate_linear_fragment`); only the gamma one is the program's, made refused here.
+    primitives
+        .pipelines
+        .build_with(&set, |this, built| {
+            let program = &built.program;
+            let mut broken = (**built).clone();
+            broken.program = Arc::new(crate::core_shader::validated(
+                program.vertex.clone(),
+                refused_here(program.fragment.clone()),
+                program.other.clone(),
+            ));
+            let source = this.pipeline_source(&gpu.0, &Arc::new(broken), None)?;
+            let frag = source.fragment_shader.clone();
+            this.compile(
+                &gpu.0,
+                source,
+                &frag,
+                &VariantTarget::World,
+                &SamplerLayout::EMPTY,
+                None,
+            )
+        })
+        .unwrap();
+    let vertices = quad([8.0, 8.0, 24.0, 24.0], 2.0, COLOR);
+    let runs = [PipelineRun {
+        slot: 0,
+        stage: world_primitives::STAGE_CUSTOM_GEOMETRY as u32,
+        quads: 1,
+        modifier_stack: 0,
+    }];
+    let batch = || Batch {
+        set: Some(&set),
+        vertices: &vertices,
+        runs: &runs,
+        ..Default::default()
+    };
+    let world = render_target(&gpu, &mut primitives, format, batch(), STAGES - 1, false);
+    assert_ne!(world(16, 16), BACKGROUND, "the world draws the quad");
+    let pack = render_target(&gpu, &mut primitives, format, batch(), STAGES - 1, true);
+    assert_eq!(primitives.pipelines.pack_objects(), [1, 1, 0]);
+    assert!(
+        primitives.pipelines.pack_globals(0).is_some(),
+        "the pack group stays"
+    );
+    assert_eq!(
+        pack(16, 48),
+        BACKGROUND,
+        "the mod's own pipeline skips the pack target"
+    );
 }
 
 /// Through the real `Renderer`: a frame's shader pack selection builds the mod pipelines' pack
@@ -271,6 +384,38 @@ fn a_renderer_builds_mod_pipeline_pack_state_only_with_a_pack() {
         stdout.contains("1 passed"),
         "the child ran no test: {stdout}"
     );
+}
+
+/// Quads all round the camera, 3 blocks away on each side and wound both ways, so the frame's
+/// centre shows `color` whichever way the camera looks and whatever the pipeline culls.
+fn camera_box(color: [u8; 4]) -> Vec<PipelineVertex> {
+    let color = u32::from_le_bytes(color);
+    let at = |pos: [f32; 3]| PipelineVertex {
+        pos,
+        uv: [0.0, 0.0],
+        color,
+    };
+    let mut vertices = Vec::new();
+    for axis in [0, 2] {
+        for side in [-3.0, 3.0] {
+            let corner = |u: f32, v: f32| {
+                let mut pos = [u, v, u];
+                pos[axis] = side;
+                pos[1] = v;
+                pos[2 - axis] = u;
+                at(pos)
+            };
+            let face = [
+                corner(-3.0, -3.0),
+                corner(-3.0, 3.0),
+                corner(3.0, 3.0),
+                corner(3.0, -3.0),
+            ];
+            vertices.extend(face);
+            vertices.extend(face.iter().rev());
+        }
+    }
+    vertices
 }
 
 /// A pack of only a `final` showing `colortex0`.
@@ -337,16 +482,21 @@ fn renderer_fixture(window: std::sync::Arc<winit::window::Window>) {
             .pipelines
             .pack_objects()
     };
-    let vertices = quad([8.0, 8.0, 24.0, 24.0], 2.0, COLOR);
+    let vertices = camera_box(COLOR);
     let runs = [PipelineRun {
         slot: 0,
         stage: world_primitives::STAGE_CUSTOM_GEOMETRY as u32,
-        quads: 1,
+        quads: vertices.len() as u32 / 4,
         modifier_stack: 0,
     }];
     let hud = crate::hud::HudBatch::scratch([4, 4]);
-    let render = |renderer: &mut Renderer, set: &Pipelines| {
+    let shots = tempfile::tempdir().unwrap();
+    // A world frame (not the title's, which prepares no world primitives and runs no pack)
+    // looking level; the frame's centre pixel as saved.
+    let render = |renderer: &mut Renderer, set: &Pipelines| -> [u8; 4] {
         let mut frame = crate::gfx::frame_tests::frame(&hud);
+        frame.title = false;
+        frame.pitch = 0.0;
         frame.world_primitives = world_primitives::Batch {
             pipelines: Batch {
                 set: Some(set),
@@ -356,7 +506,21 @@ fn renderer_fixture(window: std::sync::Arc<winit::window::Window>) {
             },
             ..Default::default()
         };
+        renderer.screenshot = Some(crate::gfx::ScreenshotRequest {
+            path: shots.path().join("frame.png"),
+            size: None,
+            scaled: false,
+            background: false,
+        });
         renderer.render(&frame, None).unwrap();
+        let shot = renderer
+            .screenshot_result
+            .take()
+            .expect("a readback")
+            .expect("the frame's pixels");
+        let image = &shot.image;
+        let at = 4 * ((image.height / 2 * image.width + image.width / 2) as usize);
+        image.rgba[at..at + 4].try_into().unwrap()
     };
     let folder = tempfile::tempdir().unwrap();
     let pack = final_pack(folder.path());
@@ -374,13 +538,20 @@ fn renderer_fixture(window: std::sync::Arc<winit::window::Window>) {
 
     let one = pipelines(71, 1);
     renderer.build_mod_pipelines(&one, &|_| None).unwrap();
-    render(&mut renderer, &one);
+    let shown = render(&mut renderer, &one);
+    eprintln!("MOD_PIPELINE_PACK_STATE_PIXEL no pack {shown:?}");
+    assert_eq!(shown, COLOR, "no pack: the mod's quad");
     assert_eq!(objects(&renderer), [0, 0, 0], "no pack");
 
     set_pack(&mut renderer);
     // The selection alone builds nothing: the frame does.
     assert_eq!(objects(&renderer), [0, 0, 0], "selected, no frame yet");
-    render(&mut renderer, &one);
+    let shown = render(&mut renderer, &one);
+    eprintln!("MOD_PIPELINE_PACK_STATE_PIXEL pack on {shown:?}");
+    assert_eq!(
+        shown, COLOR,
+        "pack on: the mod's quad, through the pack's final"
+    );
     let gamma = usize::from(linear);
     assert_eq!(
         objects(&renderer),
@@ -389,16 +560,36 @@ fn renderer_fixture(window: std::sync::Arc<winit::window::Window>) {
     );
 
     renderer.set_shader_pack(0, None, &[]).unwrap();
-    render(&mut renderer, &one);
+    // A load built with the pack off and no frame since builds no pack state for it.
+    let off = pipelines(73, 1);
+    renderer.build_mod_pipelines(&off, &|_| None).unwrap();
+    assert_eq!(
+        objects(&renderer),
+        [0, 0, 0],
+        "a reload right after the pack went off"
+    );
+    assert_eq!(
+        render(&mut renderer, &off),
+        COLOR,
+        "pack off: the mod's quad"
+    );
     assert_eq!(objects(&renderer), [0, 0, 0], "pack off");
 
     set_pack(&mut renderer);
-    render(&mut renderer, &one);
+    assert_eq!(
+        render(&mut renderer, &off),
+        COLOR,
+        "pack on again: the mod's quad"
+    );
     assert_eq!(objects(&renderer), [1, 1, gamma], "pack on again");
 
     let two = pipelines(72, 2);
     renderer.build_mod_pipelines(&two, &|_| None).unwrap();
-    render(&mut renderer, &two);
+    assert_eq!(
+        render(&mut renderer, &two),
+        COLOR,
+        "a reload with the pack on: the quad"
+    );
     assert_eq!(
         objects(&renderer),
         [1, 2, 2 * gamma],
