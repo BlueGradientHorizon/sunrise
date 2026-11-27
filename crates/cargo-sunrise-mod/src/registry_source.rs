@@ -116,6 +116,20 @@ fn read_index(cache: &Path, url: &str, fetch: &Fetch, key: &str) -> Result<Index
     let signed = fetch(url, index::MAX_INDEX + MAX_SIGNATURE as u64)?;
     let index = Index::verify(&signed, key).map_err(|e| format!("{url}: {e}"))?;
     let path = cache.join(SERIAL);
+    let folder = path.parent().expect("serial file in the cache");
+    fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    let lock_path = cache.join(format!("{SERIAL}.lock"));
+    let lock_file = fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|e| format!("{}: {e}", lock_path.display()))?;
+    lock_file
+        .lock()
+        .map_err(|e| format!("{}: {e}", lock_path.display()))?;
+
     let last = match fs::read_to_string(&path) {
         Ok(text) => Some(text.trim().parse::<u64>().map_err(|e| {
             format!(
@@ -136,9 +150,7 @@ fn read_index(cache: &Path, url: &str, fetch: &Fetch, key: &str) -> Result<Index
     }
     if last.is_none_or(|last| index.serial > last) {
         // Replaced whole by a rename, so a stopped run never leaves a partial serial behind.
-        let folder = path.parent().expect("serial file in the cache");
-        fs::create_dir_all(folder)
-            .and_then(|()| tempfile::NamedTempFile::new_in(folder))
+        tempfile::NamedTempFile::new_in(folder)
             .and_then(|mut file| {
                 file.write_all(index.serial.to_string().as_bytes())?;
                 file.persist(&path).map_err(|e| e.error)?;
