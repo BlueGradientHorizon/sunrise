@@ -2415,6 +2415,8 @@ impl Renderer {
             stars,
             custom_sky,
             custom_sky_draws: Vec::new(),
+            custom_lightmap: crate::custom_lightmap::empty(),
+            lightmap_weather: Default::default(),
             entity_outline,
             panorama,
             border_pipeline,

@@ -648,6 +648,19 @@ impl Renderer {
     pub fn custom_sky_draws(&mut self) -> &mut Vec<crate::custom_sky::Draw> {
         &mut self.custom_sky_draws
     }
+    /// The pack's custom lightmaps (`crate::custom_lightmap::load`): a world with one takes its
+    /// light texture from them in place of the computed one.
+    pub fn set_custom_lightmap(
+        &mut self,
+        pack: std::sync::Arc<dyn crate::custom_lightmap::Lightmaps>,
+    ) {
+        self.custom_lightmap = pack;
+        self.lightmap_uploaded = false;
+    }
+    /// The world and weather the next frame's light texture is for (custom lightmaps read them).
+    pub fn set_lightmap_weather(&mut self, weather: crate::custom_lightmap::Weather) {
+        self.lightmap_weather = weather;
+    }
     fn quad_indices(device: &wgpu::Device, quads: u32) -> wgpu::Buffer {
         surface_setup::ray_query::quad_indices(device, quads)
     }

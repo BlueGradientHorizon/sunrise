@@ -1,7 +1,8 @@
 //! A resource pack's `core/lightmap` shader (26.3's `Lightmap.render`, `RenderPipelines.LIGHTMAP`):
 //! the 16x16 light texture drawn by the pack's GLSL from the frame's `LightmapInfo`, as a pack that
 //! darkens caves or tints the night expects (wiki "Lightmaps", 1.21.11 and up). Without one the
-//! texture is computed natively ([`native_lightmap`]). `Renderer::update_lightmap` is the one
+//! texture is computed natively ([`native_lightmap`]), or taken from the pack's custom lightmap of
+//! the world (`crate::custom_lightmap`). `Renderer::update_lightmap` is the one
 //! entry point for the frame's light texture, either way.
 
 use crate::polytone_post::ExpressionUniform;
@@ -556,6 +557,24 @@ impl super::Renderer {
         self.lightmap_chart.shown(drawing)
     }
 
+    /// The pack's custom lightmap of the frame's world for it, if the world has one that serves
+    /// (`crate::custom_lightmap`); none to compute the texture.
+    fn custom_lightmap_pixels(&self, frame: &super::Frame) -> Option<[u8; 16 * 16 * 4]> {
+        let weather = self.lightmap_weather;
+        let world = weather.world.filter(|&w| self.custom_lightmap.has(w))?;
+        self.custom_lightmap.pixels(
+            world,
+            &crate::custom_lightmap::Input {
+                sky: frame.sky.sky_light_factor,
+                flicker: frame.block_flicker,
+                gamma: self.gamma,
+                night_vision: frame.night_vision > 0.0,
+                darkness: frame.darkness.1,
+                weather,
+            },
+        )
+    }
+
     /// The frame's light texture (`LightmapRenderStateExtractor.extract`, then
     /// `Lightmap.render`): a pack's `core/lightmap` draws it from the frame's `LightmapInfo`,
     /// or its pixels are computed and uploaded when they change. Fullbright keeps it white.
@@ -598,7 +617,9 @@ impl super::Renderer {
         if let Some(core) = self.core_lightmap.as_mut() {
             core.forget_copies();
         }
-        let mut pixels = native_lightmap(&info);
+        let mut pixels = self
+            .custom_lightmap_pixels(frame)
+            .unwrap_or_else(|| native_lightmap(&info));
         if self.fullbright {
             pixels.fill(255);
         }

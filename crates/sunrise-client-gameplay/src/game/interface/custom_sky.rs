@@ -71,8 +71,23 @@ impl crate::game::ClientGame<'_> {
             );
             self.client.custom_sky.state = state;
         }
+        // Custom lightmaps (OptiFine's format): the world and weather the light texture is for.
+        // The Nether has one too.
+        let lightmap_world = (!title).then_some(match self.common.dim {
+            Dim::Overworld | Dim::Extra(_) => 0,
+            Dim::Nether => -1,
+            Dim::End => 1,
+        });
+        let lightning =
+            self.common.flash > 0 && !self.client.settings.file.bool("hideLightningFlashes");
         if let Some(renderer) = self.client.renderer.0.as_mut() {
             *renderer.custom_sky_draws() = draws;
+            renderer.set_lightmap_weather(sunrise_client::custom_lightmap::Weather {
+                world: lightmap_world,
+                rain,
+                thunder,
+                lightning,
+            });
         }
     }
 }
