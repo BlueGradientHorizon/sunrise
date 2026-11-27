@@ -39,10 +39,6 @@ pub(super) struct RegionFiles {
     pub(super) close_on_evict: Option<fn(RegionFile) -> std::io::Result<()>>,
 }
 impl RegionFiles {
-    #[cfg(test)]
-    pub(super) fn is_empty(&self) -> bool {
-        self.regions.is_empty()
-    }
     /// The open region files.
     #[cfg(test)]
     pub(super) fn open(&self) -> usize {
