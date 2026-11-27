@@ -403,13 +403,14 @@ pub fn walk_module_files(
     include_tests: bool,
     parse: impl Fn(&Path, &str) -> Result<syn::File, String>,
 ) -> Result<Vec<ModuleFile>, String> {
-    Ok(
-        walk_module_variants(module, path, dir, every_build, include_tests, parse)?
-            .into_iter()
-            .filter(|variant| variant.inline.is_empty())
-            .map(|variant| variant.file)
-            .collect(),
-    )
+    let mut files = FileCollector(Vec::new());
+    ModuleWalk {
+        every_build,
+        include_tests,
+    }
+    .walk_tree(module, path, dir, parse, &mut |_| true, &mut files)?;
+    files.0.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files.0)
 }
 
 /// Options controlling a crate module walk (`every_build` omits `cfg`-gated modules;
@@ -420,9 +421,48 @@ pub struct ModuleWalk {
     pub include_tests: bool,
 }
 
+trait WalkSink {
+    fn inline(&mut self, _file: ModuleFile, _inline: &[usize]) {}
+    fn file(&mut self, file: ModuleFile, parsed: syn::File);
+}
+
+struct FileVisitor<F>(F);
+
+impl<F: FnMut(&ModuleFile, syn::File)> WalkSink for FileVisitor<F> {
+    fn file(&mut self, file: ModuleFile, parsed: syn::File) {
+        (self.0)(&file, parsed);
+    }
+}
+
+struct FileCollector(Vec<ModuleFile>);
+
+impl WalkSink for FileCollector {
+    fn file(&mut self, file: ModuleFile, _parsed: syn::File) {
+        self.0.push(file);
+    }
+}
+
+struct VariantCollector(Vec<ModuleVariant>);
+
+impl WalkSink for VariantCollector {
+    fn inline(&mut self, file: ModuleFile, inline: &[usize]) {
+        self.0.push(ModuleVariant {
+            file,
+            inline: inline.to_vec(),
+        });
+    }
+
+    fn file(&mut self, file: ModuleFile, _parsed: syn::File) {
+        self.0.push(ModuleVariant {
+            file,
+            inline: Vec::new(),
+        });
+    }
+}
+
 impl ModuleWalk {
-    /// Walk modules for which `descend(module)` is true, passing each parsed file's
-    /// [`ModuleFile`] and [`syn::File`] to `visit` in one pass.
+    /// Walk modules for which `descend(module)` is true, borrowing each parsed file's
+    /// [`ModuleFile`] alongside its [`syn::File`] in one pass without collecting variants.
     pub fn visit_files(
         self,
         module: String,
@@ -430,28 +470,29 @@ impl ModuleWalk {
         dir: PathBuf,
         parse: impl Fn(&Path, &str) -> Result<syn::File, String>,
         mut descend: impl FnMut(&str) -> bool,
-        mut visit: impl FnMut(ModuleFile, syn::File),
+        visit: impl FnMut(&ModuleFile, syn::File),
     ) -> Result<(), String> {
         if !descend(&module) {
             return Ok(());
         }
-        self.walk_tree(module, path, dir, parse, &mut descend, &mut visit)?;
-        Ok(())
+        let mut sink = FileVisitor(visit);
+        self.walk_tree(module, path, dir, parse, &mut descend, &mut sink)
     }
 
-    fn walk_tree<D: FnMut(&str) -> bool>(
+    fn walk_tree<D: FnMut(&str) -> bool, S: WalkSink>(
         self,
         module: String,
         path: PathBuf,
         dir: PathBuf,
         parse: impl Fn(&Path, &str) -> Result<syn::File, String>,
         descend: &mut D,
-        visit: &mut impl FnMut(ModuleFile, syn::File),
-    ) -> Result<Vec<ModuleVariant>, String> {
+        sink: &mut S,
+    ) -> Result<(), String> {
         let mut walker = Walker {
             every_build: self.every_build,
             include_tests: self.include_tests,
             descend,
+            sink,
             pending: vec![Pending {
                 file: ModuleFile {
                     module,
@@ -463,7 +504,6 @@ impl ModuleWalk {
                 ancestors: Vec::new(),
                 shadowed: false,
             }],
-            variants: Vec::new(),
         };
         while let Some(Pending {
             mut file,
@@ -506,16 +546,9 @@ impl ModuleWalk {
                 &ancestors,
                 shadowed,
             );
-            visit(file.clone(), parsed);
-            walker.variants.push(ModuleVariant {
-                file,
-                inline: Vec::new(),
-            });
+            walker.sink.file(file, parsed);
         }
-        walker
-            .variants
-            .sort_by(|a, b| a.file.path.cmp(&b.file.path));
-        Ok(walker.variants)
+        Ok(())
     }
 }
 
@@ -528,19 +561,22 @@ pub fn walk_module_variants(
     include_tests: bool,
     parse: impl Fn(&Path, &str) -> Result<syn::File, String>,
 ) -> Result<Vec<ModuleVariant>, String> {
+    let mut variants = VariantCollector(Vec::new());
     ModuleWalk {
         every_build,
         include_tests,
     }
-    .walk_tree(module, path, dir, parse, &mut |_| true, &mut |_, _| {})
+    .walk_tree(module, path, dir, parse, &mut |_| true, &mut variants)?;
+    variants.0.sort_by(|a, b| a.file.path.cmp(&b.file.path));
+    Ok(variants.0)
 }
 
-struct Walker<'a, D> {
+struct Walker<'a, D, S> {
     every_build: bool,
     include_tests: bool,
     descend: &'a mut D,
+    sink: &'a mut S,
     pending: Vec<Pending>,
-    variants: Vec<ModuleVariant>,
 }
 
 /// A file to read, the directory Rust uses for its conventional children, its physical
@@ -552,7 +588,7 @@ struct Pending {
     shadowed: bool,
 }
 
-impl<D: FnMut(&str) -> bool> Walker<'_, D> {
+impl<D: FnMut(&str) -> bool, S: WalkSink> Walker<'_, D, S> {
     fn keep(&self, attrs: &[syn::Attribute]) -> bool {
         (self.include_tests || !test_only(attrs)) && !(self.every_build && gated(attrs))
     }
@@ -653,10 +689,7 @@ impl<D: FnMut(&str) -> bool> Walker<'_, D> {
                     self.children(
                         &child, inner, &inner_dir, &inner_dir, inline, ancestors, shadowed,
                     );
-                    self.variants.push(ModuleVariant {
-                        file: child,
-                        inline: inline.clone(),
-                    });
+                    self.sink.inline(child, inline);
                     inline.pop();
                 } else {
                     let (path, child_dir) = if let Some(relative) = explicit {
@@ -816,7 +849,7 @@ mod shadow {
                         _ => None,
                     })
                     .collect();
-                visited.push((file.module, rel, fns));
+                visited.push((file.module.clone(), rel, fns));
             },
         )
         .unwrap();

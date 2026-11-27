@@ -39,7 +39,11 @@ fn native_hooks_live_in_their_catalog_area() {
             |module| ancestors.contains(module),
             |file, parsed| {
                 if targets.contains(&file.module) {
-                    modules.entry(file.module).or_default().extend(parsed.items);
+                    if let Some(items) = modules.get_mut(&file.module) {
+                        items.extend(parsed.items);
+                    } else {
+                        modules.insert(file.module.clone(), parsed.items);
+                    }
                 }
             },
         )

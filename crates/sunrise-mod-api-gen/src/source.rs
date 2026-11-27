@@ -32,7 +32,14 @@ impl GameDomain {
 
     pub(crate) fn files(self, root: &Path, every_build: bool) -> Result<Vec<ModuleFile>, String> {
         let mut files = Vec::new();
-        self.visit_files(root, every_build, |_| true, |file, _| files.push(file))?;
+        self.visit_files(
+            root,
+            every_build,
+            |_| true,
+            |file, _| {
+                files.push(file.clone());
+            },
+        )?;
         files.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(files)
     }
@@ -42,7 +49,7 @@ impl GameDomain {
         root: &Path,
         every_build: bool,
         mut descend: impl FnMut(&str) -> bool,
-        mut visit: impl FnMut(ModuleFile, syn::File),
+        mut visit: impl FnMut(&ModuleFile, syn::File),
     ) -> Result<(), String> {
         let lib = self.library(root)?;
         let src = lib.parent().expect("a source file has a folder");
@@ -173,7 +180,7 @@ impl SourceLayout {
         root: &Path,
         every_build: bool,
         mut descend: impl FnMut(&str) -> bool,
-        mut visit: impl FnMut(ModuleFile, syn::File),
+        mut visit: impl FnMut(&ModuleFile, syn::File),
     ) -> Result<(), String> {
         for domain in self.domains {
             domain.visit_files(root, every_build, &mut descend, &mut visit)?;
