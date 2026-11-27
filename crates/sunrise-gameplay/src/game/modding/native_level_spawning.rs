@@ -24,9 +24,17 @@ thread_local! {
 struct CheckingSpawnRules;
 
 impl CheckingSpawnRules {
-    /// None when a check already runs on this thread.
+    /// None when a check already runs on this thread. The refusal makes no guard: dropping
+    /// one would clear the running check's mark.
     fn enter() -> Option<Self> {
-        CHECKING_SPAWN_RULES.with(|running| (!running.replace(true)).then_some(Self))
+        CHECKING_SPAWN_RULES.with(|running| {
+            if running.get() {
+                None
+            } else {
+                running.set(true);
+                Some(Self)
+            }
+        })
     }
 }
 

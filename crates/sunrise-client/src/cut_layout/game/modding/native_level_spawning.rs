@@ -296,6 +296,14 @@ mod tests {
                     distinct.sort_unstable();
                     distinct.dedup();
                     assert_eq!(distinct.len(), 16, "the tries do not share rolls");
+                    assert!(
+                        hooks
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .all(|h| h.nested == Err(LevelReadError::Unavailable)),
+                        "every try's nested call is refused, not only the first"
+                    );
                     assert_eq!(ask(SpawnReason::Natural, LightOverride::Any), Ok(true));
                     let again: Vec<i64> = hooks.lock().unwrap().iter().map(|h| h.draw).collect();
                     assert_eq!(again, draws, "an unchanged state replays the same rolls");
