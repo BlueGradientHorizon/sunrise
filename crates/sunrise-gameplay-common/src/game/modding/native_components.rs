@@ -305,7 +305,7 @@ pub trait NativeComponentsGameExt3<'__sg>: crate::game::SideGame<'__sg> {
     fn entity_type_dimensions(&self, entity_type: &str) -> Option<mod_api::EntityTypeDimensions> {
         let id = sunrise_command::args::normalize(entity_type);
         let [width, height, eye_height] =
-            super::entity_type_rows::entity_type_rows(&self.common().options.resources)
+            crate::game::entity_type_rows::entity_type_rows(&self.options.resources)
                 .dimensions(&id)?;
         Some(mod_api::EntityTypeDimensions::new(
             width, height, eye_height,
