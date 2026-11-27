@@ -214,7 +214,7 @@ pub struct Module {
     pub krate: String,
     pub path: Vec<String>,
     pub items: Vec<Item>,
-    include_scope: IncludeScope,
+    child_scopes: ChildScopes,
 }
 
 /// A named item a signature refers to.
@@ -319,6 +319,8 @@ struct GlobLookup {
     candidate: Binding,
     indexed: Option<Found>,
 }
+
+type ChildScopes = HashMap<usize, IncludeScope>;
 
 type ModuleLoader<'a> = dyn FnMut(&str, &[String]) -> Result<Vec<Item>, String> + 'a;
 type ItemFilter<'a> = dyn Fn(&Item) -> bool + 'a;
@@ -559,8 +561,8 @@ impl<'a> Index<'a> {
         if let Some(&id) = self.by_path.get(&(krate.clone(), path.to_vec())) {
             return Ok(id);
         }
-        let (items, include_scope) = if let Some(load) = &mut self.load_module {
-            (load(&krate, path)?, IncludeScope::default())
+        let (items, child_scopes) = if let Some(load) = &mut self.load_module {
+            (load(&krate, path)?, ChildScopes::new())
         } else {
             self.parse_module(&krate, path)?
         };
@@ -569,7 +571,7 @@ impl<'a> Index<'a> {
             krate: krate.clone(),
             path: path.to_vec(),
             items,
-            include_scope,
+            child_scopes,
         });
         self.by_path.insert((krate, path.to_vec()), id);
         Ok(id)
@@ -579,7 +581,7 @@ impl<'a> Index<'a> {
         &mut self,
         krate: &str,
         path: &[String],
-    ) -> Result<(Vec<Item>, IncludeScope), String> {
+    ) -> Result<(Vec<Item>, ChildScopes), String> {
         Ok(match path.split_last() {
             None => {
                 let file = self.root_files.get(krate).map_or("lib.rs", String::as_str);
@@ -588,23 +590,26 @@ impl<'a> Index<'a> {
             Some((last, parent)) => {
                 let parent = self.module(krate, parent)?;
                 let scope = &self.modules[parent];
-                let include_scope = scope.include_scope.child();
                 let declarations = &scope.items;
                 let has_declaration = declarations
                     .iter()
                     .any(|item| matches!(item, Item::Mod(item) if item.ident == last.as_str()));
-                let declared = declarations.iter().find_map(|item| match item {
-                    Item::Mod(item)
-                        if item.ident == last.as_str()
-                            && self.default_build(parent, &item.attrs) =>
-                    {
-                        Some((
-                            item.content.clone(),
-                            path_attribute(&item.attrs, self.default_features.get(krate)),
-                        ))
-                    }
-                    _ => None,
-                });
+                let declared = declarations
+                    .iter()
+                    .enumerate()
+                    .find_map(|(at, item)| match item {
+                        Item::Mod(item)
+                            if item.ident == last.as_str()
+                                && self.default_build(parent, &item.attrs) =>
+                        {
+                            Some((
+                                scope.child_scopes[&at],
+                                item.content.clone(),
+                                path_attribute(&item.attrs, self.default_features.get(krate)),
+                            ))
+                        }
+                        _ => None,
+                    });
                 if declared.is_none() && has_declaration {
                     return Err(format!(
                         "{}::{} is excluded from the default build",
@@ -612,6 +617,10 @@ impl<'a> Index<'a> {
                         path.join("::")
                     ));
                 }
+                let (include_scope, declared) = declared
+                    .map_or((IncludeScope::default(), None), |(scope, content, path)| {
+                        (scope, Some((content, path)))
+                    });
                 match declared {
                     Some((Some((_, items)), _)) => self.expand_includes(items, include_scope)?,
                     // A generated `#[path]` is absolute.
@@ -645,7 +654,7 @@ impl<'a> Index<'a> {
         krate: &str,
         file: &str,
         include_scope: IncludeScope,
-    ) -> Result<(Vec<Item>, IncludeScope), String> {
+    ) -> Result<(Vec<Item>, ChildScopes), String> {
         let dir = self.crate_dir(krate).expect("a known crate").1;
         let path = self.root.join(dir).join(file);
         let source = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -662,11 +671,16 @@ impl<'a> Index<'a> {
         &self,
         items: Vec<Item>,
         include_scope: IncludeScope,
-    ) -> Result<(Vec<Item>, IncludeScope), String> {
-        let include_scope = include_scope.with_items(&items);
+    ) -> Result<(Vec<Item>, ChildScopes), String> {
+        let mut cursor = include_scope.with_imports(&items);
         let mut out = Vec::new();
+        let mut child_scopes = ChildScopes::new();
         for item in items {
+            let include_scope = cursor.before(&item);
             let Some(mac) = standard_include(&item, include_scope.shadowed()) else {
+                if matches!(item, Item::Mod(_)) {
+                    child_scopes.insert(out.len(), include_scope.child());
+                }
                 out.push(item);
                 continue;
             };
@@ -677,9 +691,14 @@ impl<'a> Index<'a> {
                 })
                 .ok_or_else(|| format!("include!({}) is not a generated file", mac.mac.tokens))?;
             let file = syn::parse_file(source).map_err(|e| format!("{name}: {e}"))?;
-            out.extend(gate_items(file.items, attrs).map_err(|e| format!("{name}: {e}"))?);
+            for item in gate_items(file.items, attrs).map_err(|e| format!("{name}: {e}"))? {
+                if matches!(item, Item::Mod(_)) {
+                    child_scopes.insert(out.len(), include_scope.child());
+                }
+                out.push(item);
+            }
         }
-        Ok((out, include_scope))
+        Ok((out, child_scopes))
     }
 
     /// What `name` means in `module`: an item defined there, a `use` of it, or a glob import

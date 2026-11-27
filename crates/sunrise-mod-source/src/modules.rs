@@ -298,7 +298,7 @@ pub fn test_only(attrs: &[syn::Attribute]) -> bool {
 
 /// An item-position standard `include!` of one literal path, with the attributes on the
 /// invocation. The caller resolves the path relative to the physical file containing the item.
-/// A bare `include!` is the standard macro unless `shadowed` ([`include_shadowed`]); one written
+/// A bare `include!` is the standard macro unless `shadowed` ([`IncludeScope`]); one written
 /// `std::include!` or `core::include!` always is. Any other invocation is an opaque macro.
 pub fn literal_include(item: &Item, shadowed: bool) -> Option<(syn::LitStr, &[syn::Attribute])> {
     let item = standard_include(item, shadowed)?;
@@ -385,16 +385,18 @@ pub fn standard_include(item: &Item, shadowed: bool) -> Option<&syn::ItemMacro> 
     standard.then_some(item)
 }
 
-/// Shadowing in a module. Literal include fragments stay in that module; child `mod`s
-/// inherit only textual `macro_rules!` bindings, not the parent's named imports.
+/// A direct `macro_rules! include` shadows bare `include!` after its definition, including
+/// in child modules declared after it. Named imports apply throughout their own module;
+/// literal include fragments stay in that module. A glob import may import `include`, but we
+/// do not resolve globs here. We do not track shadowing introduced by macro expansion.
 #[derive(Clone, Copy, Default)]
-pub(crate) struct IncludeScope {
+pub struct IncludeScope {
     lexical: bool,
     imported: bool,
 }
 
 impl IncludeScope {
-    pub(crate) fn with_items(mut self, items: &[Item]) -> Self {
+    pub fn with_imports(mut self, items: &[Item]) -> Self {
         fn binds(tree: &syn::UseTree) -> bool {
             match tree {
                 syn::UseTree::Path(path) => binds(&path.tree),
@@ -404,22 +406,22 @@ impl IncludeScope {
                 syn::UseTree::Glob(_) => false,
             }
         }
-        for item in items {
-            match item {
-                Item::Macro(defined) if defined.mac.path.is_ident("macro_rules") => {
-                    self.lexical |= defined
-                        .ident
-                        .as_ref()
-                        .is_some_and(|ident| ident == "include");
-                }
-                Item::Use(used) => self.imported |= binds(&used.tree),
-                _ => {}
-            }
-        }
+        self.imported |= items
+            .iter()
+            .any(|item| matches!(item, Item::Use(used) if binds(&used.tree)));
         self
     }
 
-    pub(crate) fn shadowed(self) -> bool {
+    /// Return the scope at this item, advancing the cursor for subsequent items.
+    pub fn before(&mut self, item: &Item) -> Self {
+        let before = *self;
+        self.lexical |= matches!(item, Item::Macro(defined)
+            if defined.mac.path.is_ident("macro_rules")
+                && defined.ident.as_ref().is_some_and(|ident| ident == "include"));
+        before
+    }
+
+    pub fn shadowed(self) -> bool {
         self.lexical || self.imported
     }
 
@@ -433,7 +435,11 @@ impl IncludeScope {
 
 /// Whether `items` define a `macro_rules! include` or import a name `include` in this module.
 pub fn include_shadowed(items: &[Item]) -> bool {
-    IncludeScope::default().with_items(items).shadowed()
+    let mut scope = IncludeScope::default().with_imports(items);
+    for item in items {
+        scope.before(item);
+    }
+    scope.shadowed()
 }
 
 /// Whether some build can hold every predicate in `conditions` at once: an assignment of the
@@ -617,8 +623,9 @@ impl Walker {
         ancestors: &[PathBuf],
         scope: IncludeScope,
     ) {
-        let scope = scope.with_items(items);
+        let mut cursor = scope.with_imports(items);
         for (index, item) in items.iter().enumerate() {
+            let scope = cursor.before(item);
             if let Some((relative, attrs)) = literal_include(item, scope.shadowed())
                 && self.keep(attrs)
             {
@@ -804,12 +811,19 @@ mod imported {
     pub mod file;
 }
 mod lexical {
+    pub mod early { include!("gen.rs"); }
+    pub mod early_file;
     macro_rules! include { ($($t:tt)*) => {}; }
     mod inline { include!("never-read.rs"); }
     mod file;
 }
 pub fn generated() {
-    let _ = (imported::inline::Generated, imported::file::Generated);
+    let _ = (
+        imported::inline::Generated,
+        imported::file::Generated,
+        lexical::early::Generated,
+        lexical::early_file::Generated,
+    );
 }
 "#;
         let dir = tempfile::tempdir().unwrap();
@@ -820,6 +834,7 @@ pub fn generated() {
         let generated = [("gen.rs", "pub struct Generated;")];
         fs::write(src.join("gen.rs"), generated[0].1).unwrap();
         fs::write(src.join("imported/gen.rs"), generated[0].1).unwrap();
+        fs::write(src.join("lexical/gen.rs"), generated[0].1).unwrap();
         fs::write(src.join("lexical/file.rs"), r#"include!("never-read.rs");"#).unwrap();
 
         for out_dir in [false, true] {
@@ -833,6 +848,7 @@ pub fn generated() {
             };
             write("lib.rs", lib);
             write("imported/file.rs", r#"include!("gen.rs");"#);
+            write("lexical/early_file.rs", r#"include!("gen.rs");"#);
             let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
             let output = std::process::Command::new(rustc)
                 .args(["--crate-type=lib", "--edition=2024", "--emit=metadata"])
@@ -850,15 +866,20 @@ pub fn generated() {
 
             if out_dir {
                 let mut index = Index::new(dir.path(), &generated, &[("k", "src")]);
-                for (parent, expanded) in [("imported", true), ("lexical", false)] {
-                    for child in ["inline", "file"] {
-                        let module = index.module("k", &[parent.into(), child.into()]).unwrap();
-                        assert_eq!(
-                            index.resolve(module, "Generated").is_ok(),
-                            expanded,
-                            "{parent}::{child}"
-                        );
-                    }
+                for (parent, child, expanded) in [
+                    ("imported", "inline", true),
+                    ("imported", "file", true),
+                    ("lexical", "early", true),
+                    ("lexical", "early_file", true),
+                    ("lexical", "inline", false),
+                    ("lexical", "file", false),
+                ] {
+                    let module = index.module("k", &[parent.into(), child.into()]).unwrap();
+                    assert_eq!(
+                        index.resolve(module, "Generated").is_ok(),
+                        expanded,
+                        "{parent}::{child}"
+                    );
                 }
             } else {
                 let files = walk_module_files(
@@ -881,6 +902,8 @@ pub fn generated() {
                     [
                         ("k::imported::file", Path::new("imported/gen.rs")),
                         ("k::imported::inline", Path::new("gen.rs")),
+                        ("k::lexical::early", Path::new("gen.rs")),
+                        ("k::lexical::early_file", Path::new("lexical/gen.rs")),
                     ]
                 );
             }

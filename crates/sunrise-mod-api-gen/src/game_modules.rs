@@ -1,5 +1,5 @@
 //! The game's generated host forwarders, written into a source copy for tools that can't read OUT_DIR.
-use mod_source::modules::{gate_items, generated_include, include_shadowed};
+use mod_source::modules::{IncludeScope, gate_items, generated_include};
 use std::{fs, path::Path};
 use syn::spanned::Spanned;
 
@@ -12,18 +12,22 @@ pub(crate) fn expand(path: &Path, source: &str) -> Result<String, String> {
         return Ok(source.to_owned());
     }
     let file = syn::parse_file(source).map_err(|e| format!("{}: {e}", path.display()))?;
-    let shadowed = include_shadowed(&file.items);
+    let mut scope = IncludeScope::default().with_imports(&file.items);
     let lines: Vec<_> = std::iter::once(0)
         .chain(source.match_indices('\n').map(|(i, _)| i + 1))
         .collect();
-    let mut expanded = source.to_owned();
-    for item in file.items.iter().rev() {
-        if let Some(generated) = host_include(path, item, shadowed)? {
+    let mut replacements = Vec::new();
+    for item in &file.items {
+        if let Some(generated) = host_include(path, item, scope.before(item).shadowed())? {
             let span = item.span();
             let start = crate::source::offset(source, &lines, span.start());
             let end = crate::source::offset(source, &lines, span.end());
-            expanded.replace_range(start..end, &prettyplease::unparse(&generated));
+            replacements.push((start..end, prettyplease::unparse(&generated)));
         }
+    }
+    let mut expanded = source.to_owned();
+    for (range, replacement) in replacements.into_iter().rev() {
+        expanded.replace_range(range, &replacement);
     }
     Ok(expanded)
 }
@@ -46,10 +50,10 @@ pub fn materialize_generated_host(root: &Path) -> Result<(), String> {
 /// the tree. Spans address `source`, so an edit that needs them uses [`expand`] instead.
 pub(crate) fn parse(path: &Path, source: &str) -> Result<syn::File, String> {
     let mut file = syn::parse_file(source).map_err(|e| format!("{}: {e}", path.display()))?;
-    let shadowed = include_shadowed(&file.items);
+    let mut scope = IncludeScope::default().with_imports(&file.items);
     let mut items = Vec::with_capacity(file.items.len());
     for item in file.items {
-        if let Some(generated) = host_include(path, &item, shadowed)? {
+        if let Some(generated) = host_include(path, &item, scope.before(&item).shadowed())? {
             items.extend(generated.items);
         } else {
             items.push(item);
@@ -141,6 +145,23 @@ mod tests {
                 })
                 .expect("the qualified include expands");
             assert!(mod_source::modules::test_only(&generated.attrs));
+        }
+    }
+
+    #[test]
+    fn parse_and_expand_use_the_scope_at_each_include() {
+        let host =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../sunrise-client/src/game/host/mod.rs");
+        let source = format!("{HOST}\nmacro_rules! include {{ ($($t:tt)*) => {{}}; }}\n{HOST}\n");
+        let expanded = expand(&host, &source).unwrap();
+        for file in [
+            parse(&host, &source).unwrap(),
+            syn::parse_file(&expanded).unwrap(),
+        ] {
+            assert!(matches!(&file.items[0], syn::Item::Mod(it) if it.ident == "generated"));
+            assert!(
+                matches!(&file.items[2], syn::Item::Macro(it) if it.mac.path.is_ident("include"))
+            );
         }
     }
 
