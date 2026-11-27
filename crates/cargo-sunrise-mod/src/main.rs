@@ -21,7 +21,8 @@
 //!   shaders; for a native mod, Rust and what the mod uses of its pinned build (`sdk_cmds.rs`).
 //! - `check <file> [--kind <kind>] [--attestation <bundle>] [--repository <id>] [--json]`: check a release package
 //!   (`.smod`, `.spack`, resource pack `.zip`).
-//! - `hooks <text> [--all]`: search the pinned build's hooks (or every item) offline.
+//! - `hooks <text> [--all]`: search the pinned build's hooks (or every item) in the SDK `check` already
+//!   prepared, fetching and writing nothing.
 //! - `sdk diff <build> <build>`: what changed in the surface between two builds.
 //! - `check [<file.smod>] --build <name> [--build <name>]…`: whether the mod fits each build; exit 0 when all
 //!   do, 1 when one does not, 2 when it cannot be told.
@@ -172,7 +173,7 @@ fn main() -> ExitCode {
     };
     match result {
         Ok(()) => {
-            // `hooks` reads the pinned SDK's catalog and does not check for tool updates.
+            // `hooks` reads the prepared SDK's catalog and does not check for tool updates.
             if command.is_some_and(|c| help::is_everyday(c) && c != "hooks") {
                 self_update::notice();
             }
@@ -220,17 +221,23 @@ fn build_command(
         ));
     }
     let output = PackageOutput::in_project(root)?;
-    if package.is_native() {
+    let bundle = package
+        .is_native()
+        .then(|| dev::project_bundle(root, &package))
+        .transpose()?;
+    // The SDK source is refused (`E_SDK_SOURCE`) before any SDK is fetched.
+    let cargo = bundle
+        .as_ref()
+        .map(|bundle| sunrise_native_build::api::Project::read(bundle).map_err(|e| e.to_string()))
+        .transpose()?;
+    if cargo.is_some() {
         fetched(root)?;
     }
-    let built = package
-        .is_native()
-        .then(|| {
-            let bundle = dev::project_bundle(root, &package)?;
-            let cargo =
-                sunrise_native_build::api::Project::read(&bundle).map_err(|e| e.to_string())?;
+    let built = cargo
+        .as_ref()
+        .map(|cargo| {
             dev::build(
-                &cargo,
+                cargo,
                 &package,
                 &with,
                 update_lock,
@@ -257,13 +264,8 @@ fn read_manifest(dir: &Path) -> Result<Manifest, String> {
     Manifest::parse(&bounded::read(&dir.join(MANIFEST), bounded::MAX_MANIFEST)?)
 }
 
-/// The SDK the project at `dir` pins, fetched into its `.sunrise/sdk/` when missing or stale; a
-/// project inside a game checkout builds against that tree instead.
+/// The SDK the project at `dir` pins, fetched into its `.sunrise/sdk/` when missing or stale.
 fn fetched(dir: &Path) -> Result<(), String> {
-    if let Some(tree) = sdk_fetch::game_tree(dir)? {
-        println!("Building against the game checkout {}", tree.display());
-        return Ok(());
-    }
     let sdk = sdk_fetch::ensure_sdk(dir)?;
     println!(
         "SDK {} (build {}) in {}",
@@ -340,7 +342,18 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
         })
         .collect();
     let name = name.map_or_else(|| base.replace(['-', '_'], " "), str::to_string);
-    let fill = |t: &str| t.replace("{id}", &id).replace("{name}", &name);
+    // `{id}` is filled first and `{name}` only where a template takes the display name, as the text
+    // its file needs: a TOML string in the manifest, the raw name in the README. Nothing is scanned
+    // for placeholders after a name is put in.
+    let toml_name = toml_edit::Value::from(name.as_str()).to_string();
+    let fill = |file: &str, text: &str| {
+        let text = text.replace("{id}", &id);
+        match file {
+            MANIFEST => text.replace("{name}", &toml_name),
+            "README.md" => text.replace("{name}", &name),
+            _ => text,
+        }
+    };
     match template {
         None | Some("content") if sunrise.is_some() => {
             return Err("--sunrise needs --template native".into());
@@ -393,12 +406,11 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
         (".gitignore", include_str!("../template/gitignore")),
     ];
     for (file, text) in files.into_iter().chain(PAGE_TEMPLATE) {
-        let file = fill(file);
-        let file = file.as_str();
-        let to = dir.join(file);
+        let file = file.replace("{id}", &id);
+        let to = dir.join(&file);
         std::fs::create_dir_all(to.parent().expect("a file in the mod"))
             .map_err(|e| e.to_string())?;
-        std::fs::write(&to, fill(text)).map_err(|e| format!("{}: {e}", to.display()))?;
+        std::fs::write(&to, fill(&file, text)).map_err(|e| format!("{}: {e}", to.display()))?;
     }
     let manifest =
         Manifest::parse(&std::fs::read_to_string(dir.join(MANIFEST)).map_err(|e| e.to_string())?)?;
@@ -500,7 +512,7 @@ fn new_native(
     id: &str,
     sunrise: Option<&str>,
     fetch: FetchSdk,
-    fill: impl Fn(&str) -> String,
+    fill: impl Fn(&str, &str) -> String,
 ) -> Result<(), String> {
     if id.len() > 64 {
         return Err(format!("mod id {id}: 64 characters at most"));
@@ -538,7 +550,7 @@ fn new_native(
         let to = dir.join(file);
         std::fs::create_dir_all(to.parent().expect("a file in the mod"))
             .map_err(|e| e.to_string())?;
-        std::fs::write(&to, fill(text)).map_err(|e| format!("{}: {e}", to.display()))?;
+        std::fs::write(&to, fill(file, text)).map_err(|e| format!("{}: {e}", to.display()))?;
     }
     for folder in ["assets", "data"] {
         std::fs::create_dir_all(dir.join(folder)).map_err(|e| e.to_string())?;
@@ -555,8 +567,7 @@ fn new_native(
 
 /// Packs the mod in the current folder into `target/sunrise-mod/<id>.smod`: the manifest and
 /// the files in `assets/` and `data/`, and for a code mod its source and its uses table, scanned
-/// against the pinned build (none for a mod with rows no list can judge, or built against the game
-/// checkout it lies in, which has no published surface to scan against).
+/// against the pinned build (none for a mod with rows no list can judge).
 fn build(
     entry: mod_surface::child::ChildEntry,
     package: &Package,
@@ -564,9 +575,7 @@ fn build(
     mixins: Option<&str>,
 ) -> Result<PathBuf, String> {
     let root = Path::new(".");
-    let uses = if let Some(native) = &package.manifest.native
-        && sdk_fetch::game_tree(root)?.is_none()
-    {
+    let uses = if let Some(native) = &package.manifest.native {
         let sdk = sdk_fetch::fetch_pinned(root, &native.sunrise)?;
         let surface = uses_table::surface_of(&sdk)?;
         let scanned = uses_table::scan(entry, root, &package.manifest, &surface)?;
@@ -1024,6 +1033,21 @@ mod tests {
                 ]
             );
         }
+    }
+
+    #[test]
+    fn a_display_name_round_trips_through_both_manifests_and_stays_raw_in_the_readme() {
+        let name = r#"A "quote" and a back\slash, {id} {name} {metadata}"#;
+        let workspace = tempfile::tempdir().unwrap();
+        for template in ["content", "native"] {
+            let project = workspace.path().join(template);
+            let mut args = template_args(&project, template);
+            args.extend(["--name".into(), name.into()]);
+            new(&args, &offline).unwrap();
+            assert_eq!(Package::read(&project).unwrap().manifest.name, name);
+        }
+        let readme = std::fs::read_to_string(workspace.path().join("native/README.md")).unwrap();
+        assert_eq!(readme.lines().next().unwrap(), format!("# {name}"));
     }
 
     #[test]
