@@ -88,6 +88,7 @@ impl Hub {
         });
     }
 
+    #[cfg(test)]
     pub(super) fn process_inbox(
         &mut self,
         i: usize,
@@ -100,7 +101,6 @@ impl Hub {
         self.process_inbox_inner(i, ctx, events, begin, held, spectator_source, None)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn process_inbox_inner(
         &mut self,
         i: usize,
