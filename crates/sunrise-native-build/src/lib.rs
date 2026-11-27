@@ -36,6 +36,7 @@ pub mod registry_rustc;
 mod registry_shared;
 pub mod rust;
 
+pub use diagnostics::{BuildDiagnostics, CompilerStderr, Timings};
 pub use mixins_patch::MixinsIdentity;
 pub use prebuilt::{Refusal, compiling};
 pub use registry_inventory::Inventory as RegistryInventory;
@@ -261,13 +262,18 @@ pub fn source_digest(bundle: &Bundle) -> Option<String> {
 /// An error ends with its first `error` lines and the last lines: a failed build script's output
 /// alone could push the line naming its crate out of the last ones.
 pub fn run(cmd: Command, what: &str) -> Result<(), String> {
-    run_checked(cmd, what, None, None)
+    run_checked(cmd, what, None, None, CompilerStderr::LogOnly)
 }
 
-/// [`run`] for a compiler started with `--error-format=json`: a diagnostic it prints is shown at
-/// the author's files (`sources`), and the build log keeps what the compiler printed.
-pub fn run_diagnosed(cmd: Command, what: &str, sources: &present::Sources) -> Result<(), String> {
-    run_checked(cmd, what, None, Some(sources))
+/// Runs a direct compiler command. With `sources`, renders its JSON diagnostics for the author
+/// while keeping their original contents in the log.
+fn run_compiler(
+    cmd: Command,
+    what: &str,
+    sources: Option<&present::Sources>,
+    stderr: CompilerStderr,
+) -> Result<(), String> {
+    run_checked(cmd, what, None, sources, stderr)
 }
 
 fn run_checked(
@@ -275,6 +281,7 @@ fn run_checked(
     what: &str,
     stdout_file: Option<fs::File>,
     sources: Option<&present::Sources>,
+    compiler_stderr: CompilerStderr,
 ) -> Result<(), String> {
     let mut log = fs::OpenOptions::new()
         .create(true)
@@ -327,6 +334,9 @@ fn run_checked(
         for (raw, shown) in lines {
             if let Some(kept) = log_text(&raw) {
                 let _ = writeln!(log, "{kept}");
+            }
+            if compiler_stderr == CompilerStderr::Mirror {
+                let _ = writeln!(std::io::stderr(), "{shown}");
             }
             blocked |= rust::blocked_by_app_control(&raw);
             libraries |= rust::missing_system_libraries(&raw);
