@@ -39,7 +39,7 @@ pub(crate) struct Registry {
 impl Registry {
     pub(crate) fn read(cache: &Path) -> Result<Self, String> {
         let url = test_url().unwrap_or_else(|| sunrise_addresses::MOD_REGISTRY_INDEX.into());
-        let index = read_index(cache, &url, &download, KEY)?;
+        let index = read_index(&cache.join(SERIAL), &url, &download, KEY)?;
         Ok(Self {
             index,
             fetch: Box::new(download),
@@ -116,13 +116,12 @@ impl Registry {
     }
 }
 
-fn read_index(cache: &Path, url: &str, fetch: &Fetch, key: &str) -> Result<Index, String> {
+fn read_index(path: &Path, url: &str, fetch: &Fetch, key: &str) -> Result<Index, String> {
     let signed = fetch(url, index::MAX_INDEX + MAX_SIGNATURE as u64)?;
     let index = Index::verify(&signed, key).map_err(|e| format!("{url}: {e}"))?;
-    let path = cache.join(SERIAL);
     let folder = path.parent().expect("serial file in the cache");
     fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-    let lock_path = path.with_extension("lock");
+    let lock_path = path.with_added_extension("lock");
     let directory = Dir::open_ambient_dir(folder, cap_std::ambient_authority())
         .map_err(|e| format!("{}: {e}", folder.display()))?;
     let mut options = OpenOptions::new();
@@ -138,7 +137,7 @@ fn read_index(cache: &Path, url: &str, fetch: &Fetch, key: &str) -> Result<Index
         .lock()
         .map_err(|e| format!("{}: {e}", lock_path.display()))?;
 
-    let last = match fs::read_to_string(&path) {
+    let last = match fs::read_to_string(path) {
         Ok(text) => Some(text.trim().parse::<u64>().map_err(|e| {
             format!(
                 "{}: {e}; delete it to accept the live index",
@@ -161,7 +160,7 @@ fn read_index(cache: &Path, url: &str, fetch: &Fetch, key: &str) -> Result<Index
         tempfile::NamedTempFile::new_in(folder)
             .and_then(|mut file| {
                 file.write_all(index.serial.to_string().as_bytes())?;
-                file.persist(&path).map_err(|e| e.error)?;
+                file.persist(path).map_err(|e| e.error)?;
                 Ok(())
             })
             .map_err(|e| format!("{}: {e}", path.display()))?;
