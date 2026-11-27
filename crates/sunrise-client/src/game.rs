@@ -268,6 +268,9 @@ mod boats;
 mod books;
 #[path = "game/blocks/bookshelves.rs"]
 mod bookshelves;
+#[cfg(test)]
+#[path = "game/interface/boss_battle_tests.rs"]
+mod boss_battle_tests;
 #[path = "game/interface/bossbars.rs"]
 mod bossbars;
 #[path = "game/mobs/breezes.rs"]
