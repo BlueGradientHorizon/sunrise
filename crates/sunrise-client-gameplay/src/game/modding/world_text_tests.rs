@@ -1,8 +1,8 @@
 //! `WorldDrawContext::text` (#6173): a mod's text under its own pose, drawn as a block entity's
 //! text is: turned and rolled as the pose says, full bright when glowing, ringed when outlined.
-use crate::game::host::draw::GameWorldDrawContext;
 use super::native_entity_refs::tests::with_client_game;
 use super::world_name_tag_tests::{CAMERA, face_south, view_proj};
+use crate::game::host::draw::GameWorldDrawContext;
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{DrawError, NameTagOptions, Text, WorldDrawContext, WorldTextOptions};
 use sunrise_client::block_entity_render::vertex_light;
