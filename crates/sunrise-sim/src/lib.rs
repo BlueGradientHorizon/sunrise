@@ -155,7 +155,6 @@ pub mod lan;
 pub mod landing;
 pub mod lang_load;
 pub mod living_attributes;
-pub mod lod_net;
 pub mod map_decoration_types;
 pub mod menu;
 pub mod menu_extra_net;

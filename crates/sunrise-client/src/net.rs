@@ -173,8 +173,6 @@ pub enum Event {
     QuietCommands,
     /// The server supports private custom recipe-book synchronization.
     CustomBooks,
-    /// The server samples far terrain for this client (`lod_net`).
-    FarTerrain(crate::lod_net::Offer),
     /// ClientConfigurationPacketListenerImpl.handleEnabledFeatures.
     Features(Vec<String>),
     /// Configuration finished: the play state begins with these registries.
@@ -276,7 +274,6 @@ impl Event {
             | Self::Joined { .. }
             | Self::Reconfigured { .. }
             | Self::Features(_)
-            | Self::FarTerrain(_)
             | Self::CustomBooks
             | Self::QuietCommands
             | Self::DecodeError(_)
@@ -312,11 +309,6 @@ impl Event {
             Self::Configuration(task) => task.owned_bytes(),
             Self::Cookie(task) => size_of::<CookieTask>() + task.cookie.owned_bytes(),
             Self::QuietCommands | Self::CustomBooks | Self::ClearDialog | Self::PackPop(_) => 0,
-            Self::FarTerrain(crate::lod_net::Offer {
-                distance: _,
-                in_flight: _,
-                per_second: _,
-            }) => 0,
             Self::Features(values) => values.owned_heap_bytes(),
             // configure only inserts/replaces before freezing these snapshots.
             Self::Joined {
@@ -476,8 +468,6 @@ pub struct Session {
     pub cookies: Cookies,
     /// SUNRISE_NET_DEBUG=1 logs every packet sent from the game thread.
     debug: bool,
-    /// The far terrain requests waiting for the server (`lod_net`).
-    far: Arc<crate::lod_net::Inbox>,
     /// The recording running, if any.
     recorder: RecorderSlot,
     pings: PingSamples,
@@ -595,7 +585,6 @@ impl Session {
             counters: Arc::new(Mutex::new(None)),
             cookies: Default::default(),
             debug: false,
-            far: Arc::new(crate::lod_net::Inbox::default()),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -632,8 +621,6 @@ impl Session {
         let (thread_writer, thread_counters, thread_cookies) =
             (writer.clone(), counters.clone(), cookies.clone());
         let thread_configuring = configuring.clone();
-        let far = Arc::new(crate::lod_net::Inbox::default());
-        let thread_far = far.clone();
         let recorder = Arc::new(Mutex::new(None));
         let thread_recorder = recorder.clone();
         let pings = Arc::default();
@@ -659,7 +646,6 @@ impl Session {
                         &thread_configuring,
                         &thread_counters,
                         &thread_cookies,
-                        &thread_far,
                         transfer_from,
                         &resources,
                         lan,
@@ -674,7 +660,6 @@ impl Session {
                 // the payload epoch when main drops the listener, so a bundle
                 // already in its member loop still has its handler table.
                 report_connection_end(result, &thread_writer, &send, after_login);
-                thread_far.cancel();
             })
             .inspect_err(|error| {
                 // No reader runs to report the end: say it here, or the session waits forever.
@@ -699,7 +684,6 @@ impl Session {
             counters,
             cookies,
             debug,
-            far,
             recorder,
             pings,
             serial: next_serial(),
@@ -892,36 +876,6 @@ impl Session {
             .as_ref()
             .ok_or(mod_api::PayloadSendError::Disconnected)?
             .prepare_payload(body, id)
-    }
-    /// Far terrain the server samples, as it offered (`Event::FarTerrain`):
-    /// biomes named by this client's indices, block states below `states`.
-    pub fn far_terrain(
-        &self,
-        offer: crate::lod_net::Offer,
-        biomes: HashMap<String, u16>,
-        states: u32,
-    ) -> Arc<crate::lod_net::RemoteSource> {
-        crate::lod_net::RemoteSource::new(self.far.clone(), offer, biomes, states)
-    }
-    /// The far terrain requests its samplers queued go to the server, from
-    /// the game thread, among its other packets.
-    pub fn send_far_terrain(&self) {
-        for data in self.far.requests() {
-            self.send(play::Serverbound::CustomPayload(cfg::CustomPayload {
-                channel: crate::lod_net::CHANNEL.into(),
-                data,
-            }));
-        }
-    }
-    /// The far terrain made with [`Self::far_terrain`] ends: its samplers
-    /// stop waiting for the server.
-    pub fn cancel_far_terrain(&self) {
-        self.far.cancel();
-    }
-    /// The connection is configured again (a proxy's next server): requests
-    /// the old server held never come back, so their slots are freed.
-    pub fn reset_far_terrain(&self) {
-        self.far.reset();
     }
     /// ServerboundResourcePackPacket, in whichever phase the connection is.
     pub fn send_pack_status(&self, id: u128, action: i32) {
@@ -1505,7 +1459,6 @@ fn run(
     configuring: &Arc<AtomicBool>,
     shared_counters: &Mutex<Option<Arc<Counters>>>,
     cookies: &Cookies,
-    far: &Arc<crate::lod_net::Inbox>,
     transfer_from: Option<Cookies>,
     resources: &ItemData,
     lan: bool,
@@ -1712,7 +1665,6 @@ fn run(
         lang,
         send,
         cookies,
-        far,
         resources,
         recorder,
         payloads,
@@ -1927,13 +1879,11 @@ enum PlayIoAction {
     KeepAlive(cfg::KeepAlive),
     ChunkBatchStart,
     ChunkBatchFinished(i32),
-    FarTile(Vec<u8>),
 }
 
 pub struct PlayIo {
     common: Arc<CommonIo>,
     lang: Arc<Language>,
-    far: Arc<crate::lod_net::Inbox>,
     pings: PingSamples,
     reports: Arc<crate::chunk_io::Reports>,
     // ClientPacketListener.chunkBatchSizeCalculator.
@@ -1982,7 +1932,6 @@ impl PlayIo {
                     chunks_per_tick: batch.desired_chunks_per_tick(),
                 })
             }
-            PlayIoAction::FarTile(data) => return self.far.deliver(data),
         };
         if let Some(writer) = self.common.writer.lock().unwrap().as_ref() {
             let _ = writer.send_bypassing_held(&reply.encode());
@@ -2025,7 +1974,6 @@ fn receive_play(
     lang: &Arc<Language>,
     send: &ingress::Producer<Event>,
     cookies: &Cookies,
-    far: &Arc<crate::lod_net::Inbox>,
     resources: &ItemData,
     recorder: &RecorderSlot,
     payloads: &Arc<crate::raw_payloads::Transport>,
@@ -2038,7 +1986,6 @@ fn receive_play(
         Arc::new(PlayIo {
             common: CommonIo::new(shared_writer, cookies, Phase::Play),
             lang: lang.clone(),
-            far: far.clone(),
             pings: pings.clone(),
             reports: reports.clone(),
             batch: Mutex::default(),
@@ -2223,10 +2170,6 @@ fn receive_play(
             }
             play::Clientbound::CustomPayload(p) if p.channel == "minecraft:brand" => {
                 receive_brand(&p, send);
-            }
-            // A far tile, straight to the sampler waiting for it.
-            play::Clientbound::CustomPayload(p) if p.channel == crate::lod_net::CHANNEL => {
-                io.handle(PlayIoAction::FarTile(p.data));
             }
             play::Clientbound::CustomPayload(payload) => {
                 if let Some(payload) = receive_application(
@@ -2571,9 +2514,6 @@ fn brand_event(payload: &cfg::CustomPayload) -> Option<Event> {
             .map(Event::Brand),
         sunrise_protocol::quiet::CHANNEL => Some(Event::QuietCommands),
         sunrise_protocol::custom_book::CHANNEL => Some(Event::CustomBooks),
-        crate::lod_net::CHANNEL => {
-            crate::lod_net::Offer::decode(&payload.data).map(Event::FarTerrain)
-        }
         _ => None,
     }
 }
@@ -4622,7 +4562,6 @@ mod tests {
                 counters: Arc::new(Mutex::new(None)),
                 cookies: Cookies::default(),
                 debug: false,
-                far: Arc::default(),
                 recorder: Arc::new(Mutex::new(None)),
                 pings: Arc::default(),
                 serial: next_serial(),
@@ -4755,7 +4694,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -5315,7 +5253,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -5377,7 +5314,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -5534,7 +5470,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -5872,7 +5807,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
