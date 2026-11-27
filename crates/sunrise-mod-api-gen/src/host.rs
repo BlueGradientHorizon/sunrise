@@ -2115,7 +2115,10 @@ mod tests {
                 );
             }
             let generated = crate::gameplay::host_source(&root, package).unwrap();
+            // The source is formatted: drop whitespace and the trailing commas the formatter
+            // puts before a closing `>` or `)` when it breaks a list over lines.
             let generated: String = generated.chars().filter(|ch| !ch.is_whitespace()).collect();
+            let generated = generated.replace(",>", ">").replace(",)", ")");
             assert!(
                 generated.contains(&format!("{side}>::block_state_is_suffocating(self,state)"))
             );
