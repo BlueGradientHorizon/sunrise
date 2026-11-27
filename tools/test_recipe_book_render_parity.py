@@ -98,23 +98,34 @@ def cases(count, seed):
     return out
 
 
-def exact(x, y):
-    """Two printed values agree: floats (the pose, a blit's u and v) as binary32 bits, so -0.0 is
-    not 0.0; lists element by element; anything else by equality of value and type."""
+# The fields both emitters print as binary32: a blit's u and v, and the pose matrix.
+FLOAT_FIELDS = frozenset({'u', 'v', 'm'})
+
+
+def binary32(x, y):
+    """Two printed binary32 values (or lists of them) agree to the bit, so -0.0 is not 0.0."""
     if isinstance(x, list) or isinstance(y, list):
-        return isinstance(x, list) and isinstance(y, list) and len(x) == len(y) and all(map(exact, x, y))
+        return isinstance(x, list) and isinstance(y, list) and len(x) == len(y) and all(map(binary32, x, y))
+    numeric = (int, float)
+    return (isinstance(x, numeric) and isinstance(y, numeric) and not isinstance(x, bool)
+            and not isinstance(y, bool) and lab.f32_bits(x) == lab.f32_bits(y))
+
+
+def typed(x, y):
+    """Equal values of the same type, element by element: an integer field such as a packed colour,
+    in a call or in a styled run, never matches a float-looking value."""
+    if isinstance(x, list) or isinstance(y, list):
+        return isinstance(x, list) and isinstance(y, list) and len(x) == len(y) and all(map(typed, x, y))
     if isinstance(x, float) or isinstance(y, float):
-        numeric = (int, float)
-        return (isinstance(x, numeric) and isinstance(y, numeric) and not isinstance(x, bool)
-                and not isinstance(y, bool) and lab.f32_bits(x) == lab.f32_bits(y))
+        return isinstance(x, float) and isinstance(y, float) and lab.f64_bits(x) == lab.f64_bits(y)
     return type(x) is type(y) and x == y
 
 
 def same(a, b):
-    """Calls agree: every field exactly (`exact`)."""
+    """Calls agree: the float fields as binary32 bits, every other field by type and value."""
     if a is None or b is None or set(a) != set(b):
         return False
-    return all(exact(a[k], b[k]) for k in a)
+    return all(binary32(a[k], b[k]) if k in FLOAT_FIELDS else typed(a[k], b[k]) for k in a)
 
 
 def pose_ulps(a, b):

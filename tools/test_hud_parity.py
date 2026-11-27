@@ -57,16 +57,31 @@ def cases(count, kinds):
     return out
 
 
+# The fields vanilla's oracle prints as binary32 (the pose matrix, a blit's uv, the scope scale);
+# every other field is an integer, a string or a boolean, compared by type and value.
+FLOAT_FIELDS = frozenset({'matrix', 'uv', 'scopeScale'})
+
+
 def close(p, q):
-    if (isinstance(p, float) or isinstance(q, float)) and not isinstance(p, bool) and not isinstance(q, bool):
-        return isinstance(p, (int, float)) and isinstance(q, (int, float)) and lab.f32_bits(p) == lab.f32_bits(q)
-    return p == q
+    """Two printed binary32 values agree to the bit."""
+    numeric = (int, float)
+    return (isinstance(p, numeric) and isinstance(q, numeric) and not isinstance(p, bool)
+            and not isinstance(q, bool) and lab.f32_bits(p) == lab.f32_bits(q))
+
+
+def typed(p, q):
+    """Equal values of the same type, element by element: a packed colour never matches a float."""
+    if isinstance(p, list) or isinstance(q, list):
+        return isinstance(p, list) and isinstance(q, list) and len(p) == len(q) and all(map(typed, p, q))
+    if isinstance(p, float) or isinstance(q, float):
+        return isinstance(p, float) and isinstance(q, float) and lab.f64_bits(p) == lab.f64_bits(q)
+    return type(p) is type(q) and p == q
 
 
 def float_differences(x, y):
     """The float fields of two draws that differ, with their distance in ULPs."""
     out = []
-    for k in x.keys() & y.keys():
+    for k in (x.keys() & y.keys()) & FLOAT_FIELDS:
         pairs = zip(x[k], y[k]) if isinstance(x[k], list) and isinstance(y[k], list) else [(x[k], y[k])]
         for i, (p, q) in enumerate(pairs):
             if not close(p, q) and isinstance(p, float) and isinstance(q, (int, float)) and not isinstance(q, bool):
@@ -93,7 +108,10 @@ def same(x, y):
         return False
     for k in x:
         p, q = x[k], y[k]
-        if isinstance(p, list) and isinstance(q, list):
+        if k not in FLOAT_FIELDS:
+            if not typed(p, q):
+                return False
+        elif isinstance(p, list) and isinstance(q, list):
             if len(p) != len(q) or not all(close(a, b) for a, b in zip(p, q)):
                 return False
         elif not close(p, q):
@@ -142,7 +160,7 @@ def main():
         b = [normal(d) for d in r['draws']]
         # State the case reads back besides the draws.
         for key in v.keys() - {'case', 'draws'}:
-            if key not in r or not close(v[key], r[key]):
+            if key not in r or not (close if key in FLOAT_FIELDS else typed)(v[key], r[key]):
                 a = a + [{'type': 'state', key: v[key]}]
                 b = b + [{'type': 'state', key: r.get(key)}]
         if len(a) != len(b) or not all(same(x, y) for x, y in zip(a, b)):

@@ -1,6 +1,7 @@
 import unittest
 
-from tools import lab, test_environment_render_parity as environment, test_recipe_book_render_parity as recipe_book
+from tools import lab, test_environment_render_parity as environment, test_hud_parity as hud, \
+    test_recipe_book_render_parity as recipe_book
 
 
 def row(text):
@@ -15,6 +16,31 @@ class RecipeBookTests(unittest.TestCase):
         self.assertFalse(recipe_book.same(vanilla, sunrise))
         self.assertTrue(recipe_book.same(vanilla, row('{"type": "blit", "u": 0, "v": 0.5, '
                                                      '"m": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]}')))
+
+
+    def test_an_integer_field_never_matches_a_float(self):
+        vanilla = row('{"t": "text", "runs": [["x", -1, 0]], "x": 3, "y": 4, "color": -1, "shadow": true}')
+        regressed = row('{"t": "text", "runs": [["x", -1, 0]], "x": 3, "y": 4, "color": -1.00000001, "shadow": true}')
+        in_a_run = row('{"t": "text", "runs": [["x", -1.00000001, 0]], "x": 3, "y": 4, "color": -1, "shadow": true}')
+        self.assertEqual(lab.f32_bits(vanilla['color']), lab.f32_bits(regressed['color']),
+                         "as binary32 the two colours would be one value")
+        self.assertFalse(recipe_book.same(vanilla, regressed))
+        self.assertFalse(recipe_book.same(vanilla, in_a_run))
+        self.assertTrue(recipe_book.same(vanilla, row('{"t": "text", "runs": [["x", -1, 0]], "x": 3, "y": 4, '
+                                                     '"color": -1, "shadow": true}')))
+
+
+class HudTests(unittest.TestCase):
+    def test_an_integer_field_never_matches_a_float(self):
+        vanilla = row('{"type": "fill", "x0": 0, "y0": 0, "x1": 4, "y1": 4, "color": -1}')
+        regressed = row('{"type": "fill", "x0": 0, "y0": 0, "x1": 4, "y1": 4, "color": -1.00000001}')
+        self.assertFalse(hud.same(hud.normal(vanilla), hud.normal(regressed)))
+
+    def test_the_matrix_still_compares_at_binary32_width(self):
+        a = row('{"type": "fill", "x0": 0, "y0": 0, "x1": 4, "y1": 4, "color": -1, "matrix": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]}')
+        b = row('{"type": "fill", "x0": 0, "y0": 0, "x1": 4, "y1": 4, "color": -1, "matrix": [1.0, -0.0, 0.0, 1.0, 0.0, 0.0]}')
+        self.assertFalse(hud.same(hud.normal(a), hud.normal(b)))
+        self.assertTrue(hud.same(hud.normal(a), hud.normal(a)))
 
 
 class EnvironmentTests(unittest.TestCase):
