@@ -50,8 +50,8 @@ fn expand_items(
             if let Some(path) = sunrise_game_discovery::exports::env_concat_include(
                 included.mac.tokens.clone(),
                 "OUT_DIR",
-                "",
-            )? && let Some(file_name) = Path::new(&path).file_name().and_then(|n| n.to_str())
+                Path::new(""),
+            )? && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
                 && file_name.starts_with(sunrise_game_discovery::exports::PREFIX)
             {
                 let sources =
@@ -59,16 +59,19 @@ fn expand_items(
                 let (_, source) = sources
                     .iter()
                     .find(|(name, _)| file_name == name.as_str())
-                    .ok_or_else(|| format!("unknown vocabulary export include: {path}"))?;
+                    .ok_or_else(|| {
+                        format!("unknown vocabulary export include: {}", path.display())
+                    })?;
                 items.extend(syn::parse_file(source).map_err(|e| e.to_string())?.items);
                 continue;
             }
             if let Some(path) = sunrise_game_discovery::exports::env_concat_include(
                 included.mac.tokens.clone(),
                 "CARGO_MANIFEST_DIR",
-                manifest.to_str().ok_or("manifest directory is not UTF-8")?,
+                manifest,
             )? {
-                let path = syn::LitStr::new(&path, included.mac.path.segments[0].ident.span());
+                let path = path.to_str().ok_or("manifest include path is not UTF-8")?;
+                let path = syn::LitStr::new(path, included.mac.path.segments[0].ident.span());
                 included.mac.tokens = quote::quote!(#path);
             }
         }

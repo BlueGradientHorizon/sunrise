@@ -49,9 +49,9 @@ pub(crate) fn expand(root: &Path, source: &str) -> Result<String, String> {
                 && let Some(path) = sunrise_game_discovery::exports::env_concat_include(
                     mac.mac.tokens.clone(),
                     "OUT_DIR",
-                    "",
+                    Path::new(""),
                 )?
-                && let Some(file_name) = Path::new(&path).file_name().and_then(|n| n.to_str())
+                && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
                 && let Some((_, code)) = sources.iter().find(|(name, _)| file_name == name.as_str())
             {
                 out.extend(syn::parse_file(code).map_err(|e| e.to_string())?.items);

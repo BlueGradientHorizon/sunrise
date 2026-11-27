@@ -1,18 +1,23 @@
 //! The source-only module fragments of the API vocabulary, shared with its generator.
 use quote::ToTokens;
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Component, Path, PathBuf},
+};
 use syn::{Item, parse::Parser};
 
 /// Generated export fragment filenames share this prefix.
 pub const PREFIX: &str = "mod_api_exports_";
 
-/// Parse a literal `concat!(env!(var), "...")` include token stream, substituting `replacement` for `env!(var)`.
-/// Returns `Ok(None)` if the tokens do not match that exact shape.
+/// Resolve a literal `concat!(env!(var), "/...")` include relative to `replacement`,
+/// without touching the filesystem. Other include expressions return `Ok(None)`.
+/// An empty replacement strips the variable for generated-file name matching.
 pub fn env_concat_include(
     tokens: proc_macro2::TokenStream,
     var: &str,
-    replacement: &str,
-) -> Result<Option<String>, String> {
+    replacement: &Path,
+) -> Result<Option<PathBuf>, String> {
     let Ok(syn::Expr::Macro(expression)) = syn::parse2::<syn::Expr>(tokens) else {
         return Ok(None);
     };
@@ -22,26 +27,57 @@ pub fn env_concat_include(
     let arguments = <syn::punctuated::Punctuated<syn::Expr, syn::Token![,]>>::parse_terminated
         .parse2(expression.mac.tokens)
         .map_err(|e| e.to_string())?;
-    let mut path = String::new();
+    let mut literal = String::new();
     let mut saw_var = false;
-    for argument in arguments {
+    for (index, argument) in arguments.into_iter().enumerate() {
         match argument {
             syn::Expr::Lit(syn::ExprLit {
                 lit: syn::Lit::Str(value),
                 ..
-            }) => path.push_str(&value.value()),
+            }) => literal.push_str(&value.value()),
             syn::Expr::Macro(env_macro)
                 if env_macro.mac.path.is_ident("env")
                     && syn::parse2::<syn::LitStr>(env_macro.mac.tokens.clone())
                         .is_ok_and(|name| name.value() == var) =>
             {
+                if !replacement.as_os_str().is_empty() && index != 0 {
+                    return Ok(None);
+                }
                 saw_var = true;
-                path.push_str(replacement);
             }
             _ => return Ok(None),
         }
     }
-    Ok(saw_var.then_some(path))
+    if !saw_var {
+        return Ok(None);
+    }
+    if replacement.as_os_str().is_empty() {
+        return Ok(Some(PathBuf::from(literal)));
+    }
+    if !literal.is_empty() && !literal.starts_with(std::path::is_separator) {
+        return Ok(None);
+    }
+
+    // The leading separator belongs to the concat suffix, not a new root.
+    // Join components individually: a verbatim Windows path does not interpret
+    // forward slashes or dot components in the concatenated string.
+    let suffix = literal.trim_start_matches(std::path::is_separator);
+    let mut path = replacement.to_path_buf();
+    for component in Path::new(suffix).components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(path.components().next_back(), Some(Component::Normal(_))) {
+                    path.pop();
+                } else if !path.has_root() {
+                    path.push(component);
+                }
+            }
+            Component::Normal(_) => path.push(component),
+            Component::Prefix(_) | Component::RootDir => return Ok(None),
+        }
+    }
+    Ok(Some(path))
 }
 
 fn collect(
@@ -120,4 +156,25 @@ pub fn fragments(
         collect(root, "root", file.items, &mut out)?;
     }
     Ok((out, has_parts, has_host))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_include_joins_and_folds_a_literal_suffix() {
+        for root in [Path::new("checkout"), Path::new(r"\\?\C:\checkout")] {
+            let manifest = root.join("crates").join("discovery");
+            let tokens = quote::quote!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/.././../tests/temporary/../",
+                "fixture.rs"
+            ));
+            assert_eq!(
+                env_concat_include(tokens, "CARGO_MANIFEST_DIR", &manifest).unwrap(),
+                Some(root.join("tests").join("fixture.rs"))
+            );
+        }
+    }
 }
