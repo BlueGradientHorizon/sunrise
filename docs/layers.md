@@ -157,7 +157,7 @@ Sunrise's own extras and its product, and every built-in address of an outside s
   `sunrise-perf-share`, `sunrise-perf-overlay`, `sunrise-release-sign`, `sunrise-server`, `sunrise-mod-registry`,
   `sunrise-heartbeat`, `sunrise-official`, `sunrise-discord`, `sunrise-reconnect`, `https://github.com/sunrise-org/sunrise-launcher`. Still in
   engine crates today:
-  `game/extras.rs` and `game/extras/`, `extras_ui.rs`, `pvp.rs`.
+  `game/extras.rs` and `game/extras/`, `extras_ui.rs`, `chat_options.rs`.
 - **Rules:**
   - It uses the platform's public API only, never the engine.
   - Until it moves, every Sunrise feature in the game sits behind the `sunrise-extras` feature
@@ -465,7 +465,7 @@ What the engine draws differently for a crate above, as plain data: client prese
 
 ```rust
 pub struct Look {       // #[non_exhaustive]; Default is vanilla's
-    pub chat: Chat, pub hide_effect_icons: bool,
+    pub chat: Chat,
 }
 pub fn update(change: impl FnOnce(&mut Look));  // the player whose turn it is (`seat()`)
 ```

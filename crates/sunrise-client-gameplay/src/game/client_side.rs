@@ -618,9 +618,6 @@ pub mod potions;
 #[path = "interface/profile_capture.rs"]
 pub(in crate::game) mod profile_capture;
 #[cfg(feature = "client")]
-#[path = "entities/pvp.rs"]
-pub(in crate::game) mod pvp;
-#[cfg(feature = "client")]
 #[path = "interface/quick_actions.rs"]
 pub(in crate::game) mod quick_actions;
 #[cfg(feature = "client")]
@@ -1663,8 +1660,6 @@ pub struct ClientState {
     )>,
     /// Settings and HUD state: `game/interface/extras.rs`.
     pub(in crate::game) extras: extras::ExtrasState,
-    /// Client presentation state (`game/entities/pvp.rs`).
-    pub(in crate::game::client_side) pvp: pvp::PvpState,
     /// The item panel beside container screens (`game/modding/native_panel.rs`).
     pub panel: native_panel::Panel,
     /// Sunrise's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
@@ -2235,7 +2230,6 @@ impl ClientState {
             pending_uploads_order: None,
             upload_pace: Default::default(),
             extras: Default::default(),
-            pvp: Default::default(),
             panel: Default::default(),
             native_shaders: Default::default(),
             mod_keys: Default::default(),

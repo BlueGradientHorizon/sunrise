@@ -7435,12 +7435,10 @@ mod tests {
         );
         assert_eq!(s.extras.shader_pack_key, "key.keyboard.k");
         // Reset All puts every Sunrise key back too.
-        s.extras.pvp.editor_key = "key.keyboard.h".into();
         s.extras.sort_key = "key.keyboard.y".into();
         for (name, _) in crate::extras::KEYS {
             assert!(s.extras.reset_key(name));
         }
-        assert_eq!(s.extras.pvp.editor_key, "key.keyboard.unknown");
         assert_eq!(s.extras.sort_key, "key.keyboard.unknown");
         assert!(!s.extras.reset_key("key.attack"));
     }

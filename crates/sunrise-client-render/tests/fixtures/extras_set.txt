@@ -25,6 +25,3 @@ chatTimestamps:false
 chatCompact:false
 chatCopy:false
 chatSearch:false
-combatFeel:modern
-combatIndicator:false
-combatSounds:false

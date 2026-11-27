@@ -750,9 +750,6 @@ pub(in crate::game) use client_side::potions;
 pub(in crate::game) use client_side::profile_capture;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::pvp;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::quick_actions;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]

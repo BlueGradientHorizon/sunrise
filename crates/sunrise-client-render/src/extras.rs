@@ -3,7 +3,7 @@
 //! stays exactly vanilla's, and the logic behind them. Every extra is off by
 //! default; see `docs/extras.md`. Sunrise's own switches outside the Gameplay page
 //! (No AI, Agent Control) are kept here too.
-use std::{collections::VecDeque, path::Path};
+use std::path::Path;
 
 pub const FILE: &str = "sunrise-extras.txt";
 /// The name the options screen uses while the sort key waits for a key.
@@ -11,8 +11,7 @@ pub const SORT_KEY: &str = "sunrise.sort";
 /// The name the options screen uses while the shader pack key waits for a key.
 pub const SHADER_PACK_KEY: &str = "sunrise.shader_pack_key";
 /// Sunrise's own key bindings and their captions, in the order Controls -> Key Binds lists
-/// them under its "Sunrise" category, after vanilla's: the same bindings the Extras page and
-/// the PvP page set.
+/// them under its "Sunrise" category, after vanilla's: the same bindings the Gameplay page sets.
 pub const KEYS: [(&str, &str); 2] = [
     (SHADER_PACK_KEY, "sunrise.extras.shader_pack_key"),
     (SORT_KEY, "sunrise.extras.sort_key"),
@@ -114,8 +113,8 @@ pub struct Extras {
     /// The file is there but couldn't be read whole (an I/O error, or bytes that aren't UTF-8):
     /// it is never written over, so nothing in it is lost.
     keep_file: bool,
-    /// Client presentation options (`pvp`).
-    pub pvp: crate::pvp::Pvp,
+    /// Options for chat messages.
+    pub chat: crate::chat_options::ChatOptions,
 }
 impl Default for Extras {
     fn default() -> Self {
@@ -145,7 +144,7 @@ impl Default for Extras {
             music_page: false,
             unknown: Vec::new(),
             keep_file: false,
-            pvp: Default::default(),
+            chat: Default::default(),
         }
     }
 }
@@ -219,7 +218,7 @@ impl Extras {
                 }
                 "musicPage" => e.music_page = flag(e.music_page),
                 key => {
-                    if !e.pvp.parse_line(key, value) {
+                    if !e.chat.parse_line(key, value) {
                         e.unknown.push((key.to_owned(), raw.to_owned()));
                     }
                 }
@@ -266,7 +265,7 @@ impl Extras {
         );
         push("musicOff", &self.music_off.join(","));
         push("musicPage", &bool_text(self.music_page));
-        self.pvp.serialize(&mut text);
+        self.chat.serialize(&mut text);
         // As written: only the file's last record can lack a line end, and nothing follows it here.
         for (key, raw) in &self.unknown {
             if !owned(key) {
@@ -355,91 +354,6 @@ impl Extras {
     }
 }
 
-/// Frame times over the last few seconds: frames per second, the minimum
-/// and the 1% low, recomputed twice a second.
-pub struct FpsCounter {
-    /// (end time in seconds, frame milliseconds), oldest first.
-    frames: VecDeque<(f64, f32)>,
-    shown: FpsReading,
-    computed_at: f64,
-}
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct FpsReading {
-    pub fps: u32,
-    pub min: u32,
-    pub low: u32,
-}
-/// Seconds the minimum and 1% low look back.
-const LOW_WINDOW: f64 = 5.0;
-impl Default for FpsCounter {
-    fn default() -> Self {
-        Self {
-            frames: VecDeque::new(),
-            shown: FpsReading::default(),
-            computed_at: f64::NEG_INFINITY,
-        }
-    }
-}
-impl FpsCounter {
-    /// A frame that ended at `now` (seconds) and took `ms`.
-    pub fn record(&mut self, now: f64, ms: f32) {
-        self.frames.push_back((now, ms));
-        while self
-            .frames
-            .front()
-            .is_some_and(|&(t, _)| now - t > LOW_WINDOW)
-        {
-            self.frames.pop_front();
-        }
-        if now - self.computed_at >= 0.5 {
-            self.computed_at = now;
-            self.shown = self.compute(now);
-        }
-    }
-    fn compute(&self, now: f64) -> FpsReading {
-        let fps = self.frames.iter().filter(|&&(t, _)| now - t < 1.0).count() as u32;
-        let mut times: Vec<f32> = self.frames.iter().map(|f| f.1).collect();
-        if times.is_empty() {
-            return FpsReading::default();
-        }
-        times.sort_by(|a, b| b.total_cmp(a));
-        let to_fps = |ms: f32| (1000.0 / ms.max(0.001)).round() as u32;
-        // The 1% low: the frame rate of the 99th percentile frame time.
-        let low = times[(times.len() - 1) / 100];
-        FpsReading {
-            fps,
-            min: to_fps(times[0]),
-            low: to_fps(low),
-        }
-    }
-    pub fn reading(&self) -> FpsReading {
-        self.shown
-    }
-    pub fn clear(&mut self) {
-        *self = Self::default();
-    }
-}
-
-/// Clicks of one button in the last second.
-#[derive(Default)]
-pub struct Cps {
-    clicks: VecDeque<f64>,
-}
-impl Cps {
-    pub fn click(&mut self, now: f64) {
-        self.clicks.push_back(now);
-        self.forget(now);
-    }
-    fn forget(&mut self, now: f64) {
-        while self.clicks.front().is_some_and(|&t| now - t >= 1.0) {
-            self.clicks.pop_front();
-        }
-    }
-    pub fn per_second(&mut self, now: f64) -> usize {
-        self.forget(now);
-        self.clicks.len()
-    }
-}
 /// The settings Sunrise Settings' Gameplay page shows, one per row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Item {
@@ -469,8 +383,8 @@ pub enum Item {
     /// The Select Resource Packs screen's Add button (Modrinth).
     PackBrowser,
     Pregen,
-    /// Client presentation options (`pvp::rows`).
-    Pvp(crate::pvp::Opt),
+    /// Chat options.
+    Chat(crate::chat_options::Opt),
 }
 /// Sunrise Settings' Gameplay page: headers (language keys) and items.
 pub fn rows() -> Vec<Result<Item, &'static str>> {
@@ -499,7 +413,11 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
         Ok(WheelCyclesSettings),
         Ok(PackBrowser),
     ];
-    rows.extend(crate::pvp::rows().into_iter().map(|row| row.map(Pvp)));
+    rows.extend(
+        crate::chat_options::rows()
+            .into_iter()
+            .map(|row| row.map(Chat)),
+    );
     rows
 }
 impl Item {
@@ -525,7 +443,7 @@ impl Item {
             Item::WheelCyclesSettings => "sunrise.extras.wheel_cycles_settings",
             Item::PackBrowser => "sunrise.extras.pack_browser",
             Item::Pregen => "sunrise.extras.pregen",
-            Item::Pvp(o) => o.caption_key(),
+            Item::Chat(o) => o.caption_key(),
         }
     }
     /// The language key of the description shown as the row's tooltip.
@@ -550,7 +468,7 @@ impl Item {
             Item::WheelCyclesSettings => "sunrise.extras.wheel_cycles_list_settings.tooltip",
             Item::PackBrowser => "sunrise.extras.pack_browser.tooltip",
             Item::Pregen => "sunrise.extras.pregen.tooltip",
-            Item::Pvp(o) => o.description_key(),
+            Item::Chat(o) => o.description_key(),
         }
     }
     /// The caption in the current language (English when the key is missing).
@@ -584,7 +502,7 @@ impl Item {
             Item::WheelCyclesSettings => "Scroll wheel changes settings",
             Item::PackBrowser => "Resource pack browser",
             Item::Pregen => "Chunk pregeneration",
-            Item::Pvp(o) => o.caption(),
+            Item::Chat(o) => o.caption(),
         }
     }
     /// The switch this setting belongs to: it does nothing while that is off.
@@ -594,7 +512,7 @@ impl Item {
             UiSoundReserve => return None,
             MouseTweaksWheel => MouseTweaks,
             SortKey => Sort,
-            Pvp(o) => return o.parent().map(Pvp),
+            Chat(_) => return None,
             Fullbright | DynamicLights | OwnNameTag | HideBlockParticles | MouseTweaks | Sort
             | ChatAnimation | ChatIndicator | NoAi | AgentControl | ReproKeys
             | WheelCyclesSettings | MusicPage | PackBrowser | Pregen | ShaderPackKey => {
@@ -652,7 +570,7 @@ impl Item {
             Item::ReproKeys => {
                 "F3+R starts or stops a repro recording and F3+E writes its bundle. Off by default: a recording copies the world."
             }
-            Item::Pvp(o) => o.description(),
+            Item::Chat(o) => o.description(),
             Item::WheelCyclesSettings => {
                 "The scroll wheel over a button in the settings changes its value, as in vanilla. Off, the wheel only scrolls the list."
             }
@@ -699,7 +617,7 @@ impl Item {
             Item::WheelCyclesSettings => e.wheel_cycles_settings,
             Item::PackBrowser => e.pack_browser,
             Item::Pregen => e.pregen,
-            Item::Pvp(o) => return o.switch(&e.pvp),
+            Item::Chat(o) => o.switch(&e.chat),
             _ => return None,
         })
     }
@@ -708,16 +626,14 @@ impl Item {
         match self {
             Item::SortKey => crate::keybinds::display_name(&e.sort_key).plain(),
             Item::ShaderPackKey => crate::keybinds::display_name(&e.shader_pack_key).plain(),
-            Item::Pvp(o) if o.switch(&e.pvp).is_none() => o.value(&e.pvp).unwrap_or_default(),
             other => match other.switch(e) {
                 Some(true) => crate::lang::get_or("On", "On"),
                 _ => crate::lang::get_or("Off", "Off"),
             },
         }
     }
-    /// A click (`back` for the right button: a client presentation choice steps back; a switch flips
-    /// either way). The sort key binds instead.
-    pub fn cycle(self, e: &mut Extras, back: bool) {
+    /// A click toggles a switch. The sort key binds instead.
+    pub fn cycle(self, e: &mut Extras, _back: bool) {
         match self {
             Item::Fullbright => e.fullbright = !e.fullbright,
             Item::DynamicLights => e.dynamic_lights = !e.dynamic_lights,
@@ -736,7 +652,7 @@ impl Item {
             Item::WheelCyclesSettings => e.wheel_cycles_settings = !e.wheel_cycles_settings,
             Item::PackBrowser => e.pack_browser = !e.pack_browser,
             Item::Pregen => e.pregen = !e.pregen,
-            Item::Pvp(o) => o.cycle(&mut e.pvp, back),
+            Item::Chat(o) => o.cycle(&mut e.chat),
             Item::SortKey | Item::ShaderPackKey => {}
         }
     }
@@ -937,56 +853,6 @@ mod tests {
         let e = Extras::parse("sort:maybe\nsortKey:r\nnoise");
         assert!(!e.sort);
         assert_eq!(e.sort_key, "key.keyboard.unknown");
-    }
-
-    #[test]
-    fn fps_counter_reports_rate_minimum_and_low() {
-        let mut c = FpsCounter::default();
-        let mut t = 0.0;
-        // Two seconds at 100 fps with one 50 ms hitch.
-        for i in 0..200 {
-            let ms = if i == 150 { 50.0 } else { 10.0 };
-            t += f64::from(ms) / 1000.0;
-            c.record(t, ms);
-        }
-        c.computed_at = f64::NEG_INFINITY;
-        c.record(t + 0.01, 10.0);
-        let r = c.reading();
-        assert!((95..=101).contains(&r.fps), "{r:?}");
-        assert_eq!(r.min, 20);
-        assert_eq!(r.low, 100, "one frame in 200 is under the 1% mark");
-        // Hitches beyond 1% of frames pull the 1% low down.
-        let mut c = FpsCounter::default();
-        let mut t = 0.0;
-        for i in 0..100 {
-            let ms = if i % 25 == 0 { 40.0 } else { 10.0 };
-            t += f64::from(ms) / 1000.0;
-            c.record(t, ms);
-        }
-        c.computed_at = f64::NEG_INFINITY;
-        c.record(t, 10.0);
-        assert_eq!(c.reading().low, 25);
-    }
-
-    #[test]
-    fn old_frames_leave_the_window() {
-        let mut c = FpsCounter::default();
-        c.record(0.0, 100.0);
-        for i in 1..=700 {
-            c.record(f64::from(i) / 100.0, 10.0);
-        }
-        assert_eq!(c.reading().min, 100, "the 100 ms frame is 7 s old");
-    }
-
-    #[test]
-    fn cps_counts_the_last_second() {
-        let mut cps = Cps::default();
-        for i in 0..10 {
-            cps.click(f64::from(i) * 0.1);
-        }
-        assert_eq!(cps.per_second(0.95), 10);
-        assert_eq!(cps.per_second(1.25), 7);
-        assert_eq!(cps.per_second(3.0), 0);
     }
 
     #[test]

@@ -21,10 +21,6 @@ impl ChatOptions {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Pvp {
-    pub chat: ChatOptions,
-}
 fn flag(value: &str, d: bool) -> bool {
     match value {
         "true" => true,
@@ -32,20 +28,20 @@ fn flag(value: &str, d: bool) -> bool {
         _ => d,
     }
 }
-impl Pvp {
+impl ChatOptions {
     pub fn parse_line(&mut self, key: &str, value: &str) -> bool {
         match key {
-            "chatTimestamps" => self.chat.timestamps = flag(value, self.chat.timestamps),
-            "chatCompact" => self.chat.compact = flag(value, self.chat.compact),
-            "chatCopy" => self.chat.copy = flag(value, self.chat.copy),
-            "chatSearch" => self.chat.search = flag(value, self.chat.search),
+            "chatTimestamps" => self.timestamps = flag(value, self.timestamps),
+            "chatCompact" => self.compact = flag(value, self.compact),
+            "chatCopy" => self.copy = flag(value, self.copy),
+            "chatSearch" => self.search = flag(value, self.search),
             _ => return false,
         }
         true
     }
     pub fn serialize(&self, out: &mut String) {
         use std::fmt::Write;
-        let c = &self.chat;
+        let c = self;
         let _ = write!(
             out,
             "chatTimestamps:{}\nchatCompact:{}\nchatCopy:{}\nchatSearch:{}\n",
@@ -95,20 +91,20 @@ pub fn rows() -> Vec<Result<Opt, &'static str>> {
     ]
 }
 impl Opt {
-    pub fn switch(self, p: &Pvp) -> Option<bool> {
-        Some(match self {
-            Opt::ChatTimestamps => p.chat.timestamps,
-            Opt::ChatCompact => p.chat.compact,
-            Opt::ChatCopy => p.chat.copy,
-            Opt::ChatSearch => p.chat.search,
-        })
-    }
-    pub fn cycle(self, p: &mut Pvp, _back: bool) {
+    pub fn switch(self, p: &ChatOptions) -> bool {
         match self {
-            Opt::ChatTimestamps => p.chat.timestamps = !p.chat.timestamps,
-            Opt::ChatCompact => p.chat.compact = !p.chat.compact,
-            Opt::ChatCopy => p.chat.copy = !p.chat.copy,
-            Opt::ChatSearch => p.chat.search = !p.chat.search,
+            Opt::ChatTimestamps => p.timestamps,
+            Opt::ChatCompact => p.compact,
+            Opt::ChatCopy => p.copy,
+            Opt::ChatSearch => p.search,
+        }
+    }
+    pub fn cycle(self, p: &mut ChatOptions) {
+        match self {
+            Opt::ChatTimestamps => p.timestamps = !p.timestamps,
+            Opt::ChatCompact => p.compact = !p.compact,
+            Opt::ChatCopy => p.copy = !p.copy,
+            Opt::ChatSearch => p.search = !p.search,
         }
     }
 }
@@ -118,25 +114,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn options_round_trip_and_cycle_both_ways() {
-        let d = Pvp::default();
+    fn options_round_trip_and_toggle() {
+        let d = ChatOptions::default();
         let mut text = String::new();
         d.serialize(&mut text);
-        let mut back = Pvp::default();
+        let mut back = ChatOptions::default();
         for line in text.lines() {
             let (k, v) = line.split_once(':').unwrap();
             assert!(back.parse_line(k, v), "{k}");
         }
         assert_eq!(back, d);
-        let mut p = Pvp::default();
+        let mut p = ChatOptions::default();
         for opt in rows().into_iter().flatten() {
-            opt.cycle(&mut p, false);
+            opt.cycle(&mut p);
         }
-        let c = p.chat;
+        let c = p;
         assert!(c.timestamps && c.compact && c.copy && c.search);
         let mut text = String::new();
         p.serialize(&mut text);
-        let mut read = Pvp::default();
+        let mut read = ChatOptions::default();
         text.lines().for_each(|l| {
             let (k, v) = l.split_once(':').unwrap();
             read.parse_line(k, v);

@@ -189,6 +189,15 @@ and the container screen tests are unchanged).
   pressed again. The menu's second click on the picked pack does the same through the same pick.
 - A pack whose owning mod is off can't run: the key reports that instead of claiming it turned on.
 
+### Chat options (default off)
+
+| Option | Key | What it does |
+|---|---|---|
+| Timestamps | `chatTimestamps` | The local time a message came in, before it, in grey (`sunrise.chat.timestamp`). |
+| Compact chat | `chatCompact` | A message equal to the one before it (same text, kind and tag, neither signed) raises that one's count, "(x3)", instead of adding lines. |
+| Copy on click | `chatCopy` | In the open chat, a click on a message where the click has no action of its own copies the message's text (without time or count). |
+| Chat search | `chatSearch` | Ctrl+F in the open chat: the box takes a query and only the messages holding it (any case) show. Enter, Esc or Ctrl+F again stops. |
+
 ### Smooth chat (`chatAnimation`, default off; `chatIndicator`, default on)
 - A new chat line slides in from the left while it fades in over a quarter of
   a second (5 ticks, `INTRO_TICKS`/`INTRO_WIDTH` in `Chat::layout`), instead of
