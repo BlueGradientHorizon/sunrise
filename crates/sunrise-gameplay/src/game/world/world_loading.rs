@@ -1917,7 +1917,7 @@ mod tests {
             level(
                 "test:inline",
                 r#"{"type":"test:inline","generator":{"type":"minecraft:noise","settings":{"sea_level":20}}}"#,
-                None,
+                Some(99),
             ),
             level(
                 "test:plain",
@@ -1931,18 +1931,18 @@ mod tests {
             &sunrise_world::conditions::LoadConditions::vanilla(),
         );
         let levels = resolve_level_sea_levels(&overrides, &mods, std::path::Path::new("."));
-        let sea = |id: &str| {
+        let entry = |id: &str| {
             let key = sunrise_core::LevelKey::parse(id).unwrap();
             levels
                 .iter()
                 .find(|(level, _)| *level == key)
                 .map(|&(_, sea)| sea)
-                .unwrap_or_else(|| sunrise_world::level::vanilla_sea_level(key))
         };
-        assert_eq!(sea("test:own"), 10);
-        assert_eq!(sea("test:inline"), 20);
-        assert_eq!(sea("test:plain"), 63);
-        assert_eq!(sea("minecraft:the_nether"), 32);
+        // The noise settings the terrain is built with win over the mod's explicit 99.
+        assert_eq!(entry("test:own"), Some(10));
+        assert_eq!(entry("test:inline"), Some(20));
+        assert_eq!(entry("test:plain"), None);
+        assert_eq!(entry("minecraft:the_nether"), None);
     }
 
     #[test]
