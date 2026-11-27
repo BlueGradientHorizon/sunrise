@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Am bàr dathte air taobh clì loidhne cabadaich.",
   "sunrise.extras.dynamic_lights": "Solais fiùghantach",
   "sunrise.extras.dynamic_lights.tooltip": "Bidh lòchrain agus tobraichean solais eile air an cumail, air an leigeil sìos no air an losgadh a 'lasadh nam blocaichean timcheall orra.",
-  "sunrise.extras.fullbright": "Làn-gheal",
-  "sunrise.extras.fullbright.tooltip": "Seall blocaichean agus aonadan aig làn sholas, eadhon ann an àiteachan dorcha.",
   "sunrise.extras.header.chat": "Còmhradh",
   "sunrise.extras.header.inventory": "Clàr-stuthan",
   "sunrise.extras.header.lighting": "Solais",

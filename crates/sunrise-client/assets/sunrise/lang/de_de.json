@@ -386,8 +386,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Der farbige Balken links neben einer Chatzeile.",
   "sunrise.extras.dynamic_lights": "Dynamisches Licht",
   "sunrise.extras.dynamic_lights.tooltip": "Fackeln und andere Lichtquellen, die gehalten, fallen gelassen werden oder brennen, beleuchten die Blöcke um sich herum.",
-  "sunrise.extras.fullbright": "Maximale Helligkeit",
-  "sunrise.extras.fullbright.tooltip": "Zeigt Blöcke und Objekte bei vollem Licht, selbst an dunklen Orten.",
   "sunrise.extras.header.chat": "Chat",
   "sunrise.extras.header.inventory": "Inventar",
   "sunrise.extras.header.lighting": "Beleuchtung",

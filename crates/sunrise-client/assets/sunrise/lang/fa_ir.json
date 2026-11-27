@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "نوار رنگی در سمت چپ یک خط چت.",
   "sunrise.extras.dynamic_lights": "چراغ های دینامیک",
   "sunrise.extras.dynamic_lights.tooltip": "مشعل ها و دیگر منابع نوری که نگه داشته، افتاده اند یا آتش می گیرند بلوک های اطراف خود را روشن می کنند.",
-  "sunrise.extras.fullbright": "فول برایت",
-  "sunrise.extras.fullbright.tooltip": "بلوک‌ها و موجودیت‌ها را در نور کامل، حتی در مناطق تاریک نشان دهید.",
   "sunrise.extras.header.chat": "چت کنید",
   "sunrise.extras.header.inventory": "موجودی",
   "sunrise.extras.header.lighting": "نورپردازی",

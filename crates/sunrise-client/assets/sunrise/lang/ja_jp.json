@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "チャットラインの左側にある色付きのバー。",
   "sunrise.extras.dynamic_lights": "ダイナミックライト",
   "sunrise.extras.dynamic_lights.tooltip": "トーチやその他の光源を持ったり、落としたり、火をつけたりすると、周囲のブロックが点灯します。",
-  "sunrise.extras.fullbright": "フルブライト",
-  "sunrise.extras.fullbright.tooltip": "暗い場所でもブロックやエンティティを完全な光で表示します。",
   "sunrise.extras.header.chat": "チャット",
   "sunrise.extras.header.inventory": "在庫",
   "sunrise.extras.header.lighting": "照明",

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "An barra daite ar thaobh na láimhe clé den líne chomhrá.",
   "sunrise.extras.dynamic_lights": "Soilse dinimiciúil",
   "sunrise.extras.dynamic_lights.tooltip": "Tóirsí agus foinsí solais eile a choinnítear, a scaoiltear nó a lasadh na bloic timpeall orthu.",
-  "sunrise.extras.fullbright": "Lángheal",
-  "sunrise.extras.fullbright.tooltip": "Taispeáin bloic agus aonáin ag solas iomlán, fiú i limistéir dorcha.",
   "sunrise.extras.header.chat": "Comhrá",
   "sunrise.extras.header.inventory": "Fardal",
   "sunrise.extras.header.lighting": "Soilsiú",

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Spalvota juosta pokalbio linijos kairėje.",
   "sunrise.extras.dynamic_lights": "Dinaminiai žibintai",
   "sunrise.extras.dynamic_lights.tooltip": "Fakelai ir kiti šviesos šaltiniai laikė, numetė ar degė, apšviečia aplink juos esančius blokus.",
-  "sunrise.extras.fullbright": "Visiškas apšvietimas",
-  "sunrise.extras.fullbright.tooltip": "Rodyti blokus ir objektus esant visiškam apšvietimui, net tamsiose srityse.",
   "sunrise.extras.header.chat": "Pokalbis",
   "sunrise.extras.header.inventory": "Inventorius",
   "sunrise.extras.header.lighting": "Apšvietimas",

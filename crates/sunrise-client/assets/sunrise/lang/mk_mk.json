@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Лентата во боја лево од линијата за разговор.",
   "sunrise.extras.dynamic_lights": "Динамични светла",
   "sunrise.extras.dynamic_lights.tooltip": "Факели и други извори на светлина држени, паднати или запалени ги осветлуваат блоковите околу нив.",
-  "sunrise.extras.fullbright": "Фулбрајт",
-  "sunrise.extras.fullbright.tooltip": "Прикажи блокови и ентитети на целосно светло, дури и во темни области.",
   "sunrise.extras.header.chat": "Разговор",
   "sunrise.extras.header.inventory": "Инвентар",
   "sunrise.extras.header.lighting": "Осветлување",

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Цветная полоса слева от строки чата.",
   "sunrise.extras.dynamic_lights": "Динамический свет",
   "sunrise.extras.dynamic_lights.tooltip": "Факелы и другие источники света в руках, на земле или в огне освещают блоки вокруг.",
-  "sunrise.extras.fullbright": "Полная яркость",
-  "sunrise.extras.fullbright.tooltip": "Показывает блоки и сущности при полном освещении, даже в тёмных местах.",
   "sunrise.extras.header.chat": "Чат",
   "sunrise.extras.header.inventory": "Инвентарь",
   "sunrise.extras.header.lighting": "Освещение",

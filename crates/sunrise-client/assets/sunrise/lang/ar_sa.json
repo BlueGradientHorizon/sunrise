@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "الشريط الملون الموجود على يسار خط الدردشة.",
   "sunrise.extras.dynamic_lights": "أضواء ديناميكية",
   "sunrise.extras.dynamic_lights.tooltip": "تم حمل المشاعل ومصادر الضوء الأخرى أو إسقاطها أو إشعال النار فيها على الكتل المحيطة بها.",
-  "sunrise.extras.fullbright": "فولبرايت",
-  "sunrise.extras.fullbright.tooltip": "إظهار الكتل والكيانات في الضوء الكامل، حتى في المناطق المظلمة.",
   "sunrise.extras.header.chat": "الدردشة",
   "sunrise.extras.header.inventory": "المخزون",
   "sunrise.extras.header.lighting": "الإضاءة",

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Värillinen palkki keskustelupalkin vasemmalla puolella.",
   "sunrise.extras.dynamic_lights": "Dynaamiset valot",
   "sunrise.extras.dynamic_lights.tooltip": "Taskulamput ja muut valonlähteet pitivät, putosivat tai syttyivät tuleen, sytyttivät ympärillään olevat lohkot.",
-  "sunrise.extras.fullbright": "Fullbright",
-  "sunrise.extras.fullbright.tooltip": "Näytä lohkot ja kokonaisuudet täydessä valaistuksessa, jopa tummilla alueilla.",
   "sunrise.extras.header.chat": "Chat",
   "sunrise.extras.header.inventory": "Varasto",
   "sunrise.extras.header.lighting": "Valaistus",

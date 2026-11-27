@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "La barra de colors a l'esquerra d'una línia de xat.",
   "sunrise.extras.dynamic_lights": "Llums dinàmics",
   "sunrise.extras.dynamic_lights.tooltip": "Les torxes i altres fonts de llum agafades, caigudes o al foc il·luminen els blocs que els envolten.",
-  "sunrise.extras.fullbright": "Lluminós total",
-  "sunrise.extras.fullbright.tooltip": "Mostra blocs i entitats a plena llum, fins i tot en zones fosques.",
   "sunrise.extras.header.chat": "Xatejar",
   "sunrise.extras.header.inventory": "Inventari",
   "sunrise.extras.header.lighting": "Il·luminació",

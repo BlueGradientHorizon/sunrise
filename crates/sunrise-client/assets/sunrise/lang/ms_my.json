@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Bar berwarna di sebelah kiri baris sembang.",
   "sunrise.extras.dynamic_lights": "Lampu dinamik",
   "sunrise.extras.dynamic_lights.tooltip": "Obor dan sumber cahaya lain yang dipegang, dijatuhkan atau dibakar menyalakan blok di sekelilingnya.",
-  "sunrise.extras.fullbright": "Terang penuh",
-  "sunrise.extras.fullbright.tooltip": "Tunjukkan blok dan entiti pada cahaya penuh, walaupun di kawasan gelap.",
   "sunrise.extras.header.chat": "Sembang",
   "sunrise.extras.header.inventory": "Inventori",
   "sunrise.extras.header.lighting": "Pencahayaan",

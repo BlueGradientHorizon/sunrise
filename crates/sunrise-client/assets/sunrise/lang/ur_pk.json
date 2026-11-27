@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "چیٹ لائن کے بائیں طرف رنگین پٹی۔",
   "sunrise.extras.dynamic_lights": "ڈائنامک لائٹس",
   "sunrise.extras.dynamic_lights.tooltip": "مشاریں اور دیگر روشنی کے ذرائع جو پکڑے گئے ہیں، گرائے گئے ہیں یا آگ پر ہیں، اپنے اردگرد کے بلاکس کو روشن کرتے ہیں۔",
-  "sunrise.extras.fullbright": "فل برائٹ",
-  "sunrise.extras.fullbright.tooltip": "اندھیری جگہوں پر بھی بلاکس اور اینٹیٹیز کو پوری روشنی میں دکھائیں۔",
   "sunrise.extras.header.chat": "چیٹ",
   "sunrise.extras.header.inventory": "انوینٹری",
   "sunrise.extras.header.lighting": "لائٹنگ",

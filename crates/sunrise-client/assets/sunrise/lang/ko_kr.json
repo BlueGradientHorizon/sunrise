@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "채팅 줄 왼쪽에 있는 색상 바입니다.",
   "sunrise.extras.dynamic_lights": "동적 조명",
   "sunrise.extras.dynamic_lights.tooltip": "들고 있거나 버려두거나 불이 붙은 횃불 및 기타 광원이 주변 블록을 밝힙니다.",
-  "sunrise.extras.fullbright": "풀브라이트",
-  "sunrise.extras.fullbright.tooltip": "어두운 지역에서도 블록과 엔티티를 최대 밝기로 표시합니다.",
   "sunrise.extras.header.chat": "채팅",
   "sunrise.extras.header.inventory": "인벤토리",
   "sunrise.extras.header.lighting": "조명",

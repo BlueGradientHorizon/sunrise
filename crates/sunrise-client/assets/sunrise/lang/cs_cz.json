@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Barevný pruh nalevo od chatovací linky.",
   "sunrise.extras.dynamic_lights": "Dynamická světla",
   "sunrise.extras.dynamic_lights.tooltip": "Pochodně a jiné světelné zdroje držené, shozené nebo v plamenech osvětlují bloky kolem nich.",
-  "sunrise.extras.fullbright": "Plné osvětlení",
-  "sunrise.extras.fullbright.tooltip": "Ukažte bloky a entity při plném osvětlení, dokonce i v tmavých oblastech.",
   "sunrise.extras.header.chat": "Chat",
   "sunrise.extras.header.inventory": "Inventář",
   "sunrise.extras.header.lighting": "Osvětlení",

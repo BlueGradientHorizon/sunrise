@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Shiriti me ngjyra në të majtë të një linje bisede.",
   "sunrise.extras.dynamic_lights": "Dritat dinamike",
   "sunrise.extras.dynamic_lights.tooltip": "Pishtarë dhe burime të tjera drite të mbajtura, të lëshuara ose në zjarr ndezin blloqet përreth tyre.",
-  "sunrise.extras.fullbright": "Ndriçim i plotë",
-  "sunrise.extras.fullbright.tooltip": "Shfaq blloqet dhe entitetet në dritë të plotë, edhe në zona të errëta.",
   "sunrise.extras.header.chat": "Biseda",
   "sunrise.extras.header.inventory": "Inventari",
   "sunrise.extras.header.lighting": "Ndriçimi",

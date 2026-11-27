@@ -390,8 +390,6 @@
   "sunrise.extras.chat_indicator.tooltip": "แถบสีทางด้านซ้ายของแชท",
   "sunrise.extras.dynamic_lights": "ไฟแบบไดนามิก",
   "sunrise.extras.dynamic_lights.tooltip": "คบเพลิงและแหล่งกำเนิดแสงอื่นๆ ถือ ทิ้ง หรือจุดไฟให้บล็อกที่อยู่รอบตัวพวกเขา",
-  "sunrise.extras.fullbright": "ฟูลไบรท์",
-  "sunrise.extras.fullbright.tooltip": "แสดงบล็อกและเอนทิตีด้วยแสงเต็มที่ แม้ในที่มืด",
   "sunrise.extras.header.chat": "แชท",
   "sunrise.extras.header.inventory": "สินค้าคงคลัง",
   "sunrise.extras.header.lighting": "แสงสว่าง",

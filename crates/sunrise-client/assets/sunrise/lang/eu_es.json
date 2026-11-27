@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Txat-lerro baten ezkerreko koloretako barra.",
   "sunrise.extras.dynamic_lights": "Argi dinamikoak",
   "sunrise.extras.dynamic_lights.tooltip": "Zuziak eta beste argi-iturri batzuk eusten, erorita edo sutan pizten dituzte inguruko blokeak.",
-  "sunrise.extras.fullbright": "Argi osoa",
-  "sunrise.extras.fullbright.tooltip": "Erakutsi blokeak eta entitateak argi betean, baita eremu ilunetan ere.",
   "sunrise.extras.header.chat": "Txateatu",
   "sunrise.extras.header.inventory": "Inbentarioa",
   "sunrise.extras.header.lighting": "Argiztapena",

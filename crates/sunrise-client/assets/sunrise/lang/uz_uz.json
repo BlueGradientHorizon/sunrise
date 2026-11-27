@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Suhbat chizig'ining chap tomonidagi rangli chiziq.",
   "sunrise.extras.dynamic_lights": "Dinamik chiroqlar",
   "sunrise.extras.dynamic_lights.tooltip": "Mash'alalar va boshqa yorug'lik manbalari tutilgan, tushirilgan yoki olovda yonib turgan bloklarni yoritadi.",
-  "sunrise.extras.fullbright": "To'liq yorqinlik",
-  "sunrise.extras.fullbright.tooltip": "Bloklar va ob'ektlarni hatto qorong'i joylarda ham to'liq yorug'likda ko'rsating.",
   "sunrise.extras.header.chat": "Suhbat",
   "sunrise.extras.header.inventory": "Inventarizatsiya",
   "sunrise.extras.header.lighting": "Yoritish",

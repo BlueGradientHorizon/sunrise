@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "La barre colorée à gauche d'une ligne de chat.",
   "sunrise.extras.dynamic_lights": "Lumières dynamiques",
   "sunrise.extras.dynamic_lights.tooltip": "Les torches et autres sources de lumière tenues en main, jetées ou en feu éclairent les blocs autour d'elles.",
-  "sunrise.extras.fullbright": "Pleine luminosité",
-  "sunrise.extras.fullbright.tooltip": "Affiche les blocs et les entités en pleine lumière, même dans les zones sombres.",
   "sunrise.extras.header.chat": "Chat",
   "sunrise.extras.header.inventory": "Inventaire",
   "sunrise.extras.header.lighting": "Éclairage",

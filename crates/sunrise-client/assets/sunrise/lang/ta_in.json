@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "அரட்டை வரியின் இடதுபுறத்தில் வண்ணப் பட்டை.",
   "sunrise.extras.dynamic_lights": "டைனமிக் விளக்குகள்",
   "sunrise.extras.dynamic_lights.tooltip": "தீப்பந்தங்கள் மற்றும் பிற ஒளி மூலங்கள் அவற்றைச் சுற்றியுள்ள தொகுதிகளை வைத்திருக்கின்றன, கைவிடப்படுகின்றன அல்லது தீயில் ஒளிரச் செய்கின்றன.",
-  "sunrise.extras.fullbright": "முழு வெளிச்சம்",
-  "sunrise.extras.fullbright.tooltip": "இருண்ட பகுதிகளில் கூட, முழு வெளிச்சத்தில் தொகுதிகள் மற்றும் நிறுவனங்களைக் காட்டு.",
   "sunrise.extras.header.chat": "அரட்டை",
   "sunrise.extras.header.inventory": "சரக்கு",
   "sunrise.extras.header.lighting": "விளக்கு",

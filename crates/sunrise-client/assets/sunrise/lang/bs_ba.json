@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Traka u boji lijevo od linije za ćaskanje.",
   "sunrise.extras.dynamic_lights": "Dinamička svjetla",
   "sunrise.extras.dynamic_lights.tooltip": "Baklje i drugi izvori svjetlosti koji su držani, ispušteni ili zapaljeni osvjetljavaju blokove oko sebe.",
-  "sunrise.extras.fullbright": "Puno svjetlo",
-  "sunrise.extras.fullbright.tooltip": "Prikažite blokove i entitete pri punom svjetlu, čak iu tamnim područjima.",
   "sunrise.extras.header.chat": "Časkanje",
   "sunrise.extras.header.inventory": "Inventar",
   "sunrise.extras.header.lighting": "Osvetljenje",

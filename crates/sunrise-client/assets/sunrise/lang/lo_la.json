@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "ແຖບສີຢູ່ເບື້ອງຊ້າຍຂອງສາຍສົນທະນາ.",
   "sunrise.extras.dynamic_lights": "ໄຟໄດນາມິກ",
   "sunrise.extras.dynamic_lights.tooltip": "ໂຄມໄຟ ແລະແຫຼ່ງແສງອື່ນໆທີ່ຖື, ຖິ້ມ ຫຼືຈູດໄຟໃຫ້ທ່ອນໄມ້ອ້ອມຮອບພວກມັນ.",
-  "sunrise.extras.fullbright": "ຄວາມສະຫວ່າງເຕັມ",
-  "sunrise.extras.fullbright.tooltip": "ສະແດງທ່ອນໄມ້ ແລະ ໜ່ວຍຕ່າງໆຢູ່ທີ່ແສງເຕັມ, ເຖິງແມ່ນວ່າຢູ່ໃນບ່ອນມືດກໍຕາມ.",
   "sunrise.extras.header.chat": "ສົນທະນາ",
   "sunrise.extras.header.inventory": "ສິນຄ້າຄົງຄັງ",
   "sunrise.extras.header.lighting": "ແສງໄຟ",

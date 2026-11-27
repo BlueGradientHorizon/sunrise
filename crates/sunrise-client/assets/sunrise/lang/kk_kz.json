@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Сөйлесу жолының сол жағындағы түсті жолақ.",
   "sunrise.extras.dynamic_lights": "Динамикалық шамдар",
   "sunrise.extras.dynamic_lights.tooltip": "Ұстап тұрған, түсірілген немесе жанып тұрған шамдар және басқа да жарық көздері олардың айналасындағы блоктарды жағады.",
-  "sunrise.extras.fullbright": "Fullbright",
-  "sunrise.extras.fullbright.tooltip": "Блоктар мен нысандарды толық жарықта, тіпті қараңғы жерлерде де көрсетіңіз.",
   "sunrise.extras.header.chat": "Чат",
   "sunrise.extras.header.inventory": "Түгендеу",
   "sunrise.extras.header.lighting": "Жарықтандыру",

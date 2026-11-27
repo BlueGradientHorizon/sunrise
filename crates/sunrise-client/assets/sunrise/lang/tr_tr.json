@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Sohbet satırının solundaki renkli çubuk.",
   "sunrise.extras.dynamic_lights": "Dinamik ışıklar",
   "sunrise.extras.dynamic_lights.tooltip": "Elde tutulan, yere düşen veya yanan meşaleler ve diğer ışık kaynakları çevrelerindeki blokları aydınlatır.",
-  "sunrise.extras.fullbright": "Tam Parlaklık",
-  "sunrise.extras.fullbright.tooltip": "Blokları ve varlıkları karanlık alanlarda bile tam ışıkta gösterir.",
   "sunrise.extras.header.chat": "Sohbet",
   "sunrise.extras.header.inventory": "Envanter",
   "sunrise.extras.header.lighting": "Işıklandırma",

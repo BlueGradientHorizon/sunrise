@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Զրույցի գծի ձախ կողմում գտնվող գունավոր գիծը:",
   "sunrise.extras.dynamic_lights": "Դինամիկ լույսեր",
   "sunrise.extras.dynamic_lights.tooltip": "Ջահերը և լույսի այլ աղբյուրները, որոնք պահված, ընկած կամ վառված են, լուսավորում են դրանց շուրջ գտնվող բլոկները:",
-  "sunrise.extras.fullbright": "Լրիվ լույս",
-  "sunrise.extras.fullbright.tooltip": "Ցույց տալ բլոկները և օբյեկտները լիարժեք լույսի ներքո, նույնիսկ մութ վայրերում:",
   "sunrise.extras.header.chat": "Զրուցարան",
   "sunrise.extras.header.inventory": "Գույքագրում",
   "sunrise.extras.header.lighting": "Լուսավորություն",

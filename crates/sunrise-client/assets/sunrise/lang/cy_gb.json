@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Y bar lliw ar ochr chwith llinell sgwrsio.",
   "sunrise.extras.dynamic_lights": "Goleuadau deinamig",
   "sunrise.extras.dynamic_lights.tooltip": "Mae fflachlampau a ffynonellau golau eraill sy'n cael eu dal, eu gollwng neu ar dân yn cynnau'r blociau o'u cwmpas.",
-  "sunrise.extras.fullbright": "Llawnbright",
-  "sunrise.extras.fullbright.tooltip": "Dangoswch flociau ac endidau ar olau llawn, hyd yn oed mewn ardaloedd tywyll.",
   "sunrise.extras.header.chat": "Sgwrsio",
   "sunrise.extras.header.inventory": "Stocrestr",
   "sunrise.extras.header.lighting": "Goleuo",

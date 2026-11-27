@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Трака у боји лево од линије за ћаскање.",
   "sunrise.extras.dynamic_lights": "Динамичка светла",
   "sunrise.extras.dynamic_lights.tooltip": "Бакље и други извори светлости који су држани, испуштени или запаљени осветљавају блокове око себе.",
-  "sunrise.extras.fullbright": "Фуллбригхт",
-  "sunrise.extras.fullbright.tooltip": "Прикажите блокове и ентитете при пуном светлу, чак и у тамним областима.",
   "sunrise.extras.header.chat": "Ћаскање",
   "sunrise.extras.header.inventory": "Инвентар",
   "sunrise.extras.header.lighting": "Осветљење",

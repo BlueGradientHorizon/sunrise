@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "De gekleurde balk links van een chatlijn.",
   "sunrise.extras.dynamic_lights": "Dynamische lichten",
   "sunrise.extras.dynamic_lights.tooltip": "Fakkels en andere lichtbronnen die je vasthoudt, laat vallen of in brand steken, verlichten de blokken eromheen.",
-  "sunrise.extras.fullbright": "Volledig helder",
-  "sunrise.extras.fullbright.tooltip": "Toon blokken en entiteiten bij vol licht, zelfs in donkere gebieden.",
   "sunrise.extras.header.chat": "Chatten",
   "sunrise.extras.header.inventory": "Inventaris",
   "sunrise.extras.header.lighting": "Verlichting",
