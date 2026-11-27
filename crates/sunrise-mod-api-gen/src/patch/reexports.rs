@@ -63,12 +63,20 @@ pub(super) fn imported(source: &mut Source, module: &str, item: &ItemUse) -> Vec
     leaves
         .into_iter()
         .map(|(name, path)| {
+            // A leading `::` names an external crate, which the source alone can't read.
+            let import = Import {
+                path,
+                external: item.leading_colon.is_some(),
+                conditional: false,
+                limit: None,
+            };
             let mut lookup = |space| {
-                walk.path(module, &path, space)
+                walk.import_path(module, &import, space)
                     .ok()
                     .map(|binding| binding.is_some())
             };
             let (types, values) = (lookup(Namespace::Type), lookup(Namespace::Value));
+            let path = import.path;
             let local = item.leading_colon.is_none()
                 && path.first().is_some_and(|head| {
                     !matches!(head.as_str(), "crate" | "self" | "super")

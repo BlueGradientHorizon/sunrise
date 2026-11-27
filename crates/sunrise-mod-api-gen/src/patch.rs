@@ -3254,6 +3254,14 @@ mod tests {
                  pub mod inner { pub fn layout() -> u8 { 3 } }
                  use inner::layout;",
             ),
+            // `::external` is the extern crate, not the module of that name declared here.
+            (
+                "absolute",
+                "render",
+                "pub mod external { pub mod render {} }
+                 pub mod render { pub fn draw() -> u8 { 2 } }
+                 use ::external::render;",
+            ),
         ];
         let mut original = String::new();
         let mut program = String::new();
@@ -3273,6 +3281,8 @@ mod tests {
             ui::place::copy();
             assert_eq!(nested::layout(), 3);
             nested::layout::copy();
+            assert_eq!(absolute::render(), 1);
+            absolute::render::copy();
         }";
 
         let dir = tempfile::tempdir().unwrap();
