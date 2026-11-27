@@ -1135,7 +1135,8 @@ impl Drop for Lan {
         {
             self.shared.seal_capture();
             while let Ok(receipt) = self.events.try_recv_owned() {
-                if let NetEvent::Joined(joined, _) = receipt.value() {
+                let (event, _lease) = receipt.into_parts();
+                if let NetEvent::Joined(joined, _) = event {
                     joined.sender.close();
                 }
             }

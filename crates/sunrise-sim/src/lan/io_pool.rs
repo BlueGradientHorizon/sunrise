@@ -251,7 +251,8 @@ impl Outbox {
                 #[cfg(feature = "net-trace")]
                 if let Some(clock) = self.capture_clock.get() {
                     let tick = clock.load(Ordering::Relaxed);
-                    q.trace.resize(q.trace.len() + bodies.len(), tick);
+                    let new_len = q.trace.len() + bodies.len();
+                    q.trace.resize(new_len, tick);
                 }
                 if q.bodies.is_empty() {
                     q.bodies = bodies;
