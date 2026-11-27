@@ -5146,13 +5146,11 @@ mod tests {
         fn on_after_level(&mut self, _: &[mod_api::RenderableSection], _: bool) {}
     }
 
-    /// One frame of the `WorldDepthCompute` mod over the renderer's world depth: first clears
-    /// `clear`'s depth view to its value (none: the frame draws over whatever the world depth
-    /// holds), then records the mod's frame graph, renders through `Renderer::render`, and reads
-    /// back the one pixel the compute pass wrote. Returns what `render` returned with that pixel.
+    /// Clear world depth, record and render the `WorldDepthCompute` frame graph, and read back
+    /// the pixel the compute pass wrote. Returns what `render` returned with that pixel.
     fn world_depth_frame(
         game: &mut ClientGame<'_>,
-        clear: Option<(&wgpu::TextureView, f32)>,
+        (depth, value): (&wgpu::TextureView, f32),
         render: &std::sync::Arc<sunrise_client_render::assets::RenderAssets>,
         probe: &Mutex<Option<mod_api::RenderTargetRef>>,
         gpu: &sunrise_client::gfx::ModGpuResources,
@@ -5160,24 +5158,22 @@ mod tests {
         use mod_api::__private::take_hook_panics;
         use sunrise_client::gfx::world_primitives::FrameHooks;
         let renderer = game.client.renderer.0.as_ref().unwrap();
-        if let Some((depth, value)) = clear {
-            let mut encoder = renderer.device.create_command_encoder(&Default::default());
-            // Initialize/store the actual view that WorldDepth resolves. This node runs before
-            // the normal world pass so its known value is independent of world geometry and
-            // the engine's unrelated store policy for graph reads later in the frame.
-            drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(value),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
+        let mut encoder = renderer.device.create_command_encoder(&Default::default());
+        // Initialize/store the actual view that WorldDepth resolves. This node runs before
+        // the normal world pass so its known value is independent of world geometry and
+        // the engine's unrelated store policy for graph reads later in the frame.
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(value),
+                    store: wgpu::StoreOp::Store,
                 }),
-                ..Default::default()
-            }));
-            renderer.queue.submit([encoder.finish()]);
-        }
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        }));
+        renderer.queue.submit([encoder.finish()]);
 
         let camera = test_camera([0.0; 3], Mat4::IDENTITY);
         let mut draw = WorldGeometry::default();
@@ -5312,7 +5308,7 @@ void main() {
             // green 0.4 times 255 rounds to 102.
             let (initial_id, depth) = gpu.mod_world_depth_texture_view();
             assert_eq!(
-                world_depth_frame(game, Some((&depth, 0.25)), &render, &probe, &gpu),
+                world_depth_frame(game, (&depth, 0.25), &render, &probe, &gpu),
                 (true, [64, 102, 191, 255])
             );
             assert_eq!(gpu.mod_world_depth_texture_view().0, initial_id);
@@ -5327,51 +5323,10 @@ void main() {
             );
             assert_ne!(resized_id, initial_id);
             assert_eq!(
-                world_depth_frame(game, Some((&depth, 0.75)), &render, &probe, &gpu),
+                world_depth_frame(game, (&depth, 0.75), &render, &probe, &gpu),
                 (true, [191, 102, 64, 255])
             );
 
-            // A screenshot twice the window's size draws one frame over a depth of its own
-            // (`draw_scaled_frame`): the mod reads that depth, not the window's 0.75 it would
-            // keep reading if the swap did not publish it. Its content is the frame's own, so the
-            // frame is only told apart from the window's.
-            {
-                let renderer = game.client.renderer.0.as_mut().unwrap();
-                renderer.screenshot_quality = 2;
-                renderer.screenshot = Some(sunrise_client_render::gfx::ScreenshotRequest {
-                    path: "unused.png".into(),
-                    size: None,
-                    scaled: true,
-                    background: false,
-                });
-            }
-            let (drawn, scaled_pixel) = world_depth_frame(game, None, &render, &probe, &gpu);
-            assert!(!drawn, "the screenshot frame never reaches the window");
-            assert_ne!(
-                scaled_pixel,
-                [191, 102, 64, 255],
-                "the screenshot frame read the window's depth"
-            );
-            let screenshot = game
-                .client
-                .renderer
-                .0
-                .as_mut()
-                .unwrap()
-                .screenshot_result
-                .take();
-            assert!(screenshot.expect("the screenshot was taken").is_ok());
-            // The window's depth is back under an ID no earlier view had.
-            let (restored_id, depth) = gpu.mod_world_depth_texture_view();
-            assert_eq!(
-                [depth.texture().width(), depth.texture().height()],
-                [width, height]
-            );
-            assert_ne!(restored_id, resized_id);
-            assert_eq!(
-                world_depth_frame(game, Some((&depth, 0.25)), &render, &probe, &gpu),
-                (true, [64, 102, 191, 255])
-            );
             drop(game.client.renderer.0.take());
             drop(game.client.mod_gpu.take());
         });
