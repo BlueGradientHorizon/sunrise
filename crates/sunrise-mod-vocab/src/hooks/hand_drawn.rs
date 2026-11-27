@@ -7,7 +7,7 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         target = "mod_render::render::hand_drawn",
-        neoforge = "RenderHandEvent"
+        neoforge = "none (Sunrise-only; NeoForge has no counterpart)"
     )]
     fn hand_drawn(hand: &mut HandDrawn<'_>);
 }
