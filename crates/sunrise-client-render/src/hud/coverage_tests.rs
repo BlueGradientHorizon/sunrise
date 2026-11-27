@@ -490,7 +490,7 @@ fn coverage_uses_pack_texts_final_alpha_and_discard() {
     // A translated-style struct result and early return; no dependency on game resources.
     let program = crate::core_shader::validated(
         naga::front::wgsl::parse_str("@vertex fn main(@location(0) p: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4(p.x / 2.0 - 1.0, 1.0 - p.y, 0.0, 1.0); }").unwrap(),
-        naga::front::wgsl::parse_str("struct Result { @location(0) color: vec4<f32> } @fragment fn main(@builtin(position) p: vec4<f32>) -> Result { if p.x > 2.0 { discard; } return Result(vec4(0.4, 0.2, 0.1, 0.5)); }").unwrap(),
+        naga::front::wgsl::parse_str("struct Result { @location(0) color: vec4<f32> } @fragment fn main(@builtin(position) p: vec4<f32>) -> Result { if p.x > 2.0 { discard; } return Result(vec4(0.4, 0.2, 0.1, 51.0 / 255.0)); }").unwrap(),
         Vec::new(),
     );
     gpu.hud
@@ -510,7 +510,10 @@ fn coverage_uses_pack_texts_final_alpha_and_discard() {
     for v in &mut batch.vertices {
         v.text = 1;
     }
-    gpu.check(&batch, 0.0, [191, 191, 0, 0]);
+    // Coverage uses the shader's final alpha, 51/255, not the opaque vertices' alpha.
+    // In R8 byte units each draw stores 51 + d * 204/255: 30 -> 75 -> 111, all
+    // exact integers. The discarded fragments leave the right half at 30.
+    gpu.check(&batch, 30.0 / 255.0, [111, 111, 30, 30]);
 }
 
 #[test]
