@@ -41,22 +41,35 @@ pub(crate) fn sent_packets(
     }
 }
 
-/// The keys (`PlayerInput` flags) and sprint changes (true for START_SPRINTING) the client sent
-/// before a fence.
+/// The `PlayerInput` and `PlayerCommand` packets the client sent before a fence, in order, as
+/// `player_input:<payload hex>` and `player_command:<payload hex>`.
 #[cfg(feature = "client")]
 pub(crate) fn sent_input(
     game: &sunrise_client_gameplay::game::ClientGame<'_>,
     server: &mut Connection,
-) -> (Vec<u8>, Vec<bool>) {
+) -> Vec<String> {
     game.send(S::Punch(sunrise_protocol::packets::Empty));
-    let (mut keys, mut sprints) = (Vec::new(), Vec::new());
+    let mut sent = Vec::new();
     loop {
         let (id, payload) = server.recv().unwrap();
-        match S::decode(id, &payload).unwrap() {
-            S::PlayerInput(p) => keys.push(p.flags),
-            S::PlayerCommand(c) if c.action == 1 || c.action == 2 => sprints.push(c.action == 1),
-            S::Punch(_) => return (keys, sprints),
-            _ => {}
-        }
+        let kind = match S::decode(id, &payload).unwrap() {
+            S::PlayerInput(_) => "player_input",
+            S::PlayerCommand(_) => "player_command",
+            S::Punch(_) => return sent,
+            _ => continue,
+        };
+        let hex: String = payload.iter().map(|b| format!("{b:02x}")).collect();
+        sent.push(format!("{kind}:{hex}"));
     }
+}
+
+/// `sent_input.json` from `tools/test_network_parity.py`'s vanilla oracle.
+#[cfg(feature = "client")]
+pub(crate) fn sent_input_witness() -> serde_json::Value {
+    let dir = std::env::var("SUNRISE_NETWORK_WITNESS_DIR")
+        .expect("SUNRISE_NETWORK_WITNESS_DIR must be set (run via tools/test_network_parity.py)");
+    let path = std::path::Path::new(&dir).join("sent_input.json");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap()
 }

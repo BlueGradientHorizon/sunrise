@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Compare play packet bundles, post_effects lifecycle, and strict entity_data decoding with vanilla 26.3.
+"""Compare play packet bundles, post_effects lifecycle, strict entity_data decoding, and a new player's
+sent input and sprint with vanilla 26.3.
 
 Compiles and runs VanillaNetworkParityOracle against the pinned 26.3 client jar on JDK 25,
-writing bundle.json, post_effects.json, entity_data.json, and meta.json into a private witness
+writing bundle.json, post_effects.json, entity_data.json, sent_input.json, and meta.json into a private witness
 directory, then runs each Rust parity test in its own process via SUNRISE_NETWORK_WITNESS_DIR."""
 import argparse
 import contextlib
@@ -40,9 +41,10 @@ CLIENT_TESTS = [
     'game::remote::raw_ingress::bundle_parity_tests::entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3',
     'game::remote::raw_ingress::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_26_3',
     'game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3',
+    'cut_layout::game::client_side::remote_client::movement_input_tests::local_rotation_tests::a_new_player_sends_input_and_sprint_like_26_3',
 ]
 
-WITNESS_FILES = ('bundle.json', 'post_effects.json', 'entity_data.json')
+WITNESS_FILES = ('bundle.json', 'post_effects.json', 'entity_data.json', 'sent_input.json')
 
 
 def record(lock, jars, libraries, build, witness_dir=None):
