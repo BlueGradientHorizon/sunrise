@@ -616,6 +616,69 @@ pub(crate) mod arrow_owner_tests {
             }
         }
     }
+
+    /// `Projectile.addAdditionalSaveData` retains the EntityReference for every
+    /// subclass, not only an arrow: a fireball whose owner is not the reader and
+    /// whose raw compound no longer carries `Owner` still reads one back (#6768).
+    #[test]
+    #[ignore = "daily"]
+    fn a_loaded_fireballs_getter_keeps_a_non_player_owner_without_raw() {
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        let mut game = sunrise_gameplay::game::ServerGame::new(
+            &loaded.resources,
+            loaded.pack,
+            options,
+            settings.sim_settings(),
+            None,
+            crate::game::profile_resolver,
+        )
+        .unwrap();
+        game.build_registries();
+
+        let position = Tag::List(vec![
+            Tag::Double(8.5_f64.to_bits()),
+            Tag::Double(202.0_f64.to_bits()),
+            Tag::Double(4.5_f64.to_bits()),
+        ]);
+        let owner = [213, 91, 92, 93];
+        let uuid = [213, 20, 0, 1];
+        let tag = Tag::compound([
+            ("id", Tag::String("minecraft:fireball".into())),
+            ("UUID", Tag::IntArray(uuid.to_vec())),
+            ("Pos", position),
+            ("Owner", Tag::IntArray(owner.to_vec())),
+            ("ExplosionPower", Tag::Byte(3)),
+        ]);
+        game.load_fireball(tag, Some(uuid), None);
+        let p = game.creatures.projectiles.last().unwrap();
+        // Prove the loader retained the non-player reference.
+        assert_eq!(p.owner_uuid, Some(owner));
+        let id = p.id;
+        assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
+        // Without the raw compound, only the retained reference can supply Owner.
+        game.persist.raw.remove(&id);
+        let saved = game.command_target_nbt(Target::Projectile(id)).unwrap();
+        assert_eq!(saved.get("Owner"), Some(&Tag::IntArray(owner.to_vec())));
+        assert_eq!(saved.get("UUID"), Some(&Tag::IntArray(uuid.to_vec())));
+    }
 }
 
 #[cfg(test)]

@@ -741,11 +741,13 @@ impl crate::game::ServerGame<'_> {
                     .map(|s| self.common.state_to_nbt(s));
                 let raw = self.common.persist.raw.get(&id);
                 // Projectile.addAdditionalSaveData stores the retained EntityReference,
-                // including an owner that is not currently resolved to a live entity.
+                // including an owner that is not currently resolved to a live entity,
+                // for every subclass, as chunk persistence already passes it (#6768).
+                let owner = p.owner_uuid.or(owner);
                 let mut tag = entity_nbt::arrow_to_nbt(
                     p,
                     uuid,
-                    p.owner_uuid.or(owner),
+                    owner,
                     in_block,
                     raw,
                     self.common.res.items(),
