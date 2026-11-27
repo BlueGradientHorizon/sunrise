@@ -480,7 +480,6 @@ impl crate::game::ClientGame<'_> {
             block_overlay,
             water,
             on_fire: effects.on_fire && !effects.fire_suppressed,
-            fire_lower: self.pvp_fire_lower(),
             gui_overlays: &gui_overlays,
             custom: [&custom[0], &custom[1], &custom[2]],
         })

@@ -111,15 +111,6 @@ and strength stay vanilla's (`entity.wgsl` `tinted_glint` for items in the world
 `hud.wgsl` for items in the GUI). The colour rides in uniforms (`colored_count.z`, the HUD's `end_portal[2].yzw`),
 so it costs nothing. Resource packs' core shaders and OptiFine CIT glints keep their own colours.
 
-## Visual tweaks (each default off)
-
-| Option | Key | What it does |
-|---|---|---|
-| Lower fire | `lowFire` (0-80%) | Moves the first-person fire overlay (`ScreenEffectRenderer.renderFire`) down by that share of its height. |
-| Shield size | `shieldSize` (50-100%) | Scales the first-person shield toward the hand holding it. |
-| Totem animation size | `totemSize` (25-100%) | Scales the totem of the item activation animation about its centre. |
-There is no "no hurt camera" option: vanilla's Accessibility → Damage Tilt already sets the shake from 0 to 100%.
-
 ## Chat (each default off)
 
 | Option | Key | What it does |

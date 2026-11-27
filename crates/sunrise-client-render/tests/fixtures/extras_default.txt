@@ -70,9 +70,6 @@ hudOpacity:47
 hudTextColour:white
 hudShadow:true
 hudEditorKey:key.keyboard.unknown
-lowFire:0
-shieldSize:100
-totemSize:100
 glintColour:off
 chatTimestamps:false
 chatCompact:false

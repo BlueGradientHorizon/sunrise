@@ -439,11 +439,6 @@ impl crate::game::ClientGame<'_> {
             };
             let mut m = to_world
                 * sunrise_client::first_person::item_pose(left, inverse_height, attack, pose);
-            // PvP & HUD's shield size (100% is vanilla's), toward the hand holding it.
-            let shield_size = self.pvp_shield_size();
-            if shield_size != 100 && &*stack.item == "minecraft:shield" {
-                m *= glam::Mat4::from_scale(glam::Vec3::splat(f32::from(shield_size) / 100.0));
-            }
             // Seeded by the player id plus the context ordinal.
             let (context, seed) = if left {
                 (

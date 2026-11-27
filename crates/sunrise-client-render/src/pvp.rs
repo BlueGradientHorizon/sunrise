@@ -589,30 +589,11 @@ fn corner_label(c: Corner) -> String {
 }
 
 /// Smaller changes to what vanilla shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tweaks {
-    /// How far down the first-person fire overlay moves, in percent of its height (0: vanilla).
-    pub fire_lower: u8,
-    /// The first-person shield's size, in percent (100: vanilla).
-    pub shield_size: u8,
-    /// The totem animation's size, in percent (100: vanilla).
-    pub totem_size: u8,
     /// The enchantment glint's colour; `None` is vanilla's purple.
     pub glint: Option<Colour>,
 }
-impl Default for Tweaks {
-    fn default() -> Self {
-        Self {
-            fire_lower: 0,
-            shield_size: 100,
-            totem_size: 100,
-            glint: None,
-        }
-    }
-}
-pub const FIRE_LOWER: (u8, u8) = (0, 80);
-pub const SHIELD_SIZES: (u8, u8) = (50, 100);
-pub const TOTEM_SIZES: (u8, u8) = (25, 100);
 impl Tweaks {
     /// `colour` as the glint shaders read it: `0` for vanilla's, else `0xFF` alpha over RGB in
     /// little-endian bytes (`unpack4x8unorm`'s order).
@@ -789,9 +770,6 @@ impl Pvp {
             "hudReachCorner" => u.reach_corner = Corner::parse(value, u.reach_corner),
             "hudSpeed" => u.speed = flag(value, u.speed),
             "hudSpeedCorner" => u.speed_corner = Corner::parse(value, u.speed_corner),
-            "lowFire" => t.fire_lower = num(value, FIRE_LOWER, t.fire_lower),
-            "shieldSize" => t.shield_size = num(value, SHIELD_SIZES, t.shield_size),
-            "totemSize" => t.totem_size = num(value, TOTEM_SIZES, t.totem_size),
             "glintColour" => {
                 t.glint = match value {
                     "off" => None,
@@ -898,14 +876,7 @@ impl Pvp {
         self.layout.serialize(out);
         let _ = writeln!(out, "hudEditorKey:{}", self.editor_key);
         let t = &self.tweaks;
-        let _ = write!(
-            out,
-            "lowFire:{}\nshieldSize:{}\ntotemSize:{}\nglintColour:{}\n",
-            t.fire_lower,
-            t.shield_size,
-            t.totem_size,
-            t.glint.map_or("off", Colour::name),
-        );
+        let _ = write!(out, "glintColour:{}\n", t.glint.map_or("off", Colour::name),);
         let c = &self.chat;
         let _ = write!(
             out,
@@ -1010,11 +981,6 @@ opts! {
     HudShadow, "hud_shadow", "Text shadow", "A shadow under the widgets' text, as vanilla's HUD text has.";
     HudEditorKey, "hud_editor_key", "HUD editor key",
         "Opens the HUD editor from the game. Click, then press a key; Escape unbinds it.";
-    FireLower, "fire_lower", "Lower fire",
-        "Moves the flames you see while burning down, so they cover less of the screen.";
-    ShieldSize, "shield_size", "Shield size", "The size of the shield in your hand, in first person.";
-    TotemSize, "totem_size", "Totem animation size",
-        "The size of the totem that fills the screen when it saves you.";
     GlintColour, "glint_colour", "Enchantment glint colour",
         "The colour of the shimmer on enchanted items and armour. Off is vanilla's purple.";
     ChatTimestamps, "chat_timestamps", "Timestamps", "The time each message came in, before it.";
@@ -1102,8 +1068,6 @@ pub fn rows() -> Vec<Result<Opt, &'static str>> {
     );
     rows.push(Err("sunrise.pvp.header.items"));
     rows.push(Ok(GlintColour));
-    rows.push(Err("sunrise.pvp.header.visual"));
-    rows.extend([FireLower, ShieldSize, TotemSize].map(Ok));
     rows.push(Err("sunrise.pvp.header.chat"));
     rows.extend([ChatTimestamps, ChatCompact, ChatCopy, ChatSearch].map(Ok));
     rows.push(Err("sunrise.pvp.header.combat"));
@@ -1128,7 +1092,7 @@ impl Opt {
             HudClockCorner => Some(HudClock),
             HudReachCorner => Some(HudReach),
             HudSpeedCorner => Some(HudSpeed),
-            FireLower | ShieldSize | TotemSize | GlintColour => None,
+            GlintColour => None,
             ChatTimestamps | ChatCompact | ChatCopy | ChatSearch => None,
             CombatFeel | CombatIndicator | CombatSounds => None,
             HudPingCorner => Some(HudPing),
@@ -1212,12 +1176,6 @@ impl Opt {
             Opt::HudOpacity => format!("{}%", p.hud.opacity),
             Opt::HudTextColour => p.hud.text.label(),
             Opt::HudEditorKey => crate::keybinds::display_name(&p.editor_key).plain(),
-            Opt::FireLower => match p.tweaks.fire_lower {
-                0 => crate::lang::get_or("Off", "Off"),
-                v => format!("{v}%"),
-            },
-            Opt::ShieldSize => format!("{}%", p.tweaks.shield_size),
-            Opt::TotemSize => format!("{}%", p.tweaks.totem_size),
             Opt::GlintColour => match p.tweaks.glint {
                 Some(colour) => colour.label(),
                 None => crate::lang::get_or("Off", "Off"),
@@ -1303,9 +1261,6 @@ impl Opt {
             Opt::HudReachCorner => u.reach_corner = corner(u.reach_corner),
             Opt::HudSpeed => u.speed = !u.speed,
             Opt::HudSpeedCorner => u.speed_corner = corner(u.speed_corner),
-            Opt::FireLower => t.fire_lower = step_by(t.fire_lower, FIRE_LOWER, 10, back),
-            Opt::ShieldSize => t.shield_size = step_by(t.shield_size, SHIELD_SIZES, 10, back),
-            Opt::TotemSize => t.totem_size = step_by(t.totem_size, TOTEM_SIZES, 25, back),
             Opt::GlintColour => t.glint = solid_or_off(t.glint),
             Opt::ChatTimestamps => p.chat.timestamps = !p.chat.timestamps,
             Opt::ChatCompact => p.chat.compact = !p.chat.compact,
@@ -1451,9 +1406,7 @@ mod tests {
         assert_eq!(p.crosshair.shape, Shape::T);
         assert_eq!(p.crosshair.size, 8);
         assert_eq!(p.crosshair.hover, Some(Colour::Inverted));
-        // From vanilla's values, one click: the overlays' sizes wrap to their smallest.
         let t = p.tweaks;
-        assert_eq!((t.fire_lower, t.shield_size, t.totem_size), (10, 50, 25));
         assert_eq!(t.glint, Some(Colour::White));
         let c = p.chat;
         assert!(c.timestamps && c.compact && c.copy && c.search);
@@ -1474,7 +1427,6 @@ mod tests {
         assert!(p.parse_line("crosshairSize", "99") && p.crosshair.size == SIZES.1);
         assert!(p.parse_line("crosshairColour", "plaid") && p.crosshair.colour == Colour::White);
         assert!(!p.parse_line("fullbright", "true"));
-        assert!(p.parse_line("totemSize", "5") && p.tweaks.totem_size == TOTEM_SIZES.0);
     }
 
     #[test]

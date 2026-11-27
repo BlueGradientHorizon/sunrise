@@ -204,18 +204,6 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn pvp_glint_texel(&self) -> u32 {
         self.client.settings.extras.pvp.tweaks.glint_texel()
     }
-    /// The held shield's size in percent (100 is vanilla's).
-    pub(in crate::game::client_side) fn pvp_shield_size(&self) -> u8 {
-        self.client.settings.extras.pvp.tweaks.shield_size
-    }
-    /// The totem animation's scale (1 is vanilla's).
-    pub(in crate::game::client_side) fn pvp_totem_scale(&self) -> f32 {
-        f32::from(self.client.settings.extras.pvp.tweaks.totem_size) / 100.0
-    }
-    /// How far the first-person fire overlay is lowered, as a fraction (0 is vanilla's).
-    pub(in crate::game::client_side) fn pvp_fire_lower(&self) -> f32 {
-        f32::from(self.client.settings.extras.pvp.tweaks.fire_lower) / 100.0
-    }
     /// The chat's options: Ctrl+F search, copy on click, and the rest (`ChatOptions::qol`).
     pub(in crate::game::client_side) fn pvp_chat(&self) -> ChatOptions {
         self.client.settings.extras.pvp.chat
