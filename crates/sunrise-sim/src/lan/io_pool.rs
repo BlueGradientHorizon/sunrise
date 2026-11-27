@@ -1586,6 +1586,18 @@ mod tests {
     }
 
     #[cfg(feature = "net-trace")]
+    fn recv_until_eof(client: &mut Connection, what: &str) -> Vec<(i32, usize, String)> {
+        let mut seen = Vec::new();
+        loop {
+            match client.recv() {
+                Ok((id, payload)) => seen.push(encoded_meta(id, &payload)),
+                Err(e) if e.is_end_of_stream() => return seen,
+                Err(e) => panic!("unexpected error while waiting for {what}: {e}"),
+            }
+        }
+    }
+
+    #[cfg(feature = "net-trace")]
     #[test]
     fn capture_order_matches_wire_with_interleaved_producers_timer_and_kick() {
         let dir = tempfile::tempdir().unwrap();
@@ -1593,6 +1605,10 @@ mod tests {
         run.set_tick(42);
         let (a, b) = Pipe::pair();
         let mut client = Connection::local(a);
+        client
+            .reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
         let probe = |seen| Probe {
             seen,
             kick_on: Some(9),
@@ -1601,25 +1617,33 @@ mod tests {
         let served = serve_captured(Connection::local(b), probe, &run, 1, "Alice");
         let outbox_a = served.outbox.clone();
         let pending_a = served.pending.clone();
-        let barrier = Arc::new(std::sync::Barrier::new(2));
-        let b2 = barrier.clone();
+        let (go_tx, go_rx) = channel();
+        let (done_tx, done_rx) = channel();
         let producer = std::thread::spawn(move || {
-            b2.wait();
+            go_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("timed out waiting for producer start signal");
             for i in 0..8u8 {
                 let b = Body::from(body(10 + i, 4));
                 pending_a.fetch_add(charge(b.retained()), Ordering::Relaxed);
                 outbox_a.send(vec![b], None);
             }
+            let _ = done_tx.send(());
         });
-        barrier.wait();
+        go_tx.send(()).unwrap();
         for i in 0..8u8 {
             served.send(vec![body(20 + i, 6)], None);
         }
+        done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("timed out waiting for concurrent producer thread");
         producer.join().unwrap();
         // Wait for all 16 queued packets and the sweep-emitted timer packet before kicking.
         let mut peer_seen = Vec::new();
         while peer_seen.len() < 17 {
-            let (id, payload) = client.recv().unwrap();
+            let (id, payload) = client
+                .recv()
+                .expect("timed out waiting for pre-kick queued/timer packet");
             peer_seen.push(encoded_meta(id, &payload));
         }
         assert!(
@@ -1628,9 +1652,7 @@ mod tests {
         );
         // Trigger a kick after queued and timer packets; the client reads until EOF.
         client.send(&body(9, 1)).unwrap();
-        while let Ok((id, payload)) = client.recv() {
-            peer_seen.push(encoded_meta(id, &payload));
-        }
+        peer_seen.extend(recv_until_eof(&mut client, "kick packet and EOF"));
         assert_eq!(served.next(), Seen::Packet(9, body(9, 1)[1..].to_vec()));
         assert_eq!(served.next(), Seen::Left("kicked".into()));
         assert_eq!(served.next(), Seen::Closed);
@@ -1649,16 +1671,18 @@ mod tests {
     fn capture_omits_rejected_closed_batch_and_suppressed_kick() {
         struct GateProbe {
             seen: Sender<Seen>,
-            gate: Arc<std::sync::Barrier>,
+            entered: Sender<()>,
+            release: Receiver<()>,
         }
         impl Session for GateProbe {
             fn packet(&mut self, id: i32, payload: Vec<u8>) -> Verdict {
                 let _ = self.seen.send(Seen::Packet(id, payload));
                 if id == 1 {
                     // Hold the worker inside Conn::read while the test queues End::Disconnect
-                    // and sends the kick trigger packet 9.
-                    self.gate.wait();
-                    self.gate.wait();
+                    // and sends the kick trigger packet 9. Never panic on the shared worker if
+                    // the test unwinds early.
+                    let _ = self.entered.send(());
+                    let _ = self.release.recv_timeout(Duration::from_secs(5));
                     Verdict::Go
                 } else if id == 9 {
                     Verdict::Kick("kicked".into(), body(0x7f, 3))
@@ -1681,13 +1705,19 @@ mod tests {
         let run = crate::lan::packet_capture::CaptureRun::open_in(dir.path(), 2).unwrap();
         let (a, b) = Pipe::pair();
         let mut client = Connection::local(a);
-        let gate = Arc::new(std::sync::Barrier::new(2));
+        client
+            .reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let (entered_tx, entered_rx) = channel();
+        let (release_tx, release_rx) = channel();
         let (tx, seen) = channel();
         let served = serve_captured_session(
             Connection::local(b),
             Box::new(GateProbe {
                 seen: tx,
-                gate: gate.clone(),
+                entered: entered_tx,
+                release: release_rx,
             }),
             &run,
             1,
@@ -1696,15 +1726,14 @@ mod tests {
         );
         // Pause worker inside Conn::read on packet 1, then queue disconnect and packet 9.
         client.send(&body(1, 0)).unwrap();
-        gate.wait();
+        entered_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("timed out waiting for worker to pause in GateProbe::packet(1)");
         served.send(vec![body(32, 4)], Some(End::Disconnect));
         client.send(&body(9, 1)).unwrap();
-        gate.wait();
+        release_tx.send(()).unwrap();
 
-        let mut peer_seen = Vec::new();
-        while let Ok((id, payload)) = client.recv() {
-            peer_seen.push(encoded_meta(id, &payload));
-        }
+        let peer_seen = recv_until_eof(&mut client, "disconnect packet and EOF");
         assert_eq!(served.next(), Seen::Packet(1, Vec::new()));
         assert_eq!(served.next(), Seen::Packet(9, body(9, 1)[1..].to_vec()));
         assert_eq!(served.next(), Seen::Left("kicked".into()));
@@ -1734,13 +1763,22 @@ mod tests {
         let run = crate::lan::packet_capture::CaptureRun::open_in(dir.path(), 3).unwrap();
         let (a, b) = Pipe::pair();
         let mut client = Connection::local(a);
+        client
+            .reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
         let served = serve_captured(Connection::local(b), quiet, &run, 1, "Carol");
         let queue = Queue::new(u32::MAX, None);
         served.outbox.attach_droppable(queue.clone());
         let counters = Arc::default();
         // Open a bundle so the droppable waits until the bundle closes.
         served.send(vec![body(0, 0)], None);
-        assert_eq!(client.recv().unwrap(), packet(&body(0, 0)));
+        assert_eq!(
+            client
+                .recv()
+                .expect("timed out waiting for opening bundle delimiter"),
+            packet(&body(0, 0))
+        );
         let expired_at = Instant::now()
             .checked_sub(Duration::from_secs(1))
             .unwrap_or_else(Instant::now);
@@ -1749,13 +1787,13 @@ mod tests {
         served.send(vec![body(0x30, 3), body(0, 0)], None);
         let mut peer_seen = vec![encoded_meta(0, &[])];
         for _ in 0..3 {
-            let (id, payload) = client.recv().unwrap();
+            let (id, payload) = client
+                .recv()
+                .expect("timed out waiting for bundle + live droppable packet");
             peer_seen.push(encoded_meta(id, &payload));
         }
         served.send(vec![body(32, 2)], Some(End::Disconnect));
-        while let Ok((id, payload)) = client.recv() {
-            peer_seen.push(encoded_meta(id, &payload));
-        }
+        peer_seen.extend(recv_until_eof(&mut client, "disconnect packet and EOF"));
         assert_eq!(served.next(), Seen::Left("Disconnected".into()));
         assert_eq!(served.next(), Seen::Closed);
         run.finish();
@@ -1771,19 +1809,41 @@ mod tests {
     #[test]
     fn capture_records_prepared_compressed_and_pairing_over_tcp_without_prolonging_pending() {
         let dir = tempfile::tempdir().unwrap();
-        let writer_gate = Arc::new(std::sync::Barrier::new(2));
+        let (gate_tx, gate_rx) = channel();
         let run = crate::lan::packet_capture::CaptureRun::open_in_with_gate(
             dir.path(),
             4,
             64,
             1 << 20,
-            Some(writer_gate.clone()),
+            Some(gate_rx),
         )
         .unwrap();
+        // Move after `run` so any early panic drops `release_gate` before `CaptureRun::drop` joins.
+        let release_gate = gate_tx;
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
         let port = listener.local_addr().unwrap().port();
         let mut client = Connection::connect("127.0.0.1", port, Duration::from_secs(5)).unwrap();
-        let mut server = Connection::from_stream(listener.accept().unwrap().0).unwrap();
+        client
+            .reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let accept_deadline = Instant::now() + Duration::from_secs(5);
+        let server_stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                    assert!(
+                        Instant::now() < accept_deadline,
+                        "timed out waiting for loopback TCP accept"
+                    );
+                    std::thread::yield_now();
+                }
+                Err(e) => panic!("loopback TCP accept failed: {e}"),
+            }
+        };
+        server_stream.set_nonblocking(false).unwrap();
+        let mut server = Connection::from_stream(server_stream).unwrap();
         client.set_compression(32);
         server.set_compression(32);
         let framing = server.writer.framing();
@@ -1812,13 +1872,28 @@ mod tests {
         assert!(served.outbox.publish(prepared_small, cost_small));
 
         // 3. Compressed Body::Prepared(Arc<PairingPayload>) with prepaid credit.
+        // Register one declaration so Transport::new allocates a real connection and Epoch.
+        let mut manifest = sunrise_protocol::payload_negotiation::Manifest::builder();
+        manifest
+            .register(
+                sunrise_protocol::payload_negotiation::RegistrationPhase::Play,
+                "test:pairing",
+                sunrise_protocol::payload_negotiation::Flow::ToClient,
+                "1",
+                true,
+            )
+            .unwrap();
+        let local = Arc::new(crate::raw_payloads::Local::new(
+            manifest.finish().unwrap(),
+            None,
+        ));
         let transport = crate::raw_payloads::Transport::new(
-            crate::raw_payloads::Local::empty(),
+            local,
             crate::raw_payloads::Side::Server,
             crate::lan::PAYLOAD_RECORD_OVERHEAD,
         );
         transport.accept(&[]).unwrap();
-        let epoch = transport.epoch().unwrap();
+        let epoch = transport.epoch().expect("transport epoch");
         let mut raw_pair = vec![26u8];
         raw_pair.extend(std::iter::repeat_n(b'p', 128));
         let meta_pair = crate::lan::packet_capture::PacketMeta::from_body(&raw_pair);
@@ -1864,19 +1939,27 @@ mod tests {
         assert!(served.outbox.publish(prepared_multi, cost_multi));
 
         // Verify the TCP peer decoded every original uncompressed packet id and payload.
-        let (id1, payload1) = client.recv().unwrap();
+        let (id1, payload1) = client
+            .recv()
+            .expect("timed out waiting for compressed prepared packet 1");
         assert_eq!((id1, payload1.as_slice()), (24, &raw_big[1..]));
-        let (id2, payload2) = client.recv().unwrap();
+        let (id2, payload2) = client
+            .recv()
+            .expect("timed out waiting for below-threshold prepared packet 2");
         assert_eq!((id2, payload2.as_slice()), (25, &raw_small[1..]));
-        let (id3, payload3) = client.recv().unwrap();
+        let (id3, payload3) = client
+            .recv()
+            .expect("timed out waiting for compressed pairing packet 3");
         assert_eq!((id3, payload3.as_slice()), (26, &raw_pair[1..]));
-        let (id4, payload4) = client.recv().unwrap();
+        let (id4, payload4) = client
+            .recv()
+            .expect("timed out waiting for multi-byte varint compressed packet 4");
         assert_eq!((id4, payload4.as_slice()), (300, payload_multi.as_slice()));
 
         // While the capture writer thread is still paused, all pending charges must be refunded.
         assert_eq!(served.pending.load(Ordering::Acquire), 0);
 
-        writer_gate.wait();
+        drop(release_gate);
         drop(client);
         assert_eq!(served.next(), Seen::Left("Disconnected".into()));
         assert_eq!(served.next(), Seen::Closed);

@@ -4335,9 +4335,12 @@ mod tests {
         login_profile(&mut late, "LateGuest");
         lan.shared.seal_capture();
         finish_local_configuration(&mut late);
+        let err = late
+            .recv()
+            .expect_err("sealed play gate must close late login");
         assert!(
-            late.recv().is_err(),
-            "sealed play gate must close late login"
+            err.is_end_of_stream(),
+            "expected EOF on sealed late login, got: {err}"
         );
         assert!(lan.poll().is_empty(), "sealed login must not emit Joined");
         drop(lan);
@@ -4366,7 +4369,13 @@ mod tests {
             std::thread::yield_now();
         }
         drop(lan);
-        assert!(early.recv().is_err(), "Lan::drop must close unpolled guest");
+        let err = early
+            .recv()
+            .expect_err("Lan::drop must close unpolled guest");
+        assert!(
+            err.is_end_of_stream(),
+            "expected EOF on unpolled guest after Lan::drop, got: {err}"
+        );
         let manifest = std::fs::read_to_string(dir_unpolled.path().join("manifest.tsv")).unwrap();
         assert!(manifest.contains("EarlyGuest-1.pkt\tok\t0"), "{manifest}");
         assert!(manifest.ends_with("# end\t1\tok\n"), "{manifest}");

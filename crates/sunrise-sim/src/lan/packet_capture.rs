@@ -276,7 +276,7 @@ impl CaptureRun {
         lan_incarnation: u64,
         channel_capacity: usize,
         max_queued_bytes: usize,
-        start_gate: Option<Arc<std::sync::Barrier>>,
+        start_gate: Option<Receiver<()>>,
     ) -> io::Result<Arc<Self>> {
         Self::open_in_with_limits(
             dir,
@@ -292,7 +292,7 @@ impl CaptureRun {
         lan_incarnation: u64,
         channel_capacity: usize,
         max_queued_bytes: usize,
-        #[cfg(test)] start_gate: Option<Arc<std::sync::Barrier>>,
+        #[cfg(test)] start_gate: Option<Receiver<()>>,
     ) -> io::Result<Arc<Self>> {
         let run_id = format!("{}-{lan_incarnation}", std::process::id());
         claim_empty_dir(dir, &run_id)?;
@@ -691,11 +691,11 @@ fn writer_loop(
     state: Arc<Mutex<RunState>>,
     overflow_noted: Arc<AtomicBool>,
     rx: Receiver<Cmd>,
-    #[cfg(test)] start_gate: Option<Arc<std::sync::Barrier>>,
+    #[cfg(test)] start_gate: Option<Receiver<()>>,
 ) {
     #[cfg(test)]
     if let Some(gate) = start_gate {
-        gate.wait();
+        let _ = gate.recv_timeout(Duration::from_secs(5));
     }
     let mut files: HashMap<usize, OpenFile> = HashMap::new();
     let mut inflater = sunrise_protocol::frame::Inflater::default();
@@ -871,21 +871,34 @@ mod tests {
         assert!(!dir.path().join(CLAIM_FILE).exists());
 
         let race_dir = tempfile::tempdir().unwrap();
-        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let (go1_tx, go1_rx) = std::sync::mpsc::channel();
+        let (go2_tx, go2_rx) = std::sync::mpsc::channel();
+        let (res1_tx, res1_rx) = std::sync::mpsc::channel();
+        let (res2_tx, res2_rx) = std::sync::mpsc::channel();
         let p1 = race_dir.path().to_path_buf();
         let p2 = race_dir.path().to_path_buf();
-        let b1 = barrier.clone();
-        let b2 = barrier.clone();
         let t1 = std::thread::spawn(move || {
-            b1.wait();
-            CaptureRun::open_in(&p1, 10)
+            go1_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("timed out waiting for concurrent claim start signal 1");
+            let _ = res1_tx.send(CaptureRun::open_in(&p1, 10));
         });
         let t2 = std::thread::spawn(move || {
-            b2.wait();
-            CaptureRun::open_in(&p2, 11)
+            go2_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("timed out waiting for concurrent claim start signal 2");
+            let _ = res2_tx.send(CaptureRun::open_in(&p2, 11));
         });
-        let r1 = t1.join().unwrap();
-        let r2 = t2.join().unwrap();
+        go1_tx.send(()).unwrap();
+        go2_tx.send(()).unwrap();
+        let r1 = res1_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("timed out waiting for concurrent claim opener 1");
+        let r2 = res2_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("timed out waiting for concurrent claim opener 2");
+        t1.join().unwrap();
+        t2.join().unwrap();
         let ok_count = usize::from(r1.is_ok()) + usize::from(r2.is_ok());
         assert_eq!(ok_count, 1, "exactly one concurrent opener must claim dir");
         if let Err(e) = &r1 {
@@ -949,15 +962,17 @@ mod tests {
 
         // Channel-capacity overflow while writer is gated.
         let dir2 = tempfile::tempdir().unwrap();
-        let gate = Arc::new(std::sync::Barrier::new(2));
+        let (gate_tx, gate_rx) = std::sync::mpsc::channel();
         let run2 =
-            CaptureRun::open_in_with_gate(dir2.path(), 21, 2, 1 << 20, Some(gate.clone())).unwrap();
+            CaptureRun::open_in_with_gate(dir2.path(), 21, 2, 1 << 20, Some(gate_rx)).unwrap();
+        // Move after `run2` so an unwind drops `release_gate` before `CaptureRun::drop` joins.
+        let release_gate = gate_tx;
         let mut session2 = open_or_panic(&run2, 1, "ChanCap");
         // Capacity 2 holds Cmd::Open + 1 packet; the second packet overflows deterministically.
         session2.record_raw(1, CapturedBytes::Owned(vec![8u8, 1]));
         session2.record_raw(2, CapturedBytes::Owned(vec![8u8, 2]));
         session2.close(None);
-        gate.wait();
+        drop(release_gate);
         run2.finish();
         assert_eq!(run2.byte_budget.used.load(Ordering::Acquire), 0);
         let pkt2 = std::fs::read_to_string(dir2.path().join("ChanCap-1.pkt")).unwrap();
@@ -974,8 +989,10 @@ mod tests {
         let run = CaptureRun::open_in(dir.path(), 30).unwrap();
         let mut delayed = open_or_panic(&run, 1, "Delayed");
         let run_for_thread = run.clone();
+        let (finish_done_tx, finish_done_rx) = std::sync::mpsc::channel();
         let finish_thread = std::thread::spawn(move || {
             run_for_thread.finish_with_timeout(Duration::from_secs(2));
+            let _ = finish_done_tx.send(());
         });
         // Wait until shutdown has sealed registration.
         let seal_deadline = Instant::now() + Duration::from_secs(2);
@@ -991,6 +1008,9 @@ mod tests {
         std::thread::sleep(Duration::from_millis(40));
         delayed.record_raw(7, CapturedBytes::Owned(vec![12u8, 3, 4]));
         delayed.close(None);
+        finish_done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("timed out waiting for delayed CaptureRun::finish_with_timeout");
         finish_thread.join().unwrap();
 
         let manifest = std::fs::read_to_string(dir.path().join("manifest.tsv")).unwrap();
