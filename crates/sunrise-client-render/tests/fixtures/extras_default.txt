@@ -1,6 +1,5 @@
 packBrowser:false
 pregen:false
-fullbright:false
 dynamicLights:false
 lodZoomDetail:false
 uiSoundReserve:false

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "ფერადი ზოლი ჩატის ხაზის მარცხნივ.",
   "sunrise.extras.dynamic_lights": "დინამიური ნათურები",
   "sunrise.extras.dynamic_lights.tooltip": "ჩირაღდნები და სხვა სინათლის წყაროები დაჭერილი, ჩამოშვებული ან ანთებული ანათებს მათ გარშემო არსებულ ბლოკებს.",
-  "sunrise.extras.fullbright": "ფულბრაიტი",
-  "sunrise.extras.fullbright.tooltip": "აჩვენეთ ბლოკები და ერთეულები სრულ განათებაზე, თუნდაც ბნელ ადგილებში.",
   "sunrise.extras.header.chat": "ჩატი",
   "sunrise.extras.header.inventory": "ინვენტარი",
   "sunrise.extras.header.lighting": "განათება",

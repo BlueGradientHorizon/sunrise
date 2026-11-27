@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Den fargede linjen til venstre for en chattelinje.",
   "sunrise.extras.dynamic_lights": "Dynamiske lys",
   "sunrise.extras.dynamic_lights.tooltip": "Fakler og andre lyskilder som holdes, slippes eller brenner tenner blokkene rundt dem.",
-  "sunrise.extras.fullbright": "Fullt lys",
-  "sunrise.extras.fullbright.tooltip": "Vis blokker og enheter i fullt lys, selv i mørke områder.",
   "sunrise.extras.header.chat": "Chat",
   "sunrise.extras.header.inventory": "Inventar",
   "sunrise.extras.header.lighting": "Belysning",

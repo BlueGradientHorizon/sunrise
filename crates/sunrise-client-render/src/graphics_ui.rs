@@ -305,7 +305,6 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                         v(Opt::Vignette, None, "Darkens the screen's edges."),
                         v(Opt::ChunkFade, None, "Fades newly loaded chunks in."),
                         e(crate::extras::Item::DynamicLights, Low),
-                        e(crate::extras::Item::Fullbright, None),
                     ],
                 ),
                 (
@@ -1300,7 +1299,6 @@ impl Item {
 fn shown(item: Item, s: &Settings) -> bool {
     match item {
         Item::Sunrise(H::Upscaling) => s.sunrise.taa,
-        Item::Extra(crate::extras::Item::Fullbright) => !s.fullbright_held,
         _ => true,
     }
 }
@@ -1444,7 +1442,7 @@ impl Screen for GraphicsScreen {
             g::gpu_culling_offer(),
             g::reduced_far_detail_suggested(),
         );
-        shell::stamp_of(&(read(s), s.fullbright_held, offers))
+        shell::stamp_of(&(read(s), offers))
     }
     fn sheets(&self, s: &Settings) -> Vec<Sheet<Page, Item>> {
         let sheet = |(page, groups): (Page, Vec<(&'static str, Vec<Setting>)>)| Sheet {
@@ -1512,7 +1510,6 @@ impl Screen for GraphicsScreen {
         s.max_fps = b.max_fps;
         s.inactivity_fps_limit = b.inactivity_fps_limit.clone();
         s.menu_blur = b.menu_blur;
-        s.extras.fullbright = b.extras.fullbright;
         s.extras.dynamic_lights = b.extras.dynamic_lights;
         s.extras.hide_block_particles = b.extras.hide_block_particles;
         s.attack_indicator = b.attack_indicator;
@@ -2016,31 +2013,6 @@ mod tests {
         assert_eq!(key(&mut ui, &mut s, K::Enter), [CLICK, CHANGED]);
         assert!(!s.sunrise.fog);
         assert_eq!(key(&mut ui, &mut s, K::Escape), [Output::Done]);
-    }
-
-    /// On another's server Fullbright's row is gone and the screen draws again; its choice is
-    /// kept for the next world that allows it (#3823).
-    #[test]
-    fn fullbright_row_is_hidden_while_held_and_keeps_its_choice() {
-        let mut s = Settings::default();
-        s.extras.fullbright = true;
-        let screen = GraphicsScreen::default();
-        let listed = |s: &Settings, item| {
-            let sheets = screen.sheets(s);
-            let groups = sheets.into_iter().flat_map(|sheet| sheet.groups);
-            groups.flat_map(|group| group.rows).any(|r| r.id == item)
-        };
-        let fullbright = Item::Extra(crate::extras::Item::Fullbright);
-        let lights = Item::Extra(crate::extras::Item::DynamicLights);
-        assert!(listed(&s, fullbright));
-        let free = screen.stamp(&s);
-        s.fullbright_held = true;
-        assert!(!listed(&s, fullbright));
-        assert!(listed(&s, lights));
-        assert_ne!(screen.stamp(&s), free);
-        assert!(s.extras.fullbright);
-        s.fullbright_held = false;
-        assert!(listed(&s, fullbright));
     }
 
     /// The strip says what a row does, what its chosen value does where that differs, and why a

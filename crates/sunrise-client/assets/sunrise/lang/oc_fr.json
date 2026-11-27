@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "La barra colorada a esquèrra d'una linha de chat.",
   "sunrise.extras.dynamic_lights": "Luces dinamicas",
   "sunrise.extras.dynamic_lights.tooltip": "Las torchas e d'autras fonts de lutz tengudas, daissadas tombar o en fuòc alucan los blòts a l'entorn d'eles.",
-  "sunrise.extras.fullbright": "Lutz totala",
-  "sunrise.extras.fullbright.tooltip": "Mostrar los blòts e las entitats a plena lutz, quitament dins las zònas escuras.",
   "sunrise.extras.header.chat": "Chat",
   "sunrise.extras.header.inventory": "Inventari",
   "sunrise.extras.header.lighting": "Esclairatge",

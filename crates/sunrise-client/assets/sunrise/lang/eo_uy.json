@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "La kolora stango maldekstre de babillinio.",
   "sunrise.extras.dynamic_lights": "Dinamikaj lumoj",
   "sunrise.extras.dynamic_lights.tooltip": "Torĉoj kaj aliaj lumfontoj tenis, faligis aŭ sur fajro lumigas la blokojn ĉirkaŭ ili.",
-  "sunrise.extras.fullbright": "Plenluma",
-  "sunrise.extras.fullbright.tooltip": "Montru blokojn kaj entojn ĉe plena lumo, eĉ en malhelaj lokoj.",
   "sunrise.extras.header.chat": "Babilado",
   "sunrise.extras.header.inventory": "Inventaro",
   "sunrise.extras.header.lighting": "Lumigo",

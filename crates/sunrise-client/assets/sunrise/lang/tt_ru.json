@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Чат сызыгының сул ягында.",
   "sunrise.extras.dynamic_lights": "Динамик утлар",
   "sunrise.extras.dynamic_lights.tooltip": "Факеллар һәм башка яктылык чыганаклары тирә-юньдәге блокларны тоттылар, ташладылар яки утка тоттылар.",
-  "sunrise.extras.fullbright": "Фолбрайт",
-  "sunrise.extras.fullbright.tooltip": "Блокларны һәм субъектларны тулы яктылыкта, хәтта караңгы урыннарда күрсәтегез.",
   "sunrise.extras.header.chat": "Чат",
   "sunrise.extras.header.inventory": "Инвентаризация",
   "sunrise.extras.header.lighting": "Яктырту",

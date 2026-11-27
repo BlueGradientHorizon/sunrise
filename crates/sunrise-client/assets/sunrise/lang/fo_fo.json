@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Litaða strikan til vinstru á kjaklinju.",
   "sunrise.extras.dynamic_lights": "Dynamisk ljós",
   "sunrise.extras.dynamic_lights.tooltip": "Kyndlar og aðrar ljóskeldur, sum verða hildnar, sleptar ella í eldi, tendra blokkarnar rundan um seg.",
-  "sunrise.extras.fullbright": "Fullljós",
-  "sunrise.extras.fullbright.tooltip": "Vís blokkar og eindir við fullum ljósi, eisini í myrkum økjum.",
   "sunrise.extras.header.chat": "Prát",
   "sunrise.extras.header.inventory": "Goymsla",
   "sunrise.extras.header.lighting": "Ljós",

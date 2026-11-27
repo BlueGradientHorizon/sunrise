@@ -243,7 +243,6 @@ fn replay(window: Arc<Window>) -> Result<(), Box<dyn std::error::Error>> {
     let [width, height] = o.size.unwrap_or(state.size);
     renderer.resize(width, height);
     renderer.gamma = state.gamma;
-    renderer.fullbright = state.fullbright;
     renderer.improved_transparency = state.improved_transparency;
     renderer.animated_textures = state.animated_textures;
     let filtering = o.texture_filtering.unwrap_or(settings.texture_filtering);

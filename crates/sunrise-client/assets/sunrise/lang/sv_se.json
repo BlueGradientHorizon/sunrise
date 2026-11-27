@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Den färgade stapeln till vänster om en chattlinje.",
   "sunrise.extras.dynamic_lights": "Dynamiska lampor",
   "sunrise.extras.dynamic_lights.tooltip": "Facklor och andra ljuskällor som hålls, tappas eller brinner tänder blocken runt dem.",
-  "sunrise.extras.fullbright": "Fullbright",
-  "sunrise.extras.fullbright.tooltip": "Visa block och enheter i fullt ljus, även i mörka områden.",
   "sunrise.extras.header.chat": "Chatta",
   "sunrise.extras.header.inventory": "Inventering",
   "sunrise.extras.header.lighting": "Belysning",

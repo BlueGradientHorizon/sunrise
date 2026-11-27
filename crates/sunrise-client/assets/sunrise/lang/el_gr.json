@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Η έγχρωμη γραμμή στα αριστερά μιας γραμμής συνομιλίας.",
   "sunrise.extras.dynamic_lights": "Δυναμικά φώτα",
   "sunrise.extras.dynamic_lights.tooltip": "Πυρσοί και άλλες πηγές φωτός που συγκρατούνται, πέφτουν ή καίγονται ανάβουν τα μπλοκ γύρω τους.",
-  "sunrise.extras.fullbright": "Πλήρης φωτισμός",
-  "sunrise.extras.fullbright.tooltip": "Εμφάνιση μπλοκ και οντοτήτων σε πλήρη φωτισμό, ακόμη και σε σκοτεινές περιοχές.",
   "sunrise.extras.header.chat": "Συνομιλία",
   "sunrise.extras.header.inventory": "Απογραφή",
   "sunrise.extras.header.lighting": "Φωτισμός",

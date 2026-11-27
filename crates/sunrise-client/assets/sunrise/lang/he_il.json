@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "הסרגל הצבעוני בצד שמאל של קו צ'אט.",
   "sunrise.extras.dynamic_lights": "אורות דינמיים",
   "sunrise.extras.dynamic_lights.tooltip": "לפידים ומקורות אור אחרים המוחזקים, נפלו או עולים באש מדליקים את הבלוקים סביבם.",
-  "sunrise.extras.fullbright": "תאורה מלאה",
-  "sunrise.extras.fullbright.tooltip": "הצג בלוקים וישויות באור מלא, אפילו באזורים חשוכים.",
   "sunrise.extras.header.chat": "צ'אט",
   "sunrise.extras.header.inventory": "מלאי",
   "sunrise.extras.header.lighting": "תאורה",

@@ -388,8 +388,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Kolorowy pasek po lewej stronie linii czatu.",
   "sunrise.extras.dynamic_lights": "Dynamiczne światła",
   "sunrise.extras.dynamic_lights.tooltip": "Pochodnie i inne źródła światła trzymane w dłoni, upuszczone lub płonące oświetlają otaczające bloki.",
-  "sunrise.extras.fullbright": "Pełna jasność",
-  "sunrise.extras.fullbright.tooltip": "Pokazuje bloki i byty w pełnym oświetleniu, nawet w ciemnych miejscach.",
   "sunrise.extras.header.chat": "Czat",
   "sunrise.extras.header.inventory": "Ekwipunek",
   "sunrise.extras.header.lighting": "Oświetlenie",

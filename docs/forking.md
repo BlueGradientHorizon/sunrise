@@ -56,7 +56,7 @@ gate guards.
 
 - The launcher (`https://github.com/sunrise-org/sunrise-launcher`) holds its themes, the telemetry consent and updates. A build of the game alone has none of them; without the
   launcher's consent the game keeps no crash or performance report (docs/telemetry.md).
-- The graphics screen's fullbright, dynamic lights and hiding block-break particles: renderer
+- The graphics screen's dynamic lights and hiding block-break particles: renderer
   options, off by default (docs/extras.md). A `sunrise-extras.txt` left by an official install is
   still read.
 - The mod runtime: nothing installs a mod without the launcher, so it stays idle.

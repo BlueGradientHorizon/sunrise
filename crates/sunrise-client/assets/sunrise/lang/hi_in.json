@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "चैट लाइन के बाईं ओर रंगीन पट्टी।",
   "sunrise.extras.dynamic_lights": "डायनेमिक लाइट्स",
   "sunrise.extras.dynamic_lights.tooltip": "पकड़ी गई, गिराई गई या आग पर मौजूद मशालें और अन्य प्रकाश स्रोत अपने आस-पास के ब्लॉकों को रोशन करते हैं।",
-  "sunrise.extras.fullbright": "फुलब्राइट",
-  "sunrise.extras.fullbright.tooltip": "अंधेरे क्षेत्रों में भी, ब्लॉकों और एंटिटीज़ को पूर्ण प्रकाश में दिखाएं।",
   "sunrise.extras.header.chat": "चैट",
   "sunrise.extras.header.inventory": "इन्वेंट्री",
   "sunrise.extras.header.lighting": "प्रकाश व्यवस्था",

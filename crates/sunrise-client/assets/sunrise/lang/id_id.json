@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Bilah berwarna di sebelah kiri baris obrolan.",
   "sunrise.extras.dynamic_lights": "Lampu Dinamis",
   "sunrise.extras.dynamic_lights.tooltip": "Obor dan sumber cahaya lain yang dipegang, dijatuhkan, atau terbakar akan menerangi blok di sekitarnya.",
-  "sunrise.extras.fullbright": "Fullbright",
-  "sunrise.extras.fullbright.tooltip": "Menampilkan blok dan entitas dengan pencahayaan penuh, bahkan di area gelap.",
   "sunrise.extras.header.chat": "Obrolan",
   "sunrise.extras.header.inventory": "Inventaris",
   "sunrise.extras.header.lighting": "Pencahayaan",

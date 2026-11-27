@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Thanh màu ở bên trái dòng trò chuyện.",
   "sunrise.extras.dynamic_lights": "Đèn năng động",
   "sunrise.extras.dynamic_lights.tooltip": "Đuốc và các nguồn sáng khác được giữ, thả hoặc đốt sẽ chiếu sáng các khối xung quanh chúng.",
-  "sunrise.extras.fullbright": "Ánh sáng đầy đủ",
-  "sunrise.extras.fullbright.tooltip": "Hiển thị các khối và thực thể ở mức ánh sáng đầy đủ, ngay cả trong vùng tối.",
   "sunrise.extras.header.chat": "Trò chuyện",
   "sunrise.extras.header.inventory": "Hàng tồn kho",
   "sunrise.extras.header.lighting": "Chiếu sáng",

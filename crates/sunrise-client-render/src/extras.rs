@@ -51,7 +51,6 @@ pub struct Extras {
     pub pack_browser: bool,
     /// Make /pregen available in single-player and hosted LAN worlds.
     pub pregen: bool,
-    pub fullbright: bool,
     /// Held, dropped and burning light sources light their surroundings (`dynamic_light`).
     pub dynamic_lights: bool,
     /// Far terrain a zoom magnifies is planned finer, so a spyglass does not
@@ -121,7 +120,6 @@ impl Default for Extras {
         Self {
             pack_browser: false,
             pregen: false,
-            fullbright: false,
             dynamic_lights: false,
             lod_zoom_detail: false,
             ui_sound_reserve: false,
@@ -174,7 +172,6 @@ impl Extras {
             match key.trim() {
                 "packBrowser" => e.pack_browser = flag(e.pack_browser),
                 "pregen" => e.pregen = flag(e.pregen),
-                "fullbright" => e.fullbright = flag(e.fullbright),
                 "dynamicLights" => e.dynamic_lights = flag(e.dynamic_lights),
                 "lodZoomDetail" => e.lod_zoom_detail = flag(e.lod_zoom_detail),
                 "uiSoundReserve" => e.ui_sound_reserve = flag(e.ui_sound_reserve),
@@ -238,7 +235,6 @@ impl Extras {
         };
         push("packBrowser", &bool_text(self.pack_browser));
         push("pregen", &bool_text(self.pregen));
-        push("fullbright", &bool_text(self.fullbright));
         push("dynamicLights", &bool_text(self.dynamic_lights));
         push("lodZoomDetail", &bool_text(self.lod_zoom_detail));
         push("uiSoundReserve", &bool_text(self.ui_sound_reserve));
@@ -357,7 +353,6 @@ impl Extras {
 /// The settings Sunrise Settings' Gameplay page shows, one per row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Item {
-    Fullbright,
     DynamicLights,
     OwnNameTag,
     HideBlockParticles,
@@ -389,7 +384,7 @@ pub enum Item {
 /// Sunrise Settings' Gameplay page: headers (language keys) and items.
 pub fn rows() -> Vec<Result<Item, &'static str>> {
     use Item::*;
-    // Fullbright, Dynamic lights and Hide block-break particles change the picture: they
+    // Dynamic lights and Hide block-break particles change the picture: they
     // are on the graphics screen's Quality page (`graphics_ui::rows`), not here. A section a crate
     // adds joins the group its title names (`sunrise_hooks::pages::Place::Extras`).
     let mut rows = vec![
@@ -424,7 +419,6 @@ impl Item {
     /// The language key of the caption (`sunrise.*`, assets/sunrise/lang).
     pub fn caption_key(self) -> &'static str {
         match self {
-            Item::Fullbright => "sunrise.extras.fullbright",
             Item::DynamicLights => "sunrise.extras.dynamic_lights",
             Item::OwnNameTag => "sunrise.extras.own_name_tag",
             Item::HideBlockParticles => "sunrise.extras.hide_block_particles",
@@ -449,7 +443,6 @@ impl Item {
     /// The language key of the description shown as the row's tooltip.
     pub fn description_key(self) -> &'static str {
         match self {
-            Item::Fullbright => "sunrise.extras.fullbright.tooltip",
             Item::DynamicLights => "sunrise.extras.dynamic_lights.tooltip",
             Item::OwnNameTag => "sunrise.extras.own_name_tag.tooltip",
             Item::HideBlockParticles => "sunrise.extras.hide_block_particles.tooltip",
@@ -483,7 +476,6 @@ impl Item {
     /// `sunrise.extras.*` in en_us.json.
     pub fn caption(self) -> &'static str {
         match self {
-            Item::Fullbright => "Fullbright",
             Item::DynamicLights => "Dynamic lights",
             Item::OwnNameTag => "Own name tag",
             Item::HideBlockParticles => "Hide block-break particles",
@@ -513,7 +505,7 @@ impl Item {
             MouseTweaksWheel => MouseTweaks,
             SortKey => Sort,
             Chat(_) => return None,
-            Fullbright | DynamicLights | OwnNameTag | HideBlockParticles | MouseTweaks | Sort
+            DynamicLights | OwnNameTag | HideBlockParticles | MouseTweaks | Sort
             | ChatAnimation | ChatIndicator | NoAi | AgentControl | ReproKeys
             | WheelCyclesSettings | MusicPage | PackBrowser | Pregen | ShaderPackKey => {
                 return None;
@@ -526,7 +518,6 @@ impl Item {
             Item::Pregen => {
                 "Enables /pregen in your single-player and LAN worlds. With cheats enabled, use /pregen start to generate an area before exploring it. Does not enable the command on servers you join."
             }
-            Item::Fullbright => "Show blocks and entities at full light, even in dark areas.",
             Item::DynamicLights => {
                 "Torches and other light sources held, dropped or on fire light the blocks around them."
             }
@@ -583,7 +574,6 @@ impl Item {
     pub fn cost(self) -> Option<crate::graphics_style::Cost> {
         use crate::graphics_style::Cost;
         match self {
-            Item::Fullbright => Some(Cost::None),
             Item::UiSoundReserve => Some(Cost::None),
             Item::MusicPage => Some(Cost::None),
             Item::DynamicLights => Some(Cost::Low),
@@ -600,7 +590,6 @@ impl Item {
     /// On/off items and their value.
     pub fn switch(self, e: &Extras) -> Option<bool> {
         Some(match self {
-            Item::Fullbright => e.fullbright,
             Item::DynamicLights => e.dynamic_lights,
             Item::OwnNameTag => e.own_name_tag,
             Item::HideBlockParticles => e.hide_block_particles,
@@ -635,7 +624,6 @@ impl Item {
     /// A click toggles a switch. The sort key binds instead.
     pub fn cycle(self, e: &mut Extras) {
         match self {
-            Item::Fullbright => e.fullbright = !e.fullbright,
             Item::DynamicLights => e.dynamic_lights = !e.dynamic_lights,
             Item::OwnNameTag => e.own_name_tag = !e.own_name_tag,
             Item::HideBlockParticles => e.hide_block_particles = !e.hide_block_particles,
@@ -675,7 +663,6 @@ mod tests {
         Extras {
             pack_browser: true,
             pregen: true,
-            fullbright: true,
             music_off: vec!["a".into(), "b".into()],
             own_name_tag: true,
             ..Extras::default()
@@ -777,7 +764,7 @@ mod tests {
         fs::write(dir.join(FILE), bytes).unwrap();
         let mut e = Extras::load(&dir);
         assert!(e.own_name_tag);
-        e.fullbright = true;
+        e.dynamic_lights = true;
         e.save(&dir);
         assert_eq!(fs::read(dir.join(FILE)).unwrap(), bytes);
         // A file that can't be read at all (a folder in its place) is left alone.
@@ -807,7 +794,7 @@ mod tests {
     #[test]
     fn everything_is_off_by_default_and_round_trips() {
         let d = Extras::default();
-        assert!(!d.fullbright && !d.dynamic_lights);
+        assert!(!d.dynamic_lights);
         assert!(!d.mouse_tweaks && !d.sort && !d.own_name_tag && !d.ui_sound_reserve);
         assert!(!d.hide_block_particles && !d.pregen);
         assert!(!d.music_page && d.music_off.is_empty());
@@ -815,8 +802,6 @@ mod tests {
         assert_eq!(Extras::parse(""), d);
         assert_eq!(Extras::parse(&d.serialize()), d);
         let mut e = d.clone();
-        Item::Fullbright.cycle(&mut e);
-        assert_eq!(Item::Fullbright.switch(&e), Some(true));
         Item::DynamicLights.cycle(&mut e);
         assert_eq!(Item::DynamicLights.switch(&e), Some(true));
         assert_eq!(Extras::parse(&e.serialize()), e);
