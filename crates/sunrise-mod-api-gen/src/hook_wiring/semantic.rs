@@ -5,11 +5,7 @@ use crate::{
     host::HostCallee,
 };
 use mod_source::index::{Binding, Found, Index, ItemId};
-use std::{
-    collections::{HashMap, HashSet},
-    fs,
-    path::Path,
-};
+use std::{collections::HashSet, path::Path};
 use syn::{FnArg, ImplItem, Item, Path as RustPath, Signature, TraitItem, Type};
 
 struct Implementation {
@@ -143,28 +139,9 @@ fn implementations(
     let mut impls = Vec::new();
     for package in GameplayPackage::ALL {
         let library = package.domain().key;
-        let mut parsed = HashMap::new();
         for variant in sources.variants(library)? {
             let file = &variant.file;
-            let parsed = match parsed.entry(&file.path) {
-                std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-                std::collections::hash_map::Entry::Vacant(entry) => {
-                    let text = fs::read_to_string(&file.path)
-                        .map_err(|error| format!("{}: {error}", file.path.display()))?;
-                    entry.insert(
-                        syn::parse_file(&text)
-                            .map_err(|error| format!("{}: {error}", file.path.display()))?,
-                    )
-                }
-            };
-            let mut items = parsed.items.as_slice();
-            for &index in &variant.inline {
-                let Item::Mod(module) = &items[index] else {
-                    unreachable!("a recorded inline module");
-                };
-                items = &module.content.as_ref().expect("inline module").1;
-            }
-            for item in items {
+            for item in &variant.items {
                 if let Item::Impl(item) = item
                     && (item.trait_.is_some() || item.items.iter().any(|item| {
                         matches!(item, ImplItem::Fn(method) if names.contains(method.sig.ident.to_string().as_str()))
