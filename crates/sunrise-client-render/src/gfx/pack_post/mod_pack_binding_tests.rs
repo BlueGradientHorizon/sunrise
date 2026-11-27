@@ -351,7 +351,8 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
     let _gpu_guard = crate::gfx::test_gpu::lock();
     let gpu = Gpu::new().expect("an executed adapter is required for the linked depth fixture");
     let passthrough = "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xyz,1.0);}";
-    let red = "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){gl_FragData[0]=vec4(1.0,0.0,0.0,1.0);}";
+    let red =
+        "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){gl_FragData[0]=vec4(1.0,0.0,0.0,1.0);}";
     let files = [
         ("mod_depth.vsh", passthrough),
         ("mod_depth.fsh", red),
@@ -390,9 +391,27 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
         (DepthCompare::Greater, false, true, "mod_depth", None),
         (DepthCompare::Always, true, true, "mod_depth", None),
         (DepthCompare::Always, true, false, "mod_depth", None),
-        (DepthCompare::Greater, false, true, "mod_depth", Some((100, 0.0))),
-        (DepthCompare::Greater, false, true, "mod_slope", Some((0, 2.0))),
-        (DepthCompare::Greater, false, true, "gbuffers_damagedblock", None),
+        (
+            DepthCompare::Greater,
+            false,
+            true,
+            "mod_depth",
+            Some((100, 0.0)),
+        ),
+        (
+            DepthCompare::Greater,
+            false,
+            true,
+            "mod_slope",
+            Some((0, 2.0)),
+        ),
+        (
+            DepthCompare::Greater,
+            false,
+            true,
+            "gbuffers_damagedblock",
+            None,
+        ),
         (
             DepthCompare::Greater,
             false,
@@ -462,8 +481,20 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
         ("Always farther in read-only slot", 5, 0.5, true, false),
         ("Greater coplanar with constant bias", 6, 0.0, true, false),
         ("Greater farther with slope bias", 7, 0.0, true, false),
-        ("Undeclared bias keeps the pack's polygon offset", 8, 0.0, true, false),
-        ("Declared bias replaces the pack's polygon offset", 9, 0.0, false, false),
+        (
+            "Undeclared bias keeps the pack's polygon offset",
+            8,
+            0.0,
+            true,
+            false,
+        ),
+        (
+            "Declared bias replaces the pack's polygon offset",
+            9,
+            0.0,
+            false,
+            false,
+        ),
     ] {
         gpu.clear(&color, &depth, 0.5);
         let (vertices, indices) = mod_quad_buffers(&gpu.device, clip_z);
