@@ -15,6 +15,7 @@ import unittest
 from unittest import mock
 
 from tools import pr_ready
+from tests.git_fixture import isolated_git_env
 from tests.os_support import POSIX_BASH
 
 PACKAGES = {"sunrise-core": "crates/sunrise-core", "sunrise-client": "crates/sunrise-client",
@@ -47,9 +48,10 @@ class GitChangedPathsTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
+        self.enterContext(mock.patch.dict(os.environ, isolated_git_env(), clear=True))
         self.git("init")
         for key, value in (("core.quotePath", "true"), ("core.autocrlf", "false"),
-                           ("core.hooksPath", str(self.root / "no-hooks")), ("commit.gpgsign", "false")):
+                           ("core.hooksPath", str(self.root / "no-hooks"))):
             self.git("config", key, value)
         for module in (pr_ready, pr_ready.parity):
             patcher = mock.patch.object(module, "ROOT", self.root)
