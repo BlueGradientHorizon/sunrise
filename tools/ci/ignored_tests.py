@@ -1138,7 +1138,7 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
             # A test may report more than once (below); it passes only if every record passed.
             results[found[1]] = results.get(found[1], True) and found[2] == "ok"
         elif line.startswith("screen-effect event loop error: "):
-            print(line)
+            print("screen-effect event loop error: details withheld")
         elif SUMMARY.match(line):
             if target_count is not None:
                 last_summary = line
