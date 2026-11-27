@@ -23,6 +23,11 @@ static REGISTERED_RENDER_TYPES: OnceLock<Vec<RenderSetup>> = OnceLock::new();
 static REGISTERED_MODIFIERS: OnceLock<Vec<PipelineModifier>> = OnceLock::new();
 static PACK_UNIFORMS: OnceLock<HashMap<&'static str, PackUniformType>> = OnceLock::new();
 
+#[cfg(any(test, feature = "test-support"))]
+pub fn has_registered() -> bool {
+    REGISTERED.get().is_some_and(|v| !v.is_empty())
+}
+
 /// The built-in tables exported by `RenderPipelines.requiredPipelines` and `optionalPipelines`.
 #[derive(serde::Deserialize)]
 struct VanillaPipelines {
@@ -906,7 +911,7 @@ pub struct Built {
     pub color_targets: Vec<Option<ColorTargetState>>,
     /// Effective vertex buffer bindings sorted by binding index.
     pub vertex_bindings: Vec<(u8, mod_api::VertexFormat)>,
-    /// Whether this pipeline uses the default `PositionTexColor` vertex format.
+    /// Whether this pipeline uses the default vertex format (`VertexFormat::position_tex_color`).
     pub uses_default_vertex_format: bool,
     /// Whether the pipeline opted in to OIT (`RenderPipeline::order_independent()`).
     pub order_independent: bool,
@@ -1253,8 +1258,8 @@ impl Pipelines {
             .is_some_and(|b| b.state.depth_stencil.is_some_and(|d| d.write))
     }
 
-    /// Whether `slot` uses the default `PositionTexColor` vertex format (eligible for
-    /// `pipeline_quads`).
+    /// Whether `slot` uses the default vertex format (`VertexFormat::position_tex_color`), which
+    /// makes it eligible for `pipeline_quads`.
     pub fn uses_default_vertex_format(&self, slot: u32) -> bool {
         self.built
             .get(slot as usize)
