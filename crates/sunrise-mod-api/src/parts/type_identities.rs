@@ -8,15 +8,7 @@ pub(crate) enum TypeIdentityKind {
     ItemCapability,
     EntityCapability,
     CustomRegistry,
-}
-
-impl TypeIdentityKind {
-    fn is_capability(self) -> bool {
-        matches!(
-            self,
-            Self::BlockCapability | Self::ItemCapability | Self::EntityCapability
-        )
-    }
+    ModEvent,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,21 +64,29 @@ impl TypeIdentityTable {
             if existing.identity.type_id == identity.type_id {
                 return Ok(());
             }
-            if kind.is_capability() {
-                let conflict = if existing.identity.type_name == identity.type_name {
-                    "incompatible handler or context types"
-                } else {
-                    "two handler types"
-                };
-                return Err(format!(
-                    "capability {id} is answered with {conflict}, {} by {} and {} by {mod_id}",
+            return match kind {
+                TypeIdentityKind::BlockCapability
+                | TypeIdentityKind::ItemCapability
+                | TypeIdentityKind::EntityCapability => {
+                    let conflict = if existing.identity.type_name == identity.type_name {
+                        "incompatible handler or context types"
+                    } else {
+                        "two handler types"
+                    };
+                    Err(format!(
+                        "capability {id} is answered with {conflict}, {} by {} and {} by {mod_id}",
+                        existing.identity.type_name, existing.owner_mod, identity.type_name
+                    ))
+                }
+                TypeIdentityKind::CustomRegistry => Err(format!(
+                    "custom registry {id} is used with two types, {} by {} and {} by {mod_id}",
                     existing.identity.type_name, existing.owner_mod, identity.type_name
-                ));
-            }
-            return Err(format!(
-                "custom registry {id} is used with two types, {} by {} and {} by {mod_id}",
-                existing.identity.type_name, existing.owner_mod, identity.type_name
-            ));
+                )),
+                TypeIdentityKind::ModEvent => Err(format!(
+                    "event {id} is listened to with two types, {} by {} and {} by {mod_id}",
+                    existing.identity.type_name, existing.owner_mod, identity.type_name
+                )),
+            };
         }
         self.entries.insert(
             key,
