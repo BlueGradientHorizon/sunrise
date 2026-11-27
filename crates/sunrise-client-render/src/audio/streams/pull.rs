@@ -392,6 +392,7 @@ mod tests {
 
     impl Rig {
         fn new(read: impl FnMut(&mut [i16]) -> usize + Send + 'static) -> Self {
+            mod_platform::__private::initialize().unwrap();
             let pool = StreamPool::default();
             let (worker, receiver) = Worker::test_pair();
             pool.state().worker = Some(worker);
@@ -449,6 +450,8 @@ mod tests {
             }
         }
 
+        // The worker thread has no test scope, so the platform is initialized process-wide.
+        mod_platform::__private::initialize().unwrap();
         let (read, reads) = mpsc::sync_channel(1);
         let (dropped, drops) = mpsc::sync_channel(1);
         let pool = StreamPool::default();
@@ -586,6 +589,7 @@ mod tests {
             }
         }
 
+        mod_platform::__private::initialize().unwrap();
         let (dropping, drop_started) = mpsc::sync_channel(1);
         let (finish, finish_drop) = mpsc::sync_channel(1);
         let pool = StreamPool::default();
@@ -663,6 +667,7 @@ mod tests {
             }
         }
 
+        mod_platform::__private::initialize().unwrap();
         let (panicker_drop, panicker_dropped) = mpsc::sync_channel(1);
         let (healthy_read, healthy_reads) = mpsc::sync_channel(4);
         let pool = StreamPool::default();
@@ -769,6 +774,7 @@ mod tests {
             }
         }
 
+        mod_platform::__private::initialize().unwrap();
         let pool = StreamPool::default();
         let mut out = [0.0; 16];
         let mixer = Mutex::new(Mixer {
