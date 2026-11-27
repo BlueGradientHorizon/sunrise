@@ -2,7 +2,6 @@
 use quote::ToTokens;
 use std::{
     collections::BTreeMap,
-    fs,
     path::{Component, Path, PathBuf},
 };
 use syn::{Item, parse::Parser};
@@ -129,6 +128,7 @@ fn collect(
 pub fn fragments(
     root: &Path,
     areas: Vec<String>,
+    mut read: impl FnMut(&Path) -> std::io::Result<String>,
 ) -> Result<(BTreeMap<String, String>, bool, bool), String> {
     let directory = root.join("crates/sunrise-mod-vocab/src/exports");
     let mut out = [
@@ -145,7 +145,7 @@ pub fn fragments(
     let mut has_host = false;
     for area in areas {
         let path = directory.join(format!("{area}.rs"));
-        let source = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let source = read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let file = syn::parse_file(&source).map_err(|e| format!("{}: {e}", path.display()))?;
         has_host |= file.items.iter().any(|item| matches!(item, Item::Mod(module) if module.ident == "host" && module.content.is_none()));
         has_parts |= file.items.iter().any(|item| matches!(item, Item::Mod(module) if module.ident == "parts" && module.content.is_none()));

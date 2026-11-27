@@ -12,7 +12,7 @@ pub(crate) use gameplay::{Binding as GameplayBinding, BindingKind};
 
 use quote::ToTokens;
 use serde::Deserialize;
-use std::{collections::HashSet, fmt, fs, path::Path};
+use std::{collections::HashSet, fmt, path::Path};
 
 /// Which side of the connection a hook or helper runs on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -966,14 +966,13 @@ impl Catalog {
             error,
         };
         let dir = root.join(DECLARATIONS);
-        let modules =
-            sunrise_game_discovery::module_files(&dir).map_err(|error| read_error(&dir, error))?;
+        let modules = crate::read_module_files(&dir).map_err(|error| read_error(&dir, error))?;
         let files = modules
             .iter()
             .map(|module| {
                 let path = dir.join(format!("{module}.rs"));
                 let text =
-                    fs::read_to_string(&path).map_err(|e| read_error(&path, e.to_string()))?;
+                    crate::read_input(&path).map_err(|e| read_error(&path, e.to_string()))?;
                 Ok((path.display().to_string(), text))
             })
             .collect::<Result<Vec<_>, CatalogError>>()?;
@@ -1062,6 +1061,7 @@ impl Hook {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::fs;
 
     fn hook(name: &str, extra: serde_json::Value) -> serde_json::Value {
         let mut hook = json!({

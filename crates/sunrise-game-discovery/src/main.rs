@@ -197,6 +197,7 @@ fn run() -> Result<(), String> {
         let (scopes, _, _) = sunrise_game_discovery::exports::fragments(
             &root,
             sunrise_game_discovery::module_files(&export_directory)?,
+            |path| fs::read_to_string(path),
         )?;
         Some(
             scopes

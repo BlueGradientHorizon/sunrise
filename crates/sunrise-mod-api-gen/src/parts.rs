@@ -1,6 +1,6 @@
 //! Discover ordinary Parts modules, without joining their runtime bodies.
 mod installation;
-use std::{fs, path::Path};
+use std::path::Path;
 use syn::{Item, Visibility};
 
 pub(crate) const DIRECTORY: &str = "crates/sunrise-mod-vocab/src/parts";
@@ -32,17 +32,39 @@ fn reexport(items: &[Item], module: &str) -> String {
     format!("#[allow(unused_imports)] {scope} use {module}::*;\n")
 }
 
-pub(crate) fn source(root: &Path) -> Result<String, String> {
+pub(crate) struct Built {
+    pub(crate) source: String,
+    pub(crate) trait_exports: String,
+}
+
+fn format_trait_exports(unions: &[Vec<String>; 2]) -> String {
+    let names: Vec<&str> = unions
+        .iter()
+        .flat_map(|members| {
+            members
+                .iter()
+                .map(|member| member.rsplit("::").next().unwrap())
+        })
+        .collect();
+    if names.is_empty() {
+        String::new()
+    } else {
+        format!("pub use crate::parts::{{{}}};\n", names.join(","))
+    }
+}
+
+pub(crate) fn build(root: &Path) -> Result<Built, String> {
     let dir = root.join(DIRECTORY);
     let mut modules = String::new();
     let mut fixtures = String::new();
     let mut unions = [Vec::new(), Vec::new()];
-    for kind in sunrise_game_discovery::module_files(&dir)? {
+    let mut parsed_parts = Vec::new();
+    for kind in crate::read_module_files(&dir)? {
         let path = dir.join(format!("{kind}.rs"));
-        let source = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let source = crate::read_input(&path).map_err(|e| e.to_string())?;
         let file = syn::parse_file(&source).map_err(|e| format!("{}: {e}", path.display()))?;
-        let path = path.to_string_lossy();
-        modules.push_str(&format!("#[path = {path:?}] mod {kind};\n"));
+        let path_str = path.to_string_lossy();
+        modules.push_str(&format!("#[path = {path_str:?}] mod {kind};\n"));
         modules.push_str(&reexport(&file.items, &kind));
         for item in &file.items {
             if let Item::Trait(item) = item {
@@ -63,8 +85,11 @@ pub(crate) fn source(root: &Path) -> Result<String, String> {
                 fixtures.push_str(&reexport(items, &format!("super::{kind}::tests")));
             }
         }
+        parsed_parts.push((path, format!("crate::parts::{kind}"), file));
     }
-    let mut template = fs::read_to_string(dir.join("unions.rs.in")).map_err(|e| e.to_string())?;
+    let unions_path = dir.join("unions.rs.in");
+    let mut template = crate::read_input(&unions_path).map_err(|e| e.to_string())?;
+    let trait_exports = format_trait_exports(&unions);
     for (owner, members) in ["Registrar", "CapabilityProviders"].iter().zip(unions) {
         let declaration = format!("pub trait {owner} {{}}");
         let bounds = if members.is_empty() {
@@ -76,11 +101,18 @@ pub(crate) fn source(root: &Path) -> Result<String, String> {
     }
     syn::parse_file(&template).map_err(|e| e.to_string())?;
     modules.push_str(&template);
-    modules.push_str(&installation::source(root)?);
+    modules.push_str(&installation::source_with(root, &parsed_parts)?);
     modules.push_str(&format!(
         "/// Shared Parts fixtures for engine tests.\n#[cfg(any(test, feature = \"testing\"))]\npub mod tests {{\n{fixtures}}}\n"
     ));
-    Ok(modules)
+    Ok(Built {
+        source: modules,
+        trait_exports,
+    })
+}
+
+pub(crate) fn source(root: &Path) -> Result<String, String> {
+    Ok(build(root)?.source)
 }
 
 /// Discover concrete authoring modules independently from the vocabulary's area traits.
@@ -91,9 +123,9 @@ pub(crate) fn registration_source(root: &Path) -> Result<String, String> {
     }
     let mut modules = String::new();
     let mut fixtures = String::new();
-    for kind in sunrise_game_discovery::module_files(&dir)? {
+    for kind in crate::read_module_files(&dir)? {
         let path = dir.join(format!("{kind}.rs"));
-        let source = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let source = crate::read_input(&path).map_err(|e| e.to_string())?;
         let file = syn::parse_file(&source).map_err(|e| format!("{}: {e}", path.display()))?;
         modules.push_str(&format!(
             "#[path = {:?}] mod {kind};\n",
@@ -111,9 +143,9 @@ pub(crate) fn registration_source(root: &Path) -> Result<String, String> {
                 // Account for its discovered items when deciding re-export visibility.
                 let fragments = dir.join(format!("{kind}_fixtures"));
                 if fragments.is_dir() {
-                    for name in sunrise_game_discovery::module_files(&fragments)? {
+                    for name in crate::read_module_files(&fragments)? {
                         let path = fragments.join(format!("{name}.rs"));
-                        let source = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                        let source = crate::read_input(&path).map_err(|e| e.to_string())?;
                         let file = syn::parse_file(&source)
                             .map_err(|e| format!("{}: {e}", path.display()))?;
                         items.extend(file.items);
@@ -131,26 +163,30 @@ pub(crate) fn registration_source(root: &Path) -> Result<String, String> {
 
 /// Export just the discovered area traits; runtime-only Parts remain private.
 pub(crate) fn trait_exports(root: &Path) -> Result<String, String> {
-    let file = syn::parse_file(&source(root)?).map_err(|e| e.to_string())?;
-    let mut names = Vec::new();
-    for item in file.items {
-        if let Item::Trait(item) = item {
-            for bound in item.supertraits {
-                if let syn::TypeParamBound::Trait(bound) = bound {
-                    names.push(bound.path.segments.last().unwrap().ident.to_string());
+    let dir = root.join(DIRECTORY);
+    let mut unions = [Vec::new(), Vec::new()];
+    for kind in crate::read_module_files(&dir)? {
+        let path = dir.join(format!("{kind}.rs"));
+        let source = crate::read_input(&path).map_err(|e| e.to_string())?;
+        let file = syn::parse_file(&source).map_err(|e| format!("{}: {e}", path.display()))?;
+        for item in &file.items {
+            if let Item::Trait(item) = item {
+                let name = item.ident.to_string();
+                for (index, suffix) in ["Registrar", "CapabilityProviders"].iter().enumerate() {
+                    if name.ends_with(suffix) {
+                        unions[index].push(format!("crate::parts::{name}"));
+                    }
                 }
             }
         }
     }
-    if names.is_empty() {
-        return Ok(String::new());
-    }
-    Ok(format!("pub use crate::parts::{{{}}};\n", names.join(",")))
+    Ok(format_trait_exports(&unions))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     #[ignore = "daily"]

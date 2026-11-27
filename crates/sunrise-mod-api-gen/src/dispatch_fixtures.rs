@@ -120,8 +120,7 @@ fn push(
 
 pub(crate) fn generate(root: &Path, out: &Path, catalog: &Catalog) -> Result<(), String> {
     let dir = root.join(DIRECTORY);
-    crate::rerun_if_changed(&dir.display());
-    let mut areas = sunrise_game_discovery::module_files(&root.join(DECLARATIONS))?;
+    let mut areas = crate::read_module_files(&root.join(DECLARATIONS))?;
     // A fixture can support a declared engine target as well as a declaration file.
     // Their boundaries need not match when declarations are split per hook.
     const NATIVE: &str = "sunrise_client::game::native_hooks::";
@@ -142,14 +141,13 @@ pub(crate) fn generate(root: &Path, out: &Path, catalog: &Catalog) -> Result<(),
     }
     let mut output = BTreeMap::new();
     let mut seen = BTreeSet::new();
-    for area in sunrise_game_discovery::module_files(&dir)? {
+    for area in crate::read_module_files(&dir)? {
         if area != "shared" && !areas.contains(&area) {
             return Err(format!("fixture area {area} has no catalog declaration"));
         }
         let path = dir.join(format!("{area}.rs"));
-        crate::rerun_if_changed(&path.display());
         collect(
-            &fs::read_to_string(&path).map_err(|e| e.to_string())?,
+            &crate::read_input(&path).map_err(|e| e.to_string())?,
             area == "shared",
             &mut output,
             &mut seen,
@@ -162,11 +160,9 @@ pub(crate) fn generate(root: &Path, out: &Path, catalog: &Catalog) -> Result<(),
         if !folder.is_dir() {
             continue;
         }
-        crate::rerun_if_changed(&folder.display());
-        for name in sunrise_game_discovery::module_files(&folder)? {
+        for name in crate::read_module_files(&folder)? {
             let path = folder.join(format!("{name}.rs"));
-            crate::rerun_if_changed(&path.display());
-            let source = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let source = crate::read_input(&path).map_err(|e| e.to_string())?;
             for item in syn::parse_file(&source)
                 .map_err(|e| format!("{}: {e}", path.display()))?
                 .items

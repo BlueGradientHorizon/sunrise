@@ -192,9 +192,8 @@ impl HostRoute {
 impl Routing {
     pub(crate) fn load(root: &Path) -> Result<Self, String> {
         let path = root.join(ROUTING);
-        crate::rerun_if_changed(&path.display());
         let text =
-            fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+            crate::read_input(&path).map_err(|error| format!("{}: {error}", path.display()))?;
         toml::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))
     }
 

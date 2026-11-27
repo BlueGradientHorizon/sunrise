@@ -1,5 +1,5 @@
 //! Cargo-facing generation: the mod API's and the game's generated files.
-use super::{Catalog, Target, host, sources};
+use super::{Catalog, Target, host};
 use std::{fs, path::Path};
 mod vocab_boundary;
 
@@ -8,9 +8,9 @@ fn write_vocab_output(
     name: &str,
     code: &str,
     inventory: &vocab_boundary::Inventory,
-    sources: &std::collections::BTreeSet<std::path::PathBuf>,
+    vocab_root: &Path,
 ) -> Result<(), String> {
-    vocab_boundary::validate_with_modules(name, code, inventory, sources)
+    vocab_boundary::validate_with_modules(name, code, inventory, Some(vocab_root))
         .map_err(|e| format!("{name}: {e}"))?;
     write_if_changed(out_dir.join(name), code).map_err(|e| e.to_string())
 }
@@ -45,7 +45,6 @@ fn generate_with_vocab(
     target: Target,
     catalog: Option<Catalog>,
 ) -> Result<(), String> {
-    track(root)?;
     if let Some(package) = gameplay_package(&target) {
         crate::rerun_if_staged(root);
         for (name, code) in super::gameplay::generate(root, package)? {
@@ -55,59 +54,43 @@ fn generate_with_vocab(
         }
         return Ok(());
     }
-    let inventory = if matches!(target, Target::Vocab) {
-        let path = root.join("tools/layering/mod_vocab_state.json");
-        crate::rerun_if_changed(&path.display());
-        vocab_boundary::inventory(root)?
-    } else {
-        vocab_boundary::Inventory::new()
+    let inventory = vocab_boundary::inventory(root)?;
+    let vocab_root = vocab_boundary::modules::vocab_root(root)?;
+    let catalog = match catalog {
+        Some(catalog) => catalog,
+        None => Catalog::load(root)?,
     };
-    let vocab_sources = if matches!(target, Target::Vocab) {
-        vocab_boundary::modules::sources(root)?
-    } else {
-        std::collections::BTreeSet::new()
-    };
-    let outputs = match target {
-        Target::GameplayCommon | Target::GameplayServer | Target::GameplayClient => unreachable!(),
-        Target::Vocab => {
-            let generated = match catalog {
-                Some(catalog) => super::sources_from_catalog(root, &catalog)?,
-                None => sources(root)?,
-            };
-            write_vocab_output(
-                out_dir,
-                super::parts::OUTPUT,
-                &super::parts::source(root)?,
-                &inventory,
-                &vocab_sources,
-            )?;
-            for (name, code) in super::exports::sources(root)? {
-                write_vocab_output(out_dir, &name, &code, &inventory, &vocab_sources)?;
-            }
-            let included = [
-                (host::AREAS_OUTPUT, generated.areas.as_str()),
-                ("mod_api_generated.rs", generated.hooks.as_str()),
-                ("mod_api_generated_host.rs", generated.host.as_str()),
-            ];
-            let (keys, paths) = super::capability_keys::generate(root, &included)?;
-            for path in paths {
-                crate::rerun_if_changed(&path.display());
-            }
-            vec![
-                (host::AREAS_OUTPUT, generated.areas),
-                ("mod_api_generated.rs", generated.hooks),
-                ("mod_api_generated_host.rs", generated.host),
-                (super::capability_keys::OUTPUT, keys),
-            ]
-        }
-    };
+    let areas = host::load(root)?;
+    let areas_code = host::areas_source_from(root, &areas)?;
+    let parts = super::parts::build(root)?;
+    let exports =
+        super::exports::sources_with(root, Some(&areas_code), Some(&parts.trait_exports))?;
+    let host_code = host::generate_with(root, &areas, Some(&exports))?;
+    let hooks_code = super::hooks_source(&catalog)?;
+    write_vocab_output(
+        out_dir,
+        super::parts::OUTPUT,
+        &parts.source,
+        &inventory,
+        &vocab_root,
+    )?;
+    for (name, code) in &exports {
+        write_vocab_output(out_dir, name, code, &inventory, &vocab_root)?;
+    }
+    let exports_root = exports
+        .get("mod_api_exports_root.rs")
+        .map(String::as_str)
+        .unwrap_or("");
+    let keys = super::capability_keys::generate_from_exports(root, exports_root)?;
+    let outputs = [
+        (host::AREAS_OUTPUT, areas_code),
+        ("mod_api_generated.rs", hooks_code),
+        ("mod_api_generated_host.rs", host_code),
+        (super::capability_keys::OUTPUT, keys),
+    ];
     for (name, code) in outputs {
         let code = generated_source(root, &target, name, code)?;
-        if matches!(target, Target::Vocab) {
-            write_vocab_output(out_dir, name, &code, &inventory, &vocab_sources)?;
-        } else {
-            write_if_changed(out_dir.join(name), &code).map_err(|e| e.to_string())?;
-        }
+        write_vocab_output(out_dir, name, &code, &inventory, &vocab_root)?;
         syn::parse_file(&code).map_err(|e| format!("generated Rust: {name}: {e}"))?;
     }
     Ok(())
@@ -115,7 +98,6 @@ fn generate_with_vocab(
 
 /// Generate the mod API's Part registration modules.
 pub fn generate_api_parts(root: &Path, out_dir: &Path) -> Result<(), String> {
-    crate::rerun_if_changed(&root.join("crates/sunrise-mod-api/src/parts").display());
     write_if_changed(
         out_dir.join("parts_registration_modules.rs"),
         super::parts::registration_source(root)?,
@@ -202,11 +184,6 @@ pub(crate) fn game_host_generated(root: &Path) -> Result<String, String> {
 
 /// Generate the native-only raw render records, without trait dispatch or subscriptions.
 pub fn generate_render(root: &Path, out_dir: &Path) -> Result<(), String> {
-    let declarations = root.join(super::catalog::DECLARATIONS);
-    crate::rerun_if_changed(&declarations.display());
-    for module in sunrise_game_discovery::module_files(&declarations)? {
-        crate::rerun_if_changed(&declarations.join(format!("{module}.rs")).display());
-    }
     let generated = super::dispatch::render(&Catalog::load(root)?)?;
     let source = generated.render_dispatch;
     use syn::spanned::Spanned;
@@ -262,31 +239,6 @@ fn render_records_need_no_game_sources() {
         5
     );
     fs::remove_dir_all(root).unwrap();
-}
-
-pub(super) fn track(root: &Path) -> Result<(), String> {
-    fn directory(path: &Path, extension: &str, recursive: bool) -> Result<(), String> {
-        // Track the directory as well: adding a helper source or fragment changes the inputs.
-        crate::rerun_if_changed(&path.display());
-        for entry in fs::read_dir(path).map_err(|e| e.to_string())? {
-            let path = entry.map_err(|e| e.to_string())?.path();
-            if path.is_dir() && recursive {
-                directory(&path, extension, recursive)?;
-            } else if path.extension().is_some_and(|ext| ext == extension) {
-                crate::rerun_if_changed(&path.display());
-            }
-        }
-        Ok(())
-    }
-    crate::rerun_if_changed(&root.join("crates/sunrise-mod-vocab/src").display());
-    directory(&root.join(super::catalog::DECLARATIONS), "rs", false)?;
-    directory(&root.join(super::exports::DIRECTORY), "rs", false)?;
-    directory(
-        &root.join("crates/sunrise-mod-vocab/src/parts"),
-        "rs",
-        false,
-    )?;
-    Ok(())
 }
 
 #[test]

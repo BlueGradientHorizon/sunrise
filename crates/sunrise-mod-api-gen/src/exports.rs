@@ -7,14 +7,30 @@ pub(crate) const DIRECTORY: &str = "crates/sunrise-mod-vocab/src/exports";
 use sunrise_game_discovery::exports::PREFIX;
 
 pub(crate) fn sources(root: &Path) -> Result<BTreeMap<String, String>, String> {
-    let (mut out, has_parts, has_host) = sunrise_game_discovery::exports::fragments(
-        root,
-        sunrise_game_discovery::module_files(&root.join(DIRECTORY))?,
-    )?;
+    sources_with(root, None, None)
+}
+
+pub(crate) fn sources_with(
+    root: &Path,
+    areas_source: Option<&str>,
+    parts_trait_exports: Option<&str>,
+) -> Result<BTreeMap<String, String>, String> {
+    let dir = root.join(DIRECTORY);
+    let areas = crate::read_module_files(&dir)?;
+    let (mut out, has_parts, has_host) =
+        sunrise_game_discovery::exports::fragments(root, areas, crate::read_input)?;
     if has_host {
+        let areas_owned;
+        let areas_code = match areas_source {
+            Some(code) => code,
+            None => {
+                areas_owned = super::host::areas_source(root)?;
+                &areas_owned
+            }
+        };
         // Re-export the generated macro aliases, not the include!-expanded
         // macro_export implementations, at their existing crate-root paths.
-        for item in syn::parse_file(&super::host::areas_source(root)?)
+        for item in syn::parse_file(areas_code)
             .map_err(|e| e.to_string())?
             .items
         {
@@ -29,9 +45,11 @@ pub(crate) fn sources(root: &Path) -> Result<BTreeMap<String, String>, String> {
         }
     }
     if has_parts {
-        out.get_mut("root")
-            .unwrap()
-            .push_str(&super::parts::trait_exports(root)?);
+        let exports = match parts_trait_exports {
+            Some(code) => std::borrow::Cow::Borrowed(code),
+            None => std::borrow::Cow::Owned(super::parts::trait_exports(root)?),
+        };
+        out.get_mut("root").unwrap().push_str(&exports);
     }
     Ok(out
         .into_iter()
@@ -39,8 +57,11 @@ pub(crate) fn sources(root: &Path) -> Result<BTreeMap<String, String>, String> {
         .collect())
 }
 
-/// Expand the same generated surfaces for source consumers such as Host validation.
-pub(crate) fn expand(root: &Path, source: &str) -> Result<String, String> {
+/// Expand already-generated export fragments for source consumers such as Host validation.
+pub(crate) fn expand_with(
+    source: &str,
+    generated: &BTreeMap<String, String>,
+) -> Result<String, String> {
     fn items(input: Vec<Item>, sources: &BTreeMap<String, String>) -> Result<Vec<Item>, String> {
         let mut out = Vec::new();
         for mut item in input {
@@ -66,17 +87,25 @@ pub(crate) fn expand(root: &Path, source: &str) -> Result<String, String> {
         }
         Ok(out)
     }
+    if !source.contains(PREFIX) && !source.contains(super::parts::OUTPUT) {
+        return Ok(source.to_owned());
+    }
+    let mut file = syn::parse_file(source).map_err(|e| e.to_string())?;
+    file.items = items(file.items, generated)?;
+    Ok(file.to_token_stream().to_string())
+}
+
+/// Expand the same generated surfaces for source consumers such as Host validation.
+pub(crate) fn expand(root: &Path, source: &str) -> Result<String, String> {
     let parts = source.contains(super::parts::OUTPUT);
     if !source.contains(PREFIX) && !parts {
         return Ok(source.to_owned());
     }
-    let mut file = syn::parse_file(source).map_err(|e| e.to_string())?;
     let mut generated = sources(root)?;
     if parts {
         generated.insert(super::parts::OUTPUT.to_owned(), super::parts::source(root)?);
     }
-    file.items = items(file.items, &generated)?;
-    Ok(file.to_token_stream().to_string())
+    expand_with(source, &generated)
 }
 
 #[cfg(test)]

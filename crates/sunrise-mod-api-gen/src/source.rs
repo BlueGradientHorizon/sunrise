@@ -132,7 +132,7 @@ impl SourceLayout {
     /// Read the source tree’s split layout marker. Older trees require their own generator.
     pub fn read(root: &Path) -> Result<Self, String> {
         let path = root.join(MARKER);
-        match fs::read_to_string(&path) {
+        match crate::read_input(&path) {
             Ok(text) => match text.trim() {
                 #[cfg(test)]
                 "legacy" => Ok(LEGACY_LAYOUT),

@@ -8,6 +8,7 @@ use heck::ToUpperCamelCase;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
+use std::path::PathBuf;
 use syn::visit::Visit;
 
 /// Reads implemented by the scoped goal context over the active mob and its
@@ -424,10 +425,9 @@ fn server_only_tiers(camel: &str, file: &syn::File) -> std::collections::BTreeSe
 pub(crate) fn load(root: &Path) -> Result<Vec<Area>, String> {
     let dir = root.join(DIRECTORY);
     let mut areas = Vec::new();
-    for stem in sunrise_game_discovery::module_files(&dir)? {
+    for stem in crate::read_module_files(&dir)? {
         let path = dir.join(format!("{stem}.rs"));
-        crate::rerun_if_changed(&path.display());
-        let source = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let source = crate::read_input(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let file = syn::parse_file(&source).map_err(|e| format!("{}: {e}", path.display()))?;
         let camel = stem.to_upper_camel_case();
         let tables =
@@ -442,7 +442,6 @@ pub(crate) fn load(root: &Path) -> Result<Vec<Area>, String> {
             server_only_tiers,
         });
     }
-    crate::rerun_if_changed(&dir.display());
     Ok(areas)
 }
 
@@ -452,10 +451,14 @@ pub(crate) fn load(root: &Path) -> Result<Vec<Area>, String> {
 /// host writes instead of an `impl` for each area.
 pub(super) fn areas_source(root: &Path) -> Result<String, String> {
     let areas = load(root)?;
+    areas_source_from(root, &areas)
+}
+
+pub(super) fn areas_source_from(root: &Path, areas: &[Area]) -> Result<String, String> {
     let dir = root.join(DIRECTORY);
     let mut modules = String::new();
     let mut prelude = String::new();
-    for area in &areas {
+    for area in areas {
         let path =
             fs::canonicalize(dir.join(format!("{}.rs", area.stem))).map_err(|e| e.to_string())?;
         modules.push_str(&format!("#[path = {path:?}] pub mod {};\n", area.stem));
@@ -467,7 +470,7 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
     // unqualified: absolute paths to include!-expanded macro_export definitions
     // otherwise trigger macro_expanded_macro_exports_accessed_by_absolute_paths.
     let mut macros = String::new();
-    for area in &areas {
+    for area in areas {
         macros.push_str(&format!(
             "#[doc(hidden)]\n#[macro_export]\nmacro_rules! __mod_api_skip_{stem} {{ ([] $body:item) => {{ $body }}; ([{stem} $($rest:ident)*] $body:item) => {{}}; ([$other:ident $($rest:ident)*] $body:item) => {{ $crate::__skip_{stem}!([$($rest)*] $body); }}; }}\n#[doc(hidden)]\npub use __mod_api_skip_{stem} as __skip_{stem};\n",
             stem = area.stem
@@ -479,7 +482,7 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
     let mut choices = String::new();
     let mut partial_impls = String::new();
     let mut read_names = std::collections::BTreeSet::new();
-    for area in &areas {
+    for area in areas {
         for tier in [Tier::Backend, Tier::ClientBackend] {
             let Some(entries) = area.tiers.get(&tier) else {
                 continue;
@@ -1757,26 +1760,58 @@ fn handle_method(
     )))
 }
 
+/// Domain `*/types.rs` files declared by the root exports, in deterministic order.
+fn domain_type_files(src_root: &Path, api_source: &str) -> Result<Vec<PathBuf>, String> {
+    let parsed = syn::parse_file(api_source).map_err(|e| e.to_string())?;
+    let mut dirs = BTreeSet::new();
+    for item in &parsed.items {
+        match item {
+            Item::Mod(module) if module.content.is_none() => {
+                dirs.insert(src_root.join(module.ident.to_string()));
+            }
+            Item::Use(use_item) => {
+                let mut tree = &use_item.tree;
+                if let syn::UseTree::Path(path) = tree
+                    && matches!(path.ident.to_string().as_str(), "crate" | "self")
+                {
+                    tree = &path.tree;
+                }
+                if let syn::UseTree::Path(domain) = tree {
+                    dirs.insert(src_root.join(domain.ident.to_string()));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(dirs
+        .into_iter()
+        .map(|dir| dir.join("types.rs"))
+        .filter(|path| path.is_file())
+        .collect())
+}
+
 /// The unions, the handles' methods and the hidden backends' side of the host.
-pub(super) fn generate(root: &Path) -> Result<String, String> {
-    let areas = load(root)?;
-    let api_source = fs::read_to_string(root.join("crates/sunrise-mod-vocab/src/lib.rs"))
-        .map_err(|e| e.to_string())?;
-    let api_source = super::exports::expand(root, &api_source)?;
+pub(super) fn generate_with(
+    root: &Path,
+    areas: &[Area],
+    exports_map: Option<&BTreeMap<String, String>>,
+) -> Result<String, String> {
+    let src_root = root.join("crates/sunrise-mod-vocab/src");
+    let lib_path = src_root.join("lib.rs");
+    let api_source = crate::read_input(&lib_path).map_err(|e| e.to_string())?;
+    let api_source = match exports_map {
+        Some(generated) => super::exports::expand_with(&api_source, generated)?,
+        None => super::exports::expand(root, &api_source)?,
+    };
     let mut types = api_types(&api_source)?;
     // Parse domain files separately: their inner docs and attributes belong to
     // that file, not to the middle of a concatenated API root.
-    for entry in
-        fs::read_dir(root.join("crates/sunrise-mod-vocab/src")).map_err(|e| e.to_string())?
-    {
-        let path = entry.map_err(|e| e.to_string())?.path().join("types.rs");
-        if path.is_file() {
-            let source = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-            let domain = api_types(&source).map_err(|e| format!("{}: {e}", path.display()))?;
-            for (receiver, name) in domain.handles {
-                if types.handles.insert(receiver.clone(), name).is_some() {
-                    return Err(format!("duplicate handle receiver {receiver}"));
-                }
+    for path in domain_type_files(&src_root, &api_source)? {
+        let source = crate::read_input(&path).map_err(|e| e.to_string())?;
+        let domain = api_types(&source).map_err(|e| format!("{}: {e}", path.display()))?;
+        for (receiver, name) in domain.handles {
+            if types.handles.insert(receiver.clone(), name).is_some() {
+                return Err(format!("duplicate handle receiver {receiver}"));
             }
         }
     }
@@ -1794,7 +1829,7 @@ pub(super) fn generate(root: &Path) -> Result<String, String> {
     };
     let mut methods = String::new();
     let mut by_handle = BTreeMap::<String, String>::new();
-    for area in &areas {
+    for area in areas {
         for (tier, entries) in &area.tiers {
             for entry in entries {
                 if tier.backend()

@@ -522,7 +522,7 @@ fn sources(root: &Path) -> Result<Sources, String> {
     sources_from_catalog(root, &catalog)
 }
 
-fn sources_from_catalog(root: &Path, catalog: &Catalog) -> Result<Sources, String> {
+pub(crate) fn hooks_source(catalog: &Catalog) -> Result<String, String> {
     let dispatch::HookSources {
         traits,
         dispatch,
@@ -555,9 +555,14 @@ fn sources_from_catalog(root: &Path, catalog: &Catalog) -> Result<Sources, Strin
         part("FluidPart"),
         part("EntityPart"),
     );
-    let code = complete_hook_constants(code, "Hooks", "hook_ids", "HookId")?;
-    let host = host::generate(root)?;
-    let areas = host::areas_source(root)?;
+    complete_hook_constants(code, "Hooks", "hook_ids", "HookId")
+}
+
+fn sources_from_catalog(root: &Path, catalog: &Catalog) -> Result<Sources, String> {
+    let code = hooks_source(catalog)?;
+    let areas_data = host::load(root)?;
+    let areas = host::areas_source_from(root, &areas_data)?;
+    let host = host::generate_with(root, &areas_data, None)?;
     for code in [&code, &host, &areas] {
         syn::parse_file(code).map_err(|e| format!("generated Rust: {e}"))?;
     }
@@ -590,6 +595,19 @@ pub fn generated_on_stdout() {
 thread_local! {
     /// The paths `rerun_if_changed` was given while a test holds the capture.
     static CAPTURED_RERUNS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Reads a UTF-8 generator input file and registers it with Cargo (`cargo:rerun-if-changed`).
+pub(crate) fn read_input(path: &Path) -> std::io::Result<String> {
+    rerun_if_changed(&path.display());
+    fs::read_to_string(path)
+}
+
+/// Lists sorted Rust module stems in `dir` (excluding `mod.rs`) and registers `dir` with Cargo
+/// (`cargo:rerun-if-changed`).
+pub(crate) fn read_module_files(dir: &Path) -> Result<Vec<String>, String> {
+    rerun_if_changed(&dir.display());
+    sunrise_game_discovery::module_files(dir)
 }
 
 /// Tracks the stager's stamp, `.sunrise-source-staged`, only in a staged copy. Cargo reruns a build
@@ -639,15 +657,14 @@ pub use notes::generate as generate_hook_notes;
 /// Generate the dispatch test fixture without preventing xtask from filling new placeholders.
 #[doc(hidden)]
 pub fn generate_test_hooks(root: &Path, out_dir: &Path) -> Result<(), String> {
-    build::track(root)?;
-    rerun_if_changed(&root.join(source::MARKER).display());
     let catalog = if SourceLayout::read(root)?.is_split() {
         gameplay::Routing::load(root)?.catalog(root)?
     } else {
         Catalog::load(root)?
     };
     dispatch_fixtures::generate(root, out_dir, &catalog)?;
-    let code = sources_from_catalog(root, &catalog)?.hooks;
+    let code = hooks_source(&catalog)?;
+    syn::parse_file(&code).map_err(|e| format!("generated Rust: {e}"))?;
     fs::write(out_dir.join("mod_api_generated.rs"), code).map_err(|e| e.to_string())
 }
 
