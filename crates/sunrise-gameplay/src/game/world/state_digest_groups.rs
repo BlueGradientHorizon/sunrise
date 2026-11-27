@@ -1,4 +1,4 @@
-use super::{hasher, random_words, relative, vec3};
+use super::{random_words, relative, vec3};
 use crate::game::ServerGame;
 use std::{
     collections::BTreeSet,
@@ -6,10 +6,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
     mem::discriminant,
 };
-use sunrise_core::{
-    geometry::Vec3,
-    nbt::{Tag, numeric_int},
-};
+use sunrise_core::nbt::{JavaString, Tag, numeric_int};
 use sunrise_gameplay_common::game::{
     FallingBlock, boats_common::Boat, commands_common::Target, dragon_common::dragon_part_id,
     entity::Entity, fireworks::Rocket, fishing_common::State, general::GeneralRow,
@@ -274,6 +271,7 @@ pub(super) fn level(game: &ServerGame<'_>, shared: &mut EntityGroups) -> String 
     decorations(game, shared, items, &mut out);
     transient(game, shared, items, &mut out);
     end_entities(game, shared, &mut out);
+    server_projectiles(game, items, &mut out);
     seats(game).append(&mut out, "seats");
     players(game, items).append(&mut out, "players");
     out.pop();
@@ -363,19 +361,7 @@ fn decorations(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, 
         if let Some(Tag::Compound(raw)) = game.common.persist.raw.get(&e.id) {
             let mut payload: Vec<_> = raw
                 .iter()
-                .filter(|(key, _)| {
-                    ![
-                        "UUID",
-                        "Fire",
-                        "Air",
-                        "OnGround",
-                        "PortalCooldown",
-                        "Tags",
-                        "CustomName",
-                    ]
-                    .iter()
-                    .any(|name| key.0.iter().copied().eq(name.encode_utf16()))
-                })
+                .filter(|(key, value)| !other_shared_key(key, value))
                 .collect();
             payload.sort_unstable_by_key(|&(key, _)| key);
             payload.len().hash(h);
@@ -437,13 +423,14 @@ fn decorations(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, 
     let mut fence_ids: Vec<_> = game.server.knot_ids.iter().collect();
     fence_ids.sort_unstable();
     fence_ids.hash(&mut knots.hash);
+    game.server.broken_knots.hash(&mut knots.hash);
     for e in game
         .common
         .mobs
         .iter()
         .filter(|e| e.extra.leash.is_some() || e.extra.leash_pending.is_some())
     {
-        (e.id, e.extra.leash_player, e.extra.leash_knot_id).hash(&mut knots.hash);
+        (0u8, e.id, e.extra.leash_player, e.extra.leash_knot_id).hash(&mut knots.hash);
         hash_leash(&mut knots.hash, e.extra.leash, e.extra.leash_pending);
     }
     for e in game
@@ -452,10 +439,26 @@ fn decorations(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, 
         .iter()
         .filter(|e| e.leash.is_some() || e.leash_pending.is_some())
     {
-        (e.id, e.leash_player, e.leash_knot_id).hash(&mut knots.hash);
+        (1u8, e.id, e.leash_player, e.leash_knot_id).hash(&mut knots.hash);
         hash_leash(&mut knots.hash, e.leash, e.leash_pending);
     }
     knots.append(out, "leash_knots");
+}
+
+fn other_shared_key(key: &JavaString, value: &Tag) -> bool {
+    let named = |name: &str| key.0.iter().copied().eq(name.encode_utf16());
+    if named("UUID") {
+        matches!(value, Tag::IntArray(words) if words.len() == 4)
+    } else if named("Tags") {
+        matches!(value, Tag::List(values) if values.iter().all(|v| matches!(v, Tag::String(_))))
+    } else if named("CustomName") {
+        true
+    } else {
+        ["Fire", "Air", "OnGround", "PortalCooldown"]
+            .into_iter()
+            .any(named)
+            && numeric_int(value).is_some()
+    }
 }
 
 fn hash_leash(
@@ -636,7 +639,12 @@ fn transient(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, ou
     spawners.append(out, "ominous_spawners");
 
     let mut hooks = Group::default();
-    for (e, _) in game.fishing_hooks_here() {
+    let mut entries: Vec<_> = game
+        .fishing_hooks_here()
+        .filter(|&(_, owner)| owner != Target::Player || local_player_here(game))
+        .collect();
+    entries.sort_unstable_by_key(|(hook, _)| hook.id);
+    for (e, _) in entries {
         let h = hooks.row(e.id, e.join);
         vec3(h, e.position);
         vec3(h, e.velocity);
@@ -685,6 +693,13 @@ fn transient(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, ou
         );
     }
     hooks.append(out, "fishing_hooks");
+}
+
+fn server_projectiles(game: &ServerGame<'_>, items: &Items, out: &mut String) {
+    if !game.server.level_pass.last {
+        out.push_str("server_thrown_potions=- server_thrown_eyes=- ");
+        return;
+    }
 
     let mut potions = Group::default();
     for e in &game.common.potions.thrown {
@@ -701,12 +716,8 @@ fn transient(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, ou
         )
             .hash(h);
         stack(h, Some(&e.stack), items);
-        entity_shared(game, shared, e.id, None, Shared::default());
     }
-    potions.append(out, "thrown_potions");
-}
-
-fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut String) {
+    potions.append(out, "server_thrown_potions");
     let mut eyes = Group::default();
     for e in &game.common.end.eyes {
         let h = eyes.row(e.id, JoinSeq::UNJOINED);
@@ -718,10 +729,11 @@ fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut Stri
             e.survive,
         )
             .hash(h);
-        entity_shared(game, shared, e.id, None, Shared::default());
     }
-    eyes.append(out, "thrown_eyes");
+    eyes.append(out, "server_thrown_eyes");
+}
 
+fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut String) {
     let mut crystals = Group::default();
     for e in &game.common.crystals {
         let h = crystals.row(e.id, e.join);
@@ -789,6 +801,9 @@ fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut Stri
             Some(Target::Dragon(e.id)),
             Shared::default(),
         );
+        if e.id == 0 {
+            continue;
+        }
         for (i, part) in e.parts.iter().enumerate() {
             let id = dragon_part_id(e.id, i);
             let h = dragon.row(id, JoinSeq::UNJOINED);
@@ -961,6 +976,13 @@ fn seats(game: &ServerGame<'_>) -> Group {
         .general
         .rows
         .iter()
+        .filter(|e| {
+            !game
+                .common
+                .persist
+                .removals
+                .contains(&Target::General(e.id))
+        })
         .filter_map(|e| Some((e.id, e.mount?)));
     let bolts = game
         .common
@@ -971,6 +993,7 @@ fn seats(game: &ServerGame<'_>) -> Group {
         .common
         .player
         .iter()
+        .filter(|_| local_player_here(game))
         .filter_map(|p| Some((p.entity_id as u32, game.common.riding?)));
     let guests = level_guests(game).filter_map(|p| Some((p.entity_id as u32, p.vehicle?)));
     hash_seats(
@@ -993,13 +1016,24 @@ fn hash_seats(
     vehicles.len().hash(&mut group.hash);
     for vehicle in vehicles {
         vehicle.hash(&mut group.hash);
-        let seats = passengers(vehicle);
+        let mut seats = passengers(vehicle);
+        seats.sort_unstable_by_key(|&(place, rider, player)| (place, !player, rider));
         seats.len().hash(&mut group.hash);
         for (_, rider, player) in seats {
             (rider, player).hash(&mut group.hash);
         }
     }
     group
+}
+
+fn local_player_here(game: &ServerGame<'_>) -> bool {
+    game.common
+        .resident_entities
+        .local_player
+        .location()
+        .map_or(game.server.level_pass.last, |location| {
+            location.owner.dimension == game.common.dim.key()
+        })
 }
 
 fn level_guests<'a>(
@@ -1016,7 +1050,7 @@ fn level_guests<'a>(
 fn players(game: &ServerGame<'_>, items: &Items) -> Group {
     let mut group = Group::default();
     let c = &game.common;
-    if let Some(p) = &c.player {
+    if let Some(p) = c.player.as_ref().filter(|_| local_player_here(game)) {
         let id = p.entity_id as u32;
         let h = group.row(id, JoinSeq::UNJOINED);
         vec3(h, p.position);
@@ -1192,13 +1226,16 @@ fn effects(h: &mut DefaultHasher, effects: &PlayerEffects) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{super::hasher, *};
 
     #[test]
     fn seat_digest_preserves_boarding_order_but_ignores_edge_enumeration() {
-        let digest = |edges: [(u32, u32); 3], order: [u32; 2]| {
+        let digest = |edges: [(u32, u32); 3], order: [(i64, u32); 2]| {
             hash_seats(edges, |vehicle| match vehicle {
-                10 => order.into_iter().map(|id| (0, id, false)).collect(),
+                10 => order
+                    .into_iter()
+                    .map(|(place, id)| (place, id, false))
+                    .collect(),
                 11 => vec![(0, 13, false)],
                 _ => unreachable!(),
             })
@@ -1207,13 +1244,20 @@ mod tests {
         };
         let edges = [(11, 10), (12, 10), (13, 11)];
         assert_eq!(
-            digest(edges, [11, 12]),
-            digest([edges[2], edges[0], edges[1]], [11, 12])
+            digest(edges, [(0, 11), (0, 12)]),
+            digest(edges, [(0, 12), (0, 11)])
         );
-        assert_ne!(digest(edges, [11, 12]), digest(edges, [12, 11]));
+        assert_eq!(
+            digest(edges, [(0, 11), (1, 12)]),
+            digest([edges[2], edges[0], edges[1]], [(1, 12), (0, 11)])
+        );
         assert_ne!(
-            digest(edges, [11, 12]),
-            digest([(11, 10), (12, 10), (13, 10)], [11, 12])
+            digest(edges, [(0, 11), (1, 12)]),
+            digest(edges, [(0, 12), (1, 11)])
+        );
+        assert_ne!(
+            digest(edges, [(0, 11), (1, 12)]),
+            digest([(11, 10), (12, 10), (13, 10)], [(0, 11), (1, 12)])
         );
     }
 

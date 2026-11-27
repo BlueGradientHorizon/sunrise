@@ -6,9 +6,9 @@ from pathlib import Path
 
 # `tick` and `dim` are compared too: a changed game time or level routing is a behaviour change.
 GROUPS = (
-    'tick', 'dim', 'walk_error', 'entities', 'randoms', 'hangings', 'cushions', 'other_entities', 'thrown_eyes',
+    'tick', 'dim', 'walk_error', 'entities', 'randoms', 'hangings', 'cushions', 'other_entities', 'server_thrown_eyes',
     'fangs', 'lightning', 'end_crystals', 'dragon', 'breath_clouds', 'ominous_spawners', 'leash_knots',
-    'fishing_hooks', 'thrown_potions', 'seats', 'entity_identity', 'entity_shared', 'players',
+    'fishing_hooks', 'server_thrown_potions', 'seats', 'entity_identity', 'entity_shared', 'players',
     'block_entities', 'level_random', 'counters', 'scheduled',
 )
 
