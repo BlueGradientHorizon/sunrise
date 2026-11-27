@@ -529,6 +529,9 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
         self.inner.restore_proto(proto, saved);
         self.inner.is_decorated(proto)
     }
+    fn is_decorated(&self, proto: &sunrise_level::chunk_streamer::Proto) -> bool {
+        self.inner.is_decorated(proto)
+    }
     fn light_view(&self, proto: &sunrise_level::chunk_streamer::Proto) -> Option<Chunk> {
         self.inner.light_view(proto)
     }
