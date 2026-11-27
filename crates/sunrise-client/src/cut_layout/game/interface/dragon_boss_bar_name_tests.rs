@@ -79,6 +79,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     hub.guests.update(0, |guest| {
         guest.dimension = "minecraft:the_end".into();
         guest.position = [0.5, 128.0, 0.5];
+        guest.loaded = true;
     });
     game.server.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
     let mut overlay = sunrise_client::boss_overlay::BossOverlay::default();
