@@ -201,8 +201,6 @@ const FULL_SECTION_BOX: u32 = 8 | (8 << 5) | (8 << 10) | (24 << 15) | (24 << 20)
 const CODE_OFFSET: i32 = 8;
 const BOX_CODES: i32 = 1 << 5;
 const FRUSTUM_PLANES: usize = 6;
-/// Fixed box coefficients in `tables`: each plane, axis and packed coordinate code.
-pub(super) const PLANE_BOX_WORDS: u64 = FRUSTUM_PLANES as u64 * 3 * BOX_CODES as u64;
 
 /// A record's box: its section's quad bounds (`SectionMesh::bounds`; `None` is
 /// the whole cell) rounded out to whole blocks, each low end at most 16 and

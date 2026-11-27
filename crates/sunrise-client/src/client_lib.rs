@@ -125,7 +125,6 @@ pub use sunrise_sim::landing;
 pub use sunrise_sim::lang_load;
 pub use sunrise_sim::living_attributes;
 pub mod locator_bar;
-pub use sunrise_sim::lod_net;
 pub use sunrise_sim::map_decoration_types;
 pub use sunrise_sim::menu;
 pub use sunrise_sim::menu_extra_net;
