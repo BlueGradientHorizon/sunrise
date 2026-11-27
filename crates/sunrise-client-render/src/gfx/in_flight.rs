@@ -198,3 +198,42 @@ mod chain_tests {
         assert_eq!(*ran.lock().unwrap(), [1, 2, 3, 4]);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lost_device_is_not_waited_on() {
+        let lost = AtomicBool::new(true);
+        let result = contain_loss(&lost, || unreachable!("waited on a lost device"));
+        assert_eq!(result, Err(LOST.into()));
+    }
+
+    #[test]
+    fn a_panic_that_comes_with_the_loss_is_the_loss() {
+        let lost = AtomicBool::new(false);
+        let result = contain_loss(&lost, || {
+            lost.store(true, Ordering::Relaxed);
+            panic!("device lost")
+        });
+        assert_eq!(result, Err(LOST.into()));
+    }
+
+    #[test]
+    #[should_panic(expected = "not a loss")]
+    fn a_panic_on_a_live_device_goes_on() {
+        let lost = AtomicBool::new(false);
+        let _ = contain_loss(&lost, || panic!("not a loss"));
+    }
+
+    #[test]
+    fn a_wait_on_a_live_device_returns_its_result() {
+        let lost = AtomicBool::new(false);
+        assert_eq!(contain_loss(&lost, || Ok(())), Ok(()));
+        assert_eq!(
+            contain_loss(&lost, || Err("timed out".into())),
+            Err("timed out".into())
+        );
+    }
+}
