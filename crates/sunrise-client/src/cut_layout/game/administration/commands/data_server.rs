@@ -95,6 +95,69 @@ pub(crate) mod tests {
             }
         });
     }
+
+    /// `Entity.saveWithoutId` writes `Passengers` for any vehicle, not only a mob,
+    /// a boat or a cart: a display carrying a pig reads it back (#6772).
+    #[test]
+    fn a_display_vehicle_reads_its_mob_passenger() {
+        with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
+            let at = Tag::List(
+                [0.5f64, 64.0, 0.5]
+                    .map(|v| Tag::Double(v.to_bits()))
+                    .to_vec(),
+            );
+            game.persist
+                .raw
+                .insert(12, Tag::compound([("Pos", at.clone())]));
+            game.persist.uuids.insert(12, [1, 2, 3, 4]);
+            game.server.others.0.push(
+                sunrise_gameplay_common::game::commands_common::OtherEntity {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    display: None,
+                    interaction: None,
+                    knot_check: None,
+                    eye: None,
+                    join: Default::default(),
+                    id: 12,
+                    kind: "minecraft:block_display".into(),
+                    position: Vec3::new(0.5, 64.0, 0.5),
+                    yaw: 0.0,
+                    pitch: 0.0,
+                },
+            );
+            let pig_uuid = [7, 8, 9, 10];
+            game.load_mob(
+                Tag::compound([
+                    ("id", Tag::String("minecraft:pig".into())),
+                    ("UUID", Tag::IntArray(pig_uuid.to_vec())),
+                    ("Pos", at),
+                    ("Health", Tag::Float(10.0_f32.to_bits())),
+                    ("NoAI", Tag::Byte(1)),
+                ]),
+                None,
+            )
+            .unwrap();
+            let pig_id = game.mobs.last().unwrap().id;
+            let pig = game.mobs.iter_mut().find(|m| m.id == pig_id).unwrap();
+            pig.extra.mount = Some(12);
+            pig.extra.vehicle_order = 0;
+            let tag = game.command_target_nbt(Target::Other(12)).unwrap();
+            let Some(Tag::List(passengers)) = tag.get("Passengers") else {
+                panic!("a display vehicle must write its passengers: {tag:?}");
+            };
+            assert_eq!(passengers.len(), 1);
+            assert_eq!(
+                passengers[0].get("id"),
+                Some(&Tag::String("minecraft:pig".into()))
+            );
+            assert_eq!(
+                passengers[0].get("UUID"),
+                Some(&Tag::IntArray(pig_uuid.to_vec()))
+            );
+        });
+    }
 }
 
 #[cfg(test)]

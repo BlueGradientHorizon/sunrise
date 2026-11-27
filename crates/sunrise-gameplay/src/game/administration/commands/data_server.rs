@@ -965,6 +965,41 @@ impl crate::game::ServerGame<'_> {
                 tag
             }
         };
+        // `Entity.saveWithoutId` writes `Passengers` when the entity is a vehicle,
+        // whatever its family. The mob tree carries its riders already and the boat
+        // and cart arms above write them; every other saved entity uses the same
+        // runtime writer here (#6772).
+        if let Some(id) = match t {
+            Target::Mob(_)
+            | Target::Boat(_)
+            | Target::Cart(_)
+            | Target::Player
+            | Target::Guest(_)
+            | Target::Hook(_)
+            | Target::DragonPart(_)
+            | Target::General(_) => None,
+            Target::Item(id)
+            | Target::Orb(id)
+            | Target::Projectile(id)
+            | Target::Stand(id)
+            | Target::Frame(id)
+            | Target::Painting(id)
+            | Target::Other(id)
+            | Target::Fangs(id)
+            | Target::Crystal(id)
+            | Target::Dragon(id)
+            | Target::Tnt(id)
+            | Target::Cushion(id)
+            | Target::Falling(id)
+            | Target::Rocket(id)
+            | Target::Trident(id)
+            | Target::Spawner(id)
+            | Target::Cloud(id)
+            | Target::Bolt(id)
+            | Target::Knot(id) => Some(id),
+        } {
+            self.put_passengers(&mut tag, id);
+        }
         if !include_id
             && !matches!(t, Target::Mob(_) | Target::Stand(_) | Target::Other(_))
             && let Tag::Compound(c) = &mut tag
