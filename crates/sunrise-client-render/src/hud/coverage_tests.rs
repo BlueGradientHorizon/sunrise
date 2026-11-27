@@ -5,7 +5,7 @@ use crate::gfx::hud_coverage;
 #[ignore = "daily"]
 fn repeated_partial_scissors_preserve_the_unclipped_gradient_pixels() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(gpu) = Gpu::new() else { return };
+    let gpu = Gpu::new().expect("HUD scissor test requires the GPU fixture");
     let mut atlas = HudAtlas::build(&ResourceSource::directory(
         "/nonexistent/sunrise-test-assets".into(),
     ))
@@ -23,16 +23,15 @@ fn repeated_partial_scissors_preserve_the_unclipped_gradient_pixels() {
         let mut batch = HudBatch::scratch([4, 2]);
         for x in 0..4 {
             let start = batch.vertices.len();
-            // At y=1 the red interpolant is about 1.2; rounding it there would darken
-            // the surviving pixel at y=1.5 compared with drawing the original gradient.
             batch.fill_gradient(
                 &atlas,
-                (x as f32, -1.0, 1.0, 4.9),
+                (x as f32, -0.5, 1.0, 4.0),
                 rgba(0, 0, 0, 255),
-                rgba(3, 0, 0, 255),
+                rgba(128, 0, 0, 255),
             );
             if scissor {
-                batch.clip_since(start, 0.0, 1.0, 4.0, 2.0);
+                let top = if x < 2 { 1.0 } else { 0.25 };
+                batch.clip_since(start, 0.0, top, 4.0, 2.0);
             }
         }
         if scissor {
@@ -42,15 +41,28 @@ fn repeated_partial_scissors_preserve_the_unclipped_gradient_pixels() {
     };
     let whole = draw(false);
     let clipped = draw(true);
-    assert_eq!(
-        &clipped[..20],
-        &[0; 20],
-        "entire first row and the second row's first pixel"
-    );
-    for pixel in whole[20..].as_chunks::<4>().0 {
-        assert_eq!(*pixel, [2, 0, 0, 255]);
+    // At the first row's centre (y = 0.5), red is exactly 128 / 4 = 32 in
+    // byte units. At the second row's centre (y = 1.5, t = 0.5), red is exactly
+    // 128 * 0.5 = 64 in byte units. Neither is a rounding tie. For the scissor
+    // comparison use this adapter's own unclipped pixels.
+    let (whole, []) = whole.as_chunks::<4>() else {
+        panic!("partial texel in unclipped readback");
+    };
+    let (clipped, []) = clipped.as_chunks::<4>() else {
+        panic!("partial texel in clipped readback");
+    };
+    assert_eq!(whole.len(), 8);
+    assert_eq!(clipped.len(), 8);
+    assert_eq!(whole[..4], [[32, 0, 0, 255]; 4]);
+    assert_eq!(whole[4..], [[64, 0, 0, 255]; 4]);
+    for (i, (&pixel, &reference)) in clipped.iter().zip(whole).enumerate() {
+        let expected = if matches!(i, 0 | 1 | 4) {
+            [0; 4]
+        } else {
+            reference
+        };
+        assert_eq!(pixel, expected, "pixel {i}");
     }
-    assert_eq!(&clipped[20..], &whole[20..]);
 }
 
 #[test]
