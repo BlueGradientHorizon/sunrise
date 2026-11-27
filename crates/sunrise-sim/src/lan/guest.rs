@@ -1660,7 +1660,7 @@ mod tests {
             (2048.0, 0.0, 1024.0),
         ] {
             let mut g = guest_at([0.5, 64.0, 0.5]);
-            let mut m = PlayerMotion::new(&resources, Vec3::new(0.5, 64.0, 0.5)).unwrap();
+            let mut m = PlayerMotion::new(&resources, Vec3::new(0.5, 64.0, 0.5));
             set_base(&mut m, "minecraft:max_health", base);
             let key = m.attributes.key("minecraft:max_health").unwrap();
             let handle = m.attributes.get_instance(Some(key)).unwrap().unwrap();
@@ -1688,7 +1688,7 @@ mod tests {
         };
         for (scale, side) in [(0.1_f64, 0.06_f32), (2.0, 1.2)] {
             let mut g = guest_at([0.5, 64.0, 0.5]);
-            let mut m = PlayerMotion::new(&resources, Vec3::new(0.5, 64.0, 0.5)).unwrap();
+            let mut m = PlayerMotion::new(&resources, Vec3::new(0.5, 64.0, 0.5));
             set_base(&mut m, "minecraft:scale", scale);
             m.set_pose(Pose::Standing).unwrap();
             g.motion = Some(Box::new(m));

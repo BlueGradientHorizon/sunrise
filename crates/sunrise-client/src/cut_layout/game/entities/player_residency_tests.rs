@@ -267,7 +267,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
     let expected = sunrise_sim::lan::playerdata::uuid_ints(profile);
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
         let mut player =
-            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5)).unwrap();
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5));
         player.entity_id = 7;
         game.player = Some(player);
         game.level.player_uuid = Some(expected);
@@ -307,7 +307,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
-        let motion = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+        let motion = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO);
         let mut guest = Guest::connectionless(12, 12, "SourceGuest".into(), 12, [0.0; 3], motion);
         guest.placed = true;
         game.server.lan.as_mut().unwrap().hub.guests.push(guest);

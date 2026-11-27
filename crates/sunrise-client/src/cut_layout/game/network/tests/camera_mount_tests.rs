@@ -234,9 +234,10 @@ pub(crate) fn run_a_spectated_rider_backs_off_by_its_living_vehicles_camera_dist
     let mut guards = Vec::new();
     with_client_game(|game| {
         let _server = logged_client(game);
-        game.player = Some(
-            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap(),
-        );
+        game.player = Some(sunrise_sim::motion::PlayerMotion::new(
+            game.motion,
+            Vec3::new(0.5, 1.0, 0.5),
+        ));
         let mut seen = std::collections::BTreeSet::new();
         for first in records {
             let key = serde_json::json!([

@@ -157,7 +157,7 @@ fn datapack_damage_uses_custom_identity_armor_fire_and_reloaded_tags() {
         .unwrap();
     let id = open.damage.id("demo:heated_air").unwrap();
     let player = || {
-        let mut p = PlayerMotion::new(&resources, sunrise_core::geometry::Vec3::ZERO).unwrap();
+        let mut p = PlayerMotion::new(&resources, sunrise_core::geometry::Vec3::ZERO);
         p.entity_id = 9701;
         let key = p.attributes.key("minecraft:armor").unwrap();
         let armor = p.attributes.get_instance(Some(key)).unwrap().unwrap();

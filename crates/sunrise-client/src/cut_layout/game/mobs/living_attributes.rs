@@ -702,7 +702,7 @@ pub(crate) mod tests {
             ));
             assert_eq!(read(game, 14, health), (Some(200.0), Some(200.0)));
 
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO));
             // The dragon owns its multipart IDs above 14; keep the fixture
             // player outside that range and reserve it against later spawns.
             game.server.next_entity = game.server.next_entity.max(100);

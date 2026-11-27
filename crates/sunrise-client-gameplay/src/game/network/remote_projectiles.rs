@@ -1515,10 +1515,10 @@ pub(in crate::game) mod nested_spawn_tests {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "NestedRocket").unwrap();
             game.client.remote.as_mut().unwrap().entity_id = 99;
-            game.player = Some(
-                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(20.0, 80.0, 20.0))
-                    .unwrap(),
-            );
+            game.player = Some(sunrise_sim::motion::PlayerMotion::new(
+                game.motion,
+                Vec3::new(20.0, 80.0, 20.0),
+            ));
             game.common.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),

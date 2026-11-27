@@ -47,7 +47,7 @@ pub(crate) mod tests {
         use sunrise_sim::motion::PlayerMotion;
 
         with_resident_guests(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO));
             bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
             game.player.as_mut().unwrap().health.tick_count = i32::MAX;
@@ -366,8 +366,10 @@ pub(crate) mod tests {
             });
             super::super::native_entity_refs::tests::with_client_game(|g| {
                 let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(g);
-                g.player =
-                    Some(PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap());
+                g.player = Some(PlayerMotion::new(
+                    g.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                ));
                 let local = g.entity(7).unwrap();
                 // Spawn actual renderable client copies through the normal packet path.
                 for (id, name) in [(15, "minecraft:armor_stand"), (16, "minecraft:zombie")] {
@@ -528,8 +530,10 @@ pub(crate) mod tests {
         }
         mod_platform::testing::with_mods(Vec::new().into(), || {
             super::super::native_entity_refs::tests::with_resident_game(|g| {
-                g.player =
-                    Some(PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap());
+                g.player = Some(PlayerMotion::new(
+                    g.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                ));
                 g.options.dedicated = Some(Vec::new());
                 super::super::native_entity_refs::tests::bind_local_player(g, 7, 123);
                 let player = g.entity(7).unwrap();
@@ -541,8 +545,10 @@ pub(crate) mod tests {
             });
             super::super::native_entity_refs::tests::with_client_game(|g| {
                 let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(g);
-                g.player =
-                    Some(PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap());
+                g.player = Some(PlayerMotion::new(
+                    g.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                ));
                 let player = g.entity(7).unwrap();
                 g.spawn_entity(15, "minecraft:zombie", [0.0; 3], [0.0; 3]);
                 let mob = g.entity(15).unwrap();
@@ -567,7 +573,7 @@ pub(crate) mod tests {
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO));
             let local = game.local_player().unwrap();
             let entity = game.entity(7).unwrap();
             assert_eq!(local.entity(), entity);
@@ -610,7 +616,7 @@ pub(crate) mod tests {
 
         with_client_game(|game| {
             let _server = logged_client(game);
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO));
             let local = game.entity(7).unwrap();
             let host = &*game as &dyn mod_api::ClientHost;
             assert_eq!(
@@ -728,7 +734,7 @@ pub(crate) mod tests {
         mod_platform::testing::with_mods(Default::default(), || {
             with_client_game(|game| {
                 let _server = logged_client(game);
-                game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO));
                 let types = game.client.remote.as_ref().unwrap().builtin.clone();
                 let kind = |name: &str| {
                     types

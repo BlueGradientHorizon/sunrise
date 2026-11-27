@@ -42,7 +42,7 @@ fn co_located_guests_own_distinct_streams_and_restore_the_saved_body() {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let assets = Assets::load(&root).unwrap();
     let resources = MotionResources::load(&root, &assets).unwrap();
-    let mut owner = PlayerMotion::new(&resources, Vec3::new(0.5, 64.0, 0.5)).unwrap();
+    let mut owner = PlayerMotion::new(&resources, Vec3::new(0.5, 64.0, 0.5));
     let mut first = guest(2);
     let mut second = guest(3);
     let saved = SavedBody {
@@ -205,9 +205,10 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                 let mut guest = online_guest(1);
                 guest.loaded = true;
                 guest.position = [1.5, 64.0, 1.5];
-                guest.motion = Some(Box::new(
-                    PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap(),
-                ));
+                guest.motion = Some(Box::new(PlayerMotion::new(
+                    game.motion,
+                    Vec3::new(1.5, 64.0, 1.5),
+                )));
                 game.server.lan.as_mut().unwrap().hub.guests.push(guest);
                 for boots in [true, false] {
                     game.server
@@ -342,9 +343,10 @@ pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
                 let mut guest = online_guest(1);
                 guest.loaded = true;
                 guest.position = [1.5, 64.0, 1.5];
-                guest.motion = Some(Box::new(
-                    PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap(),
-                ));
+                guest.motion = Some(Box::new(PlayerMotion::new(
+                    game.motion,
+                    Vec3::new(1.5, 64.0, 1.5),
+                )));
                 guest.armor[0] = Some(ItemStack::new("minecraft:turtle_helmet", 1));
                 guest.armor[1] = Some(ItemStack::new("minecraft:diamond_chestplate", 1));
                 game.server.lan.as_mut().unwrap().hub.guests.push(guest);

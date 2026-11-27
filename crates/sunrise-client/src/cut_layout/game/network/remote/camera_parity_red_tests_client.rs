@@ -2206,13 +2206,10 @@ pub(in crate::game) fn setup_remote_overworld(
     remote.entity_id = player_id;
     remote.view_distance = 8;
     remote.level_load.finish();
-    game.player = Some(
-        PlayerMotion::new(
-            game.motion,
-            Vec3::new(player_pos[0], player_pos[1], player_pos[2]),
-        )
-        .unwrap(),
-    );
+    game.player = Some(PlayerMotion::new(
+        game.motion,
+        Vec3::new(player_pos[0], player_pos[1], player_pos[2]),
+    ));
     game.client.camera_type = CameraType::FirstPerson;
     game.client.settings.fov = 70.0;
     game.client.settings.render_distance = 8;
