@@ -293,17 +293,30 @@ pub fn build_with_conditions(
     // `neoforge:conditions` are decided here, once, with the owning load's, as for the
     // worldgen and modifier files: a file that fails them is left out, and one that holds
     // is written without the key.
+    // A file that can't be read, isn't JSON or has no extractable `neoforge:value` is left
+    // out of the root with a warning instead of failing the build: it stays in the mod's
+    // own pack, so RegistryDataLoader still reports it when a world opens, where vanilla
+    // and NeoForge report a broken registry entry, and startup isn't blocked by it.
     for (file, (owner, layer)) in &damage_type_files {
-        let bytes = layer
-            .data
-            .read(file)
-            .ok_or_else(|| format!("mod {owner}: {file}: unreadable"))?;
-        let doc: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|e| format!("mod {owner}: {file}: {e}"))?;
+        let left_out = "left out of the content root; the world's registry load reports it";
+        let Some(bytes) = layer.data.read(file) else {
+            warnings.push(format!("mod {owner}: {file}: unreadable; {left_out}"));
+            continue;
+        };
+        let doc: serde_json::Value = match serde_json::from_slice(&bytes) {
+            Ok(doc) => doc,
+            Err(e) => {
+                warnings.push(format!("mod {owner}: {file}: {e}; {left_out}"));
+                continue;
+            }
+        };
         if !conditions.allows_file(&doc, file) {
             continue;
         }
-        overlay.write(file, &without_conditions(&bytes, owner, file)?)?;
+        match without_conditions(&bytes, owner, file) {
+            Ok(payload) => overlay.write(file, &payload)?,
+            Err(e) => warnings.push(format!("{e}; {left_out}")),
+        }
     }
     let mut winners: Vec<_> = modifier_files.into_values().collect();
     winners.sort_by_key(|(order, ..)| *order);

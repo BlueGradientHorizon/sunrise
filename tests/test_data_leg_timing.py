@@ -13,7 +13,7 @@ import textwrap
 import unittest
 from unittest import mock
 
-from tests.os_support import needs_runner_shell
+from tests.os_support import BASH, needs_runner_shell
 from tools.ci import cgroup_telemetry, ignored_tests, vendored_yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,9 +31,10 @@ def cache_step(label, cgroup):
     script = step["run"].replace("/sys/fs/cgroup/", cgroup.as_posix() + "/")
     script = script.replace("python3 ", shlex.quote(Path(sys.executable).as_posix()) + " ")
     fake = cgroup / "sccache"
-    fake.write_text("#!/bin/sh\n[ \"$1\" = --show-stats ] || exit 1\necho 'Compile requests 0'\necho 'Cache hits 0'\n")
+    fake.write_text("#!/bin/sh\n[ \"$1\" = --show-stats ] || exit 1\necho 'Compile requests 0'\necho 'Cache hits 0'\n",
+                    encoding="utf-8", newline="\n")
     fake.chmod(0o755)
-    return ["bash", "-e", "-c", script], {**os.environ, "PATH": str(cgroup) + os.pathsep + os.environ["PATH"]}
+    return [BASH, "-e", "-c", script], {**os.environ, "PATH": str(cgroup) + os.pathsep + os.environ["PATH"]}
 
 
 def fake_cargo(calls, raw_only=False):

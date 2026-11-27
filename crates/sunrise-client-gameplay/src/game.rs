@@ -269,7 +269,11 @@ impl ClientGame<'_> {
     }
 
     pub fn set_renderer(&mut self, renderer: Box<Renderer>) {
-        self.client.mod_gpu = Some(renderer.mod_gpu().clone());
+        let gpu = renderer.mod_gpu();
+        if let Some(previous) = &self.client.mod_gpu {
+            gpu.continue_ids_from(previous);
+        }
+        self.client.mod_gpu = Some(gpu.clone());
         self.client.renderer.0 = Some(renderer);
     }
 
