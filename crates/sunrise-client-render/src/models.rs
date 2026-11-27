@@ -359,7 +359,7 @@ pub fn load_visibility(
     if needs_tags {
         let tags_path = root.join("block-tags.json");
         let bundle: Value = sunrise_world::json_file::read(&tags_path)?;
-        let mut tag_defs = TagDefinitions::default();
+        let mut tag_defs = TagDefinitions::with_conventions("block")?;
         for (tag_name, text) in bundle.as_object().ok_or("invalid block tag bundle")? {
             tag_defs.apply_json(
                 tag_name,

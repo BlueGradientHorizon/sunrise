@@ -3030,7 +3030,15 @@ mod tests {
             r#"{"values":["minecraft:gone"]}"#.into(),
         );
         let mut dropped = Vec::new();
-        let tags = build_tags(&raw, &ov, "biome_tags", &mut dropped, known).unwrap();
+        let tags = build_tags(
+            TagDefinitions::default(),
+            &raw,
+            &ov,
+            "biome_tags",
+            &mut dropped,
+            known,
+        )
+        .unwrap();
         assert_eq!(tags["minecraft:hill"], ["minecraft:a", "minecraft:b"]);
         assert!(!tags.contains_key("p:broken"));
         assert_eq!(dropped.len(), 1, "{dropped:?}");
@@ -3041,7 +3049,17 @@ mod tests {
             r#"{"values":["minecraft:gone"]}"#.to_owned(),
         )]);
         let none = WorldgenOverrides::default();
-        assert!(build_tags(&broken, &none, "biome_tags", &mut dropped, known).is_err());
+        assert!(
+            build_tags(
+                TagDefinitions::default(),
+                &broken,
+                &none,
+                "biome_tags",
+                &mut dropped,
+                known
+            )
+            .is_err()
+        );
     }
     #[test]
     fn invalid_biome_identifier_refuses_worldgen_data() {
