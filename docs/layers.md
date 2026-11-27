@@ -100,7 +100,7 @@ What makes vanilla nicer to change, port and run, with no Sunrise branding and n
 public API that mods, desktop-class ports and the Sunrise layer build on.
 
 - **Belongs:** the mod API and mod formats, the native mod host, shader pack formats beyond vanilla
-  (OptiFine, Polytone, `shaders/`), HDR, controllers, replay recording and playback, the HUD widget
+  (OptiFine, Polytone, `shaders/`), HDR, controllers, the HUD widget
   framework, UI pages and the settings system, agent control (`sunrise-ctl`, MCP),
   modpack porting, the design tokens of non-vanilla screens.
 - **Exposes what vanilla already uses.** FOV changes, potion effects, the player's state, screens, rendering
@@ -177,7 +177,7 @@ The rule, in order (duckybertduck's):
 4. Everything else: **Sunrise**, or a native mod that players add themselves, since it can be built on what's below.
 
 A feature often splits along this rule: the part others build on is platform, and the finished feature on top of it
-is Sunrise (PvP & HUD and replays, [above](#controllers-and-ui-pages)).
+is Sunrise (PvP & HUD, [above](#controllers-and-ui-pages)).
 
 The mod interface follows that split too: `sunrise-mod-vocab` is an engine crate, while
 `sunrise-mod-api` preserves the mod-facing paths through re-exports. The build-time generator
@@ -215,7 +215,7 @@ also goes behind `sunrise-extras`. That keeps each later move a pure file move.
 The target, after the split. It is not built yet: nothing moves before the split below is done.
 
 **What a build of this repository gives.** A complete game: vanilla play, the platform (mods, shader packs,
-controllers, replays, HDR, the dedicated server) and no Sunrise layer. That means no extras, telemetry or Discord,
+controllers, HDR, the dedicated server) and no Sunrise layer. That means no extras, telemetry or Discord,
 no built-in outside address, and no launcher. Forks and builds from source get exactly
 that. sunrise-plain becomes a plain build of this repository.
 
@@ -314,7 +314,7 @@ sunrise-client`, the harnesses and sunrise-plain build, has none either. The fir
 ## Platform registries
 
 The spec for the four registries that let a platform or Sunrise crate add settings, pages, HUD drawing and title
-screen buttons without an engine file naming it. Controllers, replays (M6) and Sunrise's extras (M5) move out on
+screen buttons without an engine file naming it. Controllers (M6) and Sunrise's extras (M5) move out on
 them.
 Status: each registry lands in its own PR (layer plan M5, seam): the settings store (#14036), pages (#14070:
 `SunriseSettings` and every row but `Slider`; #14110: `Slider` and `tooltip`; `Title` and `Pause` next), the HUD
@@ -639,7 +639,7 @@ themselves, or stays a module linked into the official build, as auto-reconnect 
 - chunk pregeneration.
 
 Zoom, the FPS counter and Keystrokes already moved to native mods ([extras.md](extras.md#moved-to-native-mods)).
-Controllers and replay recording are platform ([above](#controllers-and-ui-pages)).
+Controllers are platform ([above](#controllers-and-ui-pages)).
 
 ## The checks
 
@@ -750,7 +750,7 @@ mechanical steps (checks, M1–M4) continue meanwhile. M5 and M6 started on 2026
 | M3 | The renderer's telemetry module leaves `sunrise-client-render` for `sunrise-client-lib`, with Sunrise's other in-game parts; the renderer offers the adapter (`gfx::adapter`) and a crash-report hook (`crash::on_report`) | render → telemetry, bench | #13060, merged |
 | M4 | Cosmetics leave `sunrise-client-render` (#13094); Sunrise later removed them, with the player-model hooks they drew through | render → cosmetics | #13094, merged; then removed |
 | M5 | Sunrise's in-game parts (extras, Discord, Friends, ping, benchmark upload) leave `sunrise-client` for Sunrise crates linked into the official build through platform hooks | client, client-lib → friends, telemetry, bench | started 2026-11-09 |
-| M6 | The engine crates stop depending on platform crates: the renderer's shader-pack, pack-format, HDR and theme code moves behind engine extension points; the mod host and agent control move to platform crates; controllers, replay recording and the UI page API move to platform crates on the engine's input-source and screen hooks; the launcher and `sunrise-server` reach the engine through platform API (done, #13905) | the engine → platform and Sunrise → engine exceptions | started 2026-11-09; HDR's part with NikitaMGrimm, below |
+| M6 | The engine crates stop depending on platform crates: the renderer's shader-pack, pack-format, HDR and theme code moves behind engine extension points; the mod host and agent control move to platform crates; controllers and the UI page API move to platform crates on the engine's input-source and screen hooks; the launcher and `sunrise-server` reach the engine through platform API (done, #13905) | the engine → platform and Sunrise → engine exceptions | started 2026-11-09; HDR's part with NikitaMGrimm, below |
 | P | Optional, longer: gameplay into the portable crates. `Game` holds the world and its presentation (renderer, screens, particles, sound): split its state module by module, turn gameplay's direct particle and sound calls into level events as vanilla's server sends them, then move each clean module into `sunrise-gameplay` (server side) or `sunrise-client-gameplay` (client only); waves 1 and 2 of #2210 moved the modules that need no `Game`, and `LanHost`, `World`, `ChunkMap`, `Mob`, `ItemEntity` and the level events wait for wave 3+ | | any time, small PRs |
 | R | The Sunrise layer moves to its own repository and ships in every official download (the table above) | | after the split, Ludovic's call |
 

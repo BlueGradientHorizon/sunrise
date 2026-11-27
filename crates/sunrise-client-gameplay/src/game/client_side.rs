@@ -763,7 +763,6 @@ pub(in crate::game) mod storage;
 #[path = "administration/structure_edit.rs"]
 pub(in crate::game) mod structure_edit;
 #[cfg(feature = "client")]
-#[cfg(feature = "client")]
 #[path = "interface/subtitle_hud.rs"]
 pub(in crate::game) mod subtitle_hud;
 #[cfg(feature = "client")]

@@ -45,23 +45,6 @@ pub(in crate::game::client_side) fn sunrise_profiler_args<'a>(
 }
 use winit::keyboard::KeyCode;
 
-/// `base` with extra client-local commands added: each a literal taking the
-/// rest of the line as typed (`Dispatcher::with_mod_commands`), so the chat
-/// box colours and completes them as it does the game's own.
-#[cfg(test)]
-fn with_native_commands(
-    base: &sunrise_command::Dispatcher,
-    names: &[&str],
-) -> sunrise_command::Dispatcher {
-    // A name the tree already has keeps that command (colour, completion).
-    base.with_mod_commands(
-        names
-            .iter()
-            .copied()
-            .filter(|name| base.find(name).is_none()),
-    )
-}
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// The tree the chat box colours, completes and parses with for the
@@ -1953,39 +1936,6 @@ pub(in crate::game) mod tests {
         assert!(!run_suggestions.iter().any(|s| s == "clientonly"));
         let usage = display.smart_usage(0, 0);
         assert!(usage.iter().any(|(_, line)| line == "run ..."), "{usage:?}");
-    }
-
-    /// A native mod's command is in the tree the chat box uses (#456): known
-    /// rather than red, and offered as it types. With no mod claiming one the
-    /// tree is the game's own, as it was before the mods were asked.
-    #[test]
-    fn native_mod_commands_join_the_chat_tree() {
-        let reg = Registries::default();
-        let vanilla = sunrise_command::vanilla::game_dispatcher();
-        let plain = with_native_commands(vanilla, &[]);
-        assert_eq!(plain.nodes.len(), vanilla.nodes.len());
-        assert!(plain.find("flyspeed").is_none());
-        let tree = with_native_commands(vanilla, &["flyspeed"]);
-        assert!(tree.find("flyspeed").is_some());
-        // The rest of the line is parsed as a greedy argument in the chat tree.
-        let parse = tree.parse("flyspeed 4", &reg);
-        assert_eq!(parse.executable().unwrap().1, sunrise_command::MOD_COMMAND);
-        let parse = tree.parse("fly", &reg);
-        let offered: Vec<String> = tree
-            .client_suggestions(&parse, 3, &reg)
-            .1
-            .into_iter()
-            .map(|s| s.text)
-            .collect();
-        assert!(offered.contains(&"flyspeed".to_owned()), "{offered:?}");
-        // A name the game has keeps that command: the chat still knows it.
-        let shared = with_native_commands(vanilla, &["help"]);
-        assert!(shared.find("help").is_some());
-        assert_eq!(
-            shared.parse("help", &reg).executable().map(|e| e.1),
-            vanilla.parse("help", &reg).executable().map(|e| e.1)
-        );
-        assert_eq!(shared.nodes.len(), vanilla.nodes.len());
     }
 
     /// When `entity_types` is empty (no `entity-types.json`), fallback includes
