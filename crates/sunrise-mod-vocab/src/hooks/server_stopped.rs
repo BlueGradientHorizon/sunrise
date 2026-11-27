@@ -10,6 +10,10 @@ pub trait Hooks {
     /// `runServer` enters, even when startup failed (including a dedicated TCP
     /// port bind failure before `server_about_to_start`), the tick loop errored
     /// or panicked, the final save failed, or a shutdown listener panicked.
+    /// This is the place for a mod to join its own threads and flush what it keeps: the
+    /// server thread waits for each listener to return, and the server counts as stopped only
+    /// afterwards. The worlds are already saved and closed by then, so nothing here can read
+    /// or write them; use `server_stopping` for that.
     /// The world's Server configs are still loaded; `config_unloading`
     /// follows this event.
     /// Failed opens save only worlds already adopted by the server (the
