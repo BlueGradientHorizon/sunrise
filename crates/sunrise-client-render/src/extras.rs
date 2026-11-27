@@ -1,7 +1,8 @@
-//! Sunrise's optional extras (lighting, inventory tools): their
+//! Sunrise's optional extras (dynamic lights, inventory tools, chat, sound and
+//! menu options, the resource pack browser, `/pregen`): their
 //! settings, kept in `sunrise-extras.txt` next to `options.txt` so that file
 //! stays exactly vanilla's, and the logic behind them. Every extra is off by
-//! default; see `docs/extras.md`. Sunrise's own switches outside the Gameplay page
+//! default unless its own doc says otherwise; see `docs/extras.md`. Sunrise's own switches outside the Gameplay page
 //! (No AI, Agent Control) are kept here too.
 use std::path::Path;
 

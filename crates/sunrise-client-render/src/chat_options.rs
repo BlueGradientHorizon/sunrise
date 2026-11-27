@@ -138,7 +138,7 @@ mod tests {
             read.parse_line(k, v);
         });
         assert_eq!(read, p);
-        assert!(!p.parse_line("fullbright", "true"));
+        assert!(!p.parse_line("noSuchChatKey", "true"));
     }
 
     #[test]
