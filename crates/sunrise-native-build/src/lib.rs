@@ -297,10 +297,23 @@ fn run_checked(
     let mut blocked = false;
     // Noted as the output arrives: later lines can push the linker's note out of `tail`.
     let mut libraries = false;
-    for text in BufReader::new(child.stderr.take().expect("piped"))
-        .lines()
-        .map_while(Result::ok)
-    {
+    let mut stderr = BufReader::new(child.stderr.take().expect("piped"));
+    let mut bytes = Vec::new();
+    let stderr_result = loop {
+        bytes.clear();
+        match stderr.read_until(b'\n', &mut bytes) {
+            Ok(0) => break Ok(()),
+            Ok(_) => (),
+            Err(error) => break Err(format!("Could not read {what}'s stderr: {error}")),
+        }
+        // Strip LF or CRLF as `lines` does, leaving Cargo's interior carriage returns for
+        // `log_text`. A compiler or linker can print non-UTF-8 bytes; keep reading after them.
+        let line = if let Some(line) = bytes.strip_suffix(b"\n") {
+            line.strip_suffix(b"\r").unwrap_or(line)
+        } else {
+            &bytes
+        };
+        let text = String::from_utf8_lossy(line);
         // A diagnostic is one line of JSON: its rendered text goes on as lines, each as the
         // compiler printed it (for the log and the matchers) and as shown to the author.
         let lines = match sources.zip(present::Diagnostic::parse(&text)) {
@@ -309,7 +322,7 @@ fn run_checked(
                 .into_iter()
                 .map(|(raw, shown)| (raw.to_owned(), shown))
                 .collect(),
-            None => vec![(text.clone(), text)],
+            None => vec![(text.to_string(), text.into_owned())],
         };
         for (raw, shown) in lines {
             if let Some(kept) = log_text(&raw) {
@@ -325,8 +338,12 @@ fn run_checked(
             }
             tail.push_back(shown);
         }
-    }
-    let status = child.wait().map_err(|e| e.to_string())?;
+    };
+    // Close the pipe before waiting even if a read failed.
+    drop(stderr);
+    let status = child.wait();
+    stderr_result?;
+    let status = status.map_err(|e| e.to_string())?;
     let took = started.elapsed();
     if status.success() {
         // Every command of a native build says how long it took, so the log accounts for
@@ -623,11 +640,35 @@ mod tests {
 
     pub const A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     pub const B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    static LOG: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    /// The one build log of this test process, held while a test reads it.
-    fn log_lock() -> std::sync::MutexGuard<'static, ()> {
-        LOG.lock().unwrap_or_else(|e| e.into_inner())
+    /// Run only this fixture in a fresh process so unrelated commands cannot touch its log.
+    /// The parent returns after checking the child; the child runs the fixture body.
+    pub(crate) fn log_test_child(test: &str) -> bool {
+        const ACTOR: &str = "SUNRISE_NATIVE_BUILD_LOG_TEST_ACTOR";
+        if std::env::var(ACTOR).as_deref() == Ok(test) {
+            return true;
+        }
+        let scratch = tempfile::tempdir().unwrap();
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", test, "--include-ignored", "--nocapture"])
+            .env(ACTOR, test)
+            .env("SUNRISE_LAUNCHER_HOME", scratch.path());
+        // The unhosted build log lives under the child's temp dir and PID.
+        #[cfg(unix)]
+        command.env("TMPDIR", scratch.path());
+        #[cfg(windows)]
+        command
+            .env("TMP", scratch.path())
+            .env("TEMP", scratch.path());
+        let output = command.output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{test}: {stdout}\n{stderr}");
+        assert!(
+            stdout.contains("test result: ok. 1 passed;"),
+            "exact-name child did not run {test}:\n{stdout}\n{stderr}"
+        );
+        false
     }
 
     pub fn dir(name: &str) -> PathBuf {
@@ -635,6 +676,36 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    pub(crate) fn split_source(root: &Path) -> PathBuf {
+        let write = |path: &Path, text: &str| {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        };
+        for package in [
+            "sunrise-client",
+            "sunrise-gameplay-common",
+            "sunrise-gameplay",
+            "sunrise-client-gameplay",
+        ] {
+            let root = root.join("crates").join(package);
+            write(
+                &root.join("Cargo.toml"),
+                &format!("[package]\nname = '{package}'\n"),
+            );
+            if package == "sunrise-client" {
+                write(&root.join("src/lib.rs"), "mod entry;");
+                write(&root.join("src/entry.rs"), "");
+            } else {
+                write(&root.join("src/lib.rs"), "pub mod game;");
+                write(&root.join("src/game.rs"), "");
+            }
+        }
+        let generator = root.join("crates/sunrise-mod-api-gen");
+        write(&generator.join("source-layout"), "split\n");
+        write(&generator.join("internals.txt"), "");
+        root.join("crates/sunrise-gameplay/src")
     }
 
     pub fn project_manifest(id: &str, version: &str, sunrise: &str, mixins: &str) -> String {
@@ -680,15 +751,15 @@ mod tests {
         let root = dir("mixins-input");
         let source = root.join("download");
         let prepared = root.join("prepared");
-        let src = source.join("crates/sunrise-client/src");
+        let src = split_source(&source);
         let area = src.join("game/items");
         fs::create_dir_all(&area).unwrap();
-        let game = "struct Game;\n#[path = \"game/items/using_item.rs\"]\nmod using_item;\n";
-        let helper = "use super::*; impl Game { fn area_helper(&mut self) {} }";
+        let game = "struct ServerGame;\n#[path = \"game/items/using_item.rs\"]\nmod using_item;\n";
+        let helper = "use super::*; impl ServerGame { fn area_helper(&mut self) {} }";
         fs::write(src.join("game.rs"), game).unwrap();
         fs::write(area.join("using_item.rs"), helper).unwrap();
         prepare_mixins_source(&source, &prepared).unwrap();
-        let output = prepared.join("crates/sunrise-client/src");
+        let output = prepared.join("crates/sunrise-gameplay/src");
         assert_eq!(fs::read_to_string(output.join("game.rs")).unwrap(), game);
         assert_eq!(
             fs::read_to_string(output.join("game/items/using_item.rs")).unwrap(),
@@ -696,12 +767,12 @@ mod tests {
         );
         // A file the next source no longer has leaves the copy.
         fs::remove_file(area.join("using_item.rs")).unwrap();
-        fs::write(src.join("game.rs"), "struct Game;\n").unwrap();
+        fs::write(src.join("game.rs"), "struct ServerGame;\n").unwrap();
         prepare_mixins_source(&source, &prepared).unwrap();
         assert!(!output.join("game/items/using_item.rs").exists());
         assert_eq!(
             fs::read_to_string(src.join("game.rs")).unwrap(),
-            "struct Game;\n"
+            "struct ServerGame;\n"
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -897,7 +968,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_link_missing_udev_or_alsa_leads_with_what_to_install() {
-        let _guard = log_lock();
+        if !log_test_child("tests::a_link_missing_udev_or_alsa_leads_with_what_to_install") {
+            return;
+        }
         clear_log().unwrap();
         // rustc's output linking a native mod's patch library in a shell without either library
         // (Rust 1.99.1 with rust-lld, 2026-11-19), then more lines than the error's end keeps.
@@ -926,7 +999,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_build_smart_app_control_blocked_says_how_to_build() {
-        let _guard = log_lock();
+        if !log_test_child("tests::a_build_smart_app_control_blocked_says_how_to_build") {
+            return;
+        }
         clear_log().unwrap();
         // cargo's output on Windows 11 25H2 with Smart App Control on (the report in #5911).
         let mut cmd = Command::new("sh");
@@ -955,8 +1030,37 @@ mod tests {
     #[cfg(unix)]
     #[test]
     #[ignore = "daily"]
+    fn malformed_stderr_does_not_hide_later_diagnostics() {
+        if !log_test_child("tests::malformed_stderr_does_not_hide_later_diagnostics") {
+            return;
+        }
+        clear_log().unwrap();
+        let mut cmd = Command::new("sh");
+        cmd.args([
+            "-c",
+            r"printf 'bad byte \377\r\nBuilding [=>] 3/9: a\r\033[Kerror: later\r\nlast warning' >&2; exit 17",
+        ]);
+        let error = run(cmd, "Compiling the mod").unwrap_err();
+        assert!(
+            error.starts_with("Compiling the mod failed (exit status: 17)"),
+            "{error}"
+        );
+        assert!(error.contains("bad byte �\n"), "{error}");
+        assert!(error.ends_with("error: later\nlast warning"), "{error}");
+        let log = fs::read_to_string(log_path()).unwrap();
+        assert!(
+            log.ends_with("bad byte �\nerror: later\nlast warning\n"),
+            "{log}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "daily"]
     fn build_commands_inherit_the_tools_process_group() {
-        let _guard = log_lock();
+        if !log_test_child("tests::build_commands_inherit_the_tools_process_group") {
+            return;
+        }
         clear_log().unwrap();
         // SAFETY: getpgrp only reads this process's group and takes no arguments.
         let group = unsafe { libc::getpgrp() }.to_string();
@@ -975,7 +1079,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn each_command_logs_its_time() {
-        let _guard = log_lock();
+        if !log_test_child("tests::each_command_logs_its_time") {
+            return;
+        }
         clear_log().unwrap();
         // Its stdout, which goes to the log, does not end its line.
         let mut cmd = Command::new("sh");
