@@ -43,6 +43,8 @@ class PreparationStepTests(unittest.TestCase):
                                    ("is not a 26.3 version file Sunrise knows (sha1 0)", "pinned-version-differs"),
                                    ("does not describe the pinned 26.3 release", "pinned-version-differs"),
                                    ("is not the pinned file: expected sha1 0, got 1", "pinned-file-differs"),
+                                   ("Install it, or set JAVA_HOME to it, and try again.", "missing-java"),
+                                   ("is Java 21; Java 25 or newer is needed", "missing-java"),
                                    ("unknown failure", "unclassified")]:
                 with self.subTest(reason=reason):
                     payload = "token=SECRET .local/minecraft/26.3/file {NBT: excerpt} ::error::injected " + marker
@@ -64,6 +66,23 @@ class PreparationStepTests(unittest.TestCase):
             result = self.invoke(Path(folder), code)
             self.assertEqual(result.stdout, self.diagnostic("resource-export", 1, "pinned-version-differs",
                                                             "pinned-version-differs"))
+
+    def test_a_missing_or_too_old_jdk_is_one_fixed_reason_without_its_paths(self):
+        messages = ["Java 25 is needed (javac, e.g. Eclipse Temurin 25). Install it, or set JAVA_HOME to it, and try again."
+                    " Found: JAVA_HOME (/home/SECRET/jdk/bin) has no compatible Java tools.",
+                    "/home/SECRET/.local/jdk/bin/java is Java 21; Java 25 or newer is needed"]
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for message in messages:
+                with self.subTest(message=message):
+                    # The refusal wins over a marker earlier in the log, as a missing file the search passed over.
+                    code = f"import sys; print('No such file or directory'); print({message!r}); sys.exit(1)"
+                    result = self.invoke(root, code)
+                    self.assertEqual(result.stdout, self.diagnostic("resource-export", 1, "missing-java", "missing-java"))
+                    sidecar = (root / "private.diagnostic.json").read_text()
+                    self.assertEqual(json.loads(sidecar)["reason_hint"], "missing-java")
+                    for private in ("SECRET", ".local", "/home"):
+                        self.assertNotIn(private, result.stdout + result.stderr + sidecar)
 
     def test_safe_last_line_and_key_validation(self):
         with tempfile.TemporaryDirectory() as folder:
