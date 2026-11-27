@@ -197,7 +197,7 @@ mod item_interact_mob_tests;
 #[cfg(test)]
 #[path = "game/items/item_menu_parts_tests.rs"]
 mod item_menu_parts_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "client"))]
 #[path = "game/items/item_name_tests.rs"]
 mod item_name_tests;
 #[cfg(test)]

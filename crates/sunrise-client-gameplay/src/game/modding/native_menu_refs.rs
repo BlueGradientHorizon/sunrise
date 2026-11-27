@@ -400,8 +400,8 @@ pub mod tests {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn with_panel(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_panel(
         slots: usize,
         test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Option<(MenuRef, usize)>>),
     ) {
@@ -520,7 +520,6 @@ pub mod tests {
     ) {
         use sunrise_gameplay_common::game::Side as _;
 
-        install_panel_registry(game);
         game.client.screen = super::super::Screen::Inventory;
         let batch =
             super::super::HudBatch::new([800, 600], game.client.settings.gui_scale_inputs());

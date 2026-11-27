@@ -1,8 +1,8 @@
 //! `ItemPart::item_name` (`Item.getName(ItemStack)`) behind every place the game names a stack.
-use super::integrated_pair::{IntegratedPair, with_integrated_pair};
+use super::integrated_pair::{IntegratedPair, with_integrated_pair_at};
 use mod_api::{Hooks, ItemNameEvent, ItemPart, LoopContext, Registrar, RegistrationContext};
-use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::ServerGame;
 use sunrise_items::items::ItemStack;
 use {
     crate::game::server_side::native_entity_refs::tests::with_client_game,
@@ -34,46 +34,60 @@ impl ItemPart for Notes {
     }
 }
 
-fn command_feedback(pair: &mut IntegratedPair<'_, '_, '_>, line: &str) -> String {
-    let chat_count = |pair: &IntegratedPair<'_, '_, '_>| {
-        pair.client
-            .chat_ui_for_test()
-            .chat
-            .recent_lines(usize::MAX)
-            .len()
-    };
-    let before = chat_count(pair);
-    let command = line.to_owned();
-    pair.call(move |game| {
-        let owner = game.server.serving.as_ref().unwrap().owner;
-        let conn = game
-            .server
-            .lan
-            .as_ref()
-            .unwrap()
-            .hub
-            .online_players()
-            .find(|guest| guest.uuid == owner)
-            .unwrap()
-            .conn;
-        let source = game.player_source();
-        let permission = game.ui.registries.permission;
-        // The guest turn sends the command's feedback to the owner when it restores the server.
-        game.with_guest_swap(conn, game.dim, |game| {
-            game.ui.registries.permission = permission;
-            game.execute_line(&command, source)
-                .unwrap_or_else(|e| panic!("{command}: {}", e.message.plain()));
-        })
-        .expect("the connected owner's command turn");
-    });
+fn owner_connection(game: &ServerGame<'_>) -> u32 {
+    let owner = game.server.serving.as_ref().unwrap().owner;
+    game.server
+        .lan
+        .as_ref()
+        .unwrap()
+        .hub
+        .online_players()
+        .find(|guest| guest.uuid == owner)
+        .unwrap()
+        .conn
+}
 
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while chat_count(pair) == before {
-        assert!(Instant::now() < deadline, "no client feedback for {line}");
-        pair.pump_client();
-        std::thread::yield_now();
-    }
-    pair.client.chat_ui_for_test().chat.recent_lines(1).concat()
+fn with_item_name_pair(test: impl FnOnce(&mut IntegratedPair<'_, '_, '_>)) {
+    with_integrated_pair_at([0.0; 3], |pair| {
+        pair.call(|game| {
+            game.set_allow_commands(true);
+            game.build_registries();
+            let conn = owner_connection(game);
+            let permission = game.ui.registries.permission;
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(conn, |guest| guest.permission = permission)
+                .expect("the connected owner");
+        });
+        test(pair);
+    });
+}
+
+fn with_command_player<T>(
+    game: &mut ServerGame<'_>,
+    run: impl FnOnce(&mut ServerGame<'_>) -> T,
+) -> T {
+    game.with_guest_swap(owner_connection(game), game.dim, run)
+        .expect("the connected owner's command turn")
+}
+
+fn command_feedback(pair: &mut IntegratedPair<'_, '_, '_>, line: &str) -> String {
+    let command = line.to_owned();
+    let mut feedback = String::new();
+    pair.call_with_client(
+        move |game, observe| {
+            with_command_player(game, |game| {
+                game.execute_line(&command, game.player_source())
+                    .unwrap_or_else(|e| panic!("{command}: {}", e.message.plain()));
+            });
+            observe(game);
+        },
+        |client| feedback = client.chat_ui_for_test().chat.recent_lines(1).concat(),
+    );
+    feedback
 }
 
 /// The Part's name wins over the item's own for its stacks, `item_name` component included, in the
@@ -91,7 +105,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         crate::entry::install_client_hooks();
-        with_integrated_pair(|pair| {
+        with_item_name_pair(|pair| {
             pair.call(|game| game.resolve_parts().unwrap());
             let plain = |t: sunrise_game_data::text::Text| t.plain();
             // An untranslated key reads as itself: the Part's name, independent of the code.
@@ -191,40 +205,33 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             pair.call({
                 let named = named.clone();
                 move |game| {
-                    // GiveCommand's refused count still links the one-item prototype, with its patch.
-                    game.player = Some(
-                        sunrise_sim::motion::PlayerMotion::new(
-                            game.motion,
-                            sunrise_core::geometry::Vec3::ZERO,
-                        )
-                        .unwrap(),
-                    );
-                    game.set_allow_commands(true);
-                    game.build_registries();
-                    let refusal = game
-                        .execute_line(
-                            r#"give @s minecraft:paper[minecraft:custom_name={text:"Diary"}] 6401"#,
-                            game.player_source(),
-                        )
-                        .unwrap_err();
-                    let message = refusal.message.component();
-                    assert_eq!(message["translate"], "commands.give.failed.toomanyitems");
-                    let hover = &message["with"][1]["hover_event"];
-                    assert_eq!(hover["action"], "show_item");
-                    let shown = sunrise_items::item_data::stack_from_hover(hover).unwrap();
-                    assert_eq!(&*shown.item, "minecraft:paper");
-                    assert_eq!(shown.count, 1);
-                    assert_eq!(shown.custom_name().as_deref(), Some("Diary"));
+                    with_command_player(game, |game| {
+                        // GiveCommand's refused count still links the one-item prototype, with its patch.
+                        let refusal = game
+                            .execute_line(
+                                r#"give @s minecraft:paper[minecraft:custom_name={text:"Diary"}] 6401"#,
+                                game.player_source(),
+                            )
+                            .unwrap_err();
+                        let message = refusal.message.component();
+                        assert_eq!(message["translate"], "commands.give.failed.toomanyitems");
+                        let hover = &message["with"][1]["hover_event"];
+                        assert_eq!(hover["action"], "show_item");
+                        let shown = sunrise_items::item_data::stack_from_hover(hover).unwrap();
+                        assert_eq!(&*shown.item, "minecraft:paper");
+                        assert_eq!(shown.count, 1);
+                        assert_eq!(shown.custom_name().as_deref(), Some("Diary"));
 
-                    // EnchantCommand's refusal names the held stack by `getHoverName().getString()`.
-                    game.common.inventory[game.common.selected] = Some(named.clone());
-                    let refusal = game
-                        .execute_line("enchant @s minecraft:sharpness", game.player_source())
-                        .unwrap_err();
-                    let message = refusal.message.component();
-                    assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
-                    assert!(refusal.message.plain().contains(KEY), "{message}");
-                    game.common.inventory[game.common.selected] = None;
+                        // EnchantCommand's refusal names the held stack by `getHoverName().getString()`.
+                        game.common.inventory[game.common.selected] = Some(named.clone());
+                        let refusal = game
+                            .execute_line("enchant @s minecraft:sharpness", game.player_source())
+                            .unwrap_err();
+                        let message = refusal.message.component();
+                        assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
+                        assert!(refusal.message.plain().contains(KEY), "{message}");
+                        game.common.inventory[game.common.selected] = None;
+                    });
 
                     // ItemEntity.getName: the dropped item takes its name from the Part, not the
                     // stack's custom hover name. Command feedback and `name=` selectors agree.
@@ -274,21 +281,23 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             pair.call({
                 let named = named.clone();
                 move |game| {
-                    let zombie = game
-                        .mobs
-                        .iter_mut()
-                        .find(|m| m.kind.id == "minecraft:zombie")
-                        .expect("the summoned zombie");
-                    zombie.extra.set_main_hand_stack(Some(named.clone()));
-                    let refusal = game
-                        .execute_line(
-                            "enchant @e[type=zombie,limit=1] minecraft:sharpness",
-                            game.player_source(),
-                        )
-                        .unwrap_err();
-                    let message = refusal.message.component();
-                    assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
-                    assert!(refusal.message.plain().contains(KEY), "{message}");
+                    with_command_player(game, |game| {
+                        let zombie = game
+                            .mobs
+                            .iter_mut()
+                            .find(|m| m.kind.id == "minecraft:zombie")
+                            .expect("the summoned zombie");
+                        zombie.extra.set_main_hand_stack(Some(named.clone()));
+                        let refusal = game
+                            .execute_line(
+                                "enchant @e[type=zombie,limit=1] minecraft:sharpness",
+                                game.player_source(),
+                            )
+                            .unwrap_err();
+                        let message = refusal.message.component();
+                        assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
+                        assert!(refusal.message.plain().contains(KEY), "{message}");
+                    });
                 }
             });
             run(pair, "kill @e[type=zombie]");

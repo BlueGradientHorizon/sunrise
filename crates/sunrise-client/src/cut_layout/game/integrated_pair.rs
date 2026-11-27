@@ -25,6 +25,13 @@ pub(super) struct IntegratedPair<'test, 'server, 'client> {
 }
 
 pub(super) fn with_integrated_pair(test: impl FnOnce(&mut IntegratedPair<'_, '_, '_>)) {
+    with_integrated_pair_at([0.5, 64.0, 0.5], test);
+}
+
+pub(super) fn with_integrated_pair_at(
+    position: [f64; 3],
+    test: impl FnOnce(&mut IntegratedPair<'_, '_, '_>),
+) {
     with_client_game(|client| {
         with_resident_game(|server| {
             for z in -PLAYER_SPAWN_RADIUS..=PLAYER_SPAWN_RADIUS {
@@ -35,7 +42,7 @@ pub(super) fn with_integrated_pair(test: impl FnOnce(&mut IntegratedPair<'_, '_,
                 }
             }
             let mut saved = server.level.clone();
-            saved.position = Some([0.5, 64.0, 0.5]);
+            saved.position = Some(position);
             saved.dimension = server.dim.id().to_owned();
             saved.player_extra = Some(saved.player_tag(server.res.items()));
             server
@@ -199,11 +206,10 @@ fn observe_published_packets(client: &mut ClientGame<'_>, server: &ServerGame<'_
 #[ignore = "daily"]
 fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
     use sunrise_client_gameplay::game::client_side::native_menu_refs::tests::{
-        check_inventory_boxes_follow_menu_indices_and_the_input_layout, with_panel_fixture,
+        check_inventory_boxes_follow_menu_indices_and_the_input_layout, with_panel,
     };
-    with_panel_fixture(0, |opening| {
-        with_integrated_pair(|pair| {
-            check_inventory_boxes_follow_menu_indices_and_the_input_layout(pair.client, opening);
-        });
-    });
+    with_panel(
+        0,
+        check_inventory_boxes_follow_menu_indices_and_the_input_layout,
+    );
 }
