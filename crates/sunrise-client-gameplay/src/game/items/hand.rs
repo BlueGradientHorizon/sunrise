@@ -437,31 +437,6 @@ impl crate::game::ClientGame<'_> {
         *same = !reequip;
     }
 
-    /// A replay owns its held-item and equip animation state. Reset it when a
-    /// standalone replay closes so a later world cannot inherit lowered hands
-    /// or the replay player's visible stacks.
-    pub(in crate::game::client_side) fn reset_studio_hand_state(&mut self) {
-        let main = self
-            .common
-            .inventory
-            .get(self.common.selected)
-            .cloned()
-            .flatten();
-        self.client.visible_hands = [
-            (self.common.selected, main),
-            (OFFHAND, self.common.offhand.clone()),
-        ];
-        self.client.hands_replaced = [false; 2];
-        self.client.heights = sunrise_client::first_person::HandHeights {
-            main: 1.0,
-            old_main: 1.0,
-            off: 1.0,
-            old_off: 1.0,
-        };
-        self.common.swing = Default::default();
-        self.client.sway = Default::default();
-    }
-
     /// `Minecraft.crosshairPickEntity` when it is a `LivingEntity`: whether
     /// it is alive (the nearest entity under the crosshair, before any block).
     pub fn crosshair_living(&self) -> Option<bool> {

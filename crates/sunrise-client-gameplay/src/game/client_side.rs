@@ -671,8 +671,6 @@ pub(in crate::game) mod render_control;
 pub(in crate::game) mod render_settings;
 #[path = "interface/render_tick.rs"]
 pub(in crate::game) mod render_tick;
-#[path = "runtime/replay.rs"]
-pub(in crate::game) mod replay;
 #[cfg(feature = "client")]
 #[path = "runtime/repro.rs"]
 pub(in crate::game) mod repro;
@@ -764,9 +762,6 @@ pub(in crate::game) mod storage;
 #[cfg(feature = "client")]
 #[path = "administration/structure_edit.rs"]
 pub(in crate::game) mod structure_edit;
-#[cfg(feature = "client")]
-#[path = "interface/studio.rs"]
-pub(in crate::game) mod studio;
 #[cfg(feature = "client")]
 #[path = "interface/subtitle_hud.rs"]
 pub(in crate::game) mod subtitle_hud;
@@ -1191,8 +1186,6 @@ pub struct ClientState {
     pub(in crate::game::client_side) realm_session: bool,
     /// The current connection came from the LAN list (`ServerData.isLan`).
     pub(in crate::game::client_side) lan_session: bool,
-    /// Replay playback (game/replay.rs), and Sunrise Studio's editor on it (game/studio.rs).
-    pub(in crate::game::client_side) replay: replay::Replay,
     /// Single player's server thread, which `remote` is connected to.
     pub integrated: Option<integrated_client::Integrated>,
     /// The open world is shared behind an invite code (game/network/friends.rs).
@@ -1696,7 +1689,6 @@ pub struct ClientState {
     pub(in crate::game::client_side) retry_due: Option<sunrise_hooks::connection::Server>,
     /// What the window's title last showed: its session part and the language (window_title.rs).
     pub(in crate::game::client_side) window_title: Option<(Option<&'static str>, u64)>,
-    pub(in crate::game::client_side) studio: studio::Studio,
     /// The Social Interactions screen and the players whose chat is hidden (game/network/social.rs).
     pub social: social::Social,
     /// Chat Settings opened from RestrictionsScreen: Done returns to World Options.
@@ -1988,7 +1980,6 @@ impl ClientState {
             remote: None,
             realm_session: false,
             lan_session: false,
-            replay: Default::default(),
             integrated: None,
             #[cfg(feature = "friends")]
             friends: None,
@@ -2248,7 +2239,6 @@ impl ClientState {
             pending_retry: None,
             retry_due: None,
             window_title: None,
-            studio: Default::default(),
             options_to_world_options: false,
             test_highlights: HashMap::new(),
             social: effects.social,

@@ -125,8 +125,7 @@ use sunrise_hooks::tunnel;
 /// connection (`TransferState`), so a proxy's backend switch keeps them.
 pub type Cookies = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 
-/// A recording of the session's packets: the tap a replay recorder plugs into. Replay recording is a
-/// platform feature (docs/layers.md, "Controllers, replays and UI pages"); the engine only
+/// A recording of the session's packets. The engine only
 /// hands it the packets: the network thread what it receives, the game thread what the client makes for
 /// the recording itself (its own movement, pose and swings).
 pub trait PacketRecorder: Send {
@@ -580,7 +579,7 @@ impl Session {
             false,
         )
     }
-    /// A lightweight session for studio replay playback without background network IO.
+    /// A lightweight offline session without background network IO.
     pub fn replay(name: &str) -> Self {
         let (_send, events) = event_channel();
         Self {
@@ -590,7 +589,7 @@ impl Session {
             configuring: Arc::new(AtomicBool::new(false)),
             thread: None,
             payloads: crate::raw_payloads::Transport::empty(),
-            address: "studio-replay".to_owned(),
+            address: "offline".to_owned(),
             name: name.to_owned(),
             counters: Arc::new(Mutex::new(None)),
             cookies: Default::default(),
@@ -794,7 +793,7 @@ impl Session {
         initialize(&recorder);
         *slot = Some(Box::new(recorder));
     }
-    /// Stop recording and finalize the `.mcpr` archive.
+    /// Stop recording and finalize the recorder output.
     pub fn stop_recording(&self) -> Option<std::io::Result<PathBuf>> {
         let rec = self.recorder.lock().unwrap().take()?;
         Some(rec.stop())
@@ -5833,7 +5832,7 @@ mod tests {
         fn status(&self) -> RecorderStatus {
             RecorderStatus {
                 active: true,
-                path: PathBuf::from("test.mcpr"),
+                path: PathBuf::from("packets.log"),
                 elapsed: Duration::ZERO,
                 packet_count: self.0.lock().unwrap().len() as u64,
                 bytes_written: 0,
@@ -5841,7 +5840,7 @@ mod tests {
             }
         }
         fn stop(self: Box<Self>) -> std::io::Result<PathBuf> {
-            Ok(PathBuf::from("test.mcpr"))
+            Ok(PathBuf::from("packets.log"))
         }
     }
     impl TestRecorder {
@@ -5856,7 +5855,7 @@ mod tests {
 
     #[test]
     fn session_recorder_gets_the_play_packets_the_network_thread_receives() {
-        let (root, data) = empty_item_data("studio_recording");
+        let (root, data) = empty_item_data("packet_recording");
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, writer) = Connection::local(client).split();
         let (send, events) = event_channel();
@@ -5868,7 +5867,7 @@ mod tests {
             configuring: Arc::new(AtomicBool::new(false)),
             thread: None,
             address: "local".into(),
-            name: "StudioTester".into(),
+            name: "PacketTester".into(),
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
@@ -5924,7 +5923,7 @@ mod tests {
 
         assert_eq!(
             session.stop_recording().unwrap().unwrap(),
-            PathBuf::from("test.mcpr")
+            PathBuf::from("packets.log")
         );
         assert!(!session.is_recording());
         // The recorder is handed both; what a recording keeps is the recorder's choice.
@@ -5936,7 +5935,7 @@ mod tests {
     fn session_recorder_gets_the_packets_the_client_makes() {
         use sunrise_protocol::entity_data::{Value, serializer};
 
-        let session = Session::replay("StudioTester");
+        let session = Session::replay("PacketTester");
         session.record_clientbound(&play::Clientbound::SwingAnimation(play::SwingAnimation {
             id: 1,
             hand: 0,

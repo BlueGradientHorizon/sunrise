@@ -126,12 +126,6 @@ impl crate::game::ClientGame<'_> {
         use sunrise_level::camera_math::CameraType::FirstPerson;
         match self.client.posed_rotation {
             Some((yaw, pitch, roll)) => camera_rotation_rolled(FirstPerson, yaw, pitch, roll),
-            None if self.client.studio.flying() => camera_rotation_rolled(
-                FirstPerson,
-                self.client.studio.freecam.yaw,
-                self.client.studio.freecam.pitch,
-                -self.client.studio.freecam.roll,
-            ),
             None => camera_rotation(self.client.camera_type, self.common.yaw, self.common.pitch),
         }
     }
@@ -1475,9 +1469,6 @@ impl crate::game::ClientGame<'_> {
                             return Ok(());
                         }
                         let overlay = self.observed_overlay_now();
-                        if self.observed_screen_view().is_none() && self.studio_mouse_dragged(w) {
-                            return Ok(());
-                        }
                         let button = if self.pad_synthetic_input() {
                             if self.client.pad.0.menu.held[0] {
                                 Some(MouseButton::Left)
@@ -1526,9 +1517,6 @@ impl crate::game::ClientGame<'_> {
                         }
                     }
                 }
-                WindowEvent::MouseWheel { .. }
-                    if self.client.screen == Screen::Playing
-                        && self.client.replay.driver.is_some() => {}
                 WindowEvent::MouseWheel { delta, .. } => {
                     let (raw_x, raw_y) = match delta {
                         MouseScrollDelta::LineDelta(x, y) => (f64::from(x), f64::from(y)),
@@ -1948,7 +1936,6 @@ impl crate::game::ClientGame<'_> {
                         );
                     }
                     self.client.upload_pace.frame(elapsed);
-                    self.studio_fly(elapsed);
                     // Arrow-key camera controls belong to gameplay; chat and
                     // other screens use the same keys for their own navigation.
                     if self.client.screen == Screen::Playing
@@ -2357,12 +2344,9 @@ impl crate::game::ClientGame<'_> {
         let camera = self.camera_player();
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
-        let replaying = self.client.replay.playing();
-        if !replaying {
-            self.native_render_gui_pre(&mut gui_canceled);
-        }
+        self.native_render_gui_pre(&mut gui_canceled);
         // F1 hides vanilla drawing; RenderGuiEvent.Pre instead cancels the layer walk.
-        let hide_hud = self.client.chat_ui.hide_gui || replaying;
+        let hide_hud = self.client.chat_ui.hide_gui;
         let show_hud = !hide_hud && !gui_canceled;
         // A screen that keeps the in-game UI defers subtitles to its background,
         // even under F1. With no screen, Gui draws them after the debug overlay.
@@ -2377,7 +2361,7 @@ impl crate::game::ClientGame<'_> {
                 None
             },
         );
-        let dispatch_hud = !gui_canceled && !replaying;
+        let dispatch_hud = !gui_canceled;
         self.client.hud_layer_next = dispatch_hud.then_some(0);
         self.client.chat_ui.room = self.hud_room(w, h, show_hud);
         let mut guide_from = 0;
@@ -2799,7 +2783,6 @@ impl crate::game::ClientGame<'_> {
             self.draw_sign_editor(&mut batch);
             self.draw_book(&mut batch);
         }
-        self.draw_studio_bars(&mut batch);
         if show_hud {
             self.draw_pad_guide(&mut batch, guide_from);
         }
@@ -4352,8 +4335,7 @@ impl crate::game::ClientGame<'_> {
         // FishingHookRenderer's line, then DebugRenderer: chunk borders and
         // hitboxes (F3+G, F3+B).
         let mut lines = self.fishing_line(alpha, size);
-        let mut g = self.debug_gizmos(alpha as f32, camera.to_array());
-        self.studio_camera_path(&mut g);
+        let g = self.debug_gizmos(alpha as f32, camera.to_array());
         lines.extend(g.lines);
         let on_top = g.on_top;
         pr.lap("pr_debug");
@@ -4446,7 +4428,7 @@ impl crate::game::ClientGame<'_> {
         } else {
             sunrise_client::gfx::cull_fov(fov_degrees, (self.client.settings.fov as i32) as f32)
         };
-        let camera_effects = fov::camera_effects_enabled(title, self.client.studio.flying());
+        let camera_effects = !title;
         let bob = if !camera_effects {
             glam::Mat4::IDENTITY
         } else {
@@ -5202,9 +5184,6 @@ impl crate::game::ClientGame<'_> {
             } else {
                 self.sign_edit_click(size)
             });
-        }
-        if self.studio_mouse_input(pressed, button) {
-            return Ok(true);
         }
         if matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             && let Some(key) = self

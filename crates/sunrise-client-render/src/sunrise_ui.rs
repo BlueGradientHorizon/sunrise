@@ -40,7 +40,7 @@ pub enum Tab {
     PackOptions,
     /// The extras (`extras_ui`): what changes how the game plays, all off by default.
     Gameplay,
-    /// Replay Studio and the AI agent.
+    /// The AI agent.
     Tools,
     /// PvP & HUD, and the pages crates register for Sunrise Settings.
     Extras,
@@ -164,13 +164,7 @@ impl SunriseScreen {
     }
     /// Tools: a row for each of its pages.
     fn tools() -> Vec<Row<SunriseRow>> {
-        [
-            (Page::Studio, "sunrise.pages.open.studio"),
-            (Page::Agent, "sunrise.pages.open.agent"),
-        ]
-        .into_iter()
-        .map(|(page, key)| open_row(page, lang::get(key)))
-        .collect()
+        vec![open_row(Page::Agent, lang::get("sunrise.pages.open.agent"))]
     }
     /// Extras: PvP & HUD, then each page registered for Sunrise Settings.
     fn extras() -> Vec<Row<SunriseRow>> {

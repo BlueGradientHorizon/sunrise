@@ -162,7 +162,6 @@ mod sprite_cache;
 pub mod sprites;
 pub mod streaming;
 pub use sunrise_level::structure_block;
-pub(crate) mod studio_ui;
 pub(crate) mod sunrise_ui;
 pub mod tab_list;
 pub use sunrise_level::test_block;

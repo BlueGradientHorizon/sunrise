@@ -18,7 +18,6 @@ pub use sunrise_sim::item_damage;
 pub use sunrise_sim::mod_packet_builders;
 #[cfg(test)]
 mod fresh_process;
-pub mod packet_source;
 pub use sunrise_sim::parallel;
 pub use sunrise_sim::powder_snow;
 #[cfg(test)]
@@ -192,7 +191,6 @@ pub use sunrise_sim::stand_up;
 pub use sunrise_sim::stations;
 pub use sunrise_sim::stopwatches;
 pub use sunrise_sim::structure_blocks;
-pub mod studio;
 pub mod telemetry;
 pub mod text_display;
 pub use sunrise_sim::text_display_data;

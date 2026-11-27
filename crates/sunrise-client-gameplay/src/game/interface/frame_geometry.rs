@@ -198,21 +198,16 @@ impl crate::game::ClientGame<'_> {
     pub fn hand_geometry(&mut self, alpha: f64) -> (Vec<Vertex>, Vec<(u32, i32)>) {
         let mut out = Vec::new();
         let mut runs = Vec::new();
-        // F1 hides both; a native HUD mode may keep the hands visible. The
-        // replay player's hands remain visible in first person; freecam has
-        // no player-view hand.
-        if !fov::studio_draws_hand(
-            self.client.studio.flying(),
-            self.client.chat_ui.hands_drawn(
-                self.common.spectator(),
-                self.camera_subject().is_some_and(|c| c.is_sleeping),
-                self.client.camera_type.is_first_person(),
-                self.common
-                    .player
-                    .as_ref()
-                    .is_some_and(|p| !p.health.dead_or_dying()),
-                self.client.screen == Screen::Dead,
-            ),
+        // F1 hides both; a native HUD mode may keep the hands visible.
+        if !self.client.chat_ui.hands_drawn(
+            self.common.spectator(),
+            self.camera_subject().is_some_and(|c| c.is_sleeping),
+            self.client.camera_type.is_first_person(),
+            self.common
+                .player
+                .as_ref()
+                .is_some_and(|p| !p.health.dead_or_dying()),
+            self.client.screen == Screen::Dead,
         ) {
             return (out, runs);
         }
