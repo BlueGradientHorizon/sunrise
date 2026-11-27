@@ -506,6 +506,7 @@ impl ServerGame<'_> {
                     left: left.as_ref(),
                     right: right.as_ref(),
                     output,
+                    xp_cost: craft.cost,
                 });
             let player = (pre || post)
                 .then(|| self.server.lan.as_ref()?.hub.guests.get(gi))
