@@ -27,6 +27,8 @@ mod rule_replacements;
 mod test_log;
 #[cfg(test)]
 mod test_resources;
+#[cfg(test)]
+mod test_resources_tests;
 pub use sunrise_client_render::moving_colliders;
 pub use sunrise_client_render::{
     assets, atlas_sources, audio, auth, autotune, ban_notice, bidi, biome, block_edit,

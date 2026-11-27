@@ -7,6 +7,7 @@ use std::{
 };
 
 pub mod exports;
+pub mod references;
 
 /// The hand-written sources, in deterministic order; `fire.rs` includes generated dispatch.
 pub fn native_hook_files(root: &Path) -> Result<Vec<PathBuf>, String> {
