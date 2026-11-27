@@ -2696,37 +2696,51 @@ impl SharedFrames {
     /// `frame::contents(body, Some(threshold))`, compressed only when no
     /// connection has sent the same body lately or compresses it now.
     fn contents(&self, body: &[u8], threshold: usize) -> sunrise_protocol::Result<Arc<[u8]>> {
+        let (key, frame) = self.frame_slot(body, threshold);
+        self.fill_frame(key, &frame, body)
+    }
+
+    fn frame_slot(&self, body: &[u8], threshold: usize) -> (FrameKey, Frame) {
         let hash = xxhash_rust::xxh3::xxh3_128_with_secret(body, &self.secret);
         let key = (body.len(), hash, threshold);
-        let (frame, made_here) = {
-            let mut cache = self.cache();
-            match cache.frames.get(&key) {
-                Some(frame) => (frame.clone(), false),
-                None => {
-                    let frame = Frame::default();
-                    cache.frames.insert(key, frame.clone());
-                    cache.order.push_back(key);
-                    (frame, true)
-                }
-            }
-        };
-        let contents = frame
-            .get_or_init(|| {
-                sunrise_protocol::frame::contents(body, Some(threshold))
-                    .map(Arc::from)
-                    .map_err(|e| e.to_string())
-            })
-            .clone()
-            .map_err(sunrise_protocol::Error::new)?;
-        if made_here {
-            let mut cache = self.cache();
-            // Unless pushed out while it was being made.
-            if cache
+        let mut cache = self.cache();
+        if let Some(frame) = cache.frames.get(&key) {
+            return (key, frame.clone());
+        }
+        let frame = Frame::default();
+        cache.frames.insert(key, frame.clone());
+        cache.order.push_back(key);
+        (key, frame)
+    }
+
+    fn fill_frame(
+        &self,
+        key: FrameKey,
+        frame: &Frame,
+        body: &[u8],
+    ) -> sunrise_protocol::Result<Arc<[u8]>> {
+        let mut publication = None;
+        let contents = frame.get_or_init(|| {
+            let contents = sunrise_protocol::frame::contents(body, Some(key.2))
+                .map(Arc::from)
+                .map_err(|e| e.to_string());
+            // Only the initializer takes this lock, after encoding. Hold it across
+            // publication and accounting so eviction cannot see an uncharged result.
+            publication = Some(self.cache());
+            contents
+        });
+        if let Some(mut cache) = publication
+            && cache
                 .frames
                 .get(&key)
-                .is_some_and(|f| Arc::ptr_eq(f, &frame))
-            {
-                cache.bytes += contents.len();
+                .is_some_and(|f| Arc::ptr_eq(f, frame))
+        {
+            match contents {
+                Ok(contents) => cache.bytes += contents.len(),
+                Err(_) => {
+                    cache.frames.remove(&key);
+                    cache.order.retain(|old| *old != key);
+                }
             }
             while cache.bytes > self.limit
                 && let Some(old) = cache.order.pop_front()
@@ -2737,7 +2751,7 @@ impl SharedFrames {
                     .unwrap_or(0);
             }
         }
-        Ok(contents)
+        contents.clone().map_err(sunrise_protocol::Error::new)
     }
 }
 
@@ -3890,6 +3904,48 @@ mod tests {
                 .sum::<usize>()
         );
         assert!(cache.bytes <= first * 2);
+    }
+
+    #[test]
+    fn shared_frames_charge_the_initializer_before_other_frames_can_evict() {
+        // Below the compression threshold the contents add exactly one byte.
+        let threshold = 16;
+        let frames = SharedFrames::new(9);
+        let oldest = [1; 4];
+        // Pause the original caller just after it inserts the FIFO slot. A caller
+        // on another thread initializes that slot and then forces eviction before
+        // the original caller resumes. Joining fixes the order without a sleep.
+        let (key, slot) = frames.frame_slot(&oldest, threshold);
+        let (first, newest) = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let first = frames.contents(&oldest, threshold).unwrap(); // 5 bytes
+                    frames.contents(&[2; 2], threshold).unwrap(); // 3 bytes
+                    let newest = frames.contents(&[3; 8], threshold).unwrap(); // 9 bytes
+                    (first, newest)
+                })
+                .join()
+                .unwrap()
+        });
+        let resumed = frames.fill_frame(key, &slot, &oldest).unwrap();
+        assert!(Arc::ptr_eq(&first, &resumed));
+        // The old insertion-owner accounting charged only 3 + 9, then debited
+        // the uncharged 5. It stopped at 7, leaving 12 bytes resident.
+        assert_eq!(frames.census(), (1, newest.len()));
+        assert!(Arc::ptr_eq(
+            &newest,
+            &frames.contents(&[3; 8], threshold).unwrap()
+        ));
+    }
+
+    #[test]
+    fn shared_frames_remove_failed_encodes_from_both_cache_and_fifo() {
+        // The uncompressed marker would make the encoded contents one byte too big.
+        let body = vec![0; sunrise_protocol::frame::MAX_FRAME];
+        let frames = SharedFrames::new(usize::MAX);
+        assert!(frames.contents(&body, body.len() + 1).is_err());
+        assert_eq!(frames.census(), (0, 0));
+        assert!(frames.cache().order.is_empty());
     }
 
     #[test]
