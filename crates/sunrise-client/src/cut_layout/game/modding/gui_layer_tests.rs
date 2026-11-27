@@ -8,6 +8,8 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
+use sunrise_client_gameplay::game::ClientGame;
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::{Screen, execution_role::ExecutionRole};
 use sunrise_level::chunk::Chunk;
@@ -17,6 +19,24 @@ use sunrise_sim::motion::{MotionWorld, PlayerMotion, WATER, dry_side};
 mod hidden_panic;
 #[path = "gui_layer_tests/status_heights.rs"]
 mod status_heights;
+
+fn set_fixture_mode(game: &mut ClientGame<'_>, mode: GameMode) {
+    if mode != game.mode {
+        game.previous_mode = Some(game.mode);
+    }
+    game.mode = mode;
+    game.creative = mode == GameMode::Creative;
+    let spectator = mode == GameMode::Spectator;
+    if let Some(player) = game.player.as_mut() {
+        player.invulnerable = mode == GameMode::Creative || spectator;
+        player.may_fly = player.invulnerable;
+        player.spectator = spectator;
+        player.local_spectator = spectator;
+        if mode != GameMode::Creative {
+            player.flying = spectator;
+        }
+    }
+}
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -283,7 +303,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         game.client.title.0 = None;
         game.client.screen = Screen::Playing;
         game.client.chat_ui.hide_gui = false;
-        game.set_local_mode(sunrise_command::args::GameMode::Survival);
+        set_fixture_mode(game, GameMode::Survival);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
         player.set_health(12.0, false).unwrap();
         player
@@ -305,11 +325,14 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             (true, true, false),
             (true, false, true),
         ] {
-            game.set_local_mode(if creative {
-                sunrise_command::args::GameMode::Creative
-            } else {
-                sunrise_command::args::GameMode::Survival
-            });
+            set_fixture_mode(
+                game,
+                if creative {
+                    GameMode::Creative
+                } else {
+                    GameMode::Survival
+                },
+            );
             game.client.chat_ui.hide_gui = hidden;
             if under_water && !game.player.as_ref().unwrap().is_eye_in_fluid(WATER) {
                 let water = game
@@ -1200,12 +1223,16 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 );
             }
             let mode = if frame.variant == Variant::Spectator {
-                sunrise_command::args::GameMode::Spectator
+                GameMode::Spectator
             } else {
-                sunrise_command::args::GameMode::Survival
+                GameMode::Survival
             };
             // A client of a server takes its mode from the server: only its local mode changes.
-            game.set_local_mode(mode);
+            if game.client.remote.is_some() {
+                game.set_local_mode(mode);
+            } else {
+                set_fixture_mode(game, mode);
+            }
             game.client.chat_ui.hide_gui = frame.variant == Variant::Hidden;
             game.client.settings.attack_indicator = match frame.variant {
                 Variant::Off => 0,

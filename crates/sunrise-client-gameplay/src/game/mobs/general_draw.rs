@@ -152,7 +152,7 @@ impl crate::game::ClientGame<'_> {
             packed,
             out,
         );
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         super::native_render_pair_tests::witness_body(id, start, out.len());
     }
 }

@@ -281,7 +281,6 @@ thread_local! {
     static BODY_WITNESSES: std::cell::RefCell<Option<Vec<BodyWitness>>> = const { std::cell::RefCell::new(None) };
 }
 
-#[cfg(test)]
 pub(in crate::game) fn witness_body(id: u32, start: usize, end: usize) {
     if start < end {
         BODY_WITNESSES.with_borrow_mut(|witnesses| {
