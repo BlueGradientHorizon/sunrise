@@ -367,7 +367,9 @@ pub trait BlockEntityDrawContext {
     /// from its front), textured with the `uv` rectangle (u0, v0, u1, v1 in
     /// texels of 16 per side) of `sprite` (`mymod:entity/screen`,
     /// `mymod:block/casing`, `block/stone`) times the 0xRRGGBB `tint`
-    /// (0xFFFFFF for none). False for an unknown sprite. Its UVs are texels of 16; those of
+    /// (0xFFFFFF for none). True when the quad was drawn; false, with nothing drawn, for an
+    /// unknown sprite, a coordinate that is not finite, or a quad the frame's batch has no
+    /// room for, as [`Self::textured_quad`] answers. Its UVs are texels of 16; those of
     /// [`Self::textured_quad`] are unit.
     fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
         unimplemented!("BlockEntityDrawContext::draw_quad")
