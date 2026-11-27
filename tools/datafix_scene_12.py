@@ -808,22 +808,33 @@ def make_player(Bot, varint, parse_varint, mcstring):
     """A Bot (protocol 340) that keeps the connection alive, confirms teleports and can act: dig, place, use, attack."""
 
     class Player(Bot):
-        def __init__(self, *args):
+        def __init__(self, port, protocol, name, problems=None):
+            # All set before the base class joins: its keep-alive thread starts in __init__ and uses them.
+            self.name = name
+            self.problems = problems    # the run's list: a failed handler is recorded here, naming this bot
             self.entities = {}    # entity id -> mob type id
             self.pos = (0.0, 0.0, 0.0)
             self.lock = threading.Lock()
-            super().__init__(*args)
+            super().__init__(port, protocol, name)
 
         def idle(self):
             self.sock.settimeout(1.0)
             while not self.stop.is_set():
                 try:
                     pid, data = self.receive()
-                    self.handle(pid, data)
                 except socket.timeout:
                     continue
                 except (EOFError, OSError):
                     break
+                try:
+                    self.handle(pid, data)
+                except (EOFError, OSError):
+                    break
+                except Exception as error:
+                    # On the keep-alive thread this would reach only threading.excepthook: record it in the run too.
+                    if self.problems is not None:
+                        self.problems.append((f'bot {self.name} packet 0x{pid:02x}', [f'{type(error).__name__}: {error}']))
+                    raise
 
         def handle(self, pid, data):
             if self.protocol < 340:     # 1.8.9 (47) to 1.11.2 (316): only stay joined
@@ -1740,7 +1751,7 @@ def populate(server, Bot, port, protocol, name, problems, *, mcstring, origin=DE
          *(['gamerule announceAdvancements false', 'gamerule spawnRadius 7'] if era == 12 else []), 'time set 6000', 'weather clear 999999', 'difficulty 2',
          'worldborder set 59999968', 'worldborder damage amount 0.25', 'worldborder warning distance 7'])
     say(scene.cmds)
-    bot = Player(port, protocol, name)
+    bot = Player(port, protocol, name, problems)
     time.sleep(3)
     say(inventory_commands(scene, stacks))
     say([f'xp 117L {name}', f'xp 29 {name}',
@@ -1854,7 +1865,7 @@ def build_flat(h, force=False):
         # are loaded (they stay loaded, being within the spawn radius).
         batch(server, ['setworldspawn 64 4 64'], problems)
         Player = make_player(JoinedBot, varint, parse_varint, h.mcstring)
-        visitor = Player(port, protocol, h.BOT)
+        visitor = Player(port, protocol, h.BOT, problems)
         time.sleep(2)
         for x, z in ((24, 24), (24, 72), (24, 104), (72, 24), (72, 72), (72, 104), (104, 24), (104, 72), (104, 104), (72, 123), (-8, 63), (32, 103)):
             batch(server, [f'tp {h.BOT} {x}.5 4 {z}.5'], problems)

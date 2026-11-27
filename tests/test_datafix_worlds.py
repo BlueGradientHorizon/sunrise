@@ -205,9 +205,11 @@ class RealChildServerTests(unittest.TestCase):
 
 
 class PlayerIdleTests(unittest.TestCase):
-    def player(self, receive):
+    def player(self, receive, name='Bot', problems=None):
         Player = worlds.scene12.make_player(worlds.Bot, worlds.varint, worlds.parse_varint, worlds.mcstring)
         player = Player.__new__(Player)
+        player.name = name
+        player.problems = problems
         player.sock = mock.Mock()
         player.stop = threading.Event()
         player.protocol = 340
@@ -217,9 +219,51 @@ class PlayerIdleTests(unittest.TestCase):
     def test_a_packet_that_fails_to_parse_surfaces(self):
         # A position packet cut short: struct.unpack of its coordinates fails.
         packets = iter([(0x2F, b'short')])
-        player = self.player(lambda: next(packets))
-        with self.assertRaises(struct.error):
+        problems = []
+        player = self.player(lambda: next(packets), name='Upgrader', problems=problems)
+        with self.assertRaises(struct.error) as caught:
             player.idle()
+        self.assertEqual(problems, [('bot Upgrader packet 0x2f', [f'error: {caught.exception}'])])
+
+    def test_a_failure_without_a_problems_list_still_surfaces(self):
+        packets = iter([(0x2F, b'short')])
+        with self.assertRaises(struct.error):
+            self.player(lambda: next(packets)).idle()
+
+    def run_on_thread(self, receive, problems):
+        """player.idle() on a real thread, as the keep-alive runs; returns what threading.excepthook saw."""
+        seen = []
+        player = self.player(receive, name='Upgrader', problems=problems)
+        with mock.patch.object(threading, 'excepthook', seen.append):
+            thread = threading.Thread(target=player.idle)
+            thread.start()
+            thread.join(5)
+        self.assertFalse(thread.is_alive())
+        return seen
+
+    def test_a_handler_failure_on_the_keep_alive_thread_is_recorded_in_problems(self):
+        packets = iter([(0x2F, b'short')])
+        problems = []
+        seen = self.run_on_thread(lambda: next(packets), problems)
+        self.assertEqual([hook.exc_type for hook in seen], [struct.error])
+        self.assertEqual(problems, [('bot Upgrader packet 0x2f', [f'error: {seen[0].exc_value}'])])
+
+    def test_a_disconnect_on_the_keep_alive_thread_records_nothing(self):
+        for error in (EOFError('closed'), ConnectionResetError('reset')):
+            with self.subTest(type(error).__name__):
+                def receive():
+                    raise error
+                problems = []
+                self.assertEqual(self.run_on_thread(receive, problems), [])
+                self.assertEqual(problems, [])
+
+    def test_a_disconnect_while_handling_a_packet_ends_the_loop_without_a_problem(self):
+        packets = iter([(0x1F, b'12345678')])
+        problems = []
+        player = self.player(lambda: next(packets), problems=problems)
+        player.send = mock.Mock(side_effect=ConnectionResetError('reset'))
+        player.idle()
+        self.assertEqual(problems, [])
 
     def test_a_closed_connection_ends_the_loop(self):
         for error in (EOFError('closed'), ConnectionResetError('reset')):
@@ -481,6 +525,20 @@ class LegacyBuildTests(unittest.TestCase):
         self.assertEqual([c for c in commands if c.startswith('replaceitem entity Upgrader slot.hotbar.0 ')],
                          ['replaceitem entity Upgrader slot.hotbar.0 minecraft:stick 1 0',
                           'replaceitem entity Upgrader slot.hotbar.0 minecraft:map 1 0'])
+
+    def test_populate_and_build_flat_give_every_player_the_runs_problems(self):
+        made = []
+        with mock.patch.object(worlds.scene12, 'make_player', lambda *args: lambda *a: made.append(a) or mock.Mock()):
+            worlds.build('1.12.2')
+            worlds.scene12.build_flat(worlds)
+        problems = [call.args[2] for call in self.batch.call_args_list]
+        self.assertEqual(len(made), 3)    # the legacy bot, then the flat world's visitor and scene bot
+        for args in made:
+            self.assertEqual(len(args), 4)
+            self.assertIsInstance(args[3], list)
+            self.assertTrue(any(p is args[3] for p in problems))    # the list the run's commands report into
+        self.assertEqual([a[3] is made[1][3] for a in made[1:]], [True, True])
+        self.assertIsNot(made[0][3], made[1][3])
 
     def test_lab_actions_oserror_reaches_the_caller(self):
         self.lab_actions.side_effect = ConnectionResetError('lab bot disconnected')
