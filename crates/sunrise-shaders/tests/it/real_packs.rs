@@ -102,11 +102,19 @@ fn real_packs_read() {
             let pack = Pack::open(&f.path).unwrap();
             let subgroups = std::env::var_os("SUBGROUPS").is_some();
             let (macros, shaders, feature_notes) = game_read(&pack, subgroups);
-            let ids: Vec<Properties> = ["block", "item", "entity", "dimension"]
-                .iter()
-                .filter_map(|n| pack.read_text(&format!("{n}.properties")))
-                .map(|t| Properties::parse(&t, &macros))
-                .collect();
+            // Each as the game reads it: the id files with the macros `read_properties` left
+            // (`read_id_files`), `dimension.properties` with none (`dimension_folder_named`).
+            let none = Macros::default();
+            let ids: Vec<Properties> = [
+                ("block", &macros),
+                ("item", &macros),
+                ("entity", &macros),
+                ("dimension", &none),
+            ]
+            .iter()
+            .filter_map(|(n, m)| Some((pack.read_text(&format!("{n}.properties"))?, *m)))
+            .map(|(t, m)| Properties::parse(&t, m))
+            .collect();
             let lang = Lang::load(&pack, "en_us");
             let elapsed = start.elapsed();
             println!(
