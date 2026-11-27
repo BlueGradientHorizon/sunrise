@@ -381,7 +381,10 @@ mod tests {
                 let text = DisplayRef::new(entity);
                 assert_eq!(text.kind(game), None);
                 assert_eq!(text.view_range(game), None);
-                assert!(text.text(game).unwrap().is_none());
+                assert!(matches!(
+                    text.text(game),
+                    Err(mod_api::text::TextFormError::Unavailable)
+                ));
             });
         }
     }

@@ -933,7 +933,11 @@ fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_on
 #[test]
 #[ignore = "daily"]
 fn queued_player_hurts_select_the_current_source_not_an_older_hit_of_the_same_type() {
+    use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
+
     let heard = heard(|game, _| {
+        fixture_resident_column(&mut game.world, (0, 0));
+        fixture_resident_column(&mut game.world, (-1, 0));
         player_with_sword(game);
         super::native_entity_refs::tests::bind_local_player(game, 7, 777);
         game.set_game_mode(sunrise_command::args::GameMode::Creative);
