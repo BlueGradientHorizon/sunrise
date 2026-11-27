@@ -430,4 +430,84 @@ pub(crate) mod item_part_tests {
             });
         });
     }
+
+    /// A client logged in with the local player's body (entity 7, profile 42) and the survival
+    /// inventory screen open.
+    fn logged_in_inventory(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
+        crate::game::remote::tests::spawn_menu_test(game);
+        let mut body = sunrise_sim::motion::PlayerMotion::new(
+            game.motion,
+            sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
+        )
+        .unwrap();
+        body.entity_id = 7;
+        game.player = Some(body);
+        game.creative = false;
+        game.client.screen = sunrise_gameplay_common::game::Screen::Inventory;
+        game.armor = Default::default();
+    }
+
+    /// A `can_equip` Part that reads the armour slot it is asked about (`MenuRef::slot_holds`
+    /// asks `ArmorSlot.mayPlace` again) gets the stack's own data answer for the nested read
+    /// instead of being asked again, as nested `menu_slot_rules` reads keep the slot's own
+    /// answers; the outer read still hears the Part.
+    #[test]
+    #[ignore = "daily"]
+    fn a_can_equip_part_reads_its_own_armour_slot_without_recursing() {
+        use mod_api::{CanEquipEvent, ClientHost, Hooks, Host, ItemPart, MenuRef, Registrar};
+        use std::cell::{Cell, RefCell};
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
+
+        thread_local! {
+            static MENU: Cell<Option<MenuRef>> = const { Cell::new(None) };
+            static ASKS: Cell<u32> = const { Cell::new(0) };
+            static NESTED: RefCell<Vec<Option<u32>>> = const { RefCell::new(Vec::new()) };
+        }
+        struct ReadsItsSlot;
+        #[mod_api::sunrise_part]
+        impl ItemPart for ReadsItsSlot {
+            fn can_equip(&self, host: &dyn Host, event: &mut CanEquipEvent<'_>) {
+                let asks = ASKS.get() + 1;
+                ASKS.set(asks);
+                // Without the guard, make reentry fail the assertions rather than overflow.
+                if asks > 3 {
+                    return;
+                }
+                if let Some(menu) = MENU.get() {
+                    let nested = menu.slot_holds(host, 5, event.stack);
+                    NESTED.with(|nested_all| nested_all.borrow_mut().push(nested));
+                }
+                event.can_equip = false;
+            }
+        }
+        struct ReadsMod;
+        #[mod_api::__subscriptions]
+        impl Hooks for ReadsMod {
+            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                let helmet = r.item_key("minecraft:iron_helmet");
+                r.item_part(helmet, ReadsItsSlot);
+            }
+        }
+
+        let mods: Mods = vec![ModEntry::new("reads_its_slot", Box::new(ReadsMod))].into();
+        sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                let (_reader, _writer) = crate::game::remote::tests::connect_menu_test(game);
+                logged_in_inventory(game);
+                let host: &dyn ClientHost = game;
+                let inventory = host.local_player().unwrap().container_menu(host).unwrap();
+                MENU.set(Some(inventory));
+                let helmet = ItemStack::new("minecraft:iron_helmet", 1)
+                    .try_into_api()
+                    .unwrap();
+                // The Part refuses the head slot; its own read of that slot is the helmet's
+                // `equippable` answer, one piece.
+                assert_eq!(inventory.slot_holds(game, 5, &helmet), Some(0));
+                assert_eq!(ASKS.get(), 1);
+                assert_eq!(NESTED.with(|nested| nested.take()), [Some(1)]);
+                MENU.set(None);
+            });
+        });
+    }
 }

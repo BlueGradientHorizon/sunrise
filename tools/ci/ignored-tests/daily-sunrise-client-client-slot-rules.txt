@@ -1,2 +1,3 @@
 # The client's MenuRef::slot_holds and slot_gives reads during ItemPart prediction use prepared resources.
+sunrise-client cut_layout::game::client_side::stacked_on_other_tests_client::item_part_tests::a_can_equip_part_reads_its_own_armour_slot_without_recursing lib daily resources
 sunrise-client cut_layout::game::client_side::stacked_on_other_tests_client::item_part_tests::item_part_reads_slot_rules_during_client_prediction lib daily resources
