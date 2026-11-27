@@ -189,8 +189,9 @@ mod that changes it belongs on both sides.
 
 `block_class(state, class)` answers what a mod would ask with `instanceof StairBlock`, `EntityBlock`,
 `IronBarsBlock`, `StainedGlassPaneBlock`, `TrapDoorBlock`, `BonemealableBlock`, `SlabBlock`, `WallBlock`,
-`FenceBlock` or `Fallable`. `Fallable` is the blocks that can come down as a falling block: every
-`FallingBlock`, suspicious sand and gravel, and pointed dripstone, which is `Fallable` without being a
+`FenceBlock` or `Fallable`. `Fallable` is the `instanceof Fallable` check, not a claim about whether a
+block will fall at a particular position: every `FallingBlock`, suspicious sand and gravel, and the
+speleothems (pointed dripstone and sulfur spikes), which are `Fallable` without being a
 `FallingBlock`; ask it of the blocks left on the edge of a cleared region. It reads the engine's own class of the
 block, so a subclass counts (a waxed copper stair is a `Stair`) and a mod block declared on a vanilla
 behaviour template belongs to that template's classes. It never reads tags: a pack that adds a block
