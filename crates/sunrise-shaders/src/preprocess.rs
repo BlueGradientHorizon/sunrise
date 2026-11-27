@@ -916,7 +916,10 @@ mod tests {
     fn a_declaration_starts_on_its_own_line_after_an_unterminated_directive() {
         let stage = Preprocessed::from_source("gbuffers_water.fsh", "#version 330");
         let out = stage.with_declaration("uniform sampler2D sunriseWaterMask;");
-        assert_eq!(out.code(), "#version 330\nuniform sampler2D sunriseWaterMask;");
+        assert_eq!(
+            out.code(),
+            "#version 330\nuniform sampler2D sunriseWaterMask;"
+        );
         assert_eq!(
             out.lines(),
             [Origin { file: 0, line: 1 }, Origin { file: 0, line: 0 }]

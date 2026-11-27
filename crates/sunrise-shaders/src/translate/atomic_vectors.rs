@@ -684,8 +684,16 @@ mod tests {
     #[test]
     fn untouched_without_atomics_on_a_component() {
         let pp = |code: &str| Preprocessed::from_source("", code);
-        assert!(rewrite(&pp("shared ivec4 v;\nvoid f() { v.x = 1; }\n")).unwrap().is_none());
-        assert!(rewrite(&pp("shared int n;\nvoid f() { atomicAdd(n, 1); }\n")).unwrap().is_none());
+        assert!(
+            rewrite(&pp("shared ivec4 v;\nvoid f() { v.x = 1; }\n"))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            rewrite(&pp("shared int n;\nvoid f() { atomicAdd(n, 1); }\n"))
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
