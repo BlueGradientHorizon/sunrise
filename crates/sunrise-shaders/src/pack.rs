@@ -129,6 +129,11 @@ impl Pack {
         self
     }
 
+    /// The option values chosen in [`Pack::with_chosen`], by name.
+    pub(crate) fn chosen(&self) -> &BTreeMap<String, String> {
+        &self.chosen
+    }
+
     /// The folder or file name the pack was opened from (`BSL.zip`).
     pub fn name(&self) -> &str {
         &self.name

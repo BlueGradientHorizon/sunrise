@@ -235,6 +235,8 @@ fn scan(pack: &Pack) -> Scan {
         tested: BTreeSet::new(),
         switch_tested: BTreeSet::new(),
     };
+    // The `#define NAME` lines that close a guard, and whether each is glued to its comment.
+    let mut guarded: Vec<(String, bool)> = Vec::new();
     for text in option_texts(pack) {
         // `#ifndef NAME` just before `#define NAME`, with only comment lines between: an
         // include guard, not an option.
@@ -263,6 +265,7 @@ fn scan(pack: &Pack) -> Scan {
                     && pending == Some(d.name)
                     && d.value.is_none()
                 {
+                    guarded.push((d.name.to_owned(), d.glued));
                     continue;
                 }
             }
@@ -294,6 +297,17 @@ fn scan(pack: &Pack) -> Scan {
                 }
                 _ => {}
             }
+        }
+    }
+    // A name the pack also declares off (`//#define NAME`) anywhere is a switch the player can
+    // turn on, never a guard: on, its line reads `#define NAME` after the `#ifndef NAME`. So is a
+    // name the player chose, whose `//#define` the chosen value has already rewritten.
+    for (name, glued) in guarded {
+        if scan.off.contains(&name) || pack.chosen().contains_key(&name) {
+            if !glued {
+                scan.switch_on.insert(name.clone());
+            }
+            scan.on.insert(name);
         }
     }
     scan
@@ -353,13 +367,23 @@ fn guard_name(line: &str) -> Option<&str> {
         .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
         .unwrap_or(rest.len());
     let (name, after) = rest.split_at(end);
-    let after = after.trim_start();
     let after = if paren {
-        after.strip_prefix(')')?
+        skip_block_comments(after).strip_prefix(')')?
     } else {
         after
     };
     (!name.is_empty() && comment_only(after, &mut false)).then_some(name)
+}
+
+/// `text` past its leading spaces and `/* ... */` comments.
+fn skip_block_comments(mut text: &str) -> &str {
+    loop {
+        text = text.trim_start();
+        match text.strip_prefix("/*").and_then(|t| t.split_once("*/")) {
+            Some((_, rest)) => text = rest,
+            None => return text,
+        }
+    }
 }
 
 /// Whether `line` has no code outside comments. `in_block` carries a `/*` left open from the
@@ -810,7 +834,8 @@ iris.features.required = NOT_A_FEATURE
                     "shaders/lib/guards.glsl",
                     "#ifndef BLOCK_GLSL\n/* note */\n#define BLOCK_GLSL\n#endif\n\
                      #ifndef LINES_GLSL // guard\n//#define OTHER\n// note\n#define LINES_GLSL\n#endif\n\
-                     #if !defined( OPEN_GLSL ) /* a\nb\n*/\n/* c\n */ /* d */\n#define OPEN_GLSL\n#endif\n",
+                     #if !defined( OPEN_GLSL ) /* a\nb\n*/\n/* c\n */ /* d */\n#define OPEN_GLSL\n#endif\n\
+                     #if !defined(LIGHTING_GLSL /* include once */)\n#define LIGHTING_GLSL\n#endif\n",
                 ),
                 (
                     "shaders/lib/settings.glsl",
@@ -822,7 +847,8 @@ iris.features.required = NOT_A_FEATURE
                 (
                     "shaders/final.fsh",
                     "#ifdef AO\n#endif\n#ifdef BLOOM_ON\n#endif\n#ifdef OTHER\n#endif\n\
-                     #ifdef BLOCK_GLSL\n#endif\n#ifdef LINES_GLSL\n#endif\n#ifdef OPEN_GLSL\n#endif\n",
+                     #ifdef BLOCK_GLSL\n#endif\n#ifdef LINES_GLSL\n#endif\n#ifdef OPEN_GLSL\n#endif\n\
+                     #ifdef LIGHTING_GLSL\n#endif\n",
                 ),
             ]),
         )
@@ -867,6 +893,69 @@ iris.features.required = NOT_A_FEATURE
             [("BOTH", "true"), ("GLUED", "true"), ("GLUED_OFF", "false")]
         );
         assert_eq!(switches_on(&pack), BTreeSet::from(["BOTH".to_owned()]));
+    }
+
+    /// A name the pack declares off with `//#define NAME` anywhere is a switch, never a guard,
+    /// even right after `#ifndef NAME`: at its default it is listed off and not on, and turned
+    /// on (the line rewritten to `#define NAME`) it is still listed (on, as the rewritten text
+    /// reads), `switches_on` has it, and the program its enable names loads. Declared on in one file and off in another, it is
+    /// listed off.
+    #[test]
+    fn a_commented_switch_after_its_ifndef_is_an_option_off_and_on() {
+        const VSH: &str = "#version 120\nvoid main() { gl_Position = ftransform(); }";
+        const FSH: &str =
+            "#version 120\n/* DRAWBUFFERS:0 */\nvoid main() { gl_FragData[0] = vec4(1.0); }";
+        let bytes = zip(&[
+            (
+                "shaders/lib/settings.glsl",
+                "#ifndef BLOOM\n//#define BLOOM\n#endif\n",
+            ),
+            ("shaders/lib/fog.glsl", "#ifndef FOG\n#define FOG\n#endif\n"),
+            ("shaders/lib/more.glsl", "//#define FOG\n"),
+            (
+                "shaders/lib/uses.glsl",
+                "#ifdef BLOOM\n#endif\n#ifdef FOG\n#endif\n",
+            ),
+            (
+                "shaders/shaders.properties",
+                "program.composite.enabled = BLOOM\n",
+            ),
+            ("shaders/composite.vsh", VSH),
+            ("shaders/composite.fsh", FSH),
+            ("shaders/final.vsh", VSH),
+            ("shaders/final.fsh", FSH),
+        ]);
+        let pack = Pack::from_zip_bytes("bloom.zip", bytes).unwrap();
+        let loaded = |pack: &Pack| {
+            let mut macros = crate::Macros::standard();
+            let (properties, _) = read_properties(pack, &mut macros);
+            let post = crate::load_post(pack, "", &properties, &macros, &Default::default());
+            post.programs
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
+        };
+        let defaults = |pack: &Pack| {
+            options(pack)
+                .into_values()
+                .map(|o| (o.name, o.default))
+                .collect::<Vec<_>>()
+        };
+        let off = [("BLOOM", "false"), ("FOG", "false")].map(|(n, d)| (n.into(), d.into()));
+        assert_eq!(defaults(&pack), off);
+        assert_eq!(switches_on(&pack), BTreeSet::new());
+        assert_eq!(loaded(&pack), ["final"]);
+
+        let on = pack.with_chosen(BTreeMap::from([("BLOOM".into(), "true".into())]));
+        assert_eq!(
+            on.read_text("lib/settings.glsl").unwrap(),
+            "#ifndef BLOOM\n#define BLOOM\n#endif\n"
+        );
+        // Read from the rewritten text, as for any chosen switch.
+        let chosen = [("BLOOM", "true"), ("FOG", "false")].map(|(n, d)| (n.into(), d.into()));
+        assert_eq!(defaults(&on), chosen);
+        assert_eq!(switches_on(&on), BTreeSet::from(["BLOOM".to_owned()]));
+        assert_eq!(loaded(&on), ["composite", "final"]);
     }
 
     /// A custom uniform's or variable's line has the macros expanded: a value option, a
