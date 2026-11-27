@@ -1263,55 +1263,67 @@ mod enchant_turn_tests {
     #[test]
     #[ignore = "daily"]
     fn a_refused_guest_turn_commits_no_enchant() {
-        with_guests(|game| {
-            game.common.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
-            );
-            let table = game
-                .common
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:enchanting_table")
-                .unwrap();
-            game.common.world.set(1, 64, 1, table).unwrap();
-            assert!(game.lan_open_station(12, &Station::new(StationKind::Enchanting, [1, 64, 1])));
-            let mut gs = game
-                .server
-                .lan
-                .as_mut()
-                .unwrap()
-                .menus
-                .get_mut(&12)
-                .unwrap()
-                .station
-                .take()
-                .unwrap();
-            let sword = ItemStack::new("minecraft:diamond_sword", 1);
-            let lapis = ItemStack::new("minecraft:lapis_lazuli", 3);
-            gs.menu.load_slot(0, Some(sword.clone()));
-            gs.menu.load_slot(1, Some(lapis.clone()));
-            gs.menu.data[0] = 1;
-            let gi = game.guest_index(12).unwrap();
-            let seed = |game: &crate::game::ServerGame<'_>| {
-                game.server.lan.as_ref().unwrap().hub.guests[gi].xp_seed
-            };
-            let before = seed(game);
+        sunrise_gameplay_common::game::in_own_process(
+            "game::server_side::lan_stations::enchant_turn_tests::a_refused_guest_turn_commits_no_enchant",
+            || {
+                with_guests(|game| {
+                    game.common.world.chunks.insert(
+                        (0, 0),
+                        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
+                    );
+                    let table = game
+                        .common
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:enchanting_table")
+                        .unwrap();
+                    game.common.world.set(1, 64, 1, table).unwrap();
+                    assert!(
+                        game.lan_open_station(
+                            12,
+                            &Station::new(StationKind::Enchanting, [1, 64, 1])
+                        )
+                    );
+                    let mut gs = game
+                        .server
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .menus
+                        .get_mut(&12)
+                        .unwrap()
+                        .station
+                        .take()
+                        .unwrap();
+                    let sword = ItemStack::new("minecraft:diamond_sword", 1);
+                    let lapis = ItemStack::new("minecraft:lapis_lazuli", 3);
+                    gs.menu.load_slot(0, Some(sword.clone()));
+                    gs.menu.load_slot(1, Some(lapis.clone()));
+                    gs.menu.data[0] = 1;
+                    let gi = game.guest_index(12).unwrap();
+                    let seed = |game: &crate::game::ServerGame<'_>| {
+                        game.server.lan.as_ref().unwrap().hub.guests[gi].xp_seed
+                    };
+                    let before = seed(game);
+                    let offers = gs.menu.data.clone();
 
-            // The guest's own turn is active, so the enchant's turn is refused.
-            game.as_guest(12, |game| game.lan_enchant(gi, &mut gs, 0))
-                .expect("the outer turn");
-            assert_eq!(gs.menu.slot(0), Some(&sword), "the item stays");
-            assert_eq!(gs.menu.slot(1), Some(&lapis), "the lapis stays");
-            assert_eq!(seed(game), before, "the seed stays");
+                    // The guest's own turn is active, so the enchant's turn is refused.
+                    game.as_guest(12, |game| game.lan_enchant(gi, &mut gs, 0))
+                        .expect("the outer turn");
+                    assert_eq!(gs.menu.slot(0), Some(&sword), "the item stays");
+                    assert_eq!(gs.menu.slot(1), Some(&lapis), "the lapis stays");
+                    assert_eq!(seed(game), before, "the seed stays");
+                    assert_eq!(gs.menu.data, offers, "the offers stay");
 
-            game.lan_enchant(gi, &mut gs, 0);
-            assert!(
-                gs.menu.slot(0).is_some_and(|item| item != &sword),
-                "outside a turn the enchant commits"
-            );
-            assert_ne!(seed(game), before, "and the seed moves on");
-        });
+                    game.lan_enchant(gi, &mut gs, 0);
+                    assert!(
+                        gs.menu.slot(0).is_some_and(|item| item != &sword),
+                        "outside a turn the enchant commits"
+                    );
+                    assert_ne!(seed(game), before, "and the seed moves on");
+                });
+            },
+        );
     }
 }
