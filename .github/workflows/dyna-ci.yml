@@ -943,7 +943,9 @@ jobs:
       - name: Ignored-test policy files read cleanly
         id: ignored_test_policy_files_read_cleanly
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: python3 tools/ci/check_ignored_test_rows.py
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 tools/ci/check_ignored_test_rows.py ${BASE_SHA:+--base "$BASE_SHA" --pull-request-merge}
       # Modules are plain mod items: a file under a crate's src/ that nothing declares is never compiled.
       - name: Every crate source file is compiled
         id: every_crate_source_file_is_compiled
