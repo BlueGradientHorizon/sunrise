@@ -247,9 +247,6 @@ impl FeatureCatalog {
                 if names.is_empty() {
                     return Ok(serde_json::to_string(&format!("#{tag}"))?);
                 }
-                if names.len() > super::state_provider::MAX_TAG_BLOCKS {
-                    return Err(DecodeError::Field("placed-feature tag size"));
-                }
                 names
                     .iter()
                     .map(|name| raw(serde_json::to_string(name)?))
