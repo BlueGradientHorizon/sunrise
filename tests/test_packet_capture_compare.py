@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import sys
 import tempfile
 import unittest
@@ -29,20 +30,26 @@ def write_run(
     run_status: str = "ok",
     session_statuses: dict[tuple[int, int], str] | None = None,
     write_manifest: bool = True,
+    manifest_end: str | None = "__default__",
     footer_override: dict[tuple[int, int], str | None] | None = None,
+    filename_override: dict[tuple[int, int], str] | None = None,
+    claim_id: str | None = "__default__",
     trailing_newline: bool = True,
 ) -> None:
     """Write a complete (or intentionally broken) capture directory."""
     directory.mkdir(parents=True, exist_ok=True)
     statuses = session_statuses or {}
     footers = footer_override or {}
-    manifest_lines = [f"# manifest v1\t{run_id}\t{run_status}"]
+    filenames = filename_override or {}
+    manifest_lines = [f"# manifest v2\t{run_id}\t{run_status}"]
     for conn, ordinal, player, rows in sessions:
         status = statuses.get((conn, ordinal), "ok")
         if status == "incomplete:open_failed":
             manifest_lines.append(f"{conn}\t{ordinal}\t{player}\t-\t{status}\t0")
             continue
-        filename = f"{player}-{conn}.pkt"
+        filename = filenames.get(
+            (conn, ordinal), f"{cmp_tool.sanitize_filename(player)}-{conn}.pkt"
+        )
         lines = [f"# v2\t{run_id}\t{conn}\t{ordinal}\t{player}"]
         for seq, tick, pkt_id, length, digest in rows:
             lines.append(f"{seq}\t{tick}\t{pkt_id}\t{length}\t{digest}")
@@ -55,7 +62,15 @@ def write_run(
         body = "\n".join(lines) + ("\n" if trailing_newline else "")
         (directory / filename).write_text(body, encoding="utf-8")
         manifest_lines.append(f"{conn}\t{ordinal}\t{player}\t{filename}\t{status}\t{len(rows)}")
+    if claim_id == "__default__":
+        (directory / ".capture-claim").write_text(f"{run_id}\n", encoding="utf-8")
+    elif claim_id is not None:
+        (directory / ".capture-claim").write_text(f"{claim_id}\n", encoding="utf-8")
     if write_manifest:
+        if manifest_end == "__default__":
+            manifest_lines.append(f"# end\t{len(sessions)}\t{run_status}")
+        elif manifest_end is not None:
+            manifest_lines.append(manifest_end)
         (directory / "manifest.tsv").write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
 
 
@@ -76,12 +91,19 @@ class PacketCaptureCompareTests(unittest.TestCase):
 
             out = io.StringIO()
             with redirect_stdout(out):
-                rc = cmp_tool.main([str(a), str(b)])
+                rc = cmp_tool.main([str(a), str(b), "--run-id-a", "100-1", "--run-id-b", "200-1"])
             self.assertEqual(rc, 0)
             text = out.getvalue()
             self.assertIn("Alice: identical (2 packets)", text)
             self.assertIn("Bob: identical (1 packets)", text)
             self.assertTrue(text.strip().endswith("IDENTICAL"))
+
+            # Mismatched expected run id fails validation cleanly.
+            err = io.StringIO()
+            with redirect_stderr(err):
+                rc_bad = cmp_tool.main([str(a), str(b), "--run-id-a", "999-1"])
+            self.assertEqual(rc_bad, 2)
+            self.assertIn("does not match expected", err.getvalue())
 
     def test_reconnects_match_by_ordinal_and_detect_omitted_reconnect(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -278,7 +300,9 @@ class PacketCaptureCompareTests(unittest.TestCase):
                 rc_named = cmp_tool.main([str(a), str(b), "--ignore", "keep_alive"])
             self.assertEqual(rc_named, 0)
             self.assertIn("retained packets identical (2 kept, 1/0 ignored)", out_named.getvalue())
-            self.assertIn("IDENTICAL (retained only; 1 ignored packet(s) skipped)", out_named.getvalue())
+            self.assertIn(
+                "IDENTICAL (retained only; 1 ignored packet(s) skipped)", out_named.getvalue()
+            )
 
             # Numeric packet id works too.
             out_num = io.StringIO()
@@ -347,6 +371,27 @@ class PacketCaptureCompareTests(unittest.TestCase):
                 },
             ),
             (
+                "missing_manifest_end_marker",
+                {
+                    "sessions": [(1, 1, "Alice", [(0, 1, 50, 10, h)])],
+                    "manifest_end": None,
+                },
+            ),
+            (
+                "manifest_end_count_mismatch",
+                {
+                    "sessions": [(1, 1, "Alice", [(0, 1, 50, 10, h)])],
+                    "manifest_end": "# end\t2\tok",
+                },
+            ),
+            (
+                "claim_run_id_mismatch",
+                {
+                    "sessions": [(1, 1, "Alice", [(0, 1, 50, 10, h)])],
+                    "claim_id": "999-9",
+                },
+            ),
+            (
                 "failed_open_session_in_manifest",
                 {
                     "sessions": [(1, 1, "Alice", [])],
@@ -373,6 +418,55 @@ class PacketCaptureCompareTests(unittest.TestCase):
                     "sessions": [(1, 1, "Alice", [(0, 1, 50, 10, h), (2, 1, 8, 10, h)])],
                 },
             ),
+            (
+                "reused_conn_id_under_different_players",
+                {
+                    "sessions": [
+                        (1, 1, "Alice", [(0, 1, 50, 10, h)]),
+                        (1, 1, "Bob", [(0, 1, 50, 10, h)]),
+                    ],
+                },
+            ),
+            (
+                "missing_initial_ordinal",
+                {
+                    "sessions": [(1, 2, "Alice", [(0, 1, 50, 10, h)])],
+                },
+            ),
+            (
+                "missing_intermediate_ordinal",
+                {
+                    "sessions": [
+                        (1, 1, "Alice", [(0, 1, 50, 10, h)]),
+                        (2, 3, "Alice", [(0, 1, 50, 10, h)]),
+                    ],
+                },
+            ),
+            (
+                "filename_without_pkt_suffix",
+                {
+                    "sessions": [(1, 1, "Alice", [(0, 1, 50, 10, h)])],
+                    "filename_override": {(1, 1): "Alice-1.txt"},
+                },
+            ),
+            (
+                "conn_exceeds_u32",
+                {
+                    "sessions": [(1 << 32, 1, "Alice", [(0, 1, 50, 10, h)])],
+                },
+            ),
+            (
+                "packet_id_exceeds_i32",
+                {
+                    "sessions": [(1, 1, "Alice", [(0, 1, 1 << 31, 10, h)])],
+                },
+            ),
+            (
+                "tick_exceeds_i64",
+                {
+                    "sessions": [(1, 1, "Alice", [(0, 1 << 63, 50, 10, h)])],
+                },
+            ),
         ]
         for name, kwargs in cases:
             with self.subTest(case=name), tempfile.TemporaryDirectory() as tmp:
@@ -384,6 +478,25 @@ class PacketCaptureCompareTests(unittest.TestCase):
                 with redirect_stderr(err):
                     rc = cmp_tool.main([str(a), str(b)])
                 self.assertEqual(rc, 2, f"{name} should fail validation, stderr={err.getvalue()!r}")
+
+    def test_unreadable_file_returns_input_error_exit_code(self) -> None:
+        if os.geteuid() == 0:
+            self.skipTest("chmod 000 does not block root reads")
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = Path(tmp) / "a", Path(tmp) / "b"
+            h = digest_for(b"ok")
+            write_run(a, [(1, 1, "Alice", [(0, 1, 50, 10, h)])])
+            write_run(b, [(1, 1, "Alice", [(0, 1, 50, 10, h)])])
+            pkt = a / "Alice-1.pkt"
+            pkt.chmod(0)
+            try:
+                err = io.StringIO()
+                with redirect_stderr(err):
+                    rc = cmp_tool.main([str(a), str(b)])
+                self.assertEqual(rc, 2)
+                self.assertIn("error:", err.getvalue())
+            finally:
+                pkt.chmod(0o600)
 
     def test_unknown_ignore_name_errors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

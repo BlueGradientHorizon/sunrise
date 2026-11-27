@@ -12,6 +12,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 IDS_PATH = ROOT / "crates/sunrise-protocol/src/ids.rs"
 HEX_DIGEST_RE = re.compile(r"^[0-9a-f]{32}$")
+INT_RE = re.compile(r"^-?[0-9]+$")
+
+U32_MAX = (1 << 32) - 1
+I32_MAX = (1 << 31) - 1
+I64_MIN = -(1 << 63)
+I64_MAX = (1 << 63) - 1
+U64_MAX = (1 << 64) - 1
 
 # Clientbound play packets whose wire payloads can carry wall-clock values.
 WALL_CLOCK_PACKETS: tuple[tuple[str, int, str], ...] = (
@@ -51,6 +58,13 @@ class ConnectionCapture:
     packets: list[PacketRecord]
 
 
+def sanitize_filename(name: str) -> str:
+    clean = "".join(
+        c if (c.isascii() and (c.isalnum() or c in "_-")) else "_" for c in name
+    )
+    return clean if clean else "player"
+
+
 def load_play_clientbound_names(path: Path = IDS_PATH) -> list[str]:
     """Return play::clientbound::NAMES indexed by packet id."""
     if not path.is_file():
@@ -75,11 +89,23 @@ def packet_label(packet_id: int, names: list[str]) -> str:
     return f"{packet_id} (unknown)"
 
 
-def _parse_int(text: str, field: str, path: Path, lineno: int) -> int:
-    try:
-        return int(text)
-    except ValueError as err:
-        raise ValueError(f"{path}:{lineno}: invalid {field}: {text!r}") from err
+def _parse_int(
+    text: str,
+    field: str,
+    path: Path,
+    lineno: int,
+    *,
+    min_value: int,
+    max_value: int,
+) -> int:
+    if not INT_RE.match(text):
+        raise ValueError(f"{path}:{lineno}: invalid {field}: {text!r}")
+    value = int(text, 10)
+    if value < min_value or value > max_value:
+        raise ValueError(
+            f"{path}:{lineno}: {field} out of range ({min_value}..={max_value}): {value}"
+        )
+    return value
 
 
 def parse_capture_file(path: Path) -> ConnectionCapture:
@@ -101,10 +127,10 @@ def parse_capture_file(path: Path) -> ConnectionCapture:
     if len(header) != 5 or header[0] != "# v2":
         raise ValueError(f"{path}:1: invalid capture header: {lines[0]!r}")
     run_id = header[1]
-    conn = _parse_int(header[2], "conn", path, 1)
-    ordinal = _parse_int(header[3], "ordinal", path, 1)
+    conn = _parse_int(header[2], "conn", path, 1, min_value=0, max_value=U32_MAX)
+    ordinal = _parse_int(header[3], "ordinal", path, 1, min_value=1, max_value=U32_MAX)
     player = header[4]
-    if not run_id or conn < 0 or ordinal < 1 or not player:
+    if not run_id or not player:
         raise ValueError(f"{path}:1: invalid capture header fields: {lines[0]!r}")
 
     packets: list[PacketRecord] = []
@@ -116,7 +142,9 @@ def parse_capture_file(path: Path) -> ConnectionCapture:
             parts = line.split("\t")
             if len(parts) < 3:
                 raise ValueError(f"{path}:{lineno}: malformed end marker: {line!r}")
-            declared_count = _parse_int(parts[1], "end count", path, lineno)
+            declared_count = _parse_int(
+                parts[1], "end count", path, lineno, min_value=0, max_value=U64_MAX
+            )
             status = parts[2]
             if status != "ok":
                 reason = parts[3] if len(parts) > 3 else status
@@ -136,19 +164,17 @@ def parse_capture_file(path: Path) -> ConnectionCapture:
             raise ValueError(
                 f"{path}:{lineno}: expected 5 tab-separated fields, got {len(parts)}"
             )
-        seq = _parse_int(parts[0], "seq", path, lineno)
-        tick = _parse_int(parts[1], "tick", path, lineno)
-        packet_id = _parse_int(parts[2], "packet_id", path, lineno)
-        length = _parse_int(parts[3], "length", path, lineno)
+        seq = _parse_int(parts[0], "seq", path, lineno, min_value=0, max_value=U64_MAX)
+        tick = _parse_int(parts[1], "tick", path, lineno, min_value=I64_MIN, max_value=I64_MAX)
+        packet_id = _parse_int(
+            parts[2], "packet_id", path, lineno, min_value=0, max_value=I32_MAX
+        )
+        length = _parse_int(parts[3], "length", path, lineno, min_value=0, max_value=U64_MAX)
         digest = parts[4]
         if seq != len(packets):
             raise ValueError(
                 f"{path}:{lineno}: noncontiguous sequence {seq} (expected {len(packets)})"
             )
-        if packet_id < 0:
-            raise ValueError(f"{path}:{lineno}: invalid packet id {packet_id}")
-        if length < 0:
-            raise ValueError(f"{path}:{lineno}: negative length {length}")
         if not HEX_DIGEST_RE.match(digest):
             raise ValueError(f"{path}:{lineno}: invalid digest {digest!r}")
         packets.append(
@@ -174,7 +200,11 @@ def parse_capture_file(path: Path) -> ConnectionCapture:
     )
 
 
-def load_directory(directory: Path) -> dict[tuple[str, int], ConnectionCapture]:
+def load_directory(
+    directory: Path,
+    *,
+    expected_run_id: str | None = None,
+) -> dict[tuple[str, int], ConnectionCapture]:
     """Validate manifest.tsv and every *.pkt file in `directory`, keyed by (player, ordinal)."""
     if not directory.is_dir():
         raise ValueError(f"not a directory: {directory}")
@@ -189,36 +219,94 @@ def load_directory(directory: Path) -> dict[tuple[str, int], ConnectionCapture]:
         lines = raw_bytes.decode("utf-8").splitlines()
     except UnicodeDecodeError as err:
         raise ValueError(f"{manifest_path}: invalid UTF-8: {err}") from err
+    if len(lines) < 2:
+        raise ValueError(f"{manifest_path}: incomplete manifest (missing # end marker)")
 
     header = lines[0].split("\t")
-    if len(header) != 3 or header[0] != "# manifest v1":
+    if len(header) != 3 or header[0] != "# manifest v2":
         raise ValueError(f"{manifest_path}:1: invalid manifest header: {lines[0]!r}")
     run_id, run_status = header[1], header[2]
     if not run_id:
         raise ValueError(f"{manifest_path}:1: empty run id")
+    if expected_run_id is not None and run_id != expected_run_id:
+        raise ValueError(
+            f"{manifest_path}:1: run id {run_id!r} does not match expected {expected_run_id!r}"
+        )
     if run_status != "ok":
         raise ValueError(f"{manifest_path}:1: incomplete capture run (status={run_status})")
 
+    claim_path = directory / ".capture-claim"
+    if claim_path.exists():
+        claim_raw = claim_path.read_bytes()
+        if not claim_raw or not claim_raw.endswith(b"\n"):
+            raise ValueError(f"{claim_path}: truncated capture claim file")
+        try:
+            claim_id = claim_raw.decode("utf-8").strip()
+        except UnicodeDecodeError as err:
+            raise ValueError(f"{claim_path}: invalid UTF-8: {err}") from err
+        if claim_id != run_id:
+            raise ValueError(
+                f"{claim_path}: claim run id {claim_id!r} != manifest run id {run_id!r}"
+            )
+
     captures: dict[tuple[str, int], ConnectionCapture] = {}
     expected_files: set[str] = set()
+    seen_conns: set[int] = set()
+    ordinals_by_player: dict[str, list[int]] = defaultdict(list)
+    ended = False
     for lineno, line in enumerate(lines[1:], start=2):
+        if ended:
+            raise ValueError(f"{manifest_path}:{lineno}: trailing data after manifest end marker")
+        if line.startswith("# end\t"):
+            parts = line.split("\t")
+            if len(parts) != 3:
+                raise ValueError(f"{manifest_path}:{lineno}: malformed manifest end marker: {line!r}")
+            declared_sessions = _parse_int(
+                parts[1], "session count", manifest_path, lineno, min_value=0, max_value=U64_MAX
+            )
+            end_status = parts[2]
+            if end_status != "ok":
+                raise ValueError(
+                    f"{manifest_path}:{lineno}: incomplete manifest end status ({end_status})"
+                )
+            if declared_sessions != len(captures):
+                raise ValueError(
+                    f"{manifest_path}:{lineno}: manifest end session count "
+                    f"{declared_sessions} != {len(captures)} rows"
+                )
+            ended = True
+            continue
+        if line.startswith("#") or not line:
+            raise ValueError(f"{manifest_path}:{lineno}: unexpected line in manifest: {line!r}")
         parts = line.split("\t")
         if len(parts) != 6:
             raise ValueError(
                 f"{manifest_path}:{lineno}: expected 6 tab-separated fields, got {len(parts)}"
             )
-        conn = _parse_int(parts[0], "conn", manifest_path, lineno)
-        ordinal = _parse_int(parts[1], "ordinal", manifest_path, lineno)
+        conn = _parse_int(parts[0], "conn", manifest_path, lineno, min_value=0, max_value=U32_MAX)
+        ordinal = _parse_int(
+            parts[1], "ordinal", manifest_path, lineno, min_value=1, max_value=U32_MAX
+        )
         player, filename, status = parts[2], parts[3], parts[4]
-        declared_count = _parse_int(parts[5], "count", manifest_path, lineno)
-        if conn < 0 or ordinal < 1 or not player:
-            raise ValueError(f"{manifest_path}:{lineno}: invalid session identity")
+        declared_count = _parse_int(
+            parts[5], "count", manifest_path, lineno, min_value=0, max_value=U64_MAX
+        )
+        if not player:
+            raise ValueError(f"{manifest_path}:{lineno}: empty player name")
         if status != "ok":
             raise ValueError(
                 f"{manifest_path}:{lineno}: session {player} (conn={conn}) incomplete ({status})"
             )
-        if not filename or filename == "-" or "/" in filename or "\\" in filename:
-            raise ValueError(f"{manifest_path}:{lineno}: invalid session filename {filename!r}")
+        if conn in seen_conns:
+            raise ValueError(f"{manifest_path}:{lineno}: duplicate conn id {conn}")
+        seen_conns.add(conn)
+
+        expected_filename = f"{sanitize_filename(player)}-{conn}.pkt"
+        if filename != expected_filename:
+            raise ValueError(
+                f"{manifest_path}:{lineno}: invalid session filename {filename!r} "
+                f"(expected {expected_filename!r})"
+            )
         if filename in expected_files:
             raise ValueError(f"{manifest_path}:{lineno}: duplicate filename {filename!r}")
         expected_files.add(filename)
@@ -246,11 +334,24 @@ def load_directory(directory: Path) -> dict[tuple[str, int], ConnectionCapture]:
         if key in captures:
             raise ValueError(f"{manifest_path}:{lineno}: duplicate session key {key!r}")
         captures[key] = cap
+        ordinals_by_player[player].append(ordinal)
 
-    actual_files = {p.name for p in directory.glob("*.pkt") if p.is_file()}
+    if not ended:
+        raise ValueError(f"{manifest_path}: truncated manifest (missing # end marker)")
+
+    for player, ordinals in ordinals_by_player.items():
+        ordered = sorted(ordinals)
+        if ordered != list(range(1, len(ordered) + 1)):
+            raise ValueError(
+                f"{manifest_path}: noncontiguous ordinals for {player!r}: {ordered}"
+            )
+
+    actual_files = {p.name for p in directory.iterdir() if p.name.endswith(".pkt")}
     extra_files = sorted(actual_files - expected_files)
     if extra_files:
-        raise ValueError(f"{directory}: unlisted .pkt file(s) not in manifest: {', '.join(extra_files)}")
+        raise ValueError(
+            f"{directory}: unlisted .pkt file(s) not in manifest: {', '.join(extra_files)}"
+        )
 
     return captures
 
@@ -263,8 +364,8 @@ def resolve_ignores(specs: list[str], names: list[str]) -> set[int]:
             token = raw.strip()
             if not token:
                 continue
-            if token.lstrip("-").isdigit():
-                ignored.add(int(token))
+            if INT_RE.match(token):
+                ignored.add(int(token, 10))
             elif token in name_to_id:
                 ignored.add(name_to_id[token])
             else:
@@ -340,11 +441,14 @@ def compare_dirs(
     dir_b: Path,
     ignored_ids: set[int] | None = None,
     names: list[str] | None = None,
+    *,
+    run_id_a: str | None = None,
+    run_id_b: str | None = None,
 ) -> tuple[list[str], bool]:
     ignored = ignored_ids or set()
     pkt_names = load_play_clientbound_names() if names is None else names
-    a_map = load_directory(dir_a)
-    b_map = load_directory(dir_b)
+    a_map = load_directory(dir_a, expected_run_id=run_id_a)
+    b_map = load_directory(dir_b, expected_run_id=run_id_b)
 
     keys = sorted(set(a_map) | set(b_map))
     if not keys:
@@ -415,6 +519,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("a", type=Path, help="first capture directory")
     parser.add_argument("b", type=Path, help="second capture directory")
     parser.add_argument(
+        "--run-id-a",
+        default=None,
+        metavar="ID",
+        help="require manifest run id of directory A to equal ID",
+    )
+    parser.add_argument(
+        "--run-id-b",
+        default=None,
+        metavar="ID",
+        help="require manifest run id of directory B to equal ID",
+    )
+    parser.add_argument(
         "--ignore",
         action="append",
         default=[],
@@ -430,11 +546,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    names = load_play_clientbound_names()
     try:
+        names = load_play_clientbound_names()
         ignored = resolve_ignores(args.ignore, names)
-        report, same = compare_dirs(args.a, args.b, ignored_ids=ignored, names=names)
-    except ValueError as err:
+        report, same = compare_dirs(
+            args.a,
+            args.b,
+            ignored_ids=ignored,
+            names=names,
+            run_id_a=args.run_id_a,
+            run_id_b=args.run_id_b,
+        )
+    except (ValueError, OSError) as err:
         print(f"error: {err}", file=sys.stderr)
         return 2
     print("\n".join(report))
