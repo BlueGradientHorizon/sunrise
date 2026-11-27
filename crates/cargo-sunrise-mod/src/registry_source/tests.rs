@@ -54,6 +54,29 @@ fn the_index_needs_the_registry_signature_and_a_serial_no_older_than_the_last_ac
     assert!(error.contains(&serial.display().to_string()), "{error}");
 }
 
+#[cfg(unix)]
+#[test]
+fn a_linked_serial_lock_is_refused_without_creating_its_target() {
+    let cache = tempfile::tempdir().unwrap();
+    let serial = cache.path().join(SERIAL);
+    let lock = serial.with_extension("lock");
+    fs::create_dir_all(lock.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink("unused-lock", &lock).unwrap();
+
+    let error = read_index(cache.path(), URL, &serve(FIRST), KEY).unwrap_err();
+    assert!(
+        error.starts_with(&format!("{}: ", lock.display())),
+        "{error}"
+    );
+    assert_eq!(
+        fs::symlink_metadata(lock.with_file_name("unused-lock"))
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::NotFound
+    );
+    assert!(!serial.exists());
+}
+
 fn library(bytes: &[u8]) -> Index {
     serde_json::from_value(serde_json::json!({
         "schema": 2, "serial": 1, "revoked": [],
