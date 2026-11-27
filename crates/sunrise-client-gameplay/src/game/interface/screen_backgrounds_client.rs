@@ -27,7 +27,7 @@ impl crate::game::ClientGame<'_> {
         }
         // Camera.depthFar, as the renderer's far plane.
         let depth_far = sunrise_client::camera::depth_far(
-            self.terrain_distance(),
+            self.effective_render_distance(),
             self.client.settings.cloud_range,
         );
         if !self.client.border_renderer.prepare(

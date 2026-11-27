@@ -131,7 +131,7 @@ pub struct Frame<'a> {
     pub shadow_cache: bool,
     /// Render distance in blocks (fog end).
     pub distance: f32,
-    /// Full-detail terrain distance in blocks; distant LODs bypass the cave graph.
+    /// Terrain render distance in blocks.
     pub detail_distance: f32,
     /// Shadow caster selection distance in blocks; defaults to the effective eye distance
     /// (`detail_distance`) when `None`.

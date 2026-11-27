@@ -232,7 +232,7 @@ keeps its epoch. Unlike `view_hit` and `raycast`, this does not return a block
 behind a targeted entity.
 
 `ClientHost::view_hit()` and `raycast(distance)` cast their own ray along the view
-across loaded chunks only: far terrain is never hit. `raycast` stops at `distance`
+across loaded chunks only. `raycast` stops at `distance`
 (returning `None` for nonpositive or non-finite values), while `view_hit` traverses the
 full loaded-chunk extent. `view_hit` clips each candidate using that block's geometry,
 so loading an unrelated chunk does not move an inside-block hit. Both return `None` on a miss.

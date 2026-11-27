@@ -1,7 +1,6 @@
 packBrowser:true
 pregen:true
 dynamicLights:false
-lodZoomDetail:false
 uiSoundReserve:false
 ownNameTag:true
 skipModdedSplashesIfVanillaModified:true

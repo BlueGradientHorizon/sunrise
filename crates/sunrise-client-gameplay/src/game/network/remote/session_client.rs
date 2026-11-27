@@ -145,7 +145,6 @@ impl crate::game::ClientGame<'_> {
         self.common.border = Default::default();
         self.set_screen(Screen::Playing);
         self.common.container = None;
-        self.clear_lod();
         self.client.pending_uploads.0.clear();
         if let Some(r) = self.client.renderer.0.as_mut() {
             r.clear_sections(self.common.world.layout());
@@ -292,8 +291,7 @@ impl crate::game::ClientGame<'_> {
         let r = self.client.remote.as_mut().unwrap();
         if !same {
             r.collider_shove_start = None;
-            // A same-level respawn keeps the existing ClientLevel's seed and sea level.
-            r.hashed_seed = spawn.seed;
+            // A same-level respawn keeps the existing ClientLevel's sea level.
             r.sea_level = spawn.sea_level;
         }
         let dimension = format.dimension;
@@ -398,7 +396,6 @@ impl crate::game::ClientGame<'_> {
                 r.chunk_center = (0, 0);
                 r.awaiting_viewed_chunk_center = false;
             }
-            self.clear_lod();
             self.client.pending_uploads.0.clear();
             if let Some(renderer) = self.client.renderer.0.as_mut() {
                 renderer.clear_sections(self.common.world.layout());
@@ -553,7 +550,6 @@ impl crate::game::ClientGame<'_> {
         self.set_screen(Screen::Playing);
         self.client.title.0 = None;
         self.common.dim = Dim::Overworld;
-        self.clear_lod();
         self.client.pending_uploads.0.clear();
         if let Some(r) = self.client.renderer.0.as_mut() {
             r.clear_sections(self.common.world.layout());
@@ -583,7 +579,6 @@ impl crate::game::ClientGame<'_> {
             colliders: HashMap::new(),
             collider_shove_start: None,
             carry_age: Default::default(),
-            far_terrain: None,
             builtin,
             status: "Offline packet session".into(),
             lang,
@@ -611,7 +606,6 @@ impl crate::game::ClientGame<'_> {
             facts_cache: Default::default(),
             added_levels: Default::default(),
             viewed: Default::default(),
-            hashed_seed: 0,
             sea_level: 63,
             chunk_format: Arc::new(ChunkFormat::new(
                 &DimensionType::vanilla("minecraft:overworld"),
@@ -840,7 +834,6 @@ impl crate::game::ClientGame<'_> {
         self.set_screen(Screen::Playing);
         self.hide_title();
         self.common.dim = Dim::Overworld;
-        self.clear_lod();
         self.client.pending_uploads.0.clear();
         if let Some(r) = self.client.renderer.0.as_mut() {
             r.clear_sections(self.common.world.layout());
@@ -872,7 +865,6 @@ impl crate::game::ClientGame<'_> {
             colliders: HashMap::new(),
             collider_shove_start: None,
             carry_age: Default::default(),
-            far_terrain: None,
             builtin,
             status: lang
                 .get("connect.connecting")
@@ -902,7 +894,6 @@ impl crate::game::ClientGame<'_> {
             facts_cache: Default::default(),
             added_levels: Default::default(),
             viewed: Default::default(),
-            hashed_seed: 0,
             sea_level: 63,
             chunk_format: Arc::new(ChunkFormat::new(
                 &DimensionType::vanilla("minecraft:overworld"),

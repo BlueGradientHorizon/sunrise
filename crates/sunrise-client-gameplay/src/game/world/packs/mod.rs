@@ -823,7 +823,6 @@ impl crate::game::ClientGame<'_> {
                 .audio
                 .0
                 .reload_with(&game.common.pack.source, sounds);
-            game.clear_lod();
             // A pack that may replace leaf models falls back to `Off` before the
             // reload marks every section dirty.
             game.client.streaming.leaf_culling = game.effective_leaf_culling();

@@ -171,9 +171,6 @@ pub mod extras;
 #[path = "mobs/fangs_client.rs"]
 pub mod fangs_client;
 #[cfg(feature = "client")]
-#[path = "world/far_terrain_edits.rs"]
-pub(in crate::game) mod far_terrain_edits;
-#[cfg(feature = "client")]
 #[path = "entities/fireworks_client.rs"]
 pub mod fireworks_client;
 #[cfg(feature = "client")]
@@ -1242,12 +1239,6 @@ pub struct ClientState {
         sunrise_client::item_activation::ItemActivation,
     pub(in crate::game::client_side) weather_parameters: sunrise_client::weather::ParameterCache,
     pub(in crate::game::client_side) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
-    pub(in crate::game::client_side) lod_source_attempted: bool,
-    pub(in crate::game::client_side) lod_observe: sunrise_level::fast_hash::FxHashSet<(i32, i32)>,
-    /// The server level far terrain keeps the chunks of.
-    pub(in crate::game::client_side) lod_level: Option<String>,
-    /// The detail revision, centre and radius `Lod::update` last had covered for.
-    pub(in crate::game::client_side) lod_covered_at: Option<(u64, (i32, i32), i32)>,
     /// Whether the view's columns have all arrived, and how new it is: large
     /// translucent pages wait for both before they shrink (`set_terrain_loading`).
     pub(in crate::game::client_side) view_arrival: sunrise_level::chunk_streamer::ViewArrival,
@@ -1770,10 +1761,6 @@ pub struct ClientState {
     /// This game's resource packs (`reload_packs` replaces them).
     pub pending_initial_models: ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,
     pub(in crate::game::client_side) stitching_block_atlas: ClientOnly<Option<Arc<RenderAssets>>>,
-    pub lod: ClientOnly<Option<sunrise_client::lod::Lod>>,
-    /// The server's BlueMap far terrain draws from, when the player named one.
-    pub(in crate::game::client_side) lod_blue_map:
-        ClientOnly<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
     /// The monitor whose video modes `settings.video_modes` holds.
     pub(in crate::game::client_side) video_modes: ClientOnly<sunrise_client::window::VideoModeList>,
     pub screen_state: ClientOnly<screen_build::ScreenState>,
@@ -2006,10 +1993,6 @@ impl ClientState {
             item_activation: Default::default(),
             weather_parameters: Default::default(),
             panorama_rotation: Default::default(),
-            lod_source_attempted: false,
-            lod_observe: Default::default(),
-            lod_level: None,
-            lod_covered_at: None,
             view_arrival: Default::default(),
             drop_spam_throttler: Default::default(),
             rope_rot_old: (0.0, 10.0),
@@ -2275,8 +2258,6 @@ impl ClientState {
             dialogs: wc.dialogs,
             pending_initial_models: wc.pending_initial_models,
             stitching_block_atlas: wc.stitching_block_atlas,
-            lod: wc.lod,
-            lod_blue_map: wc.lod_blue_map,
             video_modes: wc.video_modes,
             screen_state: wc.screen_state,
             window: wc.window,
