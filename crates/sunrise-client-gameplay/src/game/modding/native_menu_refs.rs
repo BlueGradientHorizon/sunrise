@@ -261,10 +261,58 @@ impl ClientGame<'_> {
         menu: MenuRef,
         slot: usize,
     ) -> Option<Option<ItemStack>> {
-        let name = self.native_client_menu_name(menu)?;
-        let index =
-            sunrise_gameplay_common::game::inventory_screen_slot(name, i32::try_from(slot).ok()?)?;
+        let index = self.client_menu_game_slot(menu, slot)?;
         Some(self.slot_view(index))
+    }
+
+    /// `Slot.mayPlace`, then `Slot.getMaxStackSize`, of the local player's open menu as this
+    /// client's click prediction asks them: the menu is built as a click builds it, with the
+    /// mods' `menu_slot_rules` and `can_equip` Parts lent. None for a stale or foreign menu, an
+    /// index outside it, or a menu the client's prediction does not model.
+    pub(in crate::game) fn menu_slot_holds(
+        &self,
+        menu: MenuRef,
+        slot: usize,
+        stack: &ItemStack,
+    ) -> Option<u32> {
+        self.with_client_menu_slot(menu, slot, |scratch, env, at| {
+            scratch.menu.slot_holds(env, at, stack)
+        })
+    }
+
+    /// `Slot.mayPickup` of the local player's open menu as this client's click prediction asks
+    /// it, with the stack the slot holds. None as for [`Self::menu_slot_holds`].
+    pub(in crate::game) fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool> {
+        self.with_client_menu_slot(menu, slot, |scratch, env, at| {
+            scratch.menu.slot_gives(env, at)
+        })
+    }
+
+    /// Ask the local player's live menu, built as a click builds it, about menu index `slot`
+    /// (`at` in the built menu). None when the built menu is not the one `menu` names (its slot
+    /// count differs) or has no such slot.
+    fn with_client_menu_slot<R>(
+        &self,
+        menu: MenuRef,
+        slot: usize,
+        ask: impl FnOnce(
+            &crate::game::client_side::menu_clicks_client::ClientMenu,
+            &sunrise_sim::menu::Env,
+            usize,
+        ) -> R,
+    ) -> Option<R> {
+        let index = self.client_menu_game_slot(menu, slot)?;
+        let count = self.client_menu_slot_count(menu)?;
+        self.with_client_menu(false, |scratch, env| {
+            let at = scratch.to_menu(index)?;
+            (scratch.menu.slot_count() == count).then(|| ask(&scratch, env, at))
+        })?
+    }
+
+    /// The game slot that menu index `slot` of the local player's live menu shows.
+    fn client_menu_game_slot(&self, menu: MenuRef, slot: usize) -> Option<usize> {
+        let name = self.native_client_menu_name(menu)?;
+        sunrise_gameplay_common::game::inventory_screen_slot(name, i32::try_from(slot).ok()?)
     }
 }
 pub(in crate::game) fn client_click_ops(
