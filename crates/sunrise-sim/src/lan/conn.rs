@@ -580,10 +580,6 @@ impl PlayerSender {
         if !outbox.alive() {
             return Err(PayloadSendError::Disconnected);
         }
-        #[cfg(feature = "net-trace")]
-        let meta = outbox
-            .capturing()
-            .then(|| super::packet_capture::PacketMeta::from_body(&body));
         let bytes = self
             .framing
             .contents_owned(body)
@@ -612,8 +608,6 @@ impl PlayerSender {
             sender: self.clone(),
             bytes: Some(bytes),
             cost,
-            #[cfg(feature = "net-trace")]
-            meta,
         })
     }
     pub fn send(&self, body: Vec<u8>) {
@@ -852,8 +846,6 @@ pub struct PreparedPayload {
     sender: PlayerSender,
     bytes: Option<Vec<u8>>,
     cost: usize,
-    #[cfg(feature = "net-trace")]
-    meta: Option<super::packet_capture::PacketMeta>,
 }
 impl PreparedPayload {
     /// Publish exactly the bytes prepared earlier, after the transaction commits.
@@ -863,12 +855,7 @@ impl PreparedPayload {
         let To::Pool(outbox, _) = &self.sender.to else {
             unreachable!()
         };
-        if outbox.publish(
-            bytes,
-            self.cost,
-            #[cfg(feature = "net-trace")]
-            self.meta,
-        ) {
+        if outbox.publish(bytes, self.cost) {
             Ok(())
         } else {
             Err(PayloadSendError::Disconnected)
@@ -892,8 +879,6 @@ impl crate::raw_payloads::HostedPreparedSend for PreparedPayload {
             epoch,
             pending: this.sender.pending.clone(),
             cost: this.cost,
-            #[cfg(feature = "net-trace")]
-            meta: this.meta,
         })
     }
 }
@@ -2339,12 +2324,25 @@ fn play(
         shared.release(parts.uuid);
         return;
     };
+    #[cfg(feature = "net-trace")]
+    let capture = match shared.open_capture(conn, &parts.name) {
+        super::CaptureAdmission::Disabled => None,
+        super::CaptureAdmission::Opened(clock, writer) => Some((clock, writer)),
+        super::CaptureAdmission::Sealed => {
+            shared.release(parts.uuid);
+            return;
+        }
+    };
     shared.entered_play();
     let pending = Arc::new(AtomicUsize::new(0));
     let outbox = match io_pool::Outbox::new(pending.clone(), !c.is_memory()) {
         Ok(outbox) => outbox,
         Err(e) => {
             log::warn!("[lan] {e}");
+            #[cfg(feature = "net-trace")]
+            if let Some((_, capture)) = capture {
+                capture.close(Some("outbox_failed"));
+            }
             shared.release(parts.uuid);
             return;
         }
@@ -2358,7 +2356,7 @@ fn play(
         outbox.attach_droppable(queue.clone());
     }
     #[cfg(feature = "net-trace")]
-    if let Some((clock, capture)) = shared.open_capture(conn, &parts.name) {
+    if let Some((clock, capture)) = capture {
         outbox.attach_capture(clock, capture);
     }
     let latency = Arc::new(AtomicI32::new(0));
@@ -2427,6 +2425,15 @@ fn play(
     {
         session.left("server closed".to_owned());
         #[cfg(feature = "net-trace")]
+        if let Some(capture) = outbox.take_capture() {
+            capture.close(None);
+        }
+        session.closed();
+        return;
+    }
+    #[cfg(feature = "net-trace")]
+    if shared.capture_sealed() {
+        session.left("server closed".to_owned());
         if let Some(capture) = outbox.take_capture() {
             capture.close(None);
         }
@@ -4477,6 +4484,104 @@ mod outgoing_budget_tests {
         }
         assert!(s.pending.load(Ordering::Relaxed) <= io_pool::MAX_PENDING);
         assert!(s.held().len() < io_pool::MAX_PENDING / std::mem::size_of::<Vec<u8>>());
+    }
+
+    #[cfg(feature = "net-trace")]
+    fn finish_local_configuration(c: &mut Connection) {
+        c.send(&login::Serverbound::LoginAcknowledged(sunrise_protocol::packets::Empty).encode())
+            .unwrap();
+        loop {
+            let (id, payload) = c.recv().unwrap();
+            match cfg::Clientbound::decode(id, &payload).unwrap() {
+                cfg::Clientbound::SelectKnownPacks(p) => c
+                    .send(&cfg::Serverbound::SelectKnownPacks(p).encode())
+                    .unwrap(),
+                cfg::Clientbound::FinishConfiguration(_) => {
+                    c.send(
+                        &cfg::Serverbound::FinishConfiguration(sunrise_protocol::packets::Empty)
+                            .encode(),
+                    )
+                    .unwrap();
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[cfg(feature = "net-trace")]
+    #[test]
+    fn capture_seals_in_flight_login_drains_unpolled_join_and_refuses_nonempty_start() {
+        let nonempty = tempfile::tempdir().unwrap();
+        std::fs::write(nonempty.path().join("old.pkt"), b"stale\n").unwrap();
+        let config = || crate::lan::NetConfig {
+            announce: false,
+            listen: false,
+            ..crate::lan::NetConfig::loopback(0, "Capture".into(), 8)
+        };
+        let err = match crate::lan::Lan::start_in_capture_dir(
+            Arc::new(crate::lan::data::SyncData::empty()),
+            config(),
+            nonempty.path(),
+        ) {
+            Ok(_) => panic!("nonempty capture directory must fail Lan startup"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+
+        // An in-flight login past try_admit that reaches play after seal is closed without
+        // entering play or escaping manifest accounting.
+        let dir_sealed = tempfile::tempdir().unwrap();
+        let lan = crate::lan::Lan::start_in_capture_dir(
+            Arc::new(crate::lan::data::SyncData::empty()),
+            config(),
+            dir_sealed.path(),
+        )
+        .unwrap();
+        let mut late = Connection::local(lan.connect_local().unwrap());
+        late.reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        login_profile(&mut late, "LateGuest");
+        lan.shared.seal_capture();
+        finish_local_configuration(&mut late);
+        assert!(
+            late.recv().is_err(),
+            "sealed play gate must close late login"
+        );
+        assert!(lan.poll().is_empty(), "sealed login must not emit Joined");
+        drop(lan);
+        let manifest = std::fs::read_to_string(dir_sealed.path().join("manifest.tsv")).unwrap();
+        assert!(manifest.ends_with("# end\t0\tok\n"), "{manifest}");
+
+        // A connection that reached play but was not yet polled by gameplay before Lan::drop
+        // is closed cleanly and finalized in manifest.tsv instead of timing out as unclosed.
+        let dir_unpolled = tempfile::tempdir().unwrap();
+        let lan = crate::lan::Lan::start_in_capture_dir(
+            Arc::new(crate::lan::data::SyncData::empty()),
+            config(),
+            dir_unpolled.path(),
+        )
+        .unwrap();
+        let mut early = Connection::local(lan.connect_local().unwrap());
+        early
+            .reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        login_profile(&mut early, "EarlyGuest");
+        finish_local_configuration(&mut early);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while lan.shared.events.stats().queued_items == 0 {
+            assert!(Instant::now() < deadline, "Joined was not queued");
+            std::thread::yield_now();
+        }
+        drop(lan);
+        assert!(early.recv().is_err(), "Lan::drop must close unpolled guest");
+        let manifest = std::fs::read_to_string(dir_unpolled.path().join("manifest.tsv")).unwrap();
+        assert!(manifest.contains("EarlyGuest-1.pkt\tok\t0"), "{manifest}");
+        assert!(manifest.ends_with("# end\t1\tok\n"), "{manifest}");
+        let pkt = std::fs::read_to_string(dir_unpolled.path().join("EarlyGuest-1.pkt")).unwrap();
+        assert!(pkt.ends_with("# end\t0\tok\n"), "{pkt}");
     }
 }
 
