@@ -33,8 +33,6 @@ macro_rules! registry_repo {
     };
 }
 
-/// The default GitHub repository for the registry's staging and published releases.
-pub const REGISTRY_REPO: &str = registry_repo!();
 /// The default base URL for mirrored packages and native binaries.
 pub const FILE_HOST: &str = concat!(
     "https://github.com/",
