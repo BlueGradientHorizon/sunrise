@@ -1,4 +1,3 @@
-packBrowser:true
 pregen:true
 fullbright:true
 dynamicLights:false

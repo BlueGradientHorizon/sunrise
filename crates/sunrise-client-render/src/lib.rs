@@ -105,7 +105,6 @@ pub use sunrise_level::options_file;
 pub use sunrise_level::options_fixes;
 pub mod options_ui;
 pub mod overlay;
-pub mod pack_browser;
 pub mod pack_formats;
 pub mod pack_hooks;
 pub use sunrise_level::pack_image;
