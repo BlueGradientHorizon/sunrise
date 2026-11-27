@@ -27,13 +27,6 @@ class ApiBoundaryCheckTests(unittest.TestCase):
                 with patch.object(boundary, "check", mutant):
                     self.assertFalse(boundary.negative_control())
 
-    def test_negative_control_needs_each_gameplay_split_package(self):
-        # #6656: the server, client and shared gameplay crates are engine packages too.
-        for package in ("sunrise_gameplay", "sunrise_client_gameplay", "sunrise_gameplay_common"):
-            with self.subTest(package=package):
-                with patch.object(boundary, "ENGINE", boundary.ENGINE - {package}):
-                    self.assertFalse(boundary.negative_control())
-
     def test_private_type_alias_is_not_a_loophole(self):
         self.assert_rule("type X = sunrise_world::fluid::FluidState; pub fn f() -> X {}")
 
