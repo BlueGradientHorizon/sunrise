@@ -151,7 +151,7 @@ exposes. Ports to consoles and handhelds need them, and other projects can build
 Sunrise's own extras and its product, and every built-in address of an outside service vanilla doesn't contact.
 
 - **Belongs:** Sunrise's extras (zoom, Mouse Tweaks, sorting, smooth chat, the
-  music page, keystrokes, auto-reconnect...), Play with Friends and its relay, Discord, the "I'm playing" ping,
+  music page, auto-reconnect...), Play with Friends and its relay, Discord, the "I'm playing" ping,
   telemetry and benchmark uploads, releases and updates, the hosting supervisor, the launcher.
 - **Examples:** `sunrise-addresses`, `sunrise-friends`, `sunrise-relay`, `sunrise-telemetry`,
   `sunrise-perf-share`, `sunrise-perf-overlay`, `sunrise-release-sign`, `sunrise-server`, `sunrise-mod-registry`,
@@ -465,7 +465,7 @@ What the engine draws differently for a crate above, as plain data: client prese
 
 ```rust
 pub struct Look {       // #[non_exhaustive]; Default is vanilla's
-    pub chat: Chat,
+    pub camera_name_tag: bool, pub chat: Chat,
 }
 pub fn update(change: impl FnOnce(&mut Look));  // the player whose turn it is (`seat()`)
 ```
