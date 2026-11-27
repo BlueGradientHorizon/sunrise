@@ -589,6 +589,8 @@ impl Renderer {
             }
         }
         if self.animated_textures {
+            // The animated layers this frame draws, marked as each list is walked.
+            self.active_animated_layers.fill(0);
             let lists = self.world_views.sections.sections();
             for v in visible.iter().chain(&shadow_visible).chain(lists) {
                 let s = self.sections.get(v.slot);
