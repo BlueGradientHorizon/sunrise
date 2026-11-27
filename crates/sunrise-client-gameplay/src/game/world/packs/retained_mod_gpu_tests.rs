@@ -3,6 +3,7 @@ use super::cloud_pack_fixture::{INNER, write_pack};
 use crate::game::ClientGame;
 use crate::game::model_baking_completed_tests::reload;
 use crate::game::native_entity_refs::tests::{test_window, with_client_game};
+use mod_api::__private::game::Fields;
 use mod_api::content::crash::ModCall;
 use mod_api::{
     BufferError, ClientHost, ComputePassDescriptor, FrameGraphSetupEvent, FramePassDescriptor,
@@ -191,14 +192,13 @@ fn retained_mod_gpu_handles_follow_the_device_lifetime() {
         let target = game.create_render_target(&target_desc).unwrap();
         game.storage_buffer_write_range(buffer, 0, &FIRST).unwrap();
         let old_ticket = submit_frame(game, buffer, 4, Some((target, [1.0, 0.0, 1.0, 1.0])));
+        let mesh_buffers = [MeshBufferInit::from_bytes(24, &[0; 96])];
+        let mesh_desc = MeshDescriptor::new(&mesh_buffers);
+        let mesh = game.create_mesh(&mesh_desc).unwrap();
+        let uniform = game.create_uniform_buffer(&[0; 16]).unwrap();
 
-        if std::env::var(CASE).unwrap() == "reuse" {
-            let mesh = game
-                .create_mesh(&MeshDescriptor::new(&[MeshBufferInit::from_bytes(
-                    24, &[0; 96],
-                )]))
-                .unwrap();
-            let uniform = game.create_uniform_buffer(&[0; 16]).unwrap();
+        let case = std::env::var(CASE).unwrap();
+        if case == "reuse" {
             game.storage_buffer_write_range(buffer, 4, &QUEUED).unwrap();
             let generation = game.client.client_pack.render.generation;
             write_pack("retained_gpu", INNER);
@@ -293,6 +293,25 @@ fn retained_mod_gpu_handles_follow_the_device_lifetime() {
             assert_eq!(read_ticket(game, fresh_ticket), QUEUED);
             assert_pixel(game, fresh_target, [0, 255, 0, 255]);
         }
+
+        // A retired ref must stay stale even when the same owner occupies its old slot.
+        let fresh_mesh = game.create_mesh(&mesh_desc).unwrap();
+        let fresh_uniform = game.create_uniform_buffer(&[0; 16]).unwrap();
+        assert_eq!(fresh_mesh.fields().slot, mesh.fields().slot);
+        assert_eq!(fresh_uniform.fields().slot, uniform.fields().slot);
+        game.mesh_write_vertices(fresh_mesh, 0, 0, &QUEUED).unwrap();
+        game.uniform_buffer_write(fresh_uniform, 0, &QUEUED)
+            .unwrap();
+        assert_eq!(
+            game.mesh_write_vertices(mesh, 0, 0, &FIRST),
+            Err(MeshError::Stale),
+            "{case}: retired mesh must reject writes after same-owner slot reuse"
+        );
+        assert_eq!(
+            game.uniform_buffer_write(uniform, 0, &FIRST),
+            Err(BufferError::Stale),
+            "{case}: retired uniform buffer must reject writes after same-owner slot reuse"
+        );
         drop(game.client.renderer.0.take());
         drop(game.client.mod_gpu.take());
     });
