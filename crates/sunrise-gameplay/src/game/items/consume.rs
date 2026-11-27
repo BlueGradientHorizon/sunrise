@@ -587,22 +587,22 @@ impl EmissionWorld for Emitter<'_, '_> {
         &mut self.0.player.as_mut().expect("emitting player").random
     }
     /// `LivingEntity.spawnItemParticles`.
-    fn spawn_item_particles(&mut self, stack: ItemStack, count: i32) -> Result<(), Infallible> {
-        if count > 5
-            && let Some(at) = self.0.eye_position()
-        {
-            self.0
-                .server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
-                    dimension: self.0.dim.id(),
-                    particle: sunrise_sim::lan::server_effects::ServerParticle::item(stack),
-                    at,
-                    spread: [0.0; 3],
-                    speed: [0.0; 3],
-                    count,
-                    randomization: 0,
-                    except: self.0.server.lan_acting,
-                });
-        }
+    fn spawn_item_particles(&mut self, _: ItemStack, count: i32) -> Result<(), Infallible> {
+        let Some(position) = self.0.player.as_ref().map(|player| player.position) else {
+            return Ok(());
+        };
+        let eye_y = self.0.eye_position().map_or(position.y, |eye| eye[1]);
+        let (pitch, yaw) = (self.0.pitch, self.0.yaw);
+        // The headless server still advances the player's random source for each crumb.
+        sunrise_level::particle_options::item_use_particles(
+            self.random_source(()),
+            pitch,
+            yaw,
+            [position.x, position.y, position.z],
+            eye_y,
+            count.max(0) as u32,
+            |_, _| {},
+        );
         Ok(())
     }
     fn overrides_consume_sound(&self) -> bool {

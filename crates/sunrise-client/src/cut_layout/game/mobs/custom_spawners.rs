@@ -259,6 +259,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "client")]
     #[test]
     #[ignore = "daily"]
     fn custom_spawners_do_not_run_on_client_side() {
@@ -280,13 +281,15 @@ mod tests {
             Box::new(ClientProbe(calls.clone())),
         )];
         mod_platform::testing::with_mods(mods.into(), || {
-            with_game(|game| {
-                game.common.options.execution_role =
-                    sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
-                game.init_custom_spawners(Dim::Overworld);
-                game.tick_spawners();
-                game.tick_custom_spawners();
-                assert!(game.common.creatures.custom_spawners.is_empty());
+            crate::game::integrated_pair::with_integrated_pair(|pair| {
+                pair.call(|game| {
+                    game.common.options.execution_role =
+                        sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+                    game.init_custom_spawners(Dim::Overworld);
+                    game.tick_spawners();
+                    game.tick_custom_spawners();
+                    assert!(game.common.creatures.custom_spawners.is_empty());
+                });
             });
         });
         assert_eq!(calls.load(Ordering::Relaxed), 0);

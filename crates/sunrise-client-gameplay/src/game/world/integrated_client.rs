@@ -207,7 +207,7 @@ impl crate::game::ClientGame<'_> {
         server.queue_pregen_option(enabled);
     }
     pub(in crate::game) fn client_has_singleplayer_server(&self) -> bool {
-        self.client.integrated.is_some()
+        self.client.remote.is_none() || self.client.integrated.is_some()
     }
     pub(in crate::game) fn client_is_published(&self) -> bool {
         self.client

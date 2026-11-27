@@ -84,7 +84,7 @@ pub(crate) mod tests {
             &settings,
             Instant::now(),
             false,
-            execution_role::ExecutionRole::IntegratedServer,
+            execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )

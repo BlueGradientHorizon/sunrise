@@ -6,10 +6,20 @@ use mod_api::{
     ClientHost, GuiLayerPlacement, Hooks, ModEntry, RegisterGuiLayersEvent, RegistrationContext,
 };
 use std::sync::Mutex;
+use sunrise_client_gameplay::game::ClientGame;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 use sunrise_gameplay_common::game::{Screen, execution_role::ExecutionRole};
 use sunrise_sim::motion::PlayerMotion;
+
+fn set_fixture_mode_id(game: &mut ClientGame<'_>, id: i32) {
+    let mode = sunrise_gameplay_common::game_modes::mode_from_id(id);
+    if mode != game.mode {
+        game.previous_mode = Some(game.mode);
+    }
+    game.mode = mode;
+    game.creative = mode == sunrise_command::args::GameMode::Creative;
+}
 
 static SEEN: Mutex<Vec<(&str, Option<[i32; 2]>)>> = Mutex::new(Vec::new());
 
@@ -109,7 +119,7 @@ fn a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left() {
         game.client.title.0 = None;
         game.client.screen = Screen::Playing;
         game.client.chat_ui.hide_gui = false;
-        game.set_local_mode(sunrise_command::args::GameMode::Survival);
+        set_fixture_mode_id(game, 0);
         // One row of hearts, one point of armour, full food and depleted air above water: the
         // health, armour, food and air rows each take 10 pixels.
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();

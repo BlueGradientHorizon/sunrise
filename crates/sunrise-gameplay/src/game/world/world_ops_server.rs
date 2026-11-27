@@ -171,11 +171,15 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn server_recipes(&self) -> &Recipes {
-        self.server
-            .world_tables
-            .0
-            .as_ref()
-            .map_or_else(|| self.common.res.recipes(), |t| &t.recipes)
+        match &self.server.world_tables.0 {
+            Some(tables) => &tables.recipes,
+            None => self
+                .common
+                .recipe_tables
+                .synced
+                .as_ref()
+                .unwrap_or_else(|| self.common.res.recipes()),
+        }
     }
 
     #[allow(dead_code)]

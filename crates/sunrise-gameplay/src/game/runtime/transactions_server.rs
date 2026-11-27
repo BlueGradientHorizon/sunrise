@@ -110,7 +110,7 @@ impl crate::game::ServerGame<'_> {
         let retire = !self.has_level_transaction()
             && !entities::is_committing(&self.common.transactions.committing, self.common.dim);
         let guard = ClosingPhase::new(self, outer);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         guard
             .game
             .trace_storage_attempt(if commit { "commit" } else { "abort" }.into());
@@ -1455,7 +1455,7 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|entity| entity.slots_mut().get_mut(slot))
             {
                 *target = kept.stack;
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 if let Some(trace) = &self.common.transactions.trace {
                     trace
                         .lock()

@@ -757,6 +757,10 @@ pub mod tests {
     /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.
     pub fn watched_guest(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
         open_to_lan(game);
+        watch_guest_in_hub(game)
+    }
+
+    pub fn watch_guest_in_hub(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
         let (tx, rx) = mpsc::channel();
         let mut player = guest(1);
         player.sender = PlayerSender::new(tx, Arc::default());

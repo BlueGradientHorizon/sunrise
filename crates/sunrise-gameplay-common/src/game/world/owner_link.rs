@@ -70,6 +70,8 @@ pub enum OwnerRequest {
     /// Tests reach into the server thread's `Game` (`Integrated::call`, `Integrated::post`).
     #[cfg(any())]
     InTest(Box<dyn FnOnce(&mut crate::game::ServerGame<'_>) + Send>),
+    #[cfg(feature = "test-owner-requests")]
+    TestTask(Box<dyn std::any::Any + Send>),
 }
 
 /// The agent-control asks, answered on the server thread in the owner's level.

@@ -289,6 +289,8 @@ pub(crate) fn with_input_game(
     with_mods(mods, || {
         with_client_game(|game| {
             let (_window_loop, id) = attach_offscreen_window(game);
+            // Let idle queue redraws for the window since the input fixture has no server.
+            game.options.offscreen = false;
             test(game, id, &state);
             assert!(
                 game.error.is_none(),

@@ -229,6 +229,7 @@ pub fn with_game_role_and_facts(
     // A game that opened its world resolves its parts; the harness stops
     // short of the open, so do it here for the by-state part table.
     resolve_parts(&game).unwrap();
+    game.install_root_block_transformers();
     // The title's save folder is under the working directory: give each test its own, so a
     // test that saves leaves the checkout clean and parallel tests don't share files.
     game.server.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(

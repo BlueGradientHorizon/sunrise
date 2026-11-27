@@ -279,7 +279,7 @@ impl crate::game::ServerGame<'_> {
             attacker_team,
             victim_team,
         );
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         let answer = sunrise_gameplay_common::game::rule_replacements::harm(attacker, victim)
             .unwrap_or(answer);
         let _ = (attacker, victim);

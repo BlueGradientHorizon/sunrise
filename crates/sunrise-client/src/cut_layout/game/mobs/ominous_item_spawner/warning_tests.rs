@@ -258,5 +258,20 @@ fn residency_command_positions_and_client_spawner_clock() {
         assert_eq!(game.ominous_spawners[0].position, [64.0, 80.0, 64.0]);
         assert!(game.run_command("tp @e[type=minecraft:area_effect_cloud] -32.0 90.0 -48.0"));
         assert_eq!(game.breath_clouds[0].at, [-32.0, 90.0, -48.0]);
+        with_spawner_client(game, |client| {
+            client.tick_remote_ominous_item_spawners();
+            assert_eq!(client.ominous_spawners[0].tick_count, 1);
+        });
+    });
+}
+
+fn with_spawner_client(
+    server: &mut sunrise_gameplay::game::ServerGame<'_>,
+    test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
+) {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
+        client.world.game_time = server.world.game_time;
+        client.ominous_spawners.append(&mut server.ominous_spawners);
+        test(client);
     });
 }

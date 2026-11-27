@@ -839,68 +839,81 @@ pub(crate) mod tests {
     }
     /// Each refusal has its own name and sends and changes nothing: another window or none
     /// open, no such player, a stack the game refuses, and a client.
+    #[cfg(feature = "client")]
     #[test]
     #[ignore = "daily"]
     fn each_menu_items_refusal_has_its_own_name_and_sends_nothing() {
         use mod_api::{MenuItemsRefusal, StackWriteError};
-        with_game(|game| {
-            let rx = watched_guest(game);
-            let player = game.player(123).unwrap();
-            let api = |stack: ItemStack| stack.try_into_api().unwrap();
-            let one = vec![Some(api(ItemStack::new("minecraft:stone", 1)))];
-            let inventory = player.container_menu(game).unwrap();
-            let host: &mut dyn ServerHost = game;
-            assert_eq!(
-                inventory.set_items(host, one.clone()),
-                Err(MenuItemsRefusal::NotOpen),
-                "inventory menu"
-            );
-            let stale = open(game, 1, "old", MenuReplace::CloseFirst);
-            let menu = open(game, 1, "shop", MenuReplace::CloseFirst);
-            game.server.lan.as_mut().unwrap().hub.guests.push(guest(2));
-            let other = game.player(124).unwrap();
-            let offline = other
-                .open_chest_menu(
-                    game,
-                    1,
-                    mod_api::Text::literal("other"),
-                    Vec::new(),
-                    MenuReplace::CloseFirst,
-                )
-                .unwrap();
-            game.server.lan.as_mut().unwrap().hub.guests.remove(1);
-            sent(&rx);
-            let before = game.server.lan.as_ref().unwrap().hub.guests[0]
-                .native_menu
-                .clone();
-            let host: &mut dyn ServerHost = game;
-            assert_eq!(
-                stale.set_items(host, one.clone()),
-                Err(MenuItemsRefusal::NotOpen),
-                "stale menu"
-            );
-            assert_eq!(
-                offline.set_items(host, one.clone()),
-                Err(MenuItemsRefusal::NoPlayer)
-            );
-            let mut too_many = api(ItemStack::new("minecraft:stone", 1));
-            too_many.set_count(65).unwrap();
-            assert_eq!(
-                menu.set_items(host, vec![Some(too_many)]),
-                Err(MenuItemsRefusal::Stack(StackWriteError::CountExceeded {
-                    maximum: 64
-                }))
-            );
-            assert!(sent(&rx).is_empty(), "nothing was sent");
-            assert_eq!(
-                game.server.lan.as_ref().unwrap().hub.guests[0].native_menu,
-                before,
-                "nothing was changed"
-            );
-            game.options.execution_role =
-                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
-            let host: &mut dyn ServerHost = game;
-            assert_eq!(menu.set_items(host, one), Err(MenuItemsRefusal::Client));
+        use sunrise_gameplay::game::server_side::native_menus::tests::watch_guest_in_hub;
+
+        crate::game::integrated_pair::with_integrated_pair(|pair| {
+            pair.call(|game| {
+                let rx = watch_guest_in_hub(game);
+                let player = game.player(123).unwrap();
+                let api = |stack: ItemStack| stack.try_into_api().unwrap();
+                let one = vec![Some(api(ItemStack::new("minecraft:stone", 1)))];
+                let inventory = player.container_menu(game).unwrap();
+                let host: &mut dyn ServerHost = game;
+                assert_eq!(
+                    inventory.set_items(host, one.clone()),
+                    Err(MenuItemsRefusal::NotOpen),
+                    "inventory menu"
+                );
+                let stale = open(game, 1, "old", MenuReplace::CloseFirst);
+                let menu = open(game, 1, "shop", MenuReplace::CloseFirst);
+                game.server.lan.as_mut().unwrap().hub.guests.push(guest(2));
+                let other = game.player(124).unwrap();
+                let offline = other
+                    .open_chest_menu(
+                        game,
+                        1,
+                        mod_api::Text::literal("other"),
+                        Vec::new(),
+                        MenuReplace::CloseFirst,
+                    )
+                    .unwrap();
+                let other_index = game.guest_index(2).unwrap();
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .remove(other_index);
+                let watched = game.guest_index(1).unwrap();
+                sent(&rx);
+                let before = game.server.lan.as_ref().unwrap().hub.guests[watched]
+                    .native_menu
+                    .clone();
+                let host: &mut dyn ServerHost = game;
+                assert_eq!(
+                    stale.set_items(host, one.clone()),
+                    Err(MenuItemsRefusal::NotOpen),
+                    "stale menu"
+                );
+                assert_eq!(
+                    offline.set_items(host, one.clone()),
+                    Err(MenuItemsRefusal::NoPlayer)
+                );
+                let mut too_many = api(ItemStack::new("minecraft:stone", 1));
+                too_many.set_count(65).unwrap();
+                assert_eq!(
+                    menu.set_items(host, vec![Some(too_many)]),
+                    Err(MenuItemsRefusal::Stack(StackWriteError::CountExceeded {
+                        maximum: 64
+                    }))
+                );
+                assert!(sent(&rx).is_empty(), "nothing was sent");
+                assert_eq!(
+                    game.server.lan.as_ref().unwrap().hub.guests[watched].native_menu,
+                    before,
+                    "nothing was changed"
+                );
+                game.options.execution_role =
+                    sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+                let host: &mut dyn ServerHost = game;
+                assert_eq!(menu.set_items(host, one), Err(MenuItemsRefusal::Client));
+            });
         });
     }
     #[test]

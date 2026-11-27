@@ -357,6 +357,9 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         '__sg: 's,
     {
         if !self.is_logical_server() {
+            if <Self::State as crate::game::Side>::IS_SERVER {
+                return None;
+            }
             return self.side_state().side_game_tag_items(&self.res);
         }
         self.side_tags_ready().then(|| self.items())
@@ -403,7 +406,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "test-support")))]
         if !mod_api::__private::content_owners_published() {
             return Err("Mod parts refused: content ownership has not been published".into());
         }

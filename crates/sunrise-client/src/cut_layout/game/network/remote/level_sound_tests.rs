@@ -1,16 +1,11 @@
-use crate::game::remote::movement_input_tests::local_rotation_tests::sent_packets;
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
+use crate::game::integrated_pair::{IntegratedPair, with_integrated_pair};
 use mod_api::{Flow, HostSide, SoundPlay, SoundSource};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use sunrise_client_gameplay::game::client_side::native_client_session::tests::{
-    finish_login, logged_client,
-};
 use sunrise_gameplay_common::game::remote::{C, PlayerMotion, Vec3, play};
-use sunrise_protocol::connection::Connection;
 
 #[derive(Default)]
 pub(crate) struct Log {
+    entity_id: i32,
     pub(in crate::game) requests: Vec<&'static str>,
     pub(in crate::game) played: Vec<SoundPlay>,
 }
@@ -66,13 +61,11 @@ fn packets_ask_client_level_before_playback_not_ui() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_client_game(|game| {
-            let mut server = Connection::local(logged_client(game));
-            server
-                .reader
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            finish_login(game, &mut server);
+        with_integrated_pair(|pair| {
+            sent_packets(pair, i32::MIN);
+            let game = &mut *pair.client;
+            let entity_id = game.client.remote.as_ref().unwrap().entity_id;
+            log.lock().unwrap().entity_id = entity_id;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 4.0)).unwrap());
             let inputs = Arc::new(LoadInputs::new(
                 Default::default(),
@@ -138,7 +131,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
                     seed: -17,
                 })
             };
-            deliver(game, entity(7));
+            deliver(game, entity(entity_id));
             {
                 let log = log.lock().unwrap();
                 assert_eq!(log.requests, ["position", "position", "entity"]);
@@ -151,7 +144,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
             }
             let bound = game.test_audio_mut().engine.bound_entities();
             assert_eq!(bound.len(), 1);
-            assert_eq!(bound[0].id, 7);
+            assert_eq!(bound[0].id, entity_id as u32);
             game.player.as_mut().unwrap().position.x = 9.0;
             game.tick_sound_engine();
             assert_eq!(bound[0].state().position, [9.0, 64.0, 4.0]);
@@ -172,11 +165,52 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 log.played.last().unwrap().identifier,
                 "minecraft:ui.button.click"
             );
+            assert!(
+                pair.call(|server| server.server.bound_sounds.is_empty()),
+                "client playback is never broadcast"
+            );
             assert_eq!(
-                sent_packets(game, &mut server),
+                sent_packets(pair, i32::MIN + 1),
                 0,
                 "client playback is never broadcast"
             );
         });
     });
+}
+
+// The playback case owns the test inbox after login and drains it through the marker.
+fn sent_packets(pair: &mut IntegratedPair<'_, '_, '_>, id: i32) -> usize {
+    use std::time::{Duration, Instant};
+    use sunrise_protocol::packets::{configuration::Ping, play::Serverbound};
+    use sunrise_sim::lan::NetEvent;
+
+    pair.client.send(Serverbound::Pong(Ping { id }));
+    pair.call(move |server| {
+        let host = server.server.lan.as_ref().unwrap();
+        let owner = server.server.serving.as_ref().unwrap().owner;
+        let conn = host
+            .hub
+            .online_players()
+            .find(|guest| guest.uuid == owner)
+            .unwrap()
+            .conn;
+        let mut count = 0;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            for receipt in host.hub.lan.poll() {
+                match receipt.into_parts().0 {
+                    NetEvent::Packet(source, packet, _) if source == conn => {
+                        if matches!(*packet, Serverbound::Pong(ping) if ping.id == id) {
+                            return count;
+                        }
+                        count += 1;
+                    }
+                    NetEvent::RawPayload(_) => count += 1,
+                    _ => {}
+                }
+            }
+            assert!(Instant::now() < deadline, "server receive fence timed out");
+            std::thread::yield_now();
+        }
+    })
 }

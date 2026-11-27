@@ -38,59 +38,68 @@ pub fn with_guests_for_role(
     test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     super::native_entity_refs::tests::with_game_role(root, role, |game| {
-        let settings = LanSettings {
-            port: 0,
-            guest_commands: false,
-            force_game_mode: false,
-        };
-        let net = NetConfig {
-            listen: false,
-            announce: false,
-            lod_distance: 0,
-            ..NetConfig::lan(0, String::new(), 2)
-        };
-        let config = HubConfig {
-            default_game_mode: 0,
-            guest_commands: false,
-            force_game_mode: false,
-            hardcore: false,
-            view_distance: 2,
-            simulation_distance: 2,
-            dimension: game.dim.id().to_owned(),
-            allow_flight: true,
-            seed: 0,
-            max_players: 2,
-            integrated: role == ExecutionRole::IntegratedServer,
-            levels: game.server.level_shapes.clone(),
-            level_seeds: game.server.levels.0.runtime.seeds(),
-        };
-        game.lan_host(settings, net, config).unwrap();
-        for id in [12, 13] {
-            // These guests bypass login's entity ID allocation; reserve their IDs before spawning.
-            game.server.next_entity = game.server.next_entity.max(id);
-            let (tx, _rx) = std::sync::mpsc::channel();
-            let mut guest = Guest::new(
-                Joined {
-                    conn: id,
-                    uuid: u128::from(id),
-                    name: format!("guest{id}"),
-                    properties: Vec::new(),
-                    info: ClientInformation::new(8),
-                    brand: String::new(),
-                    sender: PlayerSender::new(tx, Arc::new(AtomicUsize::new(0))),
-                    latency: Arc::new(AtomicI32::new(0)),
-                    address: "127.0.0.1:1".parse().unwrap(),
-                    expected: false,
-                },
-                id as i32,
-                [3.0, 64.0, 5.0],
-                10,
-            );
-            guest.placed = true;
-            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
-        }
+        open_fixture_hub(game);
+        add_fixture_guests(game);
         test(game);
     });
+}
+
+pub fn open_fixture_hub(game: &mut crate::game::ServerGame<'_>) {
+    let role = game.options.execution_role;
+    let settings = LanSettings {
+        port: 0,
+        guest_commands: false,
+        force_game_mode: false,
+    };
+    let net = NetConfig {
+        listen: false,
+        announce: false,
+        lod_distance: 0,
+        ..NetConfig::lan(0, String::new(), 2)
+    };
+    let config = HubConfig {
+        default_game_mode: 0,
+        guest_commands: false,
+        force_game_mode: false,
+        hardcore: false,
+        view_distance: 2,
+        simulation_distance: 2,
+        dimension: game.dim.id().to_owned(),
+        allow_flight: true,
+        seed: 0,
+        max_players: 2,
+        integrated: role == ExecutionRole::IntegratedServer,
+        levels: game.server.level_shapes.clone(),
+        level_seeds: game.server.levels.0.runtime.seeds(),
+    };
+    game.lan_host(settings, net, config).unwrap();
+}
+
+pub fn add_fixture_guests(game: &mut crate::game::ServerGame<'_>) {
+    for id in [12, 13] {
+        // These guests bypass login's entity ID allocation; reserve their IDs before spawning.
+        game.server.next_entity = game.server.next_entity.max(id);
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut guest = Guest::new(
+            Joined {
+                conn: id,
+                uuid: u128::from(id),
+                name: format!("guest{id}"),
+                properties: Vec::new(),
+                info: ClientInformation::new(8),
+                brand: String::new(),
+                sender: PlayerSender::new(tx, Arc::new(AtomicUsize::new(0))),
+                latency: Arc::new(AtomicI32::new(0)),
+                address: "127.0.0.1:1".parse().unwrap(),
+                expected: false,
+            },
+            id as i32,
+            [3.0, 64.0, 5.0],
+            10,
+        );
+        guest.placed = true;
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
+    }
 }
 
 /// Add a fixture menu to both the hub's protocol registry and the mod API's menu keys.

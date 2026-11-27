@@ -336,25 +336,27 @@ pub(in crate::game) fn client_click_ops(
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     use super::*;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     use std::sync::Mutex;
     use std::sync::{
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
+    use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(in crate::game) const PANEL: &str = "test:panel";
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub struct Panel {
         pub(in crate::game) opening: Arc<Mutex<Option<(MenuRef, usize)>>>,
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Panel {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -403,6 +405,18 @@ pub mod tests {
         slots: usize,
         test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Option<(MenuRef, usize)>>),
     ) {
+        with_panel_fixture(slots, |opening| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
+                let _server =
+                    crate::game::client_side::native_client_session::tests::logged_client(game);
+                install_panel_registry(game);
+                test(game, opening);
+            });
+        });
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_panel_fixture(slots: usize, test: impl FnOnce(&Mutex<Option<(MenuRef, usize)>>)) {
         let opening = Arc::new(Mutex::new(None));
         let panel = Panel {
             opening: opening.clone(),
@@ -423,26 +437,22 @@ pub mod tests {
                     false,
                     None,
                 )],
-                || {
-                    super::super::native_entity_refs::tests::with_client_game(|game| {
-                        let _server =
-                            crate::game::client_side::native_client_session::tests::logged_client(
-                                game,
-                            );
-                        Arc::make_mut(&mut game.client.remote.as_mut().unwrap().builtin)
-                            .registries
-                            .insert(
-                                "minecraft:menu".into(),
-                                sunrise_protocol::registry::Ids::from_names(vec![PANEL.into()]),
-                            );
-                        test(game, &opening);
-                    })
-                },
+                || test(&opening),
             );
         });
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
+    fn install_panel_registry(game: &mut crate::game::ClientGame<'_>) {
+        Arc::make_mut(&mut game.client.remote.as_mut().unwrap().builtin)
+            .registries
+            .insert(
+                "minecraft:menu".into(),
+                sunrise_protocol::registry::Ids::from_names(vec![PANEL.into()]),
+            );
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
     pub(in crate::game::client_side) fn open_panel(game: &mut crate::game::ClientGame<'_>) {
         use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
         game.handle_packet(Clientbound::OpenScreen(OpenScreen {
@@ -503,51 +513,51 @@ pub mod tests {
         });
     }
 
-    #[cfg(test)]
-    #[test]
-    #[ignore = "daily"]
-    fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn check_inventory_boxes_follow_menu_indices_and_the_input_layout(
+        game: &mut crate::game::ClientGame<'_>,
+        opening: &Mutex<Option<(MenuRef, usize)>>,
+    ) {
         use sunrise_gameplay_common::game::Side as _;
 
-        with_panel(0, |game, opening| {
-            game.client.screen = super::super::Screen::Inventory;
-            let batch =
-                super::super::HudBatch::new([800, 600], game.client.settings.gui_scale_inputs());
-            let boxes = game
-                .inventory_menu_slot_boxes(0, "inventory", &batch)
-                .unwrap();
-            assert_eq!(boxes.len(), 46);
-            for (index, expected_slot) in [(0, 200), (9, 9), (36, 0), (45, 504)] {
-                let [x, y, w, h] = boxes[index].unwrap();
-                assert_eq!(
-                    game.slot_at(&batch, x + w / 2.0, y + h / 2.0),
-                    Some(expected_slot)
-                );
-            }
-            assert!(game.inventory_menu_slot_boxes(1, PANEL, &batch).is_none());
-            game.client.screen = super::super::Screen::Playing;
-            open_panel(game);
-            let menu = game
-                .player_container_menu(game.local_player().unwrap())
-                .unwrap();
+        install_panel_registry(game);
+        game.client.screen = super::super::Screen::Inventory;
+        let batch =
+            super::super::HudBatch::new([800, 600], game.client.settings.gui_scale_inputs());
+        let boxes = game
+            .inventory_menu_slot_boxes(0, "inventory", &batch)
+            .unwrap();
+        assert_eq!(boxes.len(), 46);
+        for (index, expected_slot) in [(0, 200), (9, 9), (36, 0), (45, 504)] {
+            let [x, y, w, h] = boxes[index].unwrap();
             assert_eq!(
-                *opening.lock().unwrap(),
-                Some((menu, 0)),
-                "the same live handle and count are available during screen_opening"
+                game.slot_at(&batch, x + w / 2.0, y + h / 2.0),
+                Some(expected_slot)
             );
-            assert!(
-                game.inventory_menu_slot_boxes(1, "unsupported", &batch)
-                    .is_none()
-            );
-            assert_eq!(
-                game.inventory_menu_slot_boxes(1, PANEL, &batch),
-                Some(vec![])
-            );
-            assert!(
-                crate::game::ClientState::as_server_host_mut(game).is_none(),
-                "the client cannot write the live menu's data slots"
-            );
-        });
+        }
+        assert!(game.inventory_menu_slot_boxes(1, PANEL, &batch).is_none());
+        game.client.screen = super::super::Screen::Playing;
+        open_panel(game);
+        let menu = game
+            .player_container_menu(game.local_player().unwrap())
+            .unwrap();
+        assert_eq!(
+            *opening.lock().unwrap(),
+            Some((menu, 0)),
+            "the same live handle and count are available during screen_opening"
+        );
+        assert!(
+            game.inventory_menu_slot_boxes(1, "unsupported", &batch)
+                .is_none()
+        );
+        assert_eq!(
+            game.inventory_menu_slot_boxes(1, PANEL, &batch),
+            Some(vec![])
+        );
+        assert!(
+            crate::game::ClientState::as_server_host_mut(game).is_none(),
+            "the client cannot write the live menu's data slots"
+        );
     }
 
     #[cfg(test)]
@@ -1097,10 +1107,4 @@ use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _
 #[cfg(test)]
 use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1 as _;
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
-
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

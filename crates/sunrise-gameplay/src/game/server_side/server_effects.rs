@@ -3,6 +3,11 @@ use crate::game::ServerGame;
 use sunrise_game_data::sound_source::ServerSound;
 
 impl ServerGame<'_> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_positional_sound_count(&self, event: &str) -> Option<&u32> {
+        self.server.test_positional_sound_counts.get(event)
+    }
+
     #[inline(always)]
     pub fn start_audio_capture(&mut self) {
         assert!(
@@ -96,6 +101,14 @@ impl ServerGame<'_> {
             self.is_logical_server(),
             "server_play_sound_on called on Client role"
         );
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            *self
+                .server
+                .test_positional_sound_counts
+                .entry(event.to_owned())
+                .or_default() += 1;
+        }
         if self.server.audio_capture_active {
             self.server.pending_sounds.push(ServerSound {
                 event: event.to_owned(),

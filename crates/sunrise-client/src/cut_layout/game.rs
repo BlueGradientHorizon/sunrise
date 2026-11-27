@@ -1050,3 +1050,7 @@ pub mod cauldron_interactions;
 #[path = "game/blocks/block_items.rs"]
 #[doc(hidden)]
 pub mod block_items;
+
+#[cfg(all(test, feature = "client"))]
+#[path = "game/integrated_pair.rs"]
+mod integrated_pair;

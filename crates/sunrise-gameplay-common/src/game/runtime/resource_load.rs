@@ -175,9 +175,9 @@ pub fn named_scope<'scope, T: Send + 'scope>(
     name: &str,
     f: impl FnOnce() -> T + Send + 'scope,
 ) -> std::thread::ScopedJoinHandle<'scope, T> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     let inherited = mod_api::testing::inherit_mods(move |_: &()| f());
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     let f = move || inherited(&());
     std::thread::Builder::new()
         .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)

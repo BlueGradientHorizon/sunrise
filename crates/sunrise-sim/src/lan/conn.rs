@@ -617,6 +617,15 @@ impl PlayerSender {
                 .try_encode()
                 .is_ok_and(|body| self.queue_body(body.into(), false))
     }
+    #[cfg(feature = "test-support")]
+    pub fn send_test_receive_fence(&self, id: i32) -> bool {
+        // The fence must reach the peer even while a server transaction holds gameplay packets.
+        let body: Body = play::Clientbound::Ping(cfg::Ping { id }).encode().into();
+        self.is_live()
+            && self.reserve_queued(io_pool::charge(body.retained()))
+            && self.publish_reserved(body)
+    }
+
     fn queue_body(&self, body: Body, close_on_full: bool) -> bool {
         if matches!(self.to, To::Disabled) {
             return false;

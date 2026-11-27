@@ -48,7 +48,8 @@ macro_rules! server_game_side {
             $s.common,
             (player_uuid, level, session_lock),
             $s.common.level.enabled_features.as_arc(),
-            session_lock.then(|| $s.common.res.items())
+            (session_lock && !$s.common.options.execution_role.is_client())
+                .then(|| $s.common.res.items())
         )
     }};
 }

@@ -56,6 +56,17 @@ use sunrise_sim::{
 #[path = "integrated/capture.rs"]
 pub(in crate::game) mod capture;
 
+#[cfg(feature = "test-support")]
+pub use super::owner_link_server::{ClientHandoff, test_owner_request};
+
+#[cfg(feature = "test-support")]
+pub fn run_test_owner_tasks(
+    game: &mut crate::game::ServerGame<'_>,
+    handoff: &mut ClientHandoff<'_>,
+) {
+    game.drain_owner_tasks(|game, request| game.dispatch_owner_request(request, handoff));
+}
+
 /// The server thread's side of the window's handle (`Game::serving`).
 pub struct Serving {
     pub flags: Arc<Flags>,
@@ -671,12 +682,17 @@ impl crate::game::ServerGame<'_> {
 
     /// The window's requests, between two ticks.
     pub(in crate::game::server_side) fn run_tasks(&mut self) {
+        self.drain_owner_tasks(Self::serve_owner_request);
+    }
+
+    #[inline(always)]
+    fn drain_owner_tasks(&mut self, mut dispatch: impl FnMut(&mut Self, OwnerRequest)) {
         let requests: Vec<OwnerRequest> = match &self.server.serving {
             Some(s) => s.tasks.try_iter().collect(),
             None => return,
         };
         for request in requests {
-            self.serve_owner_request(request);
+            dispatch(self, request);
             self.apply_publish();
         }
     }

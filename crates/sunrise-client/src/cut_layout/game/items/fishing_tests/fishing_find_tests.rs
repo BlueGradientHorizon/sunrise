@@ -5,7 +5,7 @@ use sunrise_command::{Reader, selector};
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 use sunrise_gameplay::game::{
     native_entity_refs::tests::{bind_local_player, collect_game_entities_in, with_game},
-    server_side::native_guest_turn_tests::with_guests,
+    server_side::{levels::LevelScopeTestExt as _, native_guest_turn_tests::with_guests},
 };
 use sunrise_gameplay_common::game::{
     Dim, chat_common::ChatCommonGameExt1 as _, commands_common::Target, fishing_common::Hook,
@@ -92,11 +92,9 @@ fn a_bobber_is_a_candidate_of_its_casters_level_only() {
                         let global = parse("@e[type=minecraft:fishing_bobber]");
                         let bounded = parse("@e[type=minecraft:fishing_bobber,distance=..8]");
                         // Query at the same coordinates while the turn still owns the hook.
-                        let back = game
-                            .enter_command_level(Dim::Nether)
+                        let wrong_level = game
+                            .with_level_in_place(Dim::Nether, |game| game.select(&bounded))
                             .expect("the Nether opens");
-                        let wrong_level = game.select(&bounded);
-                        game.enter_command_level(back);
                         assert!(
                             wrong_level.is_empty(),
                             "the Nether is not the caster's level"

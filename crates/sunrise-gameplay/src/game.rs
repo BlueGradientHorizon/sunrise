@@ -938,6 +938,24 @@ impl mod_api::AttachmentHost for ServerGame<'_> {
         )
     }
 
+    fn read_attachments(
+        &mut self,
+        holder: mod_api::Holder,
+    ) -> std::result::Result<Option<&mod_api::Attachments>, mod_api::AttachmentError> {
+        self.attachment_map_read(holder)
+    }
+
+    fn attachment_changed(&mut self, holder: mod_api::Holder, persist: bool, sync: bool) {
+        if self.native_authoritative() {
+            sunrise_gameplay_common::game::mod_api_host::world_attachment_changed(
+                &mut self.common.world,
+                holder,
+                persist,
+                sync,
+            );
+        }
+    }
+
     fn attachments(
         &mut self,
         holder: mod_api::Holder,

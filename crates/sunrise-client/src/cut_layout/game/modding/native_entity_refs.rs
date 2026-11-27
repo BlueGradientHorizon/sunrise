@@ -430,7 +430,8 @@ pub(crate) mod tests {
         }
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = role;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         options.game_dir = Some(saves.path().to_path_buf());
         let mut game = sunrise_client_gameplay::game::ClientGame::new(
             &loaded.resources,
@@ -451,6 +452,7 @@ pub(crate) mod tests {
         )
         .unwrap();
 
+        game.options.execution_role = role;
         game.native_lifecycle
             .begin_open(Some(Authority::IntegratedServer));
 

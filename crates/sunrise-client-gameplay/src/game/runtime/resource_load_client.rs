@@ -386,7 +386,7 @@ pub fn load_resources_for_mods_with_limit(
                     }
                 }
             };
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             let core = mod_api::testing::inherit_mods(core);
             let core = Step::spawn(scope, parallel, "core", move || core(&()));
             let ui = if is_client {

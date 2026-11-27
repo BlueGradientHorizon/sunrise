@@ -59,6 +59,18 @@ use sunrise_sim::{
 };
 use sunrise_world::level::{LevelEvent, Ticks};
 
+#[cfg(feature = "test-support")]
+pub trait LevelScopeTestExt {
+    fn with_level_in_place<R>(&mut self, dim: Dim, f: impl FnOnce(&mut Self) -> R) -> Option<R>;
+}
+
+#[cfg(feature = "test-support")]
+impl LevelScopeTestExt for crate::game::ServerGame<'_> {
+    fn with_level_in_place<R>(&mut self, dim: Dim, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
+        crate::game::ServerGame::with_level_in_place(self, dim, f)
+    }
+}
+
 /// A borrowed counting view: no resident-table scans and no allocation for gauges.
 pub(in crate::game) struct EntityCountView<'a> {
     pub(in crate::game) fixed: [(&'static str, usize); 19],
@@ -1070,7 +1082,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     fn level_creation_order(&self) -> Cow<'_, [Dim]> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self.server.levels.0.order.len()
             != self.server.levels.0.parked.len() + usize::from(!self.server.levels.0.active_closed)
         {
@@ -2286,7 +2298,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn dim_fallback_key(dim: Dim) -> (u8, &'static str) {
     match dim {
         Dim::Overworld => (0, ""),

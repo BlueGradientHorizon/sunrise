@@ -6,9 +6,36 @@ use sunrise_gameplay_common::game::{
     owner_link::{ControlRequest, OwnerRequest, Snapshot},
 };
 
+#[cfg(feature = "test-support")]
+pub type ClientHandoff<'a> = dyn FnMut(&mut crate::game::ServerGame<'_>) + 'a;
+
+#[cfg(feature = "test-support")]
+type TestTask = Box<dyn FnOnce(&mut crate::game::ServerGame<'_>, &mut ClientHandoff<'_>) + Send>;
+
+#[cfg(feature = "test-support")]
+pub fn test_owner_request(
+    task: impl FnOnce(&mut crate::game::ServerGame<'_>, &mut ClientHandoff<'_>) + Send + 'static,
+) -> OwnerRequest {
+    let task: TestTask = Box::new(task);
+    OwnerRequest::TestTask(Box::new(task))
+}
+
 impl crate::game::ServerGame<'_> {
     /// Answers one request of the window, on the server thread.
     pub fn serve_owner_request(&mut self, request: OwnerRequest) {
+        self.dispatch_owner_request(
+            request,
+            #[cfg(feature = "test-support")]
+            &mut |_| panic!("no client handoff on the server thread"),
+        );
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn dispatch_owner_request(
+        &mut self,
+        request: OwnerRequest,
+        #[cfg(feature = "test-support")] handoff: &mut ClientHandoff<'_>,
+    ) {
         match request {
             OwnerRequest::Publish(settings, reply) => {
                 let _ = reply.send(self.publish(settings));
@@ -55,6 +82,11 @@ impl crate::game::ServerGame<'_> {
             OwnerRequest::Control(request) => self.serve_control_request(request),
             #[cfg(any())]
             OwnerRequest::InTest(task) => task(self),
+            #[cfg(feature = "test-support")]
+            OwnerRequest::TestTask(task) => {
+                let task = task.downcast::<TestTask>().expect("owner test task type");
+                task(self, handoff);
+            }
         }
     }
 

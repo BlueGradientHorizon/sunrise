@@ -414,13 +414,7 @@ fn the_off_walk_movers_fire_too() {
             }
             game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
             // The dragon: off the walk, moved by its own physics-less step.
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(
-                sunrise_core::geometry::Vec3::new(5.0, 30.0, 5.0),
-                0.0,
-                605,
-            );
-            dragon.id = 605;
-            game.dragon.replace(dragon);
+            spawn_remote_dragon(game, 605, [5.0, 30.0, 5.0], 0.0);
             let off_walk: std::collections::HashSet<u32> = game.entity_ids_off_walk().collect();
             let dragon_id = game.dragon.as_ref().unwrap().id;
             assert!(
@@ -499,6 +493,28 @@ fn the_off_walk_movers_fire_too() {
             );
         });
     });
+}
+
+fn spawn_remote_dragon(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    id: i32,
+    [x, y, z]: [f64; 3],
+    yaw: f32,
+) {
+    use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::dragon_common::{Dragon, Phase};
+
+    let mut dragon = Dragon::new(Vec3::new(x, y, z), yaw, i64::from(id));
+    dragon.id = id as u32;
+    dragon.phase = Phase::from_id(10);
+    dragon.join = sunrise_sim::join_seq::JoinSeq::next();
+    game.replace_resident_dragon(dragon);
+    game.common.place_dragon_parts();
+    if let Some(dragon) = game.dragon.as_mut() {
+        for part in &mut dragon.parts {
+            part.1 = part.0;
+        }
+    }
 }
 
 /// A mob goal's own `Entity.move` — `BreathAirGoal`'s drowning swim-up (#2414

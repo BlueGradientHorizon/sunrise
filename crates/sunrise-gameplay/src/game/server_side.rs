@@ -1311,6 +1311,8 @@ pub struct ServerState {
     pub(in crate::game::server_side) pending_guest_ui: acting_state::ServerPendingGuestUi,
     pub audio_capture_active: bool,
     pub pending_sounds: Vec<sunrise_game_data::sound_source::ServerSound>,
+    #[cfg(any(test, feature = "test-support"))]
+    pub(in crate::game) test_positional_sound_counts: std::collections::HashMap<String, u32>,
     pub pending_particles: Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
     pub(in crate::game) pending_explosions: Vec<sunrise_sim::lan::server_effects::ServerExplosion>,
     pub pending_native_sounds: Vec<sunrise_gameplay_common::game::creatures::NativeSound>,
@@ -1553,6 +1555,8 @@ impl ServerState {
             pending_guest_ui: acting_state::ServerPendingGuestUi::default(),
             audio_capture_active: false,
             pending_sounds: Vec::new(),
+            #[cfg(any(test, feature = "test-support"))]
+            test_positional_sound_counts: Default::default(),
             pending_particles: Vec::new(),
             pending_explosions: Vec::new(),
             pending_native_sounds: Vec::new(),

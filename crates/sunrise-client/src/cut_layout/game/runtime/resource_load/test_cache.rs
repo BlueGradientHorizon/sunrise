@@ -131,6 +131,7 @@ fn load_inputs_are_vanilla(root: &Path, load_role: mods::LoadRole) -> bool {
         || !mod_api::__private::entity_part_state_declarations().is_empty()
         || !sunrise_world::fluid::mod_fluids().is_empty()
         || !sunrise_gameplay_common::game::general::general_type_catalog().is_empty()
+        || mod_api::__private::listened(mod_api::HookId::ModifyDefaultComponents)
         || mod_api::__private::listened(mod_api::HookId::ExtendPoiTypes)
         || mod_api::__private::listened(mod_api::HookId::RegisterCauldronFluidContent)
         || (load_role.owning == mods::item_data_load::OwningLoad::Startup
