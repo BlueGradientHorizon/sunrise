@@ -110,6 +110,77 @@ fn brightness(pixels: &[u8]) -> u64 {
     pixels.iter().map(|&c| u64::from(c)).sum()
 }
 
+const SCALE_NAME: &str = "game::client_side::world_name_tag_tests::a_labels_scale_sizes_its_text_and_the_default_is_a_name_tags";
+const SCALE_CASE: &str = "SUNRISE_WORLD_NAME_TAG_SCALE_CASE";
+
+/// #6143: `scale` sizes the text around the label's anchor, backdrop and its gap behind the text
+/// included, in both depth copies; the default is a name tag's 0.025 and draws exactly as
+/// before; a scale that isn't finite, zero or negative is refused, and one whose text positions
+/// overflow f32 is refused as non-finite.
+#[test]
+#[ignore = "daily"]
+fn a_labels_scale_sizes_its_text_and_the_default_is_a_name_tags() {
+    // In a fresh child: the prepared game publishes game keys, particle providers and
+    // language state in its process.
+    if super::native_entity_refs::tests::run_fresh_cases(SCALE_NAME, SCALE_CASE, &["scale"]) {
+        return;
+    }
+    with_client_game(|game| {
+        let text = Text::literal("Label");
+        let at = [0.5, 70.0, 0.5];
+        assert_eq!(
+            NameTagOptions::new(false, false, 0xF0).scale,
+            NameTagOptions::NAME_TAG_SCALE
+        );
+        assert_eq!(NameTagOptions::default().scale, 0.025);
+        // The label's anchor, 0.5 above `at`, in camera space.
+        let anchor = DVec3::from(at) + DVec3::new(0.0, 0.5, 0.0) - DVec3::from(CAMERA);
+        let anchor = anchor.as_vec3();
+        for (see_through, background) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let case = format!("see_through {see_through}, background {background}");
+            let options = NameTagOptions::new(see_through, background, 0xF0);
+            let (ok, one) = labels(game, at, &text, options);
+            assert_eq!(ok, Ok(()), "{case}");
+            let explicit = labels(game, at, &text, options.with_scale(0.025)).1;
+            let (ok, two) = labels(game, at, &text, options.with_scale(0.05));
+            assert_eq!(ok, Ok(()), "{case}");
+            assert_eq!(
+                one[1].is_empty(),
+                !see_through,
+                "{case}: the see-through copy"
+            );
+            if background {
+                // The backdrop goes with the faded text: the see-through copy, or the only one.
+                let faded = usize::from(see_through);
+                assert!(!alphas(&one[faded]).1.is_empty(), "{case}: a backdrop");
+            }
+            for ((one, two), explicit) in one.iter().zip(&two).zip(&explicit) {
+                assert_eq!(bytes(explicit), bytes(one), "{case}: 0.025 is the default");
+                assert_eq!(one.len(), two.len(), "{case}");
+                // Every vertex lies twice as far from the anchor, the backdrop's too.
+                for (a, b) in one.iter().zip(two) {
+                    let (a, b) = (Vec3::from(a.pos) - anchor, Vec3::from(b.pos) - anchor);
+                    assert!((b - a * 2.0).length() < 1e-4, "{case}: {a} -> {b}");
+                }
+            }
+        }
+        let options = NameTagOptions::new(true, true, 0xF0);
+        for (bad, error) in [
+            (0.0, DrawError::InvalidScale),
+            (-0.025, DrawError::InvalidScale),
+            (f32::NAN, DrawError::InvalidScale),
+            (f32::INFINITY, DrawError::InvalidScale),
+            (f32::MAX, DrawError::NonFinite),
+        ] {
+            let (refused, drawn) = labels(game, at, &text, options.with_scale(bad));
+            assert_eq!(refused, Err(error), "{bad}");
+            assert!(drawn.iter().all(Vec::is_empty), "{bad} drew nothing");
+        }
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_label_hides_behind_a_wall_unless_it_is_see_through() {

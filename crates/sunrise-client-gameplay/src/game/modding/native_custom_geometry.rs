@@ -321,13 +321,17 @@ impl ClientGame<'_> {
             .extend_from_slice(see_through);
     }
     /// A mod's label as `SubmitNodeCollection.submitNameTag` draws a name: 0.5 above `at`,
-    /// facing the camera, 0.025 blocks a font pixel. See-through, twice: opaque white text in
-    /// the world, its light raised to at least 2 unless `exact_light` (no backdrop), and the
-    /// faded text on the backdrop over everything, unlit. Otherwise once, depth tested and
+    /// facing the camera, `options.scale` blocks a font pixel (a name tag's 0.025 by default).
+    /// See-through, twice: opaque white text in the world, its light raised to at least 2
+    /// unless `exact_light` (no backdrop), and the faded text on the backdrop over everything,
+    /// unlit. Otherwise once, depth tested and
     /// translucent: the faded text on the backdrop in the caller's light. The faded text's alpha
     /// (unless `faded_alpha`) and the backdrop's follow the player's text background opacity.
-    /// Refused whole, before layout, for a position that is not finite; any newly
-    /// rasterized glyphs are uploaded with the label.
+    /// Refused whole, before layout, for a position that is not finite
+    /// ([`DrawError::NonFinite`]) or a scale that is not finite and positive
+    /// ([`DrawError::InvalidScale`]); after layout, for a finite scale whose text positions
+    /// overflow f32 ([`DrawError::NonFinite`]). Any newly rasterized glyphs are uploaded with
+    /// the label, and also when it is refused after layout, as the atlas already holds them.
     pub(in crate::game) fn native_world_name_tag(
         &self,
         draw: &mut WorldGeometry,
@@ -336,6 +340,9 @@ impl ClientGame<'_> {
         options: NameTagOptions,
     ) -> Result<(), DrawError> {
         draw.check_label(at)?;
+        if !options.scale.is_finite() || options.scale <= 0.0 {
+            return Err(DrawError::InvalidScale);
+        }
         let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
         let from_camera = DVec3::from(at) - DVec3::from(draw.camera());
         let o = from_camera + DVec3::new(0.0, 0.5, 0.0);
@@ -350,7 +357,8 @@ impl ClientGame<'_> {
             .faded_alpha
             .map_or_else(|| self.client.settings.faded_text_alpha(0.25), u32::from);
         let light = options.light;
-        let unit = super::names::NAME_TAG_UNIT;
+        // PoseStack.scale(s, -s, s) in place of the name tag's 0.025.
+        let unit = options.scale;
         let (mut world, mut see_through) = (Vec::new(), Vec::new());
         let quads = |alpha, backdrop, layer, light, out: &mut Vec<Vertex>| {
             self.styled_name_tag_quads(o, &lines, alpha, backdrop, layer, light, unit, out, None)
@@ -371,6 +379,13 @@ impl ClientGame<'_> {
             let lit = sunrise_client::block_entity_render::vertex_light(light);
             quads(faded, backdrop, 0, lit, &mut world)
         };
+        // A finite scale can still overflow the camera-relative positions (f32::MAX): refused
+        // as any draw whose coordinates overflow f32, with nothing drawn.
+        let finite = |v: &Vertex| v.pos.iter().all(|c| c.is_finite());
+        if !world.iter().chain(&see_through).all(finite) {
+            self.client.text_patches.borrow_mut().append(&mut patches);
+            return Err(DrawError::NonFinite);
+        }
         draw.label(from_camera.length_squared(), &world, &see_through);
         self.client.text_patches.borrow_mut().append(&mut patches);
         Ok(())
