@@ -211,8 +211,8 @@ class Pipe(threading.Thread):
 class ProxyStop:
     """Stop handle returned by start_background.
 
-    Supports .set()/.is_set()/.wait() for existing callers and .close() to request
-    stop and wait until every active pipe has exited and the capture file is closed.
+    Supports .set() to request stop and .close() to request stop and wait until
+    every active pipe has exited and the capture file is closed.
     """
 
     def __init__(self, event, thread):
@@ -221,15 +221,6 @@ class ProxyStop:
 
     def set(self):
         self._event.set()
-
-    def is_set(self):
-        return self._event.is_set()
-
-    def wait(self, timeout=None):
-        return self._event.wait(timeout)
-
-    def clear(self):
-        self._event.clear()
 
     def close(self):
         self._event.set()
