@@ -45,6 +45,47 @@ def cases(resources):
     return out
 
 
+# The attributes `environment_fixture` prints, every one compared on every row; a vanilla attribute
+# outside this set is reported as not modeled, one Sunrise prints outside it fails.
+MODELED = frozenset('minecraft:' + name for name in [
+    'visual/sky_color', 'visual/fog_color', 'visual/cloud_color', 'visual/sunrise_sunset_color',
+    'visual/sky_light_factor', 'visual/sky_light_color', 'visual/block_light_tint',
+    'visual/ambient_light_color', 'visual/sun_angle', 'visual/moon_angle', 'visual/star_angle',
+    'visual/star_brightness', 'gameplay/sky_light_level', 'visual/fog_start_distance',
+    'visual/fog_end_distance', 'visual/cloud_fog_end_distance', 'visual/cloud_height'])
+
+
+def compare_rows(vanilla, rust):
+    """({attribute: [(case, vanilla, Sunrise, distances or reason)]}, vanilla-only attributes)."""
+    bad, unmodeled = {}, set()
+    for v, r in zip(vanilla, rust):
+        case = v.get('case')
+        for key in sorted((set(v) | set(r)) - {'case'}):
+            if key not in MODELED:
+                if key in r:
+                    bad.setdefault(key, []).append((case, v.get(key), r[key], 'not in MODELED'))
+                else:
+                    unmodeled.add(key)
+                continue
+        for key in sorted(MODELED):
+            if key not in v or key not in r:
+                side = 'vanilla' if key not in v else 'Sunrise'
+                bad.setdefault(key, []).append((case, v.get(key), r.get(key), f'missing on the {side} side'))
+                continue
+            expected, got = v[key], r[key]
+            if isinstance(expected, list) != isinstance(got, list) or isinstance(expected, list) and len(expected) != len(got):
+                bad.setdefault(key, []).append((case, expected, got, 'shape'))
+                continue
+            pairs = list(zip(expected, got) if isinstance(expected, list) else [(expected, got)])
+            if any(isinstance(x, (bool, str)) or x is None for pair in pairs for x in pair):
+                distances = [None if a == b and type(a) is type(b) else 'differs' for a, b in pairs]
+            else:
+                distances = [lab.float_difference(a, b) for a, b in pairs]
+            if any(distances):
+                bad.setdefault(key, []).append((case, expected, got, distances))
+    return bad, unmodeled
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.parse_args()
@@ -70,32 +111,14 @@ def main():
     vanilla = [lab.exact_json(l) for l in (build / 'vanilla.jsonl').read_text().splitlines()]
     rust = [lab.exact_json(l) for l in (build / 'rust.jsonl').read_text().splitlines()]
     assert len(vanilla) == len(rust), (len(vanilla), len(rust))
-    bad = {}
-    uncovered = set()
-    for v, r in zip(vanilla, rust):
-        for key, expected in v.items():
-            if key == 'case':
-                continue
-            if key not in r:
-                uncovered.add(key); continue
-            got = r[key]
-            if isinstance(expected, list) != isinstance(got, list) or isinstance(expected, list) and len(expected) != len(got):
-                bad.setdefault(key, []).append((v['case'], expected, got, 'shape'))
-                continue
-            pairs = zip(expected, got) if isinstance(expected, list) else [(expected, got)]
-            if isinstance(expected, (bool, str)) or isinstance(got, (bool, str)):
-                distances = [None if a == b and type(a) is type(b) else 'differs' for a, b in pairs]
-            else:
-                distances = [lab.float_difference(a, b) for a, b in pairs]
-            if any(distances):
-                bad.setdefault(key, []).append((v['case'], expected, got, distances))
+    bad, uncovered = compare_rows(vanilla, rust)
     print(f'{len(vanilla)} cases compared')
     for key, items in sorted(bad.items()):
         print(f'MISMATCH {key}: {len(items)} cases (case, vanilla, Sunrise, distance per component), e.g.')
         for item in items[:3]:
             print(f'  {item}')
     if uncovered:
-        print('attributes Sunrise does not model:', ', '.join(sorted(uncovered)))
+        print('vanilla attributes Sunrise does not model:', ', '.join(sorted(uncovered)))
     if bad:
         sys.exit(f'{len(bad)} attributes differ from vanilla')
     print('environment parity ok')

@@ -98,12 +98,23 @@ def cases(count, seed):
     return out
 
 
+def exact(x, y):
+    """Two printed values agree: floats (the pose, a blit's u and v) as binary32 bits, so -0.0 is
+    not 0.0; lists element by element; anything else by equality of value and type."""
+    if isinstance(x, list) or isinstance(y, list):
+        return isinstance(x, list) and isinstance(y, list) and len(x) == len(y) and all(map(exact, x, y))
+    if isinstance(x, float) or isinstance(y, float):
+        numeric = (int, float)
+        return (isinstance(x, numeric) and isinstance(y, numeric) and not isinstance(x, bool)
+                and not isinstance(y, bool) and lab.f32_bits(x) == lab.f32_bits(y))
+    return type(x) is type(y) and x == y
+
+
 def same(a, b):
-    """Calls agree: every field exactly, pose entries as binary32 bits."""
+    """Calls agree: every field exactly (`exact`)."""
     if a is None or b is None or set(a) != set(b):
         return False
-    pose = lambda m: [lab.f32_bits(x) for x in m]
-    return all(len(a[k]) == len(b[k]) and pose(a[k]) == pose(b[k]) if k == 'm' else a[k] == b[k] for k in a)
+    return all(exact(a[k], b[k]) for k in a)
 
 
 def pose_ulps(a, b):
