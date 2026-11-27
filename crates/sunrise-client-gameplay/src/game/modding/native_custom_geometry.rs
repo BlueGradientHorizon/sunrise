@@ -4987,7 +4987,8 @@ mod tests {
             // program's fixed sampler layout for this slot that makes the binding invalid.
             game.client.title.0 = None;
             game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
-            game.client.pack_frame_state
+            game.client
+                .pack_frame_state
                 .set(Some(mod_api::ShaderPackState::new(false, None, 1)));
             let depth = mod_api::DrawBindings::default()
                 .texture("ColorTex", mod_api::TextureSource::WorldDepth);
@@ -5186,8 +5187,10 @@ void main() {
             renderer
                 .build_mod_pipelines(&render.mod_pipelines, &|_| None)
                 .unwrap();
-            let original =
-                std::mem::replace(&mut game.client.client_pack.render, std::sync::Arc::new(render));
+            let original = std::mem::replace(
+                &mut game.client.client_pack.render,
+                std::sync::Arc::new(render),
+            );
             let (_, depth) = game.mod_gpu().unwrap().mod_world_depth_texture_view();
             let mut encoder = renderer.device.create_command_encoder(&Default::default());
             // Initialize/store the actual view that WorldDepth resolves. This node runs before
