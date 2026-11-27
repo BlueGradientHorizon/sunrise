@@ -2033,6 +2033,7 @@ impl Entities {
             self.send_on_threads(entities, riding, viewers, &active, attachments);
         } else {
             self.send_in_order(entities, riding, viewers, &active, attachments);
+            laps.lap("lan_track_diff_encode_fanout");
         }
         // ChunkMap.removeEntity for the ones no longer in the level.
         if self.states.len() > stamped {
@@ -2061,12 +2062,7 @@ impl Entities {
         attachments: Option<&InitialAttachmentLookup<'_>>,
     ) {
         let project = capture_attachment_projection();
-        let timed = crate::spans::recording_here();
-        let mut diff_time = crate::spans::SpanTotal::default();
-        let mut encode_time = crate::spans::SpanTotal::default();
-        let mut fanout_time = crate::spans::SpanTotal::default();
         for &index in active {
-            let t_diff = timed.then(std::time::Instant::now);
             let e = entities[self.probes[index].input as usize];
             let s = self.states.at_mut(self.states.slot_of_index(index));
             self.packets.clear();
@@ -2092,15 +2088,10 @@ impl Entities {
                 }
             }
             s.added = false;
-            if let Some(started) = t_diff {
-                diff_time.add_wall(started.elapsed());
-            }
             // Nothing to send: no changes, and nobody starts tracking it.
             if self.packets.is_empty() && !self.pairs[index] {
                 continue;
             }
-            let t_fanout = timed.then(std::time::Instant::now);
-            let mut entity_encode = std::time::Duration::ZERO;
             let mut encoded = false;
             let mut pairing: Option<Option<PairingBodies>> = None;
             for (v, flags) in viewers.iter_mut().zip(&self.flags) {
@@ -2110,11 +2101,7 @@ impl Entities {
                         continue;
                     }
                     if !encoded {
-                        let t_enc = timed.then(std::time::Instant::now);
                         self.bodies.encode(&self.packets);
-                        if let Some(started) = t_enc {
-                            entity_encode += started.elapsed();
-                        }
                         encoded = true;
                     }
                     v.out.extend(self.bodies.to(v).iter().cloned());
@@ -2122,23 +2109,13 @@ impl Entities {
                     && !e.bare
                     && let Some(kind) = s.kind.filter(|&kind| v.pairs_with(kind))
                     && let Some(bodies) = pairing.get_or_insert_with(|| {
-                        let t_enc = timed.then(std::time::Instant::now);
                         let mut packets = Vec::new();
-                        let built = s
-                            .pairing(e, kind, riding, &mut packets)
-                            .then(|| PairingBodies::of(&packets));
-                        if let Some(started) = t_enc {
-                            entity_encode += started.elapsed();
-                        }
-                        built
+                        s.pairing(e, kind, riding, &mut packets)
+                            .then(|| PairingBodies::of(&packets))
                     })
                 {
                     if v.attachment_sender.is_some() {
-                        let t_enc = timed.then(std::time::Instant::now);
                         bodies.prepare_attachments(e, attachments, &project);
-                        if let Some(started) = t_enc {
-                            entity_encode += started.elapsed();
-                        }
                     }
                     let attachment_sync_from = bodies.write_to(v);
                     // The bundle ends here: its changes follow (sendChanges), after
@@ -2146,11 +2123,7 @@ impl Entities {
                     let at = v.out.len();
                     if synced && !self.packets.is_empty() {
                         if !encoded {
-                            let t_enc = timed.then(std::time::Instant::now);
                             self.bodies.encode(&self.packets);
-                            if let Some(started) = t_enc {
-                                entity_encode += started.elapsed();
-                            }
                             encoded = true;
                         }
                         v.out.extend(self.bodies.to(v).iter().cloned());
@@ -2170,16 +2143,7 @@ impl Entities {
                     }
                 }
             }
-            if !entity_encode.is_zero() {
-                encode_time.add_wall(entity_encode);
-            }
-            if let Some(started) = t_fanout {
-                fanout_time.add_wall(started.elapsed().saturating_sub(entity_encode));
-            }
         }
-        diff_time.record("lan_track_diff");
-        encode_time.record("lan_track_encode");
-        fanout_time.record("lan_track_fanout");
     }
 
     /// [`Self::send_in_order`] in two steps on several threads, the same bytes in the same
@@ -2277,7 +2241,7 @@ impl Entities {
                 }
             }
         }
-        laps.lap("lan_track_encode");
+        laps.lap("lan_track_diff_encode");
         let made = &made;
         let mut clients: Vec<(&mut Viewer, &Vec<u8>)> = viewers.iter_mut().zip(&*flags).collect();
         sunrise_threads::par_chunks_mut(&mut clients, 4, |part| {

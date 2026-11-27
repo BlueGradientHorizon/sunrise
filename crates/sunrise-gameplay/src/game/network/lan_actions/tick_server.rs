@@ -523,9 +523,9 @@ impl crate::game::ServerGame<'_> {
             if active_level != Some(dim) {
                 if across_levels {
                     if active_level.is_some() {
-                        let sample = sunrise_level::spans::SpanTotal::start();
+                        let sample = sunrise_level::spans::SpanTotal::start_wall();
                         self.finish_guest_connection_level();
-                        spans.sync.add(sample);
+                        spans.sync.add_wall_sample(sample);
                         drop(collision.take());
                     }
                     if self.common.dim != dim {
@@ -549,29 +549,29 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             if let Some((colliders, _parts)) = &collision {
-                let sample = sunrise_level::spans::SpanTotal::start();
+                let sample = sunrise_level::spans::SpanTotal::start_wall();
                 sunrise_world::moving_colliders::in_level(colliders.clone(), || {
                     sunrise_sim::block_contact::in_level(self.common.tick, Some(dim.id()), || {
                         self.tick_guest_connection(conn);
                     });
                 });
                 self.drain_entity_inside();
-                spans.sim.add(sample);
+                spans.sim.add_wall_sample(sample);
                 if let Some(host) = self.server.lan.as_mut() {
-                    let sample = sunrise_level::spans::SpanTotal::start();
+                    let sample = sunrise_level::spans::SpanTotal::start_wall();
                     host.hub.sync_guest_after_tick(conn);
-                    spans.sync.add(sample);
+                    spans.sync.add_wall_sample(sample);
                 }
             } else {
-                let sample = sunrise_level::spans::SpanTotal::start();
+                let sample = sunrise_level::spans::SpanTotal::start_wall();
                 self.tick_guest_connection(conn);
-                spans.sim.add(sample);
+                spans.sim.add_wall_sample(sample);
             }
         }
         if across_levels && active_level.is_some() {
-            let sample = sunrise_level::spans::SpanTotal::start();
+            let sample = sunrise_level::spans::SpanTotal::start_wall();
             self.finish_guest_connection_level();
-            spans.sync.add(sample);
+            spans.sync.add_wall_sample(sample);
         }
         Ok(())
     }
@@ -602,11 +602,11 @@ impl crate::game::ServerGame<'_> {
         }
         struct SampleGuard<'a> {
             total: &'a mut sunrise_level::spans::SpanTotal,
-            sample: Option<(std::time::Instant, Option<std::time::Duration>)>,
+            sample: Option<std::time::Instant>,
         }
         impl Drop for SampleGuard<'_> {
             fn drop(&mut self) {
-                self.total.add(self.sample.take());
+                self.total.add_wall_sample(self.sample.take());
             }
         }
         let mut spans = LevelGuestSpans::default();
@@ -615,9 +615,9 @@ impl crate::game::ServerGame<'_> {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
-        let sync_sample = sunrise_level::spans::SpanTotal::start();
+        let sync_sample = sunrise_level::spans::SpanTotal::start_wall();
         host.hub.sync_initial_health_data();
-        spans.sync.add(sync_sample);
+        spans.sync.add_wall_sample(sync_sample);
         Self::sync_hub_mod_flags(&mut host.hub);
         let turns: Vec<_> = host
             .hub
@@ -631,7 +631,7 @@ impl crate::game::ServerGame<'_> {
         {
             let _turn_guard = SampleGuard {
                 total: &mut spans.turns,
-                sample: sunrise_level::spans::SpanTotal::start(),
+                sample: sunrise_level::spans::SpanTotal::start_wall(),
             };
             for &(conn, passenger) in &turns {
                 if self.on_server_trip(conn) {
@@ -656,7 +656,7 @@ impl crate::game::ServerGame<'_> {
             let entity_id = {
                 let mut turn_guard = Some(SampleGuard {
                     total: &mut spans.turns,
-                    sample: sunrise_level::spans::SpanTotal::start(),
+                    sample: sunrise_level::spans::SpanTotal::start_wall(),
                 });
                 let Some(entity_id) = self.server.lan.as_ref().and_then(|host| {
                     let g = host.hub.guest(conn).filter(|g| host.hub.here(g))?;
@@ -756,7 +756,7 @@ impl crate::game::ServerGame<'_> {
                         g.update_player_attributes();
                     });
                     drop(turn_guard.take());
-                    let sync_sample = sunrise_level::spans::SpanTotal::start();
+                    let sync_sample = sunrise_level::spans::SpanTotal::start_wall();
                     if let Some(host) = self.server.lan.as_mut() {
                         host.hub.flush_progress(conn);
                         if !host.hub.native_advancement_grants.is_empty() {
@@ -770,21 +770,21 @@ impl crate::game::ServerGame<'_> {
                     {
                         host.hub.send_post_effects(gi);
                     }
-                    spans.sync.add(sync_sample);
+                    spans.sync.add_wall_sample(sync_sample);
                 }
                 entity_id
             };
             if round.post() {
-                let sample = sunrise_level::spans::SpanTotal::start();
+                let sample = sunrise_level::spans::SpanTotal::start_wall();
                 self.native_tick_post_one(
                     &round,
                     entity_id,
                     sunrise_gameplay_common::game::native_ticks::PLAYER,
                 );
-                spans.turns.add(sample);
+                spans.turns.add_wall_sample(sample);
             }
         }
-        let sample = sunrise_level::spans::SpanTotal::start();
+        let sample = sunrise_level::spans::SpanTotal::start_wall();
         self.announce_guest_advancements();
         // Entity.rideTick positions the rider after its tick (and after Post).
         // Canceling the tick does not stop this.
@@ -793,7 +793,7 @@ impl crate::game::ServerGame<'_> {
                 self.guest_vehicle_tick(conn);
             }
         }
-        spans.turns.add(sample);
+        spans.turns.add_wall_sample(sample);
     }
 }
 

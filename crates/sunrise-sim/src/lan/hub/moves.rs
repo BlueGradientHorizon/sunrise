@@ -88,7 +88,6 @@ impl Hub {
         });
     }
 
-    #[cfg(test)]
     pub(super) fn process_inbox(
         &mut self,
         i: usize,
@@ -97,19 +96,6 @@ impl Hub {
         begin: bool,
         held: &mut bool,
         spectator_source: &mut Option<String>,
-    ) -> bool {
-        self.process_inbox_inner(i, ctx, events, begin, held, spectator_source, None)
-    }
-
-    pub(super) fn process_inbox_inner(
-        &mut self,
-        i: usize,
-        ctx: &mut TickCtx,
-        events: &mut Vec<HostEvent>,
-        begin: bool,
-        held: &mut bool,
-        spectator_source: &mut Option<String>,
-        mut move_time: Option<&mut crate::spans::SpanTotal>,
     ) -> bool {
         let mut credits = Vec::new();
         // ServerGamePacketListenerImpl.tickPlayer ran between the last
@@ -233,13 +219,7 @@ impl Hub {
                         // is: its own position goes through the speed test, the collided
                         // replay and the moved-wrongly test, from the target just snapped to.
                         let (to, rot) = ([p.x, p.y, p.z], (p.yaw, p.pitch));
-                        let sample = move_time
-                            .as_ref()
-                            .and_then(|_| crate::spans::SpanTotal::start());
                         self.position_change(i, to, rot, 0, Hearing::Confirmation, ctx, events);
-                        if let Some(total) = move_time.as_deref_mut() {
-                            total.add(sample);
-                        }
                     }
                 }
                 // handlePlayerAbilities: the client flies only if it may.
@@ -254,41 +234,17 @@ impl Hub {
                     });
                 }
                 S::MovePlayerPos(p) => {
-                    let sample = move_time
-                        .as_ref()
-                        .and_then(|_| crate::spans::SpanTotal::start());
                     self.move_player(i, Some([p.x, p.y, p.z]), None, p.flags, ctx, events);
-                    if let Some(total) = move_time.as_deref_mut() {
-                        total.add(sample);
-                    }
                 }
                 S::MovePlayerPosRot(p) => {
                     let (pos, rot) = ([p.x, p.y, p.z], (p.yaw, p.pitch));
-                    let sample = move_time
-                        .as_ref()
-                        .and_then(|_| crate::spans::SpanTotal::start());
                     self.move_player(i, Some(pos), Some(rot), p.flags, ctx, events);
-                    if let Some(total) = move_time.as_deref_mut() {
-                        total.add(sample);
-                    }
                 }
                 S::MovePlayerRot(p) => {
-                    let sample = move_time
-                        .as_ref()
-                        .and_then(|_| crate::spans::SpanTotal::start());
                     self.move_player(i, None, Some((p.yaw, p.pitch)), p.flags, ctx, events);
-                    if let Some(total) = move_time.as_deref_mut() {
-                        total.add(sample);
-                    }
                 }
                 S::MovePlayerStatus(p) => {
-                    let sample = move_time
-                        .as_ref()
-                        .and_then(|_| crate::spans::SpanTotal::start());
                     self.move_player(i, None, None, p.flags, ctx, events);
-                    if let Some(total) = move_time.as_deref_mut() {
-                        total.add(sample);
-                    }
                 }
                 S::CustomPayload(p) if p.channel == sunrise_protocol::carry_age::CHANNEL => {
                     // A payload that does not decode is no hint: it is only where a search starts.

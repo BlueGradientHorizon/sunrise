@@ -1239,11 +1239,32 @@ impl crate::game::ServerGame<'_> {
         // again on the way through.
         self.server.lan = Some(host);
         let mut timings = EventTimings::new(sunrise_level::spans::NOTE_MS);
+        #[derive(Clone, Copy)]
+        enum EventCategory {
+            Movement,
+            Gameplay,
+            Session,
+        }
         #[derive(Default)]
         struct EventCategorySpans {
             movement: sunrise_level::spans::SpanTotal,
             gameplay: sunrise_level::spans::SpanTotal,
             session: sunrise_level::spans::SpanTotal,
+        }
+        impl EventCategorySpans {
+            fn add(
+                &mut self,
+                category: Option<EventCategory>,
+                elapsed: Option<std::time::Duration>,
+            ) {
+                if let (Some(category), Some(elapsed)) = (category, elapsed) {
+                    match category {
+                        EventCategory::Movement => self.movement.add_wall(elapsed),
+                        EventCategory::Gameplay => self.gameplay.add_wall(elapsed),
+                        EventCategory::Session => self.session.add_wall(elapsed),
+                    }
+                }
+            }
         }
         impl Drop for EventCategorySpans {
             fn drop(&mut self) {
@@ -1252,19 +1273,12 @@ impl crate::game::ServerGame<'_> {
                 std::mem::take(&mut self.session).record("lan_events_session");
             }
         }
-        struct EventSampleGuard<'a> {
-            total: &'a mut sunrise_level::spans::SpanTotal,
-            sample: Option<(Instant, Option<std::time::Duration>)>,
-        }
-        impl Drop for EventSampleGuard<'_> {
-            fn drop(&mut self) {
-                self.total.add(self.sample.take());
-            }
-        }
         let mut category_spans = EventCategorySpans::default();
+        let mut prev_category: Option<EventCategory> = None;
         for event in events {
             if timed && let Some(host) = self.server.lan.as_ref() {
-                note_event(host, previous.take(), &mut timings);
+                let elapsed = note_event(host, previous.take(), &mut timings);
+                category_spans.add(prev_category.take(), elapsed);
             }
             if timed {
                 let detail = self
@@ -1272,20 +1286,15 @@ impl crate::game::ServerGame<'_> {
                     .lan
                     .as_ref()
                     .and_then(|host| self.event_detail(host, &event));
+                prev_category = Some(match &event {
+                    HostEvent::AcceptedMove(..) | HostEvent::PlayerMove(_) => {
+                        EventCategory::Movement
+                    }
+                    HostEvent::Packet(..) | HostEvent::RawPayload(_) => EventCategory::Gameplay,
+                    _ => EventCategory::Session,
+                });
                 previous = Some((Instant::now(), event_kind(&event), detail));
             }
-            let _category_guard = EventSampleGuard {
-                total: match &event {
-                    HostEvent::AcceptedMove(..) | HostEvent::PlayerMove(_) => {
-                        &mut category_spans.movement
-                    }
-                    HostEvent::Packet(..) | HostEvent::RawPayload(_) => {
-                        &mut category_spans.gameplay
-                    }
-                    _ => &mut category_spans.session,
-                },
-                sample: sunrise_level::spans::SpanTotal::start(),
-            };
             match event {
                 HostEvent::InputCredits(credits) => drop(credits),
                 HostEvent::RawPayload(delivery) => {
@@ -1797,7 +1806,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         if timed && let Some(host) = self.server.lan.as_ref() {
-            note_event(host, previous, &mut timings);
+            let elapsed = note_event(host, previous, &mut timings);
+            category_spans.add(prev_category.take(), elapsed);
             for burst in timings.bursts() {
                 sunrise_level::spans::note(burst.ms, || describe_burst(host, &burst));
             }
@@ -2506,7 +2516,7 @@ impl crate::game::ServerGame<'_> {
         self.flush_attachment_sync();
         self.flush_far_terrain();
         if let Some(host) = self.server.lan.as_ref() {
-            sunrise_level::spans::time("lan_flush", || {
+            sunrise_level::spans::time("lan_handoff", || {
                 lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
             });
         }

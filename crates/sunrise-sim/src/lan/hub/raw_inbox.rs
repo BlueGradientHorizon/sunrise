@@ -23,13 +23,6 @@ impl Hub {
     /// (#4510). `tick_level` then syncs what those packets (and the block ticks)
     /// changed.
     pub fn drain_packets(&mut self, ctx: &mut TickCtx) -> Vec<HostEvent> {
-        struct MoveSpan(crate::spans::SpanTotal);
-        impl Drop for MoveSpan {
-            fn drop(&mut self) {
-                std::mem::take(&mut self.0).record("lan_drain_moves");
-            }
-        }
-        let mut move_time = MoveSpan(crate::spans::SpanTotal::default());
         let mut events = Vec::new();
         let mut pass = self.packet_drain.take().unwrap_or_else(|| PacketDrain {
             conns: self
@@ -59,14 +52,13 @@ impl Hub {
                 if frozen {
                     self.keep_acknowledgements(i, &mut events);
                 }
-                if self.process_inbox_inner(
+                if self.process_inbox(
                     i,
                     ctx,
                     &mut events,
                     !pass.started,
                     &mut pass.movement_held,
                     &mut pass.spectator_source,
-                    Some(&mut move_time.0),
                 ) {
                     pass.started = true;
                     self.packet_drain = Some(pass);
