@@ -637,7 +637,7 @@ pub(in crate::game) mod tests {
         use sunrise_protocol::packets::play::{AttributeSnapshot, Clientbound, UpdateAttributes};
         let attribute = game
             .motion
-            .attributes
+            .attributes()
             .id("minecraft:scale")
             .unwrap()
             .registry_id();

@@ -22,7 +22,11 @@ use sunrise_core::{
 use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::{
     attribute_map::ValueKind,
-    attributes::{Modifier, Operation, entity::Catalog, live::LiveAttributes},
+    attributes::{
+        Modifier, Operation,
+        entity::Catalog,
+        live::{LiveAttributes, Supplier},
+    },
     block_collision::BlockCollisionRegistry,
     block_landing::BlockLandingRegistry,
     climbing::{self, ClimbingRegistry, ClimbingWorld},
@@ -140,7 +144,8 @@ pub use surface::{
 };
 
 pub struct MotionResources {
-    pub attributes: Arc<Catalog>,
+    player_supplier: Supplier,
+    initial_player_health: crate::health::PlayerHealth,
     pub blocks: BoundMovementProperties,
     pub climbable: BTreeSet<String>,
     /// The bound BlockTags.CAUSES_SUFFOCATION predicate input.
@@ -182,18 +187,20 @@ impl MotionResources {
             assets,
             facts,
             &sunrise_world::conditions::LoadConditions::vanilla(),
+            Ok,
         )
     }
-    /// Motion's damage definitions use the owning startup load's inventory.
+    /// Load motion tables using the startup inventory for damage definitions.
+    /// Finalize the attribute catalog before binding the player to its defaults.
     pub fn load_with_conditions(
         root: &Path,
         assets: &Assets,
         facts: &crate::blocks::BlockFacts,
         conditions: &sunrise_world::conditions::LoadConditions,
+        finalize_attributes: impl FnOnce(Catalog) -> Result<Catalog>,
     ) -> Result<Self> {
-        let attributes = Arc::new(Catalog::from_json(&sunrise_world::json_file::read(
-            &root.join("attributes.json"),
-        )?)?);
+        let (player_supplier, maximum_health) =
+            player_init::load_player_attributes(root, finalize_attributes)?;
         let file = BlockTableFile::open(&root.join("movement-properties.nbt"), assets.registry)?;
         let properties = MovementProperties::from_table(file.table("movement")?)?;
         let bundle: BTreeMap<String, String> =
@@ -222,11 +229,13 @@ impl MotionResources {
             &tag("minecraft:climbable")?,
             &tag("minecraft:can_glide_through")?,
         )?;
+        let health = crate::health::HealthResources::load_with_conditions(root, conditions)?;
         Ok(Self {
             landing: crate::landing::load(root, &properties)?,
-            health: crate::health::HealthResources::load_with_conditions(root, conditions)?,
+            initial_player_health: crate::health::PlayerHealth::initial(&health, maximum_health)?,
+            health,
             fluids: FluidResources::new(assets, facts)?,
-            attributes,
+            player_supplier,
             blocks: properties.bind(&MovementTags {
                 fences: tag("minecraft:fences")?,
                 walls: tag("minecraft:walls")?,
@@ -241,6 +250,9 @@ impl MotionResources {
             combination_step_sound: tag("minecraft:combination_step_sound_blocks")?,
             crystal_sound: tag("minecraft:crystal_sound_blocks")?,
         })
+    }
+    pub fn attributes(&self) -> &Arc<Catalog> {
+        self.player_supplier.catalog()
     }
 }
 
@@ -699,23 +711,6 @@ impl PlayerMotion {
         self.set_remaining_fire_ticks(self.fire_ticks.max(scaled));
         self.ticks_frozen = 0;
         Ok(())
-    }
-
-    pub fn new(resources: &MotionResources, position: Vec3) -> Result<Self> {
-        // Process-owned identities determine native collection callback order.
-        // Differential fixtures can replay a reference process's identities.
-        let hashes: Vec<_> = resources
-            .attributes
-            .attributes()
-            .enumerate()
-            .map(|(i, _)| i as i32)
-            .collect();
-        let mut identity = 0i32;
-        let next: Box<dyn sunrise_world::attributes::live::Identities> = Box::new(move || {
-            identity = identity.wrapping_add(1);
-            identity
-        });
-        Self::with_attribute_identities(resources, position, &hashes, next)
     }
 
     /// LivingEntity.aiStep: speeds too small to matter stop.

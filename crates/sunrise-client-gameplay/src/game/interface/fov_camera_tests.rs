@@ -68,7 +68,7 @@ fn with_spectator(kind: &str, test: impl FnOnce(&mut Game<'_>, &Calls)) {
 fn sync_spectated_movement_speed(game: &mut Game<'_>) {
     let attribute = game
         .motion
-        .attributes
+        .attributes()
         .id("minecraft:movement_speed")
         .unwrap()
         .registry_id();

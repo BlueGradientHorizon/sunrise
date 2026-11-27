@@ -64,7 +64,7 @@ fn update_attributes_answers_the_local_players_living_reads() {
             Ok(ControlFlow::Continue(()))
         );
 
-        let registry_id = game.motion.attributes.id(health).unwrap().registry_id();
+        let registry_id = game.motion.attributes().id(health).unwrap().registry_id();
         let packet = C::UpdateAttributes(play::UpdateAttributes {
             id: 42,
             values: vec![play::AttributeSnapshot {

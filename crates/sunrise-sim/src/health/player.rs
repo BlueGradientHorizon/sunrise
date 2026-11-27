@@ -220,26 +220,18 @@ pub struct PlayerHealth {
     pub last_hurt_mob: Option<(u32, i32)>,
 }
 impl PlayerHealth {
-    pub fn new(resources: &HealthResources, attributes: &mut Attributes) -> Result<Self> {
-        let ids = resources.ids;
+    pub(crate) fn initial(resources: &HealthResources, maximum: f32) -> Result<Self> {
         let mut data = resources.initial_floats.clone();
-        let mut ignored = Vec::new();
-        let mut observer = Updates(&mut ignored);
-        let maximum = attributes
-            .key("minecraft:max_health")
-            .ok_or("missing max health")?;
-        let maximum = attributes
-            .value(
-                Some(maximum),
-                sunrise_world::attribute_map::ValueKind::Computed,
-            )
-            .map_err(|e| io::Error::other(format!("health attribute: {e:?}")))?
-            as f32;
-        PlayerAttributeHealth::new(attributes, &mut data, ids, false, &mut observer)?
-            .set_health(maximum)?;
+        // Keep the initial synchronized update's dirty and non-default state.
+        data.set(
+            resources.ids.health,
+            sunrise_world::living_health::clamp(maximum, maximum),
+            false,
+            &mut Updates(&mut Vec::new()),
+        )?;
         Ok(Self {
             data,
-            ids,
+            ids: resources.ids,
             food: FoodData::default(),
             hurt: HurtState {
                 no_action_time: 0,

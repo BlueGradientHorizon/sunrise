@@ -1385,7 +1385,7 @@ impl crate::game::ServerGame<'_> {
         // on its attributes, which the hit's absorption reads.
         if equip.is_some_and(|equip| !equip.is_empty()) {
             crate::game::living_attributes::collect_equipment(
-                &self.common.motion.attributes,
+                self.common.motion.attributes(),
                 self.items(),
                 &mut mob,
             );

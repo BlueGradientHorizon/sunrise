@@ -79,7 +79,7 @@ fn attributes(
     distance: f64,
 ) {
     let snapshot = |name: &str, base: f64| {
-        let attribute = game.motion.attributes.id(name).unwrap().registry_id();
+        let attribute = game.motion.attributes().id(name).unwrap().registry_id();
         play::AttributeSnapshot {
             attribute,
             base,
