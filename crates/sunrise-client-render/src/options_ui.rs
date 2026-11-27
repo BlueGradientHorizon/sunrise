@@ -3305,7 +3305,7 @@ impl OptionsUi {
                             if let Some(name) = item.key_name() {
                                 self.selected_key = Some(name);
                             } else {
-                                item.cycle(&mut s.extras, self.shift);
+                                item.cycle(&mut s.extras);
                                 events.push(Event::Changed);
                             }
                         }
@@ -3615,7 +3615,7 @@ impl OptionsUi {
                 (true, self.cycle_option(s, opt, amount > 0.0, framebuffer))
             }
             Some(HoveredControl::Extra(item)) if amount != 0.0 => {
-                item.cycle(&mut s.extras, amount > 0.0);
+                item.cycle(&mut s.extras);
                 (true, vec![Event::Changed])
             }
             Some(_) => (false, Vec::new()),
@@ -4400,7 +4400,7 @@ impl OptionsUi {
                             if let Some(name) = item.key_name() {
                                 self.selected_key = Some(name);
                             } else {
-                                item.cycle(&mut s.extras, shift);
+                                item.cycle(&mut s.extras);
                                 events.push(Event::Changed);
                             }
                         }

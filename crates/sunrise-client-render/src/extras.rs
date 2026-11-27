@@ -633,7 +633,7 @@ impl Item {
         }
     }
     /// A click toggles a switch. The sort key binds instead.
-    pub fn cycle(self, e: &mut Extras, _back: bool) {
+    pub fn cycle(self, e: &mut Extras) {
         match self {
             Item::Fullbright => e.fullbright = !e.fullbright,
             Item::DynamicLights => e.dynamic_lights = !e.dynamic_lights,
@@ -815,17 +815,17 @@ mod tests {
         assert_eq!(Extras::parse(""), d);
         assert_eq!(Extras::parse(&d.serialize()), d);
         let mut e = d.clone();
-        Item::Fullbright.cycle(&mut e, false);
+        Item::Fullbright.cycle(&mut e);
         assert_eq!(Item::Fullbright.switch(&e), Some(true));
-        Item::DynamicLights.cycle(&mut e, false);
+        Item::DynamicLights.cycle(&mut e);
         assert_eq!(Item::DynamicLights.switch(&e), Some(true));
         assert_eq!(Extras::parse(&e.serialize()), e);
-        Item::Pregen.cycle(&mut e, false);
+        Item::Pregen.cycle(&mut e);
         assert_eq!(Item::Pregen.switch(&e), Some(true));
-        Item::OwnNameTag.cycle(&mut e, false);
+        Item::OwnNameTag.cycle(&mut e);
         assert_eq!(Item::OwnNameTag.switch(&e), Some(true));
         assert_eq!(Item::HideBlockParticles.switch(&e), Some(false));
-        Item::HideBlockParticles.cycle(&mut e, false);
+        Item::HideBlockParticles.cycle(&mut e);
         assert!(e.hide_block_particles);
         assert_eq!(Item::HideBlockParticles.switch(&e), Some(true));
         let only = Extras::parse("hideBlockParticles:true\n");
@@ -836,14 +836,14 @@ mod tests {
         e.sort_key = "key.keyboard.r".into();
         e.chat_animation = true;
         e.chat_indicator = false;
-        Item::WheelCyclesSettings.cycle(&mut e, false);
+        Item::WheelCyclesSettings.cycle(&mut e);
         assert_eq!(Item::WheelCyclesSettings.switch(&e), Some(true));
         e.music_off = vec![
             "minecraft:music/game/calm1".into(),
             "minecraft:music.menu".into(),
         ];
         assert!(!e.music_page);
-        Item::MusicPage.cycle(&mut e, false);
+        Item::MusicPage.cycle(&mut e);
         assert_eq!(Item::MusicPage.switch(&e), Some(true));
         assert_eq!(Extras::parse(&e.serialize()), e);
     }
@@ -858,7 +858,7 @@ mod tests {
     #[test]
     fn items_cycle_through_their_values() {
         let mut e = Extras::default();
-        Item::Sort.cycle(&mut e, true);
+        Item::Sort.cycle(&mut e);
         assert_eq!(Item::Sort.value(&e), "On");
         for item in rows().into_iter().flatten() {
             assert!(!item.caption().is_empty() && !item.description().is_empty());
