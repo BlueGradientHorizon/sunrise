@@ -14,7 +14,7 @@
 use super::expression_blocks::{VANILLA_OFFSETS, VANILLA_SIZES, block_entry};
 use super::mod_meshes::{ResolvedMeshDraw, wgpu_index_format};
 use super::mod_render_targets::{TargetMips, TargetUse};
-use super::world_primitives::{PreparedPipelinePass, Upload, VertexPages};
+use super::world_primitives::{PreparedPass, Upload, VertexPages};
 use crate::mod_pipelines::{Built, BuiltTexture, ModifierStacks, Pipelines, wgpu_compare};
 use glam::Mat4;
 use mod_api::{
@@ -4274,9 +4274,9 @@ impl ModPipelines {
         pass: &mut wgpu::RenderPass<'_>,
         indices: &wgpu::Buffer,
         ranges: impl IntoIterator<Item = std::ops::Range<u32>>,
-        target: PreparedPipelinePass<'_>,
+        target: PreparedPass<'_>,
     ) {
-        if let PreparedPipelinePass::Oit(stage) = target {
+        if let PreparedPass::Oit(stage) = target {
             self.draw_prepared_oit(pass, stage, indices, ranges);
             return;
         }
@@ -4284,7 +4284,7 @@ impl ModPipelines {
         self.draw_runs(
             pass,
             indices,
-            matches!(target, PreparedPipelinePass::Pack { .. }),
+            matches!(target, PreparedPass::Pack { .. }),
             ranges
                 .into_iter()
                 .flat_map(|range| self.prepared_runs(range))
@@ -4300,9 +4300,9 @@ impl ModPipelines {
         pass: &mut wgpu::RenderPass<'_>,
         indices: &wgpu::Buffer,
         ranges: impl IntoIterator<Item = std::ops::Range<u32>>,
-        target: PreparedPipelinePass<'_>,
+        target: PreparedPass<'_>,
     ) {
-        if let PreparedPipelinePass::Oit(stage) = target {
+        if let PreparedPass::Oit(stage) = target {
             self.draw_prepared_oit_draws(pass, stage, indices, ranges);
             return;
         }
@@ -4310,7 +4310,7 @@ impl ModPipelines {
         self.draw_prepared_cmds(
             pass,
             indices,
-            matches!(target, PreparedPipelinePass::Pack { .. }),
+            matches!(target, PreparedPass::Pack { .. }),
             ranges
                 .into_iter()
                 .flat_map(|range| self.prepared_draws(range))

@@ -188,30 +188,26 @@ struct Globals {
     viewport: [f32; 4],
 }
 
-struct PrimitivePipelines {
+pub(super) struct PrimitivePipelines {
     /// Depth tested, then seen through walls.
     quad_pipelines: [wgpu::RenderPipeline; 2],
     line_pipelines: [wgpu::RenderPipeline; 2],
 }
 
 #[derive(Clone, Copy)]
-enum PreparedPass<'a> {
+pub(super) enum PreparedPass<'a> {
     World,
     Oit(super::oit::Stage),
-    Pack(&'a PrimitivePipelines),
+    Pack {
+        pipelines: &'a PrimitivePipelines,
+        bound_slots: &'a [usize],
+    },
 }
 
-#[derive(Clone, Copy)]
-pub(super) enum PreparedPipelinePass<'a> {
-    World,
-    Oit(super::oit::Stage),
-    Pack { bound_slots: &'a [usize] },
-}
-
-impl<'a> PreparedPipelinePass<'a> {
+impl<'a> PreparedPass<'a> {
     pub(super) fn skip_slots(self) -> &'a [usize] {
         match self {
-            Self::Pack { bound_slots } => bound_slots,
+            Self::Pack { bound_slots, .. } => bound_slots,
             Self::World | Self::Oit(_) => &[],
         }
     }
@@ -958,13 +954,14 @@ impl WorldPrimitives {
         let Some((_, pipelines)) = &self.pack_pipelines else {
             return false;
         };
+        let bound_slots = self.bound_mod_slots.as_slice();
         if self.group.is_none()
             || !draws.iter().any(|draw| {
                 draw.primitives.iter().any(|range| !range.is_empty())
                     || self.pipelines.has_unbound_prepared(
                         draw.pipeline_runs.clone(),
                         draw.pipeline_draws.clone(),
-                        &self.bound_mod_slots,
+                        bound_slots,
                     )
             })
         {
@@ -991,7 +988,14 @@ impl WorldPrimitives {
             }),
             ..Default::default()
         });
-        self.draw_prepared_ranges(&mut pass, PreparedPass::Pack(pipelines), draws)
+        self.draw_prepared_ranges(
+            &mut pass,
+            PreparedPass::Pack {
+                pipelines,
+                bound_slots,
+            },
+            draws,
+        )
     }
 
     /// Per-frame shader-pack uniform values uploaded from the latest [`Batch`].
@@ -1113,21 +1117,13 @@ impl WorldPrimitives {
         target: PreparedPass<'_>,
         draws: &[DrawRanges],
     ) -> bool {
-        let (primitives, pipeline_pass) = match target {
-            PreparedPass::World => (Some(&self.pipelines_standard), PreparedPipelinePass::World),
-            PreparedPass::Oit(stage) => (
-                self.oit_pipelines.as_ref().map(|p| &p[stage as usize]),
-                PreparedPipelinePass::Oit(stage),
-            ),
-            PreparedPass::Pack(pipelines) => (
-                Some(pipelines),
-                PreparedPipelinePass::Pack {
-                    bound_slots: &self.bound_mod_slots,
-                },
-            ),
+        let primitives = match target {
+            PreparedPass::World => Some(&self.pipelines_standard),
+            PreparedPass::Oit(stage) => self.oit_pipelines.as_ref().map(|p| &p[stage as usize]),
+            PreparedPass::Pack { pipelines, .. } => Some(pipelines),
         };
         let mut drew = primitives.is_some_and(|pipelines| {
-            let oit = matches!(pipeline_pass, PreparedPipelinePass::Oit(_));
+            let oit = matches!(target, PreparedPass::Oit(_));
             self.draw_prepared_primitives(pass, pipelines, oit, draws)
         });
         let mut runs = draws
@@ -1137,7 +1133,7 @@ impl WorldPrimitives {
             .peekable();
         if runs.peek().is_some() {
             self.pipelines
-                .draw_prepared_runs(pass, &self.indices, runs, pipeline_pass);
+                .draw_prepared_runs(pass, &self.indices, runs, target);
             drew = true;
         }
         let mut commands = draws
@@ -1147,7 +1143,7 @@ impl WorldPrimitives {
             .peekable();
         if commands.peek().is_some() {
             self.pipelines
-                .draw_prepared_draws(pass, &self.indices, commands, pipeline_pass);
+                .draw_prepared_draws(pass, &self.indices, commands, target);
             drew = true;
         }
         drew

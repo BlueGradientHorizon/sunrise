@@ -306,7 +306,8 @@ fn pack_owned_feature_stages_draw_only_unbound_prepared_mod_pipelines() {
         ),
         (
             "mod_prepared.fsh",
-            "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){gl_FragData[0]=vec4(0.0,64.0/255.0,0.0,1.0);}",
+            "#version 120\n/* DRAWBUFFERS:0 */\n\
+             void main(){gl_FragData[0]=vec4(0.0,64.0/255.0,0.0,1.0);}",
         ),
         ("final.vsh", VERTEX),
         (
@@ -323,8 +324,13 @@ fn pack_owned_feature_stages_draw_only_unbound_prepared_mod_pipelines() {
         mod_programs: pack_program_requests_of(&registered),
         ..Default::default()
     };
-    let (mut post, color, depth) =
-        load_pack_with_mods(&gpu, files, inputs, &pack_runtime_specs_of(&registered), &[]);
+    let (mut post, color, depth) = load_pack_with_mods(
+        &gpu,
+        files,
+        inputs,
+        &pack_runtime_specs_of(&registered),
+        &[],
+    );
     assert!(post.owns_feature_stages(), "{:?}", post.notes);
     assert_eq!(post.bound_mod_slots(), &[1], "{:?}", post.notes);
 
@@ -433,7 +439,12 @@ fn pack_owned_feature_stages_draw_only_unbound_prepared_mod_pipelines() {
     // stay green: an extra fallback draw after AfterSky would overwrite them with the mod's red.
     assert_eq!(
         pixels,
-        [[0, 0, 64, 255], [0, 64, 0, 255], [0, 0, 64, 255], [0, 64, 0, 255]]
+        [
+            [0, 0, 64, 255],
+            [0, 64, 0, 255],
+            [0, 0, 64, 255],
+            [0, 64, 0, 255]
+        ]
     );
     assert_eq!(drew, [true, true]);
 }
