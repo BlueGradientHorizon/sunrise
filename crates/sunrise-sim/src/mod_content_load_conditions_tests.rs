@@ -647,3 +647,61 @@ fn a_gated_mod_damage_type_is_decided_once_for_the_root_alone_readers() {
         );
     }
 }
+
+/// #6120: a mod damage type file that isn't JSON is left out of the root with a warning
+/// naming the mod and the file, so the root's startup readers aren't blocked by it; it
+/// stays in the mod's own pack, where the world's registry load reports it as vanilla
+/// does. The mod's valid type still joins the root and the vanilla tag naming it holds.
+#[test]
+fn a_malformed_mod_damage_type_is_left_out_of_the_root_with_a_warning() {
+    let scratch = tempfile::tempdir().unwrap();
+    let base = resources(scratch.path());
+    for (file, text) in [
+        (
+            "data/minecraft/damage_type/starve.json",
+            r#"{"message_id":"starve","scaling":"when_caused_by_living_non_player","exhaustion":0.0}"#,
+        ),
+        (
+            "data/minecraft/tags/damage_type/bypasses_armor.json",
+            r#"{"values":["minecraft:starve"]}"#,
+        ),
+    ] {
+        let path = base.join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    let broken = "data/testmod/damage_type/broken.json";
+    let mods = mod_in(
+        scratch.path(),
+        &[
+            ("sunrise-mod.toml", manifest("testmod", "")),
+            (broken, r#"{"message_id":"testmod.broken","#.into()),
+            (
+                "data/testmod/damage_type/bleeding.json",
+                r#"{"message_id":"testmod.bleed","scaling":"never","exhaustion":0.1}"#.into(),
+            ),
+            (
+                "data/minecraft/tags/damage_type/bypasses_armor.json",
+                r#"{"values":["testmod:bleeding"]}"#.into(),
+            ),
+        ],
+    );
+    let out = scratch.path().join("out");
+    let warnings = build_fixture(&base, Path::new(""), &mods, &out).unwrap();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].starts_with(&format!("mod testmod: {broken}: ")),
+        "{warnings:?}"
+    );
+    assert!(!out.join(broken).exists());
+    assert!(out.join("data/testmod/damage_type/bleeding.json").exists());
+
+    let catalog = root_only_catalog(&out);
+    assert!(catalog.id("testmod:bleeding").is_some());
+    assert!(catalog.id("testmod:broken").is_none());
+    let members: BTreeSet<_> = catalog.tag_members("minecraft:bypasses_armor").collect();
+    assert_eq!(
+        members,
+        BTreeSet::from(["minecraft:starve", "testmod:bleeding"])
+    );
+}
