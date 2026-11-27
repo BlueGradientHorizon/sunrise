@@ -365,12 +365,13 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
         }
         Some(_) => return Err("--template is content or native".into()),
     }
+    let manifest_text = fill(
+        MANIFEST,
+        include_str!("../template/content/sunrise-mod.toml"),
+    );
+    let manifest = Manifest::parse(&manifest_text)?;
     // A block copying a vanilla one, with its model, name, loot, recipe and tag.
     let files = [
-        (
-            MANIFEST,
-            include_str!("../template/content/sunrise-mod.toml"),
-        ),
         (
             "data/{id}/sunrise/block/glowing_amethyst.json",
             include_str!("../template/content/block.json"),
@@ -405,15 +406,17 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
         ),
         (".gitignore", include_str!("../template/gitignore")),
     ];
-    for (file, text) in files.into_iter().chain(PAGE_TEMPLATE) {
+    let rendered = files.into_iter().chain(PAGE_TEMPLATE).map(|(file, text)| {
         let file = file.replace("{id}", &id);
-        let to = dir.join(&file);
+        let text = fill(&file, text);
+        (file, text)
+    });
+    for (file, text) in std::iter::once((MANIFEST.to_owned(), manifest_text)).chain(rendered) {
+        let to = dir.join(file);
         std::fs::create_dir_all(to.parent().expect("a file in the mod"))
             .map_err(|e| e.to_string())?;
-        std::fs::write(&to, fill(&file, text)).map_err(|e| format!("{}: {e}", to.display()))?;
+        std::fs::write(&to, text).map_err(|e| format!("{}: {e}", to.display()))?;
     }
-    let manifest =
-        Manifest::parse(&std::fs::read_to_string(dir.join(MANIFEST)).map_err(|e| e.to_string())?)?;
     Content::read(dir, &manifest)?;
     author_release::scaffold(dir)?;
     println!(
@@ -1044,6 +1047,24 @@ mod tests {
         }
         let readme = std::fs::read_to_string(workspace.path().join("native/README.md")).unwrap();
         assert_eq!(readme.lines().next().unwrap(), format!("# {name}"));
+    }
+
+    #[test]
+    fn new_refuses_an_overlong_content_id_before_creating_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = "x".repeat(65);
+        let path = dir.path().join(&id);
+        for args in [
+            vec![path.display().to_string()],
+            template_args(&path, "content"),
+        ] {
+            let fetch = |_: &Path, _: &str| panic!("a content template must not fetch an SDK");
+            assert_eq!(
+                new(&args, &fetch).unwrap_err(),
+                format!("{MANIFEST}: id {id:?} is not [a-z0-9_]{{1,64}}")
+            );
+            assert!(!path.exists());
+        }
     }
 
     #[test]
