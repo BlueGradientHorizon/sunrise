@@ -176,18 +176,21 @@ type Sources = (Vec<(PathBuf, u64, Option<SystemTime>)>, [u8; 32]);
 /// length or modification time changed is read again.
 static SOURCES: Mutex<Vec<Sources>> = Mutex::new(Vec::new());
 
+const RESOLVED_INPUT_FILES: &[&str] = &[
+    "facts.json",
+    "block-behaviours.json",
+    "gameplay-facts.json",
+    "block-tags.json",
+    "cached-collision.nbt",
+];
+const FLUID_TAGS_DIR: &str = "data/minecraft/tags/fluid";
+
 fn sources_digest(root: &Path) -> io::Result<[u8; 32]> {
-    let mut paths: Vec<PathBuf> = [
-        "facts.json",
-        "block-behaviours.json",
-        "gameplay-facts.json",
-        "block-tags.json",
-        "cached-collision.nbt",
-    ]
-    .iter()
-    .map(|relative| root.join(relative))
-    .collect();
-    let mut fluids: Vec<PathBuf> = fs::read_dir(root.join("data/minecraft/tags/fluid"))?
+    let mut paths: Vec<PathBuf> = RESOLVED_INPUT_FILES
+        .iter()
+        .map(|relative| root.join(relative))
+        .collect();
+    let mut fluids: Vec<PathBuf> = fs::read_dir(root.join(FLUID_TAGS_DIR))?
         .map(|entry| entry.map(|entry| entry.path()))
         .collect::<io::Result<_>>()?;
     fluids.sort();
@@ -933,66 +936,53 @@ fn write_registry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::prepared_test_root;
     use std::sync::atomic::AtomicU32;
 
     static NEXT_FIXTURE: AtomicU32 = AtomicU32::new(0);
 
     struct FixtureDir(PathBuf);
+    impl FixtureDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "sunrise-{name}-test-{}-{}",
+                std::process::id(),
+                NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
+            ));
+            fs::create_dir(&dir).unwrap();
+            Self(dir)
+        }
+    }
     impl Drop for FixtureDir {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
 
-    fn fixture() -> Option<FixtureDir> {
-        let source = std::env::var_os("SUNRISE_RESOURCES")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.local/sunrise-client/26.3")
-            });
-        if !source.join("block-behaviours.json").exists() {
-            eprintln!("skipping behaviour cache tests: no client resources");
-            return None;
+    fn fixture() -> FixtureDir {
+        let source = prepared_test_root::prepared_root(&[RESOLVED_INPUT_FILES, &[FLUID_TAGS_DIR]]);
+        let dir = FixtureDir::new("behaviour-cache");
+        fs::create_dir_all(dir.0.join(FLUID_TAGS_DIR)).unwrap();
+        for file in RESOLVED_INPUT_FILES {
+            fs::copy(source.join(file), dir.0.join(file)).unwrap();
         }
-        let dir = std::env::temp_dir().join(format!(
-            "sunrise-behaviour-cache-test-{}-{}",
-            std::process::id(),
-            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
-        ));
-        fs::create_dir_all(dir.join("data/minecraft/tags/fluid")).unwrap();
-        for file in [
-            "facts.json",
-            "block-behaviours.json",
-            "gameplay-facts.json",
-            "block-tags.json",
-            "cached-collision.nbt",
-        ] {
-            fs::copy(source.join(file), dir.join(file)).unwrap();
-        }
-        for entry in fs::read_dir(source.join("data/minecraft/tags/fluid")).unwrap() {
+        for entry in fs::read_dir(source.join(FLUID_TAGS_DIR)).unwrap() {
             let entry = entry.unwrap();
             if entry.file_type().unwrap().is_file() {
                 fs::copy(
                     entry.path(),
-                    dir.join("data/minecraft/tags/fluid")
-                        .join(entry.file_name()),
+                    dir.0.join(FLUID_TAGS_DIR).join(entry.file_name()),
                 )
                 .unwrap();
             }
         }
-        Some(FixtureDir(dir))
+        dir
     }
 
     /// The key is the format version and the resource bytes: no resources needed.
     #[test]
     fn key_follows_the_format_version_and_the_resource_bytes() {
-        let dir = std::env::temp_dir().join(format!(
-            "sunrise-snapshot-key-test-{}-{}",
-            std::process::id(),
-            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        let dir = FixtureDir(dir);
+        let dir = FixtureDir::new("snapshot-key");
         fs::write(dir.0.join("facts.json"), b"[1]").unwrap();
         let key = registry_fingerprint(&dir.0).unwrap();
         assert_eq!(key, registry_fingerprint(&dir.0).unwrap());
@@ -1014,10 +1004,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn resolved_snapshot_roundtrips_all_fields() {
-        let Some(root) = fixture() else {
-            return;
-        };
+        let root = fixture();
         let registry = super::super::load_registry(&root.0).unwrap();
         let original = super::super::load_uncached(&registry, &root.0).unwrap();
         let captured = Snapshot::capture(&original);
@@ -1032,7 +1021,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn declared_vegetation_survives_a_warm_cache() {
-        let root = fixture().expect("prepared block behaviour resources");
+        let root = fixture();
         let path = root.0.join("block-behaviours.json");
         let mut behaviour: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -1061,9 +1050,11 @@ mod tests {
     /// file rewritten at the same length is hashed again.
     #[test]
     fn sources_are_hashed_once_until_a_file_changes() {
-        let Some(root) = fixture() else {
-            return;
-        };
+        let root = FixtureDir::new("sources-digest");
+        fs::create_dir_all(root.0.join(FLUID_TAGS_DIR)).unwrap();
+        for file in RESOLVED_INPUT_FILES {
+            fs::write(root.0.join(file), b"[]").unwrap();
+        }
         let entries = || {
             SOURCES
                 .lock()
@@ -1079,15 +1070,22 @@ mod tests {
         let mut bytes = fs::read(&tags).unwrap();
         bytes[0] ^= 1;
         fs::write(&tags, bytes).unwrap();
+        // The cache keys on metadata, so make the same-length rewrite visible even on
+        // filesystems whose timestamp resolution is coarser than the test's writes.
+        fs::File::options()
+            .write(true)
+            .open(&tags)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH)
+            .unwrap();
         assert_ne!(sources_digest(&root.0).unwrap(), first);
         assert_eq!(entries(), 2);
     }
 
     #[test]
+    #[ignore = "daily"]
     fn cache_invalidates_sources_and_recovers_from_corruption() {
-        let Some(root) = fixture() else {
-            return;
-        };
+        let root = fixture();
         // The game's cache folder, apart from the resources.
         let dir = root.0.join("game/.sunrise-cache");
         let registry = super::super::load_registry(&root.0).unwrap();
@@ -1160,31 +1158,17 @@ mod tests {
     }
 
     /// `facts.json` alone is a registry fixture's whole resource root.
-    fn facts_fixture() -> Option<FixtureDir> {
-        let source = std::env::var_os("SUNRISE_RESOURCES")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.local/sunrise-client/26.3")
-            });
-        if !source.join("facts.json").exists() {
-            eprintln!("skipping registry cache test: no client resources");
-            return None;
-        }
-        let dir = std::env::temp_dir().join(format!(
-            "sunrise-registry-cache-test-{}-{}",
-            std::process::id(),
-            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        fs::copy(source.join("facts.json"), dir.join("facts.json")).unwrap();
-        Some(FixtureDir(dir))
+    fn facts_fixture() -> FixtureDir {
+        let source = prepared_test_root::prepared_root(&[&["facts.json"]]);
+        let dir = FixtureDir::new("registry-cache");
+        fs::copy(source.join("facts.json"), dir.0.join("facts.json")).unwrap();
+        dir
     }
 
     #[test]
+    #[ignore = "daily"]
     fn registry_snapshot_roundtrips_and_recovers_from_corruption() {
-        let Some(root) = facts_fixture() else {
-            return;
-        };
+        let root = facts_fixture();
         let (registry, flags) = BlockRegistry::from_facts_json_with_flags(
             std::fs::File::open(root.0.join("facts.json")).unwrap(),
         )
