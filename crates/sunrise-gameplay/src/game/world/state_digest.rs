@@ -20,6 +20,7 @@ use sunrise_sim::{join_seq::JoinSeq, thrown_trident::ThrownTrident};
 
 #[path = "state_digest_groups.rs"]
 mod groups;
+use groups::BodyDigest as _;
 
 struct Sink {
     out: std::io::BufWriter<std::fs::File>,
@@ -113,6 +114,9 @@ impl DigestParts for sunrise_sim::entities::ArmorStand {
     fn health_bits(&self) -> Option<u64> {
         Some(u64::from(self.health.to_bits()))
     }
+    fn own_random(&self) -> Option<&LegacyRandom> {
+        Some(&self.random)
+    }
 }
 impl DigestParts for PrimedTnt {
     fn extra(&self) -> i64 {
@@ -133,7 +137,11 @@ impl DigestParts for sunrise_sim::projectiles::Projectile {
         Some(&self.random.0)
     }
 }
-impl DigestParts for fireworks::Rocket {}
+impl DigestParts for fireworks::Rocket {
+    fn own_random(&self) -> Option<&LegacyRandom> {
+        Some(&self.random)
+    }
+}
 impl DigestParts for general::GeneralRow {}
 impl DigestParts for ThrownTrident {
     fn own_random(&self) -> Option<&LegacyRandom> {
@@ -175,6 +183,7 @@ impl crate::game::ServerGame<'_> {
                 e.health_bits().hash(&mut one);
                 e.is_removed().hash(&mut one);
                 e.extra().hash(&mut one);
+                e.hash_body(&mut one, self.common.res.items());
                 let one = one.finish();
                 one.hash(&mut entities);
                 count += 1;

@@ -10,7 +10,7 @@ use sunrise_core::nbt::{JavaString, Tag, numeric_int};
 use sunrise_gameplay_common::game::{
     FallingBlock, boats_common::Boat, commands_common::Target, dragon_common::dragon_part_id,
     entity::Entity, fireworks::Rocket, fishing_common::State, general::GeneralRow,
-    minecarts::Minecart, tnt_common::PrimedTnt,
+    minecarts::Minecart, native_entity_base::EntityBase, tnt_common::PrimedTnt,
 };
 use sunrise_items::{
     equipment::Equipment,
@@ -23,6 +23,8 @@ use sunrise_sim::{
     join_seq::{JoinSeq, Joined},
     mobs::{Mob, leash::Holder},
     motion::PlayerMotion,
+    nether_portal::PortalState,
+    pose::SizeAnswer,
     projectiles::{Projectile, ProjectileKind},
     text_display_data::resident::{DisplayContents, DisplayState},
     thrown_trident::ThrownTrident,
@@ -33,6 +35,11 @@ pub(super) struct EntityGroups {
     pub(super) identity: DefaultHasher,
     pub(super) shared: DefaultHasher,
 }
+
+#[path = "state_digest_bodies.rs"]
+mod bodies;
+
+pub(super) use bodies::BodyDigest;
 
 fn tag(h: &mut impl Hasher, value: &Tag) {
     match value {
@@ -85,6 +92,18 @@ pub(super) struct Shared<'a> {
     fire: Option<i32>,
     air: Option<i32>,
     portal: Option<i32>,
+    active_portal: Option<PortalState>,
+    base: Option<EntityBase>,
+    no_gravity: Option<bool>,
+    silent: Option<bool>,
+    no_physics: Option<bool>,
+    invisible: Option<bool>,
+    name_visible: Option<bool>,
+    visual_fire: Option<bool>,
+    invulnerable_time: Option<i32>,
+    ticks_frozen: Option<i32>,
+    fall_distance: Option<f64>,
+    size: Option<SizeAnswer>,
     ground: Option<bool>,
     collisions: [Option<bool>; 4],
     name: Option<&'a Tag>,
@@ -118,6 +137,17 @@ macro_rules! shared_parts {
 shared_parts!(Mob, Mob, |e, _game| Shared {
     fire: Some(e.fire_ticks),
     air: Some(e.air),
+    base: Some(EntityBase {
+        fire_ticks: e.fire_ticks,
+        invulnerable: e.invulnerable_flag,
+        no_gravity: e.no_gravity,
+        silent: e.silent,
+        glowing: e.glowing,
+    }),
+    invisible: Some(e.invisible),
+    name_visible: Some(e.name_visible),
+    invulnerable_time: Some(e.invulnerable_time),
+    ticks_frozen: Some(e.ticks_frozen),
     collisions: [None, None, Some(e.vertical_collision_below), None],
     text: e.custom_name_text.as_ref(),
     literal_name: e.custom_name.as_deref(),
@@ -130,20 +160,26 @@ shared_parts!(ItemEntity, Item, |e, _game| Shared {
 });
 shared_parts!(Boat, Boat, |e, _game| Shared {
     fire: Some(e.fire_ticks),
+    ticks_frozen: Some(e.ticks_frozen),
     ..Shared::default()
 });
-shared_parts!(Minecart, Cart);
+shared_parts!(Minecart, Cart, |e, _game| Shared {
+    ticks_frozen: Some(e.ticks_frozen),
+    ..Shared::default()
+});
 shared_parts!(ArmorStand, Stand, |e, _game| Shared {
     fire: Some(e.fire_ticks),
     air: Some(e.air),
     text: e.custom_name.as_ref(),
+    invisible: Some(e.invisible),
+    name_visible: Some(e.name_visible),
     ..Shared::default()
 });
 shared_parts!(PrimedTnt, Tnt);
 shared_parts!(FallingBlock, Falling, |e, _game| Shared {
     uuid: e.saved.as_ref().map(|s| s.0),
     fire: Some(e.fire_ticks),
-    portal: Some(e.portal.cooldown),
+    active_portal: Some(e.portal),
     ..Shared::default()
 });
 shared_parts!(ExperienceOrb, Orb, |e, _game| Shared {
@@ -155,10 +191,14 @@ shared_parts!(Projectile, Projectile, |e, game| Shared {
     uuid: e.uuid,
     fire: Some(e.arrow.as_ref().map_or(e.fire_ticks, |a| a.fire_ticks)),
     air: Some(e.air_supply),
+    visual_fire: Some(e.has_visual_fire),
     portal: matches!(e.kind, ProjectileKind::EnderPearl).then(|| game.pearl_portal_cooldown(e.id)),
     ..Shared::default()
 });
-shared_parts!(Rocket, Rocket);
+shared_parts!(Rocket, Rocket, |e, _game| Shared {
+    silent: Some(e.silent),
+    ..Shared::default()
+});
 shared_parts!(ThrownTrident, Trident, |e, _game| Shared {
     fire: Some(e.fire_ticks),
     ..Shared::default()
@@ -166,6 +206,8 @@ shared_parts!(ThrownTrident, Trident, |e, _game| Shared {
 shared_parts!(GeneralRow, General, |e, _game| Shared {
     uuid: Some(e.uuid),
     fire: Some(e.base.fire_ticks),
+    base: Some(e.base),
+    name_visible: Some(e.custom_name_visible),
     ground: Some(e.on_ground),
     collisions: [
         Some(e.horizontal_collision),
@@ -179,9 +221,17 @@ shared_parts!(GeneralRow, General, |e, _game| Shared {
 
 pub(super) fn typed_shared(game: &ServerGame<'_>, groups: &mut EntityGroups, e: &impl SharedParts) {
     let mut live = e.shared(game);
-    live.ground = live
-        .ground
-        .or_else(|| e.ground_state().map(|g| g.on_ground));
+    let ground = e.ground_state();
+    live.ground = live.ground.or_else(|| ground.map(|g| g.on_ground));
+    live.collisions[0] = live.collisions[0].or_else(|| ground.map(|g| g.horizontal_collision));
+    live.fall_distance = Some(e.fall_distance());
+    live.size = e.size_answer();
+    live.no_gravity = Some(
+        live.base
+            .map_or_else(|| e.is_no_gravity(), |b| b.no_gravity),
+    );
+    live.no_physics = Some(e.no_physics(game.common.persist.no_physics.get(&e.id()).copied()));
+    hash_support(&mut groups.shared, ground);
     entity_shared(game, groups, e.id(), Some(e.target()), live);
 }
 
@@ -217,11 +267,43 @@ fn entity_values(
     id.hash(h);
     live.fire.or_else(|| number("Fire")).hash(h);
     live.air.or_else(|| number("Air")).hash(h);
+    let portal = live
+        .active_portal
+        .or_else(|| game.server.portals.entities.get(&id).copied());
     live.portal
-        .or_else(|| game.server.portals.entities.get(&id).map(|p| p.cooldown))
+        .or_else(|| portal.map(|p| p.cooldown))
         .or_else(|| number("PortalCooldown"))
         .unwrap_or(0)
         .hash(h);
+    portal.and_then(|p| p.process).map(process_values).hash(h);
+    let base = live.base.unwrap_or_else(|| EntityBase::read(raw));
+    (
+        base.invulnerable,
+        live.no_gravity.unwrap_or(base.no_gravity),
+        live.silent.unwrap_or(base.silent),
+        base.glowing,
+    )
+        .hash(h);
+    (
+        live.invisible,
+        live.name_visible
+            .or_else(|| number("CustomNameVisible").map(|n| n != 0)),
+        live.visual_fire
+            .or_else(|| number("HasVisualFire").map(|n| n != 0)),
+        live.invulnerable_time
+            .or_else(|| number("InvulnerableTime")),
+        live.ticks_frozen.or_else(|| number("TicksFrozen")),
+        live.no_physics
+            .or_else(|| game.common.persist.no_physics.get(&id).copied()),
+    )
+        .hash(h);
+    live.fall_distance
+        .map(f64::to_bits)
+        .or_else(|| {
+            sunrise_sim::save::float(raw.and_then(|tag| tag.get("fall_distance"))).map(f64::to_bits)
+        })
+        .hash(h);
+    size_values(live.size).hash(h);
     live.ground
         .or_else(|| number("OnGround").map(|n| n != 0))
         .hash(h);
@@ -243,6 +325,46 @@ fn entity_values(
             .or(literal_tag.as_ref())
             .or_else(|| raw.and_then(|tag| tag.get("CustomName"))),
     );
+}
+
+fn size_values(
+    size: Option<SizeAnswer>,
+) -> Option<(
+    std::mem::Discriminant<mod_api::Pose>,
+    [u32; 3],
+    Option<[u32; 3]>,
+)> {
+    size.map(|s| {
+        (
+            discriminant(&s.pose),
+            s.vanilla.map(f32::to_bits),
+            s.size.map(|size| size.map(f32::to_bits)),
+        )
+    })
+}
+
+fn hash_support(
+    h: &mut DefaultHasher,
+    ground: Option<&sunrise_world::ground_support::GroundState>,
+) {
+    ground
+        .map(|g| (g.on_ground_no_blocks, g.supporting_block))
+        .hash(h);
+}
+
+fn process_values(
+    p: sunrise_sim::nether_portal::Process,
+) -> (sunrise_core::position::BlockPos, i32, bool) {
+    (p.entry, p.time, p.inside)
+}
+
+fn portal_values(p: PortalState) -> (i32, Option<(sunrise_core::position::BlockPos, i32, bool)>) {
+    (p.cooldown, p.process.map(process_values))
+}
+
+fn text(h: &mut DefaultHasher, text: Option<&sunrise_game_data::text::Text>) {
+    let tag = text.map(|text| sunrise_game_data::scoreboard::json_to_tag(&text.component_view()));
+    optional_tag(h, tag.as_ref());
 }
 
 #[derive(Default)]
@@ -270,7 +392,7 @@ pub(super) fn level(game: &ServerGame<'_>, shared: &mut EntityGroups) -> String 
     hangings(game, shared, items).append(&mut out, "hangings");
     decorations(game, shared, items, &mut out);
     transient(game, shared, items, &mut out);
-    end_entities(game, shared, &mut out);
+    end_entities(game, shared, items, &mut out);
     server_projectiles(game, items, &mut out);
     seats(game).append(&mut out, "seats");
     players(game, items).append(&mut out, "players");
@@ -326,6 +448,7 @@ fn hangings(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items) -> 
             Some(Target::Frame(e.id)),
             Shared {
                 name: e.custom_name.as_ref(),
+                invisible: Some(e.invisible),
                 ..Shared::default()
             },
         );
@@ -399,6 +522,8 @@ fn decorations(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, 
             Some(Target::Other(e.id)),
             Shared {
                 fire: e.eye.map(|eye| eye.fire_ticks),
+                size: e.size_answer,
+                visual_fire: e.eye.map(|eye| eye.has_visual_fire),
                 ..Shared::default()
             },
         );
@@ -565,6 +690,7 @@ fn transient(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, ou
             Some(Target::Fangs(e.id)),
             Shared {
                 fire: Some(e.fire_ticks),
+                visual_fire: Some(e.has_visual_fire),
                 ..Shared::default()
             },
         );
@@ -606,6 +732,18 @@ fn transient(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, ou
                 air: Some(e.air),
                 ground: Some(e.on_ground),
                 name: e.custom_name.as_ref(),
+                base: Some(EntityBase {
+                    fire_ticks: e.fire_ticks,
+                    invulnerable: e.invulnerable,
+                    no_gravity: e.no_gravity,
+                    silent: e.silent,
+                    glowing: e.glowing,
+                }),
+                invulnerable_time: Some(e.invulnerable_time),
+                visual_fire: Some(e.has_visual_fire),
+                name_visible: Some(e.custom_name_visible),
+                ticks_frozen: Some(e.ticks_frozen),
+                fall_distance: Some(e.fall_distance),
                 ..Shared::default()
             },
         );
@@ -632,6 +770,7 @@ fn transient(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, ou
             Shared {
                 uuid: Some(e.uuid),
                 fire: Some(e.fire_ticks),
+                visual_fire: Some(e.has_visual_fire),
                 ..Shared::default()
             },
         );
@@ -648,6 +787,7 @@ fn transient(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, ou
         let h = hooks.row(e.id, e.join);
         vec3(h, e.position);
         vec3(h, e.velocity);
+        hash_support(h, Some(&e.ground));
         discriminant(&e.state).hash(h);
         if let State::Hooked(id) = e.state {
             id.hash(h);
@@ -687,6 +827,7 @@ fn transient(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, ou
             Shared {
                 uuid: Some(e.uuid),
                 fire: Some(e.base.fire_ticks),
+                base: Some(e.base),
                 ground: Some(e.ground.on_ground),
                 ..Shared::default()
             },
@@ -716,6 +857,7 @@ fn server_projectiles(game: &ServerGame<'_>, items: &Items, out: &mut String) {
         )
             .hash(h);
         stack(h, Some(&e.stack), items);
+        text(h, e.owner.as_ref());
     }
     potions.append(out, "server_thrown_potions");
     let mut eyes = Group::default();
@@ -733,7 +875,7 @@ fn server_projectiles(game: &ServerGame<'_>, items: &Items, out: &mut String) {
     eyes.append(out, "server_thrown_eyes");
 }
 
-fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut String) {
+fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, items: &Items, out: &mut String) {
     let mut crystals = Group::default();
     for e in &game.common.crystals {
         let h = crystals.row(e.id, e.join);
@@ -755,6 +897,8 @@ fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut Stri
             Shared {
                 fire: Some(e.fire),
                 ground: Some(e.fall.0),
+                fall_distance: Some(e.fall.1),
+                size: e.size_answer,
                 ..Shared::default()
             },
         );
@@ -794,6 +938,26 @@ fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut Stri
         )
             .hash(h);
         hash_phase(h, &e.phase);
+        bodies::equipment(h, &e.equipment, items);
+        bodies::living_attributes(h, &e.live);
+        (
+            e.hurt_by_player.map(|(who, tick)| (fight_who(who), tick)),
+            e.last_source,
+            e.last_hurt_mob,
+            e.growl,
+            e.ambient_time,
+            e.nodes,
+            e.strafe_request.map(fight_who),
+        )
+            .hash(h);
+        e.nearest_crystal
+            .and_then(|i| game.common.crystals.get(i))
+            .map(|c| c.id)
+            .hash(h);
+        for delay in 0..e.history.len() {
+            let (height, yaw) = e.sample_lerp(delay, 0.0);
+            (height.to_bits(), yaw.to_bits()).hash(h);
+        }
         entity_shared(
             game,
             shared,
@@ -855,6 +1019,11 @@ fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut Stri
                 .hash(h);
             (&potion.effects, &potion.hidden, &potion.ambient).hash(h);
             hash_victims(h, &potion.victims);
+            text(h, Some(&potion.source));
+            potion.custom_particle.is_some().hash(h);
+            if let Some(particle) = &potion.custom_particle {
+                particle_options(h, &particle.options, items);
+            }
             optional_tag(
                 h,
                 potion
@@ -870,11 +1039,64 @@ fn end_entities(game: &ServerGame<'_>, shared: &mut EntityGroups, out: &mut Stri
             Some(Target::Cloud(e.id)),
             Shared {
                 fire: Some(e.fire_ticks),
+                fall_distance: Some(e.fall_distance),
                 ..Shared::default()
             },
         );
     }
     clouds.append(out, "breath_clouds");
+}
+
+fn fight_who(who: sunrise_gameplay_common::game::dragon_common::FightWho) -> Option<u32> {
+    use sunrise_gameplay_common::game::dragon_common::FightWho;
+    match who {
+        FightWho::Host => None,
+        FightWho::Guest(conn) => Some(conn),
+    }
+}
+
+fn particle_options(
+    h: &mut DefaultHasher,
+    p: &sunrise_level::particle_options::ParticleOptions,
+    items: &Items,
+) {
+    use mod_api::client::particles::PositionSource;
+    (
+        discriminant(&p.ty),
+        &p.block,
+        p.color.map(f32::to_bits),
+        p.scale.to_bits(),
+        p.to_color.map(f32::to_bits),
+        p.trail.map(|(at, ticks)| (vec_bits(at), ticks)),
+        &p.item,
+        p.geyser
+            .map(|(blocks, impulse)| (blocks, impulse.to_bits())),
+        &p.mod_particle,
+        p.typed_particle
+            .as_ref()
+            .map(|(typed, limit)| (typed.key(), limit)),
+        &p.source,
+    )
+        .hash(h);
+    stack(h, p.item_stack.as_ref(), items);
+    p.vibration.is_some().hash(h);
+    if let Some((listener, at, ticks)) = &p.vibration {
+        (discriminant(listener), vec_bits(*at), ticks).hash(h);
+        match listener {
+            PositionSource::Block(at) => at.hash(h),
+            PositionSource::Entity { id, y_offset } => (id, y_offset.to_bits()).hash(h),
+            _ => (),
+        }
+    }
+    p.polytone_seed.is_some().hash(h);
+    if let Some(seed) = &p.polytone_seed {
+        for map in [&seed.fields, &seed.customs] {
+            map.len().hash(h);
+            for (name, value) in map {
+                (name, value.to_bits()).hash(h);
+            }
+        }
+    }
 }
 
 fn hash_victims(
@@ -959,14 +1181,18 @@ fn hash_phase(h: &mut DefaultHasher, phase: &sunrise_gameplay_common::game::drag
 }
 
 fn seats(game: &ServerGame<'_>) -> Group {
-    let resident = game.common.mobs.iter();
-    let retained = game
+    let retained: Vec<_> = game
         .common
         .persist
         .off_level
         .values()
-        .filter_map(|e| e.as_mob());
-    let mobs = resident
+        .filter_map(|e| e.as_mob())
+        .collect();
+    let retained_ids: BTreeSet<_> = retained.iter().map(|e| e.id).collect();
+    let mobs = game
+        .common
+        .mobs
+        .iter()
         .chain(retained)
         .filter(|e| !e.removed)
         .filter_map(|e| Some((e.id, e.extra.mount?)));
@@ -998,12 +1224,14 @@ fn seats(game: &ServerGame<'_>) -> Group {
     let guests = level_guests(game).filter_map(|p| Some((p.entity_id as u32, p.vehicle?)));
     hash_seats(
         mobs.chain(rows).chain(bolts).chain(host).chain(guests),
+        &retained_ids,
         |vehicle| game.seated_passengers(vehicle),
     )
 }
 
 fn hash_seats(
     edges: impl IntoIterator<Item = (u32, u32)>,
+    retained: &BTreeSet<u32>,
     passengers: impl Fn(u32) -> Vec<(i64, u32, bool)>,
 ) -> Group {
     let mut edges: Vec<_> = edges.into_iter().collect();
@@ -1017,9 +1245,22 @@ fn hash_seats(
     for vehicle in vehicles {
         vehicle.hash(&mut group.hash);
         let mut seats = passengers(vehicle);
-        seats.sort_unstable_by_key(|&(place, rider, player)| (place, !player, rider));
+        seats.sort_by_key(|&(place, _, _)| place);
+        let mut unordered: Vec<_> = seats
+            .iter()
+            .copied()
+            .filter(|&(_, rider, player)| !player && retained.contains(&rider))
+            .collect();
+        unordered.sort_unstable();
+        let mut canonical = unordered.into_iter();
         seats.len().hash(&mut group.hash);
         for (_, rider, player) in seats {
+            let (rider, player) = if !player && retained.contains(&rider) {
+                let (_, rider, player) = canonical.next().expect("retained seat");
+                (rider, player)
+            } else {
+                (rider, player)
+            };
             (rider, player).hash(&mut group.hash);
         }
     }
@@ -1076,6 +1317,27 @@ fn players(game: &ServerGame<'_>, items: &Items) -> Group {
             (&c.inventory, &c.armor, c.offhand.as_ref(), &c.equipment),
             items,
         );
+        bodies::slots(h, game.server.ender_items.iter(), items);
+        bodies::slots(h, c.craft_grid.iter(), items);
+        stack(h, c.carried.as_ref(), items);
+        (
+            c.player_score,
+            c.level.xp_seed,
+            c.sleeping,
+            c.sleep_timer,
+            c.spawn.map(|v| vec_bits([v.x, v.y, v.z])),
+            c.using,
+            c.use_duration,
+            c.use_delay,
+            game.server.attack_ticks,
+            game.server.shield_cooldown,
+            game.server.xp_delay,
+        )
+            .hash(h);
+        respawn(h, game.server.respawn_config.as_ref());
+        cooldowns(h, &c.cooldowns);
+        c.stats.values.hash(h);
+        player_body(h, p);
         effects(h, &c.potions.effects);
         entity_values(
             game,
@@ -1085,7 +1347,10 @@ fn players(game: &ServerGame<'_>, items: &Items) -> Group {
             Shared {
                 fire: Some(p.fire_ticks),
                 air: Some(p.air),
-                portal: Some(c.portal_player.cooldown),
+                active_portal: Some(c.portal_player),
+                invulnerable_time: Some(p.health.invulnerable_time),
+                ticks_frozen: Some(p.ticks_frozen),
+                size: p.size_answer,
                 ground: Some(p.ground.on_ground),
                 collisions: player_collisions(p),
                 ..Shared::default()
@@ -1097,72 +1362,180 @@ fn players(game: &ServerGame<'_>, items: &Items) -> Group {
     for p in guests {
         let id = p.entity_id as u32;
         let h = group.row(id, JoinSeq::UNJOINED);
-        p.uuid.hash(h);
-        (
-            vec_bits(p.position),
-            rotation([p.yaw, p.pitch]),
-            p.health.to_bits(),
-            p.motion
-                .as_deref()
-                .map(|m| m.health.absorption().to_bits())
-                .or_else(|| p.saved_absorption.map(f32::to_bits)),
-            p.food,
-            p.saturation.to_bits(),
-            p.xp_level,
-            p.xp_progress.to_bits(),
-            p.xp_total,
-            p.selected,
-            p.game_mode,
-            p.vehicle,
-        )
-            .hash(h);
-        p.motion
-            .as_deref()
-            .map(motion_values)
-            .or_else(|| {
-                p.loaded_body.map(|b| {
-                    (
-                        vec_bits(b.velocity),
-                        b.fall_distance.to_bits(),
-                        b.food_exhaustion.to_bits(),
-                        b.food_tick_timer,
-                    )
-                })
-            })
-            .hash(h);
-        player_items(
-            h,
-            (&p.inventory, &p.armor, p.offhand.as_ref(), &p.equipment),
-            items,
-        );
-        effects(h, &p.effects);
-        let motion = p.motion.as_deref();
-        let portal = game
-            .server
-            .lan
-            .as_ref()
-            .and_then(|host| host.play.get(&p.conn))
-            .map_or(0, |play| play.portal.cooldown);
-        entity_values(
-            game,
-            h,
-            id,
-            Some(Target::Guest(p.conn)),
-            Shared {
-                fire: motion
-                    .map(|m| m.fire_ticks)
-                    .or_else(|| p.loaded_body.map(|b| b.fire_ticks)),
-                air: motion
-                    .map(|m| m.air)
-                    .or_else(|| p.loaded_body.map(|b| b.air)),
-                portal: Some(portal),
-                ground: Some(p.on_ground),
-                collisions: motion.map_or([None; 4], player_collisions),
-                ..Shared::default()
-            },
-        );
+        hash_guest(game, h, p, items);
     }
     group
+}
+
+fn hash_guest(
+    game: &ServerGame<'_>,
+    h: &mut DefaultHasher,
+    p: &sunrise_sim::lan::guest::Guest,
+    items: &Items,
+) {
+    let id = p.entity_id as u32;
+    p.uuid.hash(h);
+    (
+        vec_bits(p.position),
+        rotation([p.yaw, p.pitch]),
+        p.health.to_bits(),
+        p.motion
+            .as_deref()
+            .map(|m| m.health.absorption().to_bits())
+            .or_else(|| p.saved_absorption.map(f32::to_bits)),
+        p.food,
+        p.saturation.to_bits(),
+        p.xp_level,
+        p.xp_progress.to_bits(),
+        p.xp_total,
+        p.selected,
+        p.game_mode,
+        p.vehicle,
+    )
+        .hash(h);
+    p.motion
+        .as_deref()
+        .map(motion_values)
+        .or_else(|| {
+            p.loaded_body.map(|b| {
+                (
+                    vec_bits(b.velocity),
+                    b.fall_distance.to_bits(),
+                    b.food_exhaustion.to_bits(),
+                    b.food_tick_timer,
+                )
+            })
+        })
+        .hash(h);
+    player_items(
+        h,
+        (&p.inventory, &p.armor, p.offhand.as_ref(), &p.equipment),
+        items,
+    );
+    bodies::slots(h, p.ender_items.iter(), items);
+    bodies::slots(h, p.craft_grid.iter(), items);
+    stack(h, p.carried.as_ref(), items);
+    stack(h, p.craft_result.as_ref(), items);
+    (
+        p.score,
+        p.xp_seed,
+        p.sleeping,
+        p.bed,
+        p.sleep_timer,
+        p.spawn.map(vec_bits),
+        p.sneaking,
+        p.sprinting,
+        p.fall_flying,
+        p.pose().id(),
+        p.dead,
+    )
+        .hash(h);
+    p.respawn_elsewhere
+        .as_ref()
+        .map(|(dim, at, yaw, pitch, forced)| (dim, at, rotation([*yaw, *pitch]), forced))
+        .hash(h);
+    let a = p.abilities;
+    (
+        a.invulnerable,
+        a.flying,
+        a.may_fly,
+        a.instabuild,
+        a.may_build,
+        rotation([a.flying_speed, a.walking_speed]),
+    )
+        .hash(h);
+    effects(h, &p.effects);
+    let motion = p.motion.as_deref();
+    if let Some(body) = motion {
+        player_body(h, body);
+    } else {
+        optional_tag(h, p.carried_attributes.as_ref());
+        p.loaded_body
+            .map(|b| (b.ticks_frozen, b.invulnerable, b.invulnerable_time))
+            .hash(h);
+    }
+    let play = game
+        .server
+        .lan
+        .as_ref()
+        .and_then(|host| host.play.get(&p.conn));
+    play.is_some().hash(h);
+    if let Some(play) = play {
+        (
+            play.using,
+            play.use_duration,
+            play.use_delay,
+            play.attack_ticks,
+            play.shield_cooldown,
+            play.xp_delay,
+            play.digging,
+            play.dig_start,
+            play.destroy_pos,
+            play.delayed,
+        )
+            .hash(h);
+        cooldowns(h, &play.cooldowns);
+        play.stats.values.hash(h);
+        bodies::slots(h, play.craft_grid.iter(), items);
+    }
+    entity_values(
+        game,
+        h,
+        id,
+        Some(Target::Guest(p.conn)),
+        Shared {
+            fire: motion
+                .map(|m| m.fire_ticks)
+                .or_else(|| p.loaded_body.map(|b| b.fire_ticks)),
+            air: motion
+                .map(|m| m.air)
+                .or_else(|| p.loaded_body.map(|b| b.air)),
+            active_portal: Some(play.map_or_else(PortalState::default, |play| play.portal)),
+            invulnerable_time: motion.map(|m| m.health.invulnerable_time),
+            ticks_frozen: motion.map(|m| m.ticks_frozen),
+            size: motion.and_then(|m| m.size_answer),
+            ground: Some(p.on_ground),
+            collisions: motion.map_or([None; 4], player_collisions),
+            ..Shared::default()
+        },
+    );
+}
+
+fn respawn(
+    h: &mut DefaultHasher,
+    point: Option<&crate::game::server_side::respawn_anchor::RespawnConfig>,
+) {
+    point
+        .map(|p| (p.dim.id(), p.pos, rotation([p.yaw, p.pitch]), p.forced))
+        .hash(h);
+}
+
+fn cooldowns(h: &mut DefaultHasher, cooldowns: &sunrise_items::cooldowns::Cooldowns) {
+    let mut groups: Vec<_> = cooldowns.remaining().collect();
+    groups.sort_unstable_by_key(|&(group, _)| group);
+    groups.len().hash(h);
+    for (name, remaining) in groups {
+        (name, remaining, cooldowns.percent(name, 0.0).to_bits()).hash(h);
+    }
+}
+
+fn player_body(h: &mut DefaultHasher, p: &PlayerMotion) {
+    (
+        p.shift_key_down,
+        p.sprinting,
+        p.fall_flying,
+        p.swimming,
+        p.pose.id(),
+        p.ticks_frozen,
+        p.invulnerable,
+        p.health.permanently_invulnerable,
+        p.health.invulnerable_time,
+        p.health.dead,
+        random_words(&p.random),
+    )
+        .hash(h);
+    hash_support(h, Some(&p.ground));
+    bodies::attributes(h, &p.attributes);
 }
 
 fn player_collisions(p: &PlayerMotion) -> [Option<bool>; 4] {
@@ -1203,25 +1576,29 @@ fn player_items(
 }
 
 fn effects(h: &mut DefaultHasher, effects: &PlayerEffects) {
-    effects.list.len().hash(h);
-    for effect in &effects.list {
-        let mut next = Some(effect);
-        while let Some(EffectInstance {
-            id,
-            duration,
-            amplifier,
-            ambient,
-            visible,
-            show_icon,
-            hidden,
-            ..
-        }) = next
-        {
-            (true, id, duration, amplifier, ambient, visible, show_icon).hash(h);
-            next = hidden.as_deref();
-        }
-        false.hash(h);
+    (effects.tick_count, effects.list.len()).hash(h);
+    for active in &effects.list {
+        effect(h, active);
     }
+}
+
+fn effect(h: &mut DefaultHasher, active: &EffectInstance) {
+    let mut next = Some(active);
+    while let Some(EffectInstance {
+        id,
+        duration,
+        amplifier,
+        ambient,
+        visible,
+        show_icon,
+        hidden,
+        ..
+    }) = next
+    {
+        (true, id, duration, amplifier, ambient, visible, show_icon).hash(h);
+        next = hidden.as_deref();
+    }
+    false.hash(h);
 }
 
 #[cfg(test)]
@@ -1231,7 +1608,7 @@ mod tests {
     #[test]
     fn seat_digest_preserves_boarding_order_but_ignores_edge_enumeration() {
         let digest = |edges: [(u32, u32); 3], order: [(i64, u32); 2]| {
-            hash_seats(edges, |vehicle| match vehicle {
+            hash_seats(edges, &BTreeSet::from([11, 12]), |vehicle| match vehicle {
                 10 => order
                     .into_iter()
                     .map(|(place, id)| (place, id, false))
@@ -1259,6 +1636,36 @@ mod tests {
             digest(edges, [(0, 11), (1, 12)]),
             digest([(11, 10), (12, 10), (13, 10)], [(0, 11), (1, 12)])
         );
+    }
+
+    #[test]
+    fn resident_seats_keep_gameplay_order_on_equal_places() {
+        let seats = |order: [u32; 2]| {
+            hash_seats([(11, 10), (12, 10)], &BTreeSet::new(), |_| {
+                order.into_iter().map(|id| (0, id, false)).collect()
+            })
+            .hash
+            .finish()
+        };
+        assert_ne!(seats([11, 12]), seats([12, 11]));
+    }
+
+    #[test]
+    fn malformed_saved_shared_fields_remain_in_the_other_payload() {
+        assert!(other_shared_key(&"UUID".into(), &Tag::IntArray(vec![0; 4])));
+        assert!(!other_shared_key(
+            &"UUID".into(),
+            &Tag::IntArray(vec![0; 3])
+        ));
+        assert!(other_shared_key(&"Fire".into(), &Tag::Short(1)));
+        assert!(!other_shared_key(
+            &"Fire".into(),
+            &Tag::String("bad".into())
+        ));
+        assert!(!other_shared_key(
+            &"Tags".into(),
+            &Tag::List(vec![Tag::Int(1)])
+        ));
     }
 
     #[test]
