@@ -197,8 +197,6 @@ pub struct Remote {
         Option<(Dim, sunrise_world::moving_colliders::Prepared)>,
     /// How old the copy of the collider carrying the player is (`sunrise:carry_age`).
     pub carry_age: sunrise_sim::colliders::CarryAge,
-    /// The server samples far terrain for us, this far at most (`lod_net`).
-    pub far_terrain: Option<sunrise_sim::lod_net::Offer>,
     pub builtin: Arc<Builtin>,
     pub(in crate::game) lang: Arc<Language>,
     pub registries: Arc<Dynamic>,

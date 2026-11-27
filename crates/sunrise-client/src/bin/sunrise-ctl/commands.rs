@@ -156,11 +156,6 @@ const STATUS_REPLY: &[Field] = &[
         "chunk streaming stages and their counts",
     ),
     f(
-        "lod",
-        "object",
-        "far terrain: distances, tiles, quads and sampling progress",
-    ),
-    f(
         "renderer",
         "object|null",
         "GPU, driver, backend, size, draw counts and GPU memory; null without a renderer",

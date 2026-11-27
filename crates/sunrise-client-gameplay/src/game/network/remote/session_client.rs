@@ -145,7 +145,6 @@ impl crate::game::ClientGame<'_> {
         self.common.border = Default::default();
         self.set_screen(Screen::Playing);
         self.common.container = None;
-        self.clear_lod();
         self.client.pending_uploads.0.clear();
         if let Some(r) = self.client.renderer.0.as_mut() {
             r.clear_sections(self.common.world.layout());
@@ -398,7 +397,6 @@ impl crate::game::ClientGame<'_> {
                 r.chunk_center = (0, 0);
                 r.awaiting_viewed_chunk_center = false;
             }
-            self.clear_lod();
             self.client.pending_uploads.0.clear();
             if let Some(renderer) = self.client.renderer.0.as_mut() {
                 renderer.clear_sections(self.common.world.layout());
@@ -553,7 +551,6 @@ impl crate::game::ClientGame<'_> {
         self.set_screen(Screen::Playing);
         self.client.title.0 = None;
         self.common.dim = Dim::Overworld;
-        self.clear_lod();
         self.client.pending_uploads.0.clear();
         if let Some(r) = self.client.renderer.0.as_mut() {
             r.clear_sections(self.common.world.layout());
@@ -583,7 +580,6 @@ impl crate::game::ClientGame<'_> {
             colliders: HashMap::new(),
             collider_shove_start: None,
             carry_age: Default::default(),
-            far_terrain: None,
             builtin,
             status: "Playing Studio Replay".into(),
             lang,
@@ -840,7 +836,6 @@ impl crate::game::ClientGame<'_> {
         self.set_screen(Screen::Playing);
         self.hide_title();
         self.common.dim = Dim::Overworld;
-        self.clear_lod();
         self.client.pending_uploads.0.clear();
         if let Some(r) = self.client.renderer.0.as_mut() {
             r.clear_sections(self.common.world.layout());
@@ -872,7 +867,6 @@ impl crate::game::ClientGame<'_> {
             colliders: HashMap::new(),
             collider_shove_start: None,
             carry_age: Default::default(),
-            far_terrain: None,
             builtin,
             status: lang
                 .get("connect.connecting")
