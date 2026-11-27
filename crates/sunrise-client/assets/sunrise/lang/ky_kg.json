@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Чат сызыгынын сол жагындагы түстүү тилке.",
   "sunrise.extras.dynamic_lights": "Динамикалык жарыктар",
   "sunrise.extras.dynamic_lights.tooltip": "Факелдер жана башка жарык булактары алардын айланасындагы блокторду кармап турган, түшүрүлгөн же күйгүзүп күйгүзөт.",
-  "sunrise.extras.fullbright": "Толук жарык",
-  "sunrise.extras.fullbright.tooltip": "Блокторду жана объекттерди караңгы жерлерде да толук жарыкта көрсөтүңүз.",
   "sunrise.extras.header.chat": "Чат",
   "sunrise.extras.header.inventory": "Инвентаризация",
   "sunrise.extras.header.lighting": "Жарыктандыруу",

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "ಚಾಟ್ ಲೈನ್‌ನ ಎಡಭಾಗದಲ್ಲಿ ಬಣ್ಣದ ಪಟ್ಟಿ.",
   "sunrise.extras.dynamic_lights": "ಡೈನಾಮಿಕ್ ದೀಪಗಳು",
   "sunrise.extras.dynamic_lights.tooltip": "ಟಾರ್ಚ್‌ಗಳು ಮತ್ತು ಇತರ ಬೆಳಕಿನ ಮೂಲಗಳು ಹಿಡಿದಿಟ್ಟುಕೊಳ್ಳುತ್ತವೆ, ಬೀಳುತ್ತವೆ ಅಥವಾ ಬೆಂಕಿಯಲ್ಲಿ ಅವುಗಳ ಸುತ್ತಲಿನ ಬ್ಲಾಕ್‌ಗಳನ್ನು ಬೆಳಗಿಸುತ್ತವೆ.",
-  "sunrise.extras.fullbright": "ಫುಲ್ ಬ್ರೈಟ್",
-  "sunrise.extras.fullbright.tooltip": "ಕಪ್ಪು ಪ್ರದೇಶಗಳಲ್ಲಿಯೂ ಸಹ ಸಂಪೂರ್ಣ ಬೆಳಕಿನಲ್ಲಿ ಬ್ಲಾಕ್‌ಗಳು ಮತ್ತು ಘಟಕಗಳನ್ನು ತೋರಿಸಿ.",
   "sunrise.extras.header.chat": "ಚಾಟ್ ಮಾಡಿ",
   "sunrise.extras.header.inventory": "ದಾಸ್ತಾನು",
   "sunrise.extras.header.lighting": "ಲೈಟಿಂಗ್",

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "聊天行左侧的彩色竖条。",
   "sunrise.extras.dynamic_lights": "动态光源",
   "sunrise.extras.dynamic_lights.tooltip": "手持、掉落或燃烧中的火把等光源会照亮周围方块。",
-  "sunrise.extras.fullbright": "全亮",
-  "sunrise.extras.fullbright.tooltip": "即使在黑暗区域也以全亮显示方块和实体。",
   "sunrise.extras.header.chat": "聊天",
   "sunrise.extras.header.inventory": "物品栏",
   "sunrise.extras.header.lighting": "光照",

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Чат йӗркин сулахай енчи тӗслӗ йӗр.",
   "sunrise.extras.dynamic_lights": "Динамикӑллӑ ҫутӑсем",
   "sunrise.extras.dynamic_lights.tooltip": "Факелсем тата ытти ҫутӑ ҫӑлкуҫӗсем тытса тӑракан, пӑрахнӑ е ҫунакан ҫутӑ ҫӑлкуҫӗсем хӑйсен таврашӗнчи блоксене ҫутатса тӑраҫҫӗ.",
-  "sunrise.extras.fullbright": "Фуллбрайт",
-  "sunrise.extras.fullbright.tooltip": "Блоксемпе объектсене тулли ҫутӑра, тӗттӗм вырӑнсенче те кӑтартӑр.",
   "sunrise.extras.header.chat": "Чат",
   "sunrise.extras.header.inventory": "Инвентаризаци",
   "sunrise.extras.header.lighting": "Ҫутӑ",

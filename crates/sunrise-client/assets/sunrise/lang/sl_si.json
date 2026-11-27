@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Barvna vrstica na levi strani vrstice za klepet.",
   "sunrise.extras.dynamic_lights": "Dinamične luči",
   "sunrise.extras.dynamic_lights.tooltip": "Bakle in drugi viri svetlobe, ki jih držijo, odvržejo ali prižgejo, prižgejo bloke okoli njih.",
-  "sunrise.extras.fullbright": "Polna svetlost",
-  "sunrise.extras.fullbright.tooltip": "Pokažite bloke in entitete pri polni svetlobi, tudi v temnih območjih.",
   "sunrise.extras.header.chat": "Klepetajte",
   "sunrise.extras.header.inventory": "Inventar",
   "sunrise.extras.header.lighting": "Razsvetljava",

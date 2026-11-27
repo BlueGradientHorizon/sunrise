@@ -390,8 +390,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Кольорова смужка ліворуч від рядка чату.",
   "sunrise.extras.dynamic_lights": "Динамічне світло",
   "sunrise.extras.dynamic_lights.tooltip": "Смолоскипи та інші джерела світла, які тримають у руках, викинуті чи палаючі, освітлюють блоки навколо.",
-  "sunrise.extras.fullbright": "Повна яскравість",
-  "sunrise.extras.fullbright.tooltip": "Показує блоки та сутності при повному освітленні, навіть у темних місцях.",
   "sunrise.extras.header.chat": "Чат",
   "sunrise.extras.header.inventory": "Інвентар",
   "sunrise.extras.header.lighting": "Освітлення",

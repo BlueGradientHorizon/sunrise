@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Vestlusrea vasakul olev värviline riba.",
   "sunrise.extras.dynamic_lights": "Dünaamilised tuled",
   "sunrise.extras.dynamic_lights.tooltip": "Tõrvikud ja muud valgusallikad hoidsid, kukkusid või põlesid põlema, valgustavad neid ümbritsevaid klotse.",
-  "sunrise.extras.fullbright": "Täisheledus",
-  "sunrise.extras.fullbright.tooltip": "Kuva plokke ja üksusi täisvalguses, isegi pimedates kohtades.",
   "sunrise.extras.header.chat": "Vestlus",
   "sunrise.extras.header.inventory": "Inventuur",
   "sunrise.extras.header.lighting": "Valgustus",

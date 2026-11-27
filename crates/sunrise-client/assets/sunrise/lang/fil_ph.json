@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Ang may kulay na bar sa kaliwa ng isang chat line.",
   "sunrise.extras.dynamic_lights": "Mga dynamic na ilaw",
   "sunrise.extras.dynamic_lights.tooltip": "Ang mga sulo at iba pang pinagmumulan ng liwanag na hawak, nalaglag o nasusunog ay nagpapasindi sa mga bloke sa paligid nila.",
-  "sunrise.extras.fullbright": "Fullbright",
-  "sunrise.extras.fullbright.tooltip": "Ipakita ang mga bloke at entity sa ganap na liwanag, kahit na sa madilim na lugar.",
   "sunrise.extras.header.chat": "Chat",
   "sunrise.extras.header.inventory": "Imbentaryo",
   "sunrise.extras.header.lighting": "Pag-iilaw",

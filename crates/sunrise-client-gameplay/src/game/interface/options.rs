@@ -161,8 +161,6 @@ impl crate::game::ClientGame<'_> {
         self.set_screen(Screen::Options);
         self.client.options_from_title = from_title;
         let minecart_improvements = self.minecart_improvements();
-        // Restore fullbright when leaving another server.
-        self.hold_fullbright();
         let ui = &mut self.client.chat_ui.options;
         ui.open_at(!from_title && self.client.title.0.is_none(), page);
         ui.capture_video_atlas(&self.client.settings);
@@ -692,7 +690,6 @@ impl crate::game::ClientGame<'_> {
         {
             self.client.settings.sunrise.save(dir);
         }
-        self.hold_fullbright();
         let vsync = self.effective_vsync();
         let s = &self.client.settings;
         if let Some(r) = self.client.renderer.0.as_mut() {
@@ -953,33 +950,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-#[cfg(feature = "client")]
-impl crate::game::ClientGame<'_> {
-    /// Fullbright as this window may draw it (`fullbright_held`): the renderer's flag and the
-    /// graphics screen's row. Each tick (`tick_frame_visuals`) and when settings apply, so
-    /// joining or leaving a server needs no call of its own.
-    pub(in crate::game::client_side) fn hold_fullbright(&mut self) {
-        let held = fullbright_held(
-            self.client
-                .remote
-                .as_ref()
-                .map(|_| self.client.integrated.is_some()),
-        );
-        self.client.settings.fullbright_held = held;
-        if let Some(r) = self.client.renderer.0.as_mut() {
-            r.fullbright = self.client.settings.extras.fullbright && !held;
-        }
-    }
-}
-
-/// Fullbright is held off on another's server, where it would light what the server shows
-/// dark: a connection without this window's integrated server, as a multiplayer server
-/// or a LAN guest has. Single player and a LAN host keep it.
-/// `connection`: none, or whether it plays on this window's integrated server.
-fn fullbright_held(connection: Option<bool>) -> bool {
-    connection == Some(false)
-}
-
 /// The named device can be a connected pad that has not driven the game yet.
 fn detected_controller_style(
     device: Option<&sunrise_client::controller_ui::Device>,
@@ -988,22 +958,6 @@ fn detected_controller_style(
     device.map_or(fallback, |d| {
         sunrise_client::gamepad::GlyphStyle::of_device(d.vendor, d.product)
     })
-}
-
-#[cfg(feature = "client")]
-#[cfg(test)]
-mod fullbright_tests {
-    use super::fullbright_held;
-
-    #[test]
-    fn fullbright_is_held_only_on_another_servers_world() {
-        // The title screen, with no connection.
-        assert!(!fullbright_held(None));
-        // Single player and a LAN host play their own save.
-        assert!(!fullbright_held(Some(true)));
-        // A multiplayer server, or another player's world opened to LAN.
-        assert!(fullbright_held(Some(false)));
-    }
 }
 
 #[cfg(feature = "client")]

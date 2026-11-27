@@ -2617,7 +2617,6 @@ impl Renderer {
             gamma: 0.5,
             improved_transparency: false,
             oit: None,
-            fullbright: false,
             animated_textures: true,
             present_modes,
             capture_copies: std::env::var_os("SUNRISE_RENDER_CAPTURE")

@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Farebný pruh naľavo od linky rozhovoru.",
   "sunrise.extras.dynamic_lights": "Dynamické svetlá",
   "sunrise.extras.dynamic_lights.tooltip": "Baterky a iné svetelné zdroje držané, spadnuté alebo v ohni osvetľujú bloky okolo nich.",
-  "sunrise.extras.fullbright": "Plné svetlo",
-  "sunrise.extras.fullbright.tooltip": "Zobrazte bloky a entity pri plnom svetle, dokonca aj v tmavých oblastiach.",
   "sunrise.extras.header.chat": "Rozhovor",
   "sunrise.extras.header.inventory": "Inventár",
   "sunrise.extras.header.lighting": "Osvetlenie",

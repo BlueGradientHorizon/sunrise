@@ -385,8 +385,6 @@
   "sunrise.extras.chat_indicator.tooltip": "Litaða stikan vinstra megin á spjalllínu.",
   "sunrise.extras.dynamic_lights": "Kraftmikil ljós",
   "sunrise.extras.dynamic_lights.tooltip": "Kyndlar og aðrir ljósgjafar sem eru haldnir, látnir falla eða kveikja í kveikjum í kringum þá.",
-  "sunrise.extras.fullbright": "Fullbjört",
-  "sunrise.extras.fullbright.tooltip": "Sýndu blokkir og einingar í fullu ljósi, jafnvel á dimmum svæðum.",
   "sunrise.extras.header.chat": "Spjall",
   "sunrise.extras.header.inventory": "Birgðir",
   "sunrise.extras.header.lighting": "Lýsing",
