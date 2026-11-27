@@ -498,10 +498,13 @@ impl crate::game::ClientGame<'_> {
                 let size = self.common.open_container_size();
                 let (kind, count) = match self.common.container_kind() {
                     Some(BlockEntity::Chest(_)) => {
-                        let shulker = self.common.container.is_some_and(|k| {
-                            let id = self.common.world.block(k.0, k.1, k.2);
-                            storage::is_shulker_box(&self.common.res.facts().get(id).name)
-                        });
+                        // ShulkerBoxMenu's slots refuse shulker boxes whichever block opened
+                        // it: the opened menu type says so too when no clicked block is tracked.
+                        let shulker = self.remote_menu_type() == Some("minecraft:shulker_box")
+                            || self.common.container.is_some_and(|k| {
+                                let id = self.common.world.block(k.0, k.1, k.2);
+                                storage::is_shulker_box(&self.common.res.facts().get(id).name)
+                            });
                         let kind = match size {
                             5 => Kind::Hopper,
                             9 => Kind::Dispenser,
@@ -570,7 +573,7 @@ impl crate::game::ClientGame<'_> {
             menu.set_drop_spam_throttler(self.client.drop_spam_throttler);
         }
         let menu_id = if matches!(kind, Kind::Mount(_)) {
-            Some("sunrise:mount_inventory")
+            Some(sunrise_gameplay_common::game::native_menu_ids::MOUNT_MENU)
         } else if kind == Kind::Inventory {
             Some(sunrise_sim::menu::INVENTORY_MENU)
         } else if kind == Kind::ItemPicker {
@@ -963,13 +966,6 @@ pub(in crate::game) struct ClientMenu {
     inventory_omitted: bool,
     /// The off hand has a menu slot (InventoryMenu's 45).
     offhand_mapped: bool,
-}
-
-impl ClientMenu {
-    /// The menu slot showing game slot `g`, or None when the menu has none.
-    pub(in crate::game) fn to_menu(&self, g: usize) -> Option<usize> {
-        menu_index_of(self.plain_map, &self.game_of, g)
-    }
 }
 
 /// The menu slot showing game slot `g`. The plain map also takes the crafting result slot (a

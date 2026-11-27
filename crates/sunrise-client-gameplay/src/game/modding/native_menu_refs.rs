@@ -275,37 +275,38 @@ impl ClientGame<'_> {
         slot: usize,
         stack: &ItemStack,
     ) -> Option<u32> {
-        self.with_client_menu_slot(menu, slot, |scratch, env, at| {
-            scratch.menu.slot_holds(env, at, stack)
-        })
+        self.with_client_menu_slot(menu, slot, |built, env| built.slot_holds(env, slot, stack))
     }
 
     /// `Slot.mayPickup` of the local player's open menu as this client's click prediction asks
     /// it, with the stack the slot holds. None as for [`Self::menu_slot_holds`].
     pub(in crate::game) fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool> {
-        self.with_client_menu_slot(menu, slot, |scratch, env, at| {
-            scratch.menu.slot_gives(env, at)
-        })
+        self.with_client_menu_slot(menu, slot, |built, env| built.slot_gives(env, slot))
     }
 
-    /// Ask the local player's live menu, built as a click builds it, about menu index `slot`
-    /// (`at` in the built menu). None when the built menu is not the one `menu` names (its slot
-    /// count differs) or has no such slot.
+    /// Ask the local player's live menu, built as a click builds it, about menu index `slot`.
+    /// The built menu numbers its slots as vanilla's menu does (the indices `ContainerClick`
+    /// carries), so `slot` is asked as it is, the crafter's inert result slot included. None
+    /// when the built menu is not the one `menu` names (another registry menu type: a window the
+    /// client's prediction does not model) or has no such slot.
     fn with_client_menu_slot<R>(
         &self,
         menu: MenuRef,
         slot: usize,
-        ask: impl FnOnce(
-            &crate::game::client_side::menu_clicks_client::ClientMenu,
-            &sunrise_sim::menu::Env,
-            usize,
-        ) -> R,
+        ask: impl FnOnce(&sunrise_sim::menu::Menu, &sunrise_sim::menu::Env) -> R,
     ) -> Option<R> {
-        let index = self.client_menu_game_slot(menu, slot)?;
-        let count = self.client_menu_slot_count(menu)?;
-        self.with_client_menu(false, |scratch, env| {
-            let at = scratch.to_menu(index)?;
-            (scratch.menu.slot_count() == count).then(|| ask(&scratch, env, at))
+        use sunrise_gameplay_common::game::{native_menu_ids, remote};
+        let name = self.native_client_menu_name(menu)?;
+        self.with_client_menu(false, |built, env| {
+            let built = &built.menu;
+            let models = match name {
+                "inventory" => built.registry_id() == Some(sunrise_sim::menu::INVENTORY_MENU),
+                mount if mount.starts_with(remote::MOUNT_MENU) => {
+                    built.registry_id() == Some(native_menu_ids::MOUNT_MENU)
+                }
+                other => built.registry_id() == Some(other),
+            };
+            (models && slot < built.slot_count()).then(|| ask(built, env))
         })?
     }
 

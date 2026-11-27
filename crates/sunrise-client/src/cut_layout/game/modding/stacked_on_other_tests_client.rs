@@ -510,4 +510,91 @@ pub(crate) mod item_part_tests {
             });
         });
     }
+
+    /// On a creative item tab the click runs on the screen's `ItemPickerMenu`, but the Part is
+    /// told the slot of the player's `InventoryMenu`, the menu its `MenuRef` names: hotbar slot
+    /// `n` is 36 + `n` there, and its rules answer.
+    #[test]
+    #[ignore = "daily"]
+    fn an_item_tab_hotbar_pickup_names_the_inventory_menu_slot() {
+        use mod_api::{
+            ClientHost, Flow, Hooks, HostSide, ItemPart, ItemStackedOnOtherEvent, Registrar,
+        };
+        use std::cell::RefCell;
+        use sunrise_gameplay_common::game::Screen;
+
+        thread_local! {
+            /// (clicked menu slot, slot_holds of the carried stack there).
+            static ASKED: RefCell<Vec<(usize, Option<u32>)>> = const { RefCell::new(Vec::new()) };
+        }
+        struct AsksClickedSlot;
+        #[mod_api::sunrise_part]
+        impl ItemPart for AsksClickedSlot {
+            fn item_stacked_on_other(
+                &self,
+                host: HostSide<'_>,
+                event: &mut ItemStackedOnOtherEvent<'_, '_>,
+            ) -> Flow {
+                let HostSide::Client(host) = &host else {
+                    return Flow::Continue;
+                };
+                let host: &dyn ClientHost = &**host;
+                let click = &event.click;
+                if click.direction == StackedOnOtherDirection::CarriedOnOther
+                    && let Some(carried) = click.carried().cloned()
+                    && let Some(menu) = host.local_player().and_then(|p| p.container_menu(host))
+                {
+                    let asked = (click.slot, menu.slot_holds(host, click.slot, &carried));
+                    ASKED.with(|asked_all| asked_all.borrow_mut().push(asked));
+                }
+                Flow::Continue
+            }
+        }
+        struct AsksMod;
+        #[mod_api::__subscriptions]
+        impl Hooks for AsksMod {
+            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                let stick = r.item_key("minecraft:stick");
+                r.item_part(stick, AsksClickedSlot);
+            }
+        }
+
+        let mods: Mods = vec![ModEntry::new("asks_item_tab", Box::new(AsksMod))].into();
+        sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                let (_reader, _writer) = crate::game::remote::tests::connect_menu_test(game);
+                logged_in_inventory(game);
+                game.creative = true;
+                game.client.screen = Screen::Creative;
+                game.refresh_creative_tabs();
+                let item_tab = game
+                    .client
+                    .creative_screen
+                    .0
+                    .tabs
+                    .iter()
+                    .position(|t| !t.inventory && !t.search && !t.items.is_empty())
+                    .expect("creative item tab");
+                game.client.creative_screen.0.select(item_tab);
+                assert!(game.creative_tab_open());
+                game.inventory = vec![None; game.inventory.len()];
+                // Hotbar 0 and 1 (game slots 0 and 1): picker slots 45 and 46, inventory menu
+                // slots 36 and 37. A stick stacks to 64 there; 45 would be the off hand.
+                for hotbar in [0, 1] {
+                    game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    assert!(game.click_open_inventory(Some(hotbar), 0, Input::Pickup));
+                }
+                assert_eq!(
+                    ASKED.with(|asked| asked.take()),
+                    [(36, Some(64)), (37, Some(64))]
+                );
+                // The pickups themselves ran on the picker's hotbar.
+                assert_eq!(
+                    game.inventory[0].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stick", 1))
+                );
+            });
+        });
+    }
 }
