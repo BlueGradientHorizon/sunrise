@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tests.os_support import needs_runner_shell
+from tests.os_support import BASH, needs_runner_shell
 from tools.ci import ignored_tests
 from tools.ci import vendored_yaml
 
@@ -75,7 +75,7 @@ class DataLegTimingTests(unittest.TestCase):
                 script = steps[i]["run"]
                 self.assertIn("date -u", script)
                 self.assertIn("sccache --show-stats", script)
-                result = subprocess.run(["bash", "-c", script], env={**os.environ, "PATH": directory + os.pathsep + os.environ["PATH"]}, text=True, capture_output=True, check=True)
+                result = subprocess.run([BASH, "-c", script], env={**os.environ, "PATH": directory + os.pathsep + os.environ["PATH"]}, text=True, capture_output=True, check=True)
                 self.assertRegex(result.stdout, rf"data-leg {label} utc=\d{{4}}-\d{{2}}-\d{{2}}T")
                 self.assertIn("Compile requests 0", result.stdout)
 

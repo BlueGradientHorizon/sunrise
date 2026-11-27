@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from tests.os_support import needs_runner_shell, needs_symlinks
+from tests.os_support import BASH, needs_runner_shell, needs_symlinks
 from tests.test_ci_concurrency import ROOT
 from tests.test_ignored_test_completion import IgnoredTests, target, summary
 from tools.ci import ignored_tests
@@ -177,7 +177,7 @@ class Visibility(unittest.TestCase):
             # Exercise the actual shell under errexit; absent/invalid files cannot fail it.
             script = script.replace("/sys/fs/cgroup/", folder + "/")
             script = script.replace("sccache --show-stats", "false")
-            result = subprocess.run(["bash", "-e", "-c", script], capture_output=True, text=True)
+            result = subprocess.run([BASH, "-e", "-c", script], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("memory_peak_bytes=123456", result.stdout)
         self.assertIn("memory_max_bytes=max", result.stdout)
@@ -230,7 +230,7 @@ class Visibility(unittest.TestCase):
                 "GITHUB_OUTPUT": str(tmp_path / "github_output"),
                 "JOBS": "-j4",
             }
-            res = subprocess.run(["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True)
+            res = subprocess.run([BASH, "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True)
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("Server lint failed:", res.stdout)
             self.assertIn("Simulated server clippy failure", res.stdout)

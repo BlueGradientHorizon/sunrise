@@ -6,11 +6,12 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 import unittest
 from pathlib import Path
 
-from tests.os_support import needs_runner_shell
+from tests.os_support import BASH, needs_runner_shell
 from tools.ci import vendored_yaml
 
 yaml = vendored_yaml.load()
@@ -172,7 +173,7 @@ class WorkflowTests(unittest.TestCase):
         for same_repo, expected in (("false", "self_hosted=false"), ("true", "self_hosted=true")):
             env = {"PATH": os.environ["PATH"], "ENABLED": "true", "SAME_REPO": same_repo,
                    "EVENT": "workflow_dispatch", "LEASE": lease}
-            result = subprocess.run(["bash", ROOT / "tools/ci/dyna_ci_runner.sh"], env=env, capture_output=True,
+            result = subprocess.run([BASH, ROOT / "tools/ci/dyna_ci_runner.sh"], env=env, capture_output=True,
                                     text=True, check=True)
             self.assertEqual(result.stdout.strip(), expected, same_repo)
 
@@ -217,11 +218,11 @@ class WorkflowTests(unittest.TestCase):
         workflow = yaml.safe_load((ROOT / ".github/workflows/cargo-sunrise-mod-build.yml").read_text())
         step = next(step for step in workflow["jobs"]["plan"]["steps"] if step.get("id") == "platforms")
         def targets(event):
-            import tempfile
-            with tempfile.NamedTemporaryFile("r") as output:
-                subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, check=True,
-                               env={**os.environ, "EVENT_NAME": event, "GITHUB_OUTPUT": output.name})
-                return [platform["target"] for platform in json.loads(output.read().split("=", 1)[1])]
+            with tempfile.TemporaryDirectory() as folder:
+                output = Path(folder, "out")
+                subprocess.run([BASH, "-e", "-c", step["run"]], cwd=ROOT, check=True,
+                               env={**os.environ, "EVENT_NAME": event, "GITHUB_OUTPUT": str(output)})
+                return [platform["target"] for platform in json.loads(output.read_text().split("=", 1)[1])]
         self.assertEqual(targets("pull_request"), ["x86_64-unknown-linux-gnu"])
         from tools import sunrise_mod_binstall
         self.assertEqual(targets("workflow_dispatch"), [platform["target"] for platform in sunrise_mod_binstall.PLATFORMS])

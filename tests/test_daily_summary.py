@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.os_support import needs_runner_shell
+from tests.os_support import BASH, needs_runner_shell
 from tests.test_ci_concurrency import ROOT
 from tests.test_release_branches import MAIN, NIGHTLY, RELEASE, git_in, repository, run_gate
 from tools import sunrise_mod_binstall
@@ -1138,7 +1138,7 @@ class DailyWorkflowTests(unittest.TestCase):
         env = {**os.environ, "COMMIT": commit, "DRY_RUN": auth["dry_run"], "SCHEDULED": scheduled,
                "BREAK_GLASS": break_glass, "GITHUB_SHA": source, "GITHUB_REF": ref, "GITHUB_OUTPUT": str(out),
                "GITHUB_STEP_SUMMARY": str(Path(folder, "summary")), "GIT_ALLOW_PROTOCOL": "file"}
-        result = subprocess.run(["bash", "-e", "-c", steps[-1]["run"]], cwd=Path(folder, "clone"), env=env,
+        result = subprocess.run([BASH, "-e", "-c", steps[-1]["run"]], cwd=Path(folder, "clone"), env=env,
                                 capture_output=True, text=True)
         return result, out.read_text()
 
