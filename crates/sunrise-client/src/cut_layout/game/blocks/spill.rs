@@ -368,7 +368,7 @@ pub(crate) mod tests {
             assert_eq!(game.dropped.len(), start);
 
             game.world.set(pos.x, pos.y, pos.z, stone).unwrap();
-            game.world.block_entities.insert(key, entity);
+            game.world.block_entities.insert(key, entity.clone());
             game.world.random.set_seed(7);
             let (seeds, tape) = record_seeds(|| [unique_seed(), unique_seed()]);
             replay_seeds(tape.clone(), || {
@@ -406,6 +406,19 @@ pub(crate) mod tests {
                 }
                 assert_eq!(item.random.state(), random.state());
             }
+
+            // The same removal with the side effects skipped retires the row and publishes no item.
+            let published = game.dropped.len();
+            game.world.set(pos.x, pos.y, pos.z, stone).unwrap();
+            game.world.block_entities.insert(key, entity);
+            assert!(game.set_block_live(
+                [pos.x, pos.y, pos.z],
+                air,
+                sunrise_world::level::flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS,
+                false
+            ));
+            assert!(game.world.block_entities.get(&key).is_none());
+            assert_eq!(game.dropped.len(), published);
         });
     }
     #[test]
