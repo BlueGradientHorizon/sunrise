@@ -581,6 +581,8 @@ pub struct Shared {
     turned_away: Mutex<(usize, Option<Instant>)>,
     /// A stop waits for a proxy to move the players out (`arrivals::StopWait`): no login comes in.
     shutting_down: AtomicBool,
+    #[cfg(feature = "net-trace")]
+    capture: Option<Arc<packet_capture::CaptureRun>>,
 }
 impl Shared {
     /// `IntegratedServer.isSingleplayerOwner`: the integrated server's own player, by name
@@ -676,6 +678,31 @@ impl Shared {
     /// A stop has begun: every login from now on is refused as the server's shutdown.
     pub fn refuse_logins(&self) {
         self.shutting_down.store(true, Ordering::Relaxed);
+    }
+    #[cfg(feature = "net-trace")]
+    pub fn set_capture_tick(&self, tick: i64) {
+        if let Some(capture) = &self.capture {
+            capture.set_tick(tick);
+        }
+    }
+    #[cfg(feature = "net-trace")]
+    pub(super) fn open_capture(
+        &self,
+        conn: u32,
+        player: &str,
+    ) -> Option<(
+        Arc<std::sync::atomic::AtomicI64>,
+        packet_capture::SessionWriter,
+    )> {
+        let capture = self.capture.as_ref()?;
+        let writer = capture.open_session(conn, player)?;
+        Some((capture.clock(), writer))
+    }
+    #[cfg(feature = "net-trace")]
+    pub(super) fn finish_capture(&self) {
+        if let Some(capture) = &self.capture {
+            capture.finish();
+        }
     }
     fn is_online(&self, uuid: u128) -> bool {
         self.online.lock().unwrap().iter().any(|(u, _)| *u == uuid)
@@ -910,6 +937,8 @@ impl Lan {
             closing: AtomicUsize::new(0),
             turned_away: Mutex::new((0, None)),
             shutting_down: AtomicBool::new(false),
+            #[cfg(feature = "net-trace")]
+            capture: packet_capture::CaptureRun::from_env(lan_incarnation),
             random: Mutex::new(sunrise_java_properties::now_millis() as u64 | 1),
             config,
         });
@@ -1050,6 +1079,8 @@ impl Lan {
 impl Drop for Lan {
     fn drop(&mut self) {
         self.stop();
+        #[cfg(feature = "net-trace")]
+        self.shared.finish_capture();
     }
 }
 

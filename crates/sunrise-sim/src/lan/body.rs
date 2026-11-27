@@ -34,6 +34,13 @@ impl Body {
             _ => None,
         }
     }
+    #[cfg(feature = "net-trace")]
+    pub(super) fn prepared_meta(&self) -> Option<super::packet_capture::PacketMeta> {
+        match self {
+            Self::Prepared(payload) => payload.meta,
+            _ => None,
+        }
+    }
     /// The bytes this body keeps alive: an owned vector's capacity, a shared copy's length.
     pub fn retained(&self) -> usize {
         match self {

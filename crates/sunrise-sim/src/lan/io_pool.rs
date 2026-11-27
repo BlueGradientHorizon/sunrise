@@ -9,6 +9,8 @@
 //! way: the pipe tells the thread when bytes arrive.
 use super::Body;
 use mio::{Events, Interest, Poll, Registry, Token, Waker};
+#[cfg(feature = "net-trace")]
+use std::sync::atomic::AtomicI64;
 use std::{
     io::{ErrorKind, Read, Write},
     sync::{
@@ -76,6 +78,8 @@ enum At {
 #[derive(Default)]
 struct Queue {
     bodies: Vec<Queued>,
+    #[cfg(feature = "net-trace")]
+    trace: Vec<super::packet_capture::QueuedTrace>,
     end: Option<End>,
     at: At,
     /// In its thread's list of outboxes to serve.
@@ -85,6 +89,17 @@ struct Queue {
     #[cfg(feature = "test-support")]
     // The framed outbox prefix and its endpoint in the complete connection stream.
     test_framed: (usize, i64),
+}
+
+struct FrameBatch {
+    bodies: Vec<Queued>,
+    #[cfg(feature = "net-trace")]
+    trace: Vec<super::packet_capture::QueuedTrace>,
+}
+
+struct Taken {
+    batch: FrameBatch,
+    end: Option<End>,
 }
 
 // Include allocation capacity and geometric queue growth, even for empty bodies.
@@ -124,6 +139,10 @@ pub(super) struct Outbox {
     queue: Mutex<Queue>,
     /// The connection's `Droppable` sends, framed by its thread when it has room.
     droppable: OnceLock<Arc<crate::raw_payloads::droppable::Queue>>,
+    #[cfg(feature = "net-trace")]
+    capture_clock: OnceLock<Arc<AtomicI64>>,
+    #[cfg(feature = "net-trace")]
+    capture: Mutex<Option<super::packet_capture::SessionWriter>>,
     /// The bytes queued and not framed yet (`PlayerSender::pending`).
     pending: Arc<AtomicUsize>,
     /// Whether [`MAX_PENDING`] applies. A client in this process (a memory connection) reads
@@ -167,10 +186,34 @@ impl Outbox {
             probe: std::array::from_fn(|_| AtomicUsize::new(0)),
             queue: Mutex::default(),
             droppable: OnceLock::new(),
+            #[cfg(feature = "net-trace")]
+            capture_clock: OnceLock::new(),
+            #[cfg(feature = "net-trace")]
+            capture: Mutex::new(None),
             pending,
             capped,
             worker: worker.clone(),
         }))
+    }
+    #[cfg(feature = "net-trace")]
+    pub(super) fn capturing(&self) -> bool {
+        self.capture_clock.get().is_some()
+    }
+    #[cfg(feature = "net-trace")]
+    pub(super) fn attach_capture(
+        &self,
+        clock: Arc<AtomicI64>,
+        writer: super::packet_capture::SessionWriter,
+    ) {
+        let _ = self.capture_clock.set(clock);
+        *self.capture.lock().unwrap_or_else(PoisonError::into_inner) = Some(writer);
+    }
+    #[cfg(feature = "net-trace")]
+    pub(super) fn take_capture(&self) -> Option<super::packet_capture::SessionWriter> {
+        self.capture
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
     }
     /// The packets queued and not taken by the thread yet.
     pub(super) fn queued(&self) -> usize {
@@ -219,6 +262,16 @@ impl Outbox {
                 #[cfg(feature = "test-support")]
                 {
                     q.test_published += bodies.len();
+                }
+                #[cfg(feature = "net-trace")]
+                if let Some(clock) = self.capture_clock.get() {
+                    let tick = clock.load(Ordering::Relaxed);
+                    q.trace.extend(bodies.iter().map(|queued| {
+                        super::packet_capture::QueuedTrace {
+                            tick,
+                            meta: queued.body.prepared_meta(),
+                        }
+                    }));
                 }
                 if q.bodies.is_empty() {
                     q.bodies = bodies;
@@ -272,7 +325,12 @@ impl Outbox {
         let q = self.queue();
         !matches!(q.at, At::Closed) && q.end.is_none()
     }
-    pub(super) fn publish(&self, body: Vec<u8>, cost: usize) -> bool {
+    pub(super) fn publish(
+        &self,
+        body: Vec<u8>,
+        cost: usize,
+        #[cfg(feature = "net-trace")] meta: Option<super::packet_capture::PacketMeta>,
+    ) -> bool {
         let packet = Queued {
             body: body.into(),
             cost,
@@ -284,6 +342,13 @@ impl Outbox {
             return false;
         }
         q.bodies.push(packet);
+        #[cfg(feature = "net-trace")]
+        if let Some(clock) = self.capture_clock.get() {
+            q.trace.push(super::packet_capture::QueuedTrace {
+                tick: clock.load(Ordering::Relaxed),
+                meta,
+            });
+        }
         #[cfg(feature = "test-support")]
         {
             q.test_published += 1;
@@ -324,12 +389,26 @@ impl Outbox {
     /// What waits, for the thread: the bodies and the end after them with
     /// `room` for them, else only a close. An end stays, so that nothing is
     /// queued after it.
-    fn take(&self, room: bool) -> (Vec<Queued>, Option<End>) {
+    fn take(&self, room: bool) -> Taken {
         let mut q = self.queue();
         q.listed = false;
         match room {
-            true => (std::mem::take(&mut q.bodies), q.end),
-            false => (Vec::new(), q.end.filter(|e| *e == End::Close)),
+            true => Taken {
+                batch: FrameBatch {
+                    bodies: std::mem::take(&mut q.bodies),
+                    #[cfg(feature = "net-trace")]
+                    trace: std::mem::take(&mut q.trace),
+                },
+                end: q.end,
+            },
+            false => Taken {
+                batch: FrameBatch {
+                    bodies: Vec::new(),
+                    #[cfg(feature = "net-trace")]
+                    trace: Vec::new(),
+                },
+                end: q.end.filter(|e| *e == End::Close),
+            },
         }
     }
     fn attach(&self, slot: usize) {
@@ -341,6 +420,8 @@ impl Outbox {
         let mut q = self.queue();
         q.at = At::Closed;
         q.bodies = Vec::new();
+        #[cfg(feature = "net-trace")]
+        q.trace.clear();
         q.end = None;
     }
 }
@@ -578,6 +659,12 @@ struct Conn {
     /// goes between them.
     bundling: bool,
     close_at: Option<Instant>,
+    #[cfg(feature = "net-trace")]
+    capture: Option<super::packet_capture::SessionWriter>,
+    #[cfg(feature = "net-trace")]
+    frame_error: bool,
+    #[cfg(feature = "net-trace")]
+    write_error: bool,
 }
 impl Conn {
     /// Pipe readiness covers incoming data and capacity returned by peer reads.
@@ -606,6 +693,10 @@ impl Conn {
                     Err(e) => {
                         let mut session = a.session;
                         a.outbox.closed();
+                        #[cfg(feature = "net-trace")]
+                        if let Some(capture) = a.outbox.take_capture() {
+                            capture.close(Some("register_failed"));
+                        }
                         session.left(e.to_string());
                         session.closed();
                         worker.load.fetch_sub(1, Ordering::Relaxed);
@@ -624,6 +715,8 @@ impl Conn {
                 Io::Memory(pipe)
             }
         };
+        #[cfg(feature = "net-trace")]
+        let capture = a.outbox.take_capture();
         Ok(Self {
             io,
             reader: a.reader,
@@ -639,6 +732,12 @@ impl Conn {
             draining: false,
             bundling: false,
             close_at: None,
+            #[cfg(feature = "net-trace")]
+            capture,
+            #[cfg(feature = "net-trace")]
+            frame_error: false,
+            #[cfg(feature = "net-trace")]
+            write_error: false,
         })
     }
 
@@ -686,10 +785,28 @@ impl Conn {
         }
     }
 
-    /// Frame `bodies` into `out`, `queued` ones counted off `pending`: false
+    #[cfg(feature = "net-trace")]
+    fn record_framed(
+        &mut self,
+        tick: i64,
+        body: Body,
+        meta: Option<super::packet_capture::PacketMeta>,
+    ) {
+        if let Some(capture) = &mut self.capture {
+            capture.record(tick, body, meta);
+        }
+    }
+
+    /// Frame `batch` into `out`, `queued` ones counted off `pending`: false
     /// if one could not be.
-    fn frame(&mut self, now: Instant, bodies: Vec<Queued>, _queued: bool) -> bool {
-        for body in &bodies {
+    fn frame(&mut self, now: Instant, batch: FrameBatch, _queued: bool) -> bool {
+        #[cfg(feature = "test-support")]
+        let count = batch.bodies.len();
+        #[cfg(feature = "net-trace")]
+        let mut traces = batch.trace.into_iter();
+        for mut body in batch.bodies {
+            #[cfg(feature = "net-trace")]
+            let entry = traces.next();
             // Do not insert a droppable packet between a bundle's delimiters.
             if self.outbox.droppable.get().is_some()
                 && !body.prepared
@@ -706,8 +823,24 @@ impl Conn {
             };
             if let Err(e) = result {
                 log::warn!("[lan] failed to frame outgoing packet: {e}");
+                #[cfg(feature = "net-trace")]
+                {
+                    self.frame_error = true;
+                }
                 self.end(now, e.to_string());
                 return false;
+            }
+            #[cfg(feature = "net-trace")]
+            if self.capture.is_some() {
+                let (tick, meta) = match entry {
+                    Some(t) => (t.tick, t.meta),
+                    None => (
+                        self.capture.as_ref().map_or(0, |c| c.current_tick()),
+                        body.body.prepared_meta(),
+                    ),
+                };
+                let moved = std::mem::replace(&mut body.body, Body::Owned(Vec::new()));
+                self.record_framed(tick, moved, meta);
             }
             #[cfg(any(test, feature = "test-payload-probe"))]
             {
@@ -717,10 +850,10 @@ impl Conn {
             }
         }
         #[cfg(feature = "test-support")]
-        if _queued && !bodies.is_empty() {
+        if _queued && count > 0 {
             let mut q = self.outbox.queue();
             q.test_framed = (
-                q.test_framed.0 + bodies.len(),
+                q.test_framed.0 + count,
                 self.reader.counters.sent.load(Ordering::Relaxed),
             );
         }
@@ -731,23 +864,28 @@ impl Conn {
     fn kick(&mut self, now: Instant, reason: String, disconnect: &[u8]) {
         self.left(reason);
         if !self.draining {
-            let (bodies, end) = self.outbox.take(true);
+            let Taken { batch, end } = self.outbox.take(true);
             if end == Some(End::Close) {
                 return self.end(now, "Disconnected");
             }
             // The hub's own disconnect, if it was the last queued, does for this one.
             let ours = (end.is_none()).then(|| Body::from(disconnect.to_vec()));
-            if !self.frame(now, bodies, true)
+            if !self.frame(now, batch, true)
                 || !self.frame(
                     now,
-                    ours.into_iter()
-                        .map(|body| Queued {
-                            body,
-                            prepared: false,
-                            pending: self.outbox.pending.clone(),
-                            cost: 0,
-                        })
-                        .collect(),
+                    FrameBatch {
+                        bodies: ours
+                            .into_iter()
+                            .map(|body| Queued {
+                                body,
+                                prepared: false,
+                                pending: self.outbox.pending.clone(),
+                                cost: 0,
+                            })
+                            .collect(),
+                        #[cfg(feature = "net-trace")]
+                        trace: Vec::new(),
+                    },
                     false,
                 )
             {
@@ -774,21 +912,28 @@ impl Conn {
                 && let Some(queue) = self.outbox.droppable.get().cloned()
                 && let Some(body) = queue.pop(now)
             {
-                if let Err(e) =
-                    super::conn::frame_body(&mut self.writer, &Body::from(body), &mut self.out)
-                {
+                let body = Body::from(body);
+                if let Err(e) = super::conn::frame_body(&mut self.writer, &body, &mut self.out) {
+                    #[cfg(feature = "net-trace")]
+                    {
+                        self.frame_error = true;
+                    }
                     return self.end(now, e.to_string());
+                }
+                #[cfg(feature = "net-trace")]
+                if let Some(tick) = self.capture.as_ref().map(|c| c.current_tick()) {
+                    self.record_framed(tick, body, None);
                 }
                 continue;
             }
-            let (bodies, end) = self.outbox.take(room);
+            let Taken { batch, end } = self.outbox.take(room);
             if end == Some(End::Close) {
                 return self.end(now, "Disconnected");
             }
-            if bodies.is_empty() {
+            if batch.bodies.is_empty() {
                 break;
             }
-            if !self.frame(now, bodies, true) {
+            if !self.frame(now, batch, true) {
                 return;
             }
             self.draining = end == Some(End::Disconnect);
@@ -811,6 +956,10 @@ impl Conn {
             self.outbox.probe[0].fetch_add(1, Ordering::Relaxed);
             match self.io.write(&self.out[self.written..]) {
                 Ok(0) => {
+                    #[cfg(feature = "net-trace")]
+                    {
+                        self.write_error = true;
+                    }
                     self.end(now, "Disconnected");
                     return false;
                 }
@@ -833,6 +982,10 @@ impl Conn {
                 }
                 Err(e) if e.kind() == ErrorKind::Interrupted => {}
                 Err(_) => {
+                    #[cfg(feature = "net-trace")]
+                    {
+                        self.write_error = true;
+                    }
                     self.end(now, "Disconnected");
                     return false;
                 }
@@ -878,12 +1031,16 @@ impl Conn {
             && let Some(body) = self.session.tick(now)
             && self.frame(
                 now,
-                vec![Queued {
-                    body: body.into(),
-                    prepared: false,
-                    pending: self.outbox.pending.clone(),
-                    cost: 0,
-                }],
+                FrameBatch {
+                    bodies: vec![Queued {
+                        body: body.into(),
+                        prepared: false,
+                        pending: self.outbox.pending.clone(),
+                        cost: 0,
+                    }],
+                    #[cfg(feature = "net-trace")]
+                    trace: Vec::new(),
+                },
                 false,
             )
         {
@@ -903,6 +1060,19 @@ impl Conn {
             }
         }
         self.outbox.closed();
+        #[cfg(feature = "net-trace")]
+        if let Some(capture) = self.capture.take() {
+            let reason = if self.frame_error {
+                Some("frame_error")
+            } else if self.write_error {
+                Some("write_error")
+            } else if self.written < self.out.len() {
+                Some("unflushed_tail")
+            } else {
+                None
+            };
+            capture.close(reason);
+        }
         self.left("Disconnected".to_owned());
         self.session.closed();
         worker.load.fetch_sub(1, Ordering::Relaxed);
@@ -1296,6 +1466,226 @@ mod tests {
         served.send(vec![body(3, 10)], None);
         assert_eq!(client.recv().unwrap().0, 3);
         assert!(served.seen.try_recv().is_err());
+    }
+
+    #[cfg(feature = "net-trace")]
+    fn serve_captured(
+        server: Connection,
+        probe: impl FnOnce(Sender<Seen>) -> Probe,
+        run: &Arc<crate::lan::packet_capture::CaptureRun>,
+        conn: u32,
+        player: &str,
+    ) -> Served {
+        let pending = Arc::new(AtomicUsize::new(0));
+        let outbox = Outbox::new(pending.clone(), false).unwrap();
+        let writer = run.open_session(conn, player).unwrap();
+        outbox.attach_capture(run.clock(), writer);
+        let (tx, seen) = channel();
+        let (socket, reader, writer) = server.detach();
+        adopt(
+            socket,
+            (reader, writer),
+            outbox.clone(),
+            Box::new(probe(tx)),
+            Duration::from_secs(30),
+        );
+        Served {
+            outbox,
+            pending,
+            seen,
+        }
+    }
+
+    #[cfg(feature = "net-trace")]
+    fn encoded_meta(id: i32, payload: &[u8]) -> (i32, usize, String) {
+        let mut raw = Vec::with_capacity(payload.len() + 5);
+        sunrise_core::vanilla_bytes::write_varint(&mut raw, id);
+        raw.extend_from_slice(payload);
+        let meta = crate::lan::packet_capture::PacketMeta::from_body(&raw);
+        (meta.id, meta.len, format!("{:032x}", meta.hash))
+    }
+
+    #[cfg(feature = "net-trace")]
+    fn parse_recorded(path: &std::path::Path) -> (Vec<(i32, usize, String)>, String) {
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.ends_with('\n'));
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(lines.len() >= 2);
+        assert!(lines[0].starts_with("# v2\t"));
+        let footer = lines.last().unwrap().to_string();
+        let mut rows = Vec::new();
+        for (idx, line) in lines[1..lines.len() - 1].iter().enumerate() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            assert_eq!(parts.len(), 5, "row {line}");
+            assert_eq!(parts[0].parse::<usize>().unwrap(), idx);
+            rows.push((
+                parts[2].parse::<i32>().unwrap(),
+                parts[3].parse::<usize>().unwrap(),
+                parts[4].to_owned(),
+            ));
+        }
+        (rows, footer)
+    }
+
+    #[cfg(feature = "net-trace")]
+    #[test]
+    fn capture_order_matches_wire_with_interleaved_producers_timer_and_kick() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = crate::lan::packet_capture::CaptureRun::open_in(dir.path(), 1).unwrap();
+        run.set_tick(42);
+        let (a, b) = Pipe::pair();
+        let mut client = Connection::local(a);
+        let probe = |seen| Probe {
+            seen,
+            kick_on: Some(9),
+            unprompted: Some(body(45, 8)),
+        };
+        let served = serve_captured(Connection::local(b), probe, &run, 1, "Alice");
+        let outbox_a = served.outbox.clone();
+        let pending_a = served.pending.clone();
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let b2 = barrier.clone();
+        let producer = std::thread::spawn(move || {
+            b2.wait();
+            for i in 0..8u8 {
+                let b = Body::from(body(10 + i, 4));
+                pending_a.fetch_add(charge(b.retained()), Ordering::Relaxed);
+                outbox_a.send(vec![b], None);
+            }
+        });
+        barrier.wait();
+        for i in 0..8u8 {
+            served.send(vec![body(20 + i, 6)], None);
+        }
+        producer.join().unwrap();
+        // Trigger a kick after queued packets; the client reads until EOF.
+        client.send(&body(9, 1)).unwrap();
+        let mut peer_seen = Vec::new();
+        while let Ok((id, payload)) = client.recv() {
+            peer_seen.push(encoded_meta(id, &payload));
+        }
+        assert_eq!(served.next(), Seen::Packet(9, body(9, 1)[1..].to_vec()));
+        assert_eq!(served.next(), Seen::Left("kicked".into()));
+        assert_eq!(served.next(), Seen::Closed);
+        run.finish();
+
+        let (recorded, footer) = parse_recorded(&dir.path().join("Alice-1.pkt"));
+        assert_eq!(recorded, peer_seen);
+        assert_eq!(footer, format!("# end\t{}\tok", peer_seen.len()));
+        assert_eq!(recorded.last().unwrap().0, 0x7f);
+    }
+
+    #[cfg(feature = "net-trace")]
+    #[test]
+    fn capture_omits_rejected_closed_batch_and_suppressed_kick() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = crate::lan::packet_capture::CaptureRun::open_in(dir.path(), 2).unwrap();
+        let (a, b) = Pipe::pair();
+        let mut client = Connection::local(a);
+        let probe = |seen| Probe {
+            seen,
+            kick_on: Some(9),
+            unprompted: None,
+        };
+        let served = serve_captured(Connection::local(b), probe, &run, 1, "Bob");
+        // Queue a normal disconnect, then trigger a protocol kick that must be suppressed.
+        served.send(vec![body(32, 4)], Some(End::Disconnect));
+        let _ = client.send(&body(9, 1));
+        let mut peer_seen = Vec::new();
+        while let Ok((id, payload)) = client.recv() {
+            peer_seen.push(encoded_meta(id, &payload));
+        }
+        loop {
+            if matches!(served.next(), Seen::Closed) {
+                break;
+            }
+        }
+        // Sending after close is rejected by the outbox and produces no row.
+        assert!(!served.outbox.try_send(vec![Body::from(body(8, 3))], None));
+        run.finish();
+
+        let (recorded, footer) = parse_recorded(&dir.path().join("Bob-1.pkt"));
+        assert_eq!(recorded, peer_seen);
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].0, 32);
+        assert_eq!(footer, "# end\t1\tok");
+    }
+
+    #[cfg(feature = "net-trace")]
+    #[test]
+    fn capture_includes_live_droppable_and_skips_expired_in_wire_order() {
+        use crate::raw_payloads::droppable::Queue;
+        let dir = tempfile::tempdir().unwrap();
+        let run = crate::lan::packet_capture::CaptureRun::open_in(dir.path(), 3).unwrap();
+        let (a, b) = Pipe::pair();
+        let mut client = Connection::local(a);
+        let served = serve_captured(Connection::local(b), quiet, &run, 1, "Carol");
+        let queue = Queue::new(u32::MAX, None);
+        served.outbox.attach_droppable(queue.clone());
+        let counters = Arc::default();
+        // Open a bundle so the droppable waits until the bundle closes.
+        served.send(vec![body(0, 0)], None);
+        assert_eq!(client.recv().unwrap(), packet(&body(0, 0)));
+        let expired_at = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+        queue.push(expired_at, &counters, body(0x41, 4));
+        queue.push(Instant::now(), &counters, body(0x42, 5));
+        served.send(vec![body(0x30, 3), body(0, 0)], None);
+        let mut peer_seen = vec![encoded_meta(0, &[])];
+        for _ in 0..3 {
+            let (id, payload) = client.recv().unwrap();
+            peer_seen.push(encoded_meta(id, &payload));
+        }
+        served.send(vec![body(32, 2)], Some(End::Disconnect));
+        while let Ok((id, payload)) = client.recv() {
+            peer_seen.push(encoded_meta(id, &payload));
+        }
+        assert_eq!(served.next(), Seen::Left("Disconnected".into()));
+        assert_eq!(served.next(), Seen::Closed);
+        run.finish();
+
+        let (recorded, footer) = parse_recorded(&dir.path().join("Carol-1.pkt"));
+        assert_eq!(recorded, peer_seen);
+        assert!(recorded.iter().any(|(id, _, _)| *id == 0x42));
+        assert!(!recorded.iter().any(|(id, _, _)| *id == 0x41));
+        assert_eq!(footer, format!("# end\t{}\tok", peer_seen.len()));
+    }
+
+    #[cfg(feature = "net-trace")]
+    #[test]
+    fn capture_records_prepared_compressed_payload_uncompressed_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = crate::lan::packet_capture::CaptureRun::open_in(dir.path(), 4).unwrap();
+        let (a, b) = Pipe::pair();
+        let mut client = Connection::local(a);
+        let mut server = Connection::local(b);
+        client.set_compression(32);
+        server.set_compression(32);
+        let served = serve_captured(server, quiet, &run, 1, "Dave");
+        let mut raw = vec![24u8];
+        raw.extend(std::iter::repeat_n(b'z', 128));
+        let meta = crate::lan::packet_capture::PacketMeta::from_body(&raw);
+        let prepared = sunrise_protocol::connection::Framing::Network(Some(32))
+            .contents(&raw)
+            .unwrap();
+        assert_ne!(prepared, raw);
+        let cost = charge(prepared.capacity());
+        served.pending.fetch_add(cost, Ordering::Relaxed);
+        assert!(served.outbox.publish(prepared, cost, Some(meta)));
+        let (id, payload) = client.recv().unwrap();
+        drop(client);
+        assert_eq!(served.next(), Seen::Left("Disconnected".into()));
+        assert_eq!(served.next(), Seen::Closed);
+        run.finish();
+
+        let (recorded, footer) = parse_recorded(&dir.path().join("Dave-1.pkt"));
+        assert_eq!(recorded, vec![encoded_meta(id, &payload)]);
+        assert_eq!(
+            recorded[0],
+            (meta.id, meta.len, format!("{:032x}", meta.hash))
+        );
+        assert_eq!(footer, "# end\t1\tok");
     }
 }
 

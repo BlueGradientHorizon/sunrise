@@ -392,6 +392,8 @@ impl crate::game::ServerGame<'_> {
         let far = (net.lod_distance > 0)
             .then(|| sunrise_sim::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
+        #[cfg(feature = "net-trace")]
+        lan.shared.set_capture_tick(self.common.world.game_time);
         let mut hub = Hub::new(lan, sync, encoder, config, self.common.loop_context.clone());
         hub.allow_commands = self.allow_commands();
         hub.dispatch_move_effects = true;

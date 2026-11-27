@@ -11,6 +11,8 @@ pub struct PairingPayload {
     pub(crate) epoch: Arc<Epoch>,
     pub(crate) pending: Arc<AtomicUsize>,
     pub(crate) cost: usize,
+    #[cfg(feature = "net-trace")]
+    pub(crate) meta: Option<crate::lan::packet_capture::PacketMeta>,
 }
 impl Drop for PairingPayload {
     fn drop(&mut self) {

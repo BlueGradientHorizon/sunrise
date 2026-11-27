@@ -25,9 +25,6 @@ impl PlayConn {
         let id = i64::try_from(self.watch.start.elapsed().as_millis()).unwrap_or(0);
         self.sent_at = Some((id, now));
         self.next_keep_alive = now + KEEP_ALIVE_EVERY;
-        let body = play::Clientbound::KeepAlive(cfg::KeepAlive { id }).encode();
-        #[cfg(feature = "net-trace")]
-        self.payload_sender.record_raw(&body);
-        Some(body)
+        Some(play::Clientbound::KeepAlive(cfg::KeepAlive { id }).encode())
     }
 }
