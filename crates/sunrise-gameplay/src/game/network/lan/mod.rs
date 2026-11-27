@@ -1811,6 +1811,7 @@ impl crate::game::ServerGame<'_> {
     /// sees the support (#4510). `tick_lan` then syncs the level; a paused
     /// tick that never calls this still drains inside `tick_lan`.
     pub fn tick_lan_packets(&mut self) {
+        let _rng = crate::rng_count::guard(crate::rng_count::Phase::PlayerActions);
         if self.server.level_pass.packets_drained {
             return;
         }
@@ -2191,10 +2192,16 @@ impl crate::game::ServerGame<'_> {
         // level tick (e.g. a fixture) has no outer server pass.
         let defer_connections = self.server.level_pass.running.is_some();
         if !paused {
-            sunrise_level::spans::time("lan_guests", || self.tick_level_guests());
+            sunrise_level::spans::time("lan_guests", || {
+                crate::rng_count::in_phase(crate::rng_count::Phase::PlayerActions, || {
+                    self.tick_level_guests()
+                })
+            });
             if !defer_connections {
-                self.tick_guest_connections(false)
-                    .expect("the current-level connection pass does not switch levels");
+                crate::rng_count::in_phase(crate::rng_count::Phase::PlayerActions, || {
+                    self.tick_guest_connections(false)
+                })
+                .expect("the current-level connection pass does not switch levels");
             }
             // Ridden vehicles enter their portals on the level path.
             let Some(host) = self.server.lan.as_ref() else {
@@ -2435,7 +2442,9 @@ impl crate::game::ServerGame<'_> {
                 return;
             };
             let processed = sunrise_level::spans::time("lan_process_events", || {
-                self.lan_process_events(host, events, entities, spawn)
+                crate::rng_count::in_phase(crate::rng_count::Phase::PlayerActions, || {
+                    self.lan_process_events(host, events, entities, spawn)
+                })
             });
             let Some(back) = processed else {
                 return;
