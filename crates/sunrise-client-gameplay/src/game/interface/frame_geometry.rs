@@ -90,7 +90,7 @@ impl crate::game::ClientGame<'_> {
             "first_quarter",
             "waxing_gibbous",
         ];
-        let phase = phases[(self.view_day_time() / 24000).rem_euclid(8) as usize];
+        let phase = phases[(self.common.world.day_time / 24000).rem_euclid(8) as usize];
         let moon = format!("environment/celestial/moon/{phase}");
         let (out, bodies) =
             celestial_bodies(&self.client.gui.atlas.sprites, sky, &moon, body_color);
@@ -507,7 +507,7 @@ impl crate::game::ClientGame<'_> {
         alpha: f64,
     ) -> Vec<sunrise_client::weather::Vertex> {
         use sunrise_client::weather;
-        let (intensity, _) = self.view_weather(alpha as f32);
+        let (intensity, _) = self.weather_levels(alpha as f32);
         if intensity <= 0.0 {
             return Vec::new();
         }

@@ -4244,7 +4244,7 @@ impl crate::game::ClientGame<'_> {
                 post_blend.accumulate(weight, post_of(b));
             }
         }
-        let (rain, thunder) = self.view_weather(alpha as f32);
+        let (rain, thunder) = self.weather_levels(alpha as f32);
         // What the packs' attribute expressions read (only a pack's stack has any).
         let mut polytone_frame = None;
         if self.client.client_pack.environments.is_some()
@@ -4279,7 +4279,7 @@ impl crate::game::ClientGame<'_> {
             biome_name.clone_from(&info.name);
             (*temperature, *downfall) = (info.temperature, info.downfall);
             (*frame_rain, *frame_thunder) = (rain, thunder);
-            (*game_time, *day_time) = (self.common.world.game_time, self.view_day_time());
+            (*game_time, *day_time) = (self.common.world.game_time, self.common.world.day_time);
             *render_distance = effective_render_distance;
             *sky_type = match self.dimension_type().skybox {
                 sunrise_world::dimension_type::Skybox::Overworld => 1,
@@ -4310,26 +4310,15 @@ impl crate::game::ClientGame<'_> {
             environment.set_frame(&frame);
             polytone_frame = Some(&frame);
         }
-        let fixed_time = self
-            .client
-            .settings
-            .extras
-            .pvp
-            .tweaks
-            .time
-            .filter(|_| self.own_view())
-            .map(|_| self.view_day_time());
         let sample_clock = |clock: &str| {
-            fixed_time.unwrap_or_else(|| {
-                self.client.remote.as_ref().map_or_else(
-                    || self.common.command_clock_time(clock),
-                    |remote| remote.named_clock_time(clock),
-                )
-            })
+            self.client.remote.as_ref().map_or_else(
+                || self.common.command_clock_time(clock),
+                |remote| remote.named_clock_time(clock),
+            )
         };
         let mut sky = environment.sample_with_clock(
             &sunrise_level::environment::Sample {
-                day_time: self.view_day_time(),
+                day_time: self.common.world.day_time,
                 rain,
                 thunder,
                 blend: Some(&blend),
@@ -4559,7 +4548,7 @@ impl crate::game::ClientGame<'_> {
         // renderer keeps the bytes in each reading core pipeline's blocks, which write them to
         // the GPU when that pipeline uploads its blocks for its draw; a post pass writes them
         // when it draws.
-        let (sun_angle, day_time) = (sky.sun_angle, self.view_day_time());
+        let (sun_angle, day_time) = (sky.sun_angle, self.common.world.day_time);
         let player = (self.common.player.as_ref()).map_or(camera.to_array(), |p| {
             [p.position.x, p.position.y, p.position.z]
         });

@@ -74,10 +74,6 @@ lowFire:0
 shieldSize:100
 totemSize:100
 glintColour:off
-clearWater:false
-clearLava:false
-viewTime:off
-viewWeather:off
 chatTimestamps:false
 chatCompact:false
 chatCopy:false

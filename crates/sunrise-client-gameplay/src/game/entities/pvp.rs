@@ -10,7 +10,7 @@ use sunrise_client::{
     pvp_hud::{self, Combo, Durability, Icon, Key, Line, Widget},
 };
 use sunrise_game_data::text::Text;
-use sunrise_gameplay_common::game::{Dim, Side};
+use sunrise_gameplay_common::game::Side;
 use sunrise_level::particle_options::ParticleType;
 use winit::event::MouseButton;
 
@@ -175,28 +175,6 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    /// Whether this window may draw PvP & HUD's own time and weather: only a client of a server
-    /// (single player's included) draws them, never the server that ticks the world.
-    pub(in crate::game) fn own_view(&self) -> bool {
-        self.client.remote.is_some() && self.common.dim == Dim::Overworld
-    }
-    /// The day time the frame draws (sky, sun, moon, the sky's light): PvP & HUD's time of day,
-    /// else the world's. The world's own `day_time` and everything that plays by it stay.
-    pub(in crate::game::client_side) fn view_day_time(&self) -> i64 {
-        let fixed = self.client.settings.extras.pvp.tweaks.time;
-        sunrise_client::pvp::view_day_time(
-            self.common.world.day_time,
-            fixed.filter(|_| self.own_view()),
-        )
-    }
-    /// The rain and thunder levels the frame draws (rain, the sky's colour and light, fog): PvP &
-    /// HUD's weather, else the world's. Gameplay (riptide, mobs, crops) keeps the world's.
-    pub(in crate::game::client_side) fn view_weather(&self, partial: f32) -> (f32, f32) {
-        match self.client.settings.extras.pvp.tweaks.weather {
-            Some(w) if self.own_view() && self.can_have_weather() => w.levels(),
-            _ => self.weather_levels(partial),
-        }
-    }
     // What the engine reads from PvP & HUD. Every engine use goes through these, so each becomes
     // one engine knob or hook (vanilla's value when nothing is registered) when PvP & HUD leaves
     // the engine (docs/layers.md, plan M5). The HUD editor (`hud_editor.rs`) reads the widgets.
@@ -237,11 +215,6 @@ impl crate::game::ClientGame<'_> {
     /// How far the first-person fire overlay is lowered, as a fraction (0 is vanilla's).
     pub(in crate::game::client_side) fn pvp_fire_lower(&self) -> f32 {
         f32::from(self.client.settings.extras.pvp.tweaks.fire_lower) / 100.0
-    }
-    /// Lava's fog as with fire resistance, and water's as fully adapted.
-    pub(in crate::game::client_side) fn pvp_clear_fluids(&self) -> (bool, bool) {
-        let tweaks = self.client.settings.extras.pvp.tweaks;
-        (tweaks.clear_lava, tweaks.clear_water)
     }
     /// The chat's options: Ctrl+F search, copy on click, and the rest (`ChatOptions::qol`).
     pub(in crate::game::client_side) fn pvp_chat(&self) -> ChatOptions {
@@ -837,8 +810,6 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
 use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
 

@@ -10,9 +10,6 @@ that ban unfair clients. That rules out, on purpose: entities on the minimap, fr
 other automatic action, seeing through walls, and hitboxes beyond vanilla's F3+B. The HUD widgets read only
 what this client already has: they send no packet and ask the server nothing, so an anticheat sees nothing new.
 The reach widget measures your own last hit and never changes reach.
-Three options do see further than vanilla would at that moment, and some strict servers ban fog or light
-changes: clear water and clear lava (below), and a fixed time of day, whose sky light brightens a night.
-They are off by default; check a server's rules before turning them on there.
 Each feature is built from what it visibly does, never from another client's or mod's code.
 
 ## Where it lives
@@ -121,22 +118,7 @@ so it costs nothing. Resource packs' core shaders and OptiFine CIT glints keep t
 | Lower fire | `lowFire` (0-80%) | Moves the first-person fire overlay (`ScreenEffectRenderer.renderFire`) down by that share of its height. |
 | Shield size | `shieldSize` (50-100%) | Scales the first-person shield toward the hand holding it. |
 | Totem animation size | `totemSize` (25-100%) | Scales the totem of the item activation animation about its centre. |
-| Clear water | `clearWater` | Water fog as vanilla's after 30 seconds under water (water vision 1), from the first tick. |
-| Clear lava | `clearLava` | Lava fog as vanilla's with Fire Resistance (0 to 5 blocks), without the effect. |
-
-Both fog options stop at the clearest view vanilla itself gives, but they give it at once: 96 blocks of water
-on entering instead of 24, and 5 blocks of lava without the effect instead of 1. That is an edge in a fight
-(see Fair play).
 There is no "no hurt camera" option: vanilla's Accessibility → Damage Tilt already sets the shake from 0 to 100%.
-
-## Your view: time of day and weather (`viewTime`, `viewWeather`, default the world's)
-
-The time of day (morning, noon, sunset, midnight) and the weather (clear, rain, thunder) this player sees. Only
-the frame changes: the sky's colours, sun, moon and stars, the sky's light in the lightmap, the rain and its
-fog (`ClientGame::view_day_time`, `ClientGame::view_weather` in `crates/sunrise-client-gameplay/src/game/entities/pvp.rs`). The world's `day_time` and weather, and all
-that plays by them (mobs, crops, beds, riptide, rain sounds), stay the server's, and nothing is sent to it.
-The moon keeps the world's phase. Only a client of a server draws it (single player's window is one), in the
-Overworld.
 
 ## Chat (each default off)
 

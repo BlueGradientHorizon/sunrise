@@ -175,103 +175,6 @@ impl Shape {
     }
 }
 
-/// A time of day this player's view can stay at (`ViewTime::day_time` in vanilla's ticks).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ViewTime {
-    Morning,
-    Noon,
-    Sunset,
-    Midnight,
-}
-impl ViewTime {
-    pub const ALL: [ViewTime; 4] = [
-        ViewTime::Morning,
-        ViewTime::Noon,
-        ViewTime::Sunset,
-        ViewTime::Midnight,
-    ];
-    pub fn name(self) -> &'static str {
-        match self {
-            ViewTime::Morning => "morning",
-            ViewTime::Noon => "noon",
-            ViewTime::Sunset => "sunset",
-            ViewTime::Midnight => "midnight",
-        }
-    }
-    fn english(self) -> &'static str {
-        match self {
-            ViewTime::Morning => "Morning",
-            ViewTime::Noon => "Noon",
-            ViewTime::Sunset => "Sunset",
-            ViewTime::Midnight => "Midnight",
-        }
-    }
-    /// The time of day it shows, as `/time set` takes it.
-    pub fn day_time(self) -> i64 {
-        match self {
-            ViewTime::Morning => 1000,
-            ViewTime::Noon => 6000,
-            ViewTime::Sunset => 12500,
-            ViewTime::Midnight => 18000,
-        }
-    }
-    pub fn label(self) -> String {
-        crate::lang::get_or(&format!("sunrise.pvp.time.{}", self.name()), self.english())
-    }
-    fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|c| c.name() == s)
-    }
-}
-/// The weather this player's view can show.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ViewWeather {
-    Clear,
-    Rain,
-    Thunder,
-}
-impl ViewWeather {
-    pub const ALL: [ViewWeather; 3] = [ViewWeather::Clear, ViewWeather::Rain, ViewWeather::Thunder];
-    pub fn name(self) -> &'static str {
-        match self {
-            ViewWeather::Clear => "clear",
-            ViewWeather::Rain => "rain",
-            ViewWeather::Thunder => "thunder",
-        }
-    }
-    fn english(self) -> &'static str {
-        match self {
-            ViewWeather::Clear => "Clear",
-            ViewWeather::Rain => "Rain",
-            ViewWeather::Thunder => "Thunder",
-        }
-    }
-    /// `Level.getRainLevel` and `getThunderLevel` as `/weather` leaves them.
-    pub fn levels(self) -> (f32, f32) {
-        match self {
-            ViewWeather::Clear => (0.0, 0.0),
-            ViewWeather::Rain => (1.0, 0.0),
-            ViewWeather::Thunder => (1.0, 1.0),
-        }
-    }
-    pub fn label(self) -> String {
-        crate::lang::get_or(
-            &format!("sunrise.pvp.weather.{}", self.name()),
-            self.english(),
-        )
-    }
-    fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|c| c.name() == s)
-    }
-}
-/// The day time this player sees with `fixed` set: the same day (the moon's phase follows the
-/// world's), at that time.
-pub fn view_day_time(world: i64, fixed: Option<ViewTime>) -> i64 {
-    match fixed {
-        Some(t) => world.div_euclid(24000) * 24000 + t.day_time(),
-        None => world,
-    }
-}
-
 /// The crosshair's look. Its defaults draw vanilla's: a 15-pixel cross, one pixel thick,
 /// inverting what is under it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -670,10 +573,6 @@ impl Hud {
         alpha(self.opacity) << 24
     }
 }
-/// The value of the view options while they follow the world.
-fn world_label() -> String {
-    crate::lang::get_or("sunrise.pvp.view.world", "World's")
-}
 fn corner_english(c: Corner) -> &'static str {
     match c {
         Corner::TopLeft => "Top left",
@@ -700,14 +599,6 @@ pub struct Tweaks {
     pub totem_size: u8,
     /// The enchantment glint's colour; `None` is vanilla's purple.
     pub glint: Option<Colour>,
-    /// Water fog as after 30 seconds under water (vanilla's clearest), from the first moment.
-    pub clear_water: bool,
-    /// Lava fog as with Fire Resistance (vanilla's clearest), without the effect.
-    pub clear_lava: bool,
-    /// The time of day this player sees, `None` for the world's. Never sent to the server.
-    pub time: Option<ViewTime>,
-    /// The weather this player sees, `None` for the world's. Never sent to the server.
-    pub weather: Option<ViewWeather>,
 }
 impl Default for Tweaks {
     fn default() -> Self {
@@ -716,10 +607,6 @@ impl Default for Tweaks {
             shield_size: 100,
             totem_size: 100,
             glint: None,
-            clear_water: false,
-            clear_lava: false,
-            time: None,
-            weather: None,
         }
     }
 }
@@ -911,8 +798,6 @@ impl Pvp {
                     v => Colour::parse(v).or(t.glint),
                 }
             }
-            "clearWater" => t.clear_water = flag(value, t.clear_water),
-            "clearLava" => t.clear_lava = flag(value, t.clear_lava),
             "chatTimestamps" => self.chat.timestamps = flag(value, self.chat.timestamps),
             "chatCompact" => self.chat.compact = flag(value, self.chat.compact),
             "chatCopy" => self.chat.copy = flag(value, self.chat.copy),
@@ -924,18 +809,6 @@ impl Pvp {
             },
             "combatIndicator" => self.combat.indicator = flag(value, self.combat.indicator),
             "combatSounds" => self.combat.sounds = flag(value, self.combat.sounds),
-            "viewTime" => {
-                t.time = match value {
-                    "off" => None,
-                    v => ViewTime::parse(v).or(t.time),
-                }
-            }
-            "viewWeather" => {
-                t.weather = match value {
-                    "off" => None,
-                    v => ViewWeather::parse(v).or(t.weather),
-                }
-            }
             _ => return false,
         }
         true
@@ -1027,19 +900,11 @@ impl Pvp {
         let t = &self.tweaks;
         let _ = write!(
             out,
-            "lowFire:{}\nshieldSize:{}\ntotemSize:{}\nglintColour:{}\nclearWater:{}\nclearLava:{}\n",
+            "lowFire:{}\nshieldSize:{}\ntotemSize:{}\nglintColour:{}\n",
             t.fire_lower,
             t.shield_size,
             t.totem_size,
             t.glint.map_or("off", Colour::name),
-            t.clear_water,
-            t.clear_lava,
-        );
-        let _ = write!(
-            out,
-            "viewTime:{}\nviewWeather:{}\n",
-            t.time.map_or("off", ViewTime::name),
-            t.weather.map_or("off", ViewWeather::name),
         );
         let c = &self.chat;
         let _ = write!(
@@ -1152,14 +1017,6 @@ opts! {
         "The size of the totem that fills the screen when it saves you.";
     GlintColour, "glint_colour", "Enchantment glint colour",
         "The colour of the shimmer on enchanted items and armour. Off is vanilla's purple.";
-    ClearWater, "clear_water", "Clear water",
-        "Under water, see as far as vanilla lets you after 30 seconds there, from the start.";
-    ClearLava, "clear_lava", "Clear lava",
-        "In lava, see as far as vanilla's Fire Resistance lets you, without the effect.";
-    ViewTime, "view_time", "Time of day",
-        "The time of day you see: the sky and its light only. The world's time goes on and nothing is sent to the server.";
-    ViewWeather, "view_weather", "Weather",
-        "The weather you see: rain, its light and fog only. The world's weather goes on and nothing is sent to the server.";
     ChatTimestamps, "chat_timestamps", "Timestamps", "The time each message came in, before it.";
     ChatCompact, "chat_compact", "Compact chat",
         "A message repeated in a row shows once, with how many times it came: (x3).";
@@ -1246,9 +1103,7 @@ pub fn rows() -> Vec<Result<Opt, &'static str>> {
     rows.push(Err("sunrise.pvp.header.items"));
     rows.push(Ok(GlintColour));
     rows.push(Err("sunrise.pvp.header.visual"));
-    rows.extend([FireLower, ShieldSize, TotemSize, ClearWater, ClearLava].map(Ok));
-    rows.push(Err("sunrise.pvp.header.view"));
-    rows.extend([ViewTime, ViewWeather].map(Ok));
+    rows.extend([FireLower, ShieldSize, TotemSize].map(Ok));
     rows.push(Err("sunrise.pvp.header.chat"));
     rows.extend([ChatTimestamps, ChatCompact, ChatCopy, ChatSearch].map(Ok));
     rows.push(Err("sunrise.pvp.header.combat"));
@@ -1273,8 +1128,7 @@ impl Opt {
             HudClockCorner => Some(HudClock),
             HudReachCorner => Some(HudReach),
             HudSpeedCorner => Some(HudSpeed),
-            FireLower | ShieldSize | TotemSize | GlintColour | ClearWater | ClearLava => None,
-            ViewTime | ViewWeather => None,
+            FireLower | ShieldSize | TotemSize | GlintColour => None,
             ChatTimestamps | ChatCompact | ChatCopy | ChatSearch => None,
             CombatFeel | CombatIndicator | CombatSounds => None,
             HudPingCorner => Some(HudPing),
@@ -1311,8 +1165,6 @@ impl Opt {
             Opt::HudClock => p.hud.clock,
             Opt::HudReach => p.hud.reach,
             Opt::HudSpeed => p.hud.speed,
-            Opt::ClearWater => p.tweaks.clear_water,
-            Opt::ClearLava => p.tweaks.clear_lava,
             Opt::ChatTimestamps => p.chat.timestamps,
             Opt::ChatCompact => p.chat.compact,
             Opt::ChatCopy => p.chat.copy,
@@ -1374,11 +1226,6 @@ impl Opt {
                 true => crate::lang::get_or("sunrise.pvp.combat_feel.legacy", "Legacy (1.8.9)"),
                 false => crate::lang::get_or("sunrise.pvp.combat_feel.modern", "Modern"),
             },
-            Opt::ViewTime => p.tweaks.time.map_or_else(world_label, ViewTime::label),
-            Opt::ViewWeather => p
-                .tweaks
-                .weather
-                .map_or_else(world_label, ViewWeather::label),
             _ => return None,
         })
     }
@@ -1460,14 +1307,6 @@ impl Opt {
             Opt::ShieldSize => t.shield_size = step_by(t.shield_size, SHIELD_SIZES, 10, back),
             Opt::TotemSize => t.totem_size = step_by(t.totem_size, TOTEM_SIZES, 25, back),
             Opt::GlintColour => t.glint = solid_or_off(t.glint),
-            Opt::ClearWater => t.clear_water = !t.clear_water,
-            Opt::ClearLava => t.clear_lava = !t.clear_lava,
-            Opt::ViewTime => {
-                let all: Vec<_> = std::iter::once(None)
-                    .chain(ViewTime::ALL.map(Some))
-                    .collect();
-                t.time = step(&all, t.time, back);
-            }
             Opt::ChatTimestamps => p.chat.timestamps = !p.chat.timestamps,
             Opt::ChatCompact => p.chat.compact = !p.chat.compact,
             Opt::ChatCopy => p.chat.copy = !p.chat.copy,
@@ -1475,12 +1314,6 @@ impl Opt {
             Opt::CombatFeel => p.combat.legacy = !p.combat.legacy,
             Opt::CombatIndicator => p.combat.indicator = !p.combat.indicator,
             Opt::CombatSounds => p.combat.sounds = !p.combat.sounds,
-            Opt::ViewWeather => {
-                let all: Vec<_> = std::iter::once(None)
-                    .chain(ViewWeather::ALL.map(Some))
-                    .collect();
-                t.weather = step(&all, t.weather, back);
-            }
         }
     }
 }
@@ -1622,11 +1455,6 @@ mod tests {
         let t = p.tweaks;
         assert_eq!((t.fire_lower, t.shield_size, t.totem_size), (10, 50, 25));
         assert_eq!(t.glint, Some(Colour::White));
-        assert!(t.clear_water && t.clear_lava);
-        assert_eq!(
-            (t.time, t.weather),
-            (Some(ViewTime::Morning), Some(ViewWeather::Clear))
-        );
         let c = p.chat;
         assert!(c.timestamps && c.compact && c.copy && c.search);
         let mut text = String::new();
@@ -1647,18 +1475,6 @@ mod tests {
         assert!(p.parse_line("crosshairColour", "plaid") && p.crosshair.colour == Colour::White);
         assert!(!p.parse_line("fullbright", "true"));
         assert!(p.parse_line("totemSize", "5") && p.tweaks.totem_size == TOTEM_SIZES.0);
-    }
-
-    #[test]
-    fn a_fixed_time_keeps_the_worlds_day() {
-        // Day 9 at 5000: the moon's phase (the day number) stays, the time of day is the chosen.
-        let world = 9 * 24000 + 5000;
-        assert_eq!(view_day_time(world, None), world);
-        assert_eq!(
-            view_day_time(world, Some(ViewTime::Midnight)),
-            9 * 24000 + 18000
-        );
-        assert_eq!(view_day_time(-100, Some(ViewTime::Noon)), -24000 + 6000);
     }
 
     #[test]
@@ -1738,11 +1554,7 @@ mod tests {
         }
         let names = Colour::ALL.map(|c| (format!("sunrise.pvp.colour.{}", c.name()), c.english()));
         let shapes = Shape::ALL.map(|c| (format!("sunrise.pvp.shape.{}", c.name()), c.english()));
-        let times = ViewTime::ALL.map(|c| (format!("sunrise.pvp.time.{}", c.name()), c.english()));
-        let weathers =
-            ViewWeather::ALL.map(|c| (format!("sunrise.pvp.weather.{}", c.name()), c.english()));
-        assert_eq!(en.get("sunrise.pvp.view.world"), Some("World's"));
-        for (key, english) in names.iter().chain(&shapes).chain(&times).chain(&weathers) {
+        for (key, english) in names.iter().chain(&shapes) {
             assert_eq!(en.get(key), Some(*english), "{key}");
         }
     }
