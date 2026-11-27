@@ -202,7 +202,7 @@ One draw too many or too few shifts every later value, so read the first field t
 
 ### State digest
 
-Build `-p sunrise-game --features sunrise-client/state-digest` or `-p sunrise-client --features state-digest`.
+Build with `-p sunrise-game --features sunrise-client/state-digest` to produce the `sunrise-client` executable.
 Run with `SUNRISE_STATE_DIGEST=<file>` to write one line per level tick. The feature is off by default.
 The digest covers typed entities in join order and their sampled random sources, entities outside the typed lists,
 seat order and rider links, saved UUIDs, live shared fields, players, block entities in ticker order, and scheduled
@@ -219,7 +219,8 @@ ticks. It includes the level random, `Level.randValue`, the entity ID counter an
   `--nether` sends one to the Nether. `--compare A B` compares two runs level by level. The scene pins the
   randoms again after the players settle, then summons what they can reach. The digest reads the local body and
   LAN guest records directly. A mismatch in the per-tick `players` group or final `players.txt` fails the
-  comparison. The `--integrated` run lacks `digest-sync` and may differ between runs.
+  comparison. The `--integrated` run lacks `digest-sync` and may differ between runs. It uses `sunrise-ctl`
+  beside the game binary by default. Use `--ctl PATH` to select another copy.
 - `--coverage` on either scene tool adds commands for code the default scene never runs (foxes, dolphins and allays that pick up items, a fox that spits out what it held, mobs that pick up loot, tridents, a furnace, a brewing stand, a village with five claimed beds for the cat, a saved wandering-trader delay that runs out inside the window, the siege spawner, and the gamerules and night time they need) and makes `--ticks` default to 2500. With `state_digest_players.py` Alice stands in the village and gets a Loyalty trident back, and her pickup is placed beside her. The tool writes `OUT/coverage.txt` with the spots reached, the saved trader delay and chance, and Alice's pickup stats. A missed spot fails the run. Both comparators check that file when present. The two-player `--coverage` run is not reproducible run to run (two runs of one binary part within a few hundred ticks, as the bots' moves land on wall-clock ticks over the long window), so check repeatability group by group before comparing changes. The playerless `--coverage` run avoids the bots’ timing.
 - Check rendering, prediction, sounds, packets and other saved stats with their own harnesses, `lan_e2e` or the game. Harness selection uses the crate graph. For a move into `sunrise-gameplay` or `sunrise-client-gameplay` (#2210), inspect `tools/parity.py --changed-files paths.txt --list` or name the harness directly. A stale dependency record can retain the previous source paths when its probe is unavailable.
 - `tools/state_digest_compare.py A/digest.txt B/digest.txt` names the earliest differing group and reports each group’s first differing step and game time. First compare two runs of the same binary. With either comparator, repeat `--ignore-group GROUP` for observed run-to-run differences that should remain visible without failing the comparison. The player comparator also accepts `player_summary` for `players.txt`. Compare runs built with the same digest groups and Rust toolchain.

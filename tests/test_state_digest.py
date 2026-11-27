@@ -1,8 +1,10 @@
 import contextlib
 import io
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tools import state_digest_compare, state_digest_players, state_digest_scene
 
@@ -77,6 +79,33 @@ class PlayerCompareTests(unittest.TestCase):
             (out / 'digest.txt').write_text(line(42, run=0))
             (out / 'players.txt').write_text('same')
             self.assertEqual(state_digest_players.compare(out, out), 1)
+
+
+class LaunchTests(unittest.TestCase):
+    def test_dedicated_scene_requires_sync_acknowledgement_when_recording(self):
+        server = object.__new__(state_digest_scene.Server)
+        commands = ['digest-sync 1 2 3']
+        with patch.object(server, 'run', return_value=['[12:00:00] [Server thread/INFO]: digest-sync done']) as run:
+            server.run_seeded(commands, require_sync=True)
+            run.assert_called_once_with(commands)
+        with patch.object(server, 'run', return_value=['[12:00:00] [Server thread/WARN]: digest-sync: refused']):
+            with self.assertRaisesRegex(SystemExit, 'digest-sync: refused'):
+                server.run_seeded(commands, require_sync=True)
+            server.run_seeded(commands, require_sync=False)
+
+    def test_player_harness_passes_ctl_path_and_ticks_to_integrated_run(self):
+        with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(io.StringIO()):
+            out = Path(temp) / 'out'
+            argv = ['state_digest_players.py', '--integrated', '--ctl', 'custom/ctl', '--ticks=17',
+                    'game', 'resources', 'template', str(out), 'bots']
+            with patch.object(sys, 'argv', argv), patch.object(state_digest_players.base, 'hold_gate'):
+                with patch.object(state_digest_players, 'run_integrated') as run:
+                    state_digest_players.main()
+                    run.assert_called_once()
+            args = run.call_args.args[0]
+            self.assertEqual(args.ctl, Path('custom/ctl'))
+            self.assertEqual(args.ticks, 17)
+            self.assertEqual(args.out, out)
 
 
 class SceneTests(unittest.TestCase):

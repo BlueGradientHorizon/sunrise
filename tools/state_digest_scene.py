@@ -267,6 +267,12 @@ class Server:
         self.wait_for(mark, start, timeout)
         return self.lines[start:]
 
+    def run_seeded(self, commands, *, require_sync):
+        lines = self.run(commands)
+        if require_sync and not any(line.endswith(']: digest-sync done') for line in lines):
+            diagnostics = '\n'.join(line for line in lines if 'digest-sync' in line)
+            raise SystemExit(f'digest-sync failed. Use a sunrise-client binary built with state-digest.\n{diagnostics}')
+
     def game_time(self):
         for line in reversed(self.run(['time query gametime'])):
             if 'time is ' in line:
@@ -338,14 +344,14 @@ def main():
     coverage = '--coverage' in sys.argv
     if coverage:
         seed_coverage_world(run_dir / 'world')
-    digest = out / 'digest.txt'
-    server = Server(binary, resources, run_dir, scratch_env(home, None if '--no-digest' in sys.argv else digest, '--detail' in sys.argv), freeze=True)
+    digest = None if '--no-digest' in sys.argv else out / 'digest.txt'
+    server = Server(binary, resources, run_dir, scratch_env(home, digest, '--detail' in sys.argv), freeze=True)
     timings, missed = {}, []
     try:
         server.wait_for('Done (')
         server.run(['forceload query'])
         time.sleep(3)
-        server.run(scene_commands('--random-ticks' in sys.argv, coverage))
+        server.run_seeded(scene_commands('--random-ticks' in sys.argv, coverage), require_sync=digest is not None)
         before = server.game_time()
         start = time.time()
         if '--sprint' in sys.argv:

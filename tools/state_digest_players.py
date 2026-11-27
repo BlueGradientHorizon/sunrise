@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""State-digest scene with players: BINARY RESOURCES TEMPLATE OUT BOTS [--integrated] [--nether] [--detail] [--ticks N] [--no-digest] [--coverage], or --compare OUT_A OUT_B [--ignore-group GROUP]...; template from `state_digest_scene.py --generate`, gate in SUNRISE_SCENE_GATE. --coverage adds the base scene's coverage commands, stands Alice in its village and Bob south of it, makes both immune to damage, gives Alice a returning Loyalty trident, defaults --ticks to 2500 and fails when a spot of coverage.txt is missed."""
+"""State-digest scene with players: BINARY RESOURCES TEMPLATE OUT BOTS [--integrated] [--ctl CTL] [--nether] [--detail] [--ticks N] [--no-digest] [--coverage], or --compare OUT_A OUT_B [--ignore-group GROUP]...; template from `state_digest_scene.py --generate`, gate in SUNRISE_SCENE_GATE. --coverage adds the base scene's coverage commands, stands Alice in its village and Bob south of it, makes both immune to damage, gives Alice a returning Loyalty trident, defaults --ticks to 2500 and fails when a spot of coverage.txt is missed."""
 import argparse
 import json
 import os
@@ -211,8 +211,8 @@ def server_properties(port):
     return dict(base.PROPERTIES, **{'server-port': str(port), 'white-list': 'false', 'enforce-whitelist': 'false'})
 
 
-def run_dedicated(args, home, out, timings):
-    binary, resources, template, _, bots = args[:5]
+def run_dedicated(args, home, timings):
+    out = args.out
     run_dir = out / 'server'
     if run_dir.exists():
         shutil.rmtree(run_dir)
@@ -220,22 +220,22 @@ def run_dedicated(args, home, out, timings):
     port = free_port()
     (run_dir / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in server_properties(port).items()))
     (run_dir / 'eula.txt').write_text('eula=true\n')
-    shutil.copytree(template / 'world', run_dir / 'world')
+    shutil.copytree(args.template / 'world', run_dir / 'world')
     (run_dir / 'world' / 'session.lock').unlink(missing_ok=True)
-    coverage = '--coverage' in sys.argv
+    coverage = args.coverage
     if coverage:
         base.seed_coverage_world(run_dir / 'world')
-    digest = None if '--no-digest' in sys.argv else out / 'digest.txt'
-    server = base.Server(binary, resources, run_dir, lab.game_env(base.scratch_env(home, digest, '--detail' in sys.argv)), freeze=True)
-    players = Bots(bots, port, out)
-    ticks = base.default_ticks()
-    nether = '--nether' in sys.argv
+    digest = None if args.no_digest else out / 'digest.txt'
+    server = base.Server(args.binary, args.resources, run_dir, base.scratch_env(home, digest, args.detail), freeze=True)
+    players = Bots(args.bots, port, out)
+    ticks = args.ticks
+    nether = args.nether
     missed = []
     try:
         server.wait_for('Done (')
         server.run(['forceload query'])
         time.sleep(3)
-        server.run(base.scene_commands(False, coverage))
+        server.run_seeded(base.scene_commands(False, coverage), require_sync=digest is not None)
         players.join(server, 'Alice')
         players.join(server, 'Bob')
         server.run(player_commands(PLAYERS, nether, coverage))
@@ -244,7 +244,7 @@ def run_dedicated(args, home, out, timings):
         if nether:
             wait_loaded(server, 'minecraft:the_nether', tuple(int(v) for v in NETHER_SPOT))
         owner = uuid_ints(server.run([f'data get entity {PLAYERS[0]} UUID'])) if coverage else None
-        server.run(near_player_commands(at, owner))
+        server.run_seeded(near_player_commands(at, owner), require_sync=digest is not None)
         before = server.game_time()
         start = time.time()
         server.run(['tick rate 10000', f'tick step {ticks}'])
@@ -275,22 +275,22 @@ def ctl_run(ctl, socket_path, env, cwd, *words, timeout=600):
     return reply
 
 
-def run_integrated(args, home, out, timings):
+def run_integrated(args, home, timings):
     """The host's window runs a server thread, opened to LAN; one bot joins as a guest beside the host's own player."""
-    binary, resources, template, _, bots = args[:5]
-    ctl = Path(os.environ.get('SUNRISE_SCENE_CTL') or binary.parent / 'sunrise-ctl')
+    out = args.out
+    ctl = Path(args.ctl or os.environ.get('SUNRISE_SCENE_CTL') or args.binary.parent / 'sunrise-ctl').resolve()
     work = out / 'host'
     if work.exists():
         shutil.rmtree(work)
     (work / 'game' / 'saves').mkdir(parents=True)
     world = work / 'game' / 'saves' / 'T'
-    shutil.copytree(template / 'world', world)
+    shutil.copytree(args.template / 'world', world)
     (world / 'session.lock').unlink(missing_ok=True)
-    coverage = '--coverage' in sys.argv
+    coverage = args.coverage
     if coverage:
         base.seed_coverage_world(world)
-    digest = None if '--no-digest' in sys.argv else out / 'digest.txt'
-    env = lab.game_env(base.scratch_env(home, digest, '--detail' in sys.argv), SUNRISE_HOME=work / 'home')
+    digest = None if args.no_digest else out / 'digest.txt'
+    env = lab.game_env(base.scratch_env(home, digest, args.detail), SUNRISE_HOME=work / 'home')
     sock = work / 'c.sock'
 
     def run(*words, timeout=600):
@@ -299,10 +299,11 @@ def run_integrated(args, home, out, timings):
     def command(line):
         return run('command', line)
 
-    run('launch', '--world', 'T', '--headless', '--wait', '--game', binary, '--game-dir', work / 'game', '--resources', resources)
+    run('launch', '--world', 'T', '--headless', '--wait', '--game', args.binary,
+        '--game-dir', work / 'game', '--resources', args.resources)
     bot_log = open(out / 'bot-Alice.log', 'w')
-    players = Bots(bots, None, out)
-    ticks = base.default_ticks()
+    players = Bots(args.bots, None, out)
+    ticks = args.ticks
     missed = []
     try:
         run('wait-ready', 400)
@@ -320,7 +321,7 @@ def run_integrated(args, home, out, timings):
         for line in base.scene_commands(False, coverage)[1:]:
             command(line)
         players.processes.append(subprocess.Popen(
-            [bots, '--server', f'127.0.0.1:{port}', '--bots', '1', '--behaviour', 'stand', '--name', 'Alice', '--seconds', '3600',
+            [args.bots, '--server', f'127.0.0.1:{port}', '--bots', '1', '--behaviour', 'stand', '--name', 'Alice', '--seconds', '3600',
              '--view-distance', '4', '--seed', '12345'], stdout=bot_log, stderr=subprocess.STDOUT))
         deadline = time.time() + 120
         while not any(g['name'] == 'Alice0' for g in run('lan', 'status')['guests']):
@@ -377,23 +378,29 @@ def integrated_state(command, host):
 
 
 def main():
-    if sys.argv[1] == '--compare':
+    if sys.argv[1:2] == ['--compare']:
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('--compare', nargs=2, required=True, type=Path, metavar=('LEFT', 'RIGHT'))
         parser.add_argument('--ignore-group', action='append', choices=(*IGNORABLE_GROUPS, 'player_summary'), default=[])
         args = parser.parse_args()
         raise SystemExit(compare(*args.compare, args.ignore_group))
-    args = [a for a in sys.argv[1:] if not a.startswith('--')]
-    if '--ctl' in sys.argv:
-        args.remove(sys.argv[sys.argv.index('--ctl') + 1])
-    args = [Path(a).resolve() for a in args]
-    out = args[3]
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ('binary', 'resources', 'template', 'out', 'bots'):
+        parser.add_argument(name, type=lambda path: Path(path).resolve())
+    for flag in ('integrated', 'nether', 'detail', 'no-digest', 'coverage'):
+        parser.add_argument(f'--{flag}', action='store_true')
+    parser.add_argument('--ticks', type=int)
+    parser.add_argument('--ctl', type=Path)
+    args = parser.parse_args()
+    if args.ticks is None:
+        args.ticks = 2500 if args.coverage else 200
+    out = args.out
     out.mkdir(parents=True, exist_ok=True)
     home = Path(tempfile.mkdtemp(prefix='state-digest-home-'))
     base.hold_gate()
     timings = {}
     try:
-        (run_integrated if '--integrated' in sys.argv else run_dedicated)(args, home, out, timings)
+        (run_integrated if args.integrated else run_dedicated)(args, home, timings)
     finally:
         shutil.rmtree(home, ignore_errors=True)
     (out / 'timings.txt').write_text(f'{timings}\n')
