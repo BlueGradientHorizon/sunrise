@@ -272,36 +272,29 @@ pub struct SyncedCustomRegistries {
 }
 
 impl SyncedCustomRegistries {
-    /// Resolve a wire `raw_id` for `registry` to its canonical [`Identifier`].
+    /// Populate from a connection's local frozen `sync(true)` registries, in their frozen order.
     ///
-    /// Uses the server-synced ID table when received over a network connection, and falls back
-    /// to this process's frozen static registry order for in-process single-player connections
-    /// (where configuration sync was skipped per `ConfigurationInitialization:38-41`).
+    /// Used on in-process memory connections where `sunrise:custom_registries` is skipped
+    /// (`ConfigurationInitialization.configureEarlyTasks:38-41`), so tag resolution still reads
+    /// exclusively from this connection's [`SyncedCustomRegistries`] table.
+    pub fn from_local(local: &LocalRegistries) -> Self {
+        let registries = local
+            .0
+            .iter()
+            .filter(|dir| dir.sync())
+            .map(|dir| (dir.id().to_owned(), dir.entry_ids().to_vec()))
+            .collect();
+        Self { registries }
+    }
+
+    /// Resolve a wire `raw_id` for `registry` to its canonical [`Identifier`] from this
+    /// connection's synced table (never falling back to process-global registries).
     pub fn entry_id(&self, registry: &str, raw_id: i32) -> Option<Identifier> {
         let index = usize::try_from(raw_id).ok()?;
-        if let Some(entries) = self.registries.get(registry) {
-            return entries.get(index).cloned();
-        }
-        mod_api::__private::custom_registry_entry_id(registry, index as u32).cloned()
+        self.registries.get(registry)?.get(index).cloned()
     }
 
-    /// Resolve an entry's canonical ID to the server-synced wire `raw_id` (or local slot in SP).
-    pub fn raw_id(&self, registry: &str, id: &str) -> Option<i32> {
-        if let Some(entries) = self.registries.get(registry) {
-            let index = entries.iter().position(|entry| entry.to_string() == id)?;
-            return i32::try_from(index).ok();
-        }
-        let dir = mod_api::__private::custom_registry_directories()
-            .iter()
-            .find(|dir| dir.id() == registry)?;
-        let index = dir
-            .entry_ids()
-            .iter()
-            .position(|entry| entry.to_string() == id)?;
-        i32::try_from(index).ok()
-    }
-
-    /// Whether `registry` was synced by the server.
+    /// Whether `registry` has an authoritative ID mapping on this connection.
     pub fn has_registry(&self, registry: &str) -> bool {
         self.registries.contains_key(registry)
     }
@@ -311,7 +304,7 @@ impl SyncedCustomRegistries {
         self.registries.get(registry).map(Vec::as_slice)
     }
 
-    pub(crate) fn owned_heap_bytes(&self) -> usize {
+    pub fn owned_heap_bytes(&self) -> usize {
         self.registries
             .iter()
             .map(|(key, values)| {
@@ -382,11 +375,22 @@ pub struct Receiver {
 }
 
 impl Receiver {
-    pub fn new(local: LocalRegistries) -> Self {
+    /// Start a configuration receiver for `local`.
+    ///
+    /// On an in-process memory connection (`memory == true`), the server skips
+    /// `sunrise:custom_registries`, so the table is seeded once from `local`'s `sync(true)`
+    /// registries. On a network connection (`memory == false`), the table starts empty and is
+    /// populated only by a validated snapshot from the server.
+    pub fn new(local: LocalRegistries, memory: bool) -> Self {
+        let synced = if memory {
+            SyncedCustomRegistries::from_local(&local)
+        } else {
+            SyncedCustomRegistries::default()
+        };
         Self {
             local,
             pending: None,
-            synced: SyncedCustomRegistries::default(),
+            synced,
         }
     }
 
@@ -398,7 +402,7 @@ impl Receiver {
         Ok(())
     }
 
-    pub(crate) fn finish_transfer(&self) -> Result<(), String> {
+    pub fn finish_transfer(&self) -> Result<(), String> {
         if self.pending.is_some() {
             Err("Incomplete custom registry snapshot at the end of configuration.".into())
         } else {
@@ -410,7 +414,7 @@ impl Receiver {
         self.synced
     }
 
-    pub(crate) fn owned_heap_bytes(&self) -> usize {
+    pub fn owned_heap_bytes(&self) -> usize {
         self.pending
             .as_ref()
             .map_or(0, |(_, buf)| buf.capacity())
@@ -584,5 +588,42 @@ mod tests {
             server_payload(&snapshot, true, false).unwrap().is_some(),
             "Sunrise TCP/LAN client gets sync"
         );
+    }
+
+    #[test]
+    fn memory_receiver_seeds_only_synced_local_registries_and_network_stays_empty_without_snapshot()
+    {
+        let local = LocalRegistries::new(vec![
+            FakeDir::arc("chemlib:gas", true, &["chemlib:oxygen", "boiler:steam"]),
+            FakeDir::arc("chemlib:empty_synced", true, &[]),
+            FakeDir::arc("chemlib:local_only", false, &["chemlib:internal"]),
+        ]);
+
+        // In-process memory connection seeds all sync(true) registries (including empty ones)
+        // in local frozen order and omits sync(false) registries.
+        let memory_synced = Receiver::new(local.clone(), true).into_synced();
+        assert_eq!(
+            memory_synced
+                .entry_id("chemlib:gas", 0)
+                .map(|id| id.to_string()),
+            Some("chemlib:oxygen".into())
+        );
+        assert_eq!(
+            memory_synced
+                .entry_id("chemlib:gas", 1)
+                .map(|id| id.to_string()),
+            Some("boiler:steam".into())
+        );
+        assert_eq!(memory_synced.entry_id("chemlib:gas", 2), None);
+        assert_eq!(memory_synced.entries("chemlib:empty_synced"), Some(&[][..]));
+        assert!(!memory_synced.has_registry("chemlib:local_only"));
+        assert_eq!(memory_synced.entry_id("chemlib:local_only", 0), None);
+
+        // Network connection without a received snapshot stays empty and never falls back
+        // to local registries.
+        let network_synced = Receiver::new(local, false).into_synced();
+        assert!(!network_synced.has_registry("chemlib:gas"));
+        assert_eq!(network_synced.entries("chemlib:gas"), None);
+        assert_eq!(network_synced.entry_id("chemlib:gas", 0), None);
     }
 }

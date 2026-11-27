@@ -735,16 +735,11 @@ mod tests {
             b1.wait();
             assert!(TestHost.registry(ALPHA).is_some());
             assert!(TestHost.registry(BETA).is_none());
-            assert_eq!(
-                mod_vocab::__private::custom_registry_entry_id("alpha:gas", 0)
-                    .map(ToString::to_string)
-                    .as_deref(),
-                Some("alpha:oxygen")
-            );
-            assert_eq!(
-                mod_vocab::__private::custom_registry_entry_id("beta:gas", 0),
-                None
-            );
+            let dir_ids: Vec<&str> = mod_vocab::__private::custom_registry_directories()
+                .iter()
+                .map(|dir| dir.id())
+                .collect();
+            assert_eq!(dir_ids, vec!["alpha:gas"]);
             b1.wait();
         });
         let b2 = barrier;
@@ -753,16 +748,11 @@ mod tests {
             b2.wait();
             assert!(TestHost.registry(BETA).is_some());
             assert!(TestHost.registry(ALPHA).is_none());
-            assert_eq!(
-                mod_vocab::__private::custom_registry_entry_id("beta:gas", 0)
-                    .map(ToString::to_string)
-                    .as_deref(),
-                Some("beta:steam")
-            );
-            assert_eq!(
-                mod_vocab::__private::custom_registry_entry_id("alpha:gas", 0),
-                None
-            );
+            let dir_ids: Vec<&str> = mod_vocab::__private::custom_registry_directories()
+                .iter()
+                .map(|dir| dir.id())
+                .collect();
+            assert_eq!(dir_ids, vec!["beta:gas"]);
             b2.wait();
         });
         t1.join().unwrap();

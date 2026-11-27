@@ -1194,8 +1194,9 @@ if let Some(gases) = host.registry(chemlib::GASES) {
 ```
 
 Tags for a custom static registry live at `data/<ns>/tags/<registry_ns>/<registry_path>/<name>.json`
-(for `chemlib:gas`, `data/<ns>/tags/chemlib/gas/<name>.json`) and are read with
-`host.tags().entries(GASES, tag_key)` and `host.tags().is_in_custom_tag(GASES, entry, tag_key)`.
+(for `chemlib:gas`, `data/<ns>/tags/chemlib/gas/<name>.json`). Use
+`host.tags().is_in_custom_tag(GASES, entry, tag_key)` to check one entry without building a list,
+and `host.tags().entries(GASES, tag_key)` to read all members in tag order.
 Persist canonical entry IDs (`gases.id_of(entry)`), not `EntryKey` handles.
 
 #### Custom datapack registries

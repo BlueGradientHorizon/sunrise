@@ -274,11 +274,20 @@ pub trait Tags {
     fn world_clocks(&self, _tag: TagKey<WorldClockKey>) -> TagMembers<WorldClockKey> {
         TagMembers::Unavailable
     }
-    /// Read the bound members of `tag` in custom static registry `registry`, in tag order.
     // hidden: typed custom-registry tag reads live on `dyn Tags`; this object-safe method is plumbing.
     #[doc(hidden)]
     fn custom_tag_entries(&self, _registry: &str, _tag: TagKey) -> TagMembers<Identifier> {
         TagMembers::Unavailable
+    }
+    // hidden: typed custom-registry tag reads live on `dyn Tags`; this object-safe method is plumbing.
+    #[doc(hidden)]
+    fn custom_tag_contains(
+        &self,
+        _registry: &str,
+        _tag: TagKey,
+        _entry: &Identifier,
+    ) -> Option<bool> {
+        None
     }
 }
 
@@ -300,7 +309,7 @@ impl dyn Tags + '_ {
             TagMembers::Unavailable => TagMembers::Unavailable,
             TagMembers::Members(ids) => ids
                 .iter()
-                .map(|id| frozen.by_id(&id.to_string()).map(|(key, _)| key))
+                .map(|id| frozen.by_id(id.as_str()).map(|(key, _)| key))
                 .collect::<Option<Vec<_>>>()
                 .map_or(TagMembers::Unavailable, TagMembers::Members),
         }
@@ -308,9 +317,12 @@ impl dyn Tags + '_ {
 
     /// Whether `entry` is in `tag` of custom static registry `registry`.
     ///
-    /// Returns `Some(false)` for an unknown tag when authoritative tags are loaded, and
-    /// `None` when the registry or authoritative tags are unavailable or `entry` does not
-    /// belong to `registry`.
+    /// Returns `Some(false)` for a missing tag or a nonmember when authoritative tags are loaded.
+    /// Returns `None` when the registry or authoritative tags are unavailable, `entry` does not
+    /// belong to `registry`, or a received tag member ID cannot be resolved.
+    ///
+    /// The server uses a set lookup. The client scans the received tag once without building
+    /// a member list; cost grows with the tag's size on every call, including per-entity tick calls.
     pub fn is_in_custom_tag<T: Send + Sync + 'static>(
         &self,
         registry: crate::RegistryKey<T>,
@@ -318,12 +330,7 @@ impl dyn Tags + '_ {
         tag: TagKey,
     ) -> Option<bool> {
         let frozen = crate::parts::custom_registry::<T>(registry.id())?;
-        let target_id = frozen.id_of(entry)?;
-        match self.custom_tag_entries(registry.id(), tag) {
-            TagMembers::Unavailable => None,
-            TagMembers::Missing => Some(false),
-            TagMembers::Members(ids) => Some(ids.iter().any(|id| id == target_id)),
-        }
+        self.custom_tag_contains(registry.id(), tag, frozen.id_of(entry)?)
     }
 }
 

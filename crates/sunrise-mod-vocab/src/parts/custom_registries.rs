@@ -90,14 +90,3 @@ pub(crate) fn custom_registry<T: Send + Sync + 'static>(
 pub fn custom_registry_directories() -> &'static [Arc<dyn RegistryDirectory>] {
     installed().map_or(&[], |installed| installed.custom_registries.directories())
 }
-
-/// Look up an entry's canonical identifier by registry ID and entry slot in the current
-/// installed epoch (`TEST_PARTS` first, then `INSTALLED`).
-pub fn custom_registry_entry_id(
-    registry_id: &str,
-    entry_slot: u32,
-) -> Option<&'static crate::Identifier> {
-    installed()?
-        .custom_registries
-        .entry_id(registry_id, entry_slot)
-}

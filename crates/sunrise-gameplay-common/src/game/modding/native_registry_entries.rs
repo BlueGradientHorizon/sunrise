@@ -265,28 +265,20 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
             return None;
         }
         let tag = normalized(tag);
+        if Self::custom_registry(&registry).is_some() {
+            return crate::game::native_tags::custom_tag_by_name(
+                ModdingSideOps::side_custom_tag_source(self.side_state()),
+                &registry,
+                &tag,
+            )
+            .contains(&entry.id);
+        }
         if let Some(set) = self.registry_datapacks(&registry)
             && let Some(found) = set.tag_contains(&registry, &id, &tag)
         {
             return Some(found);
         }
         if let Some(names) = self.side_remote_registry_names() {
-            if Self::custom_registry(&registry).is_some()
-                && let crate::game::native_tags::CustomTagSource::Client {
-                    custom_registries,
-                    ..
-                } = ModdingSideOps::side_custom_tag_source(self.side_state())
-            {
-                let Some(index) = custom_registries.raw_id(&registry, &id) else {
-                    return Some(false);
-                };
-                return Some(
-                    names
-                        .dynamic
-                        .tag(&registry, &tag)
-                        .is_some_and(|members| members.contains(&index)),
-                );
-            }
             let Some(index) = network_id(names.builtin, names.dynamic, &registry, &id) else {
                 return Some(false);
             };
@@ -346,21 +338,14 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
         {
             return Some(found);
         }
-        if let Some(tables) = crate::game::Side::world_tables(self.side_state()) {
-            if let Some(tags) = tables.pack_tags.get(registry.as_str()) {
-                return Some(
-                    tags.get(tag.as_ref())
-                        .is_some_and(|members| members.contains(&id)),
-                );
-            }
-            if let Some(kind) = registry.strip_prefix("minecraft:")
-                && let Some(tags) = tables.pack_tags.get(kind)
-            {
-                return Some(
-                    tags.get(tag.as_ref())
-                        .is_some_and(|members| members.contains(&id)),
-                );
-            }
+        if let Some(tables) = crate::game::Side::world_tables(self.side_state())
+            && let Some(kind) = registry.strip_prefix("minecraft:")
+            && let Some(tags) = tables.pack_tags.get(kind)
+        {
+            return Some(
+                tags.get(tag.as_ref())
+                    .is_some_and(|members| members.contains(&id)),
+            );
         }
         Some(self.sync_tag_contains(&registry, &id, &tag))
     }

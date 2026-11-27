@@ -2297,7 +2297,8 @@ fn configure(
     let mut negotiation =
         sunrise_protocol::payload_negotiation::Negotiation::new(payloads.local.manifest.clone());
     let mut datapacks = crate::datapack_net::Receiver::default();
-    let mut custom_registries = crate::custom_registry_net::Receiver::new(local_registries.clone());
+    let mut custom_registries =
+        crate::custom_registry_net::Receiver::new(local_registries.clone(), reader.is_memory());
     let reply = |p: cfg::Serverbound| -> Result<(), Reason> {
         match writer.lock().unwrap().as_mut() {
             Some(w) => p

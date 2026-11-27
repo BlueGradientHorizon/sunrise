@@ -444,12 +444,6 @@ impl FrozenCustomRegistries {
             .as_any()
             .downcast_ref::<CustomRegistry<T>>()
     }
-
-    /// Look up one entry's canonical ID by registry ID and entry slot.
-    pub fn entry_id(&self, registry_id: &str, entry_slot: u32) -> Option<&Identifier> {
-        let &index = self.by_id.get(registry_id)?;
-        self.directories[index].entry_ids().get(entry_slot as usize)
-    }
 }
 
 /// Read mod-declared static custom registries frozen at startup.
