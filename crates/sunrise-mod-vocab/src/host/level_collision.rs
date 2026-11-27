@@ -44,21 +44,24 @@ pub trait LevelCollisionBackend {
     ) -> Option<core::ops::ControlFlow<()>>;
     /// Side: both.
     /// `BlockState.isSuffocating(level, pos)` of the supplied `state` at `pos`: the block's own
-    /// predicate (`BlockBehaviour.Properties.isSuffocating`) as the game's suffocation rules
-    /// bind it, with the level read where the predicate reads it. The state need not be the
-    /// block stored there, so a camouflaged block can ask about the state it shows. A shulker
-    /// box (`Blocks.shulkerBox`'s predicate) suffocates unless a `ShulkerBoxBlockEntity` at
-    /// `pos` is not closed (opening, open or closing); a block whose collision shape a block
-    /// entity publishes or a declared offset moves is tested with its shape at `pos`. A
-    /// predicate that ignores the level answers as `BlockStates::is_suffocating`. Reads open
+    /// predicate (`BlockBehaviour.Properties.isSuffocating`) as the level's suffocation rules
+    /// bind it (the world's data packs' `#minecraft:causes_suffocation` included), with the level
+    /// read where the predicate reads it. The arguments come in `visit_block_shape`'s order,
+    /// state then position. The state need not be the block stored there, so a camouflaged
+    /// block can ask about the state it shows. A shulker box (`Blocks.shulkerBox`'s predicate)
+    /// suffocates unless a `ShulkerBoxBlockEntity` at `pos` is not closed (opening, open or
+    /// closing); a block whose collision shape a block entity publishes or a declared offset
+    /// moves is tested with its shape at `pos`. A predicate that ignores the level answers as
+    /// `BlockStates::is_suffocating`, which reads the same rules. Reads open
     /// server levels (active or parked) and the client's current level; never loads chunks.
-    /// None for an unknown state, a stale handle or an unavailable level, and an unloaded or
-    /// out-of-height `pos`.
+    /// None for an unknown state, a stale handle or an unavailable level, an unloaded or
+    /// out-of-height `pos`, and collision data that cannot answer (a collision query error, as
+    /// `visit_block_shape` returns no boxes for one).
     fn level_state_is_suffocating(
         &self,
         level: LevelRef,
-        pos: [i32; 3],
         state: BlockState,
+        pos: [i32; 3],
     ) -> Option<bool>;
     /// Side: both.
     /// Clip a ray from `from` to `to` against collider, outline or visual shapes

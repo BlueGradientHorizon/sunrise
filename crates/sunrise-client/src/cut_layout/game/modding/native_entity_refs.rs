@@ -2920,15 +2920,15 @@ pub(crate) mod tests {
             .map(|name| mod_api::prelude::BlockStatesHost::block_state_id(&*game, name).unwrap());
             // The cell holds air: each state answers as if it stood there.
             assert_eq!(
-                level.state_is_suffocating(game, [0, 64, 0], stone),
+                level.state_is_suffocating(game, stone, [0, 64, 0]),
                 Some(true)
             );
             assert_eq!(
-                level.state_is_suffocating(game, [0, 64, 0], glass),
+                level.state_is_suffocating(game, glass, [0, 64, 0]),
                 Some(false)
             );
             assert_eq!(
-                level.state_is_suffocating(game, [0, 64, 0], shulker),
+                level.state_is_suffocating(game, shulker, [0, 64, 0]),
                 Some(true)
             );
             // The state alone cannot say; the position can.
@@ -2957,19 +2957,19 @@ pub(crate) mod tests {
                     },
                 );
                 assert_eq!(
-                    level.state_is_suffocating(game, [0, 64, 0], shulker),
+                    level.state_is_suffocating(game, shulker, [0, 64, 0]),
                     Some(status == ShulkerStatus::Closed),
                     "{status:?}"
                 );
                 assert_eq!(
-                    level.state_is_suffocating(game, [0, 64, 0], stone),
+                    level.state_is_suffocating(game, stone, [0, 64, 0]),
                     Some(true),
                     "{status:?}"
                 );
             }
             // One cell over there is no box: the same state suffocates there.
             assert_eq!(
-                level.state_is_suffocating(game, [1, 64, 0], shulker),
+                level.state_is_suffocating(game, shulker, [1, 64, 0]),
                 Some(true)
             );
             // A parked level answers from its own block entities.
@@ -2985,7 +2985,7 @@ pub(crate) mod tests {
                     .is_some()
             );
             assert_eq!(
-                level.state_is_suffocating(game, [0, 64, 0], shulker),
+                level.state_is_suffocating(game, shulker, [0, 64, 0]),
                 Some(false)
             );
             assert!(
@@ -2994,8 +2994,8 @@ pub(crate) mod tests {
             );
             game.world.shulkers.remove(&[0, 64, 0]);
             // Unloaded and out-of-height positions are unknown, not a guess.
-            assert_eq!(level.state_is_suffocating(game, [160, 64, 0], stone), None);
-            assert_eq!(level.state_is_suffocating(game, [0, 10000, 0], stone), None);
+            assert_eq!(level.state_is_suffocating(game, stone, [160, 64, 0]), None);
+            assert_eq!(level.state_is_suffocating(game, stone, [0, 10000, 0]), None);
         });
     }
 
@@ -3030,7 +3030,7 @@ pub(crate) mod tests {
                 let level = game.level(game.dim.id()).unwrap();
                 assert_eq!(game.block_states().is_suffocating(stone), Some(true));
                 assert_eq!(
-                    level.state_is_suffocating(game, [0, 64, 0], stone),
+                    level.state_is_suffocating(game, stone, [0, 64, 0]),
                     Some(true)
                 );
                 assert_eq!(
@@ -3072,12 +3072,12 @@ pub(crate) mod tests {
                 let level = game.level(game.dim.id()).unwrap();
                 assert_eq!(game.block_states().is_suffocating(stone), Some(false));
                 assert_eq!(
-                    level.state_is_suffocating(game, [0, 64, 0], stone),
+                    level.state_is_suffocating(game, stone, [0, 64, 0]),
                     Some(false)
                 );
                 assert_eq!(game.block_states().is_suffocating(dirt), Some(true));
                 assert_eq!(
-                    level.state_is_suffocating(game, [0, 64, 0], dirt),
+                    level.state_is_suffocating(game, dirt, [0, 64, 0]),
                     Some(true)
                 );
                 assert_eq!(

@@ -915,12 +915,15 @@ mod facts_tests {
                 facts.is_redstone_conductor(state("minecraft:red_shulker_box")),
                 None
             );
-            // getLightBlock: opaque cubes stop all 15, water and leaves 1, glass and air none.
-            assert_eq!(facts.light_block(stone), Some(15));
-            assert_eq!(facts.light_block(state("minecraft:water")), Some(1));
-            assert_eq!(facts.light_block(state("minecraft:oak_leaves")), Some(1));
-            assert_eq!(facts.light_block(state("minecraft:glass")), Some(0));
-            assert_eq!(facts.light_block(air), Some(0));
+            // getLightDampening: opaque cubes stop all 15, water and leaves 1, glass and air none.
+            assert_eq!(facts.light_dampening(stone), Some(15));
+            assert_eq!(facts.light_dampening(state("minecraft:water")), Some(1));
+            assert_eq!(
+                facts.light_dampening(state("minecraft:oak_leaves")),
+                Some(1)
+            );
+            assert_eq!(facts.light_dampening(state("minecraft:glass")), Some(0));
+            assert_eq!(facts.light_dampening(air), Some(0));
             // isSuffocating: the block's own predicate. Stone and mud yes, glass, leaves and a
             // moving piston no, a piston until it is extended; a shulker box needs its block entity.
             let pistons = |extended: &str| {

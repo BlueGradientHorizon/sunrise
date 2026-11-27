@@ -465,8 +465,8 @@ impl<'a> BlockTables<'a> {
     pub fn block_state_is_redstone_conductor(&self, state: BlockStateId) -> Option<bool> {
         self.res.behaviours().state_redstone_conductor(state)
     }
-    /// `BlockState.getLightBlock()`, the exported dampening. None for an unknown state.
-    pub fn block_state_light_block(&self, state: BlockStateId) -> Option<u8> {
+    /// `BlockStateBase.getLightDampening()`, the exported dampening. None for an unknown state.
+    pub fn block_state_light_dampening(&self, state: BlockStateId) -> Option<u8> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).dampening)
     }
@@ -494,10 +494,7 @@ impl<'a> BlockTables<'a> {
         entity_type: &str,
     ) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
-        let species = sunrise_sim::mobs::species::ALL
-            .iter()
-            .find(|def| entity_type.strip_prefix("minecraft:") == Some(def.name))?
-            .species;
+        let species = sunrise_sim::mobs::species::of_vanilla_id(entity_type)?;
         Some(sunrise_sim::mobs::spawn_rules::is_valid_spawn_on(
             species,
             self.res.facts(),

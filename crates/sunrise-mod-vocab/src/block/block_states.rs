@@ -337,7 +337,7 @@ macro_rules! impl_block_states_without_tables {
                 fn block_state_is_redstone_conductor(&self, _: BlockState) -> Option<bool> {
                     None
                 }
-                fn block_state_light_block(&self, _: BlockState) -> Option<u8> {
+                fn block_state_light_dampening(&self, _: BlockState) -> Option<u8> {
                     None
                 }
                 fn block_state_is_suffocating(&self, _: BlockState) -> Option<bool> {
@@ -725,10 +725,10 @@ impl BlockStates<'_> {
     pub fn is_redstone_conductor(&self, state: BlockState) -> Option<bool> {
         self.backend.block_state_is_redstone_conductor(state)
     }
-    /// `BlockState.getLightBlock()`: how much light `state` stops, 0 to 15 (stone 15, water and
-    /// leaves 1, air and glass 0). None as for `replaceable`.
-    pub fn light_block(&self, state: BlockState) -> Option<u8> {
-        self.backend.block_state_light_block(state)
+    /// `BlockStateBase.getLightDampening()`: how much light `state` stops, 0 to 15 (stone 15,
+    /// water and leaves 1, air and glass 0). None as for `replaceable`.
+    pub fn light_dampening(&self, state: BlockState) -> Option<u8> {
+        self.backend.block_state_light_dampening(state)
     }
     /// `BlockState.isSuffocating(level, pos)` when the block's own predicate decides from `state`
     /// alone: stone yes, glass and leaves no, a piston unless extended. It reads the suffocation

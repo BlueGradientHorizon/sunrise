@@ -115,12 +115,13 @@ pub trait NativeLevelRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// suffocation rules entities use: a closed-shulker rule reads the shulker box at `pos`
     /// (`Blocks.shulkerBox`: no `ShulkerBoxBlockEntity` there counts as closed), a full-shape
     /// rule reads the shape published or offset at `pos`. None for an unavailable level, an
-    /// unloaded or out-of-height `pos`, and a state outside the registry.
+    /// unloaded or out-of-height `pos`, a state outside the registry and a collision query
+    /// error.
     fn level_state_is_suffocating(
         &self,
         level: LevelRef,
-        pos: [i32; 3],
         state: BlockStateId,
+        pos: [i32; 3],
     ) -> Option<bool> {
         let world = self.native_level_read_world(level)?;
         if !world.is_loaded_at(pos[0], pos[1], pos[2]) {

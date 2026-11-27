@@ -236,10 +236,10 @@ pub trait BlockStatesBackend {
     /// or the predicate needs a level and position.
     fn block_state_is_redstone_conductor(&self, state: BlockState) -> Option<bool>;
     /// Side: both.
-    /// `BlockState.getLightBlock()`: how much light the state stops, 0 to 15 (stone 15, water
-    /// and leaves 1, air and glass 0), the value light propagation subtracts when light passes
-    /// through it. None for an unknown state.
-    fn block_state_light_block(&self, state: BlockState) -> Option<u8>;
+    /// `BlockStateBase.getLightDampening()`: how much light the state stops, 0 to 15 (stone 15,
+    /// water and leaves 1, air and glass 0), the value light propagation subtracts when light
+    /// passes through it. None for an unknown state.
+    fn block_state_light_dampening(&self, state: BlockState) -> Option<u8>;
     /// Side: both.
     /// `BlockState.isSuffocating(level, pos)` for a state alone: the block's own predicate
     /// (`BlockBehaviour.Properties.isSuffocating`, default `blocksMotion` with a full collision
