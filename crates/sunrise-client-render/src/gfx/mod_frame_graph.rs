@@ -339,6 +339,77 @@ pub struct CompiledFrameGraph {
     pub release_after: Vec<Vec<TransientTargetId>>,
 }
 
+/// Find cycle members in the residual graph left by Kahn's sort. Iterative strongly connected
+/// component traversals keep mod-controlled graph depth off the call stack.
+fn cycle_members(adj: &[BTreeSet<usize>], in_degree: &[usize]) -> Vec<bool> {
+    let mut reverse = vec![Vec::new(); adj.len()];
+    for (node, edges) in adj.iter().enumerate() {
+        if in_degree[node] == 0 {
+            continue;
+        }
+        for &next in edges {
+            if in_degree[next] > 0 {
+                reverse[next].push(node);
+            }
+        }
+    }
+
+    // Kosaraju's first traversal records finish order in the residual graph.
+    let mut seen = vec![false; adj.len()];
+    let mut finished = Vec::new();
+    let mut traversal = Vec::new();
+    for (node, edges) in adj.iter().enumerate() {
+        if in_degree[node] == 0 || seen[node] {
+            continue;
+        }
+        seen[node] = true;
+        traversal.push((node, edges.iter()));
+        while let Some((node, edges)) = traversal.last_mut() {
+            match edges.next() {
+                Some(&next) if in_degree[next] > 0 && !seen[next] => {
+                    seen[next] = true;
+                    traversal.push((next, adj[next].iter()));
+                }
+                Some(_) => {}
+                None => {
+                    finished.push(*node);
+                    traversal.pop();
+                }
+            }
+        }
+    }
+
+    // Reverse finish order on the reversed graph visits one component at a time. Only a
+    // multi-node component (or a self-loop) is cyclic; downstream singleton nodes are not.
+    seen.fill(false);
+    let mut cyclic = vec![false; adj.len()];
+    let mut pending = Vec::new();
+    let mut component = Vec::new();
+    for node in finished.into_iter().rev() {
+        if seen[node] {
+            continue;
+        }
+        component.clear();
+        seen[node] = true;
+        pending.push(node);
+        while let Some(node) = pending.pop() {
+            component.push(node);
+            for &next in &reverse[node] {
+                if !seen[next] {
+                    seen[next] = true;
+                    pending.push(next);
+                }
+            }
+        }
+        if component.len() > 1 || adj[node].contains(&node) {
+            for &member in &component {
+                cyclic[member] = true;
+            }
+        }
+    }
+    cyclic
+}
+
 fn compile_specs(
     passes: &[PassGraphSpec<'_>],
     transient_count: usize,
@@ -533,16 +604,17 @@ fn compile_specs(
     }
 
     if visited < active_count {
+        let cyclic = cycle_members(&adj, &in_degree);
         let mut involved = Vec::new();
         for (p, spec) in passes.iter().enumerate() {
             let node = pass_node(p);
-            if is_active(node) && in_degree[node] > 0 {
+            if cyclic[node] {
                 involved.push(spec.label.to_owned());
             }
         }
         if involved.is_empty() {
             for (a, stage) in anchors.iter().enumerate() {
-                if in_degree[a] > 0 {
+                if cyclic[a] {
                     involved.push(format!("{stage:?}"));
                 }
             }
@@ -1194,6 +1266,66 @@ mod tests {
             graph.validate_new_pass(&anchor_cycle, false),
             Err(FrameGraphError::Cycle { .. })
         ));
+    }
+
+    #[test]
+    fn cycle_diagnostics_exclude_acyclic_dependents() {
+        let mut graph = RecordedFrameGraph::default();
+        let tmp = graph.add_transient(rgba8_desc([32, 32]));
+        let p_a = push(
+            &mut graph,
+            FramePassDescriptor::new("pass_a", FrameTarget::Transient(tmp)),
+        );
+        push(
+            &mut graph,
+            FramePassDescriptor::new("downstream", FrameTarget::Mod(rt(1, 0)))
+                .reads(FrameTarget::Transient(tmp)),
+        );
+        let cyclic = FramePassDescriptor::new("pass_b", FrameTarget::Mod(rt(1, 1)))
+            .reads(FrameTarget::Transient(tmp))
+            .before_pass(p_a);
+        let expected = FrameGraphError::Cycle {
+            passes: vec!["pass_a".to_owned(), "pass_b".to_owned()],
+        };
+
+        // A -> downstream has no way back to the A <-> B cycle.
+        assert_eq!(
+            graph.validate_new_pass(&cyclic, false),
+            Err(expected.clone())
+        );
+        graph.push_pass(RecordedFramePass::from_descriptor(cyclic, None));
+        assert_eq!(graph.compile(false).unwrap_err(), expected);
+
+        // Two cycles connected in one direction do not make the bridge between them cyclic.
+        let mut graph = RecordedFrameGraph::default();
+        for (index, (label, before)) in [
+            ("pass_a", vec![1]),
+            ("pass_b", vec![0, 2]),
+            ("bridge", vec![3]),
+            ("pass_c", vec![4]),
+            ("pass_d", vec![3, 5]),
+            ("downstream", vec![]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut desc = FramePassDescriptor::new(label, FrameTarget::Mod(rt(1, index as u32)));
+            for next in before {
+                desc = desc.before_pass(FramePassId::from_raw(next));
+            }
+            // Build the cyclic fixture directly; registration correctly refuses its cycles.
+            graph.push_pass(RecordedFramePass::from_descriptor(desc, None));
+        }
+        for oit_on in [false, true] {
+            assert_eq!(
+                graph.compile(oit_on).unwrap_err(),
+                FrameGraphError::Cycle {
+                    passes: ["pass_a", "pass_b", "pass_c", "pass_d"]
+                        .map(str::to_owned)
+                        .to_vec(),
+                }
+            );
+        }
     }
 
     #[test]
