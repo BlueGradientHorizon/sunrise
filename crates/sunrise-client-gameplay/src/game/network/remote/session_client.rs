@@ -291,8 +291,7 @@ impl crate::game::ClientGame<'_> {
         let r = self.client.remote.as_mut().unwrap();
         if !same {
             r.collider_shove_start = None;
-            // A same-level respawn keeps the existing ClientLevel's seed and sea level.
-            r.hashed_seed = spawn.seed;
+            // A same-level respawn keeps the existing ClientLevel's sea level.
             r.sea_level = spawn.sea_level;
         }
         let dimension = format.dimension;
@@ -607,7 +606,6 @@ impl crate::game::ClientGame<'_> {
             facts_cache: Default::default(),
             added_levels: Default::default(),
             viewed: Default::default(),
-            hashed_seed: 0,
             sea_level: 63,
             chunk_format: Arc::new(ChunkFormat::new(
                 &DimensionType::vanilla("minecraft:overworld"),
@@ -896,7 +894,6 @@ impl crate::game::ClientGame<'_> {
             facts_cache: Default::default(),
             added_levels: Default::default(),
             viewed: Default::default(),
-            hashed_seed: 0,
             sea_level: 63,
             chunk_format: Arc::new(ChunkFormat::new(
                 &DimensionType::vanilla("minecraft:overworld"),

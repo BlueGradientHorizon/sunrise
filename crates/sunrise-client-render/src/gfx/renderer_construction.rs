@@ -76,7 +76,6 @@ impl Renderer {
         let split = check_layers(&adapter, layers)?;
         let info = adapter.get_info();
         surface_setup::log_sprite_split(&info, split, layers);
-        crate::graphics::suggest_reduced_far_detail(crate::graphics::lod_capped(&info));
         let size = window.inner_size();
         let max_side = device.limits().max_texture_dimension_2d;
         let configured = match (&surface, configured) {

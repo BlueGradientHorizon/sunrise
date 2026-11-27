@@ -227,7 +227,7 @@ pub struct Remote {
     pub(in crate::game) detached_camera:
         Option<Box<crate::game::client_side::remote_camera::ResolvedCameraEntity>>,
     pub(in crate::game) dimension: DimensionType,
-    /// The level's key (`minecraft:overworld`): where its far terrain is kept.
+    /// The level's name (`minecraft:overworld`).
     pub level: String,
     /// `level`'s key, as mods' handles name the level.
     pub level_key: mod_api::DimensionKey,
@@ -265,9 +265,6 @@ pub struct Remote {
     pub(in crate::game) logged_out: bool,
     /// The other levels' worlds the server opened on `sunrise:levels` (`viewed_worlds`).
     pub viewed: crate::game::client_side::viewed_worlds::ViewedWorlds,
-    /// The level's hashed seed (login, respawn): the folder of its kept chunks
-    /// (`server_terrain::level_dir`).
-    pub(in crate::game) hashed_seed: i64,
     /// `ClientLevel.getSeaLevel`: from the packet that created this level.
     pub(in crate::game) sea_level: i32,
     /// What chunk packets decode with (the dimension's height and sky, the
