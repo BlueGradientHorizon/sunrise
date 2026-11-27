@@ -1919,18 +1919,22 @@ fn login_and_configure(
     }))
 }
 
+fn payload_control_body(
+    control: sunrise_protocol::payload_negotiation::Control,
+) -> Result<Vec<u8>, String> {
+    Ok(cfg::Clientbound::CustomPayload(cfg::CustomPayload {
+        channel: sunrise_protocol::payload_negotiation::CHANNEL.into(),
+        data: control.encode().map_err(|e| e.to_string())?,
+    })
+    .encode())
+}
+
 fn send_payload_control(
     c: &mut ConfigIo<'_>,
     control: sunrise_protocol::payload_negotiation::Control,
 ) -> Result<(), String> {
-    c.send(
-        &cfg::Clientbound::CustomPayload(cfg::CustomPayload {
-            channel: sunrise_protocol::payload_negotiation::CHANNEL.into(),
-            data: control.encode().map_err(|e| e.to_string())?,
-        })
-        .encode(),
-    )
-    .map_err(|e| e.to_string())
+    c.send(&payload_control_body(control)?)
+        .map_err(|e| e.to_string())
 }
 
 /// The configuration ping that orders a Sunrise client's payload Offer before
@@ -1970,8 +1974,47 @@ fn payload_disconnect(c: &mut ConfigIo<'_>, error: String) -> String {
     error
 }
 
-/// Consume transport metadata in every configuration receive loop. Application
-/// payloads stay ordered for the configuration dispatcher (not implemented here).
+/// Decode a packet and consume its transport metadata in every configuration receive loop,
+/// replying through `reply`. None when the packet was that metadata.
+fn negotiate_payloads(
+    id: i32,
+    bytes: &[u8],
+    transport: &Transport,
+    negotiation: &mut sunrise_protocol::payload_negotiation::Negotiation,
+    reply: impl FnOnce(sunrise_protocol::payload_negotiation::Control) -> Result<(), String>,
+) -> Result<Option<cfg::Serverbound>, String> {
+    let packet = cfg::Serverbound::decode_with_payload_codecs(id, bytes, &transport.local.codecs)
+        .map_err(|e| e.to_string())?;
+    if let cfg::Serverbound::CustomPayload(payload) = &packet
+        && payload.channel == sunrise_protocol::payload_negotiation::CHANNEL
+    {
+        let control = sunrise_protocol::payload_negotiation::Control::decode(&payload.data)
+            .and_then(|control| negotiation.receive(control))
+            .map_err(|e| e.to_string())?;
+        if let Some(control) = control {
+            reply(control)?;
+        }
+        if let Some(accepted) = negotiation.accepted() {
+            transport.accept(accepted)?;
+        }
+        return Ok(None);
+    }
+    Ok(Some(packet))
+}
+
+/// A custom payload goes to `application`, which gives it back unless it took it.
+fn take_application(
+    packet: Option<cfg::Serverbound>,
+    application: impl FnOnce(cfg::CustomPayload) -> Result<Option<cfg::CustomPayload>, String>,
+) -> Result<Option<cfg::Serverbound>, String> {
+    match packet {
+        Some(cfg::Serverbound::CustomPayload(payload)) => {
+            application(payload).map(|payload| payload.map(cfg::Serverbound::CustomPayload))
+        }
+        packet => Ok(packet),
+    }
+}
+
 fn receive_configuration(
     c: &mut ConfigIo<'_>,
     id: i32,
@@ -1979,29 +2022,29 @@ fn receive_configuration(
     transport: &Transport,
     negotiation: &mut sunrise_protocol::payload_negotiation::Negotiation,
 ) -> Result<Option<cfg::Serverbound>, String> {
-    let packet = cfg::Serverbound::decode_with_payload_codecs(id, bytes, &transport.local.codecs)
-        .map_err(|e| payload_disconnect(c, e.to_string()))?;
-    if let cfg::Serverbound::CustomPayload(payload) = &packet
-        && payload.channel == sunrise_protocol::payload_negotiation::CHANNEL
-    {
-        let result = sunrise_protocol::payload_negotiation::Control::decode(&payload.data)
-            .and_then(|control| negotiation.receive(control));
-        let reply = result.map_err(|e| payload_disconnect(c, e.to_string()))?;
-        if let Some(reply) = reply {
-            send_payload_control(c, reply)?;
+    // A reply the writer refused is not answered with a disconnect through that writer.
+    let mut unsent = false;
+    let packet = negotiate_payloads(id, bytes, transport, negotiation, |control| {
+        send_payload_control(c, control).inspect_err(|_| unsent = true)
+    })
+    .map_err(|e| if unsent { e } else { payload_disconnect(c, e) })?;
+    take_application(packet, |payload| c.application(payload))
+}
+
+/// Read packets from `next` until `answer` has a result.
+fn answer_configuration<T>(
+    mut next: impl FnMut() -> Result<Option<cfg::Serverbound>, String>,
+    mut answer: impl FnMut(Result<cfg::Serverbound, String>) -> Option<Result<T, String>>,
+) -> Result<T, String> {
+    loop {
+        let packet = match next() {
+            Ok(Some(packet)) => Ok(packet),
+            Ok(None) => continue,
+            Err(e) => Err(e),
+        };
+        if let Some(result) = answer(packet) {
+            return result;
         }
-        if let Some(accepted) = negotiation.accepted() {
-            transport
-                .accept(accepted)
-                .map_err(|e| payload_disconnect(c, e))?;
-        }
-        return Ok(None);
-    }
-    match packet {
-        cfg::Serverbound::CustomPayload(payload) => c
-            .application(payload)
-            .map(|payload| payload.map(cfg::Serverbound::CustomPayload)),
-        packet => Ok(Some(packet)),
     }
 }
 
@@ -2196,20 +2239,13 @@ fn wait_alive<T>(
                     }
                 }
             });
-            let result = loop {
-                let (id, payload) = match c.recv() {
-                    Ok(packet) => packet,
-                    Err(e) => break Err(e.to_string()),
-                };
-                let packet = match receive_configuration(c, id, &payload, transport, negotiation) {
-                    Ok(Some(packet)) => Ok(packet),
-                    Ok(None) => continue,
-                    Err(e) => Err(e),
-                };
-                if let Some(result) = answer(packet) {
-                    break result;
-                }
-            };
+            let result = answer_configuration(
+                || {
+                    let (id, payload) = c.recv().map_err(|e| e.to_string())?;
+                    receive_configuration(c, id, &payload, transport, negotiation)
+                },
+                answer,
+            );
             drop(stop);
             result
         });
@@ -2237,61 +2273,24 @@ fn wait_alive<T>(
                     }
                 }
             });
-            let result = loop {
-                let packet = match connection.reader.recv() {
-                    Ok((id, payload)) => cfg::Serverbound::decode_with_payload_codecs(
-                        id,
-                        &payload,
-                        &transport.local.codecs,
-                    )
-                    .map_err(|e| e.to_string()),
-                    Err(err) => break Err(err.to_string()),
-                };
-                if let Ok(cfg::Serverbound::CustomPayload(payload)) = &packet
-                    && payload.channel == sunrise_protocol::payload_negotiation::CHANNEL
-                {
-                    let result = (|| {
-                        let control =
-                            sunrise_protocol::payload_negotiation::Control::decode(&payload.data)
-                                .map_err(|e| e.to_string())?;
-                        if let Some(reply) =
-                            negotiation.receive(control).map_err(|e| e.to_string())?
-                        {
-                            let body = cfg::Clientbound::CustomPayload(
-                                sunrise_protocol::packets::custom_payload::CustomPayload {
-                                    channel: sunrise_protocol::payload_negotiation::CHANNEL.into(),
-                                    data: reply.encode().map_err(|e| e.to_string())?,
-                                },
-                            )
-                            .encode();
+            // Every error ends the wait, and the disconnect follows once the keep-alive stopped.
+            let result = answer_configuration(
+                || {
+                    let (id, payload) = connection.reader.recv().map_err(|e| e.to_string())?;
+                    let packet =
+                        negotiate_payloads(id, &payload, transport, negotiation, |control| {
                             writer
                                 .lock()
                                 .unwrap()
-                                .send(&body)
-                                .map_err(|e| e.to_string())?;
-                        }
-                        if let Some(accepted) = negotiation.accepted() {
-                            transport.accept(accepted)?;
-                        }
-                        Ok::<(), String>(())
-                    })();
-                    if let Err(error) = result {
-                        break Err(error);
-                    }
-                    continue;
-                }
-                // As receive_configuration does: the engine's channels are read here too.
-                if let Ok(cfg::Serverbound::CustomPayload(payload)) = &packet {
-                    match channels.receive(payload) {
-                        Ok(true) => continue,
-                        Ok(false) => {}
-                        Err(error) => break Err(error),
-                    }
-                }
-                if let Some(result) = answer(packet) {
-                    break result;
-                }
-            };
+                                .send(&payload_control_body(control)?)
+                                .map_err(|e| e.to_string())
+                        })?;
+                    take_application(packet, |payload| {
+                        Ok((!channels.receive(&payload)?).then_some(payload))
+                    })
+                },
+                answer,
+            );
             drop(stop);
             result
         })
