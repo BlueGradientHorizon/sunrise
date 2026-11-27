@@ -1202,6 +1202,12 @@ const POLYGON_OFFSET: wgpu::DepthBiasState = wgpu::DepthBiasState {
     clamp: 0.0,
 };
 
+struct ResolvedModUniforms<'a> {
+    bound: Vec<(usize, bool, u32)>,
+    handled: HashSet<&'a str>,
+    mismatched: HashSet<&'a str>,
+}
+
 /// Resolve mod frame uniforms before the ordinary pack uploads are assigned. A mismatch
 /// keeps its shader slot at zero without refusing the program.
 fn resolve_mod_uniforms<'a>(
@@ -1210,10 +1216,11 @@ fn resolve_mod_uniforms<'a>(
     pass_name: &str,
     pack: &Resources<'_>,
     notes: &mut Vec<String>,
-) -> (Vec<(usize, bool, u32)>, HashSet<&'a str>) {
+) -> ResolvedModUniforms<'a> {
     let mut bound = Vec::new();
     let mut handled = HashSet::new();
-    for (i, u) in uniforms.iter().enumerate() {
+    let mut mismatched = HashSet::new();
+    for u in uniforms {
         match match_mod_uniform(pack.mod_uniforms, &u.name, &u.ty) {
             ModUniformMatch::None => {}
             ModUniformMatch::Bound { index, previous } => {
@@ -1222,12 +1229,9 @@ fn resolve_mod_uniforms<'a>(
             }
             ModUniformMatch::TypeMismatch { expected } => {
                 handled.insert(u.name.as_str());
-                // The translator lists members in block order. Clear only this member and
-                // its padding, including any GLSL initializer.
-                let end = uniforms
-                    .get(i + 1)
-                    .map_or(initial_block.len(), |next| next.offset as usize);
-                initial_block[u.offset as usize..end].fill(0);
+                mismatched.insert(u.name.as_str());
+                // The member's range is guaranteed by `sunrise_shaders::Interface::uniforms`.
+                initial_block[u.offset as usize..(u.offset + u.size) as usize].fill(0);
                 let key = (pass_name.to_owned(), u.name.clone());
                 if pack.mod_uniform_mismatches.borrow_mut().insert(key) {
                     let msg = format!(
@@ -1242,7 +1246,11 @@ fn resolve_mod_uniforms<'a>(
             }
         }
     }
-    (bound, handled)
+    ResolvedModUniforms {
+        bound,
+        handled,
+        mismatched,
+    }
 }
 
 /// The pass of program `p`: a quad, or `geometry` drawn by the game. `None` (with a note) when
@@ -1587,7 +1595,11 @@ pub fn build_pass(
         }
     };
     let interface = &mut program.interface;
-    let (mod_uniforms, mod_handled) = resolve_mod_uniforms(
+    let ResolvedModUniforms {
+        bound: mod_uniforms,
+        handled,
+        mismatched,
+    } = resolve_mod_uniforms(
         &interface.uniforms,
         &mut interface.initial_values,
         &p.name,
@@ -1599,7 +1611,7 @@ pub fn build_pass(
         .iter()
         .filter(|u| {
             !u.name.starts_with("hz_")
-                && !mod_handled.contains(u.name.as_str())
+                && !handled.contains(u.name.as_str())
                 && index(&u.name, &u.ty).is_none()
         })
         .map(|u| u.name.as_str())
@@ -1625,7 +1637,7 @@ pub fn build_pass(
         uniforms: interface
             .uniforms
             .iter()
-            .filter(|u| !mod_handled.contains(u.name.as_str()))
+            .filter(|u| !mismatched.contains(u.name.as_str()))
             .map(|u| (index(&u.name, &u.ty), u.ty.clone(), u.offset))
             .collect(),
         mod_uniforms,
@@ -1826,7 +1838,11 @@ pub fn build_compute(
     let (before_colors, snapshots) = befores(&images);
     let (shadow_own, shadow_before) = shadow_images(&images);
     let interface = &mut c.interface;
-    let (mod_uniforms, mod_handled) = resolve_mod_uniforms(
+    let ResolvedModUniforms {
+        bound: mod_uniforms,
+        mismatched,
+        ..
+    } = resolve_mod_uniforms(
         &interface.uniforms,
         &mut interface.initial_values,
         &name,
@@ -1845,7 +1861,7 @@ pub fn build_compute(
         uniforms: interface
             .uniforms
             .iter()
-            .filter(|u| !mod_handled.contains(u.name.as_str()))
+            .filter(|u| !mismatched.contains(u.name.as_str()))
             .map(|u| (index(&u.name, &u.ty), u.ty.clone(), u.offset))
             .collect(),
         mod_uniforms,
