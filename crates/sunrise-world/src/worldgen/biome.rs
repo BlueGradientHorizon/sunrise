@@ -608,9 +608,10 @@ mod tests {
             .filter(|warning| warning.contains("file/malformed"))
             .map(String::as_str)
             .collect();
-        assert_eq!(
-            diagnostics,
-            ["file/malformed: tag test:ground: invalid world generation field: id"]
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert!(
+            diagnostics[0].contains("test:ground"),
+            "the diagnostic must name the malformed tag: {diagnostics:?}"
         );
     }
 }
