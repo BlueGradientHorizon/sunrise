@@ -399,6 +399,14 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
         Err("sunrise.extras.header.chat"),
         Ok(ChatAnimation),
         Ok(ChatIndicator),
+    ];
+    rows.extend(
+        crate::chat_options::Opt::ALL
+            .iter()
+            .copied()
+            .map(|opt| Ok(Chat(opt))),
+    );
+    rows.extend([
         Err("sunrise.extras.header.world"),
         Ok(Pregen),
         Err("sunrise.extras.header.multiplayer"),
@@ -408,12 +416,7 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
         Err("sunrise.extras.header.menus"),
         Ok(WheelCyclesSettings),
         Ok(PackBrowser),
-    ];
-    rows.extend(
-        crate::chat_options::rows()
-            .into_iter()
-            .map(|row| row.map(Chat)),
-    );
+    ]);
     rows
 }
 impl Item {
@@ -849,6 +852,34 @@ mod tests {
         for item in rows().into_iter().flatten() {
             assert!(!item.caption().is_empty() && !item.description().is_empty());
         }
+    }
+
+    #[test]
+    fn chat_options_join_the_existing_gameplay_chat_section() {
+        use crate::chat_options::Opt::*;
+        use Item::*;
+
+        let rows = rows();
+        let start = rows
+            .iter()
+            .position(|row| *row == Err("sunrise.extras.header.chat"))
+            .unwrap();
+        let chat: Vec<_> = rows[start + 1..]
+            .iter()
+            .copied()
+            .map_while(Result::ok)
+            .collect();
+        assert_eq!(
+            chat,
+            [
+                ChatAnimation,
+                ChatIndicator,
+                Chat(ChatTimestamps),
+                Chat(ChatCompact),
+                Chat(ChatCopy),
+                Chat(ChatSearch),
+            ]
+        );
     }
 
     /// The shader pack key is bound to K out of the box, rebinds through the generic extra-key
