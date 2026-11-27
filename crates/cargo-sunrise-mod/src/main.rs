@@ -21,7 +21,8 @@
 //!   shaders; for a native mod, Rust and what the mod uses of its pinned build (`sdk_cmds.rs`).
 //! - `check <file> [--kind <kind>] [--attestation <bundle>] [--repository <id>] [--json]`: check a release package
 //!   (`.smod`, `.spack`, resource pack `.zip`).
-//! - `hooks <text> [--all]`: search the pinned build's hooks (or every item) offline.
+//! - `hooks <text> [--all]`: search the pinned build's hooks (or every item) in the SDK `check` already
+//!   prepared, fetching and writing nothing.
 //! - `sdk diff <build> <build>`: what changed in the surface between two builds.
 //! - `check [<file.smod>] --build <name> [--build <name>]…`: whether the mod fits each build; exit 0 when all
 //!   do, 1 when one does not, 2 when it cannot be told.
@@ -172,7 +173,7 @@ fn main() -> ExitCode {
     };
     match result {
         Ok(()) => {
-            // `hooks` reads the pinned SDK's catalog and does not check for tool updates.
+            // `hooks` reads the prepared SDK's catalog and does not check for tool updates.
             if command.is_some_and(|c| help::is_everyday(c) && c != "hooks") {
                 self_update::notice();
             }
