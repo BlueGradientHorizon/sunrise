@@ -960,33 +960,33 @@ impl crate::game::ServerGame<'_> {
                 .into());
             }
         }
-        let builtin = neoforge_mob_maps::load(
-            &overlay,
-            |directory| match directory {
-                "item" => Some(&items.item_tags as &dyn neoforge_mob_maps::TagMembers),
-                "entity_type" => {
-                    Some(items.entity_type_tags.members() as &dyn neoforge_mob_maps::TagMembers)
-                }
-                _ => pack_tags
-                    .get(directory)
-                    .map(|tags| tags as &dyn neoforge_mob_maps::TagMembers),
-            },
-            |registry, id| match registry {
-                "minecraft:item" => items.items.contains_key(id),
-                "minecraft:villager_profession" => stations.professions.resolve(id).is_some(),
-                "minecraft:worldgen/biome" => biomes.table.contains(id),
-                EntityTypeTags::REGISTRY => items
-                    .entity_type_tags
-                    .ids()
-                    .binary_search_by(|known| known.as_str().cmp(id))
-                    .is_ok(),
-                _ => items
-                    .component_registry
-                    .ids(registry)
-                    .binary_search_by(|known| known.as_str().cmp(id))
-                    .is_ok(),
-            },
-        )?;
+        let builtin =
+            neoforge_mob_maps::load(
+                &overlay,
+                |directory| match directory {
+                    "item" => Some(&items.item_tags as &dyn neoforge_mob_maps::TagMembers),
+                    "entity_type" => Some(items.entity_type_tags.members().as_ref()
+                        as &dyn neoforge_mob_maps::TagMembers),
+                    _ => pack_tags
+                        .get(directory)
+                        .map(|tags| tags as &dyn neoforge_mob_maps::TagMembers),
+                },
+                |registry, id| match registry {
+                    "minecraft:item" => items.items.contains_key(id),
+                    "minecraft:villager_profession" => stations.professions.resolve(id).is_some(),
+                    "minecraft:worldgen/biome" => biomes.table.contains(id),
+                    EntityTypeTags::REGISTRY => items
+                        .entity_type_tags
+                        .ids()
+                        .binary_search_by(|known| known.as_str().cmp(id))
+                        .is_ok(),
+                    _ => items
+                        .component_registry
+                        .ids(registry)
+                        .binary_search_by(|known| known.as_str().cmp(id))
+                        .is_ok(),
+                },
+            )?;
         // The timeline tags the raid code reads bind from this world's packs too.
         let gameplay = Arc::new(sunrise_sim::patrol::GameplayAttributes::load(
             root, &overlay,
