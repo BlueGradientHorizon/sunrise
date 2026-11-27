@@ -60,6 +60,7 @@ import json
 import os
 import errno
 import io
+from contextlib import nullcontext
 from functools import lru_cache
 import re
 import shlex
@@ -75,7 +76,7 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import lab
-from tools.ci import ignored_shards
+from tools.ci import cgroup_telemetry, ignored_shards
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -1046,16 +1047,18 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
         expected = set()
         timing = os.environ.get("SUNRISE_DATA_LEG_TIMING") == "1"
         phase = f"{package}#{number}of{count}" if number is not None else package
+        batch = f"sunrise-client#{number}of{count}" if timing and client_half and number is not None else None
         if timing:
             print(f"data-leg phase={phase} compile-list-start utc={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}", flush=True)
         compile_started = time.monotonic()
         if number is not None:
             # List what exists, then skip every test another leg owns.
-            listing = subprocess.run(
-                [*command, "--", "--list", "--include-ignored"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", env=env,
-                cwd=ROOT / workspace,
-            )
+            list_command = [*command, "--", "--list", "--include-ignored"]
+            with cgroup_telemetry.sample_command(CGROUP, batch, "compile-list") if batch else nullcontext():
+                listing = subprocess.run(
+                    list_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", env=env,
+                    cwd=ROOT / workspace,
+                )
             _captured["list"] = (listing.stdout or "") + (listing.stderr or "")
             names = {found[1] for line in listing.stdout.splitlines() if (found := LISTED.match(line))}
             if listing.returncode or not names:
@@ -1080,11 +1083,13 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
         if binaries:
             process = run_binaries(package, {target: binaries[target] for target in only[0]}, selection, env)
         else:
-            process = subprocess.run(
-                [*time_limit(), *command, "--", *selection],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", env=env,
-                cwd=ROOT / workspace,
-            )
+            # Cargo may check freshness or build again: measure the command, not isolated test execution.
+            test_command = [*time_limit(), *command, "--", *selection]
+            with cgroup_telemetry.sample_command(CGROUP, batch, "test-command") if batch else nullcontext():
+                process = subprocess.run(
+                    test_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", env=env,
+                    cwd=ROOT / workspace,
+                )
         if timing:
             print(f"data-leg phase={phase} test-command-end utc={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} execution_seconds={time.monotonic() - execution_started:.3f}", flush=True)
     _captured["test"] = process.stdout
