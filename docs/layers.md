@@ -640,7 +640,7 @@ themselves, or stays a module linked into the official build, as auto-reconnect 
 - UI-sound channels, the music page;
 - the PvP & HUD presets and widgets, the replay editor (Replay Studio's camera paths and timeline), the AI agent page;
 - the Sunrise Settings menu itself, the advanced menu that hosts them;
-- the renderer's extras: fullbright, dynamic lights, hidden block-break particles;
+- the renderer's extras: dynamic lights, hidden block-break particles;
 - chunk pregeneration.
 
 Zoom, the FPS counter and Keystrokes already moved to native mods ([extras.md](extras.md#moved-to-native-mods)).

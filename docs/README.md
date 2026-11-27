@@ -25,7 +25,7 @@ To play, use [the launcher](https://github.com/sunrise-org/sunrise-launcher/blob
 - [Realms availability](realms-availability.md): vanilla's check that this client may use Realms, the five results, how a screen reads it (one `Pending`, kept), its caching, and how to test a consumer.
 - [Server against Pumpkin](performance/server-vs-pumpkin.md): Sunrise's server and Pumpkin (Rust) under the same bots at 0, 20, 60 and 100 players: tick time, CPU, memory, chunks, join; where Sunrise loses, and how to run it again.
 - [Benchmark](benchmark.md): Sunrise against vanilla 26.3 and vanilla with performance mods, on the same machine, world, path and settings: what is measured, how it is kept fair, how to reproduce it.
-- [Extras](extras.md): optional conveniences (fullbright, dynamic lights, inventory controls, auto-reconnect), all off by default.
+- [Extras](extras.md): optional conveniences (dynamic lights, inventory controls, auto-reconnect), all off by default.
 - [Forking](forking.md): this fork's permanent extras exclusions, independent build features and always-available mod management.
 - [PvP & HUD](pvp.md): optional client settings for PvP players (custom crosshair, block outline, hit color, HUD widgets), fair-play boundaries, and why each is off by default.
 - [Narrator](narrator.md): vanilla's text-to-speech (Ctrl+B): the voices per platform, how screens record what they narrate, `sunrise-ctl narration`, and where it still differs from vanilla.

@@ -1,6 +1,6 @@
 # Sunrise extras
 
-Optional conveniences built into the client: fullbright, dynamic lights, your own name tag, hiding block-break particles, auto-reconnect,
+Optional conveniences built into the client: dynamic lights, your own name tag, hiding block-break particles, auto-reconnect,
 Mouse Tweaks-style inventory controls, inventory sorting, a smooth chat and a music page. **Every one is off by default**: a fresh
 install looks and behaves exactly like vanilla 26.3, and turning an extra off
 again restores vanilla's behaviour completely.
@@ -18,7 +18,7 @@ again restores vanilla's behaviour completely.
 | Mouse Tweaks-style controls, sort buttons | `crates/sunrise-client-gameplay/src/game/interface/extras/mouse_tweaks.rs`, `crates/sunrise-client-gameplay/src/game/interface/extras/sorting.rs` |
 | Sort order and its clicks | `crates/sunrise-client/src/inv_sort.rs` (pure, unit tested) |
 | The music page's rows, and the pools it filters | `options_ui.rs` (`Page::Music`), `crates/sunrise-client/src/music.rs` (`track_groups`, `MusicManager::set_off`), `sound_events.rs` (`sound_except`) |
-| The settings page | `extras_ui.rs`, shown as **Options → Sunrise Settings... → Gameplay** (`sunrise_ui.rs`); fullbright, dynamic lights and hiding block-break particles are on its Quality page instead (`graphics_ui.rs`), the shader pack key on its Shaders page, No AI on its AI Agent page (Tools) |
+| The settings page | `extras_ui.rs`, shown as **Options → Sunrise Settings... → Gameplay** (`sunrise_ui.rs`); dynamic lights and hiding block-break particles are on its Quality page instead (`graphics_ui.rs`), the shader pack key on its Shaders page, No AI on its AI Agent page (Tools) |
 
 The settings are grouped by extra, under a header each, one to a row, and the strip
 under the list says what the row in focus or under the pointer does. An
@@ -47,15 +47,6 @@ in Controls, and adding one would put a non-vanilla mapping into `options.txt`.
   needed. `--pregen` still enables it for the whole run. Dedicated servers use their own property.
 - Turning it off hides the command without cancelling an existing task; turn it on again to manage
   that task, or cancel it first. See [pregeneration](pregeneration.md).
-
-### Fullbright (`fullbright`, default off)
-- Displays blocks and entities with a fully bright lightmap, including in dark caves.
-- Turning it off restores the normal lightmap using the current brightness,
-  time of day and effects. The brightness slider keeps its normal range.
-- Held off on another's server (#3823): a multiplayer server or another player's LAN world draws the normal
-  lightmap and the graphics screen hides the row, while the saved choice stays for the next world. Single
-  player, a LAN host and Replay Studio keep it (`fullbright_held`,
-  `game/options.rs`).
 
 ### Dynamic lights (`dynamicLights`, default off)
 - A light source held by a player or mob (main or off hand), dropped as an item, or an entity on
