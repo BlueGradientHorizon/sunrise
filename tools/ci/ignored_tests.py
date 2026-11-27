@@ -550,7 +550,7 @@ def assertion_source(path, line):
     return statement[:PUBLIC_CHARS] + (" [shortened]" if len(statement) > PUBLIC_CHARS else "")
 
 
-def failure_diagnostics(output):
+def failure_diagnostics(output, remaining=None):
     """One record per failed result occurrence, including repeated names across targets.
 
     Panic contexts use libtest's name model. Within the first failed-test capture kept for a name (libtest's
@@ -711,7 +711,8 @@ def failure_diagnostics(output):
     for name, codes in compiler_codes.items():
         if codes:
             contexts[name].append(f"  compiler: rustc {', '.join(codes)} (diagnostic text withheld)")
-    remaining = _active_budget if _active_budget is not None else [FAILURE_TOTAL_BYTES]
+    if remaining is None:
+        remaining = [FAILURE_TOTAL_BYTES]
     # What killed the process comes first: a test that libtest reported FAILED ran to its end, so it is never
     # the one that took the process down.
     for abort in aborts:
@@ -1088,7 +1089,6 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
             print(f"data-leg phase={phase} test-command-end utc={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} execution_seconds={time.monotonic() - execution_started:.3f}", flush=True)
     _captured["test"] = process.stdout
     results = {}
-    summaries = []
     print(f"{package}: cargo exit {process.returncode}")
     long_running = dict.fromkeys(
         found[1] for line in process.stdout.splitlines() if (found := RUNNING_LONG.match(line.strip()))
@@ -1099,11 +1099,12 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
     target_count = None
     target_number = 0
     awaiting_count = False
-    incomplete = False
+    incomplete = completed = False
     occurrences = {}
     ambiguous = set()
     max_name_length = max(map(len, expected), default=0)
-    failure_diagnostics(process.stdout)
+    remaining = _active_budget if _active_budget is not None else [FAILURE_TOTAL_BYTES]
+    failure_diagnostics(process.stdout, remaining)
     # A target finished only if its LAST summary counts every test it started. Fixtures that rerun this test
     # executable print their own summaries first, from inside a parent test; the parent's comes after them.
     last_summary = None
@@ -1114,14 +1115,15 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
         return stopped(reason, started, kills_before, process, results, expected, ended_by)
 
     def finish_target():
-        nonlocal incomplete, target_count, last_summary
+        nonlocal incomplete, completed, target_count, last_summary
         if target_count is None:
             return
-        if last_summary is None or sum(map(int, SUMMARY.match(last_summary).groups())) != target_count:
+        if last_summary is None or sum(last_summary) != target_count:
             incomplete = True
         else:
-            summaries.append(last_summary)
-            print(f"{package}: {last_summary}")
+            completed = True
+            passed, failed, ignored, measured = last_summary
+            print(f"{package}: test result: {passed} passed; {failed} failed; {ignored} ignored; {measured} measured;")
         target_count = last_summary = None
 
     for line in process.stdout.splitlines():
@@ -1138,10 +1140,12 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
             # A test may report more than once (below); it passes only if every record passed.
             results[found[1]] = results.get(found[1], True) and found[2] == "ok"
         elif line.startswith("screen-effect event loop error: "):
-            print("screen-effect event loop error: details withheld")
-        elif SUMMARY.match(line):
+            bounded_record("screen-effect event loop error: details withheld\n", remaining)
+        elif found := SUMMARY.match(line):
             if target_count is not None:
-                last_summary = line
+                counters = found.groups()
+                # Libtest's usize counters have at most 20 decimal digits on supported targets.
+                last_summary = tuple(map(int, counters)) if all(len(counter) <= 20 for counter in counters) else None
         elif status := re.search(r"\((signal|exit status): (\d+)(?:, (SIG\w+))?", line):
             # Emit only the numeric status, never adjacent test output.
             print(f"{package}: ({status[1]}: {status[2]})")
@@ -1186,7 +1190,6 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
               "test); each passes only if every result passed")
     framing_problems = {name: "ambiguous-result" for name in ambiguous}
     if framing_problems:
-        remaining = _active_budget if _active_budget is not None else [FAILURE_TOTAL_BYTES]
         for name, category in sorted(framing_problems.items()):
             bounded_record(f"  {safe_identity(name)}; category={category}\n", remaining)
         print(f"{package}: {len(framing_problems)} listed identities have ambiguous result framing")
@@ -1201,7 +1204,6 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
         return stop("cargo failed without a test failure (a build failure, or a process that ended early)")
     if missing := sorted(expected - results.keys()):
         print(f"{package}: {len(missing)} listed tests of this leg never reported a result:")
-        remaining = _active_budget if _active_budget is not None else [FAILURE_TOTAL_BYTES]
         shown = 0
         for name in missing:
             if remaining[0] <= 0:
@@ -1212,7 +1214,7 @@ def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
             shown += emitted
         print(f"{len(missing) - shown} missing identities not shown (shared total byte budget)")
         return stop("listed tests never reported a result")
-    if not summaries:
+    if not completed:
         # Unknown output is not necessarily a compiler diagnostic: never forward
         # a malformed test process's captured payload to public CI logs.
         print(f"{package}: no completed test-target summary; raw output withheld")
