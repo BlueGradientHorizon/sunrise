@@ -148,7 +148,7 @@ impl ModGpuResources {
 
     /// Makes `view` the world depth under a view ID no earlier view had, so a bind group a mod
     /// pipeline kept for the texture it replaces is not reused for it.
-    pub(crate) fn replace_world_depth(&self, view: wgpu::TextureView) {
+    fn replace_world_depth(&self, view: wgpu::TextureView) {
         let id = self
             .uniforms
             .lock()
@@ -294,6 +294,12 @@ forward! {
 }
 
 impl super::Renderer {
+    /// Swap the depth attachment and publish the same view under a fresh mod binding ID.
+    pub(super) fn swap_world_depth(&mut self, depth: wgpu::TextureView) -> wgpu::TextureView {
+        self.mod_gpu.replace_world_depth(depth.clone());
+        std::mem::replace(&mut self.depth, depth)
+    }
+
     /// Points the mod handles at the views this renderer draws with now.
     pub(super) fn refresh_mod_frame_views(&self) {
         self.mod_gpu.set_frame_views(ModFrameState {

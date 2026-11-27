@@ -124,8 +124,7 @@ impl Renderer {
         } else {
             self.offscreen = Some(Self::offscreen_target(&self.device, &self.config));
         }
-        self.depth = Self::depth(&self.device, &self.config);
-        self.mod_gpu.replace_world_depth(self.depth.clone());
+        self.swap_world_depth(Self::depth(&self.device, &self.config));
         self.refresh_mod_frame_views();
         if let Some(pipeline) = &mut self.external {
             pipeline.resize([width, height]);
