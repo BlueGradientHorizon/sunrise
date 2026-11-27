@@ -28,7 +28,6 @@ impl crate::game::ClientGame<'_> {
         {
             self.all_sections_changed();
         }
-        self.observe_light_edits();
         self.ask_edited_light_emission();
         let camera_pos = self.visual_camera_position();
         if let Some(pos) = camera_pos {
