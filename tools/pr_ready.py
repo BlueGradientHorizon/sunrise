@@ -500,6 +500,105 @@ CONTENT_ROOT = ("crates/sunrise-sim/src/mod_content", "crates/sunrise-client/src
                 "crates/sunrise-mod-package/", "crates/sunrise-assets/")
 CONTENT_ROOT_TESTS = "cargo test --locked -p sunrise-client-lib --lib mod_content::tests:: -- --ignored"
 
+PREPARED_PROFILE = "crates/sunrise-core/src/prepared_profile.rs"
+
+
+def expected_prepared_stamp():
+    """What the full profile's prepared root must carry: the schema and full output version that
+    crates/sunrise-core/src/prepared_profile.rs defines, and the Minecraft version research-lock.json pins."""
+    source = (ROOT / PREPARED_PROFILE).read_text(encoding="utf-8")
+    return {
+        "schema": int(re.search(r"pub const SCHEMA: i64 = (\d+);", source).group(1)),
+        "output_version": int(re.search(r"Self::Full => (\d+),", source).group(1)),
+        "minecraft": json.loads((ROOT / "research-lock.json").read_text(encoding="utf-8"))["minecraft"]["version"],
+    }
+
+
+def read_json_object(path):
+    """The JSON object in path, or None when it is unreadable or not an object."""
+    try:
+        value = json.loads(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _is_exact_int(value, low, high):
+    """Whether value is a JSON integer token within [low, high]: not a float (7.0) and not a bool, as serde's
+    i64 and u32 read it. type() is exact where == and isinstance are not (True == 1, 7.0 == 7)."""
+    return type(value) is int and low <= value <= high
+
+
+def prepared_stamp_problems(root):
+    """Why root is not a current full-profile prepared root, worded as Manifest::version_problems and
+    test_resources.rs `stamp_problems` word it; empty when it is."""
+    if not (root / "sunrise-resources.json").is_file():
+        return ["sunrise-resources.json is missing"]
+    manifest = read_json_object(root / "sunrise-resources.json")
+    if manifest is None:
+        return ["sunrise-resources.json is not a readable JSON object"]
+    # The field types of prepared_profile.rs `Manifest`: Manifest::read fails Serde on any other.
+    schema, files = manifest.get("schema"), manifest.get("server_files")
+    strings = (manifest.get(key) for key in ("profile", "minecraft", "server_sha1", "facts_sha256",
+                                             "block_tags_sha256"))
+    if not (schema is None or _is_exact_int(schema, -(1 << 63), (1 << 63) - 1)) \
+            or not all(value is None or isinstance(value, str) for value in strings) \
+            or not (files is None or isinstance(files, list) and all(isinstance(item, str) for item in files)):
+        return ["sunrise-resources.json is not a valid manifest"]
+    expected = expected_prepared_stamp()
+    problems = []
+    server = manifest.get("profile") == "server"
+    if server:
+        problems.append("prepared for the server profile, tests need full client resources")
+    if manifest.get("schema") != expected["schema"]:
+        found = manifest.get("schema")
+        problems.append(f"an older layout (schema {'none' if found is None else found}, "
+                        f"this preparer writes {expected['schema']})")
+    if manifest.get("minecraft") != expected["minecraft"]:
+        problems.append(f"prepared for Minecraft {manifest.get('minecraft') or 'unknown'}, "
+                        f"this build needs {expected['minecraft']}")
+    if not server:  # a server root's own version is the server profile's, not this one's
+        # `Stamp { output_version: u32 }`: anything else reads as no stamp.
+        stamp = read_json_object(root / "sunrise-prepare.json") or {}
+        made_by = stamp.get("output_version") if _is_exact_int(stamp.get("output_version"), 0, 0xFFFFFFFF) else None
+        if made_by != expected["output_version"]:
+            problems.append(f"made by output version {'unknown' if made_by is None else made_by}, "
+                            f"this build needs {expected['output_version']}")
+    return problems
+
+
+def refuse_stale_prepared(args, steps):
+    """Fail `content root tests` before cargo starts when a local run would read a stale prepared root: the
+    test boundary (test_resources.rs `prepared_root`) refuses it after minutes of building. A root that is not
+    there is left to that boundary, which names every missing input."""
+    step = next((step for step in steps if step.name == "content root tests"), None)
+    if args.host != "local" or step is None or step.skip:
+        return
+    override = os.environ.get("SUNRISE_TEST_RESOURCES")
+    if override == "":  # Rust's Path::new("").is_dir() is false, where Python's Path("") is "."
+        return
+    if override is None:
+        root = ROOT / ".local" / "sunrise-client" / expected_prepared_stamp()["minecraft"]
+    else:
+        # CONTENT_ROOT_TESTS runs under `cargo test -p sunrise-client-lib`, whose tests start in that crate's
+        # directory: a relative override names a root there (as test_resources.rs `prepared_root` reads it),
+        # not relative to this script's cwd.
+        path = Path(override)
+        root = path if path.is_absolute() else ROOT / "crates" / "sunrise-client-lib" / path
+    # The OS looks the path up as written, `..` after a missing segment included (as Rust's Path::is_dir does),
+    # so ask it before resolve() erases such segments.
+    if not os.path.isdir(root):
+        return
+    root = root.resolve()  # no `..` segments in the repair path below
+    problems = prepared_stamp_problems(root)
+    if problems:
+        step.status = "fail"
+        step.detail = (f"stale prepared test resources: {'; '.join(problems)}; run sunrise-prepare "
+                       f"--prepare --server-jar PATH --output \"{root}\"")
+        step.output = step.detail + "\n"
+        finish(step, False)
+
+
 # holder::tests spawns target/<profile>/examples/holder_actor beside its test binary.
 # --tests does not build that executable; use the same explicit prerequisite as CI.
 HOLDER_ACTOR = "cargo build --locked -p sunrise-mod-package --features runtime-process --example holder_actor"
@@ -902,6 +1001,7 @@ def main():
     if test_scope:
         print(f"pr_ready: test scope: {test_scope}", file=sys.stderr, flush=True)
 
+    refuse_stale_prepared(args, steps)
     lock = steps[0]
     problem = lock_problem(changed)
     lock.status, lock.detail = ("fail", problem) if problem else ("pass", "unchanged" if not any(
