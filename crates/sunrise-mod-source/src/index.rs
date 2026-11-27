@@ -7,7 +7,7 @@ use std::{
 };
 use syn::{Attribute, Item, Meta, UseTree, Visibility};
 
-use crate::modules::{gate_items, generated_include};
+use crate::modules::{gate_items, generated_include, include_shadowed, standard_include};
 
 /// The first of `values` this tool's own target has, as `cfg!` saw it when the tool was built.
 macro_rules! built_for {
@@ -638,27 +638,25 @@ impl<'a> Index<'a> {
         self.expand_includes(file.items)
     }
 
-    /// `items` with each `include!` of a generated file replaced by that file's items, under the
-    /// invocation's `cfg` gates.
+    /// `items` with each standard `include!` of a generated file replaced by that file's items,
+    /// under the invocation's `cfg` gates. Any other standard `include!` is an error; a bare one
+    /// where `items` shadow the name is that macro's and stays.
     fn expand_includes(&self, items: Vec<Item>) -> Result<Vec<Item>, String> {
+        let shadowed = include_shadowed(&items);
         let mut out = Vec::new();
         for item in items {
-            match &item {
-                Item::Macro(mac) if mac.mac.path.is_ident("include") => {
-                    let (name, source, attrs) = generated_include(&item)
-                        .and_then(|(file, attrs)| {
-                            let (name, source) =
-                                self.included.iter().find(|(name, _)| *name == file)?;
-                            Some((name, source, attrs))
-                        })
-                        .ok_or_else(|| {
-                            format!("include!({}) is not a generated file", mac.mac.tokens)
-                        })?;
-                    let file = syn::parse_file(source).map_err(|e| format!("{name}: {e}"))?;
-                    out.extend(gate_items(file.items, attrs));
-                }
-                _ => out.push(item),
-            }
+            let Some(mac) = standard_include(&item, shadowed) else {
+                out.push(item);
+                continue;
+            };
+            let (name, source, attrs) = generated_include(&item, shadowed)
+                .and_then(|(file, attrs)| {
+                    let (name, source) = self.included.iter().find(|(name, _)| *name == file)?;
+                    Some((name, source, attrs))
+                })
+                .ok_or_else(|| format!("include!({}) is not a generated file", mac.mac.tokens))?;
+            let file = syn::parse_file(source).map_err(|e| format!("{name}: {e}"))?;
+            out.extend(gate_items(file.items, attrs));
         }
         Ok(out)
     }
@@ -1570,6 +1568,23 @@ mod index_tests {
             let lib = format!("{real}\n{lookalike}");
             let error = index_of(&lib, &generated).expect_err(lookalike);
             assert!(error.contains("is not a generated file"), "{error}");
+        }
+    }
+
+    /// Only the standard `include!` is read: a custom one shadowing the name stays an ordinary
+    /// macro item, and a qualified standard one is expanded like a bare one.
+    #[test]
+    fn a_shadowed_include_stays_ordinary_and_a_qualified_standard_one_expands() {
+        let generated = [("gen.rs", "pub struct Gen;")];
+        let call = "include!(concat!(env!(\"OUT_DIR\"), \"/gen.rs\"));";
+        let shadowed = format!("macro_rules! include {{ ($($t:tt)*) => {{}}; }}\n{call}");
+        for (lib, expanded) in [(shadowed, false), (format!("std::{call}"), true)] {
+            let dir = tempfile::tempdir().unwrap();
+            fs::create_dir_all(dir.path().join("k/src")).unwrap();
+            fs::write(dir.path().join("k/src/lib.rs"), lib).unwrap();
+            let mut index = Index::new(dir.path(), &generated, &[("k", "k/src")]);
+            let root = index.module("k", &[]).unwrap();
+            assert_eq!(index.resolve(root, "Gen").is_ok(), expanded);
         }
     }
 

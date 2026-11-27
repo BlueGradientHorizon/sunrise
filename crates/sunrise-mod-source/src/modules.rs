@@ -314,10 +314,11 @@ pub fn literal_include(item: &Item, shadowed: bool) -> Option<(syn::LitStr, &[sy
 }
 
 /// An item-position `include!(concat!(env!("OUT_DIR"), "/<file>"))` of a build script's output,
-/// with the file's name and the attributes on the invocation. Only this exact shape: any other
-/// `include!` is an ordinary one, whatever its path says.
-pub fn generated_include(item: &Item) -> Option<(String, &[syn::Attribute])> {
-    let item = standard_include(item, false)?;
+/// with the file's name and the attributes on the invocation. Only this exact shape of the
+/// standard `include!` ([`literal_include`] says which one): any other `include!` is an ordinary
+/// one, whatever its path says.
+pub fn generated_include(item: &Item, shadowed: bool) -> Option<(String, &[syn::Attribute])> {
+    let item = standard_include(item, shadowed)?;
     let Ok(syn::Expr::Macro(concat)) = item.mac.parse_body::<syn::Expr>() else {
         return None;
     };
@@ -366,7 +367,8 @@ pub fn gate_items(items: Vec<Item>, attrs: &[syn::Attribute]) -> Vec<Item> {
         .collect()
 }
 
-fn standard_include(item: &Item, shadowed: bool) -> Option<&syn::ItemMacro> {
+/// An item-position invocation of the standard `include!`: see [`literal_include`].
+pub fn standard_include(item: &Item, shadowed: bool) -> Option<&syn::ItemMacro> {
     let Item::Macro(item) = item else { return None };
     let path = &item.mac.path;
     let standard = if path.leading_colon.is_none() && path.is_ident("include") {
