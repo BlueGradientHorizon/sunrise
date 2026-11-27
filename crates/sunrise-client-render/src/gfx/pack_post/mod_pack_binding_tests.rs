@@ -286,6 +286,7 @@ fn mod_pack_program_draws_aux_depth_and_tracks_previous_uniform() {
             depth_target: Some(0),
             depth_write: true,
             depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_bias: Default::default(),
             cull: false,
             program_mode: Default::default(),
         }],
@@ -348,18 +349,19 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
     };
 
     let _gpu_guard = crate::gfx::test_gpu::lock();
-    let Some(gpu) = Gpu::new() else {
-        return;
-    };
+    let gpu = Gpu::new().expect("an executed adapter is required for the linked depth fixture");
+    let red = "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){gl_FragData[0]=vec4(1.0,0.0,0.0,1.0);}";
     let files = [
         (
             "mod_depth.vsh",
             "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xyz,1.0);}",
         ),
+        ("mod_depth.fsh", red),
         (
-            "mod_depth.fsh",
-            "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){gl_FragData[0]=vec4(1.0,0.0,0.0,1.0);}",
+            "mod_slope.vsh",
+            "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xy,0.5*gl_Vertex.x,1.0);}",
         ),
+        ("mod_slope.fsh", red),
         ("final.vsh", VERTEX),
         (
             "final.fsh",
@@ -386,14 +388,21 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
         (DepthCompare::Greater, false, true),
         (DepthCompare::Always, true, true),
         (DepthCompare::Always, true, false),
+        (DepthCompare::Greater, false, true),
+        (DepthCompare::Greater, false, true),
     ];
     let pipelines: Vec<_> = states
         .iter()
         .enumerate()
         .map(|(slot, &(compare, write, names_main))| {
             let id = Identifier::parse(&format!("example:linked_depth_{slot}")).unwrap();
+            let (program, bias) = match slot {
+                6 => ("mod_depth", (100, 0.0)),
+                7 => ("mod_slope", (0, 2.0)),
+                _ => ("mod_depth", (0, 0.0)),
+            };
             let mut binding = PackBinding::new()
-                .program("mod_depth")
+                .program(program)
                 .slot(PackPassSlot::AfterTranslucentGbuffers);
             if names_main {
                 binding = binding.depth_target(PackDepthTarget::Main);
@@ -402,6 +411,7 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
                 .pack_binding(binding)
                 .depth_compare(compare)
                 .depth_write(write)
+                .depth_bias(bias.0, bias.1)
         })
         .collect();
     let (mut post, color, depth) = load_with_mods(
@@ -420,6 +430,10 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
 
     // Seed 0.5 anew each frame. GL clip-space z in [-1, 1] maps to pack depth in [0, 1].
     // Read red for a draw, green for the seed depth and blue for the far draw's depth.
+    // The shader emits 0 or 1 per channel: multiplied by 255 these are exactly 0 or 255.
+    // The constant bias lifts a coplanar quad. The slope quad has depth 0.5 + 0.25*x in
+    // clip-space x, so the center sample is half a pixel's depth step farther than the seed.
+    // Standard-Z slope bias -2 moves it nearer by two steps. Neither biased draw writes depth.
     for (name, slot, clip_z, drew, stored_far) in [
         ("Equal at seed", 0, 0.0, true, false),
         ("Equal nearer", 0, -0.5, false, false),
@@ -429,6 +443,8 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
         ("Greater nearer without write", 3, -0.5, true, false),
         ("Always farther with write", 4, 0.5, true, true),
         ("Always farther in read-only slot", 5, 0.5, true, false),
+        ("Greater coplanar with constant bias", 6, 0.0, true, false),
+        ("Greater farther with slope bias", 7, 0.0, true, false),
     ] {
         gpu.clear(&color, &depth, 0.5);
         let (vertices, indices) = mod_quad_buffers(&gpu.device, clip_z);
@@ -488,6 +504,7 @@ fn mod_pack_falls_back_to_gbuffers_terrain_when_custom_program_absent() {
             depth_target: None,
             depth_write: true,
             depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_bias: Default::default(),
             cull: false,
             program_mode: Default::default(),
         }],
@@ -552,6 +569,7 @@ fn mod_pack_aux_depth_is_lazy_when_pack_never_samples_it() {
             depth_target: Some(0),
             depth_write: true,
             depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_bias: Default::default(),
             cull: false,
             program_mode: Default::default(),
         }],
@@ -630,6 +648,7 @@ fn mod_pack_type_mismatch_uniform_and_unbound_pipeline_never_panic() {
                 depth_target: None,
                 depth_write: true,
                 depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_bias: Default::default(),
                 cull: false,
                 program_mode: Default::default(),
             },
@@ -639,6 +658,7 @@ fn mod_pack_type_mismatch_uniform_and_unbound_pipeline_never_panic() {
                 depth_target: None,
                 depth_write: true,
                 depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_bias: Default::default(),
                 cull: false,
                 program_mode: Default::default(),
             },
@@ -716,6 +736,7 @@ fn mod_shadow_pass_geometry_is_drawn_and_invalidates_the_shadow_cache() {
                 depth_target: None,
                 depth_write: true,
                 depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_bias: Default::default(),
                 cull: false,
                 program_mode: Default::default(),
             }],
@@ -860,6 +881,7 @@ fn own_stage_runtime() -> (
             depth_target: None,
             depth_write: true,
             depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_bias: Default::default(),
             cull: false,
             program_mode: ModProgramMode::ModVertexPackFragment,
         }],
@@ -1050,6 +1072,7 @@ fn mod_vertex_pack_fragment_against_a_geometry_stage_program_is_unbound_with_a_n
             depth_target: None,
             depth_write: true,
             depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_bias: Default::default(),
             cull: false,
             program_mode: ModProgramMode::ModVertexPackFragment,
         }],
@@ -1222,6 +1245,7 @@ fn mod_pack_indirect_draw_with_a_count_buffer_draws_only_the_counted_commands() 
             depth_target: None,
             depth_write: true,
             depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_bias: Default::default(),
             cull: false,
             program_mode: Default::default(),
         }],

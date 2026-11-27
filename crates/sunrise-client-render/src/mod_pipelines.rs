@@ -1814,6 +1814,22 @@ pub(crate) fn wgpu_compare(compare: DepthCompare) -> wgpu::CompareFunction {
     }
 }
 
+pub(crate) fn wgpu_depth_bias(ds: mod_api::DepthState, standard_z: bool) -> wgpu::DepthBiasState {
+    let (constant, slope_scale) = if standard_z {
+        (
+            ds.depth_bias_constant.saturating_neg(),
+            -ds.depth_bias_slope_scale,
+        )
+    } else {
+        (ds.depth_bias_constant, ds.depth_bias_slope_scale)
+    };
+    wgpu::DepthBiasState {
+        constant,
+        slope_scale,
+        clamp: 0.0,
+    }
+}
+
 /// Owned runtime descriptors (`depth_targets`, `uniforms`, `pipelines`) for `PackPost`.
 pub fn pack_runtime_specs() -> sunrise_render_shaderpack::pack_post::OwnedModPackRuntime {
     pack_runtime_specs_of(registered())
@@ -1900,6 +1916,7 @@ pub(crate) fn pack_runtime_specs_of(
             pass_slot: mod_pass_slot(pass_slot),
             depth_target,
             depth_compare,
+            depth_bias: depth_state.map_or_else(Default::default, |ds| wgpu_depth_bias(ds, true)),
             depth_write,
             cull: pipeline.state.cull,
             program_mode: pipeline

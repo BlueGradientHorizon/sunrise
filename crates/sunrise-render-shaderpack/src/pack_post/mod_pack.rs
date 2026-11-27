@@ -192,6 +192,8 @@ pub struct ModPipelinePackSpec {
     pub depth_target: Option<usize>,
     /// Declared depth comparison lowered to the pack's standard-Z depth plane.
     pub depth_compare: wgpu::CompareFunction,
+    /// Declared depth bias lowered to the pack's standard-Z depth plane.
+    pub depth_bias: wgpu::DepthBiasState,
     /// Whether the pipeline requested depth writes and its target and slot allow them.
     pub depth_write: bool,
     /// Whether back faces are culled (`PipelineState::cull`).
