@@ -464,7 +464,7 @@ impl crate::game::ClientGame<'_> {
         self.client.skin_downloads.0.borrow_mut().forget_unpacked();
         ServicesKeys::fetching()
     }
-    /// Prepare a client session and remote state to receive packets from a studio replay.
+    /// Prepare an offline client session and remote state for packet-driven tests.
     /// A replayed or viewed world checks its players' signed properties as a joined
     /// client does.
     pub fn init_remote_for_replay(&mut self) -> Result<()> {
@@ -572,7 +572,7 @@ impl crate::game::ClientGame<'_> {
             professions,
             display_address: Remote::display_address_for(&session.address),
             session,
-            brand: "sunrise-studio".into(),
+            brand: "sunrise-offline".into(),
             datapack_vanilla_values: None,
             particle_packet_random: sunrise_level::random_source::create(),
             recipe_viewer: Default::default(),
@@ -585,7 +585,7 @@ impl crate::game::ClientGame<'_> {
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
-            status: "Playing Studio Replay".into(),
+            status: "Offline packet session".into(),
             lang,
             registries: Arc::new(Dynamic::default()),
             variants: Arc::new(sunrise_sim::mobs::variants::VariantTables::default()),

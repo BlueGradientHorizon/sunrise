@@ -751,9 +751,6 @@ impl crate::game::ClientGame<'_> {
     /// Connected or connecting with no player yet: `ConnectScreen`, then
     /// `LevelLoadingScreen`, over the panorama with its blur.
     pub fn remote_loading(&self) -> bool {
-        if self.client.replay.playing() {
-            return false;
-        }
         use sunrise_client_render::level_loading::Reason;
         self.client.remote.as_ref().is_some_and(|r| {
             if r.level_load.is_active() {

@@ -12,9 +12,6 @@ impl crate::game::ClientGame<'_> {
         if let Err(e) = sunrise_level::spans::time("poll_remote", || self.poll_remote()) {
             log::warn!("Sunrise: {e}");
         }
-        if let Err(e) = self.advance_studio_replay() {
-            log::warn!("Sunrise Studio replay: {e}");
-        }
         // A disconnect during poll_remote ends the client session; stop before world work runs.
         if self.client.title.0.is_some() || self.client.remote.is_none() {
             return;
