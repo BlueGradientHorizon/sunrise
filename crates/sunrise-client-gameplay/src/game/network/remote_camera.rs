@@ -78,6 +78,15 @@ impl CameraFogEffects {
     }
 }
 
+/// A frozen camera keeps the darkness factor it was removed with: vanilla settles the
+/// blend's previous frame to the current factor (`MobEffectInstance.BlendState`), so a
+/// detached view does not keep interpolating between two stale endpoints.
+fn settle_detached_fog(fog: &mut CameraFogEffects) {
+    if let Some((_, current)) = fog.darkness_blend {
+        fog.darkness_blend = Some((current, current));
+    }
+}
+
 /// Snapshot of a detached watched player's HUD state retained after removal or replacement.
 #[derive(Clone, Debug)]
 pub(in crate::game) struct DetachedPlayerHud {
@@ -583,6 +592,7 @@ impl ClientGame<'_> {
         // Entity.setRemoved detaches ride links while keeping old/current pose history intact.
         detached.has_player_passenger = false;
         detached.camera.mount = None;
+        settle_detached_fog(&mut detached.fog_effects);
         if detached.is_player {
             detached.detached_hud = self.snapshot_remote_player_hud(detached.entity_id);
         }
@@ -1627,7 +1637,10 @@ pub(in crate::game) mod camera_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
-    use super::{camera_after_packet, entity_post_effect, stand_camera_entity};
+    use super::{
+        CameraFogEffects, camera_after_packet, entity_post_effect, settle_detached_fog,
+        stand_camera_entity,
+    };
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::entities::ArmorStand;
 
@@ -1679,6 +1692,23 @@ mod tests {
             Some("minecraft:spider")
         );
         assert_eq!(entity_post_effect("minecraft:cow"), None);
+    }
+
+    /// A detached camera's darkness blend stops interpolating: the snapshot of a
+    /// removed subject settles both endpoints to the factor it had.
+    #[test]
+    fn a_detached_cameras_darkness_blend_settles_to_its_current_factor() {
+        let mut fog = CameraFogEffects {
+            darkness_blend: Some((0.25, 0.75)),
+            ..Default::default()
+        };
+        settle_detached_fog(&mut fog);
+        assert_eq!(fog.darkness_blend, Some((0.75, 0.75)));
+
+        // Without the effect nothing is added.
+        let mut plain = CameraFogEffects::default();
+        settle_detached_fog(&mut plain);
+        assert_eq!(plain.darkness_blend, None);
     }
 
     /// The camera goes to a known entity, back to the player on its own id,
