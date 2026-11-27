@@ -2021,8 +2021,6 @@ fn mirror(
     // A lower crate's import under one of its features binds whatever that crate's build chose;
     // staging made it public, so the glob re-exports that binding instead of a copy evaluated
     // under the game's features.
-    // A lower crate is compiled with its own features; the patch crate with the game's.
-    let lower = !source.layout.owns(path);
     let feature_import = |item: &syn::ItemUse| {
         lower
             && cfg_predicates(&item.attrs)
@@ -2057,6 +2055,8 @@ fn mirror(
         .filter(|item| !feature_import(item))
     {
         // The prebuilt crate exposes what the import binds: it is public, or staging made it so.
+        // The mirror checks only the import's own attributes; staging also supplies the enclosing
+        // cfgs and separately excludes restricted game-macro imports.
         let exposed = matches!(item.vis, syn::Visibility::Public(_))
             || crate::internals::widens_import(source.layout, path, &[], item);
         let mut withheld = BTreeSet::new();
