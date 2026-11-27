@@ -2384,8 +2384,7 @@ impl crate::game::ClientGame<'_> {
                 self.draw_spyglass(&mut batch);
                 guide_from = batch.vertices.len();
             }
-            // Combat feel Legacy hides the attack indicator unless the player keeps it.
-            let indicator = if show_hud && !self.pvp_hides_attack_indicator() {
+            let indicator = if show_hud {
                 self.client.settings.attack_indicator
             } else {
                 0
