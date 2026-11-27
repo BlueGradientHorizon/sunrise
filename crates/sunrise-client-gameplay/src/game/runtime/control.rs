@@ -22,7 +22,7 @@ pub(in crate::game) const PROTOCOL: &str = "0.1.0";
 /// The command groups the game serves, as `help` chains them: what `hello` reports as its features.
 pub(in crate::game) const FEATURES: &[&str] = &[
     "game", "station", "blocks", "lan", "friends", "render", "sculk", "agent", "ui", "options",
-    "events", "saves", "pad", "studio",
+    "events", "saves", "pad",
 ];
 
 /// `hello`: the protocol the socket speaks, the game's release and the command groups it serves.
@@ -546,9 +546,6 @@ impl crate::game::ClientGame<'_> {
         if let Some(value) = self.friends_control(&words)? {
             return Ok(Some(value));
         }
-        if let Some(value) = self.studio_control(&words)? {
-            return Ok(Some(value));
-        }
         match self.agent_command(&words, line, reply, event_loop)? {
             super::agent::Handled::Reply(value) => return Ok(Some(value)),
             super::agent::Handled::Deferred => return Ok(None),
@@ -571,7 +568,6 @@ impl crate::game::ClientGame<'_> {
                 .chain(super::pad::HELP)
                 .chain(super::input_trace::HELP)
                 .chain(super::repro::HELP)
-                .chain(super::studio::HELP)
                 .collect::<Vec<_>>() }))),
             "setblock" | "fill" | "particle" | "signedit" => self.render_command(&words),
             "section-draws" => {

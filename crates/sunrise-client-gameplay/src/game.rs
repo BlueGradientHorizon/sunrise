@@ -802,8 +802,6 @@ pub(in crate::game) use client_side::render_control;
 pub(in crate::game) use client_side::render_settings;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::render_tick;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::replay;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::repro;
@@ -888,9 +886,6 @@ pub(in crate::game) use client_side::storage;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::structure_edit;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::studio;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::subtitle_hud;

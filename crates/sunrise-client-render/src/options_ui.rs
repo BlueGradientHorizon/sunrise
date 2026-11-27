@@ -1565,8 +1565,6 @@ pub enum Page {
     /// Sunrise Settings (`sunrise_ui`): one screen of every page Sunrise adds, as a mod's
     /// settings screen hangs off vanilla's Options.
     Sunrise,
-    /// Replay Studio: saved recordings browser and 3D video editor launcher.
-    Studio,
     /// AI Agent: agent control on or off, whether an agent is connected, the connection details.
     Agent,
     /// SkinCustomizationScreen: the skin layers and Main Hand.
@@ -1771,10 +1769,6 @@ pub enum Event {
     ListMusicTracks,
     /// A Music page row: play this track of this event now.
     PlayMusicTrack(String, String),
-    /// Open the recordings folder in the system file browser.
-    OpenStudioFolder,
-    /// Start playback from the selected Studio recording.
-    OpenStudioReplay(std::path::PathBuf),
 }
 /// A row of the Music page: the track, and the pool it is played from.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -1880,7 +1874,6 @@ pub struct OptionsUi {
     pub calibration: Option<crate::hdr_calibration::Calibration>,
     /// The window as calibration found it before making it fullscreen (the game keeps it).
     pub calibration_window: Option<crate::hdr_calibration::WindowState>,
-    pub studio: crate::studio_ui::StudioUi,
     /// The AI Agent page's status lines (set by the game while it shows).
     pub agent_status: Vec<String>,
     /// A repro recording is running: the AI Agent page's button says stop.
@@ -1971,7 +1964,6 @@ impl Default for OptionsUi {
             pack_configs: Default::default(),
             calibration: None,
             calibration_window: None,
-            studio: Default::default(),
             agent_status: Vec::new(),
             agent_recording: false,
             music_groups: Vec::new(),
@@ -2466,9 +2458,6 @@ impl OptionsUi {
         if let Some(at) = Self::controller_page(page) {
             self.controller.show(at);
         }
-        if page == Page::Studio {
-            self.studio.refresh();
-        }
     }
     /// A controller's or the keyboard's focus landed on `rect`: a row of a shell screen's list
     /// that is partly hidden scrolls all into view. How far it moved down, when it moved.
@@ -2560,7 +2549,6 @@ impl OptionsUi {
             | Page::GraphicsHdr
             | Page::Extras
             | Page::ShaderPacks => "sunrise.pages.settings",
-            Page::Studio => "sunrise.pages.studio",
             Page::Agent => "sunrise.pages.agent",
             Page::Music => "sunrise.pages.music",
         }
@@ -3108,9 +3096,8 @@ impl OptionsUi {
         if self.resource_error.is_some() {
             return (false, Vec::new());
         }
-        match self.page() {
-            Page::Studio | Page::ControllerRadialName => return (false, Vec::new()),
-            _ => {}
+        if self.page() == Page::ControllerRadialName {
+            return (false, Vec::new());
         }
         if self.page() == Page::HdrCalibration
             && let Some(calibration) = &mut self.calibration
@@ -3190,27 +3177,6 @@ impl OptionsUi {
                 return (vec![Event::ButtonClick], true);
             }
             return (Vec::new(), false);
-        }
-        if self.page() == Page::Studio {
-            if right {
-                return (Vec::new(), false);
-            }
-            use crate::studio_ui::StudioAction;
-            let events = match self.studio.click((x, y), size) {
-                StudioAction::None => Vec::new(),
-                StudioAction::Refresh => vec![Event::ButtonClick],
-                StudioAction::OpenReplay(path) => {
-                    vec![Event::ButtonClick, Event::OpenStudioReplay(path)]
-                }
-                StudioAction::OpenFolder => vec![Event::ButtonClick, Event::OpenStudioFolder],
-                StudioAction::Back => {
-                    let mut events = vec![Event::ButtonClick];
-                    events.extend(self.back(s));
-                    events
-                }
-            };
-            let handled = !events.is_empty();
-            return (events, handled);
         }
         if self.page() == Page::HdrCalibration
             && let Some(c) = &mut self.calibration
@@ -3650,10 +3616,6 @@ impl OptionsUi {
             let (handled, outputs) = shell.wheel(s, size, cursor, amount);
             return (handled, self.shell_events(s, outputs));
         }
-        if self.page() == Page::Studio {
-            self.studio.wheel(amount);
-            return (true, Vec::new());
-        }
         let plain = self.resource_error.is_none()
             && !(self.pack_screen.is_some() && self.stack.last() == Some(&Page::Packs))
             && self.stack.last() != Some(&Page::Mods);
@@ -3748,10 +3710,6 @@ impl OptionsUi {
         }
         if let Some(shell) = self.shell_mut() {
             shell.scroll(s, size, amount);
-            return;
-        }
-        if self.page() == Page::Studio {
-            self.studio.wheel(amount);
             return;
         }
         if self.page() == Page::Mods {
@@ -5432,7 +5390,6 @@ mod tests {
             let keys = [
                 "sunrise.settings.tab.tools",
                 "sunrise.settings.tab.extras",
-                "sunrise.pages.open.studio",
                 "sunrise.pages.open.agent",
                 "sunrise.pages.open.pvp",
             ];
@@ -5991,7 +5948,6 @@ mod tests {
             Page::PackOptions,
             Page::Mods,
             Page::Packs,
-            Page::Studio,
         ] {
             let mut ui = OptionsUi::default();
             ui.show(page);
@@ -7015,8 +6971,7 @@ mod tests {
         assert_eq!(ui.page(), Page::PadBinds);
     }
 
-    /// Every way a pad or a wheel scrolls a page on the shell moves the same list: Replay Studio's
-    /// took the wheel and missed `scroll_at`, so a stick couldn't scroll it.
+    /// The wheel and stick scroll the same settings list.
     #[test]
     fn the_wheel_and_the_stick_scroll_a_page_on_the_shell_alike() {
         let mut s = Settings::default();
@@ -8183,11 +8138,7 @@ mod tests {
         };
         assert_eq!(
             opens(&s),
-            [
-                (Tab::Tools, Page::Studio),
-                (Tab::Tools, Page::Agent),
-                (Tab::Extras, Page::Pvp)
-            ]
+            [(Tab::Tools, Page::Agent), (Tab::Extras, Page::Pvp)]
         );
         // No AI keeps the way to the AI Agent page, where it is turned off again.
         let mut no_ai = Settings::default();

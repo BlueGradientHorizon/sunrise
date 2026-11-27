@@ -12,19 +12,6 @@ use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 
-pub(in crate::game::client_side) fn camera_effects_enabled(
-    title: bool,
-    studio_freecam: bool,
-) -> bool {
-    !title && !studio_freecam
-}
-
-pub(in crate::game::client_side) fn studio_draws_hand(
-    studio_freecam: bool,
-    ordinary_hand_visible: bool,
-) -> bool {
-    !studio_freecam && ordinary_hand_visible
-}
 use sunrise_client::{
     camera::{BobState, CameraFluid, bob_matrix, field_of_view_modifier, spinning_effect_matrix},
     fog::{FogType, fog_type},
@@ -214,9 +201,6 @@ impl ClientGame<'_> {
     }
     /// `Camera.calculateFov` with `modifyFovBasedOnDeathOrFluid`.
     pub fn fov_degrees(&self, partial: f32, camera: [f64; 3]) -> f32 {
-        if self.client.studio.flying() {
-            return self.client.studio.freecam.fov.clamp(1.0, 179.0);
-        }
         let vanilla = self.client.view.calculate_fov(
             partial,
             self.client.settings.fov as i32,
@@ -347,22 +331,12 @@ impl ClientGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{camera_effects_enabled, studio_draws_hand, valid_fov_modifier};
+    use super::valid_fov_modifier;
     #[test]
     fn modifier_validation() {
         assert_eq!(valid_fov_modifier(0.5, 1.0), 0.5);
         for value in [f32::NAN, f32::INFINITY, 0.0, 10.1] {
             assert_eq!(valid_fov_modifier(value, 1.0), 1.0);
         }
-    }
-
-    #[test]
-    fn freecam_uses_unshaken_camera_and_player_view_keeps_hands() {
-        assert!(!camera_effects_enabled(false, true));
-        assert!(camera_effects_enabled(false, false));
-        assert!(!camera_effects_enabled(true, false));
-        assert!(studio_draws_hand(false, true));
-        assert!(!studio_draws_hand(true, true));
-        assert!(!studio_draws_hand(false, false));
     }
 }

@@ -87,9 +87,9 @@ fn a_page_of_one_group_shows_no_group_name() {
     assert!(lines[1].y > 0.0);
 }
 
-/// Tools opens Replay Studio and the AI Agent page, whatever No AI is.
+/// Tools opens the AI Agent page, whatever No AI is.
 #[test]
-fn tools_open_replay_studio_and_the_ai_agent_page_with_no_ai_on_too() {
+fn tools_open_the_ai_agent_page_with_no_ai_on_too() {
     let mut s = Settings::default();
     for no_ai in [false, true] {
         s.extras.no_ai = no_ai;
@@ -98,10 +98,7 @@ fn tools_open_replay_studio_and_the_ai_agent_page_with_no_ai_on_too() {
         let rows: Vec<SunriseRow> = (shell.listed(&s, SIZE).into_iter())
             .map(|(_, row)| row)
             .collect();
-        let want = [
-            SunriseRow::Open(Page::Studio),
-            SunriseRow::Open(Page::Agent),
-        ];
+        let want = [SunriseRow::Open(Page::Agent)];
         assert_eq!(rows, want, "No AI {no_ai}");
         let at = shell.point_at(&s, SIZE, SunriseRow::Open(Page::Agent));
         let outputs = shell.click(&mut s, at, SIZE, false, false, false);

@@ -635,17 +635,6 @@ impl crate::game::ClientGame<'_> {
                     self.confirm_trusted_link(ACCESSIBILITY_HELP_LINK, Screen::Options)
                 }
                 Event::Narrator => self.narrator_status_changed(),
-                Event::OpenStudioReplay(path) => {
-                    let path = path.to_string_lossy().to_string();
-                    if let Err(e) = self.open_studio_replay(&path) {
-                        log::warn!("Sunrise Studio: could not open {path}: {e}");
-                    }
-                }
-                Event::OpenStudioFolder => {
-                    let dir = std::path::PathBuf::from("recordings");
-                    let _ = std::fs::create_dir_all(&dir);
-                    super::packs::open_folder(&dir);
-                }
             }
         }
         Ok(())
@@ -976,7 +965,6 @@ impl crate::game::ClientGame<'_> {
                 .remote
                 .as_ref()
                 .map(|_| self.client.integrated.is_some()),
-            self.client.replay.playing(),
         );
         self.client.settings.fullbright_held = held;
         if let Some(r) = self.client.renderer.0.as_mut() {
@@ -987,10 +975,10 @@ impl crate::game::ClientGame<'_> {
 
 /// Fullbright is held off on another's server, where it would light what the server shows
 /// dark: a connection without this window's integrated server, as a multiplayer server
-/// or a LAN guest has. Single player, a LAN host and Replay Studio keep it.
+/// or a LAN guest has. Single player and a LAN host keep it.
 /// `connection`: none, or whether it plays on this window's integrated server.
-fn fullbright_held(connection: Option<bool>, studio: bool) -> bool {
-    connection == Some(false) && !studio
+fn fullbright_held(connection: Option<bool>) -> bool {
+    connection == Some(false)
 }
 
 /// The named device can be a connected pad that has not driven the game yet.
@@ -1011,13 +999,11 @@ mod fullbright_tests {
     #[test]
     fn fullbright_is_held_only_on_another_servers_world() {
         // The title screen, with no connection.
-        assert!(!fullbright_held(None, false));
+        assert!(!fullbright_held(None));
         // Single player and a LAN host play their own save.
-        assert!(!fullbright_held(Some(true), false));
+        assert!(!fullbright_held(Some(true)));
         // A multiplayer server, or another player's world opened to LAN.
-        assert!(fullbright_held(Some(false), false));
-        // Replay Studio plays a recording, not a server.
-        assert!(!fullbright_held(Some(false), true));
+        assert!(fullbright_held(Some(false)));
     }
 }
 

@@ -282,7 +282,7 @@ impl crate::game::ClientGame<'_> {
         };
         player.fluids.boat = boat;
         player.is_passenger = riding;
-        if !riding && !self.client.replay.playing() {
+        if !riding {
             self.common.previous_position = player.position;
         }
         let before = (
@@ -595,9 +595,7 @@ impl crate::game::ClientGame<'_> {
             self.snap_player_model_pitch();
         }
         // The player's own model (third person, the inventory's preview).
-        if !self.client.replay.playing() {
-            self.tick_player_model_with_rider_movement(rider_movement);
-        }
+        self.tick_player_model_with_rider_movement(rider_movement);
         if !dead {
             self.remote_tick_using();
         }
