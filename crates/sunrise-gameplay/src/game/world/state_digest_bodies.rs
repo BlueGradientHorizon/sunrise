@@ -43,7 +43,7 @@ pub(super) fn equipment(h: &mut DefaultHasher, equipment: &Equipment, items: &It
 
 pub(super) fn attributes(h: &mut DefaultHasher, attributes: &Live) {
     let mut instances: Vec<_> = attributes.instances().collect();
-    instances.sort_unstable_by(|(_, a, _), (_, b, _)| a.name().cmp(b.name()));
+    instances.sort_unstable_by_key(|&(_, key, _)| key.name());
     instances.len().hash(h);
     for (_, key, instance) in instances {
         attribute(h, key.name(), instance);

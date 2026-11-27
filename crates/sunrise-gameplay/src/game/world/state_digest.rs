@@ -327,5 +327,3 @@ fn sorted_ticks(ticks: &sunrise_core::ticks::LevelTicks) -> Vec<(i64, u32, [i32;
     all.sort_unstable();
     all
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

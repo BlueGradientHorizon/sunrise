@@ -16,9 +16,9 @@ use sunrise_gameplay_common::game::{
 use sunrise_items::items::Items;
 use sunrise_sim::join_seq::JoinSeq;
 
-fn ordered<K: Ord, V>(entries: impl Iterator<Item = (K, V)>) -> Vec<(K, V)> {
+fn ordered<K: Copy + Ord, V>(entries: impl Iterator<Item = (K, V)>) -> Vec<(K, V)> {
     let mut sorted: Vec<_> = entries.collect();
-    sorted.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+    sorted.sort_unstable_by_key(|&(key, _)| key);
     sorted
 }
 

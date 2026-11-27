@@ -50,7 +50,7 @@ fn tag(h: &mut impl Hasher, value: &Tag) {
         Tag::Compound(fields) => {
             value.id().hash(h);
             let mut entries: Vec<_> = fields.iter().collect();
-            entries.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+            entries.sort_unstable_by_key(|&(key, _)| key);
             entries.len().hash(h);
             for (key, value) in entries {
                 key.hash(h);
@@ -391,7 +391,6 @@ impl Group {
 }
 
 pub(super) fn level(game: &ServerGame<'_>, shared: &mut EntityGroups) -> String {
-    use sunrise_gameplay_common::game::tables::GameItems as _;
     let mut out = String::new();
     let items = game.common.res.items();
     hangings(game, shared, items).append(&mut out, "hangings");
