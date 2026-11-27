@@ -3080,14 +3080,24 @@ pub(crate) mod tests {
                     r#"{"enabled":["vanilla","file/side_tables"],"disabled":[]}"#,
                 )
                 .unwrap();
-                let stack = game.reload_datapacks(false, &[]).unwrap();
+                // Stage the pack stack's world tables into this game alone: no datapack reload,
+                // which would publish registry snapshots and the process-wide sync cache.
+                let resources = game.options.resources.clone();
+                let stack = sunrise_gameplay::game::functions::pack_stack(
+                    &game.server.world_root,
+                    &resources,
+                    &sunrise_assets::resource_source::ResourceSource::directory(resources.clone()),
+                    &Default::default(),
+                    false,
+                    &[],
+                    &[],
+                );
+                let own_items = game.common.server_items.take();
                 game.server.world_tables.0 = game
-                    .stage_world_tables(&stack, false, &game.options.resources.clone())
+                    .stage_world_tables(&stack, false, &resources)
                     .unwrap()
                     .tables;
                 assert!(game.server.world_tables.0.is_some());
-                game.load_server_loot();
-                game.ensure_datapacks();
                 // The world's tables: dirt is the only member of both tags.
                 let level = game.level(game.dim.id()).unwrap();
                 assert_eq!(game.block_states().is_suffocating(stone), Some(false));
@@ -3120,6 +3130,8 @@ pub(crate) mod tests {
                         .is_correct_tool_for_drops(&pickaxe(), stone),
                     Some(true)
                 );
+                game.server.world_tables.0 = None;
+                game.common.server_items = own_items;
                 let _ = std::fs::remove_dir_all(&root);
             });
         });
