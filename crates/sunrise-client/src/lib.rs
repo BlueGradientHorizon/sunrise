@@ -35,7 +35,7 @@ pub(crate) use sunrise_items::items;
 #[cfg(all(test, not(feature = "client")))]
 pub(crate) use sunrise_level::chunk;
 #[cfg(all(test, not(feature = "client")))]
-pub(crate) use sunrise_sim::{custom_registry_net, datapack_net, entities, motion, raw_payloads};
+pub(crate) use sunrise_sim::{datapack_net, entities, motion, raw_payloads};
 pub use sunrise_sim::{lan, orb_limits, save};
 #[cfg(test)]
 mod test_game_dir;
