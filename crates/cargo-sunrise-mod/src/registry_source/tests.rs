@@ -86,6 +86,60 @@ fn a_linked_serial_lock_is_refused_without_creating_its_target() {
     assert!(!serial.exists());
 }
 
+/// A floor that is a link, a directory, oversized or not a number is an error that
+/// leaves the floor as it was: none of them lets an older index in.
+#[test]
+fn a_linked_oversized_or_malformed_floor_is_refused_and_left_alone() {
+    let cache = tempfile::tempdir().unwrap();
+    let serial = cache.path().join(SERIAL);
+    fs::create_dir_all(serial.parent().unwrap()).unwrap();
+    let refused = |why: &str| {
+        let error = read_index(&serial, URL, &serve(FIRST), KEY).unwrap_err();
+        assert!(
+            error.contains(&serial.display().to_string()),
+            "{why}: {error}"
+        );
+    };
+
+    fs::create_dir(&serial).unwrap();
+    refused("directory");
+    fs::remove_dir(&serial).unwrap();
+
+    // The number itself is valid and low enough to accept the index without the bound.
+    let oversized = format!("{}0", " ".repeat(SERIAL_LIMIT as usize));
+    fs::write(&serial, &oversized).unwrap();
+    refused("oversized");
+    assert_eq!(fs::read(&serial).unwrap(), oversized.as_bytes());
+    fs::write(&serial, "-1").unwrap();
+    refused("malformed");
+    fs::write(&serial, [0xff]).unwrap();
+    refused("not UTF-8");
+    assert_eq!(fs::read(&serial).unwrap(), [0xff]);
+
+    // A floor kept as `u64::MAX` text, with a final newline, is read whole.
+    fs::write(&serial, format!("{}\n", u64::MAX)).unwrap();
+    let error = read_index(&serial, URL, &serve(FIRST), KEY).unwrap_err();
+    assert!(
+        error.contains("is older than 18446744073709551615"),
+        "{error}"
+    );
+
+    #[cfg(unix)]
+    {
+        // Even a link to a valid, lower floor (which would accept the index) is refused, and a
+        // dangling link is a link, not a missing floor.
+        let target = cache.path().join("target");
+        fs::write(&target, (FIRST_SERIAL - 1).to_string()).unwrap();
+        fs::remove_file(&serial).unwrap();
+        std::os::unix::fs::symlink(&target, &serial).unwrap();
+        refused("link");
+        fs::remove_file(&target).unwrap();
+        refused("dangling link");
+        assert_eq!(fs::read_link(&serial).unwrap(), target);
+        assert!(!target.exists());
+    }
+}
+
 fn library(bytes: &[u8]) -> Index {
     serde_json::from_value(serde_json::json!({
         "schema": 2, "serial": 1, "revoked": [],

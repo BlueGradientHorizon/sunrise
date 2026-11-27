@@ -26,6 +26,9 @@ use sunrise_mod_package::{
 const KEY: &str = "RWTNJaFJ4AekHG/RgVrgmJpvy9B2EaeqbdSNuseKUx2XPxaOZkChLV0q";
 /// The highest serial this computer accepted, in the tool's cache: an older index is refused.
 const SERIAL: &str = "registry/v2-serial";
+/// The floor is a `u64` in decimal (at most 20 digits); the rest of the bound is room for
+/// whitespace around a hand-edited value.
+const SERIAL_LIMIT: u64 = 32;
 
 type Fetch = dyn Fn(&str, u64) -> Result<Vec<u8>, String>;
 type Attest = dyn Fn(&[u8], [u8; 32], &Project, &Release) -> Result<(), String>;
@@ -137,15 +140,20 @@ fn read_index(path: &Path, url: &str, fetch: &Fetch, key: &str) -> Result<Index,
         .lock()
         .map_err(|e| format!("{}: {e}", lock_path.display()))?;
 
-    let last = match fs::read_to_string(path) {
-        Ok(text) => Some(text.trim().parse::<u64>().map_err(|e| {
-            format!(
-                "{}: {e}; delete it to accept the live index",
-                path.display()
-            )
-        })?),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(format!("{}: {e}", path.display())),
+    let last = match bounded::read_bytes(path, SERIAL_LIMIT, Symlinks::Refuse) {
+        Ok(bytes) => Some(
+            String::from_utf8(bytes)
+                .map_err(|e| e.to_string())
+                .and_then(|text| text.trim().parse::<u64>().map_err(|e| e.to_string()))
+                .map_err(|e| {
+                    format!(
+                        "{}: {e}; delete it to accept the live index",
+                        path.display()
+                    )
+                })?,
+        ),
+        Err(e) if e.is_not_found() => None,
+        Err(e) => return Err(format!("{e}; delete it to accept the live index")),
     };
     if let Some(last) = last
         && index.serial < last
