@@ -54,6 +54,27 @@ fn section_read_backend_refuses_reads_outside_its_snapshot() {
 }
 
 #[test]
+fn live_section_host_refuses_registry_reads_instead_of_panicking() {
+    use mod_api::prelude::KeysHost;
+
+    let host = LiveSectionHost::new(None);
+    let mut visited = 0;
+    assert_eq!(
+        host.visit_registry_entries("minecraft:item", &mut |_| {
+            visited += 1;
+            core::ops::ControlFlow::Continue(())
+        }),
+        Err(mod_api::RegistryReadError::Unavailable)
+    );
+    assert_eq!(visited, 0);
+    let entry = mod_api::RegistryEntry::new(
+        mod_api::Identifier::parse("minecraft:item").unwrap(),
+        mod_api::Identifier::parse("minecraft:stone").unwrap(),
+    );
+    assert_eq!(host.registry_entry_in_tag(&entry, "minecraft:logs"), None);
+}
+
+#[test]
 fn live_section_host_reports_moved_entity_residency_in_callback() {
     type Observed = Arc<Mutex<Vec<(bool, EntityResidency, EntityResidency)>>>;
     struct ResidencyListener(Observed, EntityRef);
