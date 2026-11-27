@@ -8,15 +8,33 @@ use crate::{
 
 const SIZE: (f32, f32) = (854.0, 480.0);
 
+struct ExtraPage;
+
+impl added::Page for ExtraPage {
+    fn id(&self) -> &'static str {
+        "test.extra"
+    }
+    fn title(&self) -> &'static str {
+        "test.extra.title"
+    }
+    fn place(&self) -> added::Place {
+        added::Place::SunriseSettings
+    }
+    fn rows(&self, _: &mut Vec<added::Row>) {}
+    fn act(&self, _: usize, _: added::Act) {}
+}
+
+static EXTRA_PAGES: [&dyn added::Page; 1] = [&ExtraPage];
+
 fn sheet_of(s: &Settings, tab: Tab) -> Sheet<Tab, SunriseRow> {
     let sheets = SunriseScreen::default().sheets(s);
     sheets.into_iter().find(|sheet| sheet.id == tab).unwrap()
 }
 
 /// Its pages, in order: the graphics screen's, Resource Pack Options after Shaders, then
-/// Gameplay, Tools and Extras.
+/// Gameplay and Tools. Extras exists only when a page is registered for it.
 #[test]
-fn the_pages_are_graphics_then_pack_options_gameplay_tools_and_extras() {
+fn the_pages_are_graphics_then_pack_options_gameplay_and_tools() {
     let s = Settings::default();
     let ids: Vec<Tab> = SunriseScreen::default()
         .sheets(&s)
@@ -33,7 +51,6 @@ fn the_pages_are_graphics_then_pack_options_gameplay_tools_and_extras() {
         Tab::Graphics(G::Hdr),
         Tab::Gameplay,
         Tab::Tools,
-        Tab::Extras,
     ];
     assert_eq!(ids, want);
 }
@@ -74,13 +91,18 @@ fn general_keeps_only_sunrises_preset_and_brightness_is_a_display_setting() {
 fn a_page_of_one_group_shows_no_group_name() {
     let s = Settings::default();
     let mut shell = Shell::<SunriseScreen>::default();
-    for tab in [Tab::PackOptions, Tab::Tools] {
+    crate::options_ui::TEST_PAGES.set(Some(&EXTRA_PAGES));
+    for tab in [Tab::PackOptions, Tab::Tools, Tab::Extras] {
         shell.show(tab);
         let (lines, _) = shell.lines_at(&s, SIZE);
         assert_eq!(lines[0].group.map(|g| g.0), Some(""), "{tab:?}");
         assert_eq!(lines[0].h(), 0.0, "{tab:?}");
         assert_eq!((lines[1].y, lines[1].setting.is_some()), (0.0, true));
     }
+    assert_eq!(
+        shell.listed(&s, SIZE)[0].1,
+        SunriseRow::Open(Page::Added(0))
+    );
     shell.show(Tab::Graphics(G::General));
     let (lines, _) = shell.lines_at(&s, SIZE);
     assert_eq!(lines[0].group.map(|g| g.0), Some("Preset"));
@@ -279,8 +301,9 @@ fn the_keys_and_a_controller_go_from_the_search_field_to_gameplays_first_row() {
         steps += 1;
     }
     assert_eq!(shell.focused_row(), Some(first));
-    let from = TABS.iter().position(|&tab| tab == top).unwrap();
-    assert_eq!(steps, TABS.len() - from + 1, "every page on, then the row");
+    let tabs = shell.screen.sheets(&s);
+    let from = tabs.iter().position(|sheet| sheet.id == top).unwrap();
+    assert_eq!(steps, tabs.len() - from + 1, "every page on, then the row");
 }
 
 fn pack(file: &str) -> crate::shader_pack_list::Entry {
@@ -408,6 +431,7 @@ fn each_page_gets_the_description_lines_its_rows_had() {
     let general = bottom(Tab::Graphics(G::General));
     assert_eq!(general - bottom(Tab::Gameplay), 3.0 * 10.0);
     assert_eq!(general - bottom(Tab::Graphics(G::Shaders)), 10.0);
+    crate::options_ui::TEST_PAGES.set(Some(&EXTRA_PAGES));
     for tab in [Tab::Tools, Tab::Extras, Tab::PackOptions] {
         assert_eq!(bottom(tab), general, "{tab:?}");
     }

@@ -259,12 +259,13 @@ impl Screen for SunriseScreen {
                     let about = lang::get(TOOLS_ABOUT);
                     sheet(tab, lang::get(TOOLS), about, vec![group(Self::tools())])
                 }
-                Tab::Extras => sheet(
-                    tab,
-                    lang::get(EXTRAS),
-                    String::new(),
-                    vec![group(Self::extras())],
-                ),
+                Tab::Extras => {
+                    let rows = Self::extras();
+                    if rows.is_empty() {
+                        continue;
+                    }
+                    sheet(tab, lang::get(EXTRAS), String::new(), vec![group(rows)])
+                }
             };
             sheets.push(made);
         }

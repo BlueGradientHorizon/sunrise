@@ -49,7 +49,7 @@ pub(super) fn find_page_key(key: PageKey) -> Option<(usize, usize)> {
 #[cfg(test)]
 thread_local! {
     /// A test's own pages, instead of the game's registered ones: each test runs on its thread.
-    static TEST_PAGES: std::cell::Cell<Option<&'static [&'static dyn added::Page]>> =
+    pub(crate) static TEST_PAGES: std::cell::Cell<Option<&'static [&'static dyn added::Page]>> =
         const { std::cell::Cell::new(None) };
 }
 

@@ -151,6 +151,9 @@ pub(crate) const ACCESSIBILITY_OPTIONS: &[Opt] = &[
     Opt::HighContrastBlockOutlines,
 ];
 
+#[cfg(test)]
+pub(crate) use pages::TEST_PAGES;
+
 /// The pages crates registered (`sunrise_hooks::pages`), as `Page::Added` indexes them.
 pub(crate) fn registered_pages() -> &'static [&'static dyn sunrise_hooks::pages::Page] {
     pages::registered()
@@ -5270,11 +5273,7 @@ mod tests {
         // Every page's name and the rows that open Sunrise's other pages are there, in the
         // table's words, not as their keys.
         let (opens, _) = lang::scoped(de(), || {
-            let keys = [
-                "sunrise.settings.tab.tools",
-                "sunrise.settings.tab.extras",
-                "sunrise.pages.open.agent",
-            ];
+            let keys = ["sunrise.settings.tab.tools", "sunrise.pages.open.agent"];
             keys.map(lang::get)
         });
         for text in &opens {
@@ -7959,7 +7958,7 @@ mod tests {
         // Video Settings... is vanilla's VideoSettingsScreen; the graphics settings are Sunrise
         // Settings'.
         assert!(main.contains(&Page::Video) && !main.contains(&Page::Graphics));
-        // Sunrise Settings' rows that open Sunrise's other pages: Tools', then Extras'.
+        // Without registered pages, only Tools opens another Sunrise page.
         let opens = |s: &Settings| -> Vec<(Tab, Page)> {
             use crate::settings_shell::Screen;
             let sheets = crate::sunrise_ui::SunriseScreen::default().sheets(s);
@@ -7974,10 +7973,7 @@ mod tests {
             });
             rows.collect()
         };
-        assert_eq!(
-            opens(&s),
-            [(Tab::Tools, Page::Agent)]
-        );
+        assert_eq!(opens(&s), [(Tab::Tools, Page::Agent)]);
         // No AI keeps the way to the AI Agent page, where it is turned off again.
         let mut no_ai = Settings::default();
         no_ai.extras.no_ai = true;
