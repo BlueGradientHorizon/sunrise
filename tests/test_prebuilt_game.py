@@ -1550,8 +1550,8 @@ class SmokeStartTests(unittest.TestCase):
         root = Path(__file__).resolve().parent.parent
         with tempfile.TemporaryDirectory() as directory:
             for args in (
-                [sys.executable, str(root / "tools/ci/test_stage_catalog.py"), "--help"],
-                [sys.executable, str(root / "tools/prebuilt_game.py"), "--help"],
+                [sys.executable, "-E", str(root / "tools/ci/test_stage_catalog.py"), "--help"],
+                [sys.executable, "-E", str(root / "tools/prebuilt_game.py"), "--help"],
             ):
                 with self.subTest(args=args):
                     done = subprocess.run(args, cwd=directory, capture_output=True, text=True)
