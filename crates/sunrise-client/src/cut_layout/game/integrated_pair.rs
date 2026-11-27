@@ -12,7 +12,7 @@ use sunrise_gameplay::game::server_side::integrated::{
 use sunrise_gameplay::game::server_side::lan::Owner;
 use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use sunrise_protocol::crypto::offline_uuid;
-use sunrise_sim::ticket_levels::PLAYER_SPAWN_RADIUS;
+use sunrise_sim::ticket_levels::{PLAYER_SPAWN_RADIUS, SpawnTicketKind};
 
 use super::server_side::native_entity_refs::tests::{with_client_game, with_resident_game};
 
@@ -37,6 +37,12 @@ pub(super) fn with_integrated_pair(test: impl FnOnce(&mut IntegratedPair<'_, '_,
             let mut saved = server.level.clone();
             saved.position = Some([0.5, 64.0, 0.5]);
             saved.dimension = server.dim.id().to_owned();
+            saved.player_extra = Some(saved.player_tag(server.res.items()));
+            server
+                .server
+                .tickets
+                .0
+                .add_spawn((0, 0), SpawnTicketKind::Player);
             open_fixture_hub(server);
             let owner = offline_uuid(PLAYER);
             let (tasks, receiver) = mpsc::channel();
