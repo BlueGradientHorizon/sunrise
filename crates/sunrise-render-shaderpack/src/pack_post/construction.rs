@@ -617,6 +617,8 @@ pub struct Resources<'a> {
     pub mod_depth_target: std::cell::Cell<Option<usize>>,
     /// Depth comparison function for the pass currently being built.
     pub depth_compare: std::cell::Cell<wgpu::CompareFunction>,
+    /// The linked mod pass's declared depth bias; `None` leaves the pack program's own bias.
+    pub mod_depth_bias: std::cell::Cell<Option<wgpu::DepthBiasState>>,
     /// The mod's own vertex stage for the pass about to be built, which `build_pass` takes and
     /// links to that pass's fragment stage ([`ModProgramMode::ModVertexPackFragment`]).
     pub mod_vertex: std::cell::RefCell<Option<ModVertexStage>>,
@@ -1498,11 +1500,13 @@ pub fn build_pass(
                 depth_write_enabled: Some(g.depth_write),
                 depth_compare: Some(pack.depth_compare.get()),
                 stencil: Default::default(),
-                bias: if p.name == "gbuffers_damagedblock" {
-                    POLYGON_OFFSET
-                } else {
-                    Default::default()
-                },
+                bias: pack.mod_depth_bias.get().unwrap_or_else(|| {
+                    if p.name == "gbuffers_damagedblock" {
+                        POLYGON_OFFSET
+                    } else {
+                        Default::default()
+                    }
+                }),
             }),
             targets: targets.to_vec(),
         };
@@ -1751,6 +1755,7 @@ pub fn build_compute(
         pack,
     )?;
     let local = c.module.entry_points[0].workgroup_size;
+    let indirect = c.indirect;
     let created = checked(device, || {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(&name),
@@ -1788,6 +1793,22 @@ pub fn build_compute(
             return None;
         }
     };
+    let dispatch = match indirect {
+        None => Dispatch::Direct {
+            groups: c.work_groups,
+            render: c.work_groups_render,
+            local,
+        },
+        Some(i) => match checked(device, || {
+            crate::pack_post::indirect::IndirectDispatch::new(device, &name, i)
+        }) {
+            Ok(dispatch) => Dispatch::Indirect(Box::new(dispatch)),
+            Err(e) => {
+                notes.push(format!("{name}: skipped: {e}"));
+                return None;
+            }
+        },
+    };
     let written = image_buffers(&images);
     let image_copies = image_copies(&samplers, &images);
     let (before_colors, snapshots) = befores(&images);
@@ -1810,12 +1831,7 @@ pub fn build_compute(
         mod_uniforms,
         name,
         group,
-        pipeline: Pipeline::Compute {
-            pipeline,
-            groups: c.work_groups,
-            render: c.work_groups_render,
-            local,
-        },
+        pipeline: Pipeline::Compute { pipeline, dispatch },
         sky_parts: None,
         water_mask: None,
         polygon_offset: None,
@@ -2010,7 +2026,8 @@ pub struct PackPost {
     /// are cleared every frame.
     pub shadow_writes: u16,
     /// A shadow program, or a compute stage attached to one, binds the pack's storage buffers
-    /// (`bufferObject.*`, set 4): they are zeroed once and then kept between frames, and the
+    /// (`bufferObject.*`, set 4) or reads its work-group counts from one (`indirect.<pass>`,
+    /// `Pass::reads_buffers`): they are zeroed once and then kept between frames, and the
     /// cache key doesn't hold them, so the Shadow Cache never keeps such a pass.
     pub shadow_buffers: bool,
     /// Set 5 of programs with a geometry stage.
@@ -2341,6 +2358,7 @@ impl PackPost {
             mod_uniform_mismatches: &mod_uniform_mismatches,
             mod_depth_target: std::cell::Cell::new(None),
             depth_compare: std::cell::Cell::new(wgpu::CompareFunction::LessEqual),
+            mod_depth_bias: Default::default(),
             mod_vertex: Default::default(),
         };
         // Flat terrain resolves each quad's source state against the current pack; terrain that
@@ -2500,7 +2518,7 @@ impl PackPost {
                 if in_shadow {
                     shadow_pass_images |= own | before;
                     shadow_writes |= p.written | p.flip | own;
-                    shadow_buffers |= p.buffers;
+                    shadow_buffers |= p.reads_buffers();
                 } else {
                     shadow_images_outside |= own | before;
                 }
@@ -2722,9 +2740,15 @@ impl PackPost {
             cull: false,
             pages: false,
         });
-        let hand_geometry = world
-            .hand
-            .then(|| crate::pack_hand::PackHand::new(device, &draws.layout));
+        let hand_geometry = world.hand.then(|| {
+            let mut hand = crate::pack_hand::PackHand::new(device, &draws.layout);
+            // A `render_hand` mod's native terrain quads are placed in the block atlas, as an
+            // entity's are (`pack_entities::BlockAtlas`).
+            hand.set_block_atlas(world.atlas.as_ref().and_then(|(_, size)| {
+                crate::pack_entities::BlockAtlas::new(world.sprite_rects, *size)
+            }));
+            hand
+        });
         let hand = post.hand.zip(hand_geometry).and_then(|(p, geometry)| {
             let g = Geometry {
                 buffers: &entity_buffers,
@@ -2841,10 +2865,12 @@ impl PackPost {
                 };
                 pack.mod_depth_target.set(active_depth);
                 pack.depth_compare.set(spec.depth_compare);
+                pack.mod_depth_bias.set(spec.depth_bias);
                 *pack.mod_vertex.borrow_mut() = own_stage.cloned();
                 let built_pass = build(program, Some(&mod_geometry));
                 pack.mod_vertex.borrow_mut().take();
                 pack.mod_depth_target.set(None);
+                pack.mod_depth_bias.set(None);
                 pack.depth_compare.set(wgpu::CompareFunction::LessEqual);
                 if let Some(pass) = built_pass {
                     mod_passes.push(ModPackPass {
