@@ -11,9 +11,9 @@ pub trait Hooks {
     /// port bind failure before `server_about_to_start`), the tick loop errored
     /// or panicked, the final save failed, or a shutdown listener panicked.
     /// This is the place for a mod to join its own threads and flush what it keeps: the
-    /// server thread waits for each listener to return, and the server counts as stopped only
-    /// afterwards. The worlds are already saved and closed by then, so nothing here can read
-    /// or write them; use `server_stopping` for that.
+    /// server thread waits for each listener to return before it finishes shutting down.
+    /// The world's session is already retired here, whether or not the final save
+    /// succeeded, so nothing here can read or write the world; use `server_stopping` for that.
     /// The world's Server configs are still loaded; `config_unloading`
     /// follows this event.
     /// Failed opens save only worlds already adopted by the server (the
