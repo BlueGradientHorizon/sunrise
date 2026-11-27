@@ -96,19 +96,7 @@ impl Renderer {
     ) -> std::result::Result<Option<(Vec<String>, Vec<String>)>, pack_post::Refused> {
         self.pack_changed();
         let runs = post.as_ref().is_ok_and(Option::is_some);
-        let block_ids = if runs { block_ids } else { Vec::new() };
-        let old = self.pack_block_ids.as_deref().map_or(&[][..], |ids| &ids.0);
-        if block_ids != old {
-            // The normal stream holds each quad's id under the ids it was uploaded with: the
-            // game meshes every section again for this pack's.
-            if runs && self.arena.has_normals() {
-                self.sections_dropped |=
-                    self.sections.len() > 0 || !self.lods.is_empty() || self.lod_pending.is_some();
-                self.clear_sections(self.layout);
-            }
-            self.pack_block_ids =
-                (!block_ids.is_empty()).then(|| Box::new(PackBlockIds(block_ids)));
-        }
+        self.replace_pack_block_ids(if runs { block_ids } else { Vec::new() }, runs);
         let mut post = match post {
             Ok(post) => post,
             Err(e) => {
@@ -129,6 +117,52 @@ impl Renderer {
         });
         self.pack_post = Some((dimension, post));
         Ok(report)
+    }
+    /// Makes `block_ids` the running pack's (`runs`: a pack runs with them): when they differ,
+    /// the normal stream, which holds each quad's id under the ids it was uploaded with, is
+    /// dropped, and the game meshes every section again. Whether they differed.
+    fn replace_pack_block_ids(&mut self, block_ids: Vec<i32>, runs: bool) -> bool {
+        let old = self.pack_block_ids.as_deref().map_or(&[][..], |ids| &ids.0);
+        if block_ids == old {
+            return false;
+        }
+        if runs && self.arena.has_normals() {
+            self.sections_dropped |=
+                self.sections.len() > 0 || !self.lods.is_empty() || self.lod_pending.is_some();
+            self.clear_sections(self.layout);
+        }
+        self.pack_block_ids = (!block_ids.is_empty()).then(|| Box::new(PackBlockIds(block_ids)));
+        true
+    }
+    /// The pack's flat terrain table (`pack_post::block_ids`) rewritten with the running ids.
+    fn write_pack_terrain_ids(&mut self) {
+        let ids = self.pack_block_ids.as_deref().map_or(&[][..], |ids| &ids.0);
+        let rects = self
+            .pack_atlas
+            .as_ref()
+            .map_or_else(Vec::new, |a| a.rects_table());
+        if let Some((_, Some(post))) = &self.pack_post
+            && !post.write_block_ids(&self.queue, ids, &rects)
+        {
+            log::warn!("shader pack: the block ids no longer fit its terrain table");
+        }
+    }
+    /// Replaces the block ids (`set_shader_pack`'s `block_ids`) of the pack that runs, or of the
+    /// one `load_shader_pack` builds, which then runs with them: the game resolves them again
+    /// when the world's tags its `block.properties` names change. The terrain draws them from
+    /// the next frame on (the normal stream once its sections are meshed again). Nothing without
+    /// a pack.
+    pub fn set_pack_block_ids(&mut self, block_ids: Vec<i32>) {
+        if let Some(loading) = &mut self.pack_loading {
+            loading.block_ids = Some(block_ids);
+            return;
+        }
+        if !matches!(self.pack_post, Some((_, Some(_)))) {
+            return;
+        }
+        if self.replace_pack_block_ids(block_ids, true) {
+            self.write_pack_terrain_ids();
+        }
     }
     /// Sets the external shader pipeline world frames call (`external`), or none.
     pub fn set_external_pipeline(&mut self, pipeline: Option<Box<dyn external::ExternalPipeline>>) {
@@ -326,6 +360,7 @@ impl Renderer {
                     started,
                     _cancel: CancelOnDrop(cancel),
                     draws: draws_sections,
+                    block_ids: None,
                 });
             }
             Err(e) => self.pack_thread_failed(dimension, &label, &e),
@@ -382,7 +417,17 @@ impl Renderer {
                 Vec::new(),
             ),
         };
+        // Ids given while it built replace those it was built with, in its terrain table too
+        // where they differ.
+        let given = loading
+            .block_ids
+            .filter(|ids| built.is_ok() && *ids != block_ids);
+        let rewrite = given.is_some();
+        let block_ids = given.unwrap_or(block_ids);
         let report = self.install_shader_pack(loading.dimension, built.map(Some), block_ids);
+        if rewrite {
+            self.write_pack_terrain_ids();
+        }
         Some((loading.dimension, loading.label, loading.started, report))
     }
     /// Drops the running shader pack.

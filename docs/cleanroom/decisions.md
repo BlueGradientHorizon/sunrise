@@ -199,6 +199,38 @@ the full list.
 - **Tests:** `pack_post::tests::a_sampler_of_another_class_than_its_image_refuses_the_program`
   (`sunrise-render-shaderpack`).
 
+## D-9: which tags `%<tag>` id entries read, and when
+
+- **Open point:** spec rev 1, 4.1, line 579 says E `%<tag>` "selects every block of a block tag" and that "individual
+  entries win over tags when both match"; lines 570-572 give `block.properties`, `item.properties` and
+  `entity.properties` one line form. The spec doesn't say whether `%<tag>` is read in `item.properties` and
+  `entity.properties`, which binding of the tags an entry reads (the game's own data, a server's, a reload's), when
+  a change to them reaches the ids, or which entry wins when several tags list one name. None of these is one of
+  section 9's open questions. Whether to define `IRIS_TAG_SUPPORT` is OQ-2 (line 168), not decided here: it stays
+  undefined.
+- **Decision:**
+  - The word form is the same in the three files: `%<tag>` names a block tag in `block.properties` (with state
+    filters, as a block name takes them), an item tag in `item.properties` and an entity type tag in
+    `entity.properties`, `[namespace:]` defaulting to `minecraft`.
+  - An entry reads the tags of the world being played: connected to a server (a single-player world's own server
+    included), the tags it sent in its tags packets (`remote.registries.tags`); otherwise the world's tables. When
+    they are bound again (a server's tags packet, which `/reload` sends, another world), the ids are resolved again
+    before anything reads them, the terrain's included.
+  - A name's own entry wins over a tag's; then the entry with the most state filters that all match; then the first
+    in the file. A tag the world lacks, an empty tag and an empty `%` give no name an id, without a note.
+  - A file whose entries name no tag is read as before: its ids never follow the tags.
+- **Reason:** the three files share one line form and one parser, so one word reads one way in each. The tags are the
+  server's current ones, so a pack's ids follow a `/reload` in single player too. The precedence is D-5's, the one
+  4.1 states.
+- **Tests:** `block_ids::tests::tag_words_give_their_members_ids` and `block_ids::tests::plain_names_take_tags`
+  (`sunrise-shaders`); `game::client_side::shader_packs::terrain_source_tests::terrain_ids_reach_a_tags_members` and
+  `game::client_side::shader_packs::terrain_source_tests::pack_ids_follow_the_worlds_tags`
+  (`sunrise-client-gameplay`); the daily
+  `cut_layout::game::pack_tag_id_frame_tests::a_tags_id_reaches_the_terrain_and_follows_the_tags`,
+  `cut_layout::game::pack_tag_id_frame_tests::a_tags_id_reaches_the_terrain_through_the_normal_stream` and
+  `cut_layout::game::client_side::remote_tags::tests::a_shader_packs_tag_ids_follow_the_servers_tags`
+  (`sunrise-client`).
+
 ## D-10: what `indirect.<pass>` names, and what a key or counts that can't run do
 
 - **Open point:** spec rev 1, 3.2, line 398 gives `indirect.<pass>` = `<ssbo index> <byte offset>`, "read the compute

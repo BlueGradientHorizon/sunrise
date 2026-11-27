@@ -1967,7 +1967,8 @@ pub struct PackPost {
     pub down: HashMap<wgpu::TextureFormat, (wgpu::RenderPipeline, wgpu::BindGroupLayout)>,
     /// The per-draw uniforms of gbuffers programs.
     pub draws: DrawUniforms,
-    /// Set 3 of flat terrain: an unknown-source fallback and immutable state/sprite tables.
+    /// Set 3 of flat terrain: an unknown-source fallback and the state/sprite tables
+    /// (`PackPost::write_block_ids` rewrites the states' ids).
     /// Each page's bind group tracks both its vertex buffer and optional source sidecar.
     pub block_ids: Option<(wgpu::BindGroupLayout, wgpu::Buffer, wgpu::Buffer)>,
     pub page_groups: HashMap<u32, (wgpu::Buffer, Option<wgpu::Buffer>, wgpu::BindGroup)>,
@@ -3554,5 +3555,23 @@ impl PackPost {
     /// bind groups are kept once made). A missing one reads as the dummy (flat, no specular).
     pub fn set_paged_maps(&mut self, maps: [Option<wgpu::TextureView>; 2]) {
         self.paged_maps = maps;
+    }
+
+    /// Rewrites flat terrain's state table (set 3, [`block_ids`]) with `table`, the states' ids
+    /// as `World::block_ids` gives them, beside the sprite `rects`: the draws from the next
+    /// submission on read them. `false`, with the table left as it was, when the two make a
+    /// table of another size than the one built (another registry or atlas). Nothing to do for
+    /// a pack whose terrain reads no table.
+    pub fn write_block_ids(&self, queue: &wgpu::Queue, table: &[i32], rects: &[u32]) -> bool {
+        let Some((_, _, buffer)) = &self.block_ids else {
+            return true;
+        };
+        let contents = terrain_tables(table, rects);
+        let bytes: &[u8] = bytemuck::cast_slice(&contents);
+        if bytes.len() as u64 != buffer.size() {
+            return false;
+        }
+        queue.write_buffer(buffer, 0, bytes);
+        true
     }
 }

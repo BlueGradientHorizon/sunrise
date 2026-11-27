@@ -1064,6 +1064,9 @@ pub(crate) struct PackLoading {
     /// pack's `has_terrain` and `has_shadow` will say (`PackLoading::draws_of`), for the layouts
     /// the frames drawn meanwhile keep (`Renderer::pack_pending`).
     draws: PackDraws,
+    /// Block ids given while it builds (`Renderer::set_pack_block_ids`), which it runs with in
+    /// place of those it was built with.
+    block_ids: Option<Vec<i32>>,
 }
 
 /// A running `shaders/` pack's block ids (`Renderer::pack_block_ids`).
