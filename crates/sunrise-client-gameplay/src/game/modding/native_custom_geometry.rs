@@ -754,11 +754,8 @@ impl ClientGame<'_> {
 
     /// [`Self::resolve_draw_bindings_into`] for any pipeline kind: `layout` is the pipeline's
     /// declared bind group, `pc_size` its push-constant bytes (0 for compute) and `writes_depth`
-    /// whether it writes depth (a depth-sampling hazard). A draw sampling its own transient
-    /// attachment is refused with [`PipelineDrawError::TargetReadWriteHazard`]. Other transient
-    /// samples must be among `reads`, the declared reads of `pass_label`: the graph computes
-    /// lifetimes from declared uses, so an undeclared sample is refused with
-    /// [`PipelineDrawError::InvalidBinding`].
+    /// whether it writes depth (a depth-sampling hazard). Transient samples must be among
+    /// `reads`, the declared reads of `pass_label`; see [`PipelineDrawError::InvalidBinding`].
     #[allow(clippy::too_many_arguments)]
     pub(in crate::game) fn resolve_bindings_against(
         &self,
@@ -5581,6 +5578,60 @@ void main() { values[0] = floatBitsToUint(textureLod(InputTex, vec2(0.5), 0.0).r
                     assert!(draw.texel_data.is_empty());
                     assert!(dispatches.is_empty());
                 }
+            }
+
+            // A transient listed only in `.writes(...)` of the drawing pass is not a declared
+            // read, and one that is the pass's own attachment is a read-write hazard: neither
+            // records anything.
+            for (writes_only, expected) in [
+                (true, PipelineDrawError::InvalidBinding),
+                (false, PipelineDrawError::TargetReadWriteHazard),
+            ] {
+                let mut surface = FrameGraphSurface::default();
+                let mut graph = GameFrameGraphContext::new(game, &mut surface);
+                let input = graph
+                    .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
+                        [8, 8],
+                        mod_api::RenderTargetDepth::None,
+                    ))
+                    .unwrap();
+                let output = graph
+                    .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
+                        [8, 8],
+                        mod_api::RenderTargetDepth::None,
+                    ))
+                    .unwrap();
+                let desc = if writes_only {
+                    mod_api::FramePassDescriptor::new("draw", FrameTarget::Transient(output))
+                        .writes(FrameTarget::Transient(input))
+                } else {
+                    mod_api::FramePassDescriptor::new("draw", FrameTarget::Transient(input))
+                };
+                let draw_bindings = DrawBindings::new()
+                    .inline_uniform("ProbeParams", &inline)
+                    .texture(
+                        "InputTex",
+                        mod_api::TextureSource::TransientTargetColor(input, 0),
+                    );
+                graph
+                    .add_pass(desc, &mut |pass| {
+                        assert_eq!(
+                            pass.draw_vertices(
+                                pipeline,
+                                &[bytemuck::cast_slice(&vertices)],
+                                None,
+                                mod_api::MeshDraw::vertices(0..4),
+                                &draw_bindings,
+                            ),
+                            Err(expected),
+                        );
+                    })
+                    .unwrap();
+                let draw = &surface.graph.passes[0];
+                assert!(draw.draws.is_empty());
+                assert!(draw.transient_vertices.is_empty());
+                assert!(draw.inline_uniforms.is_empty());
+                assert!(draw.texel_data.is_empty());
             }
             drop(game.client.renderer.0.take());
             drop(game.client.mod_gpu.take());

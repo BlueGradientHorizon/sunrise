@@ -4166,14 +4166,16 @@ pub enum PipelineDrawError {
     /// mismatches kind or `min_size`, references an unknown/unavailable texture, or provides an
     /// invalid push-constant payload.
     ///
-    /// Declare a sampled transient on a consumer pass that does not write it, using
-    /// `.reads(FrameTarget::Transient(id))`: the graph computes lifetimes from declared uses.
-    /// An undeclared sample is refused here and logged once, except that a draw sampling its
-    /// own transient attachment returns [`Self::TargetReadWriteHazard`]. For a transient
-    /// listed only in `.writes(...)`, an undeclared sample returns `InvalidBinding` in a draw
-    /// and [`crate::ComputeDispatchError::InvalidBinding`] in a compute dispatch. Declaring
-    /// both the read and the write is refused before recording with
-    /// [`crate::FrameGraphError::SelfDependency`]; split the producer and consumer instead.
+    /// A draw or compute dispatch that samples a transient colour or depth attachment must
+    /// declare `.reads(FrameTarget::Transient(id))` on a consumer pass that does not write that
+    /// transient; the graph computes the target's lifetime from declared uses, as vanilla's
+    /// `FramePass.reads` does. An undeclared sample is refused at submit and logged once, with
+    /// this error for a draw and [`crate::ComputeDispatchError::InvalidBinding`] for a dispatch,
+    /// even when the pass lists the transient in `.writes(...)`. A draw sampling its own
+    /// transient attachment returns [`Self::TargetReadWriteHazard`] instead. Declaring the read
+    /// on a pass that also writes the transient is refused before recording with
+    /// [`crate::FrameGraphError::SelfDependency`]: split the producer and the consumer. A
+    /// refused command records nothing.
     InvalidBinding,
     /// An active shader pack links this world draw to a translated pack program, whose fixed
     /// sampler layout cannot bind one of the draw's textures. Direct mod draws, including those

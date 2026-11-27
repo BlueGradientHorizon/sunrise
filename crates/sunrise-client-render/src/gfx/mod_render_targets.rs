@@ -779,7 +779,7 @@ impl super::mod_gpu::ModGpuResources {
     /// Record a distinct frame-graph cycle warning once per reload/world session.
     pub fn warn_frame_graph_cycle_once(&self, passes: &[String]) {
         let mut warned = self
-            .warned_frame_graph_cycles
+            .warned_frame_graph
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if warned.insert(super::mod_gpu::FrameGraphWarning::Cycle(passes.to_vec())) {
@@ -798,7 +798,7 @@ impl super::mod_gpu::ModGpuResources {
         target: mod_api::TransientTargetId,
     ) {
         let mut warned = self
-            .warned_frame_graph_cycles
+            .warned_frame_graph
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if warned.insert(super::mod_gpu::FrameGraphWarning::UndeclaredTransientRead(
@@ -1188,5 +1188,27 @@ mod tests {
         assert_eq!(targets.size(None, rt), Err(RenderTargetError::Stale));
         // The resize freed the first allocation's texture and the release the second's.
         assert_eq!(targets.take_released().len(), 2);
+    }
+
+    /// A cycle whose labels equal what the undeclared-read warning once stored as a string-prefixed
+    /// key does not stand for that warning: the kinds are distinct keys of the one set.
+    #[test]
+    fn a_cycle_warning_never_stands_for_an_undeclared_read_warning() {
+        use crate::gfx::mod_gpu::FrameGraphWarning;
+        let mut warned = std::collections::HashSet::new();
+        let probe = mod_api::TransientTargetId::from_raw(0);
+        assert!(warned.insert(FrameGraphWarning::Cycle(vec![
+            "undeclared transient read".to_owned(),
+            "probe".to_owned(),
+            "0".to_owned(),
+        ])));
+        assert!(warned.insert(FrameGraphWarning::UndeclaredTransientRead(
+            "probe".to_owned(),
+            probe,
+        )));
+        assert!(!warned.insert(FrameGraphWarning::UndeclaredTransientRead(
+            "probe".to_owned(),
+            probe,
+        )));
     }
 }

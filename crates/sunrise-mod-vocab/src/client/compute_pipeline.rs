@@ -240,15 +240,8 @@ pub enum ComputeDispatchError {
     Pipeline(ComputePipelineError),
     /// A binding is missing, of the wrong kind, stale, or not allowed for this dispatch.
     ///
-    /// Declare a sampled transient on a consumer pass that does not write it, using
-    /// `.reads(FrameTarget::Transient(id))`: the graph computes lifetimes from declared uses.
-    /// An undeclared sample is refused here and logged once, even if the compute node lists
-    /// the transient in `.writes(...)` (which does not make it a storage image). A draw
-    /// sampling its own transient attachment returns [`crate::PipelineDrawError::TargetReadWriteHazard`];
-    /// a draw sampling a transient listed only in `.writes(...)` returns
-    /// [`crate::PipelineDrawError::InvalidBinding`].
-    /// Declaring both the read and the write is refused before recording with
-    /// [`crate::FrameGraphError::SelfDependency`]; split the producer and consumer instead.
+    /// It is also returned for a sampled transient the pass does not declare in its reads; see
+    /// [`crate::PipelineDrawError::InvalidBinding`] for what a pass declares.
     InvalidBinding,
     /// The device refused the sampler pipeline variant in renderer preparation, after submission.
     /// The dispatch is refused and the log names the pipeline and the device error.
