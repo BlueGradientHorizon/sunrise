@@ -2321,13 +2321,13 @@ impl ModPipelines {
             _ if sampler_layout.is_empty() => Some(base),
             _ => None,
         };
-        let id = base.source.recipe.id.clone();
         let frag = match target {
             VariantTarget::Pack(..) => self
                 .pack_fragment_of(slot, &base.source)
                 .ok_or(PipelineDrawError::VariantBuildFailed)?,
             _ => &base.source.fragment_shader,
         };
+        let id = base.source.recipe.id.clone();
         let result = self.compile(device, base.source.clone(), frag, target, sampler_layout, shared).map_err(|cause| {
             let error = PipelineDrawError::VariantBuildFailed;
             if self.warned_variants.insert(slot) {
