@@ -33,7 +33,7 @@ pub enum Class {
     Urgent,
     /// The chunks around the player: generation, light, meshing.
     Near,
-    /// Far terrain and the meshing of levels the player only views: runs on
+    /// The meshing of levels the player only views: runs on
     /// what the near work leaves, and never on every worker at once, so near
     /// work that arrives finds a worker free.
     Far,

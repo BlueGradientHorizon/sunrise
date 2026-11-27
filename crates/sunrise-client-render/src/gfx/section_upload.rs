@@ -608,8 +608,7 @@ impl Renderer {
         }
     }
     /// Video memory the arena keeps because fragmentation holds its pages
-    /// partly used (a render distance that went down, far tiles that were
-    /// replaced): moves the meshes off the sparsest page, a few MiB a frame,
+    /// partly used (a render distance that went down): moves the meshes off the sparsest page, a few MiB a frame,
     /// and `Arena::trim` returns the page once it is empty. Frames with the
     /// arena in system memory (video memory full) are slow, so this is what
     /// keeps the terrain in video memory. The section arena's: the large pages

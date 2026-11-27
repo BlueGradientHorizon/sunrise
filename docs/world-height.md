@@ -33,7 +33,7 @@ dimension type codec checks them (`LevelShape::new`). **`LevelShapes`** holds a 
 | Chunk storage (`chunk.rs`) | the chunk's own `min_y` and sections |
 | Light (`light.rs`) | the chunk's sections; the relighter the world's column (`LightWorld::layout`) |
 | World, streaming, meshing, renderer | `World::layout()`, the chunk's `min_y`, the renderer's layout |
-| Saves (`save.rs`) | `SaveDir.shape` (sections, `yPos`, heightmaps, light layers, far tiles) |
+| Saves (`save.rs`) | `SaveDir.shape` (sections, `yPos`, heightmaps, light layers) |
 | Network (`lan/`, `game/network/remote_chunks.rs`) | the level's shape on the host, the server's dimension type on the client |
 | Section caches, generation glue, flat worlds | the chunk's column, the generator's level range |
 | Gameplay (bounds, searches, commands, mobs) | `World::bottom_y`/`top_y` (the column), `World.shape`, `Game.server.level_shapes` |
