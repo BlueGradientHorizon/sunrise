@@ -342,6 +342,9 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
     let name = name.map_or_else(|| base.replace(['-', '_'], " "), str::to_string);
     let fill = |t: &str| t.replace("{id}", &id).replace("{name}", &name);
     match template {
+        None | Some("content") if sunrise.is_some() => {
+            return Err("--sunrise needs --template native".into());
+        }
         None | Some("content") => {}
         Some("native") => {
             new_native(dir, &id, sunrise, fetch, fill)?;
@@ -978,12 +981,30 @@ mod tests {
     }
 
     #[test]
+    fn new_refuses_a_build_pin_for_content_templates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("greeter");
+        for template in ["", "--template content"] {
+            let line = format!("{template} --sunrise {OLD_BUILD}");
+            let args: Vec<_> = std::iter::once(path.display().to_string())
+                .chain(argv(&line))
+                .collect();
+            let fetch = |_: &Path, _: &str| panic!("content templates must not fetch an SDK");
+            assert_eq!(
+                new(&args, &fetch).unwrap_err(),
+                "--sunrise needs --template native"
+            );
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
     fn both_templates_scaffold_an_unfinished_registry_page() {
         use sunrise_mod_package::page::Page;
         let workspace = tempfile::tempdir().unwrap();
         for template in ["content", "native"] {
             let project = workspace.path().join(template);
-            new(&code_args(&project, template), &offline).unwrap();
+            new(&template_args(&project, template), &offline).unwrap();
             assert!(project.join("page/.gitkeep").is_file());
             let caller =
                 std::fs::read_to_string(project.join(".github/workflows/sunrise-release.yml"))
@@ -1025,14 +1046,16 @@ mod tests {
         super::build_in(root, &Package::read(root)?.manifest)
     }
 
-    fn code_args(path: &Path, template: &str) -> [String; 5] {
-        [
+    fn template_args(path: &Path, template: &str) -> Vec<String> {
+        let mut args = vec![
             path.display().to_string(),
             "--template".into(),
             template.into(),
-            "--sunrise".into(),
-            OLD_BUILD.into(),
-        ]
+        ];
+        if template == "native" {
+            args.extend(["--sunrise".into(), OLD_BUILD.into()]);
+        }
+        args
     }
 
     #[cfg(unix)]
@@ -1044,7 +1067,7 @@ mod tests {
         let fetch = |_: &Path, _: &str| -> Result<sdk_fetch::PinnedSdk, String> {
             panic!("a refused path fetches nothing")
         };
-        let error = new(&code_args(&path, "native"), &fetch).unwrap_err();
+        let error = new(&template_args(&path, "native"), &fetch).unwrap_err();
         assert!(error.contains("already exists"), "{error}");
         assert_eq!(
             std::fs::read_link(&path).unwrap(),
@@ -1063,14 +1086,14 @@ mod tests {
             Err("no signed SDK".into())
         };
         assert_eq!(
-            new(&code_args(&path, "native"), &fetch).unwrap_err(),
+            new(&template_args(&path, "native"), &fetch).unwrap_err(),
             "no signed SDK"
         );
         assert!(!path.exists());
         // A folder that was there before is refused, not removed.
         std::fs::create_dir(&path).unwrap();
         std::fs::write(path.join("keep"), "mine").unwrap();
-        assert!(new(&code_args(&path, "native"), &fetch).is_err());
+        assert!(new(&template_args(&path, "native"), &fetch).is_err());
         assert_eq!(std::fs::read_to_string(path.join("keep")).unwrap(), "mine");
     }
 
@@ -1078,7 +1101,7 @@ mod tests {
     fn a_refused_pin_leaves_the_manifest_byte_for_byte() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("greeter");
-        new(&code_args(&path, "native"), &offline).unwrap();
+        new(&template_args(&path, "native"), &offline).unwrap();
         let before = std::fs::read(path.join(MANIFEST)).unwrap();
         // A build whose SDK cannot be fetched: nothing is written.
         let broken = |_: &Path, _: &str| Err("no such build".to_owned());
@@ -1092,7 +1115,7 @@ mod tests {
     fn pin_leaves_a_manifest_linked_outside_the_project_alone() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("greeter");
-        new(&code_args(&path, "native"), &offline).unwrap();
+        new(&template_args(&path, "native"), &offline).unwrap();
         let outside = tempfile::tempdir().unwrap();
         let real = outside.path().join(MANIFEST);
         std::fs::rename(path.join(MANIFEST), &real).unwrap();
@@ -1289,7 +1312,7 @@ mod tests {
         use sunrise_mod_package::{mixins_tool, sdk::Mixins};
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("example");
-        new(&code_args(&root, "native"), &offline).unwrap();
+        new(&template_args(&root, "native"), &offline).unwrap();
         let manifest = root.join(MANIFEST);
         let text = std::fs::read_to_string(&manifest).unwrap();
         let rev = mixins_tool::REV;
