@@ -57,7 +57,13 @@ name tags whatever the stage, sorted far to near. A position that is not
 finite (`DrawError::NonFinite`) is refused whole: nothing is drawn. Only visible text and styles
 are used, not click, hover or opaque metadata. `see_through` can show a
 label through any wall, which vanilla does only for the names its own renderers choose; the call
-sends nothing and reads nothing the client does not already hold."#]
+sends nothing and reads nothing the client does not already hold.
+
+`WorldDrawContext::text(origin, pose, &text, WorldTextOptions::default())` draws text under a
+pose of the mod's own (row-major 3x4 at `origin`), as `BlockEntityDrawContext::text` does: rolled,
+tilted, laid flat or turned to the camera as the pose says, glowing (full bright) or ringed with an
+outline as glowing sign text, and `text_width` measures a line to centre it. It draws with the
+labels."#]
     #[hook(
         receiver = "read",
         dispatch = "flat",
