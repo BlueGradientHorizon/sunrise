@@ -5344,7 +5344,12 @@ void main() {
 
             let width = depth.texture().width() + 16;
             let height = depth.texture().height() + 16;
-            game.client.renderer.0.as_mut().unwrap().resize(width, height);
+            game.client
+                .renderer
+                .0
+                .as_mut()
+                .unwrap()
+                .resize(width, height);
             let (resized_id, depth) = gpu.mod_world_depth_texture_view();
             assert_eq!(
                 [depth.texture().width(), depth.texture().height()],

@@ -11,7 +11,9 @@ use super::mod_render_targets::{
     ModRenderTargets, ResolvedOffscreenTarget, TargetMips, probe_render_capabilities,
 };
 use super::mod_storage::{ModStorageBuffers, ResolvedStorageRange};
-use super::mod_uniforms::{ATLAS_VIEW_ID, DYNAMIC_VIEW_ID_BIT, LIGHTMAP_VIEW_ID, ModUniformBuffers};
+use super::mod_uniforms::{
+    ATLAS_VIEW_ID, DYNAMIC_VIEW_ID_BIT, LIGHTMAP_VIEW_ID, ModUniformBuffers,
+};
 use mod_api::{
     BufferError, Identifier, MeshDescriptor, MeshDraw, MeshError, MeshRef, PipelineDrawError,
     PrimitiveTopology, ReadbackTicket, RenderCapabilities, RenderTargetDescriptor,
