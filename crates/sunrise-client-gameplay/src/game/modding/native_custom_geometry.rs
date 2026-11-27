@@ -4969,10 +4969,11 @@ mod tests {
 
             // The renderer's own textures that `TextureSource` binds resolve from the handles.
             let gpu = game.mod_gpu().unwrap();
-            assert_eq!(
-                gpu.mod_world_depth_texture_view().0,
-                sunrise_client::gfx::mod_uniforms::WORLD_DEPTH_VIEW_ID
-            );
+            // The world depth's view ID is issued anew when its texture is replaced, so it is
+            // none of the reserved ones and holds until then.
+            let world_depth = gpu.mod_world_depth_texture_view().0;
+            assert_eq!(world_depth, gpu.mod_world_depth_texture_view().0);
+            assert!(world_depth > sunrise_client::gfx::mod_uniforms::LIGHTMAP_VIEW_ID);
             assert_eq!(
                 gpu.mod_lightmap_texture_view().0,
                 sunrise_client::gfx::mod_uniforms::LIGHTMAP_VIEW_ID
