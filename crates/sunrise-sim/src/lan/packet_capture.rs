@@ -180,7 +180,7 @@ impl CaptureRun {
         self.clock.clone()
     }
 
-    pub(super) fn open_session(self: &Arc<Self>, conn: u32, player: &str) -> Option<SessionWriter> {
+    pub(super) fn open_session(&self, conn: u32, player: &str) -> Option<SessionWriter> {
         let clean_player = sanitize_field(player);
         let filename = format!("{}-{conn}.pkt", sanitize_filename(player));
         let path = self.dir.join(&filename);
@@ -328,7 +328,7 @@ impl SessionWriter {
             return;
         }
         self.closed = true;
-        let incomplete_reason = reason.or(self.overflowed.then_some("overflow"));
+        let incomplete_reason = reason.or_else(|| self.overflowed.then_some("overflow"));
         let cmd = Cmd::Close {
             session_id: self.session_id,
             expected_count: self.seq,

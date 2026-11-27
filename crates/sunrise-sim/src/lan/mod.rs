@@ -40,7 +40,7 @@ pub mod login_profile;
 pub mod menu;
 pub mod menu_extra_rev;
 #[cfg(feature = "net-trace")]
-pub mod packet_capture;
+pub(crate) mod packet_capture;
 #[cfg(test)]
 mod payload_bounds_tests;
 pub mod player_shown;
@@ -686,7 +686,7 @@ impl Shared {
         }
     }
     #[cfg(feature = "net-trace")]
-    pub(super) fn open_capture(
+    fn open_capture(
         &self,
         conn: u32,
         player: &str,
@@ -699,7 +699,7 @@ impl Shared {
         Some((capture.clock(), writer))
     }
     #[cfg(feature = "net-trace")]
-    pub(super) fn finish_capture(&self) {
+    fn finish_capture(&self) {
         if let Some(capture) = &self.capture {
             capture.finish();
         }

@@ -785,18 +785,6 @@ impl Conn {
         }
     }
 
-    #[cfg(feature = "net-trace")]
-    fn record_framed(
-        &mut self,
-        tick: i64,
-        body: Body,
-        meta: Option<super::packet_capture::PacketMeta>,
-    ) {
-        if let Some(capture) = &mut self.capture {
-            capture.record(tick, body, meta);
-        }
-    }
-
     /// Frame `batch` into `out`, `queued` ones counted off `pending`: false
     /// if one could not be.
     fn frame(&mut self, now: Instant, batch: FrameBatch, _queued: bool) -> bool {
@@ -804,7 +792,7 @@ impl Conn {
         let count = batch.bodies.len();
         #[cfg(feature = "net-trace")]
         let mut traces = batch.trace.into_iter();
-        for mut body in batch.bodies {
+        for body in batch.bodies {
             #[cfg(feature = "net-trace")]
             let entry = traces.next();
             // Do not insert a droppable packet between a bundle's delimiters.
@@ -831,16 +819,14 @@ impl Conn {
                 return false;
             }
             #[cfg(feature = "net-trace")]
-            if self.capture.is_some() {
+            if let Some(capture) = &mut self.capture {
                 let (tick, meta) = match entry {
                     Some(t) => (t.tick, t.meta),
-                    None => (
-                        self.capture.as_ref().map_or(0, |c| c.current_tick()),
-                        body.body.prepared_meta(),
-                    ),
+                    None => (capture.current_tick(), body.body.prepared_meta()),
                 };
+                let mut body = body;
                 let moved = std::mem::replace(&mut body.body, Body::Owned(Vec::new()));
-                self.record_framed(tick, moved, meta);
+                capture.record(tick, moved, meta);
             }
             #[cfg(any(test, feature = "test-payload-probe"))]
             {
@@ -921,8 +907,9 @@ impl Conn {
                     return self.end(now, e.to_string());
                 }
                 #[cfg(feature = "net-trace")]
-                if let Some(tick) = self.capture.as_ref().map(|c| c.current_tick()) {
-                    self.record_framed(tick, body, None);
+                if let Some(capture) = &mut self.capture {
+                    let tick = capture.current_tick();
+                    capture.record(tick, body, None);
                 }
                 continue;
             }
@@ -1472,7 +1459,7 @@ mod tests {
     fn serve_captured(
         server: Connection,
         probe: impl FnOnce(Sender<Seen>) -> Probe,
-        run: &Arc<crate::lan::packet_capture::CaptureRun>,
+        run: &crate::lan::packet_capture::CaptureRun,
         conn: u32,
         player: &str,
     ) -> Served {
@@ -1595,11 +1582,7 @@ mod tests {
         while let Ok((id, payload)) = client.recv() {
             peer_seen.push(encoded_meta(id, &payload));
         }
-        loop {
-            if matches!(served.next(), Seen::Closed) {
-                break;
-            }
-        }
+        while !matches!(served.next(), Seen::Closed) {}
         // Sending after close is rejected by the outbox and produces no row.
         assert!(!served.outbox.try_send(vec![Body::from(body(8, 3))], None));
         run.finish();
@@ -1680,7 +1663,7 @@ mod tests {
         run.finish();
 
         let (recorded, footer) = parse_recorded(&dir.path().join("Dave-1.pkt"));
-        assert_eq!(recorded, vec![encoded_meta(id, &payload)]);
+        assert_eq!(recorded, [encoded_meta(id, &payload)]);
         assert_eq!(
             recorded[0],
             (meta.id, meta.len, format!("{:032x}", meta.hash))
