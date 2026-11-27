@@ -114,6 +114,15 @@ owner_random!(
     true
 );
 
+#[cfg(feature = "rng-count")]
+impl LevelRandom {
+    /// Wrap a temporary placeholder without counting draws on it as live level draws.
+    #[inline]
+    pub(super) const fn untracked(random: LegacyRandom) -> Self {
+        Self(random.with_level_owned(false))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1562,8 +1562,11 @@ impl crate::game::ServerGame<'_> {
 
     /// Tick shared functions before levels, then player connections, between the server tick hooks.
     pub fn tick_server(&mut self, paused: bool) -> Result<()> {
+        let rng_tick = crate::rng_count::begin_tick();
         let result = self.with_residency_tick(|game| game.tick_server_body(paused));
-        crate::rng_count::publish_tick();
+        if result.is_ok() {
+            rng_tick.publish();
+        }
         result
     }
 
@@ -1640,9 +1643,10 @@ impl crate::game::ServerGame<'_> {
                 if running.is_some() && self.server.lan.is_some() {
                     let holding = sunrise_sim::lan::Holding::start();
                     result = sunrise_level::spans::time("lan_guest_connections", || {
-                        crate::rng_count::in_phase(crate::rng_count::Phase::PlayerActions, || {
-                            self.tick_guest_connections(true)
-                        })
+                        crate::rng_count::in_consumer(
+                            crate::rng_count::Consumer::LanGuestConnections,
+                            || self.tick_guest_connections(true),
+                        )
                     });
                     if result.is_ok()
                         && let Some(host) = self.server.lan.as_mut()

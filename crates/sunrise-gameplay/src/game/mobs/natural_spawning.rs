@@ -1556,13 +1556,13 @@ impl<'a> crate::game::ServerGame<'a> {
         }
         let from = self.lan_synced_from();
         sunrise_level::spans::time("spawn_raids", || {
-            crate::rng_count::in_phase(crate::rng_count::Phase::Raids, || self.tick_raids())
+            crate::rng_count::in_consumer(crate::rng_count::Consumer::Raids, || self.tick_raids())
         });
         // `ServerChunkCache.tickChunks` skips the entire chunk-spawning phase
         // (natural spawning and custom spawners) in debug worlds.
         if !self.server.world_debug {
             sunrise_level::spans::time("spawn_natural", || {
-                crate::rng_count::in_phase(crate::rng_count::Phase::NaturalSpawning, || {
+                crate::rng_count::in_consumer(crate::rng_count::Consumer::NaturalSpawning, || {
                     self.spawn_natural()
                 })
             });
@@ -1574,9 +1574,10 @@ impl<'a> crate::game::ServerGame<'a> {
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             {
                 sunrise_level::spans::time("spawn_custom", || {
-                    crate::rng_count::in_phase(crate::rng_count::Phase::NaturalSpawning, || {
-                        self.tick_custom_spawners()
-                    })
+                    crate::rng_count::in_consumer(
+                        crate::rng_count::Consumer::CustomSpawners,
+                        || self.tick_custom_spawners(),
+                    )
                 });
             }
         }
@@ -1618,7 +1619,7 @@ impl<'a> crate::game::ServerGame<'a> {
         laps.lap("sn_inhabited");
         let mut random = std::mem::replace(
             &mut self.common.world.random,
-            sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(0)),
+            crate::rng_count::placeholder_level(LegacyRandom::new(0)),
         );
         scratch.pass.players.refresh(self);
         scratch.pass.costed.clear();

@@ -1821,7 +1821,7 @@ impl crate::game::ServerGame<'_> {
     /// sees the support (#4510). `tick_lan` then syncs the level; a paused
     /// tick that never calls this still drains inside `tick_lan`.
     pub fn tick_lan_packets(&mut self) {
-        let _rng = crate::rng_count::guard(crate::rng_count::Phase::PlayerActions);
+        let _rng = crate::rng_count::guard_consumer(crate::rng_count::Consumer::LanPackets);
         if self.server.level_pass.packets_drained {
             return;
         }
@@ -2203,14 +2203,15 @@ impl crate::game::ServerGame<'_> {
         let defer_connections = self.server.level_pass.running.is_some();
         if !paused {
             sunrise_level::spans::time("lan_guests", || {
-                crate::rng_count::in_phase(crate::rng_count::Phase::PlayerActions, || {
+                crate::rng_count::in_consumer(crate::rng_count::Consumer::LanGuests, || {
                     self.tick_level_guests()
                 })
             });
             if !defer_connections {
-                crate::rng_count::in_phase(crate::rng_count::Phase::PlayerActions, || {
-                    self.tick_guest_connections(false)
-                })
+                crate::rng_count::in_consumer(
+                    crate::rng_count::Consumer::LanGuestConnections,
+                    || self.tick_guest_connections(false),
+                )
                 .expect("the current-level connection pass does not switch levels");
             }
             // Ridden vehicles enter their portals on the level path.
@@ -2452,7 +2453,7 @@ impl crate::game::ServerGame<'_> {
                 return;
             };
             let processed = sunrise_level::spans::time("lan_process_events", || {
-                crate::rng_count::in_phase(crate::rng_count::Phase::PlayerActions, || {
+                crate::rng_count::in_consumer(crate::rng_count::Consumer::LanEvents, || {
                     self.lan_process_events(host, events, entities, spawn)
                 })
             });
