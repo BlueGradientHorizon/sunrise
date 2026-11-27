@@ -56,12 +56,9 @@ fn expand_items(
             {
                 let sources =
                     exports.ok_or("vocabulary exports include without its source fragments")?;
-                let (_, source) = sources
-                    .iter()
-                    .find(|(name, _)| file_name == name.as_str())
-                    .ok_or_else(|| {
-                        format!("unknown vocabulary export include: {}", path.display())
-                    })?;
+                let source = sources.get(file_name).ok_or_else(|| {
+                    format!("unknown vocabulary export include: {}", path.display())
+                })?;
                 items.extend(syn::parse_file(source).map_err(|e| e.to_string())?.items);
                 continue;
             }
@@ -249,6 +246,22 @@ mod tests {
             .expect("out_dir concat include should expand");
         assert_eq!(items.len(), 1);
         assert!(matches!(items[0], Item::Fn(_)));
+    }
+
+    #[test]
+    fn unsupported_out_dir_includes_do_not_require_export_fragments() {
+        for source in [
+            r#"include!(concat!("/mod_api_exports_root.rs/", env!("OUT_DIR")));"#,
+            r#"include!(concat!(env!("OUT_DIR"), env!("OUT_DIR"), "/mod_api_exports_root.rs"));"#,
+            r#"include!(concat!(env!("OUT_DIR"), "mod_api_exports_root.rs"));"#,
+        ] {
+            let parsed = syn::parse_file(source).expect("parse source");
+            let items = expand_items(Path::new("/tmp/crate"), None, parsed.items)
+                .expect("unsupported include should not require exports");
+            assert!(
+                matches!(items.as_slice(), [Item::Macro(mac)] if mac.mac.path.is_ident("include"))
+            );
+        }
     }
 
     #[test]

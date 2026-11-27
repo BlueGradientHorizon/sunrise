@@ -52,7 +52,7 @@ pub(crate) fn expand(root: &Path, source: &str) -> Result<String, String> {
                     Path::new(""),
                 )?
                 && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
-                && let Some((_, code)) = sources.iter().find(|(name, _)| file_name == name.as_str())
+                && let Some(code) = sources.get(file_name)
             {
                 out.extend(syn::parse_file(code).map_err(|e| e.to_string())?.items);
                 continue;
@@ -190,6 +190,36 @@ mod tests {
             "parts families declare public names but have no exports/parts_<family>.rs \
              (add one, or start the family file with `// exports: none`): {missing:?}"
         );
+    }
+
+    #[test]
+    fn expand_only_replaces_supported_known_out_dir_includes() {
+        let fixture = tempfile::tempdir().unwrap();
+        let dir = fixture.path().join(DIRECTORY);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("probe.rs"),
+            "pub use crate::probe::GeneratedSentinel;",
+        )
+        .unwrap();
+
+        let canonical = r#"include!(concat!(env!("OUT_DIR"), "/mod_api_exports_root.rs"));"#;
+        let expanded = expand(fixture.path(), canonical).unwrap();
+        assert!(expanded.contains("GeneratedSentinel"));
+
+        for source in [
+            r#"include!(concat!("/mod_api_exports_root.rs/", env!("OUT_DIR")));"#,
+            r#"include!(concat!(env!("OUT_DIR"), env!("OUT_DIR"), "/mod_api_exports_root.rs"));"#,
+            r#"include!(concat!(env!("OUT_DIR"), "mod_api_exports_root.rs"));"#,
+            r#"include!(concat!(env!("OUT_DIR"), "/mod_api_exports_unknown.rs"));"#,
+        ] {
+            let expanded = expand(fixture.path(), source).unwrap();
+            let parsed = syn::parse_file(&expanded).unwrap();
+            assert!(
+                matches!(parsed.items.as_slice(), [Item::Macro(mac)] if mac.mac.path.is_ident("include")),
+                "unexpected expansion: {expanded}"
+            );
+        }
     }
 
     #[test]

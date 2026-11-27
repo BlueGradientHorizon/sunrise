@@ -27,35 +27,31 @@ pub fn env_concat_include(
     let arguments = <syn::punctuated::Punctuated<syn::Expr, syn::Token![,]>>::parse_terminated
         .parse2(expression.mac.tokens)
         .map_err(|e| e.to_string())?;
-    let mut literal = String::new();
-    let mut saw_var = false;
-    for (index, argument) in arguments.into_iter().enumerate() {
-        match argument {
-            syn::Expr::Lit(syn::ExprLit {
-                lit: syn::Lit::Str(value),
-                ..
-            }) => literal.push_str(&value.value()),
-            syn::Expr::Macro(env_macro)
-                if env_macro.mac.path.is_ident("env")
-                    && syn::parse2::<syn::LitStr>(env_macro.mac.tokens.clone())
-                        .is_ok_and(|name| name.value() == var) =>
-            {
-                if !replacement.as_os_str().is_empty() && index != 0 {
-                    return Ok(None);
-                }
-                saw_var = true;
-            }
-            _ => return Ok(None),
-        }
+    let mut arguments = arguments.into_iter();
+    let Some(syn::Expr::Macro(env_macro)) = arguments.next() else {
+        return Ok(None);
+    };
+    if !env_macro.mac.path.is_ident("env")
+        || !syn::parse2::<syn::LitStr>(env_macro.mac.tokens).is_ok_and(|name| name.value() == var)
+    {
+        return Ok(None);
     }
-    if !saw_var {
+    let mut literal = String::new();
+    for argument in arguments {
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(value),
+            ..
+        }) = argument
+        else {
+            return Ok(None);
+        };
+        literal.push_str(&value.value());
+    }
+    if !literal.starts_with(std::path::is_separator) {
         return Ok(None);
     }
     if replacement.as_os_str().is_empty() {
         return Ok(Some(PathBuf::from(literal)));
-    }
-    if !literal.is_empty() && !literal.starts_with(std::path::is_separator) {
-        return Ok(None);
     }
 
     // The leading separator belongs to the concat suffix, not a new root.
