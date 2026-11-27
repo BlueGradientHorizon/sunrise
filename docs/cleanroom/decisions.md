@@ -62,10 +62,10 @@ the full list.
 - **Tests:** `gfx::pack_uniforms::initial_history_tests::custom_uniforms_read_every_player_boolean`,
   `gfx::pack_uniforms::initial_history_tests::programs_read_only_six_player_booleans` and
   `gfx::pack_post::player_boolean_tests::compute_and_quad_programs_read_only_the_listed_player_booleans`
-  (`sunrise-client-render`); the daily `game::shader_packs::player_status_tests::pack_status_follows_the_player`,
-  `game::shader_packs::player_status_tests::pack_status_leaves_queued_effects_alone`,
-  `game::shader_packs::player_status_tests::pack_status_on_a_server_follows_what_it_sent` and
-  `game::shader_packs::player_status_tests::pack_status_starts_over_with_a_new_local_player` (`sunrise-client`).
+  (`sunrise-client-render`); the daily `game::server_side::shader_packs_server::player_status_tests::pack_status_follows_the_player`,
+  `game::server_side::shader_packs_server::player_status_tests::pack_status_leaves_queued_effects_alone`,
+  `game::client_side::shader_packs::player_status_tests::pack_status_on_a_server_follows_what_it_sent` and
+  `game::client_side::shader_packs::player_status_tests::pack_status_starts_over_with_a_new_local_player` (`sunrise-client`).
 
 ## D-3: an image whose format qualifier differs from its buffer's format
 
@@ -233,5 +233,5 @@ the full list.
   names, the raid's titles and ordinary red notched bars, ordinals past the enum, several bars, removal, style and
   flag updates), `pack_uniforms::boss_battle_test::*`
   (`sunrise-render-shaderpack`: the value and its type, in programs and in custom uniforms) and the daily
-  `game::boss_battle_tests::boss_battle_follows_the_servers_boss_bars` (`sunrise-client`: packets to the frame's
+  `game::client_side::boss_battle_tests::boss_battle_follows_the_servers_boss_bars` (`sunrise-client-gameplay`: packets to the frame's
   inputs).
