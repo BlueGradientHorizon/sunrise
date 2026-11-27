@@ -4970,10 +4970,6 @@ mod tests {
             // The renderer's own textures that `TextureSource` binds resolve from the handles.
             let gpu = game.mod_gpu().unwrap();
             assert_eq!(
-                gpu.mod_world_depth_texture_view().0,
-                sunrise_client::gfx::mod_uniforms::WORLD_DEPTH_VIEW_ID
-            );
-            assert_eq!(
                 gpu.mod_lightmap_texture_view().0,
                 sunrise_client::gfx::mod_uniforms::LIGHTMAP_VIEW_ID
             );
@@ -5078,13 +5074,14 @@ mod tests {
             host: &dyn ClientHost,
             event: &mut mod_api::FrameGraphSetupEvent<'_>,
         ) {
-            let target = host
-                .create_render_target(
+            let target = *self.0.lock().unwrap().get_or_insert_with(|| {
+                host.create_render_target(
                     &mod_api::RenderTargetDescriptor::new([1, 1])
                         .color_target(mod_api::RenderTargetFormat::Rgba8Unorm)
                         .storage(mod_api::StorageImageAccess::WriteOnly),
                 )
-                .unwrap();
+                .unwrap()
+            });
             let pipeline = host
                 .render_assets()
                 .compute_pipeline(&Identifier::parse("depth_probe:sample").unwrap())
@@ -5110,20 +5107,149 @@ mod tests {
                     },
                 )
                 .unwrap();
-            *self.0.lock().unwrap() = Some(target);
         }
+    }
+
+    /// A frame hook that hands the renderer the frame graph a fixture recorded, to feed it
+    /// through the renderer's ordinary `FrameGraphRunner` while the fixture's world assets and
+    /// stages stay as they are. It also notes the world depth view `gpu` publishes (its view ID
+    /// and size) each time the frame reaches its custom geometry boundary.
+    struct Recorded<'a> {
+        graph: Option<sunrise_client::gfx::mod_frame_graph::RecordedFrameGraph>,
+        gpu: &'a sunrise_client::gfx::ModGpuResources,
+        depth_seen: Vec<(u64, [u32; 2])>,
+    }
+    impl sunrise_client::gfx::world_primitives::FrameHooks for Recorded<'_> {
+        fn wants_after_sky(&self) -> bool {
+            false
+        }
+        fn on_custom_geometry(&mut self, _: &[mod_api::RenderableSection], _: bool) {
+            let (id, depth) = self.gpu.mod_world_depth_texture_view();
+            self.depth_seen
+                .push((id, [depth.texture().width(), depth.texture().height()]));
+        }
+        fn take_frame_graph(
+            &mut self,
+        ) -> Option<sunrise_client::gfx::mod_frame_graph::RecordedFrameGraph> {
+            self.graph.take()
+        }
+        fn on_after_sky(&mut self, _: &[mod_api::RenderableSection], _: bool) {}
+        fn on_prepare_render_buffers(
+            &mut self,
+            _: &[mod_api::RenderableSection],
+            _: bool,
+            _: &mut sunrise_client::gfx::world_primitives::PreparedHookGeometry,
+        ) {
+        }
+        fn on_render_stage(
+            &mut self,
+            _: RenderLevelStage,
+            _: &[mod_api::RenderableSection],
+            _: bool,
+        ) -> &[sunrise_client::gfx::world_primitives::DrawRanges] {
+            &[]
+        }
+        fn prepared_primitives(&self) -> sunrise_client::gfx::world_primitives::Batch<'_> {
+            Default::default()
+        }
+        fn on_after_level(&mut self, _: &[mod_api::RenderableSection], _: bool) {}
+    }
+
+    /// Clear world depth, record and render the `WorldDepthCompute` frame graph, and read back
+    /// the pixel the compute pass wrote. Returns what `render` returned with that pixel.
+    fn world_depth_frame(
+        game: &mut ClientGame<'_>,
+        depth: &wgpu::TextureView,
+        value: f32,
+        render: &std::sync::Arc<sunrise_client_render::assets::RenderAssets>,
+        probe: &Mutex<Option<mod_api::RenderTargetRef>>,
+        gpu: &sunrise_client::gfx::ModGpuResources,
+    ) -> (bool, [u8; 4]) {
+        use mod_api::__private::take_hook_panics;
+        use sunrise_client::gfx::world_primitives::FrameHooks;
+        let renderer = game.client.renderer.0.as_ref().unwrap();
+        let mut encoder = renderer.device.create_command_encoder(&Default::default());
+        // Initialize/store the actual view that WorldDepth resolves. This node runs before
+        // the normal world pass so its known value is independent of world geometry and
+        // the engine's unrelated store policy for graph reads later in the frame.
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(value),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        }));
+        renderer.queue.submit([encoder.finish()]);
+
+        let camera = test_camera([0.0; 3], Mat4::IDENTITY);
+        let mut draw = WorldGeometry::default();
+        draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+        let original = std::mem::replace(&mut game.client.client_pack.render, render.clone());
+        let graph = {
+            let mut driver = GameWorldStageDriver::new(game, &camera, 0.0, &mut draw);
+            driver.on_frame_graph_setup(&[], false);
+            driver.take_frame_graph().expect("native compute graph")
+        };
+        game.client.client_pack.render = original;
+        let panics = take_hook_panics();
+        assert!(panics.is_empty(), "{panics:?}");
+        let mut hooks = Recorded {
+            graph: Some(graph),
+            gpu,
+            depth_seen: Vec::new(),
+        };
+        let drawn = game
+            .render_with(|renderer, frame| renderer.render(frame, Some(&mut hooks)))
+            .unwrap();
+        let target = probe.lock().unwrap().expect("native output target");
+        let (_, view, _) = gpu
+            .resolve_mod_render_target_color(Some("depth_probe"), target, 0)
+            .unwrap();
+        let renderer = game.client.renderer.0.as_ref().unwrap();
+        let readback = renderer.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("native compute output"),
+            size: 256,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = renderer.device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            view.texture().as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(256),
+                    rows_per_image: None,
+                },
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        renderer.queue.submit([encoder.finish()]);
+        let slice = readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |result| result.unwrap());
+        renderer
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        let pixel = <[u8; 4]>::try_from(&slice.get_mapped_range().unwrap()[..4]).unwrap();
+        (drawn, pixel)
     }
 
     #[test]
     #[ignore = "daily"]
-    fn native_frame_graph_compute_reads_live_world_depth_with_the_default_sampler() {
+    fn native_frame_graph_compute_reads_world_depth_after_resize_with_the_default_sampler() {
         use mod_api::__private::{game::RegistrationContextNew, take_hook_panics};
-        use sunrise_client::gfx::{
-            mod_frame_graph::RecordedFrameGraph,
-            world_primitives::{self, FrameHooks},
-        };
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::native_custom_geometry::tests::native_frame_graph_compute_reads_live_world_depth_with_the_default_sampler",
+            "game::client_side::native_custom_geometry::tests::native_frame_graph_compute_reads_world_depth_after_resize_with_the_default_sampler",
             "SUNRISE_MOD_WORLD_DEPTH_COMPUTE_CHILD",
             &["run"],
         ) {
@@ -5183,125 +5309,109 @@ void main() {
                 7,
             )
             .unwrap();
-            let mut renderer = game.client.renderer.0.take().unwrap();
-            renderer
+            game.client
+                .renderer
+                .0
+                .as_mut()
+                .unwrap()
                 .build_mod_pipelines(&render.mod_pipelines, &|_| None)
                 .unwrap();
-            let original = std::mem::replace(
-                &mut game.client.client_pack.render,
-                std::sync::Arc::new(render),
-            );
-            let (_, depth) = game.mod_gpu().unwrap().mod_world_depth_texture_view();
-            let mut encoder = renderer.device.create_command_encoder(&Default::default());
-            // Initialize/store the actual view that WorldDepth resolves. This node runs before
-            // the normal world pass so its known value is independent of world geometry and
-            // the engine's unrelated store policy for graph reads later in the frame.
-            drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(0.25),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                ..Default::default()
-            }));
-            renderer.queue.submit([encoder.finish()]);
-
-            let camera = test_camera([0.0; 3], Mat4::IDENTITY);
-            let mut draw = WorldGeometry::default();
-            draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            let graph = {
-                let mut driver = GameWorldStageDriver::new(game, &camera, 0.0, &mut draw);
-                driver.on_frame_graph_setup(&[], false);
-                driver.take_frame_graph().expect("native compute graph")
-            };
-            let panics = take_hook_panics();
-            assert!(panics.is_empty(), "{panics:?}");
-            game.client.client_pack.render = original;
-            game.client.renderer.0 = Some(renderer);
-
-            // Feed the real recorded graph to the renderer while preserving the fixture's
-            // ordinary world assets and stages. The dispatch still enters through Game and
-            // executes through the renderer's normal FrameGraphRunner.
-            struct Recorded(Option<RecordedFrameGraph>);
-            impl FrameHooks for Recorded {
-                fn wants_after_sky(&self) -> bool {
-                    false
-                }
-                fn on_custom_geometry(&mut self, _: &[mod_api::RenderableSection], _: bool) {}
-                fn take_frame_graph(&mut self) -> Option<RecordedFrameGraph> {
-                    self.0.take()
-                }
-                fn on_after_sky(&mut self, _: &[mod_api::RenderableSection], _: bool) {}
-                fn on_prepare_render_buffers(
-                    &mut self,
-                    _: &[mod_api::RenderableSection],
-                    _: bool,
-                    _: &mut world_primitives::PreparedHookGeometry,
-                ) {
-                }
-                fn on_render_stage(
-                    &mut self,
-                    _: RenderLevelStage,
-                    _: &[mod_api::RenderableSection],
-                    _: bool,
-                ) -> &[world_primitives::DrawRanges] {
-                    &[]
-                }
-                fn prepared_primitives(&self) -> world_primitives::Batch<'_> {
-                    Default::default()
-                }
-                fn on_after_level(&mut self, _: &[mod_api::RenderableSection], _: bool) {}
-            }
-            let mut hooks = Recorded(Some(graph));
-            assert!(
-                game.render_with(|renderer, frame| renderer.render(frame, Some(&mut hooks)))
-                    .unwrap()
-            );
-            let target = probe.lock().unwrap().expect("native output target");
-            let (_, view, _) = game
-                .mod_gpu()
-                .unwrap()
-                .resolve_mod_render_target_color(Some("depth_probe"), target, 0)
-                .unwrap();
-            let renderer = game.client.renderer.0.as_ref().unwrap();
-            let readback = renderer.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("native compute output"),
-                size: 256,
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            });
-            let mut encoder = renderer.device.create_command_encoder(&Default::default());
-            encoder.copy_texture_to_buffer(
-                view.texture().as_image_copy(),
-                wgpu::TexelCopyBufferInfo {
-                    buffer: &readback,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(256),
-                        rows_per_image: None,
-                    },
-                },
-                wgpu::Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-            );
-            renderer.queue.submit([encoder.finish()]);
-            let slice = readback.slice(..);
-            slice.map_async(wgpu::MapMode::Read, |result| result.unwrap());
-            renderer
-                .device
-                .poll(wgpu::PollType::wait_indefinitely())
-                .unwrap();
-            // Depth 0.25: red 0.25 * 255 = 63.75 rounds to 64, green 0.4 * 255 = 102
-            // exactly, blue 0.75 * 255 = 191.25 rounds to 191; no channel is a tie.
+            let render = std::sync::Arc::new(render);
+            let gpu = game.mod_gpu().unwrap().clone();
+            // Depth 0.25 and 0.75 times 255 give 63.75 and 191.25: they round to 64 and 191;
+            // green 0.4 times 255 rounds to 102.
+            let (initial_id, depth) = gpu.mod_world_depth_texture_view();
             assert_eq!(
-                &slice.get_mapped_range().unwrap()[..4],
-                &[64, 102, 191, 255]
+                world_depth_frame(game, &depth, 0.25, &render, &probe, &gpu),
+                (true, [64, 102, 191, 255])
+            );
+            assert_eq!(gpu.mod_world_depth_texture_view().0, initial_id);
+
+            let width = depth.texture().width() + 16;
+            let height = depth.texture().height() + 16;
+            game.client
+                .renderer
+                .0
+                .as_mut()
+                .unwrap()
+                .resize(width, height);
+            let (resized_id, depth) = gpu.mod_world_depth_texture_view();
+            assert_eq!(
+                [depth.texture().width(), depth.texture().height()],
+                [width, height]
+            );
+            assert_ne!(resized_id, initial_id);
+            assert_eq!(
+                world_depth_frame(game, &depth, 0.75, &render, &probe, &gpu),
+                (true, [191, 102, 64, 255])
+            );
+            drop(game.client.renderer.0.take());
+            drop(game.client.mod_gpu.take());
+        });
+    }
+
+    /// A screenshot twice the window's size draws one frame over a world depth of its own
+    /// (`Renderer::draw_scaled_frame`), and the window's depth comes back under a view ID no
+    /// earlier view had. Only view IDs and sizes are compared.
+    #[test]
+    #[ignore = "daily"]
+    fn a_scaled_screenshot_reads_its_own_world_depth_then_a_new_window_id() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::client_side::native_custom_geometry::tests::a_scaled_screenshot_reads_its_own_world_depth_then_a_new_window_id",
+            "SUNRISE_MOD_SCALED_SCREENSHOT_DEPTH_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
+
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let (event_loop, window) =
+                crate::game::native_hooks::particle_count_tests::hidden_window();
+            game.common.options.offscreen = true;
+            game.client.title.0 = None;
+            game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
+            let renderer = game.new_renderer(window.clone()).unwrap();
+            game.set_renderer(renderer);
+            game.client.window.0 = Some(window);
+            // Keep the window/event loop alive through GPU teardown.
+            let _event_loop = event_loop;
+
+            let gpu = game.mod_gpu().unwrap().clone();
+            let (window_id, depth) = gpu.mod_world_depth_texture_view();
+            let window_size = [depth.texture().width(), depth.texture().height()];
+            {
+                let renderer = game.client.renderer.0.as_mut().unwrap();
+                renderer.screenshot_quality = 2;
+                renderer.screenshot = Some(sunrise_client::gfx::ScreenshotRequest {
+                    path: "unused.png".into(),
+                    size: None,
+                    scaled: true,
+                    background: false,
+                });
+            }
+            let mut hooks = Recorded {
+                graph: None,
+                gpu: &gpu,
+                depth_seen: Vec::new(),
+            };
+            let drawn = game
+                .render_with(|renderer, frame| renderer.render(frame, Some(&mut hooks)))
+                .unwrap();
+            assert!(!drawn, "the screenshot frame never reaches the window");
+
+            // Inside the frame: a depth of another ID and another size than the window's.
+            assert_eq!(hooks.depth_seen.len(), 1);
+            let (scaled_id, scaled_size) = hooks.depth_seen[0];
+            assert_ne!(scaled_id, window_id);
+            assert_ne!(scaled_size, window_size);
+
+            // After it: the window's size again, under an ID neither of the two views had.
+            let (restored_id, depth) = gpu.mod_world_depth_texture_view();
+            assert_ne!(restored_id, scaled_id);
+            assert_ne!(restored_id, window_id);
+            assert_eq!(
+                [depth.texture().width(), depth.texture().height()],
+                window_size
             );
             drop(game.client.renderer.0.take());
             drop(game.client.mod_gpu.take());
