@@ -330,6 +330,9 @@ mod normalized_image_tests;
 mod work_group_fold_tests;
 
 #[cfg(test)]
+mod indirect_dispatch_tests;
+
+#[cfg(test)]
 mod forced_flip_tests;
 
 #[cfg(test)]
