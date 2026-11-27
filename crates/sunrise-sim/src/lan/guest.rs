@@ -1273,9 +1273,7 @@ impl Guest {
     /// modifies it (40 after `/attribute @s minecraft:max_health base set
     /// 40`, not 20).
     pub fn respawn_health(&self, resources: &crate::motion::MotionResources) -> f32 {
-        let Ok(mut body) = PlayerMotion::new(resources, Vec3::ZERO) else {
-            return 20.0;
-        };
+        let mut body = PlayerMotion::new(resources, Vec3::ZERO);
         let _ = body.apply_saved_attributes(self.carried_attributes.as_ref());
         body.attribute("minecraft:max_health")
             .map_or(20.0, |max| max as f32)

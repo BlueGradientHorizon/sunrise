@@ -104,7 +104,7 @@ fn accepted_hit_moves_through_teleport_restore_but_not_respawn() {
     let hit = Arc::new(AcceptedHit::capture(source, &attack, None));
     for restore_all in [true, false] {
         let mut player = guest(2);
-        assert!(initialize(&resources, &mut player));
+        initialize(&resources, &mut player);
         player.motion.as_mut().unwrap().health.accepted_hit = Some(hit.clone());
         let previous = player.new_body(restore_all).unwrap();
         if restore_all {
@@ -123,7 +123,7 @@ fn accepted_hit_moves_through_teleport_restore_but_not_respawn() {
                 "a new living identity inherits no accepted blow"
             );
         }
-        assert!(initialize(&resources, &mut player));
+        initialize(&resources, &mut player);
         assert!(
             player.carried_hit.is_none(),
             "initialization consumes the pending owner once"
@@ -155,11 +155,11 @@ fn entity_tick_count_moves_through_teleport_bodies_but_respawn_starts_at_zero() 
     let resources = MotionResources::load(&root, &assets).unwrap();
 
     let mut guest = guest(2);
-    assert!(initialize(&resources, &mut guest));
+    initialize(&resources, &mut guest);
     guest.motion.as_mut().unwrap().health.tick_count = 123;
     guest.new_body(true);
     assert_eq!(guest.carried_tick_count, Some(123));
-    assert!(initialize(&resources, &mut guest));
+    initialize(&resources, &mut guest);
     assert_eq!(guest.motion.as_ref().unwrap().health.tick_count, 123);
 
     guest.new_body(true);
@@ -167,7 +167,7 @@ fn entity_tick_count_moves_through_teleport_bodies_but_respawn_starts_at_zero() 
     assert!(guest.motion.is_none());
     guest.new_body(false);
     assert_eq!(guest.carried_tick_count, None);
-    assert!(initialize(&resources, &mut guest));
+    initialize(&resources, &mut guest);
     assert_eq!(guest.motion.as_ref().unwrap().health.tick_count, 0);
 }
 

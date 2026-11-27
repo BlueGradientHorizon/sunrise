@@ -199,8 +199,7 @@ impl crate::game::ServerGame<'_> {
         let motion = PlayerMotion::new(
             self.common.motion,
             sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),
-        )
-        .ok()?;
+        );
         let host = self.server.lan.as_mut()?;
         let conn = host.hub.lan.shared.next_id()?;
         let mut guest = Guest::connectionless(conn, uuid, name.into(), entity_id, [0.0; 3], motion);

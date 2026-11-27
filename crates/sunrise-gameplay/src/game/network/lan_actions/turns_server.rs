@@ -161,12 +161,9 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or(0) as i32
         });
         if fresh {
-            let initialized = host.hub.guests.update(i, |guest| {
+            host.hub.guests.update(i, |guest| {
                 super::guest_body::initialize(self.common.motion, guest)
             });
-            if !initialized {
-                return Err(TurnRefused::Gone);
-            }
         }
         // Refusal must leave canonical records and loan state untouched.
         let Some(mut motion) = host.hub.guests.update(i, |g| g.motion.take()) else {
