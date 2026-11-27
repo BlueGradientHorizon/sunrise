@@ -617,7 +617,7 @@ pub struct Resources<'a> {
     pub mod_depth_target: std::cell::Cell<Option<usize>>,
     /// Depth comparison function for the pass currently being built.
     pub depth_compare: std::cell::Cell<wgpu::CompareFunction>,
-    /// The linked mod pass's depth bias, if one is being built.
+    /// The linked mod pass's declared depth bias; `None` leaves the pack program's own bias.
     pub mod_depth_bias: std::cell::Cell<Option<wgpu::DepthBiasState>>,
     /// The mod's own vertex stage for the pass about to be built, which `build_pass` takes and
     /// links to that pass's fragment stage ([`ModProgramMode::ModVertexPackFragment`]).
@@ -2865,7 +2865,7 @@ impl PackPost {
                 };
                 pack.mod_depth_target.set(active_depth);
                 pack.depth_compare.set(spec.depth_compare);
-                pack.mod_depth_bias.set(Some(spec.depth_bias));
+                pack.mod_depth_bias.set(spec.depth_bias);
                 *pack.mod_vertex.borrow_mut() = own_stage.cloned();
                 let built_pass = build(program, Some(&mod_geometry));
                 pack.mod_vertex.borrow_mut().take();
