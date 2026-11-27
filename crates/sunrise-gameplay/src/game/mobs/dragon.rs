@@ -3559,17 +3559,12 @@ impl crate::game::ServerGame<'_> {
         if health != 1.0 {
             meta.push((9, serializer::FLOAT, Value::Float(health)));
         }
-        // Mob.DATA_MOB_FLAGS_ID: aggressive is 4.
-        if d.aggressive {
-            meta.push((15, serializer::BYTE, Value::Byte(4)));
-        }
+        // Mob.DATA_MOB_FLAGS_ID: NoAI bit 0, LeftHanded bit 1, aggressive bit 2,
+        // in one entry (two pushes on index 15 would overwrite each other).
+        meta.extend(sunrise_gameplay_common::game::dragon_common::mob_flags_meta(d));
         let phase = d.phase.id();
         if phase != 10 {
             meta.push((16, serializer::INT, Value::Int(phase)));
-        }
-        // Mob.DATA_MOB_FLAGS_ID: NoAI is its first bit.
-        if d.no_ai {
-            meta.push((15, serializer::BYTE, Value::Byte(1)));
         }
         Some(sunrise_sim::lan::entity::EntityState {
             id: d.id as i32,
@@ -4216,19 +4211,19 @@ impl crate::game::ServerGame<'_> {
         if finalized.veto_admission {
             return None;
         }
+        let mut left_handed = false;
         if !finalized.skip_initialization {
             // Mob.finalizeSpawn (EnderDragon keeps it): the follow range's
-            // triangle and left-handed roll, neither of which changes how the dragon flies.
-            let _ = self
-                .common
-                .world
-                .random
-                .triangle(0.0, 0.114_850_000_000_000_01);
-            let _ = self.common.world.random.next_float();
+            // triangle, then `setLeftHanded(nextFloat() < 0.05)`, from the
+            // level's random. Neither changes how the dragon flies.
+            left_handed = sunrise_gameplay_common::game::dragon_common::finalize_spawn_left_handed(
+                &mut self.common.world.random,
+            );
         }
         // The dragon's own random (`Entity.random`), not the level's.
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(position, yaw, seed);
+        dragon.left_handed = left_handed;
         dragon.join = sunrise_sim::join_seq::JoinSeq::next();
         dragon.id = self.server.next_entity + 1;
         self.server.next_entity += 9;
@@ -5407,5 +5402,58 @@ pub(in crate::game) mod tests {
         // Past 1.0 or NaN, `Math.acos` is NaN and the gate refuses, as vanilla's does.
         assert!(strafe_angle(f32::from_bits(0x3f80_0001)).is_nan());
         assert!(strafe_angle(f32::NAN).is_nan());
+    }
+
+    /// Driven by `tools/test_dragon_spawn_parity.py`: summons each case's
+    /// dragon through the game's own spawn path and reports the
+    /// `LeftHanded` flag and the level random's next draw, the same two
+    /// values `VanillaFinalizeSpawnOracle` reads from vanilla 26.3.
+    #[test]
+    #[ignore]
+    fn dragon_spawn_parity_fixture() {
+        run_dragon_spawn_parity_fixture();
+    }
+
+    pub(in crate::game) fn run_dragon_spawn_parity_fixture() {
+        use sunrise_core::random::RandomSource as _;
+        use sunrise_gameplay_common::game::creatures::SpawnSite;
+        use sunrise_sim::mobs::spawn_rules::Reason;
+
+        let cases = std::env::var("SUNRISE_DRAGON_SPAWN_CASES").expect("harness cases path");
+        let output = std::env::var("SUNRISE_DRAGON_SPAWN_OUTPUT").expect("harness output path");
+        let cases = std::fs::read_to_string(cases).expect("harness cases file");
+        let mut lines = Vec::new();
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            for case in cases.lines().filter(|line| !line.trim().is_empty()) {
+                let name = case.split_whitespace().next().expect("a case name");
+                let seed = case
+                    .split_whitespace()
+                    .find_map(|token| token.strip_prefix("seed="))
+                    .expect("a seed")
+                    .parse::<i64>()
+                    .expect("a numeric seed");
+                game.common.dragon.discard();
+                game.common.world.random.set_seed(seed);
+                // Command summoning fixes the yaw at zero, as vanilla's
+                // SummonCommand does, so finalization is the first draw.
+                let id = game
+                    .spawn_mob_spawned(
+                        "minecraft:ender_dragon",
+                        [8.5, 100.0, 8.5],
+                        SpawnSite::Finalizing(Reason::Command),
+                    )
+                    .expect("a summoned dragon");
+                let left_handed = game
+                    .common
+                    .dragon
+                    .as_ref()
+                    .expect("the spawned dragon")
+                    .left_handed;
+                let next = game.common.world.random.next_long();
+                game.native_joins_flush(false, id);
+                lines.push(format!("{name} lh={left_handed} next={next}"));
+            }
+        });
+        std::fs::write(output, lines.join("\n") + "\n").expect("harness output file");
     }
 }
