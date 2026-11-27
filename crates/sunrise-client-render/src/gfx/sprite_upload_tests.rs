@@ -26,6 +26,10 @@ fn real_rail_mips_do_not_change_with_larger_array_layers() {
     let native: Vec<_> = layers
         .iter()
         .map(|&layer| {
+            assert_eq!(
+                sprites.mips[layer as usize].native_size, 16,
+                "rail layer {layer} must be a decoded 16px sprite"
+            );
             let start = layer as usize * 16 * 16 * 4;
             mip_chain(
                 &sprites.pixels[start..start + 16 * 16 * 4],
