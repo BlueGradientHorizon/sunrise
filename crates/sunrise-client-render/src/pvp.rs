@@ -1678,7 +1678,7 @@ mod tests {
         assert_eq!(p.crosshair.hover, None);
         assert!(p.parse_line("crosshairSize", "99") && p.crosshair.size == SIZES.1);
         assert!(p.parse_line("crosshairColour", "plaid") && p.crosshair.colour == Colour::White);
-        assert!(!p.parse_line("fullbright", "true"));
+        assert!(!p.parse_line("dynamicLights", "true"));
         assert!(p.parse_line("totemSize", "5") && p.tweaks.totem_size == TOTEM_SIZES.0);
     }
 
