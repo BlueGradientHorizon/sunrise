@@ -445,7 +445,7 @@ class DynaRoutingTests(unittest.TestCase):
                                         capture_output=True, text=True)
                 if case in ("absent", "correct-link"):
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(target.resolve(), persistent)
+                    self.assertEqual(target.resolve(), persistent.resolve())
                 else:
                     self.assertNotEqual(result.returncode, 0)
                     after = target.lstat()
