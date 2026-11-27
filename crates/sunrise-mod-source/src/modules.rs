@@ -388,7 +388,8 @@ pub fn standard_include(item: &Item, shadowed: bool) -> Option<&syn::ItemMacro> 
 /// A direct `macro_rules! include` shadows bare `include!` after its definition, including
 /// in child modules declared after it. Named imports apply throughout their own module;
 /// literal include fragments stay in that module. A glob import may import `include`, but we
-/// do not resolve globs here. We do not track shadowing introduced by macro expansion.
+/// do not resolve globs here. We do not track macro leakage from `#[macro_use] mod` or
+/// `#[macro_use] extern crate`, or shadowing introduced by macro expansion.
 #[derive(Clone, Copy, Default)]
 pub struct IncludeScope {
     lexical: bool,
@@ -425,21 +426,13 @@ impl IncludeScope {
         self.lexical || self.imported
     }
 
-    pub(crate) fn child(self) -> Self {
+    /// Enter a child module: textual macro scope is inherited, named imports are not.
+    pub fn child(self) -> Self {
         Self {
             imported: false,
             ..self
         }
     }
-}
-
-/// Whether `items` define a `macro_rules! include` or import a name `include` in this module.
-pub fn include_shadowed(items: &[Item]) -> bool {
-    let mut scope = IncludeScope::default().with_imports(items);
-    for item in items {
-        scope.before(item);
-    }
-    scope.shadowed()
 }
 
 /// Whether some build can hold every predicate in `conditions` at once: an assignment of the
