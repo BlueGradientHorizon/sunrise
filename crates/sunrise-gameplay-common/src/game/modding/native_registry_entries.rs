@@ -350,7 +350,7 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
             if let Some(tags) = tables.pack_tags.get(registry.as_str()) {
                 return Some(
                     tags.get(tag.as_ref())
-                        .is_some_and(|members| members.iter().any(|member| member == &id)),
+                        .is_some_and(|members| members.contains(&id)),
                 );
             }
             if let Some(kind) = registry.strip_prefix("minecraft:")
@@ -358,7 +358,7 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
             {
                 return Some(
                     tags.get(tag.as_ref())
-                        .is_some_and(|members| members.iter().any(|member| member == &id)),
+                        .is_some_and(|members| members.contains(&id)),
                 );
             }
         }

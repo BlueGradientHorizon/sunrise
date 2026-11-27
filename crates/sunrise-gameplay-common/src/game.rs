@@ -1347,8 +1347,10 @@ pub struct WorldTables {
     /// custom registries (`TagLoader.loadTagsForExistingRegistries`). Damage tags live in the
     /// catalog. Keyed by directory for `minecraft:` registries (`"worldgen/biome"`, ...) and
     /// full canonical registry ID for mod-declared custom static registries (`"chemlib:gas"`).
-    /// Member order is preserved for `Tags::entries`.
-    pub pack_tags: HashMap<String, HashMap<String, Vec<String>>>,
+    /// Member order is vanilla's (`TagLoader.tryBuildTag`'s `LinkedHashSet`), kept for
+    /// `Tags::entries`, with constant-time membership.
+    /// Shared with the wire's `WorldTags`, never copied.
+    pub pack_tags: Arc<sunrise_sim::lan::data::PackTags>,
     /// The gameplay attributes of the dimension types, biomes and timelines (with the packs' timeline tags) that the raid code reads.
     pub gameplay: Arc<sunrise_sim::patrol::GameplayAttributes>,
     /// `Registries.TEST_ENVIRONMENT` and `Registries.TEST_INSTANCE`, frozen at world open.

@@ -148,9 +148,7 @@ impl RemoteTree {
 #[derive(Clone, Copy)]
 pub struct TagSources<'a> {
     /// The world's packs' tags over the game's own, by registry.
-    pub pack_tags: Option<
-        &'a std::collections::HashMap<String, std::collections::HashMap<String, Vec<String>>>,
-    >,
+    pub pack_tags: Option<&'a sunrise_sim::lan::data::PackTags>,
     pub items: &'a sunrise_items::items::Items,
     pub mob_data: &'a sunrise_sim::mobs::MobData,
     pub damage: &'a sunrise_world::damage_source::Catalog,
@@ -161,7 +159,7 @@ impl TagSources<'_> {
         // The world's packs' tags over the game's own, as the server's
         // registries bind them (`TagLoader.loadTagsForExistingRegistries`).
         if let Some(tags) = self.pack_tags.and_then(|t| t.get(registry)) {
-            return tags.get(tag).is_some_and(|t| t.iter().any(|m| m == id));
+            return tags.get(tag).is_some_and(|t| t.contains(id));
         }
         match registry {
             "item" => self.items.item_in_tag(tag, id),

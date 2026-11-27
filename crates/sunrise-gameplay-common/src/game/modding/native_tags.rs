@@ -89,7 +89,7 @@ where
 #[derive(Clone, Copy)]
 pub enum CustomTagSource<'a> {
     None,
-    Server(&'a std::collections::HashMap<String, std::collections::HashMap<String, Vec<String>>>),
+    Server(&'a sunrise_sim::lan::data::PackTags),
     Client {
         tags_loaded: bool,
         dynamic: &'a sunrise_protocol::registry::Dynamic,

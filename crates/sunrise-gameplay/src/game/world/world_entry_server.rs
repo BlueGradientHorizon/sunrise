@@ -309,10 +309,9 @@ impl crate::game::ServerGame<'_> {
             |tables| tables.items.clone(),
         );
         let parts = self.prepare_parts(&items)?;
-        let mut wire_tags =
-            sunrise_sim::lan::data::WorldTags::new(items.clone(), &health.damage);
+        let mut wire_tags = sunrise_sim::lan::data::WorldTags::new(items.clone(), &health.damage);
         if let Some(tables) = &tables {
-            wire_tags = wire_tags.with_pack_tags(&tables.pack_tags);
+            wire_tags = wire_tags.with_pack_tags(Arc::clone(&tables.pack_tags));
         }
         let overlay = pack_files(&tables);
         let kept = self
@@ -508,7 +507,7 @@ impl crate::game::ServerGame<'_> {
                 dir.entry_ids().iter().map(ToString::to_string).collect(),
             );
         }
-        let mut pack_tags: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+        let mut pack_tags = sunrise_sim::lan::data::PackTags::new();
         let mut banner_tags = std::collections::BTreeMap::new();
         let gameplay_tags = WorldTables::PACK_TAG_REGISTRIES
             .into_iter()
@@ -516,35 +515,39 @@ impl crate::game::ServerGame<'_> {
             .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
             .collect::<std::collections::BTreeSet<_>>();
         let mut timeline_tags = std::collections::BTreeMap::new();
-        let mut bind_tags =
-            |registry: &str, view: &mut load_conditions::RegistryView| -> Result<()> {
-                let ids = view.ids.get(registry);
-                let tags = sunrise_sim::lan::data::registry_tag_bindings(
-                    root,
-                    &tag_files,
-                    registry,
-                    |id| ids.is_some_and(|ids| ids.contains(id)),
-                )?;
-                if registry == "minecraft:timeline" {
-                    timeline_tags = tags.clone();
-                }
-                view.tags.insert(
-                    registry.to_owned(),
-                    tags.iter()
-                        .map(|(tag, members)| (tag.clone(), !members.is_empty()))
+        let mut bind_tags = |registry: &str,
+                             view: &mut load_conditions::RegistryView|
+         -> Result<()> {
+            let ids = view.ids.get(registry);
+            let tags =
+                sunrise_sim::lan::data::registry_tag_bindings(root, &tag_files, registry, |id| {
+                    ids.is_some_and(|ids| ids.contains(id))
+                })?;
+            if registry == "minecraft:timeline" {
+                timeline_tags = tags.clone();
+            }
+            view.tags.insert(
+                registry.to_owned(),
+                tags.iter()
+                    .map(|(tag, members)| (tag.clone(), !members.is_empty()))
+                    .collect(),
+            );
+            if registry == "minecraft:banner_pattern" {
+                banner_tags.clone_from(&tags);
+            }
+            if let Some(directory) = registry
+                .strip_prefix("minecraft:")
+                .and_then(|name| gameplay_tags.get(name))
+            {
+                pack_tags.insert(
+                    (*directory).to_owned(),
+                    tags.into_iter()
+                        .map(|(tag, members)| (tag, members.into_iter().collect()))
                         .collect(),
                 );
-                if registry == "minecraft:banner_pattern" {
-                    banner_tags.clone_from(&tags);
-                }
-                if let Some(directory) = registry
-                    .strip_prefix("minecraft:")
-                    .and_then(|name| gameplay_tags.get(name))
-                {
-                    pack_tags.insert((*directory).to_owned(), tags.into_iter().collect());
-                }
-                Ok(())
-            };
+            }
+            Ok(())
+        };
         // Item, block, fluid and entity type tags already came from Items' loader.
         let static_registries = builtin
             .registries
@@ -727,7 +730,7 @@ impl crate::game::ServerGame<'_> {
                 bind_tags(PLACED, &mut view)?;
             }
         }
-        let damage_tags: HashMap<String, Vec<String>> = health
+        let damage_tags: HashMap<String, indexmap::IndexSet<String>> = health
             .damage
             .tags()
             .map(|tag| {
@@ -758,7 +761,12 @@ impl crate::game::ServerGame<'_> {
                             .map(|(tag, members)| (tag.clone(), !members.is_empty()))
                             .collect(),
                     );
-                    pack_tags.insert(dir.id().to_owned(), tags);
+                    pack_tags.insert(
+                        dir.id().to_owned(),
+                        tags.into_iter()
+                            .map(|(tag, members)| (tag, members.into_iter().collect()))
+                            .collect(),
+                    );
                 }
                 Err(e) => {
                     log::warn!(
@@ -941,18 +949,6 @@ impl crate::game::ServerGame<'_> {
             self.common.res.core.collision.clone(),
             &causes_suffocation,
         )?;
-        let pack_tag_sets: HashMap<&str, HashMap<String, HashSet<String>>> = pack_tags
-            .iter()
-            .filter(|(key, _)| !key.contains(':'))
-            .map(|(key, tags)| {
-                (
-                    key.as_str(),
-                    tags.iter()
-                        .map(|(tag, members)| (tag.clone(), members.iter().cloned().collect()))
-                        .collect(),
-                )
-            })
-            .collect();
         // Items already decoded the root's command export. Block-state-only
         // command metadata is not the registry universe, and professions and
         // biomes belong to the live world candidate rather than that export.
@@ -967,9 +963,13 @@ impl crate::game::ServerGame<'_> {
         let builtin = neoforge_mob_maps::load(
             &overlay,
             |directory| match directory {
-                "item" => Some(&items.item_tags),
-                "entity_type" => Some(items.entity_type_tags.members()),
-                _ => pack_tag_sets.get(directory),
+                "item" => Some(&items.item_tags as &dyn neoforge_mob_maps::TagMembers),
+                "entity_type" => {
+                    Some(items.entity_type_tags.members() as &dyn neoforge_mob_maps::TagMembers)
+                }
+                _ => pack_tags
+                    .get(directory)
+                    .map(|tags| tags as &dyn neoforge_mob_maps::TagMembers),
             },
             |registry, id| match registry {
                 "minecraft:item" => items.items.contains_key(id),
@@ -1012,7 +1012,10 @@ impl crate::game::ServerGame<'_> {
             "recipe".to_owned(),
             sunrise_world::tag_layers::load(root, "recipe", &overlay, |id| {
                 stations.recipe_index.contains(id)
-            })?,
+            })?
+            .into_iter()
+            .map(|(tag, members)| (tag, members.into_iter().collect()))
+            .collect(),
         );
         // `HolderSetCodec.lookupTag`: an advancement naming a tag that is not bound is refused.
         let unbound = advancements.unbound_tags(|registry, tag| {
@@ -1076,7 +1079,7 @@ impl crate::game::ServerGame<'_> {
                 stations,
                 reload_sources: reload.then_some(sources),
                 data_maps,
-                pack_tags,
+                pack_tags: Arc::new(pack_tags),
                 gameplay,
                 test_environments,
                 test_instances,

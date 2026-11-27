@@ -55,9 +55,7 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
                 .as_ref()
                 .and_then(|t| t.pack_tags.get("worldgen/biome"))
             {
-                return tags
-                    .get(tag)
-                    .is_some_and(|members| members.iter().any(|member| member == &b));
+                return tags.get(tag).is_some_and(|members| members.contains(&b));
             }
             self.game.res.mob_data().biome_has(tag, &b)
         })
@@ -76,7 +74,7 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
         {
             return tags
                 .get(tag)
-                .is_some_and(|members| members.iter().any(|member| member == structure));
+                .is_some_and(|members| members.contains(structure));
         }
         self.game.structure_tag(tag).iter().any(|m| m == structure)
     }

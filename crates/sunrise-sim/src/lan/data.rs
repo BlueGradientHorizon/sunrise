@@ -3,6 +3,7 @@
 //! pack) and the tags of every registry, loaded from the prepared resources
 //! (`data/minecraft/...`) and the registries report.
 use crate::{advancements::Tree, chunk::LevelShapes, items::Items};
+use indexmap::IndexSet;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -205,11 +206,17 @@ impl FrozenDamage {
     }
 }
 
+/// The world packs' bound tags by registry, each tag's members in vanilla's `TagLoader` order
+/// (insertion order, no duplicates, as its `LinkedHashSet`). Keyed by directory for
+/// `minecraft:` registries (`"worldgen/biome"`) and by canonical ID for mod-declared custom
+/// static registries (`"chemlib:gas"`).
+pub type PackTags = HashMap<String, HashMap<String, IndexSet<String>>>;
+
 /// Tags already bound by the world. Lazy wire loading must not re-read these files.
 pub struct WorldTags {
     items: Arc<Items>,
     damage: sunrise_world::loot::RegistryTags,
-    pack_tags: HashMap<String, sunrise_world::loot::RegistryTags>,
+    pack_tags: Arc<PackTags>,
 }
 
 impl WorldTags {
@@ -225,22 +232,17 @@ impl WorldTags {
                     )
                 })
                 .collect(),
-            pack_tags: HashMap::new(),
+            pack_tags: Arc::default(),
         }
     }
 
-    pub fn with_pack_tags(
-        mut self,
-        pack_tags: &HashMap<String, HashMap<String, Vec<String>>>,
-    ) -> Self {
-        self.pack_tags = pack_tags.clone();
+    /// Shares the world's bound tags; they are not copied.
+    pub fn with_pack_tags(mut self, pack_tags: Arc<PackTags>) -> Self {
+        self.pack_tags = pack_tags;
         self
     }
 
     fn for_registry(&self, registry: &str) -> Option<&sunrise_world::loot::RegistryTags> {
-        if let Some(tags) = self.pack_tags.get(registry) {
-            return Some(tags);
-        }
         let kind = registry.strip_prefix("minecraft:")?;
         if kind == "damage_type" {
             Some(&self.damage)
@@ -1238,32 +1240,35 @@ impl SyncData {
                 .enumerate()
                 .map(|(index, id)| (id.to_string(), index as i32))
                 .collect();
-            let loaded;
-            let bound = match world_tags.and_then(|wt| wt.pack_tags.get(dir.id())) {
-                Some(tags) => tags,
-                None => {
-                    loaded = sunrise_world::tag_layers::load(
-                        resources,
-                        dir.tag_directory(),
-                        overlay,
-                        |id| dir.contains_id(id),
-                    )
-                    .map_err(|e| e.to_string())?;
-                    &loaded
-                }
+            let wire_ids = |members: &mut dyn Iterator<Item = &String>| -> Vec<i32> {
+                members.filter_map(|id| names.get(id).copied()).collect()
             };
-            let sorted: BTreeMap<_, _> = bound.iter().collect();
+            let loaded;
+            let sorted: BTreeMap<&String, Vec<i32>> =
+                match world_tags.and_then(|wt| wt.pack_tags.get(dir.id())) {
+                    Some(tags) => tags
+                        .iter()
+                        .map(|(tag, members)| (tag, wire_ids(&mut members.iter())))
+                        .collect(),
+                    None => {
+                        loaded = sunrise_world::tag_layers::load(
+                            resources,
+                            dir.tag_directory(),
+                            overlay,
+                            |id| dir.contains_id(id),
+                        )
+                        .map_err(|e| e.to_string())?;
+                        loaded
+                            .iter()
+                            .map(|(tag, members)| (tag, wire_ids(&mut members.iter())))
+                            .collect()
+                    }
+                };
             let tags = sorted
                 .into_iter()
-                .map(|(tag, members)| {
-                    let ids = members
-                        .iter()
-                        .filter_map(|id| names.get(id).copied())
-                        .collect();
-                    TagEntry {
-                        name: tag.clone(),
-                        ids,
-                    }
+                .map(|(tag, ids)| TagEntry {
+                    name: tag.clone(),
+                    ids,
                 })
                 .collect();
             registries.push(RegistryTags {

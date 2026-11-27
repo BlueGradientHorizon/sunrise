@@ -709,7 +709,7 @@ impl sunrise_sim::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
         {
             return tags
                 .get(tag)
-                .is_some_and(|members| members.iter().any(|member| member == &b.name));
+                .is_some_and(|members| members.contains(&b.name));
         }
         self.l.game.res.mob_data().biome_has(tag, &b.name)
     }
@@ -728,7 +728,7 @@ impl sunrise_sim::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
         {
             return tags
                 .get(tag)
-                .is_some_and(|members| members.iter().any(|member| member == structure));
+                .is_some_and(|members| members.contains(structure));
         }
         self.l
             .game

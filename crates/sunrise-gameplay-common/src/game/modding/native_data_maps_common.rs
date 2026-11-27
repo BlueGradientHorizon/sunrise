@@ -53,7 +53,7 @@ pub struct WorldRegistries<'a> {
     id_sets: RefCell<HashMap<String, HashSet<String>>>,
     tags: RefCell<HashMap<String, HashMap<String, HashSet<String>>>>,
 }
-pub type PackTags = HashMap<String, HashMap<String, Vec<String>>>;
+pub type PackTags = sunrise_sim::lan::data::PackTags;
 impl<'a> WorldRegistries<'a> {
     pub fn new(
         ids: impl IntoIterator<Item = (&'a str, &'a [String])>,
@@ -176,7 +176,10 @@ impl MapRegistries for WorldRegistries<'_> {
                     tags.get(registry)
                         .or_else(|| tags.get(folder(registry).as_str()))
                 }) {
-                    return tags.get(tag).cloned().unwrap_or_default();
+                    return tags
+                        .get(tag)
+                        .map(|members| members.iter().cloned().collect())
+                        .unwrap_or_default();
                 }
                 let mut loaded = self.tags.borrow_mut();
                 let tags = loaded.entry(registry.to_owned()).or_insert_with(|| {

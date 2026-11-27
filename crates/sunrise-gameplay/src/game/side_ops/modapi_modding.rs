@@ -232,7 +232,7 @@ impl SideOps for crate::game::server_side::ServerState {
             sunrise_gameplay_common::game::native_tags::CustomTagSource::None,
             |tables| {
                 sunrise_gameplay_common::game::native_tags::CustomTagSource::Server(
-                    &tables.pack_tags,
+                    &*tables.pack_tags,
                 )
             },
         )

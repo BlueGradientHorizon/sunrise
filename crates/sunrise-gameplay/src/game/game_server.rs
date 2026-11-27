@@ -2582,7 +2582,7 @@ impl crate::game::ServerGame<'_> {
                 dimension: self.common.dim.id(),
                 end: &self.common.end,
                 tags: advancements_common::TagSources {
-                    pack_tags: self.server.world_tables.0.as_ref().map(|t| &t.pack_tags),
+                    pack_tags: self.server.world_tables.0.as_ref().map(|t| &*t.pack_tags),
                     items: server_world_items!(self),
                     mob_data: self.common.res.mob_data(),
                     damage: &self.common.health_resources.damage,
