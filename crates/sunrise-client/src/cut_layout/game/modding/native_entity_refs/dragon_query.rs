@@ -13,11 +13,13 @@ use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_core::position::ChunkPos;
     use sunrise_sim::{join_seq::Joined, mobs::Mob};
     use {
         sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in,
         sunrise_gameplay::game::native_entity_refs::tests::collect_game_all_entities,
         sunrise_gameplay::game::native_entity_refs::tests::collect_game_entities_in,
+        sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
         sunrise_gameplay::game::native_entity_refs::tests::{with_game, with_resident_game},
         sunrise_gameplay_common::game::dragon_common::Dragon,
     };
@@ -29,7 +31,7 @@ mod tests {
         use sunrise_gameplay_common::game::creatures::SpawnSite;
         use sunrise_sim::lan::playerdata::uuid_ints;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let id = game
                 .spawn_dragon_spawned([0.0, 80.0, 0.0], SpawnSite::Plain)
                 .unwrap();
@@ -64,19 +66,18 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn all_entities_uses_lookup_order_without_bounds_or_parts() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             assert_eq!(
                 level.visit_all_entities(game, &mut |_| panic!("empty level invoked the visitor")),
                 Ok(ControlFlow::Continue(()))
             );
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.mobs.push(Mob::new(
-                90,
-                kind.clone(),
-                Vec3::new(1.0e12, 64.0, 0.0),
-                0.0,
-            ));
+            let distant_x = 1_000_000;
+            prepare_entity_ticking_neighborhood(game, ChunkPos::new(distant_x >> 4, 0));
+            let distant_position = Vec3::new(f64::from(distant_x), 64.0, 0.0);
+            game.mobs
+                .push(Mob::new(90, kind.clone(), distant_position, 0.0));
             let mut dragon = Dragon::new(Vec3::new(0.0, 80.0, 0.0), 0.0, 0);
             dragon.id = 20;
             game.dragon.replace(dragon);
@@ -129,7 +130,10 @@ mod tests {
                     visits += 1;
                     assert_eq!(entity.id(), 90);
                     // This read consults residency again, which must not still be borrowed.
-                    assert_eq!(entity.position(host), Some([1.0e12, 64.0, 0.0]));
+                    assert_eq!(
+                        entity.position(host),
+                        Some([f64::from(distant_x), 64.0, 0.0])
+                    );
                     ControlFlow::Break(())
                 }),
                 Ok(ControlFlow::Break(()))
@@ -244,7 +248,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn nearest_ray_rejects_closer_hits_and_keeps_first_tie() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             // Far first, then a closer rejected hit, then two accepted hits at the same distance.
             // The excluded pig is skipped before `accept`; the last pig encloses the ray's start,
@@ -370,7 +374,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn entities_in_includes_dragon_and_separate_parts() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs
                 .push(Mob::new(12, kind, Vec3::new(5.0, 64.0, 5.0), 0.0));

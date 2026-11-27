@@ -6,6 +6,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use sunrise_core::{geometry::Vec3, random::RandomSource};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_resident_game;
     use sunrise_sim::mobs::Mob;
 
     struct Noop;
@@ -127,9 +128,10 @@ mod tests {
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 zombie(game, 900, 2.0);
-                zombie(game, 901, -2.0);
+                // The repeated target must survive its first visit.
+                zombie(game, 901, -5.0);
                 game.crystals
                     .push(sunrise_gameplay_common::game::dragon_common::Crystal {
                         attachment_lifetime: Default::default(),
@@ -209,7 +211,7 @@ mod tests {
         }
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("add", Box::new(Add))].into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, FAR, 40.0);
                 explode(game);
@@ -434,7 +436,7 @@ mod tests {
                 Vec::new().into()
             };
             mod_platform::testing::with_mods(mods, || {
-                with_game(|game| {
+                with_resident_game(|game| {
                     for (id, x) in [(920, -1.0), (921, 1.0)] {
                         game.boats
                             .push(sunrise_gameplay_common::game::boats_common::Boat::new(
@@ -513,7 +515,7 @@ mod tests {
                 mods.push(mod_api::ModEntry::new("noop", Box::new(Noop)));
             }
             mod_platform::testing::with_mods(mods.into(), || {
-                with_game(|game| {
+                with_resident_game(|game| {
                     for (id, x) in [(970, -1.0), (971, 0.0), (972, 1.0)] {
                         if mob && id != 972 {
                             zombie(game, id, x);
@@ -650,7 +652,7 @@ mod tests {
             )]
             .into();
             mod_platform::testing::with_mods(mods, || {
-                with_game(|game| {
+                with_resident_game(|game| {
                     specials(game);
                     explode(game);
                     assert!(game.armor_stands.iter().any(|entity| entity.id == 950));

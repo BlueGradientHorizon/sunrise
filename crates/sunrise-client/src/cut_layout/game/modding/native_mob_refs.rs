@@ -361,7 +361,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_flags_custom_persistence_is_independent_of_stored_flags() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let mob = add_mob(game, 12, "minecraft:cow");
             for no_ai in [false, true] {
                 assert!(mob.set_no_ai(game, no_ai));
@@ -444,7 +444,7 @@ pub(crate) mod tests {
     fn mob_flags_baby_setter_runs_ghastling_setup_in_both_directions() {
         use sunrise_sim::mobs::{control::MoveKind, nav::NavKind};
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let ghast = add_mob(game, 12, "minecraft:happy_ghast");
             assert!(ghast.set_no_ai(game, true));
             assert!(ghast.set_persistence_required(game));
@@ -706,7 +706,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn brain_species_take_a_written_attack_target_memory() {
-        with_game(|game| {
+        with_resident_game(|game| {
             for (id, name) in [
                 (12, "minecraft:warden"),
                 (13, "minecraft:breeze"),
@@ -758,11 +758,6 @@ pub(crate) mod tests {
             // The brains act on it: a tick keeps a hoglin's and a breeze's
             // written target (their target-validity behaviours accept an iron
             // golem), as a memory their own sensing set would be kept.
-            for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-                let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
-                chunk.lit = true;
-                game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
-            }
             for id in [13, 16] {
                 assert!(handle(game, id).set_brain_target(game, Some(golem)));
             }
@@ -787,7 +782,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_handles_read_write_and_refuse_unavailable_entities() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -923,7 +918,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_restriction_round_trips_through_the_handle_and_saves() {
         use sunrise_core::nbt::Tag;
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -1037,7 +1032,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn hand_and_loot_flags_live_on_the_mob_handle() {
         use sunrise_core::nbt::Tag;
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()

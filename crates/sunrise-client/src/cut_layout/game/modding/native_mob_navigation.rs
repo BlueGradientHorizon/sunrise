@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
+    use super::super::native_entity_refs::tests::with_resident_game;
     use mod_api::{EntityRef, MobRef, MoveToPathError, PathNode, WorldEpoch};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_supplied_path_refusal_names_its_cause() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let kind = game
                 .res
                 .mob_types()

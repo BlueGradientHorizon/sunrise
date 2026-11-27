@@ -2764,7 +2764,7 @@ mod restored_vehicle_transfer_tests {
     #[test]
     #[ignore = "daily"]
     fn runtime_transfers_do_not_alias_a_saved_player_vehicle_with_the_same_uuid() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+        sunrise_gameplay::game::native_entity_refs::tests::with_resident_game(|game| {
             let runtime = AttachmentType {
                 namespace: "test",
                 name: "runtime",

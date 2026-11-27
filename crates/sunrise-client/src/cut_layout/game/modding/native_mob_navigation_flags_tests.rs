@@ -29,7 +29,7 @@ fn refused(game: &mut sunrise_gameplay::game::ServerGame<'_>, mob: MobRef) {
 #[test]
 #[ignore = "daily"]
 fn navigation_flags_literal_values_and_current_path_unchanged() {
-    with_game(|game| {
+    with_resident_game(|game| {
         let mob = zombie(game);
         use sunrise_sim::mobs::path::{Path, PathNode, PathType};
         let path = Path {
@@ -91,7 +91,7 @@ fn navigation_flags_refuse_held_out_of_level() {
 #[test]
 #[ignore = "daily"]
 fn navigation_flags_refuse_no_ground_or_flying_navigation() {
-    with_game(|game| {
+    with_resident_game(|game| {
         let mob = zombie(game);
         for kind in [
             NavKind::Water { breach: false },

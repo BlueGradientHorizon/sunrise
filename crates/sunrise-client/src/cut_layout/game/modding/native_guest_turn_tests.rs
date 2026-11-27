@@ -1031,7 +1031,7 @@ fn another_guests_live_merchant_session_is_visible_during_a_turn() {
 #[test]
 #[ignore = "daily"]
 fn another_guest_follows_a_vehicle_teleported_during_a_turn() {
-    with_guests(|game| {
+    with_resident_guests(|game| {
         game.server
             .lan
             .as_mut()
@@ -1222,11 +1222,18 @@ fn server_services_preserve_identity_and_message_delivery() {
             assert_eq!(a.permission_level(game), Some(3));
             assert_eq!(b.permission_level(game), Some(1));
             assert_eq!(a.can_use_game_master_blocks(game), Some(true));
-            // Acting permissions come from the swapped state, not a parked record.
-            game.ui.registries.permission = 1;
-            assert_eq!(a.permission_level(game), Some(1));
-            assert_eq!(a.can_use_game_master_blocks(game), Some(false));
-            game.ui.registries.permission = 3;
+            // The command source keeps its snapshot while the live permission changes.
+            for (permission, can_use) in [(1, false), (3, true)] {
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(12, |guest| guest.permission = permission)
+                    .unwrap();
+                assert_eq!(a.permission_level(game), Some(permission));
+                assert_eq!(a.can_use_game_master_blocks(game), Some(can_use));
+            }
             assert!(a.tell(game, Text::literal("chat")).unwrap());
             assert!(a.action_bar(game, Text::literal("overlay")).unwrap());
             assert!(

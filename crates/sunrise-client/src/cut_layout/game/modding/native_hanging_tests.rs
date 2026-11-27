@@ -1,7 +1,7 @@
 //! `entity_set_hanging_direction` and `entity_set_item_frame_rotation` on a server: a frame and a
 //! painting turn and their bounds follow, a painting refuses up and down, a frame's item turns
 //! with vanilla's wrap, and another kind is refused.
-use super::native_entity_refs::tests::with_game;
+use super::native_entity_refs::tests::with_resident_game;
 use sunrise_core::geometry::Direction;
 use sunrise_sim::entities::{ItemFrame, Painting};
 
@@ -10,7 +10,7 @@ const PAINTING: u32 = 901;
 
 /// A server's game with a south-facing item frame and painting hanging at 4, 70, 4 and 4, 70, 6.
 fn with_hanging(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.options.dedicated = Some(Vec::new());
         with_hanging_in(game);
         test(game);

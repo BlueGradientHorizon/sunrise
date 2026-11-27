@@ -9,7 +9,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
@@ -119,7 +119,7 @@ mod tests {
         ) {
             return;
         }
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let kinds = [
                 (CartKind::Rideable, MinecartKind::Rideable),

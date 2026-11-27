@@ -6,6 +6,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
 };
+use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use sunrise_items::items::ItemStack;
 
 #[test]
@@ -19,6 +20,7 @@ fn a_mob_the_listener_removed_is_not_sheared() {
             assert!(mob.discard(host));
         },
         |game, gate| {
+            fixture_resident_column(&mut game.world, (0, 0));
             assert!(game.run_command("summon sheep 8.5 100 8.5 {NoAI:1b,Silent:1b}"));
             sheep.store(game.mobs[0].id, Ordering::SeqCst);
             game.server.lan_acting_uuid = Some(7);

@@ -147,7 +147,10 @@ impl crate::game::ClientGame<'_> {
 
     // Player identity & residency.
     pub(in crate::game) fn client_own_entity_id(&self) -> i32 {
-        self.client.remote.as_ref().map_or(0, |r| r.entity_id)
+        self.client.remote.as_ref().map_or_else(
+            || self.common.player.as_ref().map_or(0, |p| p.entity_id),
+            |r| r.entity_id,
+        )
     }
 
     pub(in crate::game) fn client_own_profile_uuid(&self) -> Option<u128> {

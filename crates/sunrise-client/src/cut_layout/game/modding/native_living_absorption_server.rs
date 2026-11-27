@@ -2,7 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{bind_local_player, with_game};
+    use super::super::native_entity_refs::tests::{
+        bind_local_player, with_game, with_resident_game,
+    };
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
@@ -64,7 +66,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mobs_absorption_takes_a_hit_before_its_health() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = absorbing_zombie(game);
             game.mobs.push(zombie);
             let living = game.living(game.entity(12).unwrap()).unwrap();
@@ -113,7 +115,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_aborted_transaction_restores_the_absorption_of_a_player_and_a_mob() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             player
                 .set_modifier(

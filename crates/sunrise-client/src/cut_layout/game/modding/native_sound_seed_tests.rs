@@ -9,7 +9,7 @@ use mod_api::{HostTransaction, LevelRef, ServerHost, SoundSource, WorldEpoch};
 use std::sync::{Arc, mpsc};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+use sunrise_gameplay::game::native_guest_turn_tests::with_resident_guests;
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
 use sunrise_sim::lan::{Out, PlayerSender};
 use sunrise_sim::mobs::Mob;
@@ -95,7 +95,7 @@ fn seed_draws_and_seeded_sounds_take_the_level_sound_seed_stream_in_call_order()
     sunrise_gameplay_common::game::in_own_process(
         "cut_layout::game::native_sound_seed_tests::seed_draws_and_seeded_sounds_take_the_level_sound_seed_stream_in_call_order",
         || {
-            with_guests(|game| {
+            with_resident_guests(|game| {
                 let Fixture {
                     rx12,
                     rx13,
@@ -215,7 +215,7 @@ fn seed_draws_happen_at_the_call_inside_transactions_and_held_sounds_draw_at_com
     sunrise_gameplay_common::game::in_own_process(
         "cut_layout::game::native_sound_seed_tests::seed_draws_happen_at_the_call_inside_transactions_and_held_sounds_draw_at_commit",
         || {
-            with_guests(|game| {
+            with_resident_guests(|game| {
                 let Fixture {
                     rx12,
                     rx13,

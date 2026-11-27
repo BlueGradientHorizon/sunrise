@@ -2,7 +2,7 @@
 //! for each way the issue's mob scenario lands (player to mob, mob to mob, mob to player): the
 //! sounds queue at the call with the level's sound seeds, the attacker's own stream advances, and
 //! the level's random does not.
-use super::native_entity_refs::tests::{bind_local_player, with_game};
+use super::native_entity_refs::tests::{bind_local_player, with_resident_game};
 use mod_api::{
     EntityRef, Flow, HitHost, Hooks, LivingIncomingDamageEvent, SoundSource, WorldEpoch,
 };
@@ -107,9 +107,8 @@ fn check(
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
+        with_resident_game(|game| {
             // Server-level sounds need the live server hub's sound-seed stream.
-            // with_game constructs the game but does not open its server.
             game.lan_host(
                 sunrise_gameplay::game::lan::LanSettings {
                     port: 0,

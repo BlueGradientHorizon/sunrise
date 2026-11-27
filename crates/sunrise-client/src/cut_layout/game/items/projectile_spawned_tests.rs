@@ -118,6 +118,10 @@ fn owner_launch_applies_the_supplied_stacks_effects() {
         ),
     ];
     with_enchantments(&defs, |game| {
+        sunrise_gameplay_common::game::test_fixtures::fixture_resident_column(
+            &mut game.world,
+            (0, 0),
+        );
         let kind = game
             .res
             .mob_types()

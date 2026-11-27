@@ -580,6 +580,7 @@ fn a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quota
                 .unwrap()
                 .hub
                 .set_mod_commands(0, tree);
+            game.send_player_command_tree(2);
             let packet = last_tree(&rx);
             let node = |parent: &str, child: &str| {
                 let parent = packet

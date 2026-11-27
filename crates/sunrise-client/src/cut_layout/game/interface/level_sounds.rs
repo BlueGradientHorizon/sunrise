@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
     use mod_api::{HostSide, SoundSource};
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
@@ -259,7 +259,7 @@ pub(crate) mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 let net = NetConfig {
                     listen: false,
                     announce: false,

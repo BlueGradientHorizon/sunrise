@@ -323,6 +323,7 @@ pub fn prepare_game_boot(
     ),
 ) {
     super::native_hooks::install_client_hooks();
+    super::native_hooks::install_block_contact_hooks();
     let blocks = fixture_block_names(root);
     register_game_keys(blocks.iter().cloned(), register);
     if !mod_api::__private::content_owners_published() {

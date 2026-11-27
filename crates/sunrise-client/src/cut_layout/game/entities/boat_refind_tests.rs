@@ -1,6 +1,8 @@
 //! After `entity_mount` lets a mob board a boat it touches, the game finds the boat and the mob
 //! again by id, counts the boat's passengers again and boards the mob only if it is still free.
 use crate::game::server_side::hook_meddler_tests::with_meddler;
+use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
 
 fn mob_id(game: &sunrise_gameplay::game::ServerGame<'_>, kind: &str) -> u32 {
     game.mobs.iter().find(|m| &*m.kind.id == kind).unwrap().id
@@ -48,6 +50,7 @@ fn a_boat_the_listener_filled_skips_the_mob() {
             assert!(host.commands().run_command(&seat("sheep")));
         },
         |game, gate| {
+            prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
             let boat = set_up(game);
             assert!(game.run_command("summon cow 40.5 100 40.5 {NoAI:1b,Silent:1b}"));
             assert!(game.run_command("summon sheep 40.5 100 40.5 {NoAI:1b,Silent:1b}"));

@@ -49,7 +49,7 @@ mod tests {
         }
         let mods = vec![mod_api::ModEntry::new("cancel-target", Box::new(Cancel))].into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 let (_, dragon) = dragon_in(game);
                 assert!(!dragon.mob().set_target(game, None));
                 assert_eq!(game.dragon.as_ref().unwrap().target, None);

@@ -48,7 +48,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn pose_regression_dragon_dimensions() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let mut dragon =
                 sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 55;
@@ -111,7 +111,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn pose_regression_scaled_digging_warden_is_fixed() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let ty = game
                 .res
                 .mob_types()

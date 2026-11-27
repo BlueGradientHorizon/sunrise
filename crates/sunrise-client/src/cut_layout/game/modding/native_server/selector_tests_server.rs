@@ -3,6 +3,7 @@ use mod_api::CommandArgumentValue as Value;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::{Dim, test_fixtures::fixture_resident_column};
 use sunrise_sim::mobs::Mob;
 
 /// One overworld cow (cow 1, tag `over`) and one nether cow (cow 2, tag `under`), then `lines`
@@ -18,7 +19,10 @@ pub(crate) fn in_two_levels(lines: &[(&str, &str, &[u32])]) {
         )]
         .into(),
         || {
-            super::super::native_guest_turn_tests::with_guests(|game| {
+            super::super::native_guest_turn_tests::with_resident_guests(|game| {
+                game.enter_level(Dim::Nether).unwrap();
+                fixture_resident_column(&mut game.world, (0, 0));
+                game.enter_level(Dim::Overworld).unwrap();
                 game.build_registries();
                 game.register_native_commands();
                 game.ui.registries.permission = 4;
@@ -68,7 +72,7 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                 )]
                 .into(),
                 || {
-                    super::super::native_guest_turn_tests::with_guests(|game| {
+                    super::super::native_guest_turn_tests::with_resident_guests(|game| {
                         game.build_registries();
                         game.register_native_commands();
                         let first = game.player(12).unwrap();

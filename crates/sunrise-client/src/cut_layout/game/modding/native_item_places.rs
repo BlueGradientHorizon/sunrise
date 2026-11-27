@@ -1629,7 +1629,7 @@ pub(crate) mod tests {
     fn equipment_rollback_undoes_a_rebuild_after_a_quiet_edit() {
         use mod_api::{EquipmentSlot, Tag};
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let entity = zombie(game);
             let living = game.living(game.entity(entity).unwrap()).unwrap();
             let slot = EquipmentSlot::Chest;
@@ -3951,7 +3951,7 @@ pub(crate) mod tests {
         use mod_api::EquipmentSlot;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::entities::ArmorStand;
-        with_game(|game| {
+        with_resident_game(|game| {
             game.armor_stands.push(ArmorStand::new(40, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(41, Vec3::ZERO, 0.0));
             let stand_slot = |game: &sunrise_gameplay::game::ServerGame<'_>, id: usize| {

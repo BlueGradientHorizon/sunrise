@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
     use mod_api::{EntityRef, GoalSpec, MobFilter, MobRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
@@ -275,7 +275,7 @@ mod tests {
     #[ignore = "daily"]
     fn removing_school_goal_updates_the_leader() {
         use sunrise_sim::mobs::{aquatic::FollowFlockLeader, goals::Cx};
-        with_game(|game| {
+        with_resident_game(|game| {
             let follower = mob_in_game(game, "minecraft:cod", 99);
             let _leader = mob_in_game(game, "minecraft:cod", 100);
             let mut mobs = game.mobs.lift();

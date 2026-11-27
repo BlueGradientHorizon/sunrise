@@ -12,7 +12,7 @@ mod tests {
     use sunrise_sim::mobs::Mob;
     use {
         crate::game::server_side::native_entity_refs::tests::with_client_game,
-        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay::game::native_entity_refs::tests::with_resident_game,
     };
 
     #[test]
@@ -33,7 +33,7 @@ mod tests {
                 entity.is_hanging(game.as_host()).unwrap().unwrap(),
             )
         }
-        with_game(|game| {
+        with_resident_game(|game| {
             game.build_registries();
             let pig_ty = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(10, pig_ty, Vec3::ZERO, 0.0));

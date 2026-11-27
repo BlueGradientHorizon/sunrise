@@ -3,7 +3,7 @@ use sunrise_gameplay_common::game::creatures::{Mob, Projectile, ProjectileKind, 
 #[test]
 #[ignore = "daily"]
 fn projectile_handle_pierce_level_changes_real_hits() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+    sunrise_gameplay::game::native_entity_refs::tests::with_resident_game(|game| {
         game.options.dedicated = Some(Vec::new());
         let zombie = game
             .res

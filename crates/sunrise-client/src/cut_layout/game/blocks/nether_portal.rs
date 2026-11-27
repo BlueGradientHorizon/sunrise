@@ -1,7 +1,7 @@
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
-use sunrise_core::position::BlockPos;
+use sunrise_core::position::{BlockPos, ChunkPos};
 use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 #[path = "tests/portal_spawn_tests.rs"]
@@ -19,6 +19,9 @@ pub(crate) mod tests {
     use sunrise_gameplay::game::server_side::server_travel::TravelCause;
 
     use super::*;
+    use sunrise_gameplay::game::native_entity_refs::tests::{
+        prepare_entity_ticking_neighborhood, with_resident_game,
+    };
     use sunrise_gameplay::game::server_side::nether_portal::{
         Plan, TransferredArrivalState, arrival_from_tag,
     };
@@ -309,6 +312,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_mod_cancels_one_items_portal_trip_and_allows_the_other() {
         with_gate(|game, spare, heard| {
+            prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
             let stone = || sunrise_items::items::ItemStack::new("minecraft:stone", 1);
             game.spawn_item(stone(), [0.5, 64.0, 0.5], [0.0; 3], 0);
             game.spawn_item(stone(), [2.5, 64.0, 0.5], [0.0; 3], 0);
@@ -382,6 +386,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn refused_mob_passenger_stays_behind() {
         with_gate(|game, spare, heard| {
+            prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             for id in [101, 102, 103] {
                 let mut mob =
@@ -410,9 +415,6 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn passenger_callbacks_cannot_revisit_ancestors_or_discarded_siblings() {
-        use sunrise_core::position::ChunkPos;
-        use sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
-
         for attack in [1004, 1001, 1002] {
             with_gate(|game, spare, heard| {
                 prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
@@ -493,7 +495,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn portal_arrivals_keep_the_live_opt_out_without_writing_a_waiting_entity() {
         mod_platform::testing::with_mods(Default::default(), || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+            with_resident_game(|game| {
                 let chunk = (0, 0);
                 let at = BlockPos::new(4, 64, 4);
                 let spawn = |game: &mut sunrise_gameplay::game::ServerGame<'_>, nbt| {

@@ -155,11 +155,10 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                 game.reload_datapacks(true, &[]).unwrap();
                 assert_eq!(game.options.resources, original);
                 assert!(!has_recipe(&read(game)));
-                // Instruments and enchantments are world registries, frozen at world open: a
-                // reload re-evaluates the reloadable data (loot, songs, predicates, modifiers).
+                // RegistryDataLoader.WORLD_REGISTRIES includes songs, instruments and enchantments.
                 assert_eq!(
                     loaded(game, "inventorytest:requires_code"),
-                    (false, false, true, true, false, false)
+                    (false, true, true, true, false, false)
                 );
                 assert!(old_songs.contains_key("inventorytest:requires_code"));
                 // Tag files ignore load conditions, including mod_loaded.

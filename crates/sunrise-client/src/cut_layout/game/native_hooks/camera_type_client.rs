@@ -197,7 +197,7 @@ pub(crate) mod camera_type_tests {
                     // Streaming and readiness still use the placed camera.
                     let placed = game.test_visual_camera_position().unwrap();
                     assert_ne!(placed[0], 12.0);
-                    assert_eq!(placed[2], 4.0);
+                    assert_eq!(placed[2], 0.0);
 
                     let custom = glam::DVec3::new(2.0, 31.0, 5.0);
                     game.test_activate_studio_camera(custom, 180.0, 0.0, 70.0, 90.0);

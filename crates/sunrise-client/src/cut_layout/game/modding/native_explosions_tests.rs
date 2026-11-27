@@ -976,11 +976,17 @@ fn a_non_finite_radius_is_refused_and_one_of_zero_finds_no_blocks() {
     });
 }
 
-/// A still zombie and a registered survival player on either side of a [`wind_blast`].
+/// A still zombie and a registered player on either side of a [`wind_blast`].
 fn targets(game: &mut sunrise_gameplay::game::ServerGame<'_>, flying: bool) {
+    use sunrise_command::args::GameMode;
+
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(5.5, 80.0, 8.5)).unwrap());
     bind_local_player(game, 11, 123);
-    game.set_mode_id(0);
+    game.set_mode(if flying {
+        GameMode::Creative
+    } else {
+        GameMode::Survival
+    });
     game.player.as_mut().unwrap().flying = flying;
     game.server.next_entity = 100;
     mob(

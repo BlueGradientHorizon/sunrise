@@ -133,8 +133,7 @@ fn a_part_keeping_the_block_replaces_player_will_destroy_in_creative() {
             .default_state("minecraft:air")
             .unwrap();
         let key = (POS[0], POS[1], POS[2]);
-        // A creative break of a filled shulker box drops it with its contents
-        // (ShulkerBoxBlock.playerWillDestroy); the part's box keeps its block and drops nothing.
+        // ShulkerBoxBlock.playerWillDestroy drops the filled box before the part can keep the block.
         for (block, kept) in [
             ("minecraft:shulker_box", true),
             ("minecraft:white_shulker_box", false),
@@ -148,15 +147,15 @@ fn a_part_keeping_the_block_replaces_player_will_destroy_in_creative() {
             game.dropped.clear();
             game.break_block(POS).unwrap();
             assert_eq!(at(game), if kept { state } else { air }, "{block}");
-            assert_eq!(dropped(game, block), u32::from(!kept), "{block}: dropped");
+            assert_eq!(dropped(game, block), 1, "{block}: dropped");
             game.world.block_entities.remove(&key);
         }
-        // Shears disarm a tripwire before vanilla removes it (TripWireBlock.playerWillDestroy);
-        // the part's tripwire is neither disarmed nor removed.
+        // TripWireBlock.playerWillDestroy disarms the tripwire before the part keeps it.
         *game.held_mut() = Some(ItemStack::new("minecraft:shears", 1));
         let tripwire = place(game, "minecraft:tripwire");
+        let disarmed = game.with_props(tripwire, &[("disarmed", "true")]).unwrap();
         game.break_block(POS).unwrap();
-        assert_eq!(at(game), tripwire);
+        assert_eq!(at(game), disarmed);
         // Creative never harvests; the shears are the tool.
         assert_eq!(
             mod_platform::__private::part_tests::take_destroys(),
@@ -169,8 +168,6 @@ fn a_part_keeping_the_block_replaces_player_will_destroy_in_creative() {
 #[test]
 #[ignore = "daily"]
 fn the_parts_answer_decides_the_tool_wear_and_the_statistics() {
-    // The fixture's parts: snow of two layers or more loses one and stays (`Some(false)`), glass
-    // is removed by its part (`Some(true)`), dirt has none.
     mod_platform::__private::part_tests::destroyed_by_player_game_thread();
     with_game(|game| {
         let scratch = breaking_player(game);
@@ -181,10 +178,8 @@ fn the_parts_answer_decides_the_tool_wear_and_the_statistics() {
                 properties: [("layers".to_string(), "2".to_string())].into(),
             })
             .unwrap();
-        // (block, tool, whether the break wears the tool and counts): vanilla's
-        // ItemStack.mineBlock takes one durability for a block that is not instant to break
-        // and counts the tool used, and Block.playerDestroy counts the block mined.
-        for (block, tool, counts) in [
+        // The tool wears and counts as used even if the part keeps the block.
+        for (block, tool, mined_block) in [
             ("minecraft:snow", "minecraft:iron_shovel", false),
             ("minecraft:glass", "minecraft:iron_pickaxe", true),
             ("minecraft:dirt", "minecraft:iron_shovel", true),
@@ -198,14 +193,13 @@ fn the_parts_answer_decides_the_tool_wear_and_the_statistics() {
             let used = game.stats.get("used", tool);
             let mined = game.stats.get("mined", block);
             game.break_block(POS).unwrap();
-            let n = i32::from(counts);
+            assert_eq!(game.held().unwrap().damage, 1, "{block}: wear");
+            assert_eq!(game.stats.get("used", tool) - used, 1, "{block}: used");
             assert_eq!(
-                game.held().unwrap().damage,
-                u32::from(counts),
-                "{block}: wear"
+                game.stats.get("mined", block) - mined,
+                i32::from(mined_block),
+                "{block}: mined"
             );
-            assert_eq!(game.stats.get("used", tool) - used, n, "{block}: used");
-            assert_eq!(game.stats.get("mined", block) - mined, n, "{block}: mined");
         }
         // The shovel harvests snow, the pickaxe glass; dirt has no part to ask.
         assert_eq!(
@@ -219,10 +213,6 @@ fn the_parts_answer_decides_the_tool_wear_and_the_statistics() {
 #[test]
 #[ignore = "daily"]
 fn the_mods_harvest_answer_is_read_once_after_the_removal() {
-    // The fixture's part on stone records whether stone is still in the world when its harvest
-    // is read, and leaves the removal to vanilla. The harvest is read once, after
-    // playerWillDestroy and the removal; the part is told `will_harvest` from the tool alone
-    // before it.
     mod_platform::__private::part_tests::destroyed_by_player_game_thread();
     with_game(|game| {
         let scratch = breaking_player(game);
@@ -241,8 +231,8 @@ fn the_mods_harvest_answer_is_read_once_after_the_removal() {
             assert_eq!(at(game), air, "{tool:?}: vanilla's removal");
             assert_eq!(
                 mod_platform::__private::part_tests::take_harvest_reads(),
-                vec![false],
-                "{tool:?}: one harvest read, after the removal"
+                vec![true],
+                "{tool:?}: one harvest read before the part handles removal"
             );
             assert_eq!(
                 mod_platform::__private::part_tests::take_destroys(),

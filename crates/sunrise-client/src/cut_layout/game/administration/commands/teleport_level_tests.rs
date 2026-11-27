@@ -276,10 +276,13 @@ fn portal_arrival_effects_explicit_tnt_teleports_protect_portals() {
 
 pub(crate) fn run_portal_arrival_effects_explicit_tnt_teleports_protect_portals() {
     for command in [false, true] {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.build_registries();
             game.set_allow_commands(true);
             game.native_lifecycle.world_open_ready().unwrap();
+            game.enter_level(Dim::Nether).unwrap();
+            prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
+            game.enter_level(Dim::Overworld).unwrap();
             game.summon_with_nbt(
                 "minecraft:tnt",
                 [0.5, 80.0, 0.5],

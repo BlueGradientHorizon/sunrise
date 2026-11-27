@@ -302,6 +302,10 @@ fn saved_binding_family_first_stores_publish_to_queries() {
         "saved_entity",
         saved_entity_descriptor,
         |game, value_key| {
+            sunrise_gameplay_common::game::test_fixtures::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             game.options.dedicated = Some(Vec::new());
             game.native_level_opened(Dim::Overworld);
             let index = game.attachment_indexes[&Dim::Overworld].clone();

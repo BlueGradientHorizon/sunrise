@@ -1894,6 +1894,7 @@ pub mod tests {
             crate::game::ServerGame::new(res, pack, options, settings, None, offline_profiles)
                 .unwrap();
         game.reset_entity_residency();
+        game.install_root_block_transformers();
         game.native_lifecycle
             .begin_open(Some(mod_api::Authority::IntegratedServer));
         game.world

@@ -7,7 +7,7 @@ use std::sync::{
 
 use mod_api::{EntityMountEvent, EntityRef, Flow, Hooks, ServerHost, StartRidingRefusal};
 use sunrise_core::geometry::Vec3;
-use sunrise_level::chunk::Chunk;
+use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use sunrise_sim::mobs::Mob;
 
 use {
@@ -136,12 +136,11 @@ fn a_vehicle_in_another_level_is_refused_as_no_entity() {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        fixture_resident_column(&mut game.world, (0, 0));
         game.native_joins_skip();
         let vehicle = add_mob(game, 60, "minecraft:pig");
         game.enter_level(Dim::Nether).unwrap();
+        fixture_resident_column(&mut game.world, (0, 0));
         let rider = add_mob(game, 61, "minecraft:zombie");
         for force in [false, true] {
             assert_eq!(

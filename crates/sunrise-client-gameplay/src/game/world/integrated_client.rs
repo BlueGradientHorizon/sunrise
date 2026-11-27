@@ -348,7 +348,7 @@ impl crate::game::ClientGame<'_> {
         };
         // Production installations are process-wide. A test installation is scoped
         // to its owning thread; the real server thread must inherit that snapshot.
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         let run_server = mod_api::testing::inherit_mods(run_server);
         let thread = std::thread::Builder::new()
             .name(sunrise_level::crash::INTEGRATED_SERVER_THREAD.into())

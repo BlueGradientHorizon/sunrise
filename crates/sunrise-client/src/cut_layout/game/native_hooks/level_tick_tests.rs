@@ -21,7 +21,7 @@ mod tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
         use {
-            sunrise_gameplay::game::native_entity_refs::tests::with_game,
+            sunrise_gameplay::game::native_entity_refs::tests::with_resident_game,
             sunrise_gameplay_common::game::Dim,
         };
 
@@ -53,7 +53,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 game.mobs
                     .push(Mob::new(91, kind.clone(), Vec3::new(3.5, 70.0, 5.5), 0.0));

@@ -39,7 +39,7 @@ pub(crate) fn bound_cart_case(
     kind: CartKind,
     action: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {
-    super::super::native_entity_refs::tests::with_game(|game| {
+    super::super::native_entity_refs::tests::with_resident_game(|game| {
         game.server.tickets.0.update(None);
         game.carts
             .push(Minecart::new(71, kind, Vec3::new(0.5, 70.0, 0.5)));

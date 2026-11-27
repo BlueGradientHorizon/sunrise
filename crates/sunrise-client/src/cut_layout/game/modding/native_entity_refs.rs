@@ -2063,7 +2063,7 @@ pub(crate) mod tests {
         use mod_api::{LevelRef, WorldEpoch};
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::entities::ArmorStand;
-        with_game(|game| {
+        with_resident_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             game.armor_stands
                 .push(ArmorStand::new(0, Vec3::new(0.5, 0.0, 0.0), 0.0));

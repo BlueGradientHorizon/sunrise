@@ -418,6 +418,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_stale_handle_reads_none() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let living = game.living(game.entity(12).unwrap()).unwrap();
             assert_eq!(

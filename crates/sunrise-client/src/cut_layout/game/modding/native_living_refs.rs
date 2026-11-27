@@ -762,7 +762,7 @@ pub(crate) mod tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(12, pig, Vec3::ZERO, 0.0));
             let zombie = game
@@ -914,7 +914,7 @@ pub(crate) mod tests {
     fn heal_uses_the_vanilla_signed_sum() {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -1015,7 +1015,7 @@ pub(crate) mod tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(12, pig, Vec3::ZERO, 0.0));
             // Dying, mid death animation: not removed, but not alive.
@@ -1122,7 +1122,7 @@ pub(crate) mod tests {
     fn mob_equipment_writes_keep_full_stacks() {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::gear;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let expect_slot = |game: &sunrise_gameplay::game::ServerGame<'_>,
                                living,
                                slot,
