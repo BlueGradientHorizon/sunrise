@@ -702,6 +702,9 @@ fn keep_unchanged_times(staged: &Path, previous: &Path) -> std::io::Result<()> {
         let Ok(meta) = fs::symlink_metadata(&old) else {
             continue;
         };
+        // The file and directory checks below already exclude symlinks; Windows junctions
+        // can still report themselves as directories.
+        #[cfg(windows)]
         if super::crates::is_link_or_junction(&meta) {
             continue;
         }

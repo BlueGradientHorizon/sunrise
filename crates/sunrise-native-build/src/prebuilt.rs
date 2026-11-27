@@ -741,10 +741,10 @@ impl Route {
     }
 }
 
-/// Creates `out`, a build folder directly under `builds`, itself directly under the native work
-/// folder, refusing either when it is a link (a symlink or a Windows junction) or resolves outside
-/// its parent: the build clears folders inside `out`, and must never reach a folder elsewhere
-/// through it.
+/// Creates or validates `out` directly under `builds`, whether for build output, a Cargo target,
+/// or a staging folder (including the previous registry stage). Both directories must be real
+/// directories, not symlinks or Windows junctions, and each must resolve directly under its
+/// parent so build writes, stage rotation, and timestamp reuse stay in the intended folders.
 pub(super) fn own_folder(builds: &Path, out: &Path) -> Result<(), String> {
     let work = builds
         .parent()
