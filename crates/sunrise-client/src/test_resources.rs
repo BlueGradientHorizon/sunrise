@@ -1,13 +1,14 @@
 //! Shared item-data producer for tests and standalone probes, not a runtime API.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fs,
     io::ErrorKind,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex, OnceLock},
 };
 
+use sunrise_core::prepared_profile::{MANIFEST, Manifest, Profile};
 use sunrise_world::{
     item_defaults::ItemData,
     native_load_context::{DataLoadOrigin, LoadContext, LoadInputs, LoopContext, LoopSide},
@@ -60,7 +61,8 @@ pub(crate) const SERVER_INPUTS: &[&str] = &[
 ];
 
 /// The prepared root of a test: `SUNRISE_TEST_RESOURCES`, else `.local/sunrise-client/<version>` in the
-/// checkout. The one way a test gets prepared data. Every input of `needs` must be present and readable, or
+/// checkout. The one way a test gets prepared data. A root that exists must carry the current full-profile
+/// stamp (checked once per root per process), and every input of `needs` must be present and readable, or
 /// the test fails naming each one that is not; it never returns a value a test could skip on.
 #[allow(
     dead_code,
@@ -74,7 +76,54 @@ pub(crate) fn prepared_root(needs: &[&[&str]]) -> PathBuf {
                 .join("../../.local/sunrise-client")
                 .join(sunrise_core::VANILLA_VERSION)
         });
+    if root.is_dir() {
+        static VERIFIED_ROOTS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+        let verified = VERIFIED_ROOTS.get_or_init(Default::default);
+        let known = verified.lock().unwrap().contains(&root);
+        if !known {
+            require_current_stamp(&root);
+            verified.lock().unwrap().insert(root.clone());
+        }
+    }
     require_inputs(root, needs)
+}
+
+/// Why `root`'s preparation stamp is not the one this build's full profile writes, one sentence each.
+#[allow(
+    dead_code,
+    reason = "standalone probes that include this file may not need prepared data"
+)]
+pub(crate) fn stamp_problems(root: &Path) -> Vec<String> {
+    if !root.join(MANIFEST).is_file() {
+        return vec![format!("{MANIFEST} is missing")];
+    }
+    let manifest = match Manifest::read(root) {
+        Ok(manifest) => manifest,
+        Err(error) => return vec![error],
+    };
+    let mut problems = Vec::new();
+    if manifest.profile() != Profile::Full {
+        problems
+            .push("prepared for the server profile, tests need full client resources".to_owned());
+    }
+    problems.extend(manifest.version_problems(root, sunrise_core::VANILLA_VERSION));
+    problems
+}
+
+/// Panics naming every way `root`'s stamp is stale, and the command that prepares it again.
+#[allow(
+    dead_code,
+    reason = "standalone probes that include this file may not need prepared data"
+)]
+pub(crate) fn require_current_stamp(root: &Path) {
+    let problems = stamp_problems(root);
+    assert!(
+        problems.is_empty(),
+        "prepared test resources are stale: {}; run {} (resources root: {})",
+        problems.join("; "),
+        Profile::Full.repair(root),
+        root.display()
+    );
 }
 
 /// `root`, once every input of `needs` is there and readable; otherwise a panic naming each one that is not.
