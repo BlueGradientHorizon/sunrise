@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """Compares two state digests step by step and names the first differing step per group: A/digest.txt B/digest.txt; a --coverage run's coverage.txt beside them is compared too."""
+import argparse
 import sys
 from pathlib import Path
 
 # `tick` and `dim` are compared too: a changed game time or level routing is a behaviour change.
-GROUPS = ['tick', 'dim', 'entities', 'randoms', 'block_entities', 'level_random', 'counters', 'scheduled']
+GROUPS = (
+    'tick', 'dim', 'entities', 'randoms', 'hangings', 'cushions', 'other_entities', 'thrown_eyes',
+    'fangs', 'lightning', 'end_crystals', 'dragon', 'breath_clouds', 'ominous_spawners', 'leash_knots',
+    'fishing_hooks', 'thrown_potions', 'seats', 'entity_identity', 'entity_shared', 'players',
+    'block_entities', 'level_random', 'counters', 'scheduled', 'walk_error',
+)
+
+
+IGNORABLE_GROUPS = tuple(group for group in GROUPS if group not in ('tick', 'dim', 'walk_error'))
 
 
 def parse(lines):
@@ -13,7 +22,10 @@ def parse(lines):
     for line in lines:
         if not line.startswith('tick='):
             continue
-        fields = dict(part.split('=', 1) for part in line.split())
+        payload, separator, walk_error = line.rstrip().partition(' walk_error=')
+        fields = dict(part.split('=', 1) for part in payload.split())
+        if separator:
+            fields['walk_error'] = walk_error
         if fields['run'] == '1':
             running.append(fields)
         elif last_random is not None and fields['level_random'] != last_random:
@@ -22,8 +34,8 @@ def parse(lines):
     return running, frozen_moves
 
 
-def compare(a_lines, b_lines):
-    """The report lines, and whether every step of every group matches and both ran the same number of steps."""
+def compare(a_lines, b_lines, ignore_groups=()):
+    """Report first divergences by group and return whether all required groups match."""
     (a, fa), (b, fb) = parse(a_lines), parse(b_lines)
     if not a or not b:
         return [f'running ticks: {len(a)} vs {len(b)}', 'DIFFERENT'], False
@@ -32,16 +44,41 @@ def compare(a_lines, b_lines):
               f'{b[0]["tick"]}..{b[-1]["tick"]}',
               f'frozen ticks that moved the level random: {fa} vs {fb}']
     same = len(a) == len(b)
+    first = None
+    ignored_differences = False
     for group in GROUPS:
-        diff = [t for t in steps if a[t][group] != b[t][group]]
-        if diff:
-            same = False
-            t = diff[0]
-            report.append(f'{group:15} DIFFERS on {len(diff)} steps, first step {t + 1} (tick {a[t]["tick"]}): '
-                          f'{a[t][group]} vs {b[t][group]}')
+        missing = False
+        if group == 'walk_error':
+            diff = [t for t in steps if group in a[t] or group in b[t]]
         else:
-            report.append(f'{group:15} identical')
-    report.append('IDENTICAL' if same else 'DIFFERENT')
+            diff = []
+            for t in steps:
+                left, right = a[t].get(group), b[t].get(group)
+                absent = left is None or right is None
+                if absent or left != right:
+                    diff.append(t)
+                    missing |= absent
+        if diff:
+            t = diff[0]
+            ignored = not missing and group in IGNORABLE_GROUPS and group in ignore_groups
+            ignored_differences |= ignored
+            if not ignored:
+                same = False
+            if first is None or t < first[0]:
+                first = (t, group, ignored)
+            label = 'DIFFERS (ignored)' if ignored else 'DIFFERS'
+            report.append(f'{group:21} {label} on {len(diff)} steps, first step {t + 1} '
+                          f'(tick {a[t]["tick"]} vs {b[t]["tick"]}): '
+                          f'{a[t].get(group, "<missing>")} vs {b[t].get(group, "<missing>")}')
+        else:
+            report.append(f'{group:21} identical')
+    if first is not None:
+        t, group, ignored = first
+        label = f'{group} (ignored)' if ignored else group
+        report.insert(2, f'first differing group: {label} at step {t + 1} '
+                         f'(tick {a[t]["tick"]} vs {b[t]["tick"]})')
+    verdict = 'MATCH (ignored differences)' if ignored_differences else 'IDENTICAL'
+    report.append(verdict if same else 'DIFFERENT')
     return report, same
 
 
@@ -57,9 +94,14 @@ def compare_coverage(a_dir, b_dir):
 
 
 def main():
-    with open(sys.argv[1]) as a, open(sys.argv[2]) as b:
-        report, same = compare(a, b)
-    coverage = compare_coverage(Path(sys.argv[1]).parent, Path(sys.argv[2]).parent)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('left', type=Path)
+    parser.add_argument('right', type=Path)
+    parser.add_argument('--ignore-group', action='append', choices=IGNORABLE_GROUPS, default=[])
+    args = parser.parse_args()
+    with args.left.open() as a, args.right.open() as b:
+        report, same = compare(a, b, args.ignore_group)
+    coverage = compare_coverage(args.left.parent, args.right.parent)
     if coverage:
         report = report[:-1] + coverage[0] + [report[-1] if same and coverage[1] else 'DIFFERENT']
         same = same and coverage[1]

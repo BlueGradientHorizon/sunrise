@@ -18,6 +18,9 @@ use std::{
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 use sunrise_sim::{join_seq::JoinSeq, thrown_trident::ThrownTrident};
 
+#[path = "state_digest_groups.rs"]
+mod groups;
+
 struct Sink {
     out: std::io::BufWriter<std::fs::File>,
     detail: bool,
@@ -154,9 +157,11 @@ impl crate::game::ServerGame<'_> {
         let mut details = String::new();
 
         let (mut entities, mut randoms) = (hasher(), hasher());
+        let mut shared = groups::EntityGroups::default();
         let (mut count, mut with_random) = (0u64, 0u64);
         let mut visit = |handle: EntityHandle, seq: JoinSeq| {
             with_entity!(self, handle, e => {
+                groups::typed_shared(self, &mut shared, e);
                 let mut one = hasher();
                 std::mem::discriminant(&handle).hash(&mut one);
                 e.native_type().hash(&mut one);
@@ -207,6 +212,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
 
+        let extra = groups::level(self, &mut shared);
         let mut block_entities = hasher();
         let tickers = self.common.world.block_entities.ticker_slots();
         let mut be_count = 0u64;
@@ -243,7 +249,7 @@ impl crate::game::ServerGame<'_> {
         fluid_ticks.hash(&mut ticks);
 
         let line = format!(
-            "tick={} dim={} run={} entities={count}:{:016x} randoms={with_random}:{:016x} \
+            "tick={} dim={} run={} entities={count}:{:016x} randoms={with_random}:{:016x} {extra} entity_identity={:016x} entity_shared={:016x} \
              block_entities={be_count}:{:016x} level_random={:012x}/{:?}/{} counters={}/{} \
              scheduled={}/{}:{:016x}{}\n",
             self.world.game_time,
@@ -255,6 +261,8 @@ impl crate::game::ServerGame<'_> {
             },
             entities.finish(),
             randoms.finish(),
+            shared.identity.finish(),
+            shared.shared.finish(),
             block_entities.finish(),
             level_random.0,
             level_random.1,

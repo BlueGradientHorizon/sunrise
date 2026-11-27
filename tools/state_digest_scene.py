@@ -47,9 +47,31 @@ def scene_commands(random_ticks, coverage=False):
     for i in range(10):
         commands.append(f'summon minecraft:item {8 + i * 8}.5 {Y + 3} 70.5 '
                         f'{{Item:{{id:"minecraft:{"diamond" if i % 2 else "oak_log"}",count:{i + 1}}}}}')
+    commands += entity_cluster_commands()
     if coverage:
         commands += coverage_commands()
     return commands
+
+
+def entity_cluster_commands():
+    y = Y
+    return [
+        f'summon minecraft:oak_boat 12.5 {y} 29.5 '
+        '{Passengers:[{id:"minecraft:pig",NoAI:1b},{id:"minecraft:chicken",NoAI:1b}]}',
+        f'setblock 16 {y} 29 minecraft:rail[shape=north_south]',
+        f'summon minecraft:minecart 16.5 {y} 29.5 '
+        '{Passengers:[{id:"minecraft:sheep",NoAI:1b}]}',
+        f'summon minecraft:cow 20.5 {y} 29.5 '
+        '{NoAI:1b,Passengers:[{id:"minecraft:pig",NoAI:1b,Passengers:[{id:"minecraft:chicken",NoAI:1b}]}]}',
+        f'fill 23 {y} 28 27 {y + 2} 28 minecraft:stone',
+        f'summon minecraft:item_frame 23.5 {y + 1} 29.03 {{block_pos:[I;23,{y + 1},29],Facing:3b,'
+        'Item:{id:"minecraft:diamond",count:1},ItemRotation:3b}',
+        f'summon minecraft:painting 25.5 {y + 1} 29.03 {{block_pos:[I;25,{y + 1},29],facing:0b,'
+        'variant:"minecraft:kebab"}',
+        f'summon minecraft:armor_stand 27.5 {y} 31.5 {{ShowArms:1b,CustomName:"Lookout"}}',
+        f'setblock 30 {y} 29 minecraft:oak_fence',
+        f'summon minecraft:pig 31.5 {y} 31.5 {{NoAI:1b,PersistenceRequired:1b,leash:[I;30,{y},29]}}',
+    ]
 
 
 def item(x, y, z, item_id, count=1):

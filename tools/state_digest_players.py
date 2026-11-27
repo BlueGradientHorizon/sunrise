@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""State-digest scene with players: BINARY RESOURCES TEMPLATE OUT BOTS [--integrated] [--nether] [--detail] [--ticks N] [--no-digest] [--coverage], or --compare OUT_A OUT_B; template from `state_digest_scene.py --generate`, gate in SUNRISE_SCENE_GATE. --coverage adds the base scene's coverage commands, stands Alice in its village and Bob south of it, makes both immune to damage, gives Alice a returning Loyalty trident, defaults --ticks to 2500 and fails when a spot of coverage.txt is missed; its digest is not reproducible run to run, so only its spots are checked."""
+"""State-digest scene with players: BINARY RESOURCES TEMPLATE OUT BOTS [--integrated] [--nether] [--detail] [--ticks N] [--no-digest] [--coverage], or --compare OUT_A OUT_B [--ignore-group GROUP]...; template from `state_digest_scene.py --generate`, gate in SUNRISE_SCENE_GATE. --coverage adds the base scene's coverage commands, stands Alice in its village and Bob south of it, makes both immune to damage, gives Alice a returning Loyalty trident, defaults --ticks to 2500 and fails when a spot of coverage.txt is missed."""
+import argparse
 import json
 import os
 import re
@@ -15,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tools import lab, state_digest_scene as base
-from tools.state_digest_compare import compare_coverage
+from tools.state_digest_compare import IGNORABLE_GROUPS, compare as compare_digest, compare_coverage
 
 STATE_PATHS = ('Pos', 'Health', 'foodLevel', 'XpLevel', 'XpTotal', 'Inventory', 'active_effects[0].id', 'active_effects[1].id', 'Dimension')
 PLAYERS = ['Alice0', 'Bob0']  # dedicated: two scripted bots; integrated: Alice0 joins the host's LAN
@@ -138,7 +139,7 @@ def settle(server, names, targets):
 
 
 def final_state(server):
-    """What the players ended with: their data and scores, which the digest does not hash."""
+    """The players’ final command-visible state."""
     lines = []
     for name in PLAYERS:
         for path in STATE_PATHS:
@@ -168,36 +169,42 @@ def by_dimension(digest):
             current = line.split()[1].removeprefix('dim=')
         if current is not None:
             parts.setdefault(current, []).append(line)
-    return {dim: ''.join(lines) for dim, lines in parts.items()}
+    return parts
 
 
-def compare(a, b):
-    """The digest compare for each dimension (the exit code), and the players' final data, which the settle makes noisy."""
+def compare(a, b, ignore_groups=()):
+    """Compare stepped digests per dimension, coverage, and final player data."""
     status = 0
-    with tempfile.TemporaryDirectory() as tmp:
-        left, right = by_dimension(a / 'digest.txt'), by_dimension(b / 'digest.txt')
-        for dim in sorted(left.keys() | right.keys()):
-            print(f'== {dim}', flush=True)
-            paths = []
-            for side, parts in (('a', left), ('b', right)):
-                path = Path(tmp) / f'{side}-{dim.replace(":", "_")}.txt'
-                path.write_text(parts.get(dim, ''))
-                paths.append(path)
-            if dim not in left or dim not in right:
-                print('only in one run')
-                status = 1
-                continue
-            if ' run=1 ' not in left[dim] and ' run=1 ' not in right[dim]:
-                print('no stepped tick digested in this level (frozen ticks only)')
-                continue
-            status |= subprocess.run([sys.executable, Path(__file__).with_name('state_digest_compare.py'), *paths]).returncode
+    left, right = by_dimension(a / 'digest.txt'), by_dimension(b / 'digest.txt')
+    compared = False
+    for dim in sorted(left.keys() | right.keys()):
+        print(f'== {dim}', flush=True)
+        if dim not in left or dim not in right:
+            print('only in one run')
+            status = 1
+            continue
+        if not any(
+            line.startswith('tick=') and 'run=1' in line.split()
+            for lines in (left[dim], right[dim]) for line in lines
+        ):
+            print('no stepped tick digested in this level (frozen ticks only)')
+            continue
+        compared = True
+        report, same = compare_digest(left[dim], right[dim], ignore_groups)
+        print('\n'.join(report))
+        status |= int(not same)
+    if not compared:
+        print('no stepped ticks compared')
+        status = 1
     coverage = compare_coverage(a, b)
     if coverage:
         print('\n'.join(coverage[0]))
-        status |= 0 if coverage[1] else 1
+        status |= int(not coverage[1])
     same = (a / 'players.txt').read_text() == (b / 'players.txt').read_text()
-    print('== players\n' + ('identical' if same else 'different (the settle\'s frozen ticks vary run to run; not a failure)'))
-    return status
+    ignored = 'player_summary' in ignore_groups
+    print('== player_summary')
+    print('identical' if same else 'different (ignored)' if ignored else 'different')
+    return status | int(not same and not ignored)
 
 
 def server_properties(port):
@@ -371,7 +378,11 @@ def integrated_state(command, host):
 
 def main():
     if sys.argv[1] == '--compare':
-        raise SystemExit(compare(Path(sys.argv[2]), Path(sys.argv[3])))
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument('--compare', nargs=2, required=True, type=Path, metavar=('LEFT', 'RIGHT'))
+        parser.add_argument('--ignore-group', action='append', choices=(*IGNORABLE_GROUPS, 'player_summary'), default=[])
+        args = parser.parse_args()
+        raise SystemExit(compare(*args.compare, args.ignore_group))
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     if '--ctl' in sys.argv:
         args.remove(sys.argv[sys.argv.index('--ctl') + 1])
