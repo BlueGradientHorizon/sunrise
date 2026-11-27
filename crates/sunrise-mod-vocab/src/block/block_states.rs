@@ -544,9 +544,9 @@ impl BlockStates<'_> {
     }
     /// `ItemStack.isCorrectToolForDrops(state)`: whether `stack`'s `minecraft:tool` rules call it
     /// the correct tool for `state`'s block (the first rule that sets `correct_for_drops` and
-    /// names the block decides; no component or no such rule is false). Reads only the stack: for
-    /// the answer the game uses for a player, see `PlayerRef::has_correct_tool_for_drops`. None
-    /// as for `replaceable`.
+    /// names the block decides; no component or no such rule is false), with the block tags of
+    /// the open world's data packs. Reads only the stack: for the answer the game uses for a
+    /// player, see `PlayerRef::has_correct_tool_for_drops`. None as for `replaceable`.
     pub fn is_correct_tool_for_drops(
         &self,
         stack: &crate::ItemStack,
@@ -731,11 +731,13 @@ impl BlockStates<'_> {
         self.backend.block_state_light_block(state)
     }
     /// `BlockState.isSuffocating(level, pos)` when the block's own predicate decides from `state`
-    /// alone: stone yes, glass and leaves no, a piston unless extended. None as for
-    /// `replaceable`, and for a state whose answer needs a position or a block entity (a closed
-    /// shulker box, a shape a block entity publishes or an offset moves). For those, ask
-    /// [`LevelRef::state_is_suffocating`](crate::LevelRef::state_is_suffocating) at a position,
-    /// which also takes a state that is not placed there.
+    /// alone: stone yes, glass and leaves no, a piston unless extended. It reads the suffocation
+    /// rules [`LevelRef::state_is_suffocating`](crate::LevelRef::state_is_suffocating) reads: an
+    /// open world's, whose data packs' `#minecraft:causes_suffocation` decides the default
+    /// predicate, else the game's own. None as for `replaceable`, and for a state whose answer
+    /// needs a position or a block entity (a closed shulker box, a shape a block entity publishes
+    /// or an offset moves). For those, ask `LevelRef::state_is_suffocating` at a position, which
+    /// also takes a state that is not placed there.
     pub fn is_suffocating(&self, state: BlockState) -> Option<bool> {
         self.backend.block_state_is_suffocating(state)
     }

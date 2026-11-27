@@ -128,7 +128,9 @@ pub trait BlockStatesBackend {
     /// rule that sets `correct_for_drops` and names the block of `state`, and the first such rule
     /// says yes. A stack with no tool component, or no matching rule, is not the correct tool. Only
     /// the stack is asked: not whether the block requires a tool, the player, the position or any
-    /// mod's hooks (`PlayerRef::has_correct_tool_for_drops` asks those). None for an unknown state.
+    /// mod's hooks (`PlayerRef::has_correct_tool_for_drops` asks those). A rule's block tags are
+    /// the side's: the open world's, as its data packs bind them, the ones the game's own
+    /// harvest reads. None for an unknown state.
     fn block_state_correct_tool_for_drops(
         &self,
         stack: &ItemStack,
@@ -242,10 +244,12 @@ pub trait BlockStatesBackend {
     /// `BlockState.isSuffocating(level, pos)` for a state alone: the block's own predicate
     /// (`BlockBehaviour.Properties.isSuffocating`, default `blocksMotion` with a full collision
     /// shape: stone yes, glass and leaves no, a piston unless extended, a shulker box
-    /// when closed) as the game's suffocation rules bind it. None for an unknown state, and for
-    /// one whose answer depends on the position or its block entity (a shulker box, a shape that
-    /// a block entity publishes or that a declared offset moves); `level_state_is_suffocating`
-    /// answers those at a position.
+    /// when closed) as the level's suffocation rules bind it: the open world's, with its data
+    /// packs' `#minecraft:causes_suffocation`, else the game's own, the same rules
+    /// `level_state_is_suffocating` reads. None for an unknown state, and for one whose answer
+    /// depends on the position or its block entity (a shulker box, a shape that a block entity
+    /// publishes or that a declared offset moves); `level_state_is_suffocating` answers those at
+    /// a position.
     fn block_state_is_suffocating(&self, state: BlockState) -> Option<bool>;
     /// Side: both.
     /// `BlockState.isValidSpawn(level, pos, entityType)`: whether a mob of `entity_type` may

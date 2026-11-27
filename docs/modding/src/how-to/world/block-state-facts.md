@@ -42,7 +42,7 @@ properties calls nothing; metadata that cannot enumerate returns `Unavailable`. 
 | `is_air(state) -> Option<bool>` | `BlockState.isAir()`: air, cave air and void air, by the block's flag rather than the `#minecraft:air` tag |
 | `is_redstone_conductor(state) -> Option<bool>` | `BlockState.isRedstoneConductor` when it depends only on the block state; `None` when a position is needed |
 | `light_block(state) -> Option<u8>` | `BlockState.getLightBlock()`: how much light the state stops, 0 to 15 (stone 15, water and leaves 1, glass and air 0) |
-| `is_suffocating(state) -> Option<bool>` | `BlockState.isSuffocating` when the block's predicate decides from the state alone (stone, mud and an unextended piston yes; glass, leaves and a moving piston no); `None` when a position is needed (shulker boxes, published or offset shapes) |
+| `is_suffocating(state) -> Option<bool>` | `BlockState.isSuffocating` when the block's predicate decides from the state alone (stone, mud and an unextended piston yes; glass, leaves and a moving piston no), by the open world's `#minecraft:causes_suffocation`; `None` when a position is needed (shulker boxes, published or offset shapes) |
 | `is_valid_spawn(state, entity_type) -> Option<bool>` | `BlockState.isValidSpawn` as natural spawning reads it: a sturdy top face and light emission below 14 by default, a declared `spawn_rule` over it, leaves for ocelots and parrots, ice for polar bears, magma for fire immune types; `None` for an entity type with no spawn species |
 | `map_color(state) -> Option<u8>` | `BlockState.getMapColor`: the `MapColor.id` a map item colours a column by, 0 for none |
 | `map_color_rgba(packed) -> Option<[u8; 4]>` | `MapColor.getColorFromPackedId`: decode a map pixel to `[red, green, blue, alpha]`; ID 0 and undefined IDs decode to transparent RGBA; `None` means no game backend |
@@ -99,8 +99,9 @@ publishes or a declared offset moves is tested with its shape at the position. A
 `LevelRef::state_is_suffocating(host, pos, state)` there (both sides, `None` for an unloaded
 position). The state need not be the block stored at `pos`, so a camouflaged block answers with the
 state it shows: a shulker box state at a cell with no shulker box block entity suffocates, as
-vanilla's predicate says. `is_valid_spawn` needs no position: the game's spawning decides it from
-the state alone.
+vanilla's predicate says. Both reads use the same suffocation rules: an open world's, where its data
+packs' `#minecraft:causes_suffocation` decides the default predicate, else the game's own.
+`is_valid_spawn` needs no position: the game's spawning decides it from the state alone.
 
 Option-only queries return `None` for an unknown state or block, including an invalid local ordinal, and on a host with no game behind it (a mod's test double). Queries returning `Result<Option<_>, LevelReadError>` distinguish unknown states (`Ok(None)`) from unavailable metadata (`Err(LevelReadError::Unavailable)`). The ordinal order is defined by the complete canonical property constraints, not by the engine's numeric enumeration.
 

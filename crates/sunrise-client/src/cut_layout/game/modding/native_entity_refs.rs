@@ -2999,6 +2999,110 @@ pub(crate) mod tests {
         });
     }
 
+    /// A world's data pack that replaces `#minecraft:causes_suffocation` and
+    /// `#minecraft:mineable/pickaxe` changes the server host's reads of those tables: both
+    /// suffocation reads, the state alone and at a position, and the correct-tool read follow the
+    /// world's tables, which the server's state owns. The client's host reads the client's own
+    /// tables, which no world pack of the server changes.
+    #[test]
+    #[ignore = "daily"]
+    fn a_world_pack_decides_the_hosts_table_reads_on_its_side() {
+        use mod_api::HostBlockStates;
+        use std::sync::Arc;
+        use sunrise_client::chunk::Chunk;
+        let pickaxe = || {
+            mod_api::ItemStack::of(mod_api::__private::item_key("minecraft:iron_pickaxe").unwrap())
+        };
+        with_client_game(|client| {
+            with_game(|game| {
+                let root = std::env::temp_dir()
+                    .join(format!("sunrise-side-tables-pack-{}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&root);
+                game.options.game_dir = Some(root.join("game"));
+                game.build_registries();
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let [stone, dirt] = ["minecraft:stone", "minecraft:dirt"].map(|name| {
+                    mod_api::prelude::BlockStatesHost::block_state_id(&*game, name).unwrap()
+                });
+                // The game's own tables: stone suffocates and is a pickaxe's, dirt a shovel's.
+                let level = game.level(game.dim.id()).unwrap();
+                assert_eq!(game.block_states().is_suffocating(stone), Some(true));
+                assert_eq!(
+                    level.state_is_suffocating(game, [0, 64, 0], stone),
+                    Some(true)
+                );
+                assert_eq!(
+                    game.block_states()
+                        .is_correct_tool_for_drops(&pickaxe(), stone),
+                    Some(true)
+                );
+                assert_eq!(
+                    game.block_states()
+                        .is_correct_tool_for_drops(&pickaxe(), dirt),
+                    Some(false)
+                );
+                game.server.world_root = root.join("world");
+                let pack = game.server.world_root.join("datapacks/side_tables");
+                let tags = pack.join("data/minecraft/tags/block");
+                std::fs::create_dir_all(tags.join("mineable")).unwrap();
+                std::fs::write(
+                    pack.join("pack.mcmeta"),
+                    r#"{"pack":{"description":"side tables fixture"}}"#,
+                )
+                .unwrap();
+                let only_dirt = r#"{"replace":true,"values":["minecraft:dirt"]}"#;
+                std::fs::write(tags.join("causes_suffocation.json"), only_dirt).unwrap();
+                std::fs::write(tags.join("mineable/pickaxe.json"), only_dirt).unwrap();
+                std::fs::write(
+                    game.server.world_root.join("datapacks.json"),
+                    r#"{"enabled":["vanilla","file/side_tables"],"disabled":[]}"#,
+                )
+                .unwrap();
+                let stack = game.reload_datapacks(false, &[]).unwrap();
+                game.server.world_tables.0 = game
+                    .stage_world_tables(&stack, false, &game.options.resources.clone())
+                    .unwrap()
+                    .tables;
+                assert!(game.server.world_tables.0.is_some());
+                game.load_server_loot();
+                game.ensure_datapacks();
+                // The world's tables: dirt is the only member of both tags.
+                let level = game.level(game.dim.id()).unwrap();
+                assert_eq!(game.block_states().is_suffocating(stone), Some(false));
+                assert_eq!(
+                    level.state_is_suffocating(game, [0, 64, 0], stone),
+                    Some(false)
+                );
+                assert_eq!(game.block_states().is_suffocating(dirt), Some(true));
+                assert_eq!(
+                    level.state_is_suffocating(game, [0, 64, 0], dirt),
+                    Some(true)
+                );
+                assert_eq!(
+                    game.block_states()
+                        .is_correct_tool_for_drops(&pickaxe(), stone),
+                    Some(false)
+                );
+                assert_eq!(
+                    game.block_states()
+                        .is_correct_tool_for_drops(&pickaxe(), dirt),
+                    Some(true)
+                );
+                // The client's host keeps the client's own tables.
+                assert_eq!(client.block_states().is_suffocating(stone), Some(true));
+                assert_eq!(
+                    client
+                        .block_states()
+                        .is_correct_tool_for_drops(&pickaxe(), stone),
+                    Some(true)
+                );
+                let _ = std::fs::remove_dir_all(&root);
+            });
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn level_sturdy_uses_gameplay_support() {

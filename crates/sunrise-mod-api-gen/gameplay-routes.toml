@@ -74,6 +74,16 @@ borrow = "shared"
 kind = "shared_trait"
 owner = "::sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1<'_>"
 
+[host.client."BlockStatesBackend::block_state_correct_tool_for_drops"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_block_tables::SideBlockTables<'_>"
+
+[host.client."BlockStatesBackend::block_state_is_suffocating"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_block_tables::SideBlockTables<'_>"
+
 [host.client."BlockStatesHost::block_item"]
 borrow = "shared"
 kind = "common"
@@ -1243,6 +1253,16 @@ owner = "::sunrise_gameplay_common::game::native_block_entity_read::NativeBlockE
 borrow = "shared"
 kind = "shared_trait"
 owner = "::sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1<'_>"
+
+[host.server."BlockStatesBackend::block_state_correct_tool_for_drops"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_block_tables::SideBlockTables<'_>"
+
+[host.server."BlockStatesBackend::block_state_is_suffocating"]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::native_block_tables::SideBlockTables<'_>"
 
 [host.server."BlockStatesHost::block_item"]
 borrow = "shared"
