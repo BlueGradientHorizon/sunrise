@@ -415,10 +415,8 @@ impl Ident {
     /// validated once, by the parse that builds it, with the same default namespace.
     pub fn read_identifier(r: &mut Reader) -> Result<identifier::Identifier> {
         let value = Self::read_text(r)?;
-        let id = identifier::Identifier::parse(value)
-            .map_err(|_| Error::new("invalid resource identifier"))?;
         Self::check_length(value)?;
-        Ok(id)
+        identifier::Identifier::parse(value).map_err(|_| Error::new("invalid resource identifier"))
     }
 }
 impl Codec<String> for Ident {
@@ -966,28 +964,31 @@ mod tests {
         assert_eq!(read("stone").unwrap(), "minecraft:stone");
     }
 
-    /// `Ident::read_identifier` decodes the same identifiers as `Ident::read`, with the same
-    /// default namespace, straight into a typed identifier (#6064).
+    /// `Ident::read_identifier` decodes identifiers with the default namespace, straight into a
+    /// typed identifier (#6064), and refuses past the wire limit like `Ident::read`.
     #[test]
-    fn a_typed_identifier_reads_as_the_text_one_does() {
+    fn a_typed_identifier_reads_with_the_default_namespace() {
         let wire = |text: &str| {
             let mut w = Writer::new();
             w.string(text);
             w.data
         };
-        for text in ["stone", ":stone", "mod:flag_1", ".:stone", "minecraft:.."] {
-            let data = wire(text);
-            let typed = Ident::read_identifier(&mut Reader::new(&data)).unwrap();
-            let owned: String = Ident::read(&mut Reader::new(&data)).unwrap();
-            assert_eq!(typed.as_str(), owned, "{text}");
+        let read = |text: &str| Ident::read_identifier(&mut Reader::new(&wire(text)));
+        for (text, expected) in [
+            ("stone", "minecraft:stone"),
+            (":stone", "minecraft:stone"),
+            ("mod:flag_1", "mod:flag_1"),
+            (".:stone", ".:stone"),
+            ("minecraft:..", "minecraft:.."),
+        ] {
+            assert_eq!(read(text).unwrap().as_str(), expected, "{text}");
         }
         for text in ["Bad Style!", "..:stone", "mod:a b"] {
-            let data = wire(text);
-            assert!(
-                Ident::read_identifier(&mut Reader::new(&data)).is_err(),
-                "{text}"
-            );
+            assert!(read(text).is_err(), "{text}");
         }
+        let at_the_limit = format!("a:{}", "a".repeat(32767 - 2));
+        assert_eq!(read(&at_the_limit).unwrap().as_str(), at_the_limit);
+        assert!(read(&format!("{at_the_limit}a")).is_err());
     }
 
     #[test]
