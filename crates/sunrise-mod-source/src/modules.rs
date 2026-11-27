@@ -353,18 +353,23 @@ pub fn generated_include(item: &Item, shadowed: bool) -> Option<(String, &[syn::
 
 /// `items` as compiled when the invocation that produced them carries `attrs`: its `cfg` gates
 /// join each item's own.
-pub fn gate_items(items: Vec<Item>, attrs: &[syn::Attribute]) -> Vec<Item> {
+/// `cfg_attr` can apply attributes other than `cfg` to the invocation itself. Refuse it
+/// rather than forwarding those attributes to the expanded items.
+pub fn gate_items(items: Vec<Item>, attrs: &[syn::Attribute]) -> Result<Vec<Item>, String> {
+    if attrs.iter().any(|attr| attr.path().is_ident("cfg_attr")) {
+        return Err("cannot expand a generated include! with a cfg_attr attribute".into());
+    }
     let gates: Vec<_> = attrs
         .iter()
-        .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
+        .filter(|attr| attr.path().is_ident("cfg"))
         .collect();
     if gates.is_empty() {
-        return items;
+        return Ok(items);
     }
-    items
+    Ok(items
         .into_iter()
         .map(|item| -> Item { syn::parse_quote!(#(#gates)* #item) })
-        .collect()
+        .collect())
 }
 
 /// An item-position invocation of the standard `include!`: see [`literal_include`].
@@ -378,6 +383,11 @@ pub fn standard_include(item: &Item, shadowed: bool) -> Option<&syn::ItemMacro> 
         matches!(segments.as_slice(), [root, name] if (root == "std" || root == "core") && name == "include")
     };
     standard.then_some(item)
+}
+
+/// Whether a bare `include!` in this module is shadowed locally or in an enclosing module.
+pub(crate) fn inherited_include_shadowing(inherited: bool, items: &[Item]) -> bool {
+    inherited || include_shadowed(items)
 }
 
 /// Whether `items` define a `macro_rules! include` or import a name `include`. The tools then
@@ -586,7 +596,7 @@ impl Walker {
         ancestors: &[PathBuf],
         shadowed: bool,
     ) {
-        let shadowed = shadowed || include_shadowed(items);
+        let shadowed = inherited_include_shadowing(shadowed, items);
         for (index, item) in items.iter().enumerate() {
             if let Some((relative, attrs)) = literal_include(item, shadowed)
                 && self.keep(attrs)
