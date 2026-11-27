@@ -446,6 +446,10 @@ pub(in crate::game) mod pack_layers;
 pub(in crate::game) mod part_shearing_client;
 #[path = "entities/stock_layer_mask.rs"]
 pub(in crate::game) mod stock_layer_mask;
+#[cfg(feature = "client")]
+#[cfg(test)]
+#[path = "interface/title_panorama_tests.rs"]
+mod title_panorama_tests;
 #[cfg(all(test, feature = "client"))]
 #[path = "interface/world_text_frame_tests.rs"]
 mod world_text_frame_tests;
