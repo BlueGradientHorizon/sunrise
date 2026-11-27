@@ -24,6 +24,7 @@ sunrise-mod-api-gen patch::tests::a_filled_loops_entry_runs_the_loop_with_the_mo
 sunrise-mod-api-gen patch::tests::a_lower_crate_function_gets_a_patch_crate_of_its_own lib daily slow
 sunrise-mod-api-gen patch::tests::a_lower_free_function_installs_through_its_library_name lib daily slow
 sunrise-mod-api-gen patch::tests::a_method_moves_into_a_trait_of_its_own_type lib daily slow
+sunrise-mod-api-gen patch::tests::an_import_beside_a_mirrored_child_keeps_the_value_it_may_bind lib daily child-process
 sunrise-mod-api-gen patch::tests::refusals_are_named lib daily slow
 sunrise-mod-api-gen patch::tests::support_modules_and_bridges_land_in_the_mirror_their_rows_name lib daily slow
 sunrise-mod-api-gen replace::tests::trait_installers_compile_with_warnings_denied lib daily child-process
