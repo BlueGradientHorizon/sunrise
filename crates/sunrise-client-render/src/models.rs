@@ -424,9 +424,11 @@ fn with_test_registrations<R>(
 mod tests {
     use super::*;
 
+    /// Freezing the registrations namespaces, sorts and deduplicates the file IDs and keeps only
+    /// namespaced bakers. It goes through `freeze_standalone` alone, so the process-wide
+    /// `STANDALONE` registry other bake tests fall back to stays unset (#6457).
     #[test]
-    fn standalone_names_are_namespaced_sorted_and_set_once() {
-        assert!(standalone().is_none());
+    fn standalone_names_are_namespaced_sorted_and_deduplicated() {
         with_test_registrations(
             |event| {
                 for id in [
@@ -449,9 +451,7 @@ mod tests {
                 }
             },
             |staged| {
-                assert!(register_standalone(staged));
-                assert!(!register_standalone(Vec::new()));
-                let registered = standalone().unwrap();
+                let registered = freeze_standalone(staged);
                 assert_eq!(registered.names, ["lanef:block/a", "lanef:block/b"]);
                 let [baker] = registered.bakers.as_slice() else {
                     panic!("expected only the namespaced baker");
@@ -459,6 +459,10 @@ mod tests {
                 assert_eq!(baker.registration.id, "other:valid");
                 assert_eq!(baker.mod_id, "registering_mod");
             },
+        );
+        assert!(
+            STANDALONE.get().is_none(),
+            "the test sealed the process registry"
         );
     }
 }
