@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from tests import git_history
+from tests.git_fixture import git_in, isolated_git_env, merge_pull_request
 from tools.ci import check_engine_boundary as boundary
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +93,7 @@ class EngineBoundaryBaseTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
+        self._git = git_in(self.root)
         for script in ("tools/ci/check_engine_boundary.py", "tools/rust_tokens.py", "tools/merge_base.py",
                        "tools/check_layers.py", "tools/layers.json"):
             (self.root / script).parent.mkdir(parents=True, exist_ok=True)
@@ -100,13 +101,17 @@ class EngineBoundaryBaseTests(unittest.TestCase):
         self.write("crates/sunrise-client/src/game/world/a.rs", "use crate::gfx::Frame;\n")
         self.write("crates/sunrise-client/src/game/world/b.rs", "fn quiet() {}\n")
         self.allow({"crates/sunrise-client/src/game/world/a.rs": ["gfx"]})
-        git_history.git(self.root, "init", "-q")
-        git_history.git(self.root, "add", ".")
-        git_history.git(self.root, "commit", "-qm", "base")
-        self.base = git_history.git(self.root, "rev-parse", "HEAD").stdout.strip()
+        self.git("init", "-q")
+        self.git("add", ".")
+        self.git("commit", "-qm", "base")
+        self.base = self.git("rev-parse", "HEAD")
+
+    def git(self, *arguments):
+        return self._git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", *arguments)
 
     def write(self, path, text):
-        git_history.write(self.root, path, text)
+        (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / path).write_text(text, encoding="utf-8", newline="\n")
 
     def allow(self, allowed):
         self.write("tools/ci/engine_boundary.json", json.dumps(
@@ -114,10 +119,10 @@ class EngineBoundaryBaseTests(unittest.TestCase):
 
     def check(self, *arguments):
         return subprocess.run([sys.executable, "tools/ci/check_engine_boundary.py", *arguments], cwd=self.root,
-                              env=git_history.clean_env(), capture_output=True, text=True, encoding="utf-8")
+                              env=isolated_git_env(), capture_output=True, text=True, encoding="utf-8")
 
     def merge(self, main_change, pr_change):
-        return git_history.merge_pull_request(self.root, self.base, ("crates", "tools"), main_change, pr_change)
+        return merge_pull_request(self.root, self.base, ("crates", "tools"), main_change, pr_change)
 
     def widen_with_b(self):
         """A new offender b.rs, recorded in the baseline, as a change to the ratchet."""
@@ -158,10 +163,10 @@ class EngineBoundaryBaseTests(unittest.TestCase):
         missing = self.check("--base", "0" * 40)
         self.assertEqual(missing.returncode, 1, missing.stdout)
         self.assertNotIn("Engine boundary check passed", missing.stdout)
-        git_history.git(self.root, "update-index", "--add", "--cacheinfo",
-                        "160000,1111111111111111111111111111111111111111,tools/ci/engine_boundary.json")
-        git_history.git(self.root, "commit", "-qm", "gitlink")
-        corrupt = git_history.git(self.root, "rev-parse", "HEAD").stdout.strip()
+        self.git("update-index", "--add", "--cacheinfo",
+                 "160000,1111111111111111111111111111111111111111,tools/ci/engine_boundary.json")
+        self.git("commit", "-qm", "gitlink")
+        corrupt = self.git("rev-parse", "HEAD")
         unreadable = self.check("--base", corrupt)
         self.assertEqual(unreadable.returncode, 1, unreadable.stdout)
         self.assertIn("tools/ci/engine_boundary.json", unreadable.stderr)
