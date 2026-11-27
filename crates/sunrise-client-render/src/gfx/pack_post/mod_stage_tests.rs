@@ -33,10 +33,6 @@ fn ndc_quad([x0, y0, x1, y1]: [f32; 4], reverse_z: f32, rgb: [u8; 3]) -> [Vertex
     })
 }
 
-/// Runs a shader pack whose `gbuffers_terrain` paints the left half (`x in [-1, 0]`) green at
-/// GL depth `0.5` and whose `final` swaps R and B of `colortex0`. When `inside_pack` is true,
-/// `quads` draw at `WorldBoundary::AfterOpaqueBlocks` against `colortex0` + `depthtex0`; when
-/// false, `quads` draw onto `screen` against the exported reversed-Z `world_depth` after `final`.
 /// What every mod stage test draws against: a device (required: a missing adapter fails the
 /// test rather than passing it), cleared `colortex0`/depth inputs, the pack `files` loaded with
 /// solid terrain, one solid terrain quad over the left half of the frame (`x in [-1, 0]`) and a
@@ -48,7 +44,12 @@ struct StageFixture {
     post: PackPost,
     terrain_buf: wgpu::Buffer,
     atlas_view: wgpu::TextureView,
+    screen: wgpu::TextureView,
+    read: wgpu::Buffer,
 }
+
+/// Bytes per row of the readback buffer, aligned as texture copies require.
+const READBACK_STRIDE: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 fn stage_fixture(files: Vec<(String, String)>) -> StageFixture {
     let gpu = Gpu::new().expect("graphics adapter required for the mod stage tests");
@@ -143,6 +144,13 @@ fn stage_fixture(files: Vec<(String, String)>) -> StageFixture {
         &[255, 255, 255, 255],
     );
     let atlas_view = atlas.create_view(&Default::default());
+    let screen = gpu.texture(T::Rgba8Unorm);
+    let read = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Mod stage readback"),
+        size: u64::from(READBACK_STRIDE * SIZE[1]),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
     StageFixture {
         gpu,
         color,
@@ -150,9 +158,15 @@ fn stage_fixture(files: Vec<(String, String)>) -> StageFixture {
         post,
         terrain_buf,
         atlas_view,
+        screen,
+        read,
     }
 }
 
+/// Runs a shader pack whose `gbuffers_terrain` paints the left half (`x in [-1, 0]`) green at
+/// GL depth `0.5` and whose `final` swaps R and B of `colortex0`. When `inside_pack` is true,
+/// `quads` draw at `WorldBoundary::AfterOpaqueBlocks` against `colortex0` + `depthtex0`; when
+/// false, `quads` draw onto `screen` against the exported reversed-Z `world_depth` after `final`.
 /// Returns the screen pixels `[r, g, b]` at top-left `(2, 2)`, bottom-left `(2, 12)`, and
 /// bottom-right `(12, 12)`.
 fn render_stage_quads(inside_pack: bool, quads: &[Vertex]) -> [[u8; 3]; 3] {
@@ -182,6 +196,8 @@ fn render_stage_quads(inside_pack: bool, quads: &[Vertex]) -> [[u8; 3]; 3] {
         mut post,
         terrain_buf,
         atlas_view,
+        screen,
+        read,
     } = stage_fixture(files);
     let mut primitives = WorldPrimitives::new(&gpu.device, (T::Rgba8Unorm, false));
 
@@ -217,14 +233,6 @@ fn render_stage_quads(inside_pack: bool, quads: &[Vertex]) -> [[u8; 3]; 3] {
         primitives: [0..quad_count, 0..0, 0..0, 0..0],
         ..Default::default()
     }];
-    let screen = gpu.texture(T::Rgba8Unorm);
-    let stride = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-    let read = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Mod stage readback"),
-        size: u64::from(stride * SIZE[1]),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
     let hud = HudBatch::scratch(SIZE);
     let frame = fixture_frame(&hud);
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
@@ -293,7 +301,7 @@ fn render_stage_quads(inside_pack: bool, quads: &[Vertex]) -> [[u8; 3]; 3] {
             buffer: &read,
             layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(stride),
+                bytes_per_row: Some(READBACK_STRIDE),
                 rows_per_image: None,
             },
         },
@@ -309,7 +317,7 @@ fn render_stage_quads(inside_pack: bool, quads: &[Vertex]) -> [[u8; 3]; 3] {
     rx.recv().unwrap().unwrap();
     let mapped = slice.get_mapped_range().unwrap();
     let sample = |x: usize, y: usize| -> [u8; 3] {
-        let base = y * stride as usize + x * 4;
+        let base = y * READBACK_STRIDE as usize + x * 4;
         [mapped[base], mapped[base + 1], mapped[base + 2]]
     };
     let out = [sample(2, 2), sample(2, 12), sample(12, 12)];
@@ -401,6 +409,8 @@ fn pack_boundaries_fire_in_order_and_draw_pack_custom_depth_tests_mod_pipelines(
         mut post,
         terrain_buf,
         atlas_view,
+        screen,
+        read,
     } = stage_fixture(files);
 
     let id = Identifier::parse("test:pack_custom").unwrap();
@@ -464,14 +474,6 @@ fn pack_boundaries_fire_in_order_and_draw_pack_custom_depth_tests_mod_pipelines(
     ));
     primitives.prepare_pack_pass(&gpu.device, post.formats[0], post.rgb & 1 != 0, false);
 
-    let screen = gpu.texture(T::Rgba8Unorm);
-    let stride = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-    let read = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Mod stage custom readback"),
-        size: u64::from(stride * SIZE[1]),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
     let hud = HudBatch::scratch(SIZE);
     let frame = fixture_frame(&hud);
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
@@ -560,7 +562,7 @@ fn pack_boundaries_fire_in_order_and_draw_pack_custom_depth_tests_mod_pipelines(
             buffer: &read,
             layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(stride),
+                bytes_per_row: Some(READBACK_STRIDE),
                 rows_per_image: None,
             },
         },
@@ -576,7 +578,7 @@ fn pack_boundaries_fire_in_order_and_draw_pack_custom_depth_tests_mod_pipelines(
     rx.recv().unwrap().unwrap();
     let mapped = slice.get_mapped_range().unwrap();
     let sample = |x: usize, y: usize| -> [u8; 3] {
-        let base = y * stride as usize + x * 4;
+        let base = y * READBACK_STRIDE as usize + x * 4;
         [mapped[base], mapped[base + 1], mapped[base + 2]]
     };
     assert_eq!(
@@ -642,6 +644,8 @@ fn pack_composite_inverts_mod_glsl_quad_drawn_once_after_opaque_blocks() {
         mut post,
         terrain_buf,
         atlas_view,
+        screen,
+        read,
     } = stage_fixture(files);
 
     // Additive red (100, 0, 0) quad: drawn once over black gives (100, 0, 0), inverted by
@@ -706,14 +710,6 @@ fn pack_composite_inverts_mod_glsl_quad_drawn_once_after_opaque_blocks() {
     ));
     primitives.prepare_pack_pass(&gpu.device, post.formats[0], post.rgb & 1 != 0, false);
 
-    let screen = gpu.texture(T::Rgba8Unorm);
-    let stride = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-    let read = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Mod composite readback"),
-        size: u64::from(stride * SIZE[1]),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
     let hud = HudBatch::scratch(SIZE);
     let frame = fixture_frame(&hud);
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
@@ -765,7 +761,7 @@ fn pack_composite_inverts_mod_glsl_quad_drawn_once_after_opaque_blocks() {
             buffer: &read,
             layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(stride),
+                bytes_per_row: Some(READBACK_STRIDE),
                 rows_per_image: None,
             },
         },
@@ -781,7 +777,7 @@ fn pack_composite_inverts_mod_glsl_quad_drawn_once_after_opaque_blocks() {
     rx.recv().unwrap().unwrap();
     let mapped = slice.get_mapped_range().unwrap();
     let sample = |x: usize, y: usize| -> [u8; 3] {
-        let base = y * stride as usize + x * 4;
+        let base = y * READBACK_STRIDE as usize + x * 4;
         [mapped[base], mapped[base + 1], mapped[base + 2]]
     };
     assert_eq!(
