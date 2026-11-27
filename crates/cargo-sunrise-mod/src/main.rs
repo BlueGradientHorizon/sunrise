@@ -341,7 +341,18 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
         })
         .collect();
     let name = name.map_or_else(|| base.replace(['-', '_'], " "), str::to_string);
-    let fill = |t: &str| t.replace("{id}", &id).replace("{name}", &name);
+    // `{id}` is filled first and `{name}` only where a template takes the display name, as the text
+    // its file needs: a TOML string in the manifest, the raw name in the README. Nothing is scanned
+    // for placeholders after a name is put in.
+    let toml_name = toml_edit::Value::from(name.as_str()).to_string();
+    let fill = |file: &str, text: &str| {
+        let text = text.replace("{id}", &id);
+        match file {
+            MANIFEST => text.replace("{name}", &toml_name),
+            "README.md" => text.replace("{name}", &name),
+            _ => text,
+        }
+    };
     match template {
         None | Some("content") if sunrise.is_some() => {
             return Err("--sunrise needs --template native".into());
@@ -394,12 +405,11 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
         (".gitignore", include_str!("../template/gitignore")),
     ];
     for (file, text) in files.into_iter().chain(PAGE_TEMPLATE) {
-        let file = fill(file);
-        let file = file.as_str();
-        let to = dir.join(file);
+        let file = file.replace("{id}", &id);
+        let to = dir.join(&file);
         std::fs::create_dir_all(to.parent().expect("a file in the mod"))
             .map_err(|e| e.to_string())?;
-        std::fs::write(&to, fill(text)).map_err(|e| format!("{}: {e}", to.display()))?;
+        std::fs::write(&to, fill(&file, text)).map_err(|e| format!("{}: {e}", to.display()))?;
     }
     let manifest =
         Manifest::parse(&std::fs::read_to_string(dir.join(MANIFEST)).map_err(|e| e.to_string())?)?;
@@ -501,7 +511,7 @@ fn new_native(
     id: &str,
     sunrise: Option<&str>,
     fetch: FetchSdk,
-    fill: impl Fn(&str) -> String,
+    fill: impl Fn(&str, &str) -> String,
 ) -> Result<(), String> {
     if id.len() > 64 {
         return Err(format!("mod id {id}: 64 characters at most"));
@@ -539,7 +549,7 @@ fn new_native(
         let to = dir.join(file);
         std::fs::create_dir_all(to.parent().expect("a file in the mod"))
             .map_err(|e| e.to_string())?;
-        std::fs::write(&to, fill(text)).map_err(|e| format!("{}: {e}", to.display()))?;
+        std::fs::write(&to, fill(file, text)).map_err(|e| format!("{}: {e}", to.display()))?;
     }
     for folder in ["assets", "data"] {
         std::fs::create_dir_all(dir.join(folder)).map_err(|e| e.to_string())?;
@@ -1022,6 +1032,21 @@ mod tests {
                 ]
             );
         }
+    }
+
+    #[test]
+    fn a_display_name_round_trips_through_both_manifests_and_stays_raw_in_the_readme() {
+        let name = r#"A "quote" and a back\slash, {id} {name} {metadata}"#;
+        let workspace = tempfile::tempdir().unwrap();
+        for template in ["content", "native"] {
+            let project = workspace.path().join(template);
+            let mut args = code_args(&project, template).to_vec();
+            args.extend(["--name".into(), name.into()]);
+            new(&args, &offline).unwrap();
+            assert_eq!(Package::read(&project).unwrap().manifest.name, name);
+        }
+        let readme = std::fs::read_to_string(workspace.path().join("native/README.md")).unwrap();
+        assert_eq!(readme.lines().next().unwrap(), format!("# {name}"));
     }
 
     #[test]
