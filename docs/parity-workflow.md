@@ -207,6 +207,9 @@ Run with `SUNRISE_STATE_DIGEST=<file>` to write one line per level tick. The fea
 The digest covers typed entities in join order and their sampled random sources, entities outside the typed lists,
 seat order and rider links, saved UUIDs, live shared fields, players, block entities in ticker order, and scheduled
 ticks. It includes the level random, `Level.randValue`, the entity ID counter and the join counter.
+Retained vehicles and passengers, saved entity memory, and portal state have their own groups.
+Groups prefixed with `server_` sample owners shared by the levels once, on the last level pass of each server tick.
+Their value is `-` on earlier level passes.
 `digest-sync U E S` on the dedicated console runs `sync_randoms` with `SUNRISE_TEST_SEEDS=1`.
 `SUNRISE_STATE_DIGEST_DETAIL=1` adds a raw line per typed entity and block entity.
 

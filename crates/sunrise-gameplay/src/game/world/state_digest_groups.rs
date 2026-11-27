@@ -34,10 +34,14 @@ use sunrise_sim::{
 pub(super) struct EntityGroups {
     pub(super) identity: DefaultHasher,
     pub(super) shared: DefaultHasher,
+    visited: BTreeSet<u32>,
 }
 
 #[path = "state_digest_bodies.rs"]
 mod bodies;
+
+#[path = "state_digest_memory.rs"]
+mod memory;
 
 pub(super) use bodies::BodyDigest;
 
@@ -251,6 +255,7 @@ fn entity_shared(
             };
             words.as_slice().try_into().ok()
         });
+    groups.visited.insert(id);
     (id, uuid).hash(&mut groups.identity);
     entity_values(game, &mut groups.shared, id, target, live);
 }
@@ -396,6 +401,8 @@ pub(super) fn level(game: &ServerGame<'_>, shared: &mut EntityGroups) -> String 
     server_projectiles(game, items, &mut out);
     seats(game).append(&mut out, "seats");
     players(game, items).append(&mut out, "players");
+    memory::level(game, shared, items, &mut out);
+    memory::server(game, items, &mut out);
     out.pop();
     out
 }

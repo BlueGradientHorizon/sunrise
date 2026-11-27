@@ -9,7 +9,8 @@ GROUPS = (
     'tick', 'dim', 'walk_error', 'entities', 'randoms', 'hangings', 'cushions', 'other_entities', 'server_thrown_eyes',
     'fangs', 'lightning', 'end_crystals', 'dragon', 'breath_clouds', 'ominous_spawners', 'leash_knots',
     'fishing_hooks', 'server_thrown_potions', 'seats', 'entity_identity', 'entity_shared', 'players',
-    'block_entities', 'level_random', 'counters', 'scheduled',
+    'retained_entities', 'entity_memory', 'entity_portals', 'server_entity_state',
+    'server_portal_travel', 'server_player_transit', 'block_entities', 'level_random', 'counters', 'scheduled',
 )
 
 
@@ -49,22 +50,24 @@ def compare(a_lines, b_lines, ignore_groups=()):
     walk_groups = {'entities', 'randoms', 'entity_identity', 'entity_shared'}
     ignored_differences = False
     for group in GROUPS:
-        missing = False
+        muted = group in IGNORABLE_GROUPS and group in ignore_groups
+        ignored_steps = []
         if group == 'walk_error':
-            diff = sorted(invalid_walks)
+            failures = sorted(invalid_walks)
         else:
-            diff = []
+            failures = []
             for t in steps:
                 if t in invalid_walks and group in walk_groups:
                     continue
                 left, right = a[t].get(group), b[t].get(group)
-                absent = left is None or right is None
-                if absent or left != right:
-                    diff.append(t)
-                    missing |= absent
+                if left is None or right is None:
+                    failures.append(t)
+                elif left != right:
+                    (ignored_steps if muted else failures).append(t)
+        diff = failures or ignored_steps
         if diff:
             t = diff[0]
-            ignored = not missing and group in IGNORABLE_GROUPS and group in ignore_groups
+            ignored = not failures
             ignored_differences |= ignored
             if ignored:
                 if first_ignored is None or t < first_ignored[0]:

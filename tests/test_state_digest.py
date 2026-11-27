@@ -41,6 +41,13 @@ class DigestCompareTests(unittest.TestCase):
         self.assertFalse(same)
         self.assertIn('first differing group: seats at step 2 (tick 43 vs 43)', report)
 
+    def test_missing_ignored_group_reports_the_missing_step(self):
+        missing = line(43).replace(' players=same', '')
+        report, same = state_digest_compare.compare(
+            [line(42), line(43)], [line(42, players='changed'), missing], ['players'])
+        self.assertFalse(same)
+        self.assertIn('first differing group: players at step 2 (tick 43 vs 43)', report)
+
     def test_failed_walk_does_not_report_fallback_entity_hash_as_a_difference(self):
         a = [line(42), line(43)]
         b = [line(42, entities='fallback', walk_error='Unjoined(Mob(0))'), line(43, entities='changed')]
