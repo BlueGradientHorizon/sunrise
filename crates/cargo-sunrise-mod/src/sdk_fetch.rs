@@ -145,52 +145,6 @@ pub(crate) fn fetch_pinned(project: &Path, build: &str) -> Result<PinnedSdk, Str
     fetch(&Base::from_env(), &keys(), build, &dir, true)
 }
 
-/// The game checkout the project at `project` builds against, when its `sunrise-mod-api`
-/// dependency is a path to `crates/sunrise-mod-api` of a game workspace the project itself lies in
-/// (such as a fixture in the game repository): it builds against that tree and fetches no SDK. A
-/// project whose dependency points anywhere else, its own `.sunrise/sdk/` included, gets `None`.
-pub(crate) fn game_tree(project: &Path) -> Result<Option<PathBuf>, String> {
-    let read = |path: &Path| -> Result<toml::Table, String> {
-        fs::read_to_string(path)
-            .map_err(|e| format!("{}: {e}", path.display()))?
-            .parse()
-            .map_err(|e| format!("{}: {e}", path.display()))
-    };
-    let cargo = read(&project.join("Cargo.toml"))?;
-    let Some(dependency) = cargo
-        .get("dependencies")
-        .and_then(|d| d.get("sunrise-mod-api"))
-        .and_then(|d| d.get("path"))
-        .and_then(toml::Value::as_str)
-    else {
-        return Ok(None);
-    };
-    let (Ok(dependency), Ok(project)) = (
-        project.join(dependency).canonicalize(),
-        project.canonicalize(),
-    ) else {
-        return Ok(None);
-    };
-    let Some(root) = dependency
-        .ends_with("crates/sunrise-mod-api")
-        .then(|| dependency.parent().and_then(Path::parent))
-        .flatten()
-        .filter(|root| project.starts_with(root))
-    else {
-        return Ok(None);
-    };
-    let member = read(&root.join("Cargo.toml"))?
-        .get("workspace")
-        .and_then(|w| w.get("members"))
-        .and_then(toml::Value::as_array)
-        .is_some_and(|members| {
-            members
-                .iter()
-                .any(|m| m.as_str() == Some("crates/sunrise-mod-api"))
-        });
-    Ok(member.then(|| root.to_path_buf()))
-}
-
 /// The build a native mod pins in `[native] sunrise`.
 pub(crate) fn pin(project: &Path) -> Result<String, String> {
     let text = crate::bounded::read(&project.join(MANIFEST), crate::bounded::MAX_MANIFEST)?;
