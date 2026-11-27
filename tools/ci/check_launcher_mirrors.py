@@ -11,7 +11,8 @@ A surface change is allowed, but it must be announced: the pull request body car
 same commit. With `--base`, the check compares the base manifest too, so a stale manifest cannot hide a change.
 
     python3 tools/ci/check_launcher_mirrors.py                    # hashes match the manifest
-    python3 tools/ci/check_launcher_mirrors.py --base origin/main --event "$GITHUB_EVENT_PATH"  # CI
+    python3 tools/ci/check_launcher_mirrors.py --base origin/main --pr-body-file body.md  # CI: the live body
+    python3 tools/ci/check_launcher_mirrors.py --base origin/main --remind-body  # tools/pr_ready.py: no body here
     python3 tools/ci/check_launcher_mirrors.py --write            # after an announced surface change
     python3 tools/ci/check_launcher_mirrors.py --list             # every mirror and its source paths
 """
@@ -183,6 +184,12 @@ def announced(body):
     return any(line.strip().startswith(MARKER) for line in body.splitlines())
 
 
+def changed_mirrors(hashes, base):
+    """The mirrors whose measured surface differs from the one the base manifest records."""
+    before = {mirror["launcher"]: mirror.get("surface") for mirror in base["mirror"]}
+    return sorted(name for name, digest in hashes.items() if before.get(name) != digest)
+
+
 def check(manifest, hashes, base=None, body=""):
     problems = []
     recorded = {mirror["launcher"]: mirror for mirror in manifest["mirror"]}
@@ -190,10 +197,10 @@ def check(manifest, hashes, base=None, body=""):
         recorded_digest = recorded[name].get("surface")
         if recorded_digest != digest:
             problems.append(f"{name}: public surface is {digest}, {MANIFEST_PATH} records {recorded_digest or 'nothing'}. "
-                            f"Run --write, and say {MARKER} what the launcher copy must follow")
+                            f"Run `python3 tools/ci/check_launcher_mirrors.py --write`, and say {MARKER} "
+                            "what the launcher copy must follow")
     if base is not None:
-        before = {mirror["launcher"]: mirror.get("surface") for mirror in base["mirror"]}
-        changed = sorted(name for name, digest in hashes.items() if before.get(name) != digest)
+        changed = changed_mirrors(hashes, base)
         if changed and not announced(body):
             problems.append(f"launcher mirrors changed ({', '.join(changed)}) without a line starting "
                             f"{MARKER} in the pull request body")
@@ -227,10 +234,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base", help="also compare the manifest at this git ref")
     parser.add_argument("--event", help="the pull request event JSON (GitHub Actions GITHUB_EVENT_PATH)")
-    parser.add_argument("--pr-body-file", help="a file holding the pull request body, for a local check")
+    parser.add_argument("--pr-body-file", help="a file holding the pull request body")
+    parser.add_argument("--remind-body", action="store_true",
+                        help="with --base, for a run that has no pull request body (tools/pr_ready.py): a changed "
+                             f"surface passes with a reminder to add the {MARKER} line, where it fails otherwise")
     parser.add_argument("--write", action="store_true", help="record the current public surface")
     parser.add_argument("--list", action="store_true", help="print every mirror and its sources")
     args = parser.parse_args(argv)
+    if args.remind_body and (not args.base or args.event or args.pr_body_file):
+        parser.error("--remind-body takes --base and neither --event nor --pr-body-file")
     manifest = load_manifest()
     if args.list:
         for mirror in manifest["mirror"]:
@@ -242,13 +254,19 @@ def main(argv=None):
     if args.write:
         write(manifest, hashes)
         return 0
-    problems = check(manifest, hashes, base_manifest(args.base) if args.base else None, pr_body(args))
+    base = base_manifest(args.base) if args.base else None
+    # A run with no body can only remind: the manifest must still match the surface, the announcement is the author's.
+    problems = check(manifest, hashes) if args.remind_body else check(manifest, hashes, base, pr_body(args))
     if problems:
         print("Launcher mirror check failed:")
         for problem in problems:
             print(f"  {problem}")
         return 1
     print(f"Launcher mirror check passed: {len(hashes)} mirrored crates, {MANIFEST_PATH}.")
+    changed = changed_mirrors(hashes, base) if args.remind_body and base is not None else []
+    if changed:
+        print(f"Reminder: launcher mirrors changed ({', '.join(changed)}); put a line starting {MARKER} in the "
+              "pull request body saying what the launcher copy must follow.")
     return 0
 
 

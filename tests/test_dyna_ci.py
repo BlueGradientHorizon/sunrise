@@ -13,6 +13,7 @@ import unittest
 
 from tests.os_support import BASH, POSIX_BASH, needs_command, needs_gnu_timeout, needs_runner_shell, needs_symlinks
 from tests.test_ci_concurrency import expression_value
+from tests.test_launcher_mirrors_check import MirrorCheckout
 from tools.ci import vendored_yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -296,7 +297,9 @@ class DynaRoutingTests(unittest.TestCase):
             self.assertEqual(block["needs"], "changes")
             self.assertIn(f"needs.changes.outputs.self_hosted == 'true' && '{label}'", block["runs-on"])
             self.assertNotIn("secrets.", json.dumps(block))
-            self.assertNotIn("permissions", block)
+        self.assertNotIn("permissions", blocks["verify"])
+        # verify-static only reads the pull request body: strictly read-only, no write privileges.
+        self.assertEqual(blocks["verify-static"]["permissions"], {"contents": "read", "pull-requests": "read"})
         # The watch for a dead pool runs off the pool, as one scheduled sweep, never as a job of each run.
         self.assertNotIn("pool-watch", blocks)
         self.assertEqual([job["runs-on"] for job in workflow("dyna-pool-watch.yml")["jobs"].values()],
@@ -789,6 +792,101 @@ class DynaRoutingTests(unittest.TestCase):
             self.assertNotEqual(failed.returncode, 0)
             self.assertEqual(failed.stdout, "::error::Could not read the game-probe plan for this parity share.\n")
             self.assertFalse(calls.exists())
+
+
+@needs_runner_shell
+@unittest.skipUnless(shutil.which("python3"), "needs python3 on PATH")
+class LauncherMirrorsStepTests(unittest.TestCase):
+    """verify-static's `Launcher mirrors` step as written, with a stub `gh` for the API and no network."""
+
+    def setUp(self):
+        job = workflow("dyna-ci.yml")["jobs"]["verify-static"]
+        self.step = step_named(job, "Launcher mirrors")
+        names = [step.get("name") for step in job["steps"]]
+        self.assertLess(names.index("GitHub CLI for the launcher mirror check"), names.index("Launcher mirrors"))
+        self.checkout = MirrorCheckout(self)
+        self.temp = self.checkout.root / "runner-temp"
+        stubs = self.checkout.root / "stubs"
+        stubs.mkdir()
+        self.calls = self.checkout.root / "gh-calls"
+        (stubs / "gh").write_text('#!/usr/bin/env bash\nprintf "%s|%s\\n" "$GH_TOKEN" "$*" >> "$GH_CALLS"\n'
+                                  '[ "${GH_EXIT:-0}" = 0 ] || { echo "gh: HTTP 502" >&2; exit "$GH_EXIT"; }\n'
+                                  'printf "%s" "$GH_RESPONSE"\n',
+                                  encoding="utf-8", newline="\n")
+        (stubs / "gh").chmod(0o755)
+        self.temp.mkdir()
+        self.env = dict(os.environ, PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}", GH_CALLS=str(self.calls),
+                        GH_TOKEN="token-value", RUNNER_TEMP=str(self.temp), GITHUB_REPOSITORY="sunrise-org/sunrise",
+                        BASE_SHA=self.checkout.base, PR_NUMBER="42")
+
+    def run_step(self, live=None, event=None, gh_exit=0, **env):
+        """The step's script on a pull request. `live` is gh's answer, `event` the body the event file kept."""
+        event_file = self.checkout.root / "event.json"
+        event_file.write_text(json.dumps({"pull_request": {"number": 42, "body": event}}))
+        environment = dict(self.env, GITHUB_EVENT_PATH=str(event_file), GH_EXIT=str(gh_exit),
+                           GH_RESPONSE=live if isinstance(live, str) else json.dumps(live), **env)
+        return subprocess.run([BASH, "-e", "-o", "pipefail", "-c", self.step["run"]], cwd=self.checkout.root,
+                              env=environment, capture_output=True, text=True, encoding="utf-8")
+
+    def test_the_live_body_decides_not_the_one_the_event_kept(self):
+        self.checkout.change_surface(record=True)
+        # Announced after the push: the event still holds the old body, and the same head passes.
+        result = self.run_step(live={"body": "Fix\nlauncher-mirror: the copy follows\n"}, event="Fix")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.calls.read_text(), "token-value|api repos/sunrise-org/sunrise/pulls/42\n")
+        # Taken out after the push: the event still announces it, and the rerun fails.
+        result = self.run_step(live={"body": "Fix"}, event="launcher-mirror: the copy follows")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("without a line starting launcher-mirror:", result.stdout)
+
+    def test_an_api_that_cannot_be_read_fails_the_step_whatever_the_event_says(self):
+        self.checkout.change_surface(record=True)
+        announced = "launcher-mirror: the copy follows"
+        result = self.run_step(live={"body": announced}, event=announced, gh_exit=1)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("::error::Could not read pull request #42 from the GitHub API", result.stdout)
+        self.assertNotIn("Launcher mirror check passed", result.stdout)
+        # An answer without a text body is as unreadable as no answer.
+        for live in ('{"message": "Not Found"}', "not json", "", '{"body": 7}', "[]"):
+            with self.subTest(live=live):
+                result = self.run_step(live=live, event=announced)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("has no readable body", result.stdout)
+                self.assertNotIn("Launcher mirror check passed", result.stdout)
+        result = self.run_step(live={"body": announced}, event=announced, PR_NUMBER="")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_an_empty_live_body_is_text_not_a_failure(self):
+        for live in ({"body": None}, {"body": ""}):
+            with self.subTest(live=live, surface="unchanged"):
+                self.checkout.change_privately()
+                result = self.run_step(live=live, event="launcher-mirror: stale")
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.checkout.change_surface(record=True)
+        for live in ({"body": None}, {"body": ""}):
+            with self.subTest(live=live, surface="changed"):
+                result = self.run_step(live=live, event="launcher-mirror: stale")
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("without a line starting launcher-mirror:", result.stdout)
+                self.assertNotIn("could not", result.stdout.lower())
+
+    def test_a_push_reads_no_pull_request(self):
+        self.checkout.change_surface(record=True)
+        result = self.run_step(live={"body": ""}, gh_exit=1, BASE_SHA="", PR_NUMBER="")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.calls.exists())
+        # Its manifest still has to match the surface.
+        self.checkout.write("crates/mirror/src/lib.rs", "pub fn c() {}\n")
+        self.assertEqual(self.run_step(live={"body": ""}, BASE_SHA="", PR_NUMBER="").returncode, 1)
+        self.assertFalse(self.calls.exists())
+
+    def test_the_step_holds_the_token_and_the_pull_request_only_as_environment_data(self):
+        self.assertEqual(self.step["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertEqual(self.step["env"]["PR_NUMBER"], "${{ github.event.pull_request.number }}")
+        self.assertEqual(self.step["env"]["BASE_SHA"], "${{ github.event.pull_request.base.sha }}")
+        self.assertNotIn("${{", self.step["run"])
+        self.assertEqual(workflow("dyna-ci.yml")["jobs"]["verify-static"]["permissions"],
+                         {"contents": "read", "pull-requests": "read"})
 
 
 class BookQuickstartWorkflowTests(unittest.TestCase):

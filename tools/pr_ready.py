@@ -58,6 +58,7 @@ if "PARITY_SHARED" not in os.environ and not (ROOT / ".local" / "minecraft").exi
     # A fleet worktree without vanilla data still knows each harness's dependencies.
     os.environ["PARITY_SHARED"] = str(FLEET_SHARED)
 from tools import parity, process_tree, release_train  # noqa: E402
+from tools.ci import check_launcher_mirrors as launcher_mirrors  # noqa: E402
 
 RBUILD = Path.home() / "fleet" / "rbuild"
 # What rbuild's login shell needs on each fleet machine before cargo (it adds sccache itself). The ThinkPad no
@@ -352,6 +353,14 @@ def holds_loop(files, merge_base):
     return found.returncode != 1
 
 
+def launcher_mirrors_touched(changed):
+    """Whether the changed files include a launcher mirror's source or the manifest that records its surface."""
+    sources = [source.rstrip("/") for mirror in launcher_mirrors.load_manifest()["mirror"]
+               for source in mirror.get("sources", [])]
+    return any(path == launcher_mirrors.MANIFEST_PATH or any(path == source or path.startswith(source + "/")
+                                                             for source in sources) for path in changed)
+
+
 def surface_touched(changed, crates_of, dependencies, merge_base):
     """Whether the changed files can change what the surface report exports. `crates_of` and `dependencies` are empty
     when the branch changes no Rust: then only the notes, the manifest and the report's own files count."""
@@ -390,6 +399,14 @@ def unittest_passed(output):
     outcome = re.search(r"^((?:OK|FAILED) \(.*\))$", output, re.M)
     ran = re.search(r"^Ran (\d+) tests?", output, re.M)
     return f"{ran.group(1) if ran else '?'} run, {outcome.group(1)}" if outcome else f"{ran.group(1)} passed" if ran else ""
+
+
+# What tools/ci/check_launcher_mirrors.py says: the reminder to announce a changed surface, and each stale mirror.
+LAUNCHER_MIRROR_LINES = re.compile(r"^(Reminder: .*|  \S.*)$", re.M)
+
+
+def launcher_mirror_summary(output):
+    return "; ".join(LAUNCHER_MIRROR_LINES.findall(output))
 
 
 # The lines of tools/ci/surface_report.py's output that say what it found and why it failed: the report's own verdict,
@@ -524,6 +541,11 @@ def plan(args, base, changed, crates_of, libraries, dependencies, merge_base=Non
         # docs/layers.md: a crate depends only on its own layer or a lower one, and the exceptions only shrink.
         Step("Layers", f"python3 tools/check_layers.py --base {shlex.quote(base)}", where="here"),
         Step("Addresses", f"python3 tools/check_addresses.py --base {shlex.quote(base)}", where="here"),
+        # The launcher's copies of game crates: the manifest matches the surface. CI also needs the pull request body's
+        # `launcher-mirror:` line, which this run lacks: a changed surface passes here with a reminder to write it.
+        Step("Launcher mirrors", f"python3 tools/ci/check_launcher_mirrors.py --base {shlex.quote(merge_base)} --remind-body",
+             where="here", summary=launcher_mirror_summary,
+             skip=None if launcher_mirrors_touched(changed) else "launcher mirrors untouched"),
         # tools/port_map/: a row that names a Sunrise function still finds it, and the known-stale list only shrinks.
         # The merge base, not the moving tip: a line main already had is not this branch's addition.
         Step("Port map", f"python3 tools/ci/check_port_map_paths.py --base {shlex.quote(merge_base)}", where="here"),

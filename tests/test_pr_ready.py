@@ -17,6 +17,7 @@ from unittest import mock
 from tools import pr_ready
 from tests.git_fixture import isolated_git_env
 from tests.os_support import POSIX_BASH
+from tests.test_launcher_mirrors_check import WRITE, MirrorCheckout
 
 PACKAGES = {"sunrise-core": "crates/sunrise-core", "sunrise-client": "crates/sunrise-client",
             "sunrise-theme": "crates/sunrise-theme", "xtask": "xtask"}
@@ -285,6 +286,72 @@ class PrReadyTests(unittest.TestCase):
         by_name = {step.name: step for step in steps}
         self.assertIn("--base abc123", by_name["Port map"].command)
         self.assertIn("--base origin/main", by_name["Layers"].command)
+
+    def launcher_mirror_step(self, changed, merge_base="abc123"):
+        manifest = pr_ready.launcher_mirrors.load_manifest()
+        mirror_crates = {Path(source).parts[1] for mirror in manifest["mirror"] for source in mirror["sources"]}
+        packages = {**PACKAGES, **{crate: f"crates/{crate}" for crate in mirror_crates}}
+        with mock.patch.object(pr_ready, "affected_here", return_value=[]):
+            steps = pr_ready.plan(args(quick=True), "origin/main", set(changed), packages, LIBRARIES, DEPENDENCIES,
+                                  merge_base=merge_base)
+        names = [step.name for step in steps]
+        self.assertLess(names.index("Addresses"), names.index("Launcher mirrors"))
+        self.assertLess(names.index("Launcher mirrors"), names.index("Port map"))
+        return steps[names.index("Launcher mirrors")]
+
+    def test_launcher_mirrors_run_when_a_mirrored_source_or_the_manifest_changes(self):
+        # The paths come from the manifest the check reads, never from a list here.
+        manifest = pr_ready.launcher_mirrors.load_manifest()
+        sources = [source for mirror in manifest["mirror"] for source in mirror.get("sources", [])]
+        self.assertTrue(sources)
+        for source in sources:
+            changed = source if source.endswith(".rs") else f"{source.rstrip('/')}/lib.rs"
+            with self.subTest(source=source):
+                step = self.launcher_mirror_step({changed})
+                self.assertIsNone(step.skip)
+                self.assertEqual(step.where, "here")
+                self.assertEqual(step.command, "python3 tools/ci/check_launcher_mirrors.py --base abc123 --remind-body")
+        self.assertIsNone(self.launcher_mirror_step({"tools/launcher_mirrors.toml"}).skip)
+        # A sibling that only shares a mirror source's name prefix is not part of it.
+        self.assertEqual(self.launcher_mirror_step({f"{sources[0].rstrip('/')}-other/lib.rs"}).skip,
+                         "launcher mirrors untouched")
+        for path in ("README.md", "tools/pr_ready.py", "crates/sunrise-client/src/game.rs"):
+            with self.subTest(path=path):
+                self.assertEqual(self.launcher_mirror_step({path}).skip, "launcher mirrors untouched")
+
+    def run_launcher_mirror_step(self, checkout):
+        """The planned step's own command for a change to a mirrored source, run in `checkout` and finished as the
+        self-check does."""
+        source = pr_ready.launcher_mirrors.load_manifest()["mirror"][0]["sources"][0]
+        step = self.launcher_mirror_step({f"{source.rstrip('/')}/lib.rs"}, merge_base=checkout.base)
+        self.assertIsNone(step.skip)
+        result = checkout.run(*step.command.split())
+        step.output, step.status = result.stdout, "pass" if result.returncode == 0 else "fail"
+        with contextlib.redirect_stderr(io.StringIO()):
+            pr_ready.finish(step, verbose=True)
+        return step
+
+    def test_a_mirrored_source_change_with_a_stale_manifest_fails_with_the_write_command(self):
+        checkout = MirrorCheckout(self)
+        checkout.change_surface(record=False)
+        step = self.run_launcher_mirror_step(checkout)
+        self.assertEqual(step.status, "fail")
+        self.assertIn(f"Run `{WRITE}`", step.detail)
+        self.assertIn("mirror: public surface is", step.detail)
+
+    def test_a_changed_surface_with_a_current_manifest_passes_and_reminds_about_the_body_line(self):
+        checkout = MirrorCheckout(self)
+        checkout.change_surface(record=True)
+        step = self.run_launcher_mirror_step(checkout)
+        self.assertEqual(step.status, "pass", step.output)
+        self.assertIn("Reminder: launcher mirrors changed (mirror)", step.detail)
+        self.assertIn("launcher-mirror:", step.detail)
+
+    def test_a_mirrored_source_touched_without_a_surface_change_passes_without_a_reminder(self):
+        checkout = MirrorCheckout(self)
+        checkout.change_privately()
+        step = self.run_launcher_mirror_step(checkout)
+        self.assertEqual((step.status, step.detail), ("pass", ""))
 
     def test_content_root_tests_run_only_when_what_they_load_changes(self):
         packages = {**PACKAGES, "sunrise-mod-package": "crates/sunrise-mod-package",
