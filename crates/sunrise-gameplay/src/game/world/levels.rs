@@ -1647,7 +1647,9 @@ impl crate::game::ServerGame<'_> {
                     }
                     drop(holding);
                     if let Some(host) = self.server.lan.as_ref() {
-                        sunrise_sim::lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
+                        sunrise_level::spans::time("lan_flush", || {
+                            sunrise_sim::lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
+                        });
                     }
                 }
                 break;

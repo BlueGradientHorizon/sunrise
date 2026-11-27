@@ -300,6 +300,13 @@ impl SpanTotal {
         }
     }
 
+    #[inline]
+    pub fn add_wall(&mut self, elapsed: Duration) {
+        self.wall += elapsed;
+        self.cpu += elapsed;
+        self.depth = Some(DEPTH.with(Cell::get));
+    }
+
     pub fn record(self, name: &'static str) {
         if let Some(depth) = self.depth {
             push(Span {

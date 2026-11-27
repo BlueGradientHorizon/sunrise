@@ -981,6 +981,7 @@ impl crate::game::ServerGame<'_> {
         after: u32,
         mut kept: Option<&mut super::lan_idle::IdlePass<'_>>,
     ) {
+        let mut laps = sunrise_level::spans::laps();
         out.clear();
         let mut speeds = super::lan_attributes::SpeedByType::default();
         if mod_api::__private::listened(mod_api::HookId::EffectParticleModification) {
@@ -1051,6 +1052,7 @@ impl crate::game::ServerGame<'_> {
             };
             mob_equipment(m, &mut host.hub, &mut e.equipment);
         }
+        laps.lap("lan_states_mobs");
         for d in self.common.dropped.iter().filter(|d| d.id > after) {
             let Some(host) = self.server.lan.as_ref() else {
                 return;
@@ -1114,9 +1116,11 @@ impl crate::game::ServerGame<'_> {
             // ExperienceOrb.DATA_VALUE.
             e.meta.push((8, serializer::INT, Value::Int(o.value)));
         }
+        laps.lap("lan_states_items");
         self.lan_object_states(out, drain_minecart_steps, after);
         // PersistentEntitySectionManager only tracks accessible sections.
         out.retain(|entity| self.entity_position_accessible(entity.position));
+        laps.lap("lan_states_objects");
     }
 
     /// `LivingEntity.updateSynchronizedMobEffectParticles` while a native mod
@@ -1235,6 +1239,29 @@ impl crate::game::ServerGame<'_> {
         // again on the way through.
         self.server.lan = Some(host);
         let mut timings = EventTimings::new(sunrise_level::spans::NOTE_MS);
+        #[derive(Default)]
+        struct EventCategorySpans {
+            movement: sunrise_level::spans::SpanTotal,
+            gameplay: sunrise_level::spans::SpanTotal,
+            session: sunrise_level::spans::SpanTotal,
+        }
+        impl Drop for EventCategorySpans {
+            fn drop(&mut self) {
+                std::mem::take(&mut self.movement).record("lan_events_move");
+                std::mem::take(&mut self.gameplay).record("lan_events_gameplay");
+                std::mem::take(&mut self.session).record("lan_events_session");
+            }
+        }
+        struct EventSampleGuard<'a> {
+            total: &'a mut sunrise_level::spans::SpanTotal,
+            sample: Option<(Instant, Option<std::time::Duration>)>,
+        }
+        impl Drop for EventSampleGuard<'_> {
+            fn drop(&mut self) {
+                self.total.add(self.sample.take());
+            }
+        }
+        let mut category_spans = EventCategorySpans::default();
         for event in events {
             if timed && let Some(host) = self.server.lan.as_ref() {
                 note_event(host, previous.take(), &mut timings);
@@ -1247,6 +1274,18 @@ impl crate::game::ServerGame<'_> {
                     .and_then(|host| self.event_detail(host, &event));
                 previous = Some((Instant::now(), event_kind(&event), detail));
             }
+            let _category_guard = EventSampleGuard {
+                total: match &event {
+                    HostEvent::AcceptedMove(..) | HostEvent::PlayerMove(_) => {
+                        &mut category_spans.movement
+                    }
+                    HostEvent::Packet(..) | HostEvent::RawPayload(_) => {
+                        &mut category_spans.gameplay
+                    }
+                    _ => &mut category_spans.session,
+                },
+                sample: sunrise_level::spans::SpanTotal::start(),
+            };
             match event {
                 HostEvent::InputCredits(credits) => drop(credits),
                 HostEvent::RawPayload(delivery) => {
@@ -1802,7 +1841,9 @@ impl crate::game::ServerGame<'_> {
         let entities = std::mem::take(&mut host.states);
         let spawn = self.world_spawn_position();
         let mut solids = std::mem::take(&mut host.hub.move_solids);
-        self.fill_move_solids(&mut solids, !host.hub.guests.is_empty());
+        sunrise_level::spans::time("lan_move_solids", || {
+            self.fill_move_solids(&mut solids, !host.hub.guests.is_empty());
+        });
         host.hub.move_solids = solids;
         let events = {
             let clock_rate = self.network_clock_rate();
@@ -2442,19 +2483,23 @@ impl crate::game::ServerGame<'_> {
         {
             self.run_native_tracking();
         }
-        self.flush_guest_connection_effects();
-        self.lan_stuck(paused);
-        self.tick_server_travel();
-        self.lan_swings();
-        self.lan_update_streaming();
-        self.lan_guest_poses();
-        self.lan_update_waypoints();
-        self.lan_sync_scoreboard();
+        sunrise_level::spans::time("lan_post_sync", || {
+            self.flush_guest_connection_effects();
+            self.lan_stuck(paused);
+            self.tick_server_travel();
+            self.lan_swings();
+            self.lan_update_streaming();
+            self.lan_guest_poses();
+            self.lan_update_waypoints();
+            self.lan_sync_scoreboard();
+        });
         drop(holding);
         self.flush_attachment_sync();
         self.flush_far_terrain();
         if let Some(host) = self.server.lan.as_ref() {
-            lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
+            sunrise_level::spans::time("lan_flush", || {
+                lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
+            });
         }
         self.flush_native_sounds();
         // `tick_server` resets the pass after all dimensions; outside a pass
