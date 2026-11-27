@@ -1461,41 +1461,6 @@ fn texture_filtering_samplers() {
     );
 }
 #[test]
-fn distant_tiles_repeat_their_sprite_under_the_clamped_sampler() {
-    // terrain.wgsl's tile_uv, evaluated by naga as a constant expression.
-    let source = super::terrain_shader();
-    let body = source.split("fn tile_uv(").nth(1).unwrap();
-    let body = body.split("return ").nth(1).unwrap();
-    let expr = &body[..body.find(';').unwrap()];
-    let tile_uv = |u: f32, v: f32| -> [f32; 2] {
-        let uv = format!("vec2<f32>({u:?}, {v:?})");
-        let wgsl = format!("const UV: vec2<f32> = {};", expr.replace("uv", &uv));
-        let module = naga::front::wgsl::parse_str(&wgsl).unwrap();
-        let (_, constant) = module.constants.iter().next().unwrap();
-        let naga::Expression::Compose { components, .. } =
-            &module.global_expressions[constant.init]
-        else {
-            panic!("{wgsl}");
-        };
-        components
-            .iter()
-            .map(|&c| match module.global_expressions[c] {
-                naga::Expression::Literal(naga::Literal::F32(x)) => x,
-                ref e => panic!("{e:?}"),
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap()
-    };
-    // A section's sprite UVs, edges included, stay where the clamped sampler reads them.
-    for (u, v) in [(0.0, 1.0), (0.25, 0.75), (1.0, 0.0)] {
-        assert_eq!(tile_uv(u, v), [u, v]);
-    }
-    // A merged face's UV counts blocks: each takes the sprite from its own corner.
-    assert_eq!(tile_uv(1.25, 2.0), [0.25, 1.0]);
-    assert_eq!(tile_uv(1023.5, 3.75), [0.5, 0.75]);
-}
-#[test]
 fn shader_globals_match_the_rust_layout() {
     // terrain.wgsl and entity.wgsl bind the same buffer: same fields, same order.
     let fields = |source: &str| -> Vec<String> {

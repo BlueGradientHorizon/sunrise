@@ -25,20 +25,18 @@ fn vis_id(page: u32, s: SectionCorner) -> u32 {
 // texel alone, where it has fully, RGSS alone, and its upper mip level only where it blends one
 // in. A blend of 0 or 1 gives exactly the one side, so the result is `sprite_at`'s; near
 // faces take one tap instead of nine.
-fn vis_sprite(tiled: vec2<f32>, layer: u32, du: vec2<f32>, dv: vec2<f32>) -> vec4<f32> {
-    let uv = tile_uv(tiled);
-    let tiled_face = any(tiled - uv >= vec2(0.5));
+fn vis_sprite(uv: vec2<f32>, layer: u32, du: vec2<f32>, dv: vec2<f32>) -> vec4<f32> {
     let pixel = vec2(1.0 / globals.filtering.y);
     let texel_screen = sqrt(du * du + dv * dv);
     if u32(globals.filtering.x) != 1u {
-        return sample_nearest(uv, layer, pixel, du, dv, texel_screen, tiled_face);
+        return sample_nearest(uv, layer, pixel, du, dv, texel_screen);
     }
     let max_texel = max(texel_screen.x, texel_screen.y);
     let min_pixel = min(pixel.x, pixel.y);
     let blend = smoothstep(min_pixel, min_pixel * 2.0, max_texel);
     var nearest = vec4(0.0);
     if blend < 1.0 {
-        nearest = sample_nearest(uv, layer, pixel, du, dv, texel_screen, tiled_face);
+        nearest = sample_nearest(uv, layer, pixel, du, dv, texel_screen);
     }
     if blend <= 0.0 {
         return nearest;

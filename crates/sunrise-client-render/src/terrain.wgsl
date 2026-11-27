@@ -113,41 +113,33 @@ fn sprite_level(uv: vec2<f32>, layer: u32, lod: f32) -> vec4<f32> {
 }
 // texture_sampling.glsl's sampleNearest: the sprite's texels stay square pixels, blending only
 // across the one screen pixel where two meet, so a linear (and anisotropic) sampler keeps them crisp.
-// With wrapped UVs, gradients are measured before wrapping.
 fn sample_nearest(uv: vec2<f32>, layer: u32, pixel: vec2<f32>, du: vec2<f32>, dv: vec2<f32>,
-                  texel_screen: vec2<f32>, tiled: bool) -> vec4<f32> {
+                  texel_screen: vec2<f32>) -> vec4<f32> {
     let texel_coords = uv / pixel;
     let center = round(texel_coords) - 0.5;
     var offset = texel_coords - center;
     offset = (offset - 0.5) * pixel / max(texel_screen, vec2(1e-12)) + 0.5;
     offset = clamp(offset, vec2(0.0), vec2(1.0));
     let at = (center + offset) * pixel;
-    if tiled {
-        // An anisotropic sampler lays its taps along those gradients, past the sprite's edge,
-        // where the clamped sampler reads that edge texel again: streaks on repeating faces.
-        // Asking for the level the gradients give takes the one tap an anisotropy of 1 would.
-        let level = max(length(du), length(dv)) / min(pixel.x, pixel.y);
-        return sprite_level(at, layer, max(0.0, log2(level)));
-    }
     return sprite_grad(at, layer, du, dv);
 }
 // sampleRGSS: four rotated-grid samples of the two nearest mip levels, faded in as the texels
 // shrink below two screen pixels, over sample_nearest.
 fn sample_rgss(uv: vec2<f32>, layer: u32, pixel: vec2<f32>, du: vec2<f32>, dv: vec2<f32>,
-               texel_screen: vec2<f32>, tiled: bool) -> vec4<f32> {
+               texel_screen: vec2<f32>) -> vec4<f32> {
     let max_texel = max(texel_screen.x, texel_screen.y);
     let min_pixel = min(pixel.x, pixel.y);
     let blend = smoothstep(min_pixel, min_pixel * 2.0, max_texel);
     // Only the side of the mix that has weight is sampled: near texels (blend 0) take
     // sample_nearest's one tap alone, far ones (blend 1) the rotated grid alone.
     if blend <= 0.0 {
-        return sample_nearest(uv, layer, pixel, du, dv, texel_screen, tiled);
+        return sample_nearest(uv, layer, pixel, du, dv, texel_screen);
     }
     let rgss = rotated_grid(uv, layer, pixel, du, dv);
     if blend >= 1.0 {
         return rgss;
     }
-    return mix(sample_nearest(uv, layer, pixel, du, dv, texel_screen, tiled), rgss, blend);
+    return mix(sample_nearest(uv, layer, pixel, du, dv, texel_screen), rgss, blend);
 }
 fn rotated_grid(uv: vec2<f32>, layer: u32, pixel: vec2<f32>, du: vec2<f32>,
                 dv: vec2<f32>) -> vec4<f32> {
@@ -174,28 +166,19 @@ fn rotated_grid(uv: vec2<f32>, layer: u32, pixel: vec2<f32>, du: vec2<f32>,
     }
     return sum * 0.25;
 }
-// Repeat UVs outside the sprite; UVs in [0, 1] stay unchanged.
-fn tile_uv(uv: vec2<f32>) -> vec2<f32> {
-    return uv - max(ceil(uv) - 1.0, vec2(0.0));
+fn sprite(uv: vec2<f32>, layer: u32) -> vec4<f32> {
+    return sprite_at(uv, layer, dpdx(uv), dpdy(uv));
 }
-fn sprite(tiled: vec2<f32>, layer: u32) -> vec4<f32> {
-    // The gradients come from the unwrapped UV, so the mip level holds across block seams.
-    return sprite_at(tiled, layer, dpdx(tiled), dpdy(tiled));
-}
-// `sprite` with the unwrapped UV's screen gradients given: the visibility buffer's resolve
+// `sprite` with the UV's screen gradients given: the visibility buffer's resolve
 // (visbuffer.wgsl) works them out from the quad, as its neighbours may be other quads.
-fn sprite_at(tiled: vec2<f32>, layer: u32, du: vec2<f32>, dv: vec2<f32>) -> vec4<f32> {
+fn sprite_at(uv: vec2<f32>, layer: u32, du: vec2<f32>, dv: vec2<f32>) -> vec4<f32> {
     // terrain.fsh's two sampling paths: sampleRGSS for RGSS, sampleNearest otherwise.
-    let uv = tile_uv(tiled);
-    // The wrap shifts a face's UVs by whole blocks, so half of one tells a tile's face from a
-    // block's (whose UVs stay inside its sprite).
-    let tiled_face = any(tiled - uv >= vec2(0.5));
     let pixel = vec2(1.0 / globals.filtering.y);
     let texel_screen = sqrt(du * du + dv * dv);
     if u32(globals.filtering.x) == 1u {
-        return sample_rgss(uv, layer, pixel, du, dv, texel_screen, tiled_face);
+        return sample_rgss(uv, layer, pixel, du, dv, texel_screen);
     }
-    return sample_nearest(uv, layer, pixel, du, dv, texel_screen, tiled_face);
+    return sample_nearest(uv, layer, pixel, du, dv, texel_screen);
 }
 
 // The terrain stages' values, as the code reads them. What crosses from the vertex stage to the

@@ -105,10 +105,6 @@ pub(crate) struct Record {
 /// In `Record::a[3]`: the CPU draws the section's solid quads while it fades
 /// (`SectionGpu::gpu_fading`), and the pass leaves it out.
 const FADING: u32 = 1;
-/// In the same word (the shader's `BOX_SHIFT`): the box's units are `1 << shift`
-/// blocks, the shift in 4 bits from here along x and z, and from 4 bits on
-/// along y; 0 for a section's.
-const BOX_SHIFT: u32 = 8;
 
 impl Record {
     const FREE: Self = Self {
@@ -616,11 +612,10 @@ fn near(params: &Params, x: i32, z: i32) -> bool {
 
 /// `gpu_culling.wgsl`'s `in_frustum`, on the CPU and in its order: the box
 /// `b` of the section in cell `c` of the tables.
-fn in_frustum(params: &Params, words: &[u32], c: [u32; 3], b: u32, units: u32) -> bool {
+fn in_frustum(params: &Params, words: &[u32], c: [u32; 3], b: u32) -> bool {
     if (b & UNBOUNDED) != 0 {
         return true;
     }
-    let (sx, sy) = ((units >> BOX_SHIFT) & 15, (units >> (BOX_SHIFT + 4)) & 15);
     let [nx, ny, nz, _] = params.cells;
     let n = nx + ny + nz;
     let term = |at: u32| words[at as usize] as i32;
@@ -637,9 +632,9 @@ fn in_frustum(params: &Params, words: &[u32], c: [u32; 3], b: u32, units: u32) -
             .wrapping_add(term(origin_terms + c[0]))
             .wrapping_add(term(origin_terms + nx + c[1]))
             .wrapping_add(term(origin_terms + nx + ny + c[2]))
-            .wrapping_add(term(code_terms + code(0)) << sx)
-            .wrapping_add(term(code_terms + 32 + code(1)) << sy)
-            .wrapping_add(term(code_terms + 64 + code(2)) << sx);
+            .wrapping_add(term(code_terms + code(0)))
+            .wrapping_add(term(code_terms + 32 + code(1)))
+            .wrapping_add(term(code_terms + 64 + code(2)));
         sum >= 0
     })
 }
@@ -669,7 +664,7 @@ pub(super) fn keeps(params: &Params, words: &[u32], record: &Record) -> bool {
         }
         test_box = FULL_SECTION_BOX;
     }
-    in_frustum(params, words, c, test_box, a[3])
+    in_frustum(params, words, c, test_box)
 }
 
 /// Whether GPU culling is offered: where the device draws a count the GPU wrote
@@ -2186,7 +2181,6 @@ pub(super) mod tests {
         assert_eq!(step, 1.0 / crate::mesher::UV_STEPS);
         assert_eq!(STEP_BITS, step.to_bits());
         for (name, value) in [
-            ("BOX_SHIFT", u64::from(BOX_SHIFT)),
             ("ROW", u64::from(ROW)),
             ("BLOCK", u64::from(WORKGROUP)),
             ("STATS", STATS),
@@ -2807,7 +2801,7 @@ pub(super) mod tests {
             (0 - params.first[2]) as u32,
         ];
         assert!(
-            !in_frustum(&params, &words, c, tight, 0),
+            !in_frustum(&params, &words, c, tight),
             "tight X=46..47 box alone misses the offset frustum"
         );
         let tight_record = Record::new((2, 0, 0), 0, 0, 1, tight);
