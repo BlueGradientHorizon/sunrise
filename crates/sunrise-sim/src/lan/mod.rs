@@ -39,6 +39,8 @@ mod io_pool;
 pub mod login_profile;
 pub mod menu;
 pub mod menu_extra_rev;
+#[cfg(feature = "net-trace")]
+pub mod packet_capture;
 #[cfg(test)]
 mod payload_bounds_tests;
 pub mod player_shown;

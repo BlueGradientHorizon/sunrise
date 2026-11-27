@@ -344,6 +344,8 @@ pub struct PlayerSender {
     /// The `sunrise:menu_extra` revision the client answered in configuration,
     /// or 0 when the client did not answer (for example, a vanilla client).
     pub menu_extra_rev: u8,
+    #[cfg(feature = "net-trace")]
+    capture: Option<Arc<super::packet_capture::Recorder>>,
 }
 #[derive(Clone)]
 enum To {
@@ -422,6 +424,8 @@ impl PlayerSender {
             announced: Arc::default(),
             viewed_levels: Default::default(),
             menu_extra_rev: 0,
+            #[cfg(feature = "net-trace")]
+            capture: None,
         }
     }
     #[cfg(test)]
@@ -463,6 +467,8 @@ impl PlayerSender {
             announced: Arc::default(),
             viewed_levels: Default::default(),
             menu_extra_rev: 0,
+            #[cfg(feature = "net-trace")]
+            capture: None,
         };
         (sender, move || inspect.queued_contents())
     }
@@ -508,6 +514,8 @@ impl PlayerSender {
             announced: Arc::default(),
             viewed_levels: Default::default(),
             menu_extra_rev: 0,
+            #[cfg(feature = "net-trace")]
+            capture: None,
         }
     }
     /// The bytes received from and sent to the client on the wire so far.
@@ -657,6 +665,75 @@ impl PlayerSender {
         }
         self.publish_reserved(body)
     }
+    #[cfg(feature = "net-trace")]
+    fn capture_meta(&self, body: &Body) -> Option<super::packet_capture::PacketMeta> {
+        self.capture.as_ref()?;
+        Some(super::packet_capture::PacketMeta::from_lan_body(
+            body,
+            self.framing,
+        ))
+    }
+    #[cfg(feature = "net-trace")]
+    fn capture_metas(&self, bodies: &[Body]) -> Option<Vec<super::packet_capture::PacketMeta>> {
+        self.capture.as_ref()?;
+        Some(
+            bodies
+                .iter()
+                .map(|b| super::packet_capture::PacketMeta::from_lan_body(b, self.framing))
+                .collect(),
+        )
+    }
+    #[cfg(feature = "net-trace")]
+    fn record_meta(&self, meta: super::packet_capture::PacketMeta) {
+        if let Some(capture) = &self.capture {
+            capture.record_one(meta);
+        }
+    }
+    #[cfg(feature = "net-trace")]
+    fn record_metas(&self, metas: &[super::packet_capture::PacketMeta]) {
+        if let Some(capture) = &self.capture {
+            capture.record_slice(metas);
+        }
+    }
+    #[cfg(feature = "net-trace")]
+    pub(super) fn record_raw(&self, body: &[u8]) {
+        if let Some(capture) = &self.capture {
+            capture.record_one(super::packet_capture::PacketMeta::from_body(body));
+        }
+    }
+    #[cfg(all(test, feature = "net-trace"))]
+    pub(super) fn with_capture(mut self, capture: Arc<super::packet_capture::Recorder>) -> Self {
+        self.capture = Some(capture);
+        self
+    }
+    fn send_pool(
+        &self,
+        outbox: &io_pool::Outbox,
+        bodies: Vec<Body>,
+        end: Option<io_pool::End>,
+    ) -> bool {
+        #[cfg(feature = "net-trace")]
+        let metas = self.capture_metas(&bodies);
+        let sent = outbox.try_send(bodies, end);
+        #[cfg(feature = "net-trace")]
+        if sent && let Some(metas) = metas {
+            self.record_metas(&metas);
+        }
+        sent
+    }
+    fn send_channel(&self, tx: &Sender<Out>, bodies: Vec<Body>) {
+        #[cfg(feature = "net-trace")]
+        {
+            let metas = self.capture_metas(&bodies);
+            if tx.send(unshared(bodies)).is_ok()
+                && let Some(metas) = metas
+            {
+                self.record_metas(&metas);
+            }
+        }
+        #[cfg(not(feature = "net-trace"))]
+        drop(tx.send(unshared(bodies)));
+    }
     fn publish_reserved(&self, body: Body) -> bool {
         if HOLDING.get() {
             self.held().push(body);
@@ -667,13 +744,19 @@ impl PlayerSender {
                 To::Disabled => false,
                 To::Channel(tx) => {
                     let cost = io_pool::body_charge(&body);
+                    #[cfg(feature = "net-trace")]
+                    let meta = self.capture_meta(&body);
                     if tx.send(Out::Packet(body.into_vec())).is_err() {
                         self.pending.fetch_sub(cost, Ordering::Relaxed);
                         return false;
                     }
+                    #[cfg(feature = "net-trace")]
+                    if let Some(meta) = meta {
+                        self.record_meta(meta);
+                    }
                     true
                 }
-                To::Pool(outbox, _) => outbox.try_send(vec![body], None),
+                To::Pool(outbox, _) => self.send_pool(outbox, vec![body], None),
             }
         }
     }
@@ -746,8 +829,10 @@ impl PlayerSender {
             self.flush();
             match &self.to {
                 To::Disabled => {}
-                To::Channel(tx) => drop(tx.send(unshared(bodies))),
-                To::Pool(outbox, _) => outbox.send(bodies, None),
+                To::Channel(tx) => self.send_channel(tx, bodies),
+                To::Pool(outbox, _) => {
+                    let _ = self.send_pool(outbox, bodies, None);
+                }
             }
         }
     }
@@ -780,7 +865,7 @@ impl PlayerSender {
         let mut bodies = std::mem::take(bodies);
         let To::Pool(outbox, _) = &self.to else {
             if let To::Channel(tx) = &self.to {
-                drop(tx.send(unshared(bodies)));
+                self.send_channel(tx, bodies);
             }
             return;
         };
@@ -793,8 +878,9 @@ impl PlayerSender {
         if prepared {
             if let Some(epoch) = self.payload_transport.epoch() {
                 bodies.retain(|body| body.pairing_epoch().is_none_or(|e| Arc::ptr_eq(e, &epoch)));
-                let published =
-                    epoch.with_active(|| outbox.send(std::mem::take(&mut bodies), None));
+                let published = epoch.with_active(|| {
+                    let _ = self.send_pool(outbox, std::mem::take(&mut bodies), None);
+                });
                 if published.is_some() {
                     return;
                 }
@@ -802,7 +888,7 @@ impl PlayerSender {
             // Expiring mod attachments never suppress vanilla pairing packets.
             bodies.retain(|body| !body.is_prepared());
         }
-        outbox.send(bodies, None);
+        let _ = self.send_pool(outbox, bodies, None);
     }
     /// Hand the held packets to the network thread.
     pub fn flush(&self) {
@@ -810,8 +896,10 @@ impl PlayerSender {
         if !held.is_empty() {
             match &self.to {
                 To::Disabled => {}
-                To::Channel(tx) => drop(tx.send(unshared(held))),
-                To::Pool(outbox, _) => outbox.send(held, None),
+                To::Channel(tx) => self.send_channel(tx, held),
+                To::Pool(outbox, _) => {
+                    let _ = self.send_pool(outbox, held, None);
+                }
             }
         }
     }
@@ -822,7 +910,24 @@ impl PlayerSender {
         self.flush();
         match &self.to {
             To::Disabled => {}
-            To::Channel(tx) => drop(tx.send(Out::Disconnect(reason))),
+            To::Channel(tx) => {
+                #[cfg(feature = "net-trace")]
+                {
+                    let raw = self.capture.is_some().then(|| {
+                        play::Clientbound::Disconnect(cfg::Disconnect {
+                            reason: reason.clone(),
+                        })
+                        .encode()
+                    });
+                    if tx.send(Out::Disconnect(reason)).is_ok()
+                        && let Some(raw) = raw
+                    {
+                        self.record_raw(&raw);
+                    }
+                }
+                #[cfg(not(feature = "net-trace"))]
+                drop(tx.send(Out::Disconnect(reason)));
+            }
             To::Pool(outbox, _) => {
                 let body = play::Clientbound::Disconnect(cfg::Disconnect { reason }).encode();
                 let body = Body::from(body);
@@ -830,7 +935,7 @@ impl PlayerSender {
                     self.close();
                     return;
                 }
-                outbox.send(vec![body], Some(io_pool::End::Disconnect));
+                let _ = self.send_pool(outbox, vec![body], Some(io_pool::End::Disconnect));
             }
         }
     }
@@ -855,7 +960,16 @@ impl PreparedPayload {
         let To::Pool(outbox, _) = &self.sender.to else {
             unreachable!()
         };
+        #[cfg(feature = "net-trace")]
+        let meta =
+            self.sender.capture.is_some().then(|| {
+                super::packet_capture::PacketMeta::from_prepared(&bytes, self.sender.framing)
+            });
         if outbox.publish(bytes, self.cost) {
+            #[cfg(feature = "net-trace")]
+            if let Some(meta) = meta {
+                self.sender.record_meta(meta);
+            }
             Ok(())
         } else {
             Err(PayloadSendError::Disconnected)
@@ -979,12 +1093,20 @@ pub fn flush_all<'a>(senders: impl IntoIterator<Item = &'a PlayerSender>) {
         }
         match &s.to {
             To::Disabled => {}
-            To::Channel(tx) => drop(tx.send(unshared(held))),
+            To::Channel(tx) => s.send_channel(tx, held),
             To::Pool(outbox, _) => {
+                #[cfg(feature = "net-trace")]
+                let metas = (s.capture.is_some() && outbox.alive())
+                    .then(|| s.capture_metas(&held))
+                    .flatten();
                 if let Some(worker) = outbox.push(held, None)
                     && !wake.iter().any(|w| Arc::ptr_eq(w, worker))
                 {
                     wake.push(worker);
+                }
+                #[cfg(feature = "net-trace")]
+                if let Some(metas) = metas {
+                    s.record_metas(&metas);
                 }
             }
         }
@@ -2362,6 +2484,8 @@ fn play(
         announced: parts.channels.announced.clone().unwrap_or_default(),
         viewed_levels: parts.channels.viewed_levels.answer(),
         menu_extra_rev: parts.channels.menu_extra_rev.revision(),
+        #[cfg(feature = "net-trace")]
+        capture: super::packet_capture::Recorder::for_connection(conn, &parts.name),
     };
     let required_pack = shared
         .config
@@ -2444,8 +2568,14 @@ impl io_pool::Session for PlayConn {
     /// nobody asked for, a malformed packet.
     fn packet(&mut self, id: i32, payload: Vec<u8>) -> io_pool::Verdict {
         use io_pool::Verdict;
+        #[cfg(feature = "net-trace")]
+        let kick_capture = self.payload_sender.capture.clone();
         let kick = |(reason, text): (sunrise_core::nbt::Tag, String)| {
             let body = play::Clientbound::Disconnect(cfg::Disconnect { reason }).encode();
+            #[cfg(feature = "net-trace")]
+            if let Some(capture) = &kick_capture {
+                capture.record_one(super::packet_capture::PacketMeta::from_body(&body));
+            }
             Verdict::Kick(text, body)
         };
         if self.payload_transport.closed() {
@@ -4276,6 +4406,8 @@ mod outgoing_budget_tests {
             announced: Arc::default(),
             viewed_levels: Default::default(),
             menu_extra_rev: 0,
+            #[cfg(feature = "net-trace")]
+            capture: None,
         }
     }
     #[test]
