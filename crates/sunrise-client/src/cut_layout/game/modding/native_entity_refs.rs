@@ -385,8 +385,10 @@ pub(crate) mod tests {
         use crate::game::{load_resources, load_resources_uncached};
         use crate::settings::Settings;
         use mod_api::Authority;
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         use sunrise_gameplay_common::game::{Options, Progress};
 
+        assert_eq!(role, ExecutionRole::Client);
         sunrise_gameplay_common::game::test_fixtures::prepare_game_boot(
             &root,
             mod_platform::__private::part_tests::register_game_keys,
@@ -402,7 +404,7 @@ pub(crate) mod tests {
                 &settings,
                 std::time::Instant::now(),
                 false,
-                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
+                role,
                 &Progress::new(),
                 &mut |_, _| unreachable!(),
             )
@@ -416,7 +418,7 @@ pub(crate) mod tests {
                 &settings,
                 std::time::Instant::now(),
                 false,
-                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
+                role,
                 &Progress::new(),
                 &mut |_, _| unreachable!(),
             )
@@ -430,8 +432,7 @@ pub(crate) mod tests {
         }
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role =
-            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        options.execution_role = role;
         options.game_dir = Some(saves.path().to_path_buf());
         let mut game = sunrise_client_gameplay::game::ClientGame::new(
             &loaded.resources,
@@ -452,7 +453,6 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        game.options.execution_role = role;
         game.native_lifecycle
             .begin_open(Some(Authority::IntegratedServer));
 

@@ -3,8 +3,13 @@ use crate::game::ServerGame;
 use mod_api::{LevelRef, RecipeInput, RecipeLookupError, RecipeMatch};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_items::items::ItemStack;
+use sunrise_sim::crafting::Recipes;
 
 impl ServerGame<'_> {
+    pub(in crate::game) fn synced_recipes(&self) -> Option<&Recipes> {
+        self.common.recipe_tables.synced.as_ref()
+    }
+
     /// The engine's matchers, shared with crafting and station menus; no mod-side rematching.
     pub(in crate::game) fn level_recipe_for(
         &self,

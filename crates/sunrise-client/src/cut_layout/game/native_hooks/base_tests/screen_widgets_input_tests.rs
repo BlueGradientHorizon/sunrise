@@ -2,6 +2,8 @@
 use super::*;
 use mod_api::MouseScrollingEvent;
 use sunrise_client_gameplay::game::WindowKeyInput;
+use sunrise_client_gameplay::game::client_side::integrated_client::Integrated;
+use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
 use winit::{keyboard::PhysicalKey, window::WindowId};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -288,9 +290,10 @@ pub(crate) fn with_input_game(
     .into();
     with_mods(mods, || {
         with_client_game(|game| {
+            let _peer = logged_client(game);
+            // Keep the single-player pause layout while the redraw uses the local session.
+            game.client.integrated = Some(Integrated::stopped_for_test());
             let (_window_loop, id) = attach_offscreen_window(game);
-            // Let idle queue redraws for the window since the input fixture has no server.
-            game.options.offscreen = false;
             test(game, id, &state);
             assert!(
                 game.error.is_none(),

@@ -618,12 +618,19 @@ impl PlayerSender {
                 .is_ok_and(|body| self.queue_body(body.into(), false))
     }
     #[cfg(feature = "test-support")]
-    pub fn send_test_receive_fence(&self, id: i32) -> bool {
-        // The fence must reach the peer even while a server transaction holds gameplay packets.
-        let body: Body = play::Clientbound::Ping(cfg::Ping { id }).encode().into();
-        self.is_live()
-            && self.reserve_queued(io_pool::charge(body.retained()))
-            && self.publish_reserved(body)
+    pub fn test_published_packets(&self) -> usize {
+        let To::Pool(outbox, _) = &self.to else {
+            panic!("receive watermark requires a live connection");
+        };
+        outbox.test_published()
+    }
+
+    #[cfg(feature = "test-support")]
+    pub fn test_framed_through(&self, published: usize) -> Option<i64> {
+        let To::Pool(outbox, _) = &self.to else {
+            panic!("receive watermark requires a live connection");
+        };
+        outbox.test_framed_through(published)
     }
 
     fn queue_body(&self, body: Body, close_on_full: bool) -> bool {

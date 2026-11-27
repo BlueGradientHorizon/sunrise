@@ -8,6 +8,16 @@ impl ServerGame<'_> {
         self.server.test_positional_sound_counts.get(event)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[inline(always)]
+    fn record_test_positional_sound(&mut self, event: &str) {
+        *self
+            .server
+            .test_positional_sound_counts
+            .entry(event.to_owned())
+            .or_default() += 1;
+    }
+
     #[inline(always)]
     pub fn start_audio_capture(&mut self) {
         assert!(
@@ -41,6 +51,8 @@ impl ServerGame<'_> {
             self.is_logical_server(),
             "server_play_sound called on Client role"
         );
+        #[cfg(any(test, feature = "test-support"))]
+        self.record_test_positional_sound(event);
         if self.server.audio_capture_active {
             self.server
                 .pending_sounds
@@ -56,6 +68,8 @@ impl ServerGame<'_> {
         pitch: f32,
         except_entity: Option<u32>,
     ) {
+        #[cfg(any(test, feature = "test-support"))]
+        self.record_test_positional_sound(event);
         if self.server.audio_capture_active {
             self.server.pending_sounds.push(ServerSound {
                 source: mod_api::SoundSource::Blocks.index(),
@@ -102,13 +116,7 @@ impl ServerGame<'_> {
             "server_play_sound_on called on Client role"
         );
         #[cfg(any(test, feature = "test-support"))]
-        {
-            *self
-                .server
-                .test_positional_sound_counts
-                .entry(event.to_owned())
-                .or_default() += 1;
-        }
+        self.record_test_positional_sound(event);
         if self.server.audio_capture_active {
             self.server.pending_sounds.push(ServerSound {
                 event: event.to_owned(),
@@ -135,6 +143,8 @@ impl ServerGame<'_> {
             self.is_logical_server(),
             "server_play_sound_seeded called on Client role"
         );
+        #[cfg(any(test, feature = "test-support"))]
+        self.record_test_positional_sound(event);
         if self.server.audio_capture_active {
             self.server.pending_sounds.push(ServerSound {
                 seed: Some(seed),

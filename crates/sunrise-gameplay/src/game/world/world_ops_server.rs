@@ -174,10 +174,7 @@ impl crate::game::ServerGame<'_> {
         match &self.server.world_tables.0 {
             Some(tables) => &tables.recipes,
             None => self
-                .common
-                .recipe_tables
-                .synced
-                .as_ref()
+                .synced_recipes()
                 .unwrap_or_else(|| self.common.res.recipes()),
         }
     }

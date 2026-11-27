@@ -1965,6 +1965,14 @@ fn receive_play(
     let mut io = new_listener();
     let mut bundle = PlayBundle::default();
     loop {
+        #[cfg(feature = "test-support")]
+        if !bundle.assembling() {
+            // Report only packets whose ingress work (including a complete bundle) has been published.
+            let counters = &reader.counters;
+            counters
+                .play_ingress_received
+                .store(counters.received.load(Ordering::Relaxed), Ordering::Release);
+        }
         let (id, payload) = reader.recv().map_err(|e| connection_lost(e, lang))?;
         let decode_names = ClientboundDecodeNames {
             registries: registries.as_ref(),

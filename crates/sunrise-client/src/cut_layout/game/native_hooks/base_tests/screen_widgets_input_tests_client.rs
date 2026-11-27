@@ -30,12 +30,6 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
     with_input_game(|game, id, state| {
         use sunrise_level::{chunk::Chunk, containers::BlockEntity};
         let pos = (0, 0, 0);
-        let saved_player = game.player.take();
-        let _pipe =
-            sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(
-                game,
-            );
-        game.player = saved_player;
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

@@ -7,6 +7,8 @@ mod tests {
     };
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
+    use sunrise_client_gameplay::game::ClientGame;
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 
     /// What each hook read from the clipboard, and whether its copy was taken.
     #[derive(Clone, Default)]
@@ -25,6 +27,16 @@ mod tests {
         fn exit(&self) {}
         fn set_control_flow(&self, _: winit::event_loop::ControlFlow) {}
     }
+
+    fn with_server_role_clipboard(role: ExecutionRole, test: impl FnOnce(&mut ClientGame<'_>)) {
+        // Only ClientGame implements ClientHost, so exercise the clipboard's role guard there.
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let previous = std::mem::replace(&mut game.options.execution_role, role);
+            test(game);
+            game.options.execution_role = previous;
+        });
+    }
+
     #[mod_api::__subscriptions]
     impl Hooks for Mod {
         fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
@@ -86,20 +98,16 @@ mod tests {
                 assert_eq!(host.clipboard_text().as_deref(), Some("reply text"));
             });
             for role in [
-                sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
-                sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer,
+                ExecutionRole::IntegratedServer,
+                ExecutionRole::DedicatedServer,
             ] {
-                crate::game::native_entity_refs::tests::with_game_role_client(
-                    crate::game::native_entity_refs::tests::fixture_root(),
-                    role,
-                    |game| {
-                        game.client.clipboard.0.set_text("kept");
-                        let host: &dyn ClientHost = &*game;
-                        assert_eq!(host.clipboard_text(), None);
-                        assert!(!host.set_clipboard_text("lost"));
-                        assert_eq!(game.client.clipboard.0.text(), "kept");
-                    },
-                );
+                with_server_role_clipboard(role, |game| {
+                    game.client.clipboard.0.set_text("kept");
+                    let host: &dyn ClientHost = &*game;
+                    assert_eq!(host.clipboard_text(), None);
+                    assert!(!host.set_clipboard_text("lost"));
+                    assert_eq!(game.client.clipboard.0.text(), "kept");
+                });
             }
         });
     }

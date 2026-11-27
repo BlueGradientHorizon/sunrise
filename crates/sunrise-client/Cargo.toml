@@ -159,7 +159,7 @@ sunrise-hooks = { path = "../sunrise-hooks", features = ["test-support"] }
 # `runtime_files` tests pack a mod folder.
 sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["folder"] }
 sunrise-game-data = { path = "../sunrise-game-data", features = ["test-language-publication", "test-effect-registry"] }
-sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback", "test-resource-cache", "test-still-clock"] }
+sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback", "test-resource-cache", "test-still-clock", "test-support"] }
 tempfile = "3"
 bytemuck = { version = "1.24", features = ["derive"] }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"] }

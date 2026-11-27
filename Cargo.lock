@@ -4707,6 +4707,7 @@ dependencies = [
  "sunrise-level",
  "sunrise-mod-api",
  "sunrise-mod-api-gen",
+ "sunrise-mod-api-macros",
  "sunrise-mod-package",
  "sunrise-mod-runtime",
  "sunrise-mod-vocab",

@@ -1,13 +1,12 @@
 //! `ItemPart::item_name` (`Item.getName(ItemStack)`) behind every place the game names a stack.
+use super::integrated_pair::{IntegratedPair, with_integrated_pair};
 use mod_api::{Hooks, ItemNameEvent, ItemPart, LoopContext, Registrar, RegistrationContext};
-use sunrise_client_gameplay::game::ClientGame;
+use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
-use sunrise_gameplay::game::ServerGame;
 use sunrise_items::items::ItemStack;
 use {
     crate::game::server_side::native_entity_refs::tests::with_client_game,
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
-    sunrise_gameplay::game::native_entity_refs::tests::with_game,
 };
 
 const NAME: &str =
@@ -35,13 +34,46 @@ impl ItemPart for Notes {
     }
 }
 
-fn with_item_name_games(test: impl FnOnce(&mut ServerGame<'_>, &mut ClientGame<'_>)) {
-    with_client_game(|client| {
-        with_game(|server| {
-            server.server.chat_capture = Some(Vec::new());
-            test(server, client);
-        });
+fn command_feedback(pair: &mut IntegratedPair<'_, '_, '_>, line: &str) -> String {
+    let chat_count = |pair: &IntegratedPair<'_, '_, '_>| {
+        pair.client
+            .chat_ui_for_test()
+            .chat
+            .recent_lines(usize::MAX)
+            .len()
+    };
+    let before = chat_count(pair);
+    let command = line.to_owned();
+    pair.call(move |game| {
+        let owner = game.server.serving.as_ref().unwrap().owner;
+        let conn = game
+            .server
+            .lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .online_players()
+            .find(|guest| guest.uuid == owner)
+            .unwrap()
+            .conn;
+        let source = game.player_source();
+        let permission = game.ui.registries.permission;
+        // The guest turn sends the command's feedback to the owner when it restores the server.
+        game.with_guest_swap(conn, game.dim, |game| {
+            game.ui.registries.permission = permission;
+            game.execute_line(&command, source)
+                .unwrap_or_else(|e| panic!("{command}: {}", e.message.plain()));
+        })
+        .expect("the connected owner's command turn");
     });
+
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while chat_count(pair) == before {
+        assert!(Instant::now() < deadline, "no client feedback for {line}");
+        pair.pump_client();
+        std::thread::yield_now();
+    }
+    pair.client.chat_ui_for_test().chat.recent_lines(1).concat()
 }
 
 /// The Part's name wins over the item's own for its stacks, `item_name` component included, in the
@@ -59,66 +91,84 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         crate::entry::install_client_hooks();
-        with_item_name_games(|game, client| {
-            game.resolve_parts().unwrap();
+        with_integrated_pair(|pair| {
+            pair.call(|game| game.resolve_parts().unwrap());
             let plain = |t: sunrise_game_data::text::Text| t.plain();
             // An untranslated key reads as itself: the Part's name, independent of the code.
             let named = ItemStack::new("minecraft:paper", 2);
-            assert_eq!(plain(game.stack_hover_name_text(&named)), KEY);
-            assert_eq!(plain(client.styled_stack_name(&named)), KEY);
-
-            // The Part replaces an explicit `item_name`; a stack it leaves keeps it.
-            let mut labelled = named.clone();
-            labelled
-                .data_mut()
-                .set_other("minecraft:item_name", Some(Tag::String("Label".into())));
-            assert_eq!(plain(game.stack_hover_name_text(&labelled)), KEY);
-            let mut single = labelled.clone();
-            single.count = 1;
-            assert_eq!(plain(game.stack_hover_name_text(&single)), "Label");
-            assert_eq!(game.mod_item_name(&single), None);
-
-            // A plain single sheet and another item: vanilla's name, no Part asked.
-            let sheet = ItemStack::new("minecraft:paper", 1);
             assert_eq!(
-                game.stack_hover_name_text(&sheet).component(),
-                sunrise_sim::stations::hover_name_text(&game.pack.names, &sheet).component()
+                plain(pair.call({
+                    let named = named.clone();
+                    move |game| game.stack_hover_name_text(&named)
+                })),
+                KEY
             );
-            assert_eq!(
-                game.mod_item_name(&ItemStack::new("minecraft:stone", 2)),
-                None
-            );
+            assert_eq!(plain(pair.client.styled_stack_name(&named)), KEY);
 
-            // `ItemStack.getHoverName`: a custom name wins over the Part's.
-            let mut renamed = named.clone();
-            renamed.data_mut().custom_name = Some(Tag::String("Diary".into()));
-            assert_eq!(plain(game.stack_hover_name_text(&renamed)), "Diary");
+            let (labelled, single) = pair.call({
+                let named = named.clone();
+                move |game| {
+                    // The Part replaces an explicit `item_name`; a stack it leaves keeps it.
+                    let mut labelled = named.clone();
+                    labelled
+                        .data_mut()
+                        .set_other("minecraft:item_name", Some(Tag::String("Label".into())));
+                    assert_eq!(plain(game.stack_hover_name_text(&labelled)), KEY);
+                    let mut single = labelled.clone();
+                    single.count = 1;
+                    assert_eq!(plain(game.stack_hover_name_text(&single)), "Label");
+                    assert_eq!(game.mod_item_name(&single), None);
 
-            // `ItemStack.getItemName` (`ItemEntity.getName` under its own custom name): the Part's
-            // name, the stack's custom name not part of it; a stack the Part leaves keeps its own.
-            assert_eq!(plain(game.stack_item_name_text(&renamed)), KEY);
-            assert_eq!(plain(game.stack_item_name_text(&single)), "Label");
+                    // A plain single sheet and another item: vanilla's name, no Part asked.
+                    let sheet = ItemStack::new("minecraft:paper", 1);
+                    assert_eq!(
+                        game.stack_hover_name_text(&sheet).component(),
+                        sunrise_sim::stations::hover_name_text(&game.pack.names, &sheet)
+                            .component()
+                    );
+                    assert_eq!(
+                        game.mod_item_name(&ItemStack::new("minecraft:stone", 2)),
+                        None
+                    );
+
+                    // `ItemStack.getHoverName`: a custom name wins over the Part's.
+                    let mut renamed = named.clone();
+                    renamed.data_mut().custom_name = Some(Tag::String("Diary".into()));
+                    assert_eq!(plain(game.stack_hover_name_text(&renamed)), "Diary");
+
+                    // `ItemStack.getItemName` (`ItemEntity.getName` under its own custom name): the Part's
+                    // name, the stack's custom name not part of it; a stack the Part leaves keeps its own.
+                    assert_eq!(plain(game.stack_item_name_text(&renamed)), KEY);
+                    assert_eq!(plain(game.stack_item_name_text(&single)), "Label");
+                    (labelled, single)
+                }
+            });
 
             // The tooltip's and the hotbar's styled name is the same resolved name.
-            assert_eq!(plain(client.styled_stack_name(&labelled)), KEY);
-            assert_eq!(plain(client.styled_stack_name(&single)), "Label");
+            assert_eq!(plain(pair.client.styled_stack_name(&labelled)), KEY);
+            assert_eq!(plain(pair.client.styled_stack_name(&single)), "Label");
 
-            // The anvil menu itself (`AnvilMenu.createResult`, as the server runs it): the
-            // Part's name typed back unchanged makes no result; the item's base name, an
-            // edit, renames it; a third name renames it too.
-            let env = game.menu_env();
-            let anvil = |name: &str| {
-                let mut menu = sunrise_sim::menu::Menu::new(sunrise_sim::menu::Kind::Anvil);
-                menu.set_slot(&env, 0, Some(named.clone()));
-                menu.anvil_created();
-                menu.rename(&env, name);
-                menu.slot(2).cloned()
-            };
-            assert_eq!(anvil(KEY), None, "an unchanged name renames nothing");
-            let base = anvil("Paper").expect("the base name is a rename");
-            assert_eq!(base.custom_name().as_deref(), Some("Paper"));
-            let other = anvil("Minutes").expect("another name is a rename");
-            assert_eq!(other.custom_name().as_deref(), Some("Minutes"));
+            pair.call({
+                let named = named.clone();
+                move |game| {
+                    // The anvil menu itself (`AnvilMenu.createResult`, as the server runs it): the
+                    // Part's name typed back unchanged makes no result; the item's base name, an
+                    // edit, renames it; a third name renames it too.
+                    let env = game.menu_env();
+                    let anvil = |name: &str| {
+                        let mut menu = sunrise_sim::menu::Menu::new(sunrise_sim::menu::Kind::Anvil);
+                        menu.set_slot(&env, 0, Some(named.clone()));
+                        menu.anvil_created();
+                        menu.rename(&env, name);
+                        menu.slot(2).cloned()
+                    };
+                    assert_eq!(anvil(KEY), None, "an unchanged name renames nothing");
+                    let base = anvil("Paper").expect("the base name is a rename");
+                    assert_eq!(base.custom_name().as_deref(), Some("Paper"));
+                    let other = anvil("Minutes").expect("another name is a rename");
+                    assert_eq!(other.custom_name().as_deref(), Some("Minutes"));
+                }
+            });
 
             // ChargedProjectiles.addProjectileTooltip uses getDisplayName for a single arrow.
             let mut arrow = ItemStack::new("minecraft:arrow", 1);
@@ -127,7 +177,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
                 .set_other("minecraft:rarity", Some(Tag::String("epic".into())));
             let mut crossbow = ItemStack::new("minecraft:crossbow", 1);
             crossbow.data_mut().charged.push(arrow);
-            let tooltip = client.stack_tooltip(&crossbow);
+            let tooltip = pair.client.stack_tooltip(&crossbow);
             let (projectile, _) = tooltip
                 .iter()
                 .find(|(line, _)| line.plain().ends_with("[Arrow]"))
@@ -138,120 +188,123 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
                 })
             );
 
-            // GiveCommand's refused count still links the one-item prototype, with its patch.
-            game.player = Some(
-                sunrise_sim::motion::PlayerMotion::new(
-                    game.motion,
-                    sunrise_core::geometry::Vec3::ZERO,
-                )
-                .unwrap(),
-            );
-            game.set_allow_commands(true);
-            game.build_registries();
-            let refusal = game
-                .execute_line(
-                    r#"give @s minecraft:paper[minecraft:custom_name={text:"Diary"}] 6401"#,
-                    game.player_source(),
-                )
-                .unwrap_err();
-            let message = refusal.message.component();
-            assert_eq!(message["translate"], "commands.give.failed.toomanyitems");
-            let hover = &message["with"][1]["hover_event"];
-            assert_eq!(hover["action"], "show_item");
-            let shown = sunrise_items::item_data::stack_from_hover(hover).unwrap();
-            assert_eq!(&*shown.item, "minecraft:paper");
-            assert_eq!(shown.count, 1);
-            assert_eq!(shown.custom_name().as_deref(), Some("Diary"));
+            pair.call({
+                let named = named.clone();
+                move |game| {
+                    // GiveCommand's refused count still links the one-item prototype, with its patch.
+                    game.player = Some(
+                        sunrise_sim::motion::PlayerMotion::new(
+                            game.motion,
+                            sunrise_core::geometry::Vec3::ZERO,
+                        )
+                        .unwrap(),
+                    );
+                    game.set_allow_commands(true);
+                    game.build_registries();
+                    let refusal = game
+                        .execute_line(
+                            r#"give @s minecraft:paper[minecraft:custom_name={text:"Diary"}] 6401"#,
+                            game.player_source(),
+                        )
+                        .unwrap_err();
+                    let message = refusal.message.component();
+                    assert_eq!(message["translate"], "commands.give.failed.toomanyitems");
+                    let hover = &message["with"][1]["hover_event"];
+                    assert_eq!(hover["action"], "show_item");
+                    let shown = sunrise_items::item_data::stack_from_hover(hover).unwrap();
+                    assert_eq!(&*shown.item, "minecraft:paper");
+                    assert_eq!(shown.count, 1);
+                    assert_eq!(shown.custom_name().as_deref(), Some("Diary"));
 
-            // EnchantCommand's refusal names the held stack by `getHoverName().getString()`.
-            game.common.inventory[game.common.selected] = Some(named.clone());
-            let refusal = game
-                .execute_line("enchant @s minecraft:sharpness", game.player_source())
-                .unwrap_err();
-            let message = refusal.message.component();
-            assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
-            assert!(refusal.message.plain().contains(KEY), "{message}");
-            game.common.inventory[game.common.selected] = None;
+                    // EnchantCommand's refusal names the held stack by `getHoverName().getString()`.
+                    game.common.inventory[game.common.selected] = Some(named.clone());
+                    let refusal = game
+                        .execute_line("enchant @s minecraft:sharpness", game.player_source())
+                        .unwrap_err();
+                    let message = refusal.message.component();
+                    assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
+                    assert!(refusal.message.plain().contains(KEY), "{message}");
+                    game.common.inventory[game.common.selected] = None;
 
-            // ItemEntity.getName: the dropped item takes its name from the Part, not the
-            // stack's custom hover name. Command feedback and `name=` selectors agree.
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
-            );
-            let run = |game: &mut ServerGame<'_>, line: &str| {
-                game.execute_line(line, game.player_source())
-                    .unwrap_or_else(|e| panic!("{line}: {}", e.message.plain()));
-                game.server
-                    .chat_capture
-                    .as_ref()
-                    .unwrap()
-                    .last()
-                    .map(|line| line.plain())
-                    .unwrap_or_default()
-            };
+                    // ItemEntity.getName: the dropped item takes its name from the Part, not the
+                    // stack's custom hover name. Command feedback and `name=` selectors agree.
+                    game.world.chunks.insert(
+                        (0, 0),
+                        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
+                    );
+                }
+            });
+            let run = command_feedback;
             let summoned = run(
-                game,
+                pair,
                 r#"summon minecraft:item 4.5 200 4.5 {Item:{id:"minecraft:paper",count:2,components:{"minecraft:custom_name":{text:"Diary"}}}}"#,
             );
             assert!(summoned.contains(KEY), "{summoned}");
             assert_eq!(
-                game.dropped[0].stack.custom_name().as_deref(),
+                pair.call(|game| game.dropped[0].stack.custom_name())
+                    .as_deref(),
                 Some("Diary")
             );
             run(
-                game,
+                pair,
                 r#"summon minecraft:item 6.5 200 4.5 {Item:{id:"minecraft:paper",count:1}}"#,
             );
-            assert_eq!(game.dropped.len(), 2);
-            let killed = run(game, &format!(r#"kill @e[type=item,name="{KEY}"]"#));
+            assert_eq!(pair.call(|game| game.dropped.len()), 2);
+            let killed = run(pair, &format!(r#"kill @e[type=item,name="{KEY}"]"#));
             assert!(killed.contains(KEY), "{killed}");
-            assert_eq!(game.dropped.len(), 1);
-            assert_eq!(game.dropped[0].stack.count, 1);
-            let killed = run(game, r#"kill @e[type=item,name="Paper"]"#);
+            assert_eq!(pair.call(|game| game.dropped.len()), 1);
+            assert_eq!(pair.call(|game| game.dropped[0].stack.count), 1);
+            let killed = run(pair, r#"kill @e[type=item,name="Paper"]"#);
             assert!(killed.contains("Paper"), "{killed}");
-            assert!(game.dropped.is_empty());
+            assert!(pair.call(|game| game.dropped.is_empty()));
 
             // An entity's own custom name takes precedence over the item name.
             let summoned = run(
-                game,
+                pair,
                 r#"summon minecraft:item 4.5 200 4.5 {CustomName:{text:"Loose Notes"},Item:{id:"minecraft:paper",count:2,components:{"minecraft:custom_name":{text:"Diary"}}}}"#,
             );
             assert!(summoned.contains("Loose Notes"), "{summoned}");
-            let killed = run(game, r#"kill @e[type=item,name="Loose Notes"]"#);
+            let killed = run(pair, r#"kill @e[type=item,name="Loose Notes"]"#);
             assert!(killed.contains("Loose Notes"), "{killed}");
-            assert!(game.dropped.is_empty());
+            assert!(pair.call(|game| game.dropped.is_empty()));
 
             // EnchantCommand on a mob: its main-hand stack's getHoverName().getString(), the
             // Part's name for the stack of two it holds.
-            run(game, "summon minecraft:zombie 4.5 200 4.5 {NoAI:1b}");
-            let zombie = game
-                .mobs
-                .iter_mut()
-                .find(|m| m.kind.id == "minecraft:zombie")
-                .expect("the summoned zombie");
-            zombie.extra.set_main_hand_stack(Some(named.clone()));
-            let refusal = game
-                .execute_line(
-                    "enchant @e[type=zombie,limit=1] minecraft:sharpness",
-                    game.player_source(),
-                )
-                .unwrap_err();
-            let message = refusal.message.component();
-            assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
-            assert!(refusal.message.plain().contains(KEY), "{message}");
-            run(game, "kill @e[type=zombie]");
+            run(pair, "summon minecraft:zombie 4.5 200 4.5 {NoAI:1b}");
+            pair.call({
+                let named = named.clone();
+                move |game| {
+                    let zombie = game
+                        .mobs
+                        .iter_mut()
+                        .find(|m| m.kind.id == "minecraft:zombie")
+                        .expect("the summoned zombie");
+                    zombie.extra.set_main_hand_stack(Some(named.clone()));
+                    let refusal = game
+                        .execute_line(
+                            "enchant @e[type=zombie,limit=1] minecraft:sharpness",
+                            game.player_source(),
+                        )
+                        .unwrap_err();
+                    let message = refusal.message.component();
+                    assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
+                    assert!(refusal.message.plain().contains(KEY), "{message}");
+                }
+            });
+            run(pair, "kill @e[type=zombie]");
 
-            // The screen uses the same comparison before sending the rename packet.
-            let mut station = sunrise_gameplay_common::game::stations_common::Station::new(
-                sunrise_gameplay_common::game::stations_common::Kind::Anvil,
-                [0; 3],
-            );
-            station.inputs[0] = Some(named);
-            station.name = KEY.into();
-            assert_eq!(game.anvil_item_name(&station), "");
-            station.name = "Paper".into();
-            assert_eq!(game.anvil_item_name(&station), "Paper");
+            pair.call(move |game| {
+                // The screen uses the same comparison before sending the rename packet.
+                let mut station = sunrise_gameplay_common::game::stations_common::Station::new(
+                    sunrise_gameplay_common::game::stations_common::Kind::Anvil,
+                    [0; 3],
+                );
+                station.inputs[0] = Some(named);
+                station.name = KEY.into();
+                assert_eq!(game.anvil_item_name(&station), "");
+                station.name = "Paper".into();
+                assert_eq!(game.anvil_item_name(&station), "Paper");
+            });
         });
     });
 }

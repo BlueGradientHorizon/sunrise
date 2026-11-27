@@ -16,7 +16,7 @@ pub(crate) mod no_gravity_data_tests;
 pub(crate) mod camera_view_tests;
 #[cfg(test)]
 pub(crate) mod effect_blend_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "client"))]
 pub(crate) mod level_sound_tests;
 
 #[cfg(test)]

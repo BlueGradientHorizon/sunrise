@@ -371,11 +371,7 @@ impl crate::game::ClientGame<'_> {
         match packet {
             // ClientCommonPacketListenerImpl.handlePing runs on the game
             // thread, after all preceding packets (especially teleports).
-            C::Ping(p) => {
-                #[cfg(any(test, feature = "test-support"))]
-                TEST_RECEIVED_PING.set(Some(p.id));
-                self.send(S::Pong(p));
-            }
+            C::Ping(p) => self.send(S::Pong(p)),
             C::CustomPayload(p)
                 if p.channel
                     == sunrise_gameplay_common::game::cauldron_prediction::ENTRIES_CHANNEL =>
@@ -1342,12 +1338,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-#[cfg(feature = "client")]
-#[cfg(any(test, feature = "test-support"))]
-thread_local! {
-    static TEST_RECEIVED_PING: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
-}
-
 /// The game as the tick's input sees it.
 #[cfg(feature = "client")]
 pub struct RemoteInputWorld<'g, 'a>(pub &'g mut crate::game::ClientGame<'a>);
@@ -1374,10 +1364,6 @@ impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_
 #[cfg(feature = "client")]
 #[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
-    pub fn test_take_received_ping(&self) -> Option<i32> {
-        TEST_RECEIVED_PING.take()
-    }
-
     pub fn test_audio_mut(&mut self) -> &mut sunrise_client_render::audio::Audio {
         &mut self.client.audio.0
     }

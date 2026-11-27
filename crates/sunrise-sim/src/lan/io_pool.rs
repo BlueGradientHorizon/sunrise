@@ -80,6 +80,11 @@ struct Queue {
     at: At,
     /// In its thread's list of outboxes to serve.
     listed: bool,
+    #[cfg(feature = "test-support")]
+    test_published: usize,
+    #[cfg(feature = "test-support")]
+    // The framed outbox prefix and its endpoint in the complete connection stream.
+    test_framed: (usize, i64),
 }
 
 // Include allocation capacity and geometric queue growth, even for empty bodies.
@@ -171,6 +176,17 @@ impl Outbox {
     pub(super) fn queued(&self) -> usize {
         self.queue().bodies.len()
     }
+    #[cfg(feature = "test-support")]
+    pub(super) fn test_published(&self) -> usize {
+        self.queue().test_published
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(super) fn test_framed_through(&self, published: usize) -> Option<i64> {
+        let (framed, wire_packets) = self.queue().test_framed;
+        (framed >= published).then_some(wire_packets)
+    }
+
     fn queue(&self) -> MutexGuard<'_, Queue> {
         self.queue.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -200,6 +216,10 @@ impl Outbox {
         match (q.at, q.end) {
             (At::Closed, _) => return Err(()),
             (_, None) => {
+                #[cfg(feature = "test-support")]
+                {
+                    q.test_published += bodies.len();
+                }
                 if q.bodies.is_empty() {
                     q.bodies = bodies;
                 } else {
@@ -264,6 +284,10 @@ impl Outbox {
             return false;
         }
         q.bodies.push(packet);
+        #[cfg(feature = "test-support")]
+        {
+            q.test_published += 1;
+        }
         self.list(q);
         true
     }
@@ -691,6 +715,14 @@ impl Conn {
                 self.outbox.probe[7].fetch_add(1, Ordering::Relaxed);
                 self.outbox.probe[5].store(self.out.len() - self.written, Ordering::Relaxed);
             }
+        }
+        #[cfg(feature = "test-support")]
+        if _queued && !bodies.is_empty() {
+            let mut q = self.outbox.queue();
+            q.test_framed = (
+                q.test_framed.0 + bodies.len(),
+                self.reader.counters.sent.load(Ordering::Relaxed),
+            );
         }
         true
     }

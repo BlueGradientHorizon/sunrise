@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, sync_channel};
 use std::time::{Duration, Instant};
 
@@ -21,7 +22,6 @@ const PLAYER: &str = "IntegratedPair";
 pub(super) struct IntegratedPair<'test, 'server, 'client> {
     pub client: &'test mut ClientGame<'client>,
     server: &'test mut ServerGame<'server>,
-    ping: i32,
 }
 
 pub(super) fn with_integrated_pair(test: impl FnOnce(&mut IntegratedPair<'_, '_, '_>)) {
@@ -61,11 +61,7 @@ pub(super) fn with_integrated_pair(test: impl FnOnce(&mut IntegratedPair<'_, '_,
             client.connect_local(pipe, PLAYER).unwrap();
             client.client.integrated = Some(integrated);
 
-            let mut pair = IntegratedPair {
-                client,
-                server,
-                ping: i32::MIN,
-            };
+            let mut pair = IntegratedPair { client, server };
             let deadline = Instant::now() + TIMEOUT;
             while !pair
                 .client
@@ -109,10 +105,8 @@ impl IntegratedPair<'_, '_, '_> {
     ) -> T {
         let tasks = self.client_sender();
         let client = &mut *self.client;
-        let ping = &mut self.ping;
         let mut handoff = |server: &mut ServerGame<'_>| {
-            fence_client(client, server, *ping);
-            *ping += 1;
+            observe_published_packets(client, server);
             observe(client);
         };
         run(self.server, &mut handoff, f, tasks)
@@ -155,7 +149,7 @@ fn run<T: Send + 'static>(
     result.try_recv().expect("owner test task reply")
 }
 
-fn fence_client(client: &mut ClientGame<'_>, server: &ServerGame<'_>, id: i32) {
+fn observe_published_packets(client: &mut ClientGame<'_>, server: &ServerGame<'_>) {
     let owner = server.server.serving.as_ref().unwrap().owner;
     let host = server.server.lan.as_ref().unwrap();
     let guest = host
@@ -163,15 +157,34 @@ fn fence_client(client: &mut ClientGame<'_>, server: &ServerGame<'_>, id: i32) {
         .online_players()
         .find(|guest| guest.uuid == owner)
         .unwrap();
-    let _ = client.test_take_received_ping();
-    assert!(guest.sender.send_test_receive_fence(id));
+    let published = guest.sender.test_published_packets();
+    let counters = client
+        .client
+        .remote
+        .as_ref()
+        .unwrap()
+        .session
+        .counters
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap();
     let deadline = Instant::now() + TIMEOUT;
     loop {
-        client.poll_remote().unwrap();
-        if client.test_take_received_ping() == Some(id) {
+        let ready = guest
+            .sender
+            .test_framed_through(published)
+            .is_some_and(|wire_packets| {
+                counters.play_ingress_received.load(Ordering::Acquire) >= wire_packets
+            });
+        // Sample reader progress before dispatch so that an ingress turn cannot miss a ready packet.
+        if client.test_dispatch_ready_packets().unwrap() && ready {
             return;
         }
-        assert!(Instant::now() < deadline, "client receive fence timed out");
+        assert!(
+            Instant::now() < deadline,
+            "owner packet observation timed out"
+        );
         std::thread::yield_now();
     }
 }

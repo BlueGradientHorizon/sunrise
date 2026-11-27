@@ -405,6 +405,7 @@ struct Found<'a> {
     /// The module its target names it under: `module`, or for a method of a crate below the
     /// game crate the module that declares its type ([`owner_module`]).
     named_in: String,
+    attrs: &'a [syn::Attribute],
     sig: &'a syn::Signature,
     body: &'a syn::Block,
     /// The `impl` it is a method of.
@@ -470,6 +471,7 @@ fn functions<'a>(
                 out.push(Found {
                     module: module.to_owned(),
                     named_in: module.to_owned(),
+                    attrs: &function.attrs,
                     sig: &function.sig,
                     body: &function.block,
                     owner: None,
@@ -521,6 +523,7 @@ fn functions<'a>(
                         out.push(Found {
                             module: module.to_owned(),
                             named_in: module.to_owned(),
+                            attrs: &method.attrs,
                             sig: &method.sig,
                             body: &method.block,
                             owner: Some(block),
@@ -852,10 +855,21 @@ pub(crate) fn stage_with_context(
     let game = layout.runtime.package_path(root);
     let mut crates = Vec::new();
     for domain in layout.domains {
+        let mut files = domain.files(root, true)?;
+        if crate::GameplayPackage::from_library(domain.key) == Some(crate::GameplayPackage::Client)
+        {
+            // Client builds can opt in to slots in modules gated only by the client feature.
+            files.extend(
+                domain
+                    .files(root, false)?
+                    .into_iter()
+                    .filter(|file| file.cfg == ["feature = \"client\""] && !file.included),
+            );
+        }
         crates.push(Crate {
             name: domain.key.into(),
             lib: domain.library(root)?,
-            files: domain.files(root, true)?,
+            files,
             marked_only: false,
             package: domain.package_path(root),
         });
@@ -911,6 +925,9 @@ pub(crate) fn stage_with_context(
         for file in &krate.files {
             let text = fs::read_to_string(&file.path)
                 .map_err(|e| format!("{}: {e}", file.path.display()))?;
+            if !file.cfg.is_empty() && !text.contains("replaceable") {
+                continue;
+            }
             let items = syn::parse_file(&text)
                 .map_err(|e| format!("{}: {e}", file.path.display()))?
                 .items;
@@ -922,11 +939,15 @@ pub(crate) fn stage_with_context(
             parsed.push((file, text, items));
         }
         for (file, text, items) in &parsed {
-            if !krate.marked_only {
+            if !krate.marked_only && file.cfg.is_empty() {
                 inventory(&file.module, items, &types, workspace, None, &mut counts);
             }
             let mut found = Vec::new();
             functions(&file.module, items, &types, workspace, &mut found);
+            if !file.cfg.is_empty() {
+                found.retain(|function| source::marker(function.attrs, "replaceable").is_some());
+                *counts.entry("eligible").or_default() += found.len();
+            }
             if krate.marked_only {
                 for found in &mut found {
                     if let Some(block) = found.owner {
@@ -1049,6 +1070,55 @@ fn client_slot_package(name: &str) -> bool {
             | "sunrise-client-render"
             | "sunrise-mod-render"
     )
+}
+
+#[cfg(test)]
+#[test]
+fn client_feature_modules_stage_only_marked_methods() {
+    let tree = tempfile::tempdir().unwrap();
+    let root = tree.path();
+    const CLIENT: source::GameDomain = crate::GAMEPLAY_LAYOUT.domains[2];
+    let package = CLIENT.package_path(root);
+    fs::create_dir_all(package.join("src/game")).unwrap();
+    fs::write(
+        package.join("Cargo.toml"),
+        "[package]\nname = 'sunrise-client-gameplay'\n",
+    )
+    .unwrap();
+    fs::write(package.join("src/lib.rs"), "pub mod game;\n").unwrap();
+    fs::write(
+        package.join("src/game.rs"),
+        r#"
+        #[cfg(feature = "client")] mod particles;
+        #[cfg(feature = "extra")] mod extra;
+        pub struct ClientGame;
+        "#,
+    )
+    .unwrap();
+    for name in ["particles", "extra"] {
+        fs::write(
+            package.join(format!("src/game/{name}.rs")),
+            format!(
+                "use super::ClientGame;
+                 impl ClientGame {{
+                     #[sunrise_mod_api_macros::replaceable]
+                     fn {name}(&mut self) {{}}
+                     fn {name}_helper(&mut self) {{}}
+                 }}"
+            ),
+        )
+        .unwrap();
+    }
+    let layout = source::SourceLayout {
+        runtime: CLIENT,
+        domains: &[CLIENT],
+        entry: None,
+    };
+    let staged = stage_with_context(root, layout, None, None).unwrap();
+    assert_eq!(
+        staged.slots,
+        ["sunrise_client_gameplay::game::particles::ClientGame::particles".to_owned()].into()
+    );
 }
 
 fn runtime_slot_anchor(slots: &[(&str, bool)]) -> String {

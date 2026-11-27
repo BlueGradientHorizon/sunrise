@@ -133,7 +133,7 @@ audio = ["sunrise-client-render/audio"]
 controllers = ["sunrise-client-input/controllers"]
 # The sensor_scan_tests mob-kind fixture for the gameplay crates' tests.
 test-mob-kind = ["sunrise-sim/test-mob-kind"]
-test-support = ["sunrise-sim/test-support"]
+test-support = ["sunrise-sim/test-support", "sunrise-protocol/test-receive-progress"]
 # Records the call sites of mob random draws (`mob_ai_probe` traces).
 rng-trace = ["sunrise-core/rng-trace"]
 # Opt-in Windows heap experiment; see docs/windows-allocators.md.

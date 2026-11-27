@@ -599,6 +599,25 @@ impl crate::game::ClientGame<'_> {
         }
         Ok(())
     }
+    #[cfg(feature = "test-support")]
+    pub fn test_dispatch_ready_packets(&mut self) -> Result<bool> {
+        // Only dispatch ingress at a checkpoint, without running the separate client task phase.
+        let remote = self.client.remote.as_mut().expect("owner client connected");
+        let mut events = std::mem::take(&mut remote.backlog);
+        remote.receive_credited_backlog(&mut events);
+        if events.is_empty() {
+            remote.backlog_since = None;
+            return Ok(true);
+        }
+        let overdue = remote
+            .backlog_since
+            .is_some_and(|since| since.elapsed() >= BACKLOG_LIMIT);
+        let mut chunks = Duration::ZERO;
+        self.dispatch_packet_turn(events, overdue, false, &mut chunks)?;
+        let remote = self.client.remote.as_ref().expect("owner client connected");
+        Ok(remote.backlog.is_empty())
+    }
+
     /// `ClientCommonPacketListenerImpl.onPacketError`: close first and keep any earlier reason.
     pub(in crate::game::client_side) fn record_packet_error(
         &self,

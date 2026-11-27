@@ -2476,6 +2476,7 @@ impl crate::game::ServerGame<'_> {
         };
         let dimension = self.common.dim.level();
         let rules = self.common.level_rules();
+        let native_authoritative = self.native_authoritative();
         let liquid_transaction_open = self.has_level_transaction();
         let environment = Self::level_environment(
             None,
@@ -2489,7 +2490,11 @@ impl crate::game::ServerGame<'_> {
             cake_probe: false,
             cake_requested: std::cell::Cell::new(false),
             cake_answer: None,
-            api_level: self.level(self.common.dim.id()),
+            api_level: if native_authoritative {
+                self.level(self.common.dim.id())
+            } else {
+                self.native_client_level()
+            },
             part_state_index: self.common.attachment_indexes.get(&self.common.dim),
             attachment_query_scopes: &self.common.transactions.attachment_query_scopes,
             command_block_transition: None,
@@ -2559,7 +2564,7 @@ impl crate::game::ServerGame<'_> {
             open_containers: &open_containers,
             golem_chests: &golem_chests,
             client_side: false,
-            native_authoritative: true,
+            native_authoritative,
             native_player: self.server.lan_acting_uuid,
             native_player_entity: self.server.lan_acting_entity.map(|id| id as i32),
             liquid_transaction_open,
