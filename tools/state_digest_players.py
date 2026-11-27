@@ -378,7 +378,7 @@ def integrated_state(command, host):
 
 
 def main():
-    if sys.argv[1:2] == ['--compare']:
+    if '--compare' in sys.argv[1:]:
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('--compare', nargs=2, required=True, type=Path, metavar=('LEFT', 'RIGHT'))
         parser.add_argument('--ignore-group', action='append', choices=(*IGNORABLE_GROUPS, 'player_summary'), default=[])

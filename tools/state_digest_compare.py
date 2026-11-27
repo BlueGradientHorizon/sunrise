@@ -6,10 +6,10 @@ from pathlib import Path
 
 # `tick` and `dim` are compared too: a changed game time or level routing is a behaviour change.
 GROUPS = (
-    'tick', 'dim', 'entities', 'randoms', 'hangings', 'cushions', 'other_entities', 'thrown_eyes',
+    'tick', 'dim', 'walk_error', 'entities', 'randoms', 'hangings', 'cushions', 'other_entities', 'thrown_eyes',
     'fangs', 'lightning', 'end_crystals', 'dragon', 'breath_clouds', 'ominous_spawners', 'leash_knots',
     'fishing_hooks', 'thrown_potions', 'seats', 'entity_identity', 'entity_shared', 'players',
-    'block_entities', 'level_random', 'counters', 'scheduled', 'walk_error',
+    'block_entities', 'level_random', 'counters', 'scheduled',
 )
 
 
@@ -44,15 +44,19 @@ def compare(a_lines, b_lines, ignore_groups=()):
               f'{b[0]["tick"]}..{b[-1]["tick"]}',
               f'frozen ticks that moved the level random: {fa} vs {fb}']
     same = len(a) == len(b)
-    first = None
+    first_failure = first_ignored = None
+    invalid_walks = {t for t in steps if 'walk_error' in a[t] or 'walk_error' in b[t]}
+    walk_groups = {'entities', 'randoms', 'entity_identity', 'entity_shared'}
     ignored_differences = False
     for group in GROUPS:
         missing = False
         if group == 'walk_error':
-            diff = [t for t in steps if group in a[t] or group in b[t]]
+            diff = sorted(invalid_walks)
         else:
             diff = []
             for t in steps:
+                if t in invalid_walks and group in walk_groups:
+                    continue
                 left, right = a[t].get(group), b[t].get(group)
                 absent = left is None or right is None
                 if absent or left != right:
@@ -62,16 +66,23 @@ def compare(a_lines, b_lines, ignore_groups=()):
             t = diff[0]
             ignored = not missing and group in IGNORABLE_GROUPS and group in ignore_groups
             ignored_differences |= ignored
-            if not ignored:
+            if ignored:
+                if first_ignored is None or t < first_ignored[0]:
+                    first_ignored = (t, group, True)
+            else:
                 same = False
-            if first is None or t < first[0]:
-                first = (t, group, ignored)
+                if first_failure is None or t < first_failure[0]:
+                    first_failure = (t, group, False)
             label = 'DIFFERS (ignored)' if ignored else 'DIFFERS'
             report.append(f'{group:21} {label} on {len(diff)} steps, first step {t + 1} '
                           f'(tick {a[t]["tick"]} vs {b[t]["tick"]}): '
                           f'{a[t].get(group, "<missing>")} vs {b[t].get(group, "<missing>")}')
         else:
-            report.append(f'{group:21} identical')
+            label = 'identical'
+            if invalid_walks and group in walk_groups:
+                label = 'skipped on steps with a walk error'
+            report.append(f'{group:21} {label}')
+    first = first_failure or (first_ignored if same else None)
     if first is not None:
         t, group, ignored = first
         label = f'{group} (ignored)' if ignored else group

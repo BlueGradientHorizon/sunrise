@@ -34,6 +34,21 @@ class DigestCompareTests(unittest.TestCase):
         self.assertIn('first differing group: players (ignored) at step 1 (tick 42 vs 42)', report)
         self.assertFalse(state_digest_compare.compare(a, [line(43)], ['tick'])[1])
 
+    def test_ignored_difference_does_not_hide_a_later_failure(self):
+        a = [line(42), line(43)]
+        b = [line(42, players='changed'), line(43, seats='changed')]
+        report, same = state_digest_compare.compare(a, b, ['players'])
+        self.assertFalse(same)
+        self.assertIn('first differing group: seats at step 2 (tick 43 vs 43)', report)
+
+    def test_failed_walk_does_not_report_fallback_entity_hash_as_a_difference(self):
+        a = [line(42), line(43)]
+        b = [line(42, entities='fallback', walk_error='Unjoined(Mob(0))'), line(43, entities='changed')]
+        report, same = state_digest_compare.compare(a, b)
+        self.assertFalse(same)
+        self.assertIn('first differing group: walk_error at step 1 (tick 42 vs 42)', report)
+        self.assertTrue(any(item.startswith('entities ') and '(tick 43 vs 43)' in item for item in report))
+
     def test_rejects_missing_groups_and_unequal_tick_counts(self):
         missing = line(42).replace(' seats=same', '')
         report, same = state_digest_compare.compare([missing], [missing])
@@ -92,6 +107,14 @@ class LaunchTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, 'digest-sync: refused'):
                 server.run_seeded(commands, require_sync=True)
             server.run_seeded(commands, require_sync=False)
+
+    def test_compare_option_can_follow_ignore_option(self):
+        argv = ['state_digest_players.py', '--ignore-group', 'players', '--compare', 'a', 'b']
+        with patch.object(sys, 'argv', argv), patch.object(state_digest_players, 'compare', return_value=0) as compare:
+            with self.assertRaises(SystemExit) as exit_code:
+                state_digest_players.main()
+        self.assertEqual(exit_code.exception.code, 0)
+        compare.assert_called_once_with(Path('a'), Path('b'), ['players'])
 
     def test_player_harness_passes_ctl_path_and_ticks_to_integrated_run(self):
         with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(io.StringIO()):

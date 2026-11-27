@@ -6,8 +6,9 @@ from tools import state_digest_compare
 
 
 def line(tick, dim="minecraft:overworld", run="1", entities="3:aa"):
-    return (f"tick={tick} dim={dim} run={run} entities={entities} randoms=1:bb block_entities=0:cc "
-            f"level_random=dd/None/0 counters=5/6 scheduled=0/0:ee\n")
+    fields = {group: "same" for group in state_digest_compare.GROUPS if group != "walk_error"}
+    fields.update(tick=tick, dim=dim, run=run, entities=entities)
+    return " ".join(f"{key}={value}" for key, value in fields.items()) + "\n"
 
 
 BASE = [line(100, run="0"), line(101), line(102), line(103)]
@@ -23,13 +24,13 @@ class CompareTests(unittest.TestCase):
         shifted = [line(100, run="0"), line(101), line(103), line(104)]
         report, same = state_digest_compare.compare(BASE, shifted)
         self.assertFalse(same)
-        self.assertIn("tick            DIFFERS on 2 steps, first step 2 (tick 102): 102 vs 103", report)
+        self.assertIn("tick                  DIFFERS on 2 steps, first step 2 (tick 102 vs 103): 102 vs 103", report)
 
     def test_a_step_in_another_level_is_different(self):
         moved = [line(100, run="0"), line(101), line(102, dim="minecraft:the_nether"), line(103)]
         report, same = state_digest_compare.compare(BASE, moved)
         self.assertFalse(same)
-        self.assertIn("dim             DIFFERS on 1 steps, first step 2 (tick 102): minecraft:overworld vs "
+        self.assertIn("dim                   DIFFERS on 1 steps, first step 2 (tick 102 vs 102): minecraft:overworld vs "
                       "minecraft:the_nether", report)
 
     def test_a_missing_step_is_different(self):
