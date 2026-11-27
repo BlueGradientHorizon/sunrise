@@ -6,6 +6,11 @@
 use super::*;
 
 impl ModPipelines {
+    /// The thread that built the pack state held now.
+    fn pack_built_on(&self) -> Option<std::thread::ThreadId> {
+        Some(self.pack.as_ref()?.built_on)
+    }
+
     /// `[pack uniform buffers, pack set-0 groups, pack fragment modules]` held now.
     fn pack_objects(&self) -> [usize; 3] {
         let Some(pack) = &self.pack else {
@@ -157,9 +162,18 @@ fn pack_state_exists_only_while_a_pack_is_selected() {
         );
         assert_eq!(block_uploads(&gpu, &mut primitives, &two, &[], &[]), 1);
 
-        // The first selection builds them for the two pipelines built before it. The pack pass
-        // selects after this frame's `prepare`, whose blocks differ from the frame before's
-        // (`other_blocks`): the quad's colour shows the pack reads this frame's.
+        // A pack pass alone builds nothing: only the pack's selection does.
+        primitives.prepare_pack_pass(&gpu.0, format, false, false);
+        assert_eq!(
+            primitives.pipelines.pack_objects(),
+            [0, 0, 0],
+            "{}",
+            what("a pack pass before any selection")
+        );
+
+        // The selection, before the frame as the pack's installation does, builds them for the
+        // two pipelines built before it. Its buffer starts with the frame before's blocks
+        // (`other_blocks`), so the quad's colour shows the frame uploads its own.
         let gamma = usize::from(linear) * 2;
         let at = render_target(&gpu, &mut primitives, format, batch(&two), STAGES - 1, true);
         assert_drawn(&at, true, &what("pack on"));
@@ -199,10 +213,7 @@ fn pack_state_exists_only_while_a_pack_is_selected() {
             1
         );
 
-        // On again, selected before the frame as the renderer does: built again from the frame
-        // before's blocks (`other_blocks`), then this frame's upload, and the pack's target
-        // draws as before.
-        primitives.pipelines.select_pack(&gpu.0);
+        // On again: built again, and the pack's target draws as before.
         let at = render_target(&gpu, &mut primitives, format, batch(&two), STAGES - 1, true);
         assert_drawn(&at, true, &what("pack on again"));
         assert_eq!(
@@ -524,17 +535,46 @@ fn renderer_fixture(window: std::sync::Arc<winit::window::Window>) {
     };
     let folder = tempfile::tempdir().unwrap();
     let pack = final_pack(folder.path());
-    let set_pack = |renderer: &mut Renderer| {
+    let post = |renderer: &mut Renderer| {
         let mut macros = sunrise_shaders::Macros::standard();
         renderer.define_pack_macros(&mut macros);
         let (properties, _) = sunrise_shaders::read_properties(&pack, &mut macros);
-        let post =
-            sunrise_shaders::load_post(&pack, "", &properties, &macros, &renderer.pack_inputs());
+        sunrise_shaders::load_post(&pack, "", &properties, &macros, &renderer.pack_inputs())
+    };
+    let set_pack = |renderer: &mut Renderer| {
+        let post = post(renderer);
         renderer
             .set_shader_pack(0, Some(post), &[])
             .unwrap_or_else(|_| panic!("the pack is refused"))
             .expect("the pack runs");
     };
+    // The game's load: on the pack's own thread, then installed by a poll between frames.
+    let load_pack = |renderer: &mut Renderer, before_install: &dyn Fn(&mut Renderer)| {
+        let post = post(renderer);
+        let started = std::time::Instant::now();
+        renderer.load_shader_pack(0, post, Vec::new(), "final only".into(), started);
+        assert_eq!(objects(renderer), [0, 0, 0], "while the pack loads");
+        before_install(renderer);
+        let mut report = None;
+        for _ in 0..6000 {
+            report = renderer.poll_shader_pack();
+            if report.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let (_, _, _, report) = report.expect("the pack's thread finishes within a minute");
+        report
+            .unwrap_or_else(|_| panic!("the pack is refused"))
+            .expect("the pack runs");
+    };
+    let here = std::thread::current().id();
+    let built_on = |renderer: &Renderer| {
+        (renderer.world_primitives.as_ref())
+            .and_then(|wp| wp.pipelines.pack_built_on())
+            .expect("pack state")
+    };
+    let gamma = usize::from(linear);
 
     let one = pipelines(71, 1);
     renderer.build_mod_pipelines(&one, &|_| None).unwrap();
@@ -543,24 +583,30 @@ fn renderer_fixture(window: std::sync::Arc<winit::window::Window>) {
     assert_eq!(shown, COLOR, "no pack: the mod's quad");
     assert_eq!(objects(&renderer), [0, 0, 0], "no pack");
 
-    set_pack(&mut renderer);
-    // The selection alone builds nothing: the frame does.
-    assert_eq!(objects(&renderer), [0, 0, 0], "selected, no frame yet");
+    // The pack's load builds the state and its installation publishes it, before any frame:
+    // on the pack's thread.
+    load_pack(&mut renderer, &|_| {});
+    assert_eq!(
+        objects(&renderer),
+        [1, 1, gamma],
+        "loaded, before its first frame (linear light {linear})"
+    );
+    assert_ne!(built_on(&renderer), here, "built on the pack's thread");
     let shown = render(&mut renderer, &one);
     eprintln!("MOD_PIPELINE_PACK_STATE_PIXEL pack on {shown:?}");
     assert_eq!(
         shown, COLOR,
-        "pack on: the mod's quad, through the pack's final"
+        "the first pack frame: the mod's quad, through the pack's final"
     );
-    let gamma = usize::from(linear);
     assert_eq!(
         objects(&renderer),
         [1, 1, gamma],
-        "pack on (linear light {linear})"
+        "after the first pack frame"
     );
 
+    // Turned off: gone at once, and a reload then builds none.
     renderer.set_shader_pack(0, None, &[]).unwrap();
-    // A load built with the pack off and no frame since builds no pack state for it.
+    assert_eq!(objects(&renderer), [0, 0, 0], "turned off");
     let off = pipelines(73, 1);
     renderer.build_mod_pipelines(&off, &|_| None).unwrap();
     assert_eq!(
@@ -573,28 +619,47 @@ fn renderer_fixture(window: std::sync::Arc<winit::window::Window>) {
         COLOR,
         "pack off: the mod's quad"
     );
-    assert_eq!(objects(&renderer), [0, 0, 0], "pack off");
 
+    // Set at once (`set_shader_pack`): built by the installation itself, before any frame.
     set_pack(&mut renderer);
+    assert_eq!(objects(&renderer), [1, 1, gamma], "set");
+    assert_eq!(built_on(&renderer), here, "built by the installation");
     assert_eq!(
         render(&mut renderer, &off),
         COLOR,
         "pack on again: the mod's quad"
     );
-    assert_eq!(objects(&renderer), [1, 1, gamma], "pack on again");
 
-    let two = pipelines(72, 2);
-    renderer.build_mod_pipelines(&two, &|_| None).unwrap();
+    // Refused (a pack whose thread could not start): gone at once.
+    renderer.pack_thread_failed(0, "refused", &std::io::Error::other("test"));
+    assert_eq!(objects(&renderer), [0, 0, 0], "refused");
     assert_eq!(
-        render(&mut renderer, &two),
+        render(&mut renderer, &off),
         COLOR,
-        "a reload with the pack on: the quad"
+        "refused: the mod's quad"
     );
+
+    // The mods' pipelines rebuilt while the pack loads: the installation builds the state
+    // for the load now running instead of publishing the pack thread's.
+    let two = pipelines(72, 2);
+    load_pack(&mut renderer, &|renderer| {
+        renderer.build_mod_pipelines(&two, &|_| None).unwrap();
+    });
     assert_eq!(
         objects(&renderer),
         [1, 2, 2 * gamma],
-        "a reload with the pack on"
+        "a reload while the pack loaded"
     );
+    assert_eq!(built_on(&renderer), here, "built again by the installation");
+    assert_eq!(
+        render(&mut renderer, &two),
+        COLOR,
+        "a reload while the pack loaded: the quad"
+    );
+
+    // Dropped: gone at once.
+    renderer.drop_shader_packs();
+    assert_eq!(objects(&renderer), [0, 0, 0], "dropped");
     eprintln!("MOD_PIPELINE_PACK_STATE_FIXTURE linear light {linear}: passed");
 }
 

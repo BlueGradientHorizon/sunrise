@@ -47,15 +47,6 @@ impl Renderer {
         if self.device_lost() {
             return Err(super::in_flight::LOST.into());
         }
-        // Mod pipelines keep shader-pack state only while a pack that runs is selected.
-        let pack_selected = self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
-        if let Some(world_primitives) = self.world_primitives.as_mut() {
-            if pack_selected {
-                world_primitives.pipelines.select_pack(&self.device);
-            } else {
-                world_primitives.pipelines.deselect_pack();
-            }
-        }
         if polled.is_ok()
             && let Some(timer) = &mut self.gpu_timer
         {

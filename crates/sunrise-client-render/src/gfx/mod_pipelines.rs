@@ -949,6 +949,101 @@ struct PackState {
     /// Per pipeline slot, its objects for a pack target; `None` for an empty slot or one whose
     /// pack group the GPU refused.
     sources: Vec<Option<PackSource>>,
+    /// The thread that built it, for the tests of where it is built.
+    #[cfg(test)]
+    built_on: std::thread::ThreadId,
+}
+
+/// A load's pipelines as a shader pack's load reads them to build their pack state.
+pub(crate) struct PackStateBuilder {
+    generation: u64,
+    linear_light: bool,
+    sampler: wgpu::Sampler,
+    blocks: [u8; 1024],
+    sources: Vec<Option<Arc<PipelineSource>>>,
+}
+
+/// The shader-pack state [`PackStateBuilder::build`] made, for
+/// [`ModPipelines::select_pack`] to publish.
+pub(crate) struct BuiltPackState(PackState);
+
+impl PackStateBuilder {
+    /// The pack's uniform buffer and, for each pipeline, its pack set-0 group and, under
+    /// linear light, its gamma fragment module. Runs on whichever thread holds `device`, the
+    /// pack's own included: each object's GPU errors are caught on that thread.
+    pub(crate) fn build(self, device: &wgpu::Device) -> BuiltPackState {
+        use wgpu::util::DeviceExt;
+        let vanilla = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Mod pipeline pack vanilla uniforms"),
+            contents: &pack_vanilla_blocks(&self.blocks),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let sources = (self.sources.iter())
+            .map(|source| {
+                let source = source.as_ref()?;
+                self.source(device, source, &vanilla)
+                    .map_err(|error| {
+                        log::warn!(
+                            "Sunrise: mod pipeline {} draws nothing on shader-pack targets: its pack group was refused by the GPU: {error}",
+                            source.recipe.id
+                        );
+                    })
+                    .ok()
+            })
+            .collect();
+        BuiltPackState(PackState {
+            vanilla,
+            generation: self.generation,
+            sources,
+            #[cfg(test)]
+            built_on: std::thread::current().id(),
+        })
+    }
+
+    /// `source`'s objects for a shader pack's target: its set-0 group over `vanilla` (the
+    /// pack's blocks), or the GPU's error, and under linear light its gamma fragment module,
+    /// refused alone when the GPU refuses it.
+    fn source(
+        &self,
+        device: &wgpu::Device,
+        source: &PipelineSource,
+        vanilla: &wgpu::Buffer,
+    ) -> Result<PackSource, String> {
+        let program = &source.recipe.program;
+        let group = gpu_scoped(device, || {
+            GlobalsBindings {
+                layout: &source.globals_layout,
+                program,
+                sprite: source.sprite.as_ref().map(|(view, _)| view),
+                sprite_rect: source.sprite_rect.as_ref(),
+                sampler: &self.sampler,
+            }
+            .group(device, "Mod pipeline (pack)", vanilla)
+        })?;
+        let fragment = if !self.linear_light {
+            PackFragment::World
+        } else {
+            let gamma = gpu_scoped(device, || {
+                device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("Mod pipeline (fragment, gamma)"),
+                    source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(
+                        program.fragment.clone(),
+                    )),
+                })
+            });
+            match gamma {
+                Ok(module) => PackFragment::Gamma(module),
+                Err(error) => {
+                    log::warn!(
+                        "Sunrise: mod pipeline {} draws nothing on shader-pack targets: its gamma fragment module was refused by the GPU: {error}",
+                        source.recipe.id
+                    );
+                    PackFragment::Refused
+                }
+            }
+        };
+        Ok(PackSource { group, fragment })
+    }
 }
 
 /// One pipeline's objects for a shader pack's target.
@@ -2052,94 +2147,40 @@ impl ModPipelines {
         }))
     }
 
-    /// `source`'s objects for a shader pack's target: its set-0 group over `vanilla` (the
-    /// pack's blocks), or the GPU's error, and under linear light its gamma fragment module,
-    /// refused alone when the GPU refuses it.
-    fn pack_source(
-        &self,
-        device: &wgpu::Device,
-        source: &PipelineSource,
-        vanilla: &wgpu::Buffer,
-    ) -> Result<PackSource, String> {
-        let program = &source.recipe.program;
-        let group = gpu_scoped(device, || {
-            GlobalsBindings {
-                layout: &source.globals_layout,
-                program,
-                sprite: source.sprite.as_ref().map(|(view, _)| view),
-                sprite_rect: source.sprite_rect.as_ref(),
-                sampler: &self.sampler,
-            }
-            .group(device, "Mod pipeline (pack)", vanilla)
-        })?;
-        let fragment = if !self.linear_light {
-            PackFragment::World
-        } else {
-            let gamma = gpu_scoped(device, || {
-                device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("Mod pipeline (fragment, gamma)"),
-                    source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(
-                        program.fragment.clone(),
-                    )),
-                })
-            });
-            match gamma {
-                Ok(module) => PackFragment::Gamma(module),
-                Err(error) => {
-                    log::warn!(
-                        "Sunrise: mod pipeline {} draws nothing on shader-pack targets: its gamma fragment module was refused by the GPU: {error}",
-                        source.recipe.id
-                    );
-                    PackFragment::Refused
-                }
-            }
-        };
-        Ok(PackSource { group, fragment })
+    /// What a shader pack's load needs to build these pipelines' shader-pack state off the
+    /// draw path, on the pack's own thread ([`PackStateBuilder::build`]): the load's
+    /// pipelines and the frame's last `vanilla` blocks, which the pack's buffer starts with.
+    pub(crate) fn pack_state_builder(&self) -> PackStateBuilder {
+        PackStateBuilder {
+            generation: self.generation,
+            linear_light: self.linear_light,
+            sampler: self.sampler.clone(),
+            blocks: self.last_vanilla_blocks,
+            sources: (self.pipelines.iter())
+                .map(|slot| slot.as_ref().map(|compiled| Arc::clone(&compiled.source)))
+                .collect(),
+        }
     }
 
-    /// Builds the pipelines' shader-pack state on a shader pack's selection, for every
-    /// pipeline of the current load, those built before the selection included; a later load
-    /// rebuilds it ([`Self::build`]). The pack's blocks start as the frame's last `vanilla`
-    /// blocks, so a pack pass that selects the pack after [`Self::prepare`] reads this frame's.
-    /// Idempotent while the load stays the same.
-    pub fn select_pack(&mut self, device: &wgpu::Device) {
-        use wgpu::util::DeviceExt;
+    /// Publishes the shader-pack state a pack's load built (`built`) with the pack: it is used
+    /// when built for the current load, and built here otherwise (no `built`, or the mods'
+    /// pipelines were rebuilt while the pack loaded). Selecting the pack this way is the only
+    /// place the state is built, besides a reload of the pipelines while it stays selected
+    /// ([`Self::build`]); neither a frame nor a pack pass builds it.
+    pub(crate) fn select_pack(&mut self, device: &wgpu::Device, built: Option<BuiltPackState>) {
         let generation = self.generation;
-        if self
-            .pack
-            .as_ref()
-            .is_some_and(|pack| pack.generation == generation)
-        {
-            return;
-        }
-        let vanilla = match self.pack.take() {
-            Some(pack) => pack.vanilla,
-            None => device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Mod pipeline pack vanilla uniforms"),
-                contents: &pack_vanilla_blocks(&self.last_vanilla_blocks),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            }),
+        let state = match built {
+            Some(BuiltPackState(state)) if state.generation == generation => state,
+            _ if self
+                .pack
+                .as_ref()
+                .is_some_and(|pack| pack.generation == generation) =>
+            {
+                return;
+            }
+            _ => self.pack_state_builder().build(device).0,
         };
-        let sources = self
-            .pipelines
-            .iter()
-            .map(|slot| {
-                let compiled = slot.as_ref()?;
-                self.pack_source(device, &compiled.source, &vanilla)
-                    .map_err(|error| {
-                        log::warn!(
-                            "Sunrise: mod pipeline {} draws nothing on shader-pack targets: its pack group was refused by the GPU: {error}",
-                            compiled.source.recipe.id
-                        );
-                    })
-                    .ok()
-            })
-            .collect();
-        self.pack = Some(PackState {
-            vanilla,
-            generation,
-            sources,
-        });
+        self.pack = Some(state);
     }
 
     /// Drops the pipelines' shader-pack state and their pack-target variants when no shader
@@ -2348,7 +2389,6 @@ impl ModPipelines {
         format: wgpu::TextureFormat,
         rgb: bool,
     ) {
-        self.select_pack(device);
         if self.pack_target != Some((format, rgb)) {
             self.variants
                 .retain(|(_, _, target), _| !matches!(target, VariantTarget::Pack(..)));
@@ -2480,7 +2520,7 @@ impl ModPipelines {
         })?;
         self.compute.build(device, set.compute());
         if self.pack.is_some() {
-            self.select_pack(device);
+            self.select_pack(device, None);
         }
         Ok(())
     }
@@ -4984,17 +5024,11 @@ impl super::Renderer {
             atlas: &self.entity_atlas,
             sprite,
         };
-        let pipelines = &mut self
-            .world_primitives
+        self.world_primitives
             .as_mut()
             .expect("world primitives")
-            .pipelines;
-        // A pack turned off since the last frame takes its state with it now, so this load
-        // builds none for it.
-        if !self.pack_post.as_ref().is_some_and(|p| p.1.is_some()) {
-            pipelines.deselect_pack();
-        }
-        pipelines.build(&self.device, set, Some(textures))
+            .pipelines
+            .build(&self.device, set, Some(textures))
     }
 }
 
@@ -5224,6 +5258,10 @@ void main() {
         let wall = view_proj().project_point3(Vec3::new(0.0, 0.0, -5.0)).z;
         if let Some(set) = batch.set {
             primitives.pipelines.build(device, set, None).unwrap();
+        }
+        if pack {
+            // The pack's installation publishes the pipelines' pack state before its frames.
+            primitives.pipelines.select_pack(device, None);
         }
         let drawn = primitives.prepare(
             device,
@@ -7016,6 +7054,7 @@ void main() {
             &atlas.create_view(&Default::default()),
             None,
         ));
+        primitives.pipelines.select_pack(&device, None);
         primitives.prepare_pack_pass(&device, format, false, false);
         let color_view = color.create_view(&Default::default());
         let depth_view = depth.create_view(&Default::default());

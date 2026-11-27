@@ -83,19 +83,29 @@ impl Renderer {
             )
         });
         self.pack_loading = None;
-        self.install_shader_pack(dimension, post.transpose(), block_ids.to_vec())
+        self.install_shader_pack(dimension, post.transpose(), block_ids.to_vec(), None)
     }
     /// Runs the pack `set_shader_pack` or `load_shader_pack` built (`None`: no pack), or none when
     /// it can't run, for the dimension `dimension`; the programs that run and their notes.
-    /// `block_ids` are the pack's, as `set_shader_pack` takes them.
+    /// `block_ids` are the pack's, as `set_shader_pack` takes them. The mod pipelines' pack
+    /// state is published with a pack that runs (`mod_pack_state`, built with the pack, or
+    /// built here), and dropped with one that doesn't.
     fn install_shader_pack(
         &mut self,
         dimension: i32,
         post: std::result::Result<Option<pack_post::PackPost>, pack_post::Refused>,
         block_ids: Vec<i32>,
+        mod_pack_state: Option<mod_pipelines::BuiltPackState>,
     ) -> std::result::Result<Option<(Vec<String>, Vec<String>)>, pack_post::Refused> {
         self.pack_changed();
         let runs = post.as_ref().is_ok_and(Option::is_some);
+        if let Some(world_primitives) = self.world_primitives.as_mut() {
+            if runs {
+                (world_primitives.pipelines).select_pack(&self.device, mod_pack_state);
+            } else {
+                world_primitives.pipelines.deselect_pack();
+            }
+        }
         let block_ids = if runs { block_ids } else { Vec::new() };
         let old = self.pack_block_ids.as_deref().map_or(&[][..], |ids| &ids.0);
         if block_ids != old {
@@ -265,6 +275,11 @@ impl Renderer {
             .as_ref()
             .map(|wp| wp.pipelines.pack_vertex_stages())
             .unwrap_or_default();
+        // Built with the pack, off the draw path: the mod pipelines' objects for its targets.
+        let mod_pack_state = self
+            .world_primitives
+            .as_ref()
+            .map(|wp| wp.pipelines.pack_state_builder());
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancelled = cancel.clone();
         let build = move || {
@@ -306,8 +321,12 @@ impl Renderer {
                     .with_vertex_stages(&mod_vertex_stages),
                 &cancelled,
             );
-            // The ids come back with it, for `install_shader_pack`.
-            (post, block_ids)
+            let mod_pack_state = (post.is_ok())
+                .then_some(mod_pack_state)
+                .flatten()
+                .map(|builder| builder.build(&device));
+            // The ids and the mod pipelines' state come back with it, for `install_shader_pack`.
+            (post, block_ids, mod_pack_state)
         };
         // A pack is not the game's code: a panic building it turns the pack off (#3525).
         let thread = std::thread::Builder::new()
@@ -318,6 +337,9 @@ impl Renderer {
                 // The last pack doesn't draw this dimension meanwhile.
                 self.pack_changed();
                 self.pack_post = None;
+                if let Some(world_primitives) = self.world_primitives.as_mut() {
+                    world_primitives.pipelines.deselect_pack();
+                }
                 self.pack_loading = Some(PackLoading {
                     dimension,
                     thread,
@@ -345,7 +367,7 @@ impl Renderer {
             reason: format!("no thread to build it on: {error}"),
             notes: Vec::new(),
         };
-        let _ = self.install_shader_pack(dimension, Err(refused), Vec::new());
+        let _ = self.install_shader_pack(dimension, Err(refused), Vec::new(), None);
     }
     /// The pack `load_shader_pack` builds, once its thread is done: it runs from now on, as
     /// `set_shader_pack` would run it. Its dimension, label, start and what `set_shader_pack`
@@ -363,7 +385,7 @@ impl Renderer {
             return None;
         }
         let loading = self.pack_loading.take()?;
-        let (built, block_ids) = match loading.thread.join() {
+        let (built, block_ids, mod_pack_state) = match loading.thread.join() {
             Ok(Ok(built)) => built,
             // A pack that doesn't run keeps no ids.
             Ok(Err(panic)) => (
@@ -372,6 +394,7 @@ impl Renderer {
                     notes: Vec::new(),
                 }),
                 Vec::new(),
+                None,
             ),
             Err(_) => (
                 Err(pack_post::Refused {
@@ -379,9 +402,15 @@ impl Renderer {
                     notes: Vec::new(),
                 }),
                 Vec::new(),
+                None,
             ),
         };
-        let report = self.install_shader_pack(loading.dimension, built.map(Some), block_ids);
+        let report = self.install_shader_pack(
+            loading.dimension,
+            built.map(Some),
+            block_ids,
+            mod_pack_state,
+        );
         Some((loading.dimension, loading.label, loading.started, report))
     }
     /// Drops the running shader pack.
@@ -389,6 +418,9 @@ impl Renderer {
         self.pack_loading = None;
         self.pack_changed();
         self.pack_post = None;
+        if let Some(world_primitives) = self.world_primitives.as_mut() {
+            world_primitives.pipelines.deselect_pack();
+        }
         self.forget_pack_atlas();
         self.separate_ao = false;
         self.pack_block_ids = None;
