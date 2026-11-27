@@ -13,11 +13,6 @@
 // integers the CPU computed, and facing compares keys that order as the floats
 // the CPU compares. `cull` leaves sections fading in or out to the CPU
 // (`FADING`).
-// A second table of records runs through the same entry points: sourced
-// geometry's meshes (gfx/sourced_geometry/gpu.rs), cells of any size past the
-// render distance. Its parameters switch the view-distance test off
-// (`NO_RANGE`) and cave culling's graph (no `REACH`), and each record's box is
-// in units of its own (`BOX_SHIFT`).
 // Frames that occlude (`OCCLUDE`, gpu_occlusion.wgsl) draw in two phases, each
 // in id order: `cull` leaves to phase 2 the sections whose box the last test
 // did not see and lists the boxes to test; after the test, `count2`, `scan2`
@@ -137,7 +132,6 @@ const FADING: u32 = 1u;
 // along x and z, in bits 12-15 along y (0 for a section: whole blocks).
 const BOX_SHIFT: u32 = 8u;
 // In `params.flags`: the columns are not limited to the render distance.
-const NO_RANGE: u32 = 64u;
 // In `params.flags`: solid quads facing away from the eye are left out, its
 // keys in `tables` from `params.eyes`.
 const EYE: u32 = 4u;
@@ -204,9 +198,6 @@ fn region(page: u32) -> vec2<u32> {
 // streaming.rs `in_view_distance` around the camera's column. A gap at or past
 // the distance cannot pass, so testing it first keeps the squares in range.
 fn near(x: i32, z: i32) -> bool {
-    if (params.flags & NO_RANGE) != 0u {
-        return true;
-    }
     let r = params.near;
     let gx = max(abs(x - params.cam_x) - 1, 0);
     let gz = max(abs(z - params.cam_z) - 1, 0);

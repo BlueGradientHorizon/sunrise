@@ -16,7 +16,6 @@ impl ClientGame<'_> {
                 .dedicated
                 .is_none()
                 .then(|| self.common.world.chunks.values().cloned().collect()),
-            far: None,
         }
     }
 

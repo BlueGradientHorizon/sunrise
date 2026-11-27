@@ -26,7 +26,6 @@ struct Table {
     entity_distance: f64,
     cutout_leaves: bool,
     weather_radius: i32,
-    /// Far terrain's range in chunks; 0 is off.
     opaque_ice: bool,
     resolution_scale: u32,
     fxaa: bool,

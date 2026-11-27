@@ -3,6 +3,29 @@ use super::*;
 /// `RegionFileStorage.MAX_CACHE_SIZE`: the region files of a folder kept
 /// open. Each holds a file descriptor: kept for every region ever visited,
 /// a server whose players travel runs out of them (`Too many open files`).
+/// The writer at work on a region, from `writing` until it is dropped.
+struct Writing<'a>(&'a RegionCache, (i32, i32));
+
+/// Count a step of the writer on a region: once before it writes the region's
+/// chunks and once when it is done with them, also when a write failed. The
+/// stamp is odd while they are being written, and never comes back to a value
+/// it had: a header read under one stamp is right for as long as the stamp
+/// stays.
+fn mark_written(cache: &RegionCache, region: (i32, i32)) {
+    if let Ok(mut cache) = cache.lock() {
+        *cache.written.entry(region).or_default() += 1;
+    }
+}
+fn writing(cache: &RegionCache, region: (i32, i32)) -> Writing<'_> {
+    mark_written(cache, region);
+    Writing(cache, region)
+}
+impl Drop for Writing<'_> {
+    fn drop(&mut self) {
+        mark_written(self.0, self.1);
+    }
+}
+
 pub(super) const MAX_OPEN_REGIONS: usize = 256;
 /// A folder's region files, and the ones known to be missing, by region,
 /// with when each was last asked for.
@@ -10,7 +33,7 @@ pub(super) const MAX_OPEN_REGIONS: usize = 256;
 pub(super) struct RegionFiles {
     pub(super) regions: HashMap<(i32, i32), (Option<Arc<Mutex<RegionFile>>>, u64)>,
     pub(super) clock: u64,
-    /// Each region's write stamp (`far_regions::writing`).
+    /// Each region's write stamp .
     pub(super) written: HashMap<(i32, i32), u64>,
     #[cfg(test)]
     pub(super) close_on_evict: Option<fn(RegionFile) -> std::io::Result<()>>,
@@ -114,7 +137,7 @@ pub(super) fn write_prepared_region_records(
                 return Ok(());
             };
             // Keep far readers on the exact locked read path until the flush completes.
-            let _writing = far_regions::writing(storage.cache, (rx, rz));
+            let _writing = writing(storage.cache, (rx, rz));
             let mut region = region
                 .lock()
                 .map_err(|_| std::io::Error::other("region file poisoned"))?;

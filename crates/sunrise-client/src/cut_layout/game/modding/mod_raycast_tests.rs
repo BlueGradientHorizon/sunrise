@@ -1,4 +1,4 @@
-//! A client mod's `raycast` and `view_hit` hit loaded blocks only, far terrain on or off.
+//! A client mod's `raycast` and `view_hit` hit loaded blocks only.
 use std::sync::Arc;
 use sunrise_client::{audio::Audio, settings::Settings};
 use sunrise_client_gameplay::game::ClientGame;

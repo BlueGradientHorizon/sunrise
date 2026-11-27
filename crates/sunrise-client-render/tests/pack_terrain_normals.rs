@@ -720,7 +720,7 @@ fn layout(renderer: &Renderer) -> Layout {
         normals,
         translucent,
         renderer.translucent_split(),
-        renderer.packed_layout()[0],
+        renderer.packed_layout(),
     )
 }
 

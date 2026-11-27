@@ -1,5 +1,5 @@
 //! The renderer and its settings: building it for the window, applying the video settings and a
-//! shader pack's translucent layers, and the far terrain (LOD) distances.
+//! shader pack's translucent layers.
 use super::*;
 
 #[derive(Default)]
