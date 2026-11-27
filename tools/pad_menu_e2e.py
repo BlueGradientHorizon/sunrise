@@ -1618,7 +1618,7 @@ def controller_settings_keys(args, name):
 
 OPTIONS_PAGES = ('main', 'video', 'sound', 'controls', 'keybinds', 'controller', 'controller-binds', 'controller-radial', 'mouse', 'chat',
                  'accessibility', 'language', 'font', 'packs', 'mods', 'shader-packs', 'graphics', 'graphics-advanced',
-                 'graphics-hdr', 'extras', 'pvp', 'credits', 'sunrise', 'agent')
+                 'graphics-hdr', 'extras', 'credits', 'sunrise', 'agent')
 # Screens allowed to draw no target, and why. The pad falls back to the crosshair on these.
 TARGETS_WAIT = 5
 STUDIO_RECORDINGS, STUDIO_BUTTONS = 12, 3
