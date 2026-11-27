@@ -2140,11 +2140,12 @@ pub struct Sampler {
     /// The largest mip level of detail the sampler reads (`maxLod`): `Some(0.0)` reads only the
     /// base level. A value above `0.25` blends linearly between the two nearest levels, as
     /// vanilla does. `None` is [`Sampler::new`]'s: no limit, vanilla's absent `maxLod` (1000),
-    /// so it blends between levels too. A sampler that blends is a filtering one: to sample a
-    /// depth target, or an `R32Float` target where
-    /// [`RenderCapabilities::float32_filterable`] is false, set `Some(0.0)` with
-    /// [`SamplerFilter::Nearest`]. A value that is negative or not finite is refused with
-    /// [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
+    /// so it blends between levels too. A depth texture, or an `R32Float` one where
+    /// [`RenderCapabilities::float32_filterable`] is false, cannot be filtered. Standalone draws
+    /// and compute dispatches use nearest sampling without blending between levels for these
+    /// textures. A linked shader-pack draw that needs to change the fixed sampler layout returns
+    /// [`PipelineDrawError::PackSamplerLayout`]. A value that is negative or not finite is refused
+    /// with [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
     pub max_lod: Option<f32>,
 }
 
@@ -2656,7 +2657,7 @@ pub enum TextureSource<'a> {
     /// path) loaded from the active resource packs.
     StandaloneTexture(&'a Identifier),
     /// The active world pass's depth texture (usable only when the pipeline does not write
-    /// depth in the same pass).
+    /// depth in the same pass), read with nearest filtering whatever its sampler says.
     WorldDepth,
     /// Vanilla's active 16x16 lightmap texture.
     Lightmap,
@@ -2664,8 +2665,8 @@ pub enum TextureSource<'a> {
     /// [`RenderTargetRef`] created via
     /// [`crate::prelude::ClientRenderClientHost::create_render_target`].
     RenderTargetColor(RenderTargetRef, u8),
-    /// Depth aspect of a mod-owned offscreen [`RenderTargetRef`] (must be bound to a
-    /// non-filtering [`SamplerFilter::Nearest`] sampler).
+    /// Depth aspect of a mod-owned offscreen [`RenderTargetRef`], read with nearest filtering
+    /// whatever its sampler says.
     RenderTargetDepth(RenderTargetRef),
     /// A mip range of a colour attachment of a mod-owned offscreen [`RenderTargetRef`]
     /// (`GpuDevice.createTextureView(texture, baseMipLevel, mipLevels)`). A draw that samples a
@@ -2676,8 +2677,8 @@ pub enum TextureSource<'a> {
     /// allocated via [`crate::FrameGraphContext::create_transient`].
     TransientTargetColor(crate::TransientTargetId, u8),
     /// Depth aspect of a transient per-frame target allocated via
-    /// [`crate::FrameGraphContext::create_transient`] (must be bound to a non-filtering
-    /// [`SamplerFilter::Nearest`] sampler).
+    /// [`crate::FrameGraphContext::create_transient`], read with nearest filtering whatever its
+    /// sampler says.
     TransientTargetDepth(crate::TransientTargetId),
 }
 
@@ -2732,8 +2733,8 @@ pub enum RenderTargetFormat {
     Rgba8Unorm,
     /// 16-bit floating-point RGBA (`Rgba16Float`, filterable).
     Rgba16Float,
-    /// 32-bit single-channel floating-point (`R32Float`; bind with [`SamplerFilter::Nearest`]
-    /// unless the active adapter supports float32 filtering).
+    /// 32-bit single-channel floating-point (`R32Float`; read with nearest filtering unless the
+    /// active adapter supports float32 filtering, whatever the sampler says).
     R32Float,
 }
 
@@ -2759,7 +2760,7 @@ pub enum RenderTargetDepth {
 // no wire: local client render capabilities.
 pub struct RenderCapabilities {
     /// Whether `R32Float` textures can be sampled with a linear filter. Without it an
-    /// `R32Float` render target is bound with [`SamplerFilter::Nearest`] only.
+    /// `R32Float` render target is read with nearest filtering whatever its sampler says.
     pub float32_filterable: bool,
     /// The render target colour formats that support [`StorageImageAccess::ReadWrite`] storage
     /// images on this adapter. Whether a format supports [`StorageImageAccess::WriteOnly`] or
@@ -4128,7 +4129,8 @@ impl PipelineQuad {
     }
 }
 
-/// Why a pipeline draw call was refused; nothing from that call was appended.
+/// Why a pipeline draw was refused. A submit-time refusal appends nothing; the renderer logs
+/// a refusal discovered when preparing a device pipeline variant.
 ///
 /// Individual quads with non-finite coordinates or UVs are skipped without refusing valid quads
 /// in the same slice, and quad storage grows dynamically into the GPU buffers.
@@ -4159,6 +4161,13 @@ pub enum PipelineDrawError {
     /// mismatches kind or `min_size`, references an unknown/unavailable texture, or provides an
     /// invalid push-constant payload.
     InvalidBinding,
+    /// An active shader pack links this world draw to a translated pack program, whose fixed
+    /// sampler layout cannot bind one of the draw's textures. Direct mod draws, including those
+    /// into pack targets, do not have this restriction.
+    PackSamplerLayout,
+    /// The device refused the target or sampler pipeline variant in renderer preparation, after
+    /// submission. The draw is refused and the log names the pipeline and the device error.
+    VariantBuildFailed,
     /// A retained [`UniformBufferRef`] in [`DrawBindings`] was stale, not owned, or unavailable.
     /// For an [`IndirectDraw`](crate::IndirectDraw), also its command buffer.
     Buffer(BufferError),

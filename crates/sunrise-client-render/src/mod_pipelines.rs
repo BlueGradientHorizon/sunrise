@@ -995,7 +995,7 @@ pub enum BuiltTexture {
 #[derive(Clone, Debug, Default)]
 pub struct Pipelines {
     keys: Vec<Identifier>,
-    built: Vec<Option<Built>>,
+    built: Vec<Option<Arc<Built>>>,
     /// The render assets' generation this set was loaded for; 0 for none.
     generation: u64,
     invalid: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
@@ -1169,7 +1169,7 @@ impl Pipelines {
                         Ok((built_program, oit, texture))
                     });
                 match loaded {
-                    Ok((built_program, oit, texture)) => Some(Built {
+                    Ok((built_program, oit, texture)) => Some(Arc::new(Built {
                         owner: pipeline.owner().to_owned(),
                         id: pipeline.id.clone(),
                         program: Arc::new(built_program.translated),
@@ -1186,7 +1186,7 @@ impl Pipelines {
                         texture,
                         bind_group_layout: pipeline.bind_group_layout.clone(),
                         push_constant_size: pipeline.push_constant_size,
-                    }),
+                    })),
                     Err(reason) => {
                         let refusal = format!(
                             "render pipeline {} from mod {} refused: {reason}",
@@ -1328,7 +1328,7 @@ impl Pipelines {
     }
 
     /// Every slot in order, with what the load built for it.
-    pub fn built(&self) -> &[Option<Built>] {
+    pub fn built(&self) -> &[Option<Arc<Built>>] {
         &self.built
     }
 
