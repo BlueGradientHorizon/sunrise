@@ -484,10 +484,13 @@ impl NamedIds {
     pub(in crate::game) fn read(pack: &Pack, macros: &Macros) -> Self {
         let read = |kind: &str| {
             let path = format!("{kind}.properties");
-            let ids = pack.read_text(&path).map_or_else(HashMap::new, |text| {
+            let text = pack.read_text(&path);
+            // A successful read proves the file is there; only a failed one needs the lookup.
+            let present = text.is_some() || pack.exists(&path);
+            let ids = text.map_or_else(HashMap::new, |text| {
                 BlockIds::parse_kind(&Properties::parse(&text, macros), kind).plain()
             });
-            (ids, pack.exists(&path))
+            (ids, present)
         };
         let (entities, entity_file) = read("entity");
         let (items, item_file) = read("item");
