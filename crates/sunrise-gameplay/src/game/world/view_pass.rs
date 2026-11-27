@@ -68,7 +68,8 @@ impl crate::game::ServerGame<'_> {
             if self.needs_view_pass(dim)
                 && let Some(host) = self.server.lan.as_mut()
             {
-                host.hub.viewed_broadcast_incremental(&mut self.common.world);
+                host.hub
+                    .viewed_broadcast_incremental(&mut self.common.world);
             }
             // Like LevelChunk.registerAllBlockEntitiesAfterLevelLoad, attaching a loaded
             // entity publishes it even when this level has no entity ticks.
