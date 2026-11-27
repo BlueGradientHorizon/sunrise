@@ -71,6 +71,7 @@ pub mod pack_meta;
 pub mod pack_tags;
 pub mod par;
 pub mod particle_options;
+#[cfg(target_os = "linux")]
 pub mod perf_capture;
 pub mod poi_sections;
 pub mod potent_sulfur_level;

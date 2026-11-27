@@ -75,6 +75,7 @@ pub use sunrise_level::pack_meta;
 pub use sunrise_level::pack_tags;
 pub use sunrise_level::par;
 pub use sunrise_level::particle_options;
+#[cfg(target_os = "linux")]
 pub use sunrise_level::perf_capture;
 pub use sunrise_level::poi_sections;
 pub use sunrise_level::potent_sulfur_level;
