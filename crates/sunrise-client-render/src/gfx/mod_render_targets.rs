@@ -790,6 +790,29 @@ impl super::mod_gpu::ModGpuResources {
         }
     }
 
+    /// Log once per reload/world session, in the set the cycle warnings use, that pass `pass`
+    /// sampled `target` without declaring it in its reads and the binding was refused.
+    pub fn warn_undeclared_transient_read_once(
+        &self,
+        pass: &str,
+        target: mod_api::TransientTargetId,
+    ) {
+        let mut warned = self
+            .warned_frame_graph_cycles
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let raw = target.raw();
+        if warned.insert(vec![
+            "undeclared transient read".to_owned(),
+            pass.to_owned(),
+            raw.to_string(),
+        ]) {
+            log::warn!(
+                "Sunrise: frame graph pass {pass} samples transient target {raw} without declaring it in its reads; binding refused"
+            );
+        }
+    }
+
     /// Resolve a mod render target colour attachment for set-1 sampling.
     pub fn resolve_mod_render_target_color(
         &self,

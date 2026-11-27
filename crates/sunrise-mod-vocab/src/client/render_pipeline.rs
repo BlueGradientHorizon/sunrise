@@ -4164,7 +4164,9 @@ pub enum PipelineDrawError {
     InvalidAlignment,
     /// Set-1 [`DrawBindings`] is missing a declared entry, supplies an unknown/duplicate entry,
     /// mismatches kind or `min_size`, references an unknown/unavailable texture, or provides an
-    /// invalid push-constant payload.
+    /// invalid push-constant payload. A transient target the offscreen pass samples without
+    /// declaring it in its [`crate::FramePassDescriptor::reads`] is an unavailable texture: the target's
+    /// lifetime follows declared uses only, so the draw is refused and logged once.
     InvalidBinding,
     /// An active shader pack links this world draw to a translated pack program, whose fixed
     /// sampler layout cannot bind one of the draw's textures. Direct mod draws, including those

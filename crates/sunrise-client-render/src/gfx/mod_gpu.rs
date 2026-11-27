@@ -52,7 +52,8 @@ pub struct ModGpuResources {
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
-    /// Distinct frame-graph cycle pass-label sets already logged once since last reload.
+    /// Distinct frame-graph warnings (cycle pass-label sets, refused undeclared transient reads)
+    /// already logged once since last reload.
     pub(crate) warned_frame_graph_cycles: Arc<Mutex<HashSet<Vec<String>>>>,
     render_capabilities: RenderCapabilities,
     max_buffer_size: u64,
