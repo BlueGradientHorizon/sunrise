@@ -13,6 +13,9 @@ use sunrise_client::{
     window::{FrameContext, InactivityFpsLimit, framerate_limit},
 };
 use sunrise_game_data::{Result, lang, text::Text};
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
+use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1 as _;
 use winit::{event::MouseButton, keyboard::KeyCode, window::Fullscreen};
 
 const UNLIMITED_FRAMERATE: i32 = 260;
@@ -978,9 +981,3 @@ mod controller_context_tests {
         );
     }
 }
-
-use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;
