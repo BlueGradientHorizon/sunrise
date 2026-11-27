@@ -26,7 +26,8 @@ DEPENDENCIES = {"sunrise-client": {"sunrise-core"}}
 # the core, the vocabulary its API crates); sunrise-theme and sunrise-client are outside that closure.
 SURFACE_PACKAGES = {**PACKAGES, **{name: f"crates/{name}" for name in (
     "sunrise-stage", "sunrise-mod-api-gen", "sunrise-game-discovery", "sunrise-mod-package", "sunrise-mod-source",
-    "sunrise-mod-surface", "sunrise-mod-vocab", "sunrise-mod-api", "sunrise-mod-api-macros")}}
+    "sunrise-mod-surface", "sunrise-mod-vocab", "sunrise-mod-api", "sunrise-mod-api-macros",
+    "sunrise-gameplay-common", "sunrise-gameplay", "sunrise-client-gameplay")}}
 SURFACE_DEPENDENCIES = {
     **DEPENDENCIES,
     "sunrise-stage": {"sunrise-mod-api-gen", "sunrise-mod-package", "sunrise-mod-source", "sunrise-mod-surface"},
@@ -287,7 +288,7 @@ class PrReadyTests(unittest.TestCase):
 
     def test_content_root_tests_run_only_when_what_they_load_changes(self):
         packages = {**PACKAGES, "sunrise-mod-package": "crates/sunrise-mod-package",
-                    "sunrise-assets": "crates/sunrise-assets"}
+                    "sunrise-assets": "crates/sunrise-assets", "sunrise-sim": "crates/sunrise-sim"}
 
         def content_step(path):
             with mock.patch.object(pr_ready, "affected_here", return_value=[]), \
