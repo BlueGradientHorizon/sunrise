@@ -49,3 +49,36 @@ fn panic_during_an_owner_replacement_does_not_revalidate_an_old_read() {
     assert!(owner.is_some());
     assert_ne!(owner.stamp(), stamp);
 }
+
+#[test]
+fn a_lifted_menu_stays_open_until_the_owner_is_written() {
+    let mut owner = MenuOwner::<Option<u32>>::default();
+    assert!(!owner.is_open());
+    *owner = Some(7);
+    assert_eq!(
+        owner.lift_if(|&mut v| v == 8),
+        None,
+        "a refused lift takes nothing"
+    );
+    assert!(owner.is_open());
+    let stamp = owner.stamp();
+    assert_eq!(owner.lift_if(|_| true), Some(7));
+    assert!(owner.is_none());
+    assert!(owner.is_open(), "the click still has it open");
+    assert_ne!(owner.stamp(), stamp);
+    assert_eq!(owner.lift_if(|_| true), None);
+    assert!(
+        owner.is_open(),
+        "a second lift that takes nothing keeps the first"
+    );
+    *owner = Some(7);
+    assert!(owner.is_open());
+    owner.lift_if(|_| true);
+    // Closing it while lifted (any write) ends the lift.
+    *owner = None;
+    assert!(!owner.is_open());
+    owner.restore(Some(7));
+    owner.lift_if(|_| true);
+    owner.restore(None);
+    assert!(!owner.is_open(), "an undo ends the lift too");
+}
