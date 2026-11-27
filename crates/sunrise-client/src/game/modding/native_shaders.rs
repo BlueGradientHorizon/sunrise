@@ -53,6 +53,9 @@ pub(super) struct NativeShaders {
     /// The pick's identity answer as last read: at its load, and each time its files or options
     /// are read again for the Shaders page (`Game::refresh_identity`). `None` before either.
     pub identity_seen: Option<bool>,
+    /// The pack list asked for the pick's answer again while its scan was running: a later frame
+    /// takes it (`identity_seen`) once the scan has landed.
+    pub identity_recheck: bool,
 }
 
 impl NativeShaders {

@@ -31,64 +31,144 @@ fn chosen_shader_options(name: &str) -> BTreeMap<String, String> {
 }
 
 thread_local! {
-    /// The last scan of each pack for the identity macros (`sunrise_shaders::asks_for_identity`),
-    /// by path, with what it read: the pack's files (`fingerprint`) and the options chosen for
-    /// it. The title screen, the HDR read before the frame, Shader Options and the load all ask
-    /// it, on the main thread; a scan runs again when the files or the options changed.
-    static IDENTITY_SCANS: RefCell<HashMap<std::path::PathBuf, IdentityScan>> =
-        RefCell::default();
+    /// The identity scans (`sunrise_shaders::asks_for_identity`) this thread asked for: the main
+    /// thread's, for the title screen, the HDR read before the frame, Shader Options and the load.
+    static IDENTITY_SCANS: RefCell<IdentityScans> = RefCell::default();
+    /// How many scans ran on this thread (`scan_identity`): the tests show the frame runs none.
+    #[cfg(test)]
+    static SCANS_RUN_HERE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// One pack's scan (`IDENTITY_SCANS`): what it read (the pack's files, the options chosen for it
-/// and the programs mods request), and where the pack asks.
-struct IdentityScan {
-    files: u64,
+/// What an identity scan reads: the pack's files (`fingerprint`, `None` when it can't be taken),
+/// the options chosen for it and the programs mods request.
+#[derive(Clone, PartialEq)]
+struct ScanKey {
+    files: Option<u64>,
     chosen: BTreeMap<String, String>,
     mod_programs: Vec<String>,
-    asked: Option<String>,
 }
 
-/// Why pack `pack` at `path` (with the options `chosen` for it) runs with Iris compatibility
-/// under the switch `mode` (decision D-8), for the log: On, or Auto and where the pack asks
-/// (`sunrise_shaders::asks_for_identity`, the programs mods request among the ones it reads).
-/// The scan is kept for the pack's files, its options and those programs (`IDENTITY_SCANS`);
-/// files whose fingerprint can't be taken (an unreadable entry, a dangling link) are scanned
-/// every time. `None`: it runs without.
-fn identity(
-    mode: IrisCompat,
-    path: &Path,
-    pack: &Pack,
-    chosen: &BTreeMap<String, String>,
-) -> Option<String> {
-    let asked = match mode {
-        IrisCompat::Off => return None,
-        IrisCompat::On => return Some("turned on in Sunrise Settings".into()),
-        IrisCompat::Auto => {
-            let requests = sunrise_client_render::mod_pipelines::pack_program_requests();
-            let mod_programs: Vec<String> = requests.into_iter().flat_map(|r| r.programs).collect();
-            let Some(files) = fingerprint(path) else {
-                return sunrise_shaders::asks_for_identity(pack, &mod_programs).map(asks);
-            };
-            IDENTITY_SCANS.with_borrow_mut(|scans| {
-                let fresh = |s: &&mut IdentityScan| {
-                    s.files == files && &s.chosen == chosen && s.mod_programs == mod_programs
-                };
-                if let Some(scan) = scans.get_mut(path).filter(fresh) {
-                    return scan.asked.clone();
-                }
-                let asked = sunrise_shaders::asks_for_identity(pack, &mod_programs);
-                let scan = IdentityScan {
-                    files,
-                    chosen: chosen.clone(),
-                    mod_programs,
-                    asked: asked.clone(),
-                };
-                scans.insert(path.to_owned(), scan);
-                asked
-            })
+/// A pack's answer from its scan: where it asks, if it does.
+type Asked = Option<String>;
+
+/// The identity scans by pack path (`IDENTITY_SCANS`): the last one of each pack that landed, with
+/// what it read, and the one running on a thread of its own, with what it reads and where its
+/// answer comes.
+#[derive(Default)]
+struct IdentityScans {
+    done: HashMap<std::path::PathBuf, (ScanKey, Asked)>,
+    running: HashMap<std::path::PathBuf, (ScanKey, std::sync::mpsc::Receiver<Asked>)>,
+}
+
+impl IdentityScans {
+    /// Whether the scan of the pack at `path` still runs; one that landed is kept (`done`). With
+    /// `wait`, it waits for it to land.
+    fn running(&mut self, path: &Path, wait: bool) -> bool {
+        use std::sync::mpsc::TryRecvError;
+        let Some((_, answer)) = self.running.get(path) else {
+            return false;
+        };
+        let asked = match answer.try_recv() {
+            Ok(asked) => asked,
+            Err(TryRecvError::Empty) if !wait => return true,
+            Err(TryRecvError::Empty) => answer.recv().unwrap_or_default(),
+            // Its thread ended without an answer (`scan_identity` contains a scan's panic).
+            Err(TryRecvError::Disconnected) => None,
+        };
+        if let Some((key, _)) = self.running.remove(path) {
+            self.done.insert(path.to_owned(), (key, asked));
         }
-    };
-    asked.map(asks)
+        false
+    }
+
+    /// The answer kept for the pack at `path` read as `key` says. One whose fingerprint can't be
+    /// taken answers once, the read it was made for: such a pack is scanned at every read.
+    fn kept(&mut self, path: &Path, key: &ScanKey) -> Option<Asked> {
+        let (kept, asked) = self.done.get(path).filter(|(kept, _)| kept == key)?;
+        let asked = asked.clone();
+        if kept.files.is_none() {
+            self.done.remove(path);
+        }
+        Some(asked)
+    }
+}
+
+/// Where pack `name` at `path` asks for the identity macros (Auto), its files, the options chosen
+/// for it and the programs mods request as they are now (`ScanKey`): the answer kept for them,
+/// else that of a scan started on a thread of its own (`scan_identity`). `None` while that scan
+/// runs: the caller goes on without the answer and asks again; with `wait`, it waits for it. A
+/// lookup while a scan runs only looks at whether it has landed.
+fn auto_identity(path: &Path, name: &str, wait: bool) -> Option<Asked> {
+    IDENTITY_SCANS.with_borrow_mut(|scans| {
+        loop {
+            if scans.running(path, wait) {
+                return None;
+            }
+            let requests = sunrise_client_render::mod_pipelines::pack_program_requests();
+            let key = ScanKey {
+                files: fingerprint(path),
+                chosen: chosen_shader_options(name),
+                mod_programs: requests.into_iter().flat_map(|r| r.programs).collect(),
+            };
+            if let Some(asked) = scans.kept(path, &key) {
+                return Some(asked);
+            }
+            let (send, answer) = std::sync::mpsc::channel();
+            let (at, read) = (path.to_owned(), key.clone());
+            let spawned = std::thread::Builder::new()
+                .name("identity scan".into())
+                .spawn(move || _ = send.send(scan_identity(&at, read.chosen, &read.mod_programs)));
+            if let Err(e) = spawned {
+                log::warn!("shader pack {name}: no thread for its identity scan ({e}); read here");
+                return Some(scan_identity(path, key.chosen, &key.mod_programs));
+            }
+            scans.running.insert(path.to_owned(), (key, answer));
+            if !wait {
+                return None;
+            }
+        }
+    })
+}
+
+/// The identity scan of the pack at `path` with the options `chosen` for it and the programs mods
+/// request (`sunrise_shaders::asks_for_identity`), on the calling thread. A pack that can't be
+/// opened doesn't ask (its load says why it can't run); a scan that panics doesn't either, and
+/// its panic is logged.
+fn scan_identity(path: &Path, chosen: BTreeMap<String, String>, mod_programs: &[String]) -> Asked {
+    #[cfg(test)]
+    SCANS_RUN_HERE.with(|n| n.set(n.get() + 1));
+    let pack = Pack::open(path).ok()?.with_chosen(chosen);
+    let asked =
+        sunrise_client::crash::contain(|| sunrise_shaders::asks_for_identity(&pack, mod_programs));
+    asked.unwrap_or_else(|why| {
+        log::warn!(
+            "shader pack {}: identity scan stopped: {why}",
+            path.display()
+        );
+        None
+    })
+}
+
+/// The scans still running land; the tests' stand-in for the frames a game draws meanwhile.
+#[cfg(test)]
+fn await_identity_scans() {
+    IDENTITY_SCANS.with_borrow_mut(|scans| {
+        let paths: Vec<_> = scans.running.keys().cloned().collect();
+        for path in paths {
+            scans.running(&path, true);
+        }
+    });
+}
+
+/// Why pack `name` at `path` runs with Iris compatibility under the switch `mode` (decision D-8),
+/// for the log: On, or Auto and where the pack asks (`auto_identity`); `Some(None)`: it runs
+/// without. `None`: on Auto, its scan is still running (never with `wait`).
+fn identity(mode: IrisCompat, path: &Path, name: &str, wait: bool) -> Option<Option<String>> {
+    match mode {
+        IrisCompat::Off => Some(None),
+        IrisCompat::On => Some(Some("turned on in Sunrise Settings".into())),
+        IrisCompat::Auto => auto_identity(path, name, wait).map(|asked| asked.map(asks)),
+    }
 }
 
 /// Why a pack that asks runs with Iris compatibility, `at` where it asks.
@@ -97,12 +177,10 @@ fn asks(at: String) -> String {
 }
 
 /// Whether the pick `name` runs with Iris compatibility under the switch `mode`, its files and
-/// options read as they are now (`identity`); `None` when the pack can't be opened.
-fn pick_identity(name: &str, mode: IrisCompat) -> Option<bool> {
+/// options read as they are now (`identity`); `None` while its scan runs (never with `wait`).
+fn pick_identity(name: &str, mode: IrisCompat, wait: bool) -> Option<bool> {
     let path = Game::shader_packs_dir().join(name);
-    let chosen = chosen_shader_options(name);
-    let pack = Pack::open(&path).ok()?.with_chosen(chosen.clone());
-    Some(identity(mode, &path, &pack, &chosen).is_some())
+    Some(identity(mode, &path, name, wait)?.is_some())
 }
 
 /// Pack `name`'s options, screens and names in `language`, with the values the player chose,
@@ -126,8 +204,9 @@ pub(super) fn read_shader_options(
     let lang = sunrise_shaders::Lang::load(&pack, language);
     let chosen = chosen_shader_options(name);
     let pack = pack.with_chosen(chosen.clone());
-    // As the load reads it, with the feature macros the pack asks for and its identity answer.
-    let compat = identity(mode, &path, &pack, &chosen).is_some();
+    // As the load reads it, with the feature macros the pack asks for and its identity answer:
+    // the page opened by the player waits for the scan when it is still running.
+    let compat = identity(mode, &path, name, true).flatten().is_some();
     let mut macros = macros.clone();
     macros.set_identity(compat);
     let (properties, _) = sunrise_shaders::read_properties(&pack, &mut macros);
@@ -325,7 +404,8 @@ fn pack_shape(
 /// is read again when the pick changes, after a frame where the pick doesn't run (off, refused,
 /// missing, its mod off), and after each point where the pick's files or chosen options can
 /// change (`forget`): a load of the pack, an options save, a resource reload, a scan of the
-/// packs. Each frame otherwise compares the pick's name and reads nothing.
+/// packs; and once the identity scan it was read without has landed. Each frame otherwise
+/// compares the pick's name (and, while that scan runs, whether it has landed) and reads nothing.
 #[derive(Default)]
 pub(crate) struct PickHdr {
     /// The pick (`picked_pack`) the rest is for, and its Iris compatibility switch.
@@ -333,6 +413,9 @@ pub(crate) struct PickHdr {
     mode: IrisCompat,
     /// Its request as last read; `None`: to be read.
     hdr: Option<Option<Tonemap>>,
+    /// That read was made without the identity answer, whose scan was still running: it is read
+    /// again once the scan has landed (`IdentityScans::running`).
+    scanning: bool,
     /// The notes about its request already in the log, so a read again doesn't repeat them.
     reported: Vec<String>,
 }
@@ -343,13 +426,18 @@ impl PickHdr {
     fn answer(&mut self, picked: &str, path: &Path, mode: IrisCompat) -> Option<Tonemap> {
         self.follow(picked, mode);
         if let Some(hdr) = self.hdr {
-            return hdr;
+            let landed =
+                self.scanning && !IDENTITY_SCANS.with_borrow_mut(|s| s.running(path, false));
+            if !landed {
+                return hdr;
+            }
         }
-        let (hdr, notes) = read_pick_hdr(picked, path, mode);
+        let (hdr, notes, scanning) = read_pick_hdr(picked, path, mode);
         for note in self.unreported(notes) {
             log::warn!("shader pack {picked}: {note}");
         }
         self.hdr = Some(hdr);
+        self.scanning = scanning;
         hdr
     }
 
@@ -420,18 +508,25 @@ fn read_id_files(pack: &Pack, macros: &Macros) -> IdFiles {
 /// The `sunrise.hdr` request of pack `name` at `path` as the frame is picked for it: its
 /// `shaders.properties` read with the standard macros, the identity macros where its Iris
 /// compatibility (`mode`) is on, and the pack's options as chosen, since the renderer's macros
-/// come with the renderer the answer picks; and a note for each value the request's keys don't
-/// take. Nothing when the pack can't be read.
-fn read_pick_hdr(name: &str, path: &Path, mode: IrisCompat) -> (Option<Tonemap>, Vec<String>) {
+/// come with the renderer the answer picks; a note for each value the request's keys don't take;
+/// and whether the identity answer's scan was still running (`identity` without waiting), so the
+/// request was read without it. Nothing when the pack can't be read.
+fn read_pick_hdr(
+    name: &str,
+    path: &Path,
+    mode: IrisCompat,
+) -> (Option<Tonemap>, Vec<String>, bool) {
     let Ok(pack) = Pack::open(path) else {
-        return (None, Vec::new());
+        return (None, Vec::new(), false);
     };
-    let chosen = chosen_shader_options(name);
-    let pack = pack.with_chosen(chosen.clone());
+    let pack = pack.with_chosen(chosen_shader_options(name));
+    // The frame doesn't wait for a scan still running: read without the answer meanwhile.
+    let compat = identity(mode, path, name, false);
     let mut macros = Macros::standard();
-    macros.set_identity(identity(mode, path, &pack, &chosen).is_some());
+    macros.set_identity(compat.as_ref().is_some_and(Option::is_some));
     let (properties, _) = sunrise_shaders::read_properties(&pack, &mut macros);
-    hdr_request(&properties)
+    let (hdr, notes) = hdr_request(&properties);
+    (hdr, notes, compat.is_none())
 }
 
 /// The request in `properties` and its notes, as the log gives them.
@@ -669,6 +764,7 @@ impl Game<'_> {
             self.native_shaders.picked = picked.clone();
             self.native_shaders.identity_build = None;
             self.native_shaders.identity_seen = None;
+            self.native_shaders.identity_recheck = false;
             self.set_translucent_layers(Vec::new());
             self.pack_ids = None;
             if let Some(renderer) = &mut self.renderer {
@@ -679,6 +775,14 @@ impl Game<'_> {
         // answer, than the pick's now is dropped before it can run (`poll_shader_pack_unless`),
         // and loads again below.
         let mode = self.settings.sunrise.iris_compat_of(&selected);
+        // The pick's answer read again for the pack list (`refresh_identity`), once its scan has
+        // landed.
+        if self.native_shaders.identity_recheck
+            && let Some(seen) = pick_identity(&selected, mode, false)
+        {
+            self.native_shaders.identity_seen = Some(seen);
+            self.native_shaders.identity_recheck = false;
+        }
         let stale = self.native_shaders.stale_identity(mode);
         if stale {
             self.pack_ids = None;
@@ -731,6 +835,10 @@ impl Game<'_> {
             && renderer.shader_pack_dimension() != Some(dimension)
             && !(super::native_shaders::linear_frame_switch()
                 && refused(&path, fingerprint(&path), mode))
+            // Its Iris compatibility, decided before anything is translated: on Auto with no
+            // answer kept, its scan runs on a thread of its own, and the game draws without the
+            // pack until a frame finds the scan landed.
+            && let Some(compat) = identity(mode, &path, &name, false)
         {
             let name = name.as_str();
             let started = std::time::Instant::now();
@@ -742,8 +850,6 @@ impl Game<'_> {
                     Ok(pack) => {
                         let mut macros = Macros::standard();
                         renderer.define_pack_macros(&mut macros);
-                        // Its Iris compatibility, decided before anything is translated.
-                        let compat = identity(mode, &path, &pack, &chosen);
                         if let Some(why) = &compat {
                             log::info!(
                                 "shader pack {name}: runs with Iris compatibility (IS_IRIS, \
@@ -754,6 +860,7 @@ impl Game<'_> {
                         macros.set_identity(compat.is_some());
                         self.native_shaders.identity_build = Some((mode, compat.is_some()));
                         self.native_shaders.identity_seen = Some(compat.is_some());
+                        self.native_shaders.identity_recheck = false;
                         // Its conditionals test the pack's options too.
                         let (properties, log) = loaded_properties(
                             &pack,
@@ -1062,19 +1169,23 @@ impl Game<'_> {
             && o.pack == picked_pack(&self.settings)
         {
             self.native_shaders.identity_seen = Some(o.iris_compat);
+            self.native_shaders.identity_recheck = false;
         }
     }
 
     /// The pick's files may have changed (the pack list read again): its identity answer is read
-    /// again, so a pack replaced under its name that answers otherwise loads again.
+    /// again, so a pack replaced under its name that answers otherwise loads again. A scan this
+    /// starts runs on a thread of its own; the frames after take its answer once it has landed
+    /// (`shader_pack_inputs`).
     pub(super) fn refresh_identity(&mut self) {
         let name = picked_pack(&self.settings);
         if name.is_empty() {
             return;
         }
         let mode = self.settings.sunrise.iris_compat_of(name);
-        if let Some(seen) = pick_identity(name, mode) {
-            self.native_shaders.identity_seen = Some(seen);
+        match pick_identity(name, mode, false) {
+            Some(seen) => self.native_shaders.identity_seen = Some(seen),
+            None => self.native_shaders.identity_recheck = true,
         }
     }
 
@@ -1777,6 +1888,53 @@ mod native_pack_tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    /// The frame never runs the identity scan (D-8) nor waits for it. With nothing kept, the HDR
+    /// read before the frame (`pack_shape`) starts the scan on a thread of its own and reads the
+    /// request without the identity macros meanwhile, and so does the load's answer (`identity`
+    /// without waiting), which is `None` until the scan lands; once it has, the next frame's
+    /// read takes its answer, and so does the load. A scan kept answers at once, and none runs
+    /// on this thread throughout.
+    #[test]
+    fn the_frame_never_runs_a_cold_identity_scan() {
+        let root = std::env::temp_dir().join(format!("sunrise-iris-frame-{}", std::process::id()));
+        let guarded = "#ifdef IS_IRIS\nsunrise.hdr = true\n#endif\n";
+        let [hdr, load] = ["hdr", "load"].map(|name| {
+            let path = hdr_pack(&root, name, guarded);
+            std::fs::write(path.join("shaders/final.fsh"), "#ifdef IS_IRIS\n#endif\n").unwrap();
+            std::fs::write(path.join("shaders/final.vsh"), "void main() {}\n").unwrap();
+            path
+        });
+        let here = || super::SCANS_RUN_HERE.with(std::cell::Cell::get);
+        let mut settings = hdr_settings();
+        let mut kept = PickHdr::default();
+        assert_eq!(
+            shape_of(&mut settings, &mut kept, &hdr, true).1,
+            None,
+            "scan running"
+        );
+        let name = load.to_string_lossy().into_owned();
+        assert_eq!(super::identity(IrisCompat::Auto, &load, &name, false), None);
+        super::await_identity_scans();
+        assert_eq!(
+            shape_of(&mut settings, &mut kept, &hdr, true).1,
+            Some(Tonemap::Pack),
+            "read again once the scan landed"
+        );
+        let answer = super::identity(IrisCompat::Auto, &load, &name, false);
+        assert_eq!(
+            answer,
+            Some(Some("its programs test them (final.fsh:1)".into()))
+        );
+        let mut fresh = PickHdr::default();
+        assert_eq!(
+            shape_of(&mut settings, &mut fresh, &hdr, true).1,
+            Some(Tonemap::Pack),
+            "kept"
+        );
+        assert_eq!(here(), 0, "scans run on this thread");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     /// A pack loaded with one Iris compatibility switch and answer is stale once the pick's
     /// switch is another, or once the pick's answer read again differs (the pack replaced under
     /// its name), so the game drops it before its poll can install it; once dropped, or with the
@@ -1813,7 +1971,7 @@ mod native_pack_tests {
         std::fs::write(path.join("shaders/final.vsh"), "void main() {}\n").unwrap();
         let name = path.to_string_lossy().into_owned();
         let mut shaders = crate::game::native_shaders::NativeShaders::default();
-        let seen = super::pick_identity(&name, IrisCompat::Auto);
+        let seen = super::pick_identity(&name, IrisCompat::Auto, true);
         assert_eq!(seen, Some(true));
         shaders.identity_build = Some((IrisCompat::Auto, true));
         shaders.identity_seen = seen;
@@ -1828,7 +1986,7 @@ mod native_pack_tests {
             a.answer(&name, &path, IrisCompat::Auto),
             Some(Tonemap::Pack)
         );
-        shaders.identity_seen = super::pick_identity(&name, IrisCompat::Auto);
+        shaders.identity_seen = super::pick_identity(&name, IrisCompat::Auto, true);
         assert_eq!(shaders.identity_seen, Some(false));
         assert!(shaders.stale_identity(IrisCompat::Auto));
         assert_eq!(
@@ -1852,10 +2010,16 @@ mod native_pack_tests {
         let name = path.to_string_lossy().into_owned();
         std::fs::write(path.join("shaders/final.fsh"), "#ifdef IS_IRIS\n#endif\n").unwrap();
         std::fs::write(path.join("shaders/final.vsh"), "void main() {}\n").unwrap();
-        assert_eq!(super::pick_identity(&name, IrisCompat::Auto), Some(true));
+        assert_eq!(
+            super::pick_identity(&name, IrisCompat::Auto, true),
+            Some(true)
+        );
         std::fs::write(path.join("shaders/final.fsh"), "void main() {}\n").unwrap();
         std::fs::write(path.join("shaders/final.vsh"), "void main() {}\n").unwrap();
-        assert_eq!(super::pick_identity(&name, IrisCompat::Auto), Some(false));
+        assert_eq!(
+            super::pick_identity(&name, IrisCompat::Auto, true),
+            Some(false)
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
