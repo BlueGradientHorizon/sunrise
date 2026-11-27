@@ -48,7 +48,7 @@ pub trait LevelCollisionBackend {
     /// bind it, with the level read where the predicate reads it: on the server the open
     /// world's rules, its data packs' `#minecraft:causes_suffocation` included; on the client
     /// the game's built-in rules until the client receives the world's tables
-    /// (#ISSUE_CLIENT_SYNC). The arguments come in `visit_block_shape`'s order,
+    /// (#6597). The arguments come in `visit_block_shape`'s order,
     /// state then position. The state need not be the block stored there, so a camouflaged
     /// block can ask about the state it shows. A shulker box (`Blocks.shulkerBox`'s predicate)
     /// suffocates unless a `ShulkerBoxBlockEntity` at `pos` is not closed (opening, open or

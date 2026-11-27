@@ -131,7 +131,7 @@ pub trait BlockStatesBackend {
     /// mod's hooks (`PlayerRef::has_correct_tool_for_drops` asks those). A rule's block tags are
     /// the side's: on the server the open world's, as its data packs bind them, the ones the
     /// game's own harvest reads; on the client the game's built-in tags until the client
-    /// receives the world's tables (#ISSUE_CLIENT_SYNC). None for an unknown state.
+    /// receives the world's tables (#6597). None for an unknown state.
     fn block_state_correct_tool_for_drops(
         &self,
         stack: &ItemStack,
@@ -248,7 +248,7 @@ pub trait BlockStatesBackend {
     /// when closed) as the level's suffocation rules bind it, the same rules
     /// `level_state_is_suffocating` reads: on the server the open world's, with its data packs'
     /// `#minecraft:causes_suffocation`; on the client the game's built-in rules until the client
-    /// receives the world's tables (#ISSUE_CLIENT_SYNC). None for an unknown state, and for one
+    /// receives the world's tables (#6597). None for an unknown state, and for one
     /// whose answer depends on the position or its block entity (a shulker box, a shape that a
     /// block entity publishes or that a declared offset moves); `level_state_is_suffocating`
     /// answers those at a position.

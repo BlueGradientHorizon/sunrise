@@ -547,7 +547,7 @@ impl BlockStates<'_> {
     /// names the block decides; no component or no such rule is false). The rules' block tags are,
     /// on the server, the open world's as its data packs bind them, through a host and inside a
     /// level callback alike (the tags the game's own harvest reads); on the client, the game's
-    /// built-in tags until the client receives the world's tables (#ISSUE_CLIENT_SYNC). Reads only
+    /// built-in tags until the client receives the world's tables (#6597). Reads only
     /// the stack: for the answer the game uses for a player, see
     /// `PlayerRef::has_correct_tool_for_drops`. None as for `replaceable`.
     pub fn is_correct_tool_for_drops(
@@ -739,7 +739,7 @@ impl BlockStates<'_> {
     /// the server those are the open world's, whose data packs' `#minecraft:causes_suffocation`
     /// decides the default predicate, through a host and inside a level callback alike; on the
     /// client they are the game's built-in rules until the client receives the world's tables
-    /// (#ISSUE_CLIENT_SYNC). None as for `replaceable`, and for a state whose answer
+    /// (#6597). None as for `replaceable`, and for a state whose answer
     /// needs a position or a block entity (a closed shulker box, a shape a block entity publishes
     /// or an offset moves). For those, ask `LevelRef::state_is_suffocating` at a position, which
     /// also takes a state that is not placed there.
