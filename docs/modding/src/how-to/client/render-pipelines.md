@@ -437,10 +437,6 @@ and read unchanged by that frame's render callbacks:
   Compare it each frame and re-read whatever you derived from the pack when it differs. It covers a
   pack switch that fires no resource reload.
 
-Known bug: a renderer rebuild resets the generation counter, so the first pack loaded on the new
-renderer can report the same generation as the pack before the rebuild
-([#6313](https://github.com/sunrise-org/sunrise/issues/6313)).
-
 `host.render_assets().pipeline_pack_bound(pipeline)` says whether the active pack compiled a program
 for the pipeline's `PackBinding`. It is `false` with no pack, for a stale or invalid handle, and when
 the pipeline has a `PackBinding` but the pack has no matching program. In that last case the engine
