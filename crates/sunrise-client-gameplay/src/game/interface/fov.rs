@@ -217,40 +217,6 @@ impl ClientGame<'_> {
             vanilla
         }
     }
-    /// How many times the view is magnified right now: the player's field of
-    /// view over the one actually in use, and 1 when nothing is zooming.
-    ///
-    /// Reads the result rather than any one zoom, so it covers both the
-    /// spyglass (`AbstractClientPlayer.getFieldOfViewModifier`'s tenth while
-    /// `isScoping`) and any mod that narrows the field of view through
-    /// `native_compute_fov_modifier` or `native_compute_fov`.
-    pub(in crate::game::client_side) fn zoom_magnification(&self, camera: [f64; 3]) -> f32 {
-        let now = self.fov_degrees(1.0, camera);
-        let base = self.client.settings.fov.clamp(1.0, 179.0);
-        if now.is_finite() && now > 0.5 {
-            (base / now).max(1.0)
-        } else {
-            1.0
-        }
-    }
-    /// What far terrain should plan for a zoomed view, or `None` when the
-    /// `lodZoomDetail` extra is off or nothing is zooming (`lod::ZoomAim`).
-    pub(in crate::game::client_side) fn lod_aim(
-        &self,
-        camera: [f64; 3],
-    ) -> Option<sunrise_client::lod::ZoomAim> {
-        if !self.client.settings.extras.lod_zoom_detail {
-            return None;
-        }
-        let yaw = self
-            .camera_subject()
-            .map_or(self.common.yaw, |c| c.camera.y_rot);
-        sunrise_client::lod::ZoomAim::new(
-            yaw,
-            self.fov_degrees(1.0, camera),
-            self.zoom_magnification(camera),
-        )
-    }
     /// `Camera.calculateHudFov`: the first-person hand's field of view.
     pub fn hud_fov_degrees(&self, partial: f32, camera: [f64; 3]) -> f32 {
         self.client.view.calculate_hud_fov(

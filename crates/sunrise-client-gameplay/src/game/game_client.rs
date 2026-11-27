@@ -1318,7 +1318,6 @@ impl crate::game::ClientGame<'_> {
         self.common.sleep_timer = 0;
         self.client_clear_entities();
         self.set_screen(Screen::Playing);
-        self.clear_lod();
         self.client.pending_uploads.0.clear();
         if let Some(r) = self.client.renderer.0.as_mut() {
             r.clear_sections(self.common.world.layout());

@@ -276,7 +276,6 @@ impl crate::game::ClientGame<'_> {
             water_fog_color,
             biome,
             render_distance_chunks: self.terrain_distance(),
-            distant_terrain: self.client.lod.0.is_some() && self.overworld_skybox(),
             cloud_range_chunks: self.client.settings.cloud_range,
             camera_y: camera.y,
             min_y: self.level_min_y(),

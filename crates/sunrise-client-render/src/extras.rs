@@ -53,13 +53,6 @@ pub struct Extras {
     pub pregen: bool,
     /// Held, dropped and burning light sources light their surroundings (`dynamic_light`).
     pub dynamic_lights: bool,
-    /// Far terrain a zoom magnifies is planned finer, so a spyglass does not
-    /// show the coarse cells it was given for an unzoomed screen
-    /// (`lod::Aim`). Costs far tiles while the zoom is held and gives them
-    /// back after, and does nothing at all unless far terrain is on
-    /// (`lodDistance`) and the view is actually zoomed. Off by default until
-    /// a measurement shows the extra tiles land while the zoom is still held.
-    pub lod_zoom_detail: bool,
     /// Positional sounds leave a few static sound channels free for UI sounds
     /// and others played to the listener (`sound_engine::HEARD_RESERVE`).
     pub ui_sound_reserve: bool,
@@ -121,7 +114,6 @@ impl Default for Extras {
             pack_browser: false,
             pregen: false,
             dynamic_lights: false,
-            lod_zoom_detail: false,
             ui_sound_reserve: false,
             own_name_tag: false,
             skip_modded_splashes_if_vanilla_modified: true,
@@ -173,7 +165,6 @@ impl Extras {
                 "packBrowser" => e.pack_browser = flag(e.pack_browser),
                 "pregen" => e.pregen = flag(e.pregen),
                 "dynamicLights" => e.dynamic_lights = flag(e.dynamic_lights),
-                "lodZoomDetail" => e.lod_zoom_detail = flag(e.lod_zoom_detail),
                 "uiSoundReserve" => e.ui_sound_reserve = flag(e.ui_sound_reserve),
                 "ownNameTag" => e.own_name_tag = flag(e.own_name_tag),
                 "skipModdedSplashesIfVanillaModified" => {
@@ -236,7 +227,6 @@ impl Extras {
         push("packBrowser", &bool_text(self.pack_browser));
         push("pregen", &bool_text(self.pregen));
         push("dynamicLights", &bool_text(self.dynamic_lights));
-        push("lodZoomDetail", &bool_text(self.lod_zoom_detail));
         push("uiSoundReserve", &bool_text(self.ui_sound_reserve));
         push("ownNameTag", &bool_text(self.own_name_tag));
         push(

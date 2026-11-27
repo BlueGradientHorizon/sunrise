@@ -447,7 +447,7 @@ of the frame ([#8750](https://github.com/horizon-rust/horizon/issues/8750)).
   1, STEP_MS after; a decimal, `16.666667` for 60 fps). The last is written as `screenshot PATH`
   writes it (with its `-hdr.png` under HDR output), and the reply, once it is, names the pack and
   the last frame's clock. Without a pack it draws the frames all the same. It needs the world
-  frozen, far terrain (LOD Distance), TAA, frame generation and the shadow cache off and chunk fade
+  frozen, TAA, frame generation and the shadow cache off and chunk fade
   0, and says so otherwise. While it runs, commands that would change the scene are refused, a
   change to the camera (compared with the first extracted frame), the world, the settings, the pack
   or the window's size ends it with an error, `screenshot-sequence cancel` stops it and `quit` quits.

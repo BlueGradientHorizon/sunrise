@@ -647,10 +647,6 @@ impl crate::game::ClientGame<'_> {
         // The rockets boosting this player tick after it, also while it waits
         // for chunks.
         self.tick_own_rockets();
-        // Far tiles the samplers asked for (`lod_net`).
-        if let Some(r) = &self.client.remote {
-            r.session.send_far_terrain();
-        }
         // Minecraft.tick sends this even when the player cannot tick yet,
         // including while waiting for chunks. Keep it outside early returns.
         if self.client.remote.as_ref().is_some_and(Remote::has_level) {
