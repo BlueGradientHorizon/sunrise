@@ -1,10 +1,11 @@
 //! `BlockStates::block_class`: vanilla's class of a block, subclasses included, not a tag.
 use mod_api::BlockClass::{
-    self, Bonemealable, Entity, Fence, IronBars, Slab, StainedGlassPane, Stair, TrapDoor, Wall,
+    self, Bonemealable, Entity, Fallable, Fence, IronBars, Slab, StainedGlassPane, Stair, TrapDoor,
+    Wall,
 };
 use sunrise_gameplay_common::game::native_block_tables::BlockTables;
 
-const ALL: [BlockClass; 9] = [
+const ALL: [BlockClass; 10] = [
     Stair,
     Entity,
     IronBars,
@@ -14,6 +15,7 @@ const ALL: [BlockClass; 9] = [
     Slab,
     Wall,
     Fence,
+    Fallable,
 ];
 
 #[test]
@@ -51,6 +53,17 @@ fn a_block_is_of_the_vanilla_classes_its_chain_names() {
             ("minecraft:nether_brick_fence", &[Fence][..]),
             // FenceGateBlock is not a FenceBlock.
             ("minecraft:oak_fence_gate", &[][..]),
+            // Fallable: FallingBlock and its subclasses, BrushableBlock, and pointed dripstone.
+            ("minecraft:sand", &[Fallable][..]),
+            ("minecraft:gravel", &[Fallable][..]),
+            ("minecraft:red_concrete_powder", &[Fallable][..]),
+            ("minecraft:anvil", &[Fallable][..]),
+            ("minecraft:dragon_egg", &[Fallable][..]),
+            // BrushableBlock is a BaseEntityBlock that implements Fallable.
+            ("minecraft:suspicious_sand", &[Entity, Fallable][..]),
+            ("minecraft:pointed_dripstone", &[Fallable][..]),
+            // Concrete does not fall; only its powder does.
+            ("minecraft:red_concrete", &[][..]),
             ("minecraft:stone", &[][..]),
             ("minecraft:oak_planks", &[][..]),
         ] {
