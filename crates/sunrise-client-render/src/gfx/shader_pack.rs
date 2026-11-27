@@ -127,8 +127,7 @@ impl Renderer {
             return false;
         }
         if runs && self.arena.has_normals() {
-            self.sections_dropped |=
-                self.sections.len() > 0 || !self.lods.is_empty() || self.lod_pending.is_some();
+            self.sections_dropped |= self.sections.len() > 0;
             self.clear_sections(self.layout);
         }
         self.pack_block_ids = (!block_ids.is_empty()).then(|| Box::new(PackBlockIds(block_ids)));

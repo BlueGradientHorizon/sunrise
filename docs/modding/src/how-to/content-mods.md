@@ -53,7 +53,7 @@ cargo sunrise-mod check             # validate the project before release
     plus `tags/worldgen/biome` and `tags/worldgen/structure`. Tag files can be in any namespace, including
     `minecraft`; other tag folders, optional entries and removals are not checked.
   - Loot item entries' `name` and block-state conditions' `block` fields. Recipes, tags, loot tables and loot pools
-    that `neoforge:conditions` may disable are left alone.
+    that `neoforge:conditions` or `fabric:load_conditions` may disable are left alone.
 
   A missing reference is an **error** (exit 1) only when the tool has enough information to confirm it. When a
   manifest lists `[[jar]]`, `check` and `build` read each jar from the local jar store (fetching any missing jar
@@ -229,7 +229,7 @@ swim in it or get pushed by it. In the world it draws its `sprite`, a block atla
 its `tint`; with neither it looks like water, and a `tint` alone colours water's textures. A client mod's
 `register_fluid_models` hook accepts `mod_api::FluidModel` values with separate flowing and overlay sprites via
 `event.register(model)`. The hook runs again before each resource bake, so a resource reload can change model
-identifiers as well as textures. Far terrain (LOD) omits mod fluids. LAN and dedicated server players play with
+identifiers as well as textures. LAN and dedicated server players play with
 them when they run the same mods: a client whose mods add different content is refused when it joins, with
 the reason.
 
