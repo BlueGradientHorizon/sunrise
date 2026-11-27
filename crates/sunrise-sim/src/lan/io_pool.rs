@@ -1555,11 +1555,11 @@ mod tests {
 
     #[cfg(feature = "net-trace")]
     fn encoded_meta(id: i32, payload: &[u8]) -> (i32, usize, String) {
-        let mut raw = Vec::with_capacity(payload.len() + 5);
-        sunrise_core::vanilla_bytes::write_varint(&mut raw, id);
-        raw.extend_from_slice(payload);
-        let meta = crate::lan::packet_capture::PacketMeta::from_body(&raw);
-        (meta.id, meta.len, format!("{:032x}", meta.hash))
+        (
+            id,
+            payload.len(),
+            format!("{:032x}", xxhash_rust::xxh3::xxh3_128(payload)),
+        )
     }
 
     #[cfg(feature = "net-trace")]
@@ -1833,6 +1833,35 @@ mod tests {
         });
         served.outbox.send(vec![Body::Prepared(pairing)], None);
 
+        // 4. Multi-byte VarInt packet id (300) with a payload (2000 bytes) whose
+        // uncompressed body length (2002) and compressed frame contents length are all
+        // distinct multi-byte VarInts (>= 128) so no field can be confused with another.
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut payload_multi = Vec::with_capacity(2000);
+        for _ in 0..500 {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            payload_multi.push((seed >> 56) as u8);
+        }
+        payload_multi.extend(std::iter::repeat_n(b'q', 1500));
+        let mut raw_multi = Vec::with_capacity(2 + payload_multi.len());
+        sunrise_core::vanilla_bytes::write_varint(&mut raw_multi, 300);
+        raw_multi.extend_from_slice(&payload_multi);
+        assert_eq!(raw_multi.len(), 2002);
+        let meta_multi = crate::lan::packet_capture::PacketMeta::from_body(&raw_multi);
+        assert_eq!(meta_multi.id, 300);
+        assert_eq!(meta_multi.len, 2000);
+        let prepared_multi = framing.contents(&raw_multi).unwrap();
+        assert!(
+            prepared_multi.len() >= 128 && prepared_multi.len() < payload_multi.len(),
+            "compressed length {} must be a distinct multi-byte varint below {}",
+            prepared_multi.len(),
+            payload_multi.len()
+        );
+        assert_ne!(prepared_multi.len(), 300);
+        let cost_multi = charge(prepared_multi.capacity());
+        served.pending.fetch_add(cost_multi, Ordering::Relaxed);
+        assert!(served.outbox.publish(prepared_multi, cost_multi));
+
         // Verify the TCP peer decoded every original uncompressed packet id and payload.
         let (id1, payload1) = client.recv().unwrap();
         assert_eq!((id1, payload1.as_slice()), (24, &raw_big[1..]));
@@ -1840,9 +1869,11 @@ mod tests {
         assert_eq!((id2, payload2.as_slice()), (25, &raw_small[1..]));
         let (id3, payload3) = client.recv().unwrap();
         assert_eq!((id3, payload3.as_slice()), (26, &raw_pair[1..]));
+        let (id4, payload4) = client.recv().unwrap();
+        assert_eq!((id4, payload4.as_slice()), (300, payload_multi.as_slice()));
 
         // While the capture writer thread is still paused, all pending charges must be refunded.
-        assert_eq!(served.pending.load(Ordering::Relaxed), 0);
+        assert_eq!(served.pending.load(Ordering::Acquire), 0);
 
         writer_gate.wait();
         drop(client);
@@ -1857,6 +1888,7 @@ mod tests {
                 encoded_meta(id1, &payload1),
                 encoded_meta(id2, &payload2),
                 encoded_meta(id3, &payload3),
+                encoded_meta(id4, &payload4),
             ]
         );
         assert_eq!(
@@ -1873,9 +1905,18 @@ mod tests {
                     meta_pair.len,
                     format!("{:032x}", meta_pair.hash),
                 ),
+                (
+                    meta_multi.id,
+                    meta_multi.len,
+                    format!("{:032x}", meta_multi.hash),
+                ),
             ]
         );
-        assert_eq!(footer, "# end\t3\tok");
+        assert_eq!(recorded[0].0, 24);
+        assert_eq!(recorded[0].1, 128);
+        assert_eq!(recorded[3].0, 300);
+        assert_eq!(recorded[3].1, 2000);
+        assert_eq!(footer, "# end\t4\tok");
     }
 
     #[cfg(feature = "net-trace")]

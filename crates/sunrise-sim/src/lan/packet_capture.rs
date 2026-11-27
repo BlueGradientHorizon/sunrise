@@ -19,17 +19,17 @@ const MAX_QUEUED_BYTES: usize = 32 << 20;
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
 const CLAIM_FILE: &str = ".capture-claim";
 
-fn decode_packet_id(bytes: &[u8]) -> i32 {
+fn split_packet_id(bytes: &[u8]) -> (i32, &[u8]) {
     let mut value: u32 = 0;
     let mut shift: u32 = 0;
-    for &b in bytes.iter().take(5) {
+    for (idx, &b) in bytes.iter().take(5).enumerate() {
         value |= u32::from(b & 0x7F) << shift;
         if b & 0x80 == 0 {
-            return value as i32;
+            return (value as i32, &bytes[idx + 1..]);
         }
         shift += 7;
     }
-    -1
+    (-1, bytes)
 }
 
 fn sanitize_filename(name: &str) -> String {
@@ -69,10 +69,11 @@ pub(super) struct PacketMeta {
 
 impl PacketMeta {
     pub(super) fn from_body(body: &[u8]) -> Self {
+        let (id, payload) = split_packet_id(body);
         Self {
-            id: decode_packet_id(body),
-            len: body.len(),
-            hash: xxhash_rust::xxh3::xxh3_128(body),
+            id,
+            len: payload.len(),
+            hash: xxhash_rust::xxh3::xxh3_128(payload),
         }
     }
 }
@@ -846,10 +847,16 @@ mod tests {
     }
 
     #[test]
-    fn decode_packet_id_handles_single_multibyte_and_empty() {
-        assert_eq!(decode_packet_id(&[46, 0, 1]), 46);
-        assert_eq!(decode_packet_id(&[0x80, 0x01, 9]), 128);
-        assert_eq!(decode_packet_id(&[]), -1);
+    fn split_packet_id_and_meta_hash_payload_after_id() {
+        assert_eq!(split_packet_id(&[46, 0, 1]), (46, &[0, 1][..]));
+        assert_eq!(split_packet_id(&[0x80, 0x01, 9]), (128, &[9][..]));
+        assert_eq!(split_packet_id(&[0]), (0, &[][..]));
+        assert_eq!(split_packet_id(&[]), (-1, &[][..]));
+
+        let meta = PacketMeta::from_body(&[0xAC, 0x02, 10, 20, 30]);
+        assert_eq!(meta.id, 300);
+        assert_eq!(meta.len, 3);
+        assert_eq!(meta.hash, xxhash_rust::xxh3::xxh3_128(&[10, 20, 30]));
     }
 
     #[test]
