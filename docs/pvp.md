@@ -107,12 +107,6 @@ scales it by 10%, a right click puts it back in its corner at 100%, and the butt
 background and its opacity, put every widget back in its corner at 100% (Reset), or close the editor (Esc too). The layout is saved when it closes.
 Code: `crates/sunrise-client-gameplay/src/game/interface/hud_editor.rs`.
 
-## Enchantment levels as numbers (`numericEnchants`, default off)
-
-`Enchantment.getFullname` with the level as a number ("Sharpness 5", also past vanilla's numerals: "Sharpness 255")
-wherever the client names an enchantment (tooltips, the enchanting table's hint). A one-level enchantment still has
-none ("Mending"). Code: `sunrise_items::enchant::set_numeric_levels`, set each frame from the option.
-
 ## Enchantment glint colour (`glintColour`, default off)
 
 The glint's shimmer in a solid colour: each sample's brightest channel over the colour, so the pattern, speed

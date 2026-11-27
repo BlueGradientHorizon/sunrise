@@ -175,11 +175,6 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    /// Once per frame: the options that live outside the game's state.
-    pub(in crate::game::client_side) fn pvp_frame(&mut self) {
-        let tweaks = self.client.settings.extras.pvp.tweaks;
-        sunrise_items::enchant::set_numeric_levels(tweaks.numeric_enchants);
-    }
     /// Whether this window may draw PvP & HUD's own time and weather: only a client of a server
     /// (single player's included) draws them, never the server that ticks the world.
     pub(in crate::game) fn own_view(&self) -> bool {

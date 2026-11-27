@@ -28,7 +28,6 @@ impl crate::game::ClientGame<'_> {
         // A clear a mod asked for (in this frame's `RenderFrameEvent.Pre`, or after the last
         // frame was drawn) lands before this frame's particles are drawn, paused or not.
         self.apply_mod_particle_clear();
-        self.pvp_frame();
         self.recipes_received_now();
     }
     /// The PvP HUD widgets and Sunrise hook layers (hidden with F1 by the caller).

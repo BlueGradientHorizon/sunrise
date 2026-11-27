@@ -692,8 +692,6 @@ fn corner_label(c: Corner) -> String {
 /// Smaller changes to what vanilla shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Tweaks {
-    /// Enchantment levels as numbers in tooltips ("Sharpness 5").
-    pub numeric_enchants: bool,
     /// How far down the first-person fire overlay moves, in percent of its height (0: vanilla).
     pub fire_lower: u8,
     /// The first-person shield's size, in percent (100: vanilla).
@@ -714,7 +712,6 @@ pub struct Tweaks {
 impl Default for Tweaks {
     fn default() -> Self {
         Self {
-            numeric_enchants: false,
             fire_lower: 0,
             shield_size: 100,
             totem_size: 100,
@@ -905,7 +902,6 @@ impl Pvp {
             "hudReachCorner" => u.reach_corner = Corner::parse(value, u.reach_corner),
             "hudSpeed" => u.speed = flag(value, u.speed),
             "hudSpeedCorner" => u.speed_corner = Corner::parse(value, u.speed_corner),
-            "numericEnchants" => t.numeric_enchants = flag(value, t.numeric_enchants),
             "lowFire" => t.fire_lower = num(value, FIRE_LOWER, t.fire_lower),
             "shieldSize" => t.shield_size = num(value, SHIELD_SIZES, t.shield_size),
             "totemSize" => t.totem_size = num(value, TOTEM_SIZES, t.totem_size),
@@ -1031,8 +1027,7 @@ impl Pvp {
         let t = &self.tweaks;
         let _ = write!(
             out,
-            "numericEnchants:{}\nlowFire:{}\nshieldSize:{}\ntotemSize:{}\nglintColour:{}\nclearWater:{}\nclearLava:{}\n",
-            t.numeric_enchants,
+            "lowFire:{}\nshieldSize:{}\ntotemSize:{}\nglintColour:{}\nclearWater:{}\nclearLava:{}\n",
             t.fire_lower,
             t.shield_size,
             t.totem_size,
@@ -1173,8 +1168,6 @@ opts! {
     HudShadow, "hud_shadow", "Text shadow", "A shadow under the widgets' text, as vanilla's HUD text has.";
     HudEditorKey, "hud_editor_key", "HUD editor key",
         "Opens the HUD editor from the game. Click, then press a key; Escape unbinds it.";
-    NumericEnchants, "numeric_enchants", "Enchantment levels as numbers",
-        "Tooltips and the enchanting table show Sharpness 5 instead of Sharpness V.";
     FireLower, "fire_lower", "Lower fire",
         "Moves the flames you see while burning down, so they cover less of the screen.";
     ShieldSize, "shield_size", "Shield size", "The size of the shield in your hand, in first person.";
@@ -1274,7 +1267,6 @@ pub fn rows() -> Vec<Result<Opt, &'static str>> {
         .map(Ok),
     );
     rows.push(Err("sunrise.pvp.header.items"));
-    rows.push(Ok(NumericEnchants));
     rows.push(Ok(GlintColour));
     rows.push(Err("sunrise.pvp.header.visual"));
     rows.extend([FireLower, ShieldSize, TotemSize, ClearWater, ClearLava].map(Ok));
@@ -1296,7 +1288,7 @@ impl Opt {
             HitColour | HitOpacity => Some(Hit),
             HudArmour | HudEffects | HudHeld | HudPing | HudCoords | HudServer | HudCombo
             | HudFps | HudCps | HudKeys | HudClock | HudReach | HudSpeed | HudBackground
-            | HudTextColour | HudShadow | HudEditorKey | NumericEnchants => None,
+            | HudTextColour | HudShadow | HudEditorKey => None,
             HudOpacity => Some(HudBackground),
             HudFpsCorner => Some(HudFps),
             HudCpsCorner => Some(HudCps),
@@ -1342,7 +1334,6 @@ impl Opt {
             Opt::HudClock => p.hud.clock,
             Opt::HudReach => p.hud.reach,
             Opt::HudSpeed => p.hud.speed,
-            Opt::NumericEnchants => p.tweaks.numeric_enchants,
             Opt::ClearWater => p.tweaks.clear_water,
             Opt::ClearLava => p.tweaks.clear_lava,
             Opt::ChatTimestamps => p.chat.timestamps,
@@ -1488,7 +1479,6 @@ impl Opt {
             Opt::HudReachCorner => u.reach_corner = corner(u.reach_corner),
             Opt::HudSpeed => u.speed = !u.speed,
             Opt::HudSpeedCorner => u.speed_corner = corner(u.speed_corner),
-            Opt::NumericEnchants => p.tweaks.numeric_enchants = !p.tweaks.numeric_enchants,
             Opt::FireLower => t.fire_lower = step_by(t.fire_lower, FIRE_LOWER, 10, back),
             Opt::ShieldSize => t.shield_size = step_by(t.shield_size, SHIELD_SIZES, 10, back),
             Opt::TotemSize => t.totem_size = step_by(t.totem_size, TOTEM_SIZES, 25, back),

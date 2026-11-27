@@ -70,7 +70,6 @@ hudOpacity:47
 hudTextColour:white
 hudShadow:true
 hudEditorKey:key.keyboard.unknown
-numericEnchants:false
 lowFire:0
 shieldSize:100
 totemSize:100
