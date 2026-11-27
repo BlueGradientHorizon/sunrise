@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "速度显示的位置。",
   "sunrise.pvp.hud_text_colour": "文字颜色",
   "sunrise.pvp.hud_text_colour.tooltip": "组件的文字颜色。耐久仍保持从绿到红的渐变。",
-  "sunrise.pvp.numeric_enchants": "附魔等级用数字显示",
-  "sunrise.pvp.numeric_enchants.tooltip": "提示框和附魔台显示“锋利 5”而不是“锋利 V”。",
   "sunrise.pvp.outline": "自定义方块轮廓",
   "sunrise.pvp.outline.tooltip": "更改你注视方块的轮廓。",
   "sunrise.pvp.outline_colour": "颜色",

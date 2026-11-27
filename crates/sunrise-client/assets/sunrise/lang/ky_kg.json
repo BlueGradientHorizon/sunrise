@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Ылдамдык кайда көрүнөт.",
   "sunrise.pvp.hud_text_colour": "Тексттин түсү",
   "sunrise.pvp.hud_text_colour.tooltip": "Виджеттердин текст түсү. Бышыктык жашылдан кызылга чейинки түсүн сактайт.",
-  "sunrise.pvp.numeric_enchants": "Сыйкыр деңгээлдери сан менен",
-  "sunrise.pvp.numeric_enchants.tooltip": "Калкыма кеңештер жана сыйкырлоо үстөлү «Курчтук V» ордуна «Курчтук 5» көрсөтөт.",
   "sunrise.pvp.outline": "Ыңгайлаштырылган блок контуру",
   "sunrise.pvp.outline.tooltip": "Карап турган блоктун айланасындагы контурду өзгөртөт.",
   "sunrise.pvp.outline_colour": "Түс",

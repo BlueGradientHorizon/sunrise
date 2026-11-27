@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Ku shfaqet shpejtësia.",
   "sunrise.pvp.hud_text_colour": "Ngjyra e tekstit",
   "sunrise.pvp.hud_text_colour.tooltip": "Ngjyra e tekstit të widget-eve. Qëndrueshmëria mban jeshilen deri në të kuqe.",
-  "sunrise.pvp.numeric_enchants": "Nivelet e magjive si numra",
-  "sunrise.pvp.numeric_enchants.tooltip": "Këshillat dhe tryeza e magjive shfaqin Mprehtësi 5 në vend të Mprehtësisë V.",
   "sunrise.pvp.outline": "Kontur blloku me porosi",
   "sunrise.pvp.outline.tooltip": "Ndryshon konturin rreth bllokut që shikon.",
   "sunrise.pvp.outline_colour": "Ngjyra",

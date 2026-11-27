@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Hvor farten vises.",
   "sunrise.pvp.hud_text_colour": "Tekstfarge",
   "sunrise.pvp.hud_text_colour.tooltip": "Tekstfargen til widgetene. Holdbarhet beholder grønt til rødt.",
-  "sunrise.pvp.numeric_enchants": "Fortryllelsesnivåer som tall",
-  "sunrise.pvp.numeric_enchants.tooltip": "Verktøytips og fortryllelsesbordet viser Skarphet 5 i stedet for Skarphet V.",
   "sunrise.pvp.outline": "Egendefinert blokkomriss",
   "sunrise.pvp.outline.tooltip": "Endrer omrisset rundt blokken du ser på.",
   "sunrise.pvp.outline_colour": "Farge",

@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Тизлек кайда күренә.",
   "sunrise.pvp.hud_text_colour": "Текст төсе",
   "sunrise.pvp.hud_text_colour.tooltip": "Виджетлар текст төсе. Чыдамлык үзенең яшелдән кызылга кадәр төсен саклый.",
-  "sunrise.pvp.numeric_enchants": "Сихер дәрәҗәләрен саннар белән",
-  "sunrise.pvp.numeric_enchants.tooltip": "Киңәшләр һәм сихер өстәле «Үткенлек V» урынына «Үткенлек 5» күрсәтә.",
   "sunrise.pvp.outline": "Махсус блок каймасы",
   "sunrise.pvp.outline.tooltip": "Сез караган блок тирәсендәге кайманы үзгәртә.",
   "sunrise.pvp.outline_colour": "Төс",

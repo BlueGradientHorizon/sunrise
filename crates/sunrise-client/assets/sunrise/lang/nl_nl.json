@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Waar de snelheid wordt getoond.",
   "sunrise.pvp.hud_text_colour": "Tekstkleur",
   "sunrise.pvp.hud_text_colour.tooltip": "De tekstkleur van de widgets. Duurzaamheid blijft van groen naar rood gaan.",
-  "sunrise.pvp.numeric_enchants": "Betoveringsniveaus als getallen",
-  "sunrise.pvp.numeric_enchants.tooltip": "Tooltips en de betoveringstafel tonen Scherpte 5 in plaats van Scherpte V.",
   "sunrise.pvp.outline": "Aangepaste blokomtrek",
   "sunrise.pvp.outline.tooltip": "Wijzigt de omtrek rond het blok waar je naar kijkt.",
   "sunrise.pvp.outline_colour": "Kleur",

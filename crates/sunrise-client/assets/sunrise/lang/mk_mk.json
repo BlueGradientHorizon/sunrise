@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Каде се прикажува брзината.",
   "sunrise.pvp.hud_text_colour": "Боја на текстот",
   "sunrise.pvp.hud_text_colour.tooltip": "Бојата на текстот на елементите. Издржливоста ја задржува својата боја од зелено до црвено.",
-  "sunrise.pvp.numeric_enchants": "Нивоа на магии како броеви",
-  "sunrise.pvp.numeric_enchants.tooltip": "Советите и магиската маса покажуваат Острина 5 наместо Острина V.",
   "sunrise.pvp.outline": "Прилагодена контура на блок",
   "sunrise.pvp.outline.tooltip": "Ја менува контурата околу блокот што го гледате.",
   "sunrise.pvp.outline_colour": "Боја",

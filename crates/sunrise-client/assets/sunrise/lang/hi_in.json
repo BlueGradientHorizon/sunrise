@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "गति कहाँ दिखती है।",
   "sunrise.pvp.hud_text_colour": "टेक्स्ट रंग",
   "sunrise.pvp.hud_text_colour.tooltip": "विजेट्स के टेक्स्ट का रंग। टिकाऊपन अपना हरा से लाल रखता है।",
-  "sunrise.pvp.numeric_enchants": "एनचांटमेंट स्तर संख्याओं में",
-  "sunrise.pvp.numeric_enchants.tooltip": "टूलटिप्स और एनचांटिंग टेबल Sharpness V के बजाय Sharpness 5 दिखाते हैं।",
   "sunrise.pvp.outline": "कस्टम ब्लॉक रूपरेखा",
   "sunrise.pvp.outline.tooltip": "आप जिस ब्लॉक को देखते हैं उसके चारों ओर की रूपरेखा बदलता है।",
   "sunrise.pvp.outline_colour": "रंग",

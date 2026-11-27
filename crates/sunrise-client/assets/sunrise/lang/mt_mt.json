@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Fejn tidher il-veloċità.",
   "sunrise.pvp.hud_text_colour": "Kulur tat-test",
   "sunrise.pvp.hud_text_colour.tooltip": "Il-kulur tat-test tal-widgets. Id-durabbiltà żżomm l-aħdar sa aħmar tagħha.",
-  "sunrise.pvp.numeric_enchants": "Livelli tal-enchantments bħala numri",
-  "sunrise.pvp.numeric_enchants.tooltip": "It-tooltips u l-mejda tal-enchanting juru Sharpness 5 minflok Sharpness V.",
   "sunrise.pvp.outline": "Kontorn tal-blokk personalizzat",
   "sunrise.pvp.outline.tooltip": "Ibiddel il-kontorn madwar il-blokk li tħares lejh.",
   "sunrise.pvp.outline_colour": "Kulur",

@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Hvar hraðinn birtist.",
   "sunrise.pvp.hud_text_colour": "Litur texta",
   "sunrise.pvp.hud_text_colour.tooltip": "Textalitur skjáhlutanna. Ending heldur grænu til rauðu.",
-  "sunrise.pvp.numeric_enchants": "Galdrastig sem tölur",
-  "sunrise.pvp.numeric_enchants.tooltip": "Ábendingar og galdraborðið sýna Sharpness 5 í stað Sharpness V.",
   "sunrise.pvp.outline": "Sérsniðin blokkútlína",
   "sunrise.pvp.outline.tooltip": "Breytir útlínunni í kringum blokkina sem þú horfir á.",
   "sunrise.pvp.outline_colour": "Litur",

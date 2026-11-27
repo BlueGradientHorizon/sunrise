@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Tezlik qayerda ko'rinadi.",
   "sunrise.pvp.hud_text_colour": "Matn rangi",
   "sunrise.pvp.hud_text_colour.tooltip": "Vidjetlar matni rangi. Chidamlilik yashildan qizilgacha saqlanadi.",
-  "sunrise.pvp.numeric_enchants": "Sehr darajalari raqamlarda",
-  "sunrise.pvp.numeric_enchants.tooltip": "Maslahatlar va sehrlash stoli Sharpness V o'rniga Sharpness 5 ni ko'rsatadi.",
   "sunrise.pvp.outline": "Maxsus blok konturi",
   "sunrise.pvp.outline.tooltip": "Qarayotgan blokingiz atrofidagi konturni o'zgartiradi.",
   "sunrise.pvp.outline_colour": "Rang",

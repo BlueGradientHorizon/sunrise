@@ -902,8 +902,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Where the speed shows.",
   "sunrise.pvp.hud_text_colour": "Text colour",
   "sunrise.pvp.hud_text_colour.tooltip": "The widgets' text colour. Durability keeps its green to red.",
-  "sunrise.pvp.numeric_enchants": "Enchantment levels as numbers",
-  "sunrise.pvp.numeric_enchants.tooltip": "Tooltips and the enchanting table show Sharpness 5 instead of Sharpness V.",
   "sunrise.pvp.outline": "Custom block outline",
   "sunrise.pvp.outline.tooltip": "Changes the outline around the block you look at.",
   "sunrise.pvp.outline_colour": "Colour",

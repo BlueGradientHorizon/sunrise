@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Хӑвӑртлӑх ӑҫта кӑтартни.",
   "sunrise.pvp.hud_text_colour": "Текст тӗсӗ",
   "sunrise.pvp.hud_text_colour.tooltip": "Виджетсен текст тӗсӗ. Ҫирӗплӗх хӑйӗн симӗсрен хӗрлӗ тӗсне упрать.",
-  "sunrise.pvp.numeric_enchants": "Энчантмент шайӗсем хисеппе",
-  "sunrise.pvp.numeric_enchants.tooltip": "Япала каласа панисемпе энчантлӑ стол Sharpness V вырӑнне Sharpness 5 кӑтартаҫҫӗ.",
   "sunrise.pvp.outline": "Ятарлӑ блок контурӗ",
   "sunrise.pvp.outline.tooltip": "Эсир пӑхакан блок таврашӗнчи контура улӑштарать.",
   "sunrise.pvp.outline_colour": "Тӗс",

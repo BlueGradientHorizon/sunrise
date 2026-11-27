@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Жылдамдық қайда көрінеді.",
   "sunrise.pvp.hud_text_colour": "Мәтін түсі",
   "sunrise.pvp.hud_text_colour.tooltip": "Виджеттердің мәтін түсі. Беріктік жасылдан қызылға дейінгі түсін сақтайды.",
-  "sunrise.pvp.numeric_enchants": "Сиқыр деңгейлері санмен",
-  "sunrise.pvp.numeric_enchants.tooltip": "Құралдар туралы кеңестер мен сиқырлау үстелі «Өткірлік V» орнына «Өткірлік 5» көрсетеді.",
   "sunrise.pvp.outline": "Жеке блок жиегі",
   "sunrise.pvp.outline.tooltip": "Қарап тұрған блоктың айналасындағы жиекті өзгертеді.",
   "sunrise.pvp.outline_colour": "Түс",

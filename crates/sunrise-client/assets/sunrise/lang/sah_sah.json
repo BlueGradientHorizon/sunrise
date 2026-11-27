@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Түргэн ханна көстөрө.",
   "sunrise.pvp.hud_text_colour": "Тиэкс өҥө",
   "sunrise.pvp.hud_text_colour.tooltip": "Виджеттэр тиэкс өҥө. Быһарыы от күөҕэттэн кыһылга диэри хаалар.",
-  "sunrise.pvp.numeric_enchants": "Уһуйуу таһымнара сыыппаранан",
-  "sunrise.pvp.numeric_enchants.tooltip": "Тултуллар көмө тиэкс уонна уһуйуу остуола Sharpness V оннугар Sharpness 5 көрдөрөллөр.",
   "sunrise.pvp.outline": "Бэйэ блок кырыыта",
   "sunrise.pvp.outline.tooltip": "Көрөр блоккун тулалыыр кырыытын уларытар.",
   "sunrise.pvp.outline_colour": "Өҥө",

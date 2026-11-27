@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "היכן המהירות מוצגת.",
   "sunrise.pvp.hud_text_colour": "צבע טקסט",
   "sunrise.pvp.hud_text_colour.tooltip": "צבע הטקסט של הווידג׳טים. העמידות שומרת על המעבר מירוק לאדום.",
-  "sunrise.pvp.numeric_enchants": "רמות קסמים כמספרים",
-  "sunrise.pvp.numeric_enchants.tooltip": "תיאורי פריטים ושולחן הקסמים מציגים חדות 5 במקום חדות V.",
   "sunrise.pvp.outline": "מתאר בלוק מותאם אישית",
   "sunrise.pvp.outline.tooltip": "משנה את המתאר סביב הבלוק שאתה מסתכל עליו.",
   "sunrise.pvp.outline_colour": "צבע",

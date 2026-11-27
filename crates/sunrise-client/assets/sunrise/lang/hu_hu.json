@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Hol jelenik meg a sebesség.",
   "sunrise.pvp.hud_text_colour": "Szövegszín",
   "sunrise.pvp.hud_text_colour.tooltip": "A widgetek szövegszíne. A tartósság megőrzi zöldből pirosba váltó színét.",
-  "sunrise.pvp.numeric_enchants": "Bűbájszintek számokkal",
-  "sunrise.pvp.numeric_enchants.tooltip": "A tippek és a bűbájolóasztal az Élesség 5-öt mutatják az Élesség V helyett.",
   "sunrise.pvp.outline": "Egyéni blokk-körvonal",
   "sunrise.pvp.outline.tooltip": "Megváltoztatja a nézett blokk körüli körvonalat.",
   "sunrise.pvp.outline_colour": "Szín",

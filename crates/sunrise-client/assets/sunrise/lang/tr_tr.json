@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Hızın gösterildiği yer.",
   "sunrise.pvp.hud_text_colour": "Metin rengi",
   "sunrise.pvp.hud_text_colour.tooltip": "Bileşenlerin metin rengi. Dayanıklılık yeşilden kırmızıya rengini korur.",
-  "sunrise.pvp.numeric_enchants": "Büyü seviyelerini sayı olarak",
-  "sunrise.pvp.numeric_enchants.tooltip": "İpucu kutuları ve büyü masası Keskinlik V yerine Keskinlik 5 gösterir.",
   "sunrise.pvp.outline": "Özel blok kenarlığı",
   "sunrise.pvp.outline.tooltip": "Baktığınız bloğun çevresindeki kenarlığı değiştirir.",
   "sunrise.pvp.outline_colour": "Renk",

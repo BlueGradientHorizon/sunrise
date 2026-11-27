@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Որտեղ է ցուցադրվում արագությունը։",
   "sunrise.pvp.hud_text_colour": "Տեքստի գույն",
   "sunrise.pvp.hud_text_colour.tooltip": "Վիջեթների տեքստի գույնը։ Ամրությունը պահում է իր կանաչից կարմիր անցումը։",
-  "sunrise.pvp.numeric_enchants": "Կախարդանքների մակարդակները թվերով",
-  "sunrise.pvp.numeric_enchants.tooltip": "Գործիքների հուշումները և կախարդելու սեղանը ցույց են տալիս Sharpness 5՝ Sharpness V-ի փոխարեն։",
   "sunrise.pvp.outline": "Պատվերով բլոկի ուրվագիծ",
   "sunrise.pvp.outline.tooltip": "Փոխում է ձեր նայած բլոկի շուրջ ուրվագիծը։",
   "sunrise.pvp.outline_colour": "Գույն",

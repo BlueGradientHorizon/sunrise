@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Hvor hastigheden vises.",
   "sunrise.pvp.hud_text_colour": "Tekstfarve",
   "sunrise.pvp.hud_text_colour.tooltip": "Widgettenes tekstfarve. Holdbarhed beholder sin grønne til røde.",
-  "sunrise.pvp.numeric_enchants": "Fortryllelsesniveauer som tal",
-  "sunrise.pvp.numeric_enchants.tooltip": "Værktøjstips og fortryllelsesbordet viser Skarphed 5 i stedet for Skarphed V.",
   "sunrise.pvp.outline": "Tilpasset blokkontur",
   "sunrise.pvp.outline.tooltip": "Ændrer konturen omkring den blok, du ser på.",
   "sunrise.pvp.outline_colour": "Farve",

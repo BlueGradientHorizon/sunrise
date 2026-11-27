@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Tempat kecepatan ditampilkan.",
   "sunrise.pvp.hud_text_colour": "Warna teks",
   "sunrise.pvp.hud_text_colour.tooltip": "Warna teks widget. Durabilitas tetap hijau hingga merah.",
-  "sunrise.pvp.numeric_enchants": "Level enchantmen sebagai angka",
-  "sunrise.pvp.numeric_enchants.tooltip": "Tooltip dan meja enchantmen menampilkan Sharpness 5 alih-alih Sharpness V.",
   "sunrise.pvp.outline": "Garis tepi blok kustom",
   "sunrise.pvp.outline.tooltip": "Mengubah garis tepi di sekitar blok yang Anda lihat.",
   "sunrise.pvp.outline_colour": "Warna",

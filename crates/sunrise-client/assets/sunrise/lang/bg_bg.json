@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Къде се показва скоростта.",
   "sunrise.pvp.hud_text_colour": "Цвят на текста",
   "sunrise.pvp.hud_text_colour.tooltip": "Цветът на текста на джаджите. Издръжливостта запазва прехода си от зелено към червено.",
-  "sunrise.pvp.numeric_enchants": "Нива на омагьосване с числа",
-  "sunrise.pvp.numeric_enchants.tooltip": "Подсказките и масата за омагьосване показват Острота 5 вместо Острота V.",
   "sunrise.pvp.outline": "Собствен контур на блок",
   "sunrise.pvp.outline.tooltip": "Променя контура около блока, който гледате.",
   "sunrise.pvp.outline_colour": "Цвят",

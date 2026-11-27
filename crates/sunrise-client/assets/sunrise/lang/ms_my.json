@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Di mana kelajuan ditunjukkan.",
   "sunrise.pvp.hud_text_colour": "Warna teks",
   "sunrise.pvp.hud_text_colour.tooltip": "Warna teks widget. Ketahanan mengekalkan hijau ke merahnya.",
-  "sunrise.pvp.numeric_enchants": "Tahap pesona sebagai nombor",
-  "sunrise.pvp.numeric_enchants.tooltip": "Petua alat dan meja pesona menunjukkan Ketajaman 5 dan bukannya Ketajaman V.",
   "sunrise.pvp.outline": "Garis luar blok tersuai",
   "sunrise.pvp.outline.tooltip": "Menukar garis luar di sekeliling blok yang anda lihat.",
   "sunrise.pvp.outline_colour": "Warna",

@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Dove viene mostrata la velocità.",
   "sunrise.pvp.hud_text_colour": "Colore del testo",
   "sunrise.pvp.hud_text_colour.tooltip": "Il colore del testo dei widget. La durabilità mantiene il suo verde-rosso.",
-  "sunrise.pvp.numeric_enchants": "Livelli degli incantesimi come numeri",
-  "sunrise.pvp.numeric_enchants.tooltip": "I suggerimenti e il tavolo degli incantesimi mostrano Affilatezza 5 invece di Affilatezza V.",
   "sunrise.pvp.outline": "Contorno del blocco personalizzato",
   "sunrise.pvp.outline.tooltip": "Cambia il contorno attorno al blocco che guardi.",
   "sunrise.pvp.outline_colour": "Colore",

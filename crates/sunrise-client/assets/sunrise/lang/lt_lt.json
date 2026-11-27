@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Kur rodomas greitis.",
   "sunrise.pvp.hud_text_colour": "Teksto spalva",
   "sunrise.pvp.hud_text_colour.tooltip": "Valdiklių teksto spalva. Ilgaamžiškumas išlaiko savo žalią iki raudonos.",
-  "sunrise.pvp.numeric_enchants": "Užkeikimų lygiai skaičiais",
-  "sunrise.pvp.numeric_enchants.tooltip": "Įrankių patarimai ir užkeikimų stalas rodo Aštrumas 5, o ne Aštrumas V.",
   "sunrise.pvp.outline": "Pasirinktinis bloko kontūras",
   "sunrise.pvp.outline.tooltip": "Keičia kontūrą aplink bloką, į kurį žiūrite.",
   "sunrise.pvp.outline_colour": "Spalva",

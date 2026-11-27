@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Nơi hiển thị tốc độ.",
   "sunrise.pvp.hud_text_colour": "Màu chữ",
   "sunrise.pvp.hud_text_colour.tooltip": "Màu chữ của các tiện ích. Độ bền vẫn chuyển từ xanh lá sang đỏ.",
-  "sunrise.pvp.numeric_enchants": "Cấp phù phép bằng số",
-  "sunrise.pvp.numeric_enchants.tooltip": "Chú thích và bàn phù phép hiển thị Sắc bén 5 thay vì Sắc bén V.",
   "sunrise.pvp.outline": "Viền khối tùy chỉnh",
   "sunrise.pvp.outline.tooltip": "Đổi viền quanh khối bạn đang nhìn.",
   "sunrise.pvp.outline_colour": "Màu",

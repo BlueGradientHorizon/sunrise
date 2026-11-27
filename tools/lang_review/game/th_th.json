@@ -794,8 +794,6 @@
   "sunrise.pvp.hud.keys.attack": "คลิกซ้าย",
   "sunrise.pvp.hud.keys.use": "คลิกขวา",
   "sunrise.pvp.hud.keys.cps": "%s CPS",
-  "sunrise.pvp.numeric_enchants": "ระดับร่ายเวทเป็นตัวเลข",
-  "sunrise.pvp.numeric_enchants.tooltip": "ทูลทิปและโต๊ะร่ายเวทแสดง Sharpness 5 แทน Sharpness V",
   "sunrise.pvp.header.items": "ไอเทม",
   "sunrise.pvp.fire_lower": "ลดไฟลง",
   "sunrise.pvp.fire_lower.tooltip": "ย้ายเปลวไฟที่คุณเห็นขณะติดไฟลง เพื่อให้บังหน้าจอน้อยลง",

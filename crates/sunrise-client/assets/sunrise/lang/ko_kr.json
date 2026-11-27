@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "속도가 표시되는 위치입니다.",
   "sunrise.pvp.hud_text_colour": "텍스트 색상",
   "sunrise.pvp.hud_text_colour.tooltip": "위젯의 텍스트 색상입니다. 내구도는 초록에서 빨강으로 변하는 색을 유지합니다.",
-  "sunrise.pvp.numeric_enchants": "마법 부여 레벨 숫자 표시",
-  "sunrise.pvp.numeric_enchants.tooltip": "툴팁과 마법 부여대에서 날카로움 V 대신 날카로움 5로 표시합니다.",
   "sunrise.pvp.outline": "사용자 지정 블록 테두리",
   "sunrise.pvp.outline.tooltip": "바라보는 블록 주변의 테두리를 변경합니다.",
   "sunrise.pvp.outline_colour": "색상",

@@ -748,8 +748,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Де показується швидкість.",
   "sunrise.pvp.hud_text_colour": "Колір тексту",
   "sunrise.pvp.hud_text_colour.tooltip": "Колір тексту віджетів. Міцність лишається від зеленого до червоного.",
-  "sunrise.pvp.numeric_enchants": "Рівні чар числами",
-  "sunrise.pvp.numeric_enchants.tooltip": "Підказки та чарувальний стіл показують «Гострота 5» замість «Гострота V».",
   "sunrise.pvp.outline": "Власне обведення блока",
   "sunrise.pvp.outline.tooltip": "Змінює обведення навколо блока, на який ви дивитеся.",
   "sunrise.pvp.outline_colour": "Колір",

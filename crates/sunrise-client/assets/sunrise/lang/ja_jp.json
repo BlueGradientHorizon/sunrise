@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "速度を表示する場所。",
   "sunrise.pvp.hud_text_colour": "テキストの色",
   "sunrise.pvp.hud_text_colour.tooltip": "ウィジェットのテキストの色。耐久度は緑から赤への変化を保ちます。",
-  "sunrise.pvp.numeric_enchants": "エンチャントレベルを数値で表示",
-  "sunrise.pvp.numeric_enchants.tooltip": "ツールチップとエンチャントテーブルで「ダメージ増加 V」ではなく「ダメージ増加 5」と表示します。",
   "sunrise.pvp.outline": "カスタムブロックのアウトライン",
   "sunrise.pvp.outline.tooltip": "見ているブロックの周囲のアウトラインを変更します。",
   "sunrise.pvp.outline_colour": "色",

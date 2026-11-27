@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Ont se mòstra la velocitat.",
   "sunrise.pvp.hud_text_colour": "Color del tèxte",
   "sunrise.pvp.hud_text_colour.tooltip": "La color del tèxte dels widgets. La durabilitat garda son degradat del verd al roge.",
-  "sunrise.pvp.numeric_enchants": "Nivèls d'encantament en chifras",
-  "sunrise.pvp.numeric_enchants.tooltip": "Las astúcias e la taula d'encantament mòstran Agudesa 5 al luòc d'Agudesa V.",
   "sunrise.pvp.outline": "Contorn de blòt personalizat",
   "sunrise.pvp.outline.tooltip": "Cambia lo contorn a l'entorn del blòt qu'agachatz.",
   "sunrise.pvp.outline_colour": "Color",

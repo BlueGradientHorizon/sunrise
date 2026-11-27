@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Kie montriĝas la rapideco.",
   "sunrise.pvp.hud_text_colour": "Koloro de teksto",
   "sunrise.pvp.hud_text_colour.tooltip": "La tekstokoloro de la fenestraĵoj. Daŭreco retenas sian verdan ĝis ruĝan.",
-  "sunrise.pvp.numeric_enchants": "Niveloj de sorĉoj kiel nombroj",
-  "sunrise.pvp.numeric_enchants.tooltip": "Ŝprucetoj kaj la sorĉtablo montras Akrecon 5 anstataŭ Akreco V.",
   "sunrise.pvp.outline": "Propra bloka konturo",
   "sunrise.pvp.outline.tooltip": "Ŝanĝas la konturon ĉirkaŭ la bloko, kiun vi rigardas.",
   "sunrise.pvp.outline_colour": "Koloro",

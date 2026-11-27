@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "أين تظهر السرعة.",
   "sunrise.pvp.hud_text_colour": "لون النص",
   "sunrise.pvp.hud_text_colour.tooltip": "لون نص الأدوات. تحتفظ المتانة بتدرجها من الأخضر إلى الأحمر.",
-  "sunrise.pvp.numeric_enchants": "مستويات السحر كأرقام",
-  "sunrise.pvp.numeric_enchants.tooltip": "تُظهر التلميحات وطاولة السحر Sharpness 5 بدلًا من Sharpness V.",
   "sunrise.pvp.outline": "حدود كتلة مخصصة",
   "sunrise.pvp.outline.tooltip": "يغيّر الحدود حول الكتلة التي تنظر إليها.",
   "sunrise.pvp.outline_colour": "اللون",

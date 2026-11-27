@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "جایی که سرعت نشان داده می‌شود.",
   "sunrise.pvp.hud_text_colour": "رنگ متن",
   "sunrise.pvp.hud_text_colour.tooltip": "رنگ متن ویجت‌ها. دوام سبز تا قرمز خودش را نگه می‌دارد.",
-  "sunrise.pvp.numeric_enchants": "سطح افسون به‌صورت عدد",
-  "sunrise.pvp.numeric_enchants.tooltip": "راهنمای ابزار و میز افسون به‌جای Sharpness V، Sharpness 5 نشان می‌دهند.",
   "sunrise.pvp.outline": "خط دور بلوک سفارشی",
   "sunrise.pvp.outline.tooltip": "خط دور بلوکی که به آن نگاه می‌کنید را تغییر می‌دهد.",
   "sunrise.pvp.outline_colour": "رنگ",

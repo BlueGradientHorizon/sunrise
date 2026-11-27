@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Dónde se muestra la velocidad.",
   "sunrise.pvp.hud_text_colour": "Color del texto",
   "sunrise.pvp.hud_text_colour.tooltip": "El color del texto de los widgets. La durabilidad sigue yendo de verde a rojo.",
-  "sunrise.pvp.numeric_enchants": "Niveles de encantamiento como números",
-  "sunrise.pvp.numeric_enchants.tooltip": "Los tooltips y la mesa de encantamientos muestran Filo 5 en lugar de Filo V.",
   "sunrise.pvp.outline": "Contorno de bloque personalizado",
   "sunrise.pvp.outline.tooltip": "Cambia el contorno del bloque que miras.",
   "sunrise.pvp.outline_colour": "Color",

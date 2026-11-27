@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Far a bheil an t-astar a' nochdadh.",
   "sunrise.pvp.hud_text_colour": "Dath an teacsa",
   "sunrise.pvp.hud_text_colour.tooltip": "Dath teacsa nam widget. Cumaidh seasmhachd a uaine gu dearg.",
-  "sunrise.pvp.numeric_enchants": "Ìrean seun mar àireamhan",
-  "sunrise.pvp.numeric_enchants.tooltip": "Bidh tooltips agus an clàr seun a' sealltainn Sharpness 5 an àite Sharpness V.",
   "sunrise.pvp.outline": "Iomall bloca gnàthach",
   "sunrise.pvp.outline.tooltip": "Ag atharrachadh an iomaill timcheall a' bhloca air a bheil thu a' coimhead.",
   "sunrise.pvp.outline_colour": "Dath",

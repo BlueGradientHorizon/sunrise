@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Kung saan lumalabas ang bilis.",
   "sunrise.pvp.hud_text_colour": "Kulay ng teksto",
   "sunrise.pvp.hud_text_colour.tooltip": "Ang kulay ng teksto ng mga widget. Ang durability ay nananatiling berde hanggang pula.",
-  "sunrise.pvp.numeric_enchants": "Mga antas ng enchantment bilang numero",
-  "sunrise.pvp.numeric_enchants.tooltip": "Ipinapakita ng mga tooltip at ng enchanting table ang Sharpness 5 sa halip na Sharpness V.",
   "sunrise.pvp.outline": "Sariling outline ng bloke",
   "sunrise.pvp.outline.tooltip": "Binabago ang outline sa paligid ng blokeng tinitingnan mo.",
   "sunrise.pvp.outline_colour": "Kulay",

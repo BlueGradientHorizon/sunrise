@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Onde se mostra a velocidade.",
   "sunrise.pvp.hud_text_colour": "Cor do texto",
   "sunrise.pvp.hud_text_colour.tooltip": "A cor do texto dos widgets. A durabilidade mantén o seu verde a vermello.",
-  "sunrise.pvp.numeric_enchants": "Niveis de encantamento como números",
-  "sunrise.pvp.numeric_enchants.tooltip": "As informacións emerxentes e a mesa de encantamentos mostran Afiado 5 en lugar de Afiado V.",
   "sunrise.pvp.outline": "Contorno de bloque personalizado",
   "sunrise.pvp.outline.tooltip": "Cambia o contorno ao redor do bloque que miras.",
   "sunrise.pvp.outline_colour": "Cor",

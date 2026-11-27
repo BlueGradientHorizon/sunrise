@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Missä nopeus näytetään.",
   "sunrise.pvp.hud_text_colour": "Tekstin väri",
   "sunrise.pvp.hud_text_colour.tooltip": "Widgettien tekstin väri. Kestävyys säilyttää vihreästä punaiseen -värinsä.",
-  "sunrise.pvp.numeric_enchants": "Lumousten tasot numeroina",
-  "sunrise.pvp.numeric_enchants.tooltip": "Työkaluvihjeet ja lumouspöytä näyttävät Terävyys 5:n Terävyys V:n sijaan.",
   "sunrise.pvp.outline": "Mukautettu lohkon ääriviiva",
   "sunrise.pvp.outline.tooltip": "Muuttaa katsomasi lohkon ympärillä olevaa ääriviivaa.",
   "sunrise.pvp.outline_colour": "Väri",

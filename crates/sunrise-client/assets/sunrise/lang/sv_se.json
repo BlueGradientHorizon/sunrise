@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Var hastigheten visas.",
   "sunrise.pvp.hud_text_colour": "Textfärg",
   "sunrise.pvp.hud_text_colour.tooltip": "Widgetarnas textfärg. Hållbarhet behåller sin gröna till röda.",
-  "sunrise.pvp.numeric_enchants": "Förtrollningsnivåer som siffror",
-  "sunrise.pvp.numeric_enchants.tooltip": "Verktygstips och förtrollningsbordet visar Skärpa 5 i stället för Skärpa V.",
   "sunrise.pvp.outline": "Anpassad blockkontur",
   "sunrise.pvp.outline.tooltip": "Ändrar konturen runt blocket du tittar på.",
   "sunrise.pvp.outline_colour": "Färg",

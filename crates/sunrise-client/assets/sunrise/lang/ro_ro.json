@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Unde apare viteza.",
   "sunrise.pvp.hud_text_colour": "Culoarea textului",
   "sunrise.pvp.hud_text_colour.tooltip": "Culoarea textului widgeturilor. Durabilitatea își păstrează trecerea de la verde la roșu.",
-  "sunrise.pvp.numeric_enchants": "Nivelurile fermecelor ca numere",
-  "sunrise.pvp.numeric_enchants.tooltip": "Sfaturile și masa de fermecare arată Ascuțime 5 în loc de Ascuțime V.",
   "sunrise.pvp.outline": "Contur personalizat de bloc",
   "sunrise.pvp.outline.tooltip": "Schimbă conturul din jurul blocului pe care te uiți.",
   "sunrise.pvp.outline_colour": "Culoare",

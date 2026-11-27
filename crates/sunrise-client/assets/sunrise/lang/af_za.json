@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Waar die spoed wys.",
   "sunrise.pvp.hud_text_colour": "Tekskleur",
   "sunrise.pvp.hud_text_colour.tooltip": "Die widgets se tekskleur. Duursaamheid behou sy groen tot rooi.",
-  "sunrise.pvp.numeric_enchants": "Betoweringsvlakke as getalle",
-  "sunrise.pvp.numeric_enchants.tooltip": "Nutswenke en die betoweringstafel wys Sharpness 5 in plaas van Sharpness V.",
   "sunrise.pvp.outline": "Pasgemaakte blokomlyn",
   "sunrise.pvp.outline.tooltip": "Verander die omlyn rondom die blok waarna jy kyk.",
   "sunrise.pvp.outline_colour": "Kleur",

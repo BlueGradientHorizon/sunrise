@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Kde se rychlost zobrazuje.",
   "sunrise.pvp.hud_text_colour": "Barva textu",
   "sunrise.pvp.hud_text_colour.tooltip": "Barva textu widgetů. Odolnost si zachovává přechod ze zelené do červené.",
-  "sunrise.pvp.numeric_enchants": "Úrovně očarování čísly",
-  "sunrise.pvp.numeric_enchants.tooltip": "Popisky a stůl očarování zobrazí Ostrost 5 místo Ostrost V.",
   "sunrise.pvp.outline": "Vlastní obrys bloku",
   "sunrise.pvp.outline.tooltip": "Mění obrys kolem bloku, na který se díváte.",
   "sunrise.pvp.outline_colour": "Barva",

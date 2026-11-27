@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Kus kiirus paistab.",
   "sunrise.pvp.hud_text_colour": "Teksti värv",
   "sunrise.pvp.hud_text_colour.tooltip": "Vidinate teksti värv. Vastupidavus säilitab oma rohelise kuni punase.",
-  "sunrise.pvp.numeric_enchants": "Lummustasemed numbritena",
-  "sunrise.pvp.numeric_enchants.tooltip": "Vihjed ja lummamislaud näitavad Teravus 5, mitte Teravus V.",
   "sunrise.pvp.outline": "Kohandatud ploki piirjoon",
   "sunrise.pvp.outline.tooltip": "Muudab selle ploki piirjoont, millele vaatad.",
   "sunrise.pvp.outline_colour": "Värv",

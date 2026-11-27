@@ -731,8 +731,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Где показывается скорость.",
   "sunrise.pvp.hud_text_colour": "Цвет текста",
   "sunrise.pvp.hud_text_colour.tooltip": "Цвет текста виджетов. Прочность сохраняет переход от зелёного к красному.",
-  "sunrise.pvp.numeric_enchants": "Уровни зачарований числами",
-  "sunrise.pvp.numeric_enchants.tooltip": "Подсказки и стол зачарований показывают «Острота 5» вместо «Острота V».",
   "sunrise.pvp.outline": "Своя обводка блока",
   "sunrise.pvp.outline.tooltip": "Меняет обводку вокруг блока, на который вы смотрите.",
   "sunrise.pvp.outline_colour": "Цвет",

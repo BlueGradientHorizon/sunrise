@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Дзе паказваецца хуткасць.",
   "sunrise.pvp.hud_text_colour": "Колер тэксту",
   "sunrise.pvp.hud_text_colour.tooltip": "Колер тэксту віджэтаў. Трываласць захоўвае свой пераход ад зялёнага да чырвонага.",
-  "sunrise.pvp.numeric_enchants": "Узроўні зачараванняў лічбамі",
-  "sunrise.pvp.numeric_enchants.tooltip": "Падказкі і стол зачараванняў паказваюць Гострасць 5 замест Гострасці V.",
   "sunrise.pvp.outline": "Уласны контур блока",
   "sunrise.pvp.outline.tooltip": "Змяняе контур вакол блока, на які вы глядзіце.",
   "sunrise.pvp.outline_colour": "Колер",

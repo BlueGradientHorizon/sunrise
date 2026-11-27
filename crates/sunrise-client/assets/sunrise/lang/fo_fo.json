@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Hvar ferðin vísist.",
   "sunrise.pvp.hud_text_colour": "Tekstlitur",
   "sunrise.pvp.hud_text_colour.tooltip": "Tekstliturin á widgetunum. Varleiki heldur sín grøna til reyða.",
-  "sunrise.pvp.numeric_enchants": "Gandistig sum tøl",
-  "sunrise.pvp.numeric_enchants.tooltip": "Ábendingar og gandiborðið vísa Sharpness 5 í staðin fyri Sharpness V.",
   "sunrise.pvp.outline": "Sersniðgivið blokkútlinja",
   "sunrise.pvp.outline.tooltip": "Broytir útlinjuna rundan um blokkin, tú hyggur at.",
   "sunrise.pvp.outline_colour": "Litur",

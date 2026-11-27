@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Sürətin göstərildiyi yer.",
   "sunrise.pvp.hud_text_colour": "Mətn rəngi",
   "sunrise.pvp.hud_text_colour.tooltip": "Vidcetlərin mətn rəngi. Davamlılıq yaşıldan qırmızıya keçidini saxlayır.",
-  "sunrise.pvp.numeric_enchants": "Sehr səviyyələri rəqəmlə",
-  "sunrise.pvp.numeric_enchants.tooltip": "Alət ipucları və sehr masası Kəskinlik V yerinə Kəskinlik 5 göstərir.",
   "sunrise.pvp.outline": "Xüsusi blok konturu",
   "sunrise.pvp.outline.tooltip": "Baxdığınız blokun ətrafındakı konturu dəyişir.",
   "sunrise.pvp.outline_colour": "Rəng",

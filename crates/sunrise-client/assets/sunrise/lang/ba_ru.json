@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Тиҙлек ҡайҙа күренә.",
   "sunrise.pvp.hud_text_colour": "Текст төҫө",
   "sunrise.pvp.hud_text_colour.tooltip": "Виджеттар тексының төҫө. Ныҡлыҡ йәшелдән ҡыҙылға тиклем үҙенекен һаҡлай.",
-  "sunrise.pvp.numeric_enchants": "Энчант кимәлдәре һан менән",
-  "sunrise.pvp.numeric_enchants.tooltip": "Кәңәш ҡырҙары һәм энчант өҫтәле Sharpness V урынына Sharpness 5 күрһәтә.",
   "sunrise.pvp.outline": "Үҙ блок контуры",
   "sunrise.pvp.outline.tooltip": "Ҡараған блок тирәһендәге контурҙы үҙгәртә.",
   "sunrise.pvp.outline_colour": "Төҫ",

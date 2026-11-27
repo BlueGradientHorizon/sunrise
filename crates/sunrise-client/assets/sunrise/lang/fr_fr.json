@@ -733,8 +733,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Où la vitesse s'affiche.",
   "sunrise.pvp.hud_text_colour": "Couleur du texte",
   "sunrise.pvp.hud_text_colour.tooltip": "La couleur du texte des widgets. La durabilité garde son vert à rouge.",
-  "sunrise.pvp.numeric_enchants": "Niveaux d'enchantement en chiffres",
-  "sunrise.pvp.numeric_enchants.tooltip": "Les infobulles et la table d'enchantement affichent Tranchant 5 au lieu de Tranchant V.",
   "sunrise.pvp.outline": "Contour de bloc personnalisé",
   "sunrise.pvp.outline.tooltip": "Change le contour du bloc que vous regardez.",
   "sunrise.pvp.outline_colour": "Couleur",

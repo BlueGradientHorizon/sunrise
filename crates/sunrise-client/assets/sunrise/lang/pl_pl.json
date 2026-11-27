@@ -731,8 +731,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Gdzie pokazuje się prędkość.",
   "sunrise.pvp.hud_text_colour": "Kolor tekstu",
   "sunrise.pvp.hud_text_colour.tooltip": "Kolor tekstu widżetów. Wytrzymałość zachowuje przejście od zieleni do czerwieni.",
-  "sunrise.pvp.numeric_enchants": "Poziomy zaklęć jako liczby",
-  "sunrise.pvp.numeric_enchants.tooltip": "Podpowiedzi i stół zaklęć pokazują Ostrze 5 zamiast Ostrza V.",
   "sunrise.pvp.outline": "Własny obrys bloku",
   "sunrise.pvp.outline.tooltip": "Zmienia obrys wokół bloku, na który patrzysz.",
   "sunrise.pvp.outline_colour": "Kolor",

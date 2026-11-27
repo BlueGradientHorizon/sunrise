@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Kur rādās ātrums.",
   "sunrise.pvp.hud_text_colour": "Teksta krāsa",
   "sunrise.pvp.hud_text_colour.tooltip": "Logrīku teksta krāsa. Izturība saglabā pāreju no zaļas uz sarkanu.",
-  "sunrise.pvp.numeric_enchants": "Burvestību līmeņi kā skaitļi",
-  "sunrise.pvp.numeric_enchants.tooltip": "Rīkpadomi un burvestību galds rāda Asums 5, nevis Asums V.",
   "sunrise.pvp.outline": "Pielāgota bloka kontūra",
   "sunrise.pvp.outline.tooltip": "Maina kontūru ap bloku, uz kuru skatāties.",
   "sunrise.pvp.outline_colour": "Krāsa",

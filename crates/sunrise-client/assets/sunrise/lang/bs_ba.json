@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Gdje se prikazuje brzina.",
   "sunrise.pvp.hud_text_colour": "Boja teksta",
   "sunrise.pvp.hud_text_colour.tooltip": "Boja teksta vidžeta. Trajnost zadržava prelaz iz zelene u crvenu.",
-  "sunrise.pvp.numeric_enchants": "Nivoi čaranja kao brojevi",
-  "sunrise.pvp.numeric_enchants.tooltip": "Opisi i sto za čaranje prikazuju Oštrinu 5 umjesto Oštrine V.",
   "sunrise.pvp.outline": "Prilagođena kontura bloka",
   "sunrise.pvp.outline.tooltip": "Mijenja konturu oko bloka kojeg gledate.",
   "sunrise.pvp.outline_colour": "Boja",

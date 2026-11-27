@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Где се брзина приказује.",
   "sunrise.pvp.hud_text_colour": "Боја текста",
   "sunrise.pvp.hud_text_colour.tooltip": "Боја текста виџета. Трајност задржава прелаз од зелене до црвене.",
-  "sunrise.pvp.numeric_enchants": "Нивои зачарања као бројеви",
-  "sunrise.pvp.numeric_enchants.tooltip": "Савети и сто за зачаравање приказују Оштрину 5 уместо Оштрине V.",
   "sunrise.pvp.outline": "Прилагођени оквир блока",
   "sunrise.pvp.outline.tooltip": "Мења оквир око блока који гледате.",
   "sunrise.pvp.outline_colour": "Боја",

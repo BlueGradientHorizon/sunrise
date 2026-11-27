@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "رفتار کہاں دکھتی ہے۔",
   "sunrise.pvp.hud_text_colour": "متن کا رنگ",
   "sunrise.pvp.hud_text_colour.tooltip": "ویجٹس کے متن کا رنگ۔ پائیداری اپنا سبز سے سرخ رکھتا ہے۔",
-  "sunrise.pvp.numeric_enchants": "اینچنٹمنٹ لیولز بطور عدد",
-  "sunrise.pvp.numeric_enchants.tooltip": "ٹول ٹپس اور اینچنٹنگ ٹیبل Sharpness V کے بجائے Sharpness 5 دکھاتے ہیں۔",
   "sunrise.pvp.outline": "حسب ضرورت بلاک آؤٹ لائن",
   "sunrise.pvp.outline.tooltip": "آپ جس بلاک کو دیکھ رہے ہیں اس کے گرد آؤٹ لائن بدلتا ہے۔",
   "sunrise.pvp.outline_colour": "رنگ",

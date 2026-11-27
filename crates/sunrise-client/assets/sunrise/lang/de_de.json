@@ -729,8 +729,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Wo die Geschwindigkeit angezeigt wird.",
   "sunrise.pvp.hud_text_colour": "Textfarbe",
   "sunrise.pvp.hud_text_colour.tooltip": "Die Textfarbe der Widgets. Die Haltbarkeit behält ihr Grün bis Rot.",
-  "sunrise.pvp.numeric_enchants": "Verzauberungsstufen als Zahlen",
-  "sunrise.pvp.numeric_enchants.tooltip": "Tooltips und der Zaubertisch zeigen Schärfe 5 statt Schärfe V.",
   "sunrise.pvp.outline": "Benutzerdefinierte Blockumrandung",
   "sunrise.pvp.outline.tooltip": "Ändert die Umrandung um den Block, den du ansiehst.",
   "sunrise.pvp.outline_colour": "Farbe",

@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Хурд хаана харагдахыг тохируулна.",
   "sunrise.pvp.hud_text_colour": "Текстийн өнгө",
   "sunrise.pvp.hud_text_colour.tooltip": "Виджетийн текстийн өнгө. Бат бөх нь ногооноос улаан хэвээр.",
-  "sunrise.pvp.numeric_enchants": "Ид шидийн түвшинг тоогоор",
-  "sunrise.pvp.numeric_enchants.tooltip": "Зөвлөмж болон ид шидийн ширээ Sharpness V-ийн оронд Sharpness 5 харуулна.",
   "sunrise.pvp.outline": "Захиалгат блокийн хүрээ",
   "sunrise.pvp.outline.tooltip": "Харж буй блокийн эргэн тойрны хүрээг өөрчилнө.",
   "sunrise.pvp.outline_colour": "Өнгө",

@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Kje se prikaže hitrost.",
   "sunrise.pvp.hud_text_colour": "Barva besedila",
   "sunrise.pvp.hud_text_colour.tooltip": "Barva besedila pripomočkov. Trajnost ohrani prehod od zelene do rdeče.",
-  "sunrise.pvp.numeric_enchants": "Stopnje začaranosti kot številke",
-  "sunrise.pvp.numeric_enchants.tooltip": "Namigi in miza za začaranje prikažejo Ostrost 5 namesto Ostrost V.",
   "sunrise.pvp.outline": "Obris bloka po meri",
   "sunrise.pvp.outline.tooltip": "Spremeni obris okoli bloka, v katerega gledate.",
   "sunrise.pvp.outline_colour": "Barva",

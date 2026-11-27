@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Ble mae'r cyflymder yn ymddangos.",
   "sunrise.pvp.hud_text_colour": "Lliw testun",
   "sunrise.pvp.hud_text_colour.tooltip": "Lliw testun y teclynnau. Mae gwydnwch yn cadw ei wyrdd i goch.",
-  "sunrise.pvp.numeric_enchants": "Lefelau hudoliaeth fel rhifau",
-  "sunrise.pvp.numeric_enchants.tooltip": "Mae awgrymiadau a'r bwrdd hudoliaeth yn dangos Miniogrwydd 5 yn lle Miniogrwydd V.",
   "sunrise.pvp.outline": "Amlinell bloc gyfaddas",
   "sunrise.pvp.outline.tooltip": "Yn newid yr amlinell o amgylch y bloc yr ydych yn edrych arno.",
   "sunrise.pvp.outline_colour": "Lliw",

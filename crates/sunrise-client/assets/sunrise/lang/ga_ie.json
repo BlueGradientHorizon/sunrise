@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Cá dtaispeántar an luas.",
   "sunrise.pvp.hud_text_colour": "Dath an téacs",
   "sunrise.pvp.hud_text_colour.tooltip": "Dath téacs na ngiuirléidí. Coinníonn marthanacht a glas go dearg.",
-  "sunrise.pvp.numeric_enchants": "Leibhéil draíochta mar uimhreacha",
-  "sunrise.pvp.numeric_enchants.tooltip": "Taispeánann leideanna uirlisí agus an tábla draíochta Géire 5 in ionad Géire V.",
   "sunrise.pvp.outline": "Imlíne bloc saincheaptha",
   "sunrise.pvp.outline.tooltip": "Athraíonn sé an imlíne timpeall an bhloic a bhféachann tú air.",
   "sunrise.pvp.outline_colour": "Dath",

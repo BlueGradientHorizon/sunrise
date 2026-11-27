@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Πού εμφανίζεται η ταχύτητα.",
   "sunrise.pvp.hud_text_colour": "Χρώμα κειμένου",
   "sunrise.pvp.hud_text_colour.tooltip": "Το χρώμα κειμένου των στοιχείων. Η ανθεκτικότητα κρατά το πράσινο έως κόκκινο.",
-  "sunrise.pvp.numeric_enchants": "Επίπεδα γοητείας ως αριθμοί",
-  "sunrise.pvp.numeric_enchants.tooltip": "Οι συμβουλές και το τραπέζι γοητείας δείχνουν Sharpness 5 αντί για Sharpness V.",
   "sunrise.pvp.outline": "Προσαρμοσμένο περίγραμμα μπλοκ",
   "sunrise.pvp.outline.tooltip": "Αλλάζει το περίγραμμα γύρω από το μπλοκ που κοιτάτε.",
   "sunrise.pvp.outline_colour": "Χρώμα",

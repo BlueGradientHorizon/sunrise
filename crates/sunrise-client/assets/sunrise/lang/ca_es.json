@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "On es mostra la velocitat.",
   "sunrise.pvp.hud_text_colour": "Color del text",
   "sunrise.pvp.hud_text_colour.tooltip": "El color del text dels ginys. La durabilitat manté el seu verd a vermell.",
-  "sunrise.pvp.numeric_enchants": "Nivells d'encantament com a números",
-  "sunrise.pvp.numeric_enchants.tooltip": "Els consells i la taula d'encantaments mostren Afilat 5 en lloc d'Afilat V.",
   "sunrise.pvp.outline": "Contorn de bloc personalitzat",
   "sunrise.pvp.outline.tooltip": "Canvia el contorn del bloc que mires.",
   "sunrise.pvp.outline_colour": "Color",

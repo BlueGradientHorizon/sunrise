@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "სად ჩანს სიჩქარე.",
   "sunrise.pvp.hud_text_colour": "ტექსტის ფერი",
   "sunrise.pvp.hud_text_colour.tooltip": "ვიჯეტების ტექსტის ფერი. გამძლეობა ინარჩუნებს მწვანიდან წითლამდე.",
-  "sunrise.pvp.numeric_enchants": "მოჯადოების დონეები რიცხვებით",
-  "sunrise.pvp.numeric_enchants.tooltip": "მინიშნებები და მოჯადოების მაგიდა აჩვენებს „სიმკვეთრე 5“-ს „სიმკვეთრე V“-ის ნაცვლად.",
   "sunrise.pvp.outline": "მორგებული ბლოკის კონტური",
   "sunrise.pvp.outline.tooltip": "ცვლის კონტურს ბლოკის გარშემო, რომელსაც უყურებთ.",
   "sunrise.pvp.outline_colour": "ფერი",

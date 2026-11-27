@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "Gdje se brzina prikazuje.",
   "sunrise.pvp.hud_text_colour": "Boja teksta",
   "sunrise.pvp.hud_text_colour.tooltip": "Boja teksta widgeta. Trajnost zadržava svoju boju od zelene do crvene.",
-  "sunrise.pvp.numeric_enchants": "Razine čarolija kao brojevi",
-  "sunrise.pvp.numeric_enchants.tooltip": "Opisi predmeta i stol za čarolije prikazuju Oštrinu 5 umjesto Oštrine V.",
   "sunrise.pvp.outline": "Prilagođeni obris bloka",
   "sunrise.pvp.outline.tooltip": "Mijenja obris oko bloka u koji gledate.",
   "sunrise.pvp.outline_colour": "Boja",

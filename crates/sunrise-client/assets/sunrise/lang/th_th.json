@@ -748,8 +748,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "ตำแหน่งที่ความเร็วแสดง",
   "sunrise.pvp.hud_text_colour": "สีข้อความ",
   "sunrise.pvp.hud_text_colour.tooltip": "สีข้อความของวิดเจ็ต ความทนทานยังคงไล่จากเขียวไปแดง",
-  "sunrise.pvp.numeric_enchants": "ระดับร่ายเวทเป็นตัวเลข",
-  "sunrise.pvp.numeric_enchants.tooltip": "ทูลทิปและโต๊ะร่ายเวทแสดง Sharpness 5 แทน Sharpness V",
   "sunrise.pvp.outline": "เส้นขอบบล็อกกำหนดเอง",
   "sunrise.pvp.outline.tooltip": "เปลี่ยนเส้นขอบรอบบล็อกที่คุณมอง",
   "sunrise.pvp.outline_colour": "สี",

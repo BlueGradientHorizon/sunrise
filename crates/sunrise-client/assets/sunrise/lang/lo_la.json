@@ -728,8 +728,6 @@
   "sunrise.pvp.hud_speed_corner.tooltip": "ບ່ອນທີ່ຄວາມໄວສະແດງ.",
   "sunrise.pvp.hud_text_colour": "ສີຂໍ້ຄວາມ",
   "sunrise.pvp.hud_text_colour.tooltip": "ສີຂໍ້ຄວາມຂອງວິດເຈັດ. ຄວາມທົນທານຍັງຄົງສີຂຽວຫາສີແດງ.",
-  "sunrise.pvp.numeric_enchants": "ລະດັບຄາຖາເປັນຕົວເລກ",
-  "sunrise.pvp.numeric_enchants.tooltip": "ຄຳແນະນຳ ແລະ ໂຕະຄາຖາສະແດງ Sharpness 5 ແທນ Sharpness V.",
   "sunrise.pvp.outline": "ເສັ້ນຂອບບຼັອກກຳນົດເອງ",
   "sunrise.pvp.outline.tooltip": "ປ່ຽນເສັ້ນຂອບອ້ອມບຼັອກທີ່ທ່ານເບິ່ງຢູ່.",
   "sunrise.pvp.outline_colour": "ສີ",
