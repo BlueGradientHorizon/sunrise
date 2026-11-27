@@ -236,3 +236,40 @@ the full list.
   on its own: the key may name another dimension folder's shader.
 - **Tests:** `post::indirect_tests` (`sunrise-shaders`) and the daily
   `gfx::pack_post::indirect_dispatch_tests` (`sunrise-client-render`).
+
+## D-12: which boss event `bossBattle` gives
+
+- **Open point:** spec rev 1, 5.2, line 699 gives `bossBattle` as an `int`, "1 custom, 2 ender dragon, 3 wither,
+  4 raid", updated every frame. It doesn't say what it reads with no boss event, which event counts when several
+  bars are shown, or how the game tells the kinds apart. It is not one of section 9's open questions. A client knows
+  only the boss bars the server sends (`ClientboundBossEventPacket`): a name, a progress, a colour, an overlay and
+  the darken-screen, boss-music and world-fog flags. No field names the kind.
+- **Decision:** 0 while the client shows no boss bar. Otherwise each bar is matched against the colour, overlay and
+  flags vanilla 26.3 creates each event with: `EnderDragonFight`'s `dragonEvent` (pink, progress, boss music and
+  world fog) is 2, `WitherBoss`'s `bossEvent` (purple, progress, darken screen) is 3, and `Raid`'s `raidEvent` (red,
+  10 notches, no flags) is 4 when its name is also one of the titles `Raid` gives it: `event.minecraft.raid` alone,
+  the same followed by `" - "` and `event.minecraft.raid.raiders_remaining` with one argument (one or two raiders
+  left), `event.minecraft.raid.victory.full` or `event.minecraft.raid.defeat.full`, each a translatable component
+  with nothing else set. Any other bar is 1 (custom). All five fields must match; the dragon's and wither's names
+  are not read. The value is the kind of the first bar, in the order the bars show (the order their add packets
+  arrived), that is not custom, else 1 when only custom bars are shown. It is read from the client's bars each
+  frame, so a removed bar or a cleared overlay (leaving the world or the server) counts from the next frame. Bars
+  the screen has no room for, or that the HUD doesn't draw (F1), still count.
+- **Reason:** the bars are the only boss state a client has, and vanilla never changes those five fields after it
+  creates the three events (only their name, progress and visibility), so the match holds for the whole event. The
+  dragon's and wither's names are left out because either takes a custom name, and `/bossbar` can't set the
+  darken-screen, boss-music or world-fog flags (`BossBarCommands` has setters for name, colour, style, value, max,
+  visibility and players only), so those two signatures need no name. A raid's flags are all off,
+  as a new `/bossbar`'s are, and `/bossbar set ... color red` and `style notched_10` give its colour and overlay, so
+  its name is checked too; `Raid` sets no other name outside its debug mode (`SharedConstants.DEBUG_RAIDS`). A custom bar that copies a signature still reads as that
+  kind: a mod's bar, a saved custom bar's data or a server's own boss event can set any flags, and a server can send a bar with the raid's
+  exact title (a `/bossbar` named `{"translate":"event.minecraft.raid"}`), so on a remote server such a bar stays
+  ambiguous; nothing a client receives tells them apart. A custom bar is skipped while a boss bar is shown, so a
+  server's standing custom bar does not hide a fight from the pack; between two boss bars the first shown wins, as
+  it is the top one on screen.
+- **Tests:** `boss_overlay::tests::boss_battle_*` (`sunrise-client-lib`: each kind, none, the fields one by one,
+  names, the raid's titles and ordinary red notched bars, ordinals past the enum, several bars, removal, style and
+  flag updates), `pack_uniforms::boss_battle_test::*`
+  (`sunrise-render-shaderpack`: the value and its type, in programs and in custom uniforms) and the daily
+  `game::client_side::boss_battle_tests::boss_battle_follows_the_servers_boss_bars` (`sunrise-client-gameplay`: packets to the frame's
+  inputs).
