@@ -38,3 +38,13 @@ def merge_pull_request(root, base, tracked, main_change, pr_change):
     main = git("rev-parse", "HEAD")
     git(*identity, "merge", "--no-ff", "-q", "-m", "Merge the pull request", "pull-request")
     return pr, main
+
+
+def decoy_git_env(folder):
+    """Simulate a caller with its own clean, disposable checkout selected."""
+    folder.mkdir()
+    git = git_in(folder)
+    git("init", "-q", "-b", "main")
+    git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+        "commit", "-qm", "decoy", "--allow-empty")
+    return isolated_git_env(GIT_DIR=str(folder / ".git"), GIT_WORK_TREE=str(folder))

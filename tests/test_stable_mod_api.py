@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.git_fixture import git_in
+from tests.git_fixture import git_in, isolated_git_env
 from tools.ci import nightly
 
 PREVIOUS = "26.3-0.1.10"
@@ -519,7 +519,11 @@ class StableModApiTests(unittest.TestCase):
             git("merge", "--no-ff", "main", "-m", "bring in main")
             imported = git("rev-parse", "HEAD")
         git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
-        with chdir(checkout), mock.patch.object(nightly, "REPOSITORY", checkout):
+        with (
+            chdir(checkout),
+            mock.patch.object(nightly, "REPOSITORY", checkout),
+            mock.patch.dict("os.environ", isolated_git_env(), clear=True),
+        ):
             tag = "26.3-0.1.11"
             nightly.require_stable_lineage(candidate, tag, previous, PREVIOUS)
             self.assertEqual(nightly.git("rev-parse", "--is-shallow-repository"), "false")
@@ -547,7 +551,11 @@ class StableModApiTests(unittest.TestCase):
             git("commit", "--allow-empty", "-m", "another release fix")
             candidate = git("rev-parse", "HEAD")
         git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
-        with chdir(checkout), mock.patch.object(nightly, "REPOSITORY", checkout):
+        with (
+            chdir(checkout),
+            mock.patch.object(nightly, "REPOSITORY", checkout),
+            mock.patch.dict("os.environ", isolated_git_env(), clear=True),
+        ):
             nightly.require_stable_lineage(candidate, "26.3-0.1.11", previous, PREVIOUS)
 
     def test_stable_mod_api_command_requires_a_full_commit_sha(self):
@@ -611,13 +619,27 @@ class JudgeBuildTests(unittest.TestCase):
             repo = work / "repo"
             repo.mkdir()
             git = git_in(repo)
-            git("init", "-q")
-            (repo / "a.txt").write_text("a\n")
-            git("add", "a.txt")
-            git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a")
-            with mock.patch.object(nightly, "REPOSITORY", repo):
-                nightly.unpack("HEAD", work / "tree")
-            self.assertEqual((work / "tree" / "a.txt").read_text(), "a\n")
+            tree = work / "tree"
+            with mock.patch.dict(nightly.os.environ, isolated_git_env(), clear=True), \
+                    mock.patch.object(nightly, "REPOSITORY", repo):
+                git("init", "-q")
+                git("config", "user.name", "Release Test")
+                git("config", "user.email", "release-test@example.invalid")
+                (repo / "a.txt").write_text("parent\n")
+                git("add", "a.txt")
+                git("commit", "-qm", "parent")
+                parent = git("rev-parse", "HEAD")
+
+                (repo / "a.txt").write_text("candidate\n")
+                (repo / "candidate-only.txt").write_text("tracked in candidate\n")
+                git("add", "a.txt", "candidate-only.txt")
+                git("commit", "-qm", "candidate")
+                (repo / "a.txt").write_text("dirty\n")
+                (repo / "worktree-only.txt").write_text("untracked\n")
+
+                nightly.unpack(parent, tree)
+            self.assertEqual({path.name for path in tree.iterdir()}, {"a.txt"})
+            self.assertEqual((tree / "a.txt").read_text(), "parent\n")
             self.assertEqual(len(git("worktree", "list").splitlines()), 1)
 
     def test_download_only_returns_assets_verified_under_their_tag(self):
