@@ -845,7 +845,7 @@ impl crate::game::ClientGame<'_> {
         let start = out.len();
         self.mark_player(start, !body_in_view);
         self.mark_motion(start, sunrise_gameplay_common::game::MOTION_OWN_PLAYER);
-        self.player_model_geometry(camera, self.own_player_alpha(), out);
+        self.player_model_geometry(camera, self.common.clock.camera_fraction(), out);
         // A native pack's shadow pass alone gets the first-person model (no per-entity draws).
         if self.client.pack_ids.is_none() && !body_in_view {
             self.client
