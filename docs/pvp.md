@@ -18,35 +18,6 @@ Each feature is built from what it visibly does, never from another client's or 
 | Settings rows | `extras::rows()` includes `pvp::rows()` on Gameplay |
 | Game glue | `crates/sunrise-client-gameplay/src/game/entities/pvp.rs` |
 
-## Crosshair (`crosshair`, default off)
-
-- Shape (cross, T, X, circle, square, dot only), arm size 1-12, gap 0-8, thickness 1-4 GUI pixels, a
-  colour (Inverted, as vanilla's crosshair blends, or a solid one), a black outline and a centre dot.
-- Its first settings draw vanilla's crosshair: a 15-pixel cross, one pixel thick, inverting what is under it.
-- Colour on entities: another colour while the crosshair is on a living entity, the same target vanilla's
-  attack indicator reads (`crosshairPickEntity`).
-- The attack indicator, the F3 axes and the spectator rules stay vanilla's; only the sprite is replaced.
-- Cost: the pixels are worked out once per settings change (`CrosshairCache`); a frame adds a few quads.
-
-## Block outline (`outline`, default off)
-
-- Colour (solid), opacity 10-100%, thickness 1-4 times vanilla's width, and an optional fill that tints the
-  targeted block's faces at 25%. Turned on, its first settings are vanilla's: black at 40%, vanilla's width.
-- With Accessibility's high contrast outline, the colour replaces the bright stroke and the black one stays.
-- Under a shader pack whose line program widens its own line (Complementary Reimagined), the bright stroke takes
-  the pack's width and the thickness doesn't apply to it. The high contrast outline's black stroke still shows
-  around it, wider by as much as the game draws it wider: (7 minus vanilla's width) times the thickness.
-- The fill draws each box of the block's shape (`getShape`, the boxes the outline's edges come from) as
-  translucent faces after translucent terrain, 0.002 out from the block. Only while the outline shows.
-- Cost: the stroke is vanilla's draw with another colour and width; the fill adds at most a few dozen quads.
-
-## Hit colour (`hit`, default off)
-
-- The colour hurt mobs and players flash, and how much of it covers them (0-100%). Its first settings are
-  vanilla's: `OverlayTexture`'s red over 30%.
-- The texel rides in the frame's uniforms (`colored_count.y`, 0 for vanilla's), so changing it costs nothing.
-- Shader packs keep vanilla's red (`pack_entities::entity_color`).
-
 ## Chat (each default off)
 
 | Option | Key | What it does |
