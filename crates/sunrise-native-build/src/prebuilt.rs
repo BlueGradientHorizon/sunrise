@@ -745,7 +745,7 @@ impl Route {
 /// folder, refusing either when it is a link (a symlink or a Windows junction) or resolves outside
 /// its parent: the build clears folders inside `out`, and must never reach a folder elsewhere
 /// through it.
-fn own_folder(builds: &Path, out: &Path) -> Result<(), String> {
+pub(super) fn own_folder(builds: &Path, out: &Path) -> Result<(), String> {
     let work = builds
         .parent()
         .ok_or_else(|| format!("{}: no work folder above it", builds.display()))?;
@@ -755,7 +755,8 @@ fn own_folder(builds: &Path, out: &Path) -> Result<(), String> {
         let inside = || -> std::io::Result<bool> {
             Ok(fs::canonicalize(dir)?.parent() == Some(fs::canonicalize(parent)?.as_path()))
         };
-        if meta.file_type().is_symlink() || !meta.is_dir() || !inside().unwrap_or(false) {
+        if super::crates::is_link_or_junction(&meta) || !meta.is_dir() || !inside().unwrap_or(false)
+        {
             return Err(format!(
                 "{}: not a folder of its own under {}; remove it and build again",
                 dir.display(),
