@@ -83,18 +83,16 @@ macro_rules! world_stations {
         }
     };
 }
-/// The block-state tables a level view hands to a part, as field-level borrows: the game's own,
-/// with the side's suffocation rules and item table (`GameItems::level_suffocation`,
-/// `GameItems::items`) taken once as the view is built, so the reads a world's data packs change
-/// answer in a level callback as through the side's `Host`.
+/// The block-state tables a level view hands to a part, as field-level borrows of a side game
+/// (`$s: SideGame`): the game's own, with the side's suffocation rules and item table
+/// (`GameItems::level_suffocation`, `GameItems::items`) taken once as the view is built, so the
+/// reads a world's data packs change answer in a level callback as through the side's `Host`.
+/// A side macro that holds only the common state builds the same from its side's fields.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! world_block_tables {
     ($s:expr) => {{
-        let world = $crate::game::Side::world_tables({
-            use $crate::game::SideGame as _;
-            ($s).side_state()
-        });
+        let world = $crate::game::Side::world_tables($crate::game::SideGame::side_state($s));
         $crate::game::native_block_tables::BlockTables::new(&$s.res, &$s.pack).with_side_tables(
             $crate::game::level_suffocation_of(world, &$s.res),
             match (&$s.server_items, world) {
@@ -209,17 +207,20 @@ macro_rules! game_side {
                 )
             } else {
                 session_lock.then(|| $s.res.items())
-            }
+            },
+            $crate::world_block_tables!($s)
         )
     }};
-    ($s:expr, $meta:expr, $features:expr, $tags:expr) => {{
+    // `$s` is the common state here; `$tables` is the side's `BlockTables` view
+    // (`world_block_tables!` or a side macro's own).
+    ($s:expr, $meta:expr, $features:expr, $tags:expr, $tables:expr) => {{
         let (player_uuid, level, _session_lock): (Option<u128>, Option<mod_api::LevelRef>, bool) =
             $meta;
         $crate::game::native_surface::GameSide {
             dim: $s.dim,
             level,
             facts: $s.res.facts(),
-            tables: $crate::world_block_tables!($s),
+            tables: $tables,
             biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $features,

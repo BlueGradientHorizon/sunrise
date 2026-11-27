@@ -80,6 +80,10 @@ pub(crate) fn burn_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i
             sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(
                 state,
                 &common.res
+            ),
+            sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
+                &common.res,
+                &common.pack
             )
         );
         let mut w = MotionWorld {

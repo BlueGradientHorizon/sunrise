@@ -58,6 +58,10 @@ pub(crate) mod player_status_tests {
                 sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(
                     &game.client,
                     &game.common.res,
+                ),
+                sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
+                    &game.common.res,
+                    &game.common.pack
                 )
             );
             let mut world = MotionWorld {

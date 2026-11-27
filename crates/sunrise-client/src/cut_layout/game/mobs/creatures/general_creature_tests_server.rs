@@ -115,7 +115,11 @@ fn ender_pearl_clears_impulse_before_next_fall() {
         common,
         (state.lan_acting_uuid(), level, state.session_lock_active()),
         state.side_level_features(common.level.enabled_features.as_arc()),
-        state.side_game_tag_items(&common.res)
+        state.side_game_tag_items(&common.res),
+        sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
+            &common.res,
+            &common.pack
+        )
     );
     let damaged = MotionWorld {
         side: &side,

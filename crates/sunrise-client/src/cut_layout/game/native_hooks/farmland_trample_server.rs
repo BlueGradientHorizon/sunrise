@@ -109,7 +109,11 @@ pub(crate) mod tests {
                                 game.common,
                                 (player_uuid, level, session_lock),
                                 game.common.level.enabled_features.as_arc(),
-                                session_lock.then(|| game.common.res.items())
+                                session_lock.then(|| game.common.res.items()),
+                                sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
+                                    &game.common.res,
+                                    &game.common.pack
+                                )
                             );
                             let items = match (
                                 &game.common.server_items,

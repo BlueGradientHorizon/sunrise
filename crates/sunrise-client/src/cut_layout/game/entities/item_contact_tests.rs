@@ -762,7 +762,8 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                         common,
                         (sunrise_gameplay_common::game::Side::lan_acting_uuid(state), level, false),
                         sunrise_gameplay_common::game::side_ops::tables::SideOps::side_level_features(state, common.level.enabled_features.as_arc()),
-                        sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(state, &common.res)
+                        sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(state, &common.res),
+                        sunrise_gameplay_common::game::native_block_tables::BlockTables::new(&common.res, &common.pack)
                     );
                     let mut motion = MotionWorld {
                         side: &side,
@@ -1525,7 +1526,8 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                         common,
                         (sunrise_gameplay_common::game::Side::lan_acting_uuid(state), level, false),
                         sunrise_gameplay_common::game::side_ops::tables::SideOps::side_level_features(state, common.level.enabled_features.as_arc()),
-                        sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(state, &common.res)
+                        sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(state, &common.res),
+                        sunrise_gameplay_common::game::native_block_tables::BlockTables::new(&common.res, &common.pack)
                     );
                     let mut world = MotionWorld {
                         player: common.player.as_mut().unwrap(),

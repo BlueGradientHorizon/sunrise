@@ -61,7 +61,11 @@ fn replayed_landing_reads_restitution_again_and_moves_identically() {
                     game.common,
                     meta,
                     game.common.level.enabled_features.as_arc(),
-                    meta.2.then(|| game.common.res.items())
+                    meta.2.then(|| game.common.res.items()),
+                    sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
+                        &game.common.res,
+                        &game.common.pack
+                    )
                 );
                 let mut world = MotionWorld {
                     side: &side,
