@@ -463,9 +463,6 @@ impl crate::game::ClientGame<'_> {
     }
     /// A translated mouse mapping (`Left` = attack, `Right` = use, `Middle` = middle pair) while playing.
     pub fn play_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
-        if pressed {
-            self.pvp_click(button);
-        }
         if self.common.sleeping.is_some() {
             return Ok(());
         }

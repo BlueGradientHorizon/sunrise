@@ -74,7 +74,7 @@ fn general_keeps_only_sunrises_preset_and_brightness_is_a_display_setting() {
 fn a_page_of_one_group_shows_no_group_name() {
     let s = Settings::default();
     let mut shell = Shell::<SunriseScreen>::default();
-    for tab in [Tab::PackOptions, Tab::Tools, Tab::Extras] {
+    for tab in [Tab::PackOptions, Tab::Tools] {
         shell.show(tab);
         let (lines, _) = shell.lines_at(&s, SIZE);
         assert_eq!(lines[0].group.map(|g| g.0), Some(""), "{tab:?}");

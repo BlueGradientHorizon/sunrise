@@ -219,10 +219,9 @@ pub struct FogInputs<'a> {
     pub boss_world_fog: bool,
     /// The camera entity is a spectator (`LavaFogEnvironment`).
     pub spectator: bool,
-    /// The camera entity has Fire Resistance (`LavaFogEnvironment`), or PvP & HUD's clear lava
-    /// asks for its fog.
+    /// The camera entity has Fire Resistance (`LavaFogEnvironment`).
     pub fire_resistance: bool,
-    /// PvP & HUD's clear water: the water vision `FogState` reaches after 600 ticks under water.
+    /// A camera following another entity uses full water vision instead of the local player's ramp.
     pub full_water_vision: bool,
     /// `GameRenderer.nightVisionScale` while Night Vision is on without
     /// Darkness, else 0 (`FogRenderer.computeFogColor`'s brightenFactor).
@@ -863,7 +862,7 @@ mod tests {
         assert_eq!(s.water_vision(false), 0.0);
     }
     #[test]
-    fn clear_water_sees_as_far_as_after_thirty_seconds_under_water() {
+    fn nonlocal_camera_uses_full_water_vision() {
         let sky = Sky::default();
         let tables = FogTables {
             water_fog_end: vec![1.0],

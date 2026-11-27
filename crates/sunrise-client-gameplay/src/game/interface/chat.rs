@@ -137,6 +137,8 @@ pub struct ChatUiState {
     pub chat_screen: Option<ChatScreen>,
     /// `ChatComponent.latestDraft`.
     pub chat_draft: Option<ChatDraft>,
+    /// Message text and draft state put aside while Ctrl+F is active.
+    chat_search_aside: Option<(String, bool)>,
     /// When the chat screen opened (its input took the focus: the cursor blink).
     pub chat_opened: Option<std::time::Instant>,
     /// The chat screen is `InBedChatScreen`: the sleeper's, with a Leave Bed button.
@@ -469,9 +471,9 @@ impl crate::game::ClientGame<'_> {
     /// sent); blank text discards the draft. A draft still shown unchanged
     /// stays as it is.
     fn keep_chat_draft(&mut self, text: &str, is_draft: bool, reason: ChatExit) {
-        // During PvP & HUD's chat search the box holds the query: the draft is the text the
+        // During chat search the box holds the query: the draft is the text the
         // search put aside, whichever way the chat closed.
-        let aside = self.client.pvp.chat_search_aside.take();
+        let aside = self.client.chat_ui.chat_search_aside.take();
         let (text, is_draft) = aside.as_ref().map_or((text, is_draft), |(text, is_draft)| {
             (text.as_str(), *is_draft)
         });
@@ -504,7 +506,7 @@ impl crate::game::ClientGame<'_> {
             let typed = self.client.chat_ui.chat_screen.as_ref().and_then(|screen| {
                 let (text, is_draft) = self
                     .client
-                    .pvp
+                    .chat_ui
                     .chat_search_aside
                     .as_ref()
                     .map_or((screen.value(), screen.is_draft()), |(text, is_draft)| {
@@ -661,12 +663,12 @@ impl crate::game::ClientGame<'_> {
         // while a screen is open.
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
-        // PvP & HUD's chat search: Ctrl+F starts and stops it, Enter stops it (sends nothing).
-        if self.pvp_chat().search
+        // chat search: Ctrl+F starts and stops it, Enter stops it (sends nothing).
+        if self.client.settings.extras.chat.search
             && match key {
                 KeyCode::KeyF => ctrl,
                 KeyCode::Enter | KeyCode::NumpadEnter => {
-                    self.client.pvp.chat_search_aside.is_some()
+                    self.client.chat_ui.chat_search_aside.is_some()
                 }
                 _ => false,
             }
@@ -907,8 +909,8 @@ impl crate::game::ClientGame<'_> {
                     cursor.1 as f64,
                 )
             });
-        // PvP & HUD's copy on click: a message where the click has nothing else to do.
-        if self.pvp_chat().copy
+        // copy on click: a message where the click has nothing else to do.
+        if self.client.settings.extras.chat.copy
             && !self.has_shift_down()
             && style.as_ref().is_none_or(|s| s.click.is_none())
             && let Some(message) =
@@ -1142,16 +1144,16 @@ impl crate::game::ClientGame<'_> {
             self.run_client_native_command(command);
         }
     }
-    /// PvP & HUD's chat search on or off. The box holds the query: what was typed is put aside
+    /// chat search on or off. The box holds the query: what was typed is put aside
     /// when the search starts and comes back when it stops.
     fn toggle_chat_search(&mut self) {
         let Some(screen) = self.client.chat_ui.chat_screen.as_mut() else {
             return;
         };
-        let next = if let Some((text, _)) = self.client.pvp.chat_search_aside.take() {
+        let next = if let Some((text, _)) = self.client.chat_ui.chat_search_aside.take() {
             text
         } else {
-            self.client.pvp.chat_search_aside =
+            self.client.chat_ui.chat_search_aside =
                 Some((screen.value().to_owned(), screen.is_draft()));
             String::new()
         };
@@ -1165,7 +1167,7 @@ impl crate::game::ClientGame<'_> {
     /// Chat lines over the HUD (focused while the chat screen is open).
     pub(in crate::game) fn draw_chat(&mut self, batch: &mut HudBatch) {
         let focused = self.client.screen == Screen::Chat;
-        let options = self.pvp_chat();
+        let options = self.client.settings.extras.chat;
         self.client
             .chat_ui
             .chat
@@ -1173,11 +1175,11 @@ impl crate::game::ClientGame<'_> {
         // A search ends with its option; a chat closed some other way ends it in keep_chat_draft.
         if self.client.chat_ui.chat_screen.is_none() {
             // The chat went without closing (leaving the world): nothing to give back.
-            self.client.pvp.chat_search_aside = None;
-        } else if self.client.pvp.chat_search_aside.is_some() && !options.search {
+            self.client.chat_ui.chat_search_aside = None;
+        } else if self.client.chat_ui.chat_search_aside.is_some() && !options.search {
             self.toggle_chat_search();
         }
-        let searching = focused && self.client.pvp.chat_search_aside.is_some();
+        let searching = focused && self.client.chat_ui.chat_search_aside.is_some();
         let query = self
             .client
             .chat_ui

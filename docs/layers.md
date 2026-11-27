@@ -37,7 +37,7 @@ Credits:
   ([arismoko/horizon](https://github.com/arismoko/horizon), arismoko/horizon#1608). Also the idea of shipping
   Sunrise's own parts from another repository as a launcher plugin.
 - **Martipops** (controllers, splitscreen): the compositor's place in the engine, and where controllers,
-  splitscreen, PvP & HUD and a UI page API go.
+  splitscreen and a UI page API go.
 - **Contributors at the 2026-11-08 stage:** the single list of addresses, sponsors in the
   Sunrise layer, a platform that exposes what vanilla already uses, and extras as native mods.
 
@@ -136,24 +136,23 @@ exposes. Ports to consoles and handhelds need them, and other projects can build
 - **UI pages:** a general API for pages a mod, a port or the Sunrise layer adds (the settings shell, its rows,
   search and undo, today `settings_shell.rs` and `extras_ui.rs`'s pages). The engine exposes screens: open one, draw on
   the GUI layer, take input and focus. The platform gives the page API stable types (as #1608 does for the mod
-  API). Sunrise Settings, the controller pages and the PvP & HUD page all become clients of it.
-- **PvP & HUD:** the HUD widget framework (placing, sizing and toggling HUD elements: `hud_kit.rs` and `hud_kit/`,
-  `extras_hud.rs`, `game/hud_room.rs`, `game/hud_editor.rs`) is platform. `hud_layout.rs` is vanilla's `Hud` as draw
-  calls, which the parity fixture compares with the vanilla client: engine, like `hud_overlays.rs`. The PvP presets and Sunrise's own widgets (keystrokes, CPS, reach readout, `pvp.rs`, `pvp_hud.rs`)
-  are Sunrise extras, and candidates to become native mods.
+  API). Sunrise Settings and the controller pages become clients of it.
+- **HUD layout:** the HUD layout helpers (`hud_kit.rs` and `hud_kit/`, `extras_hud.rs`, `game/hud_room.rs`)
+  are platform. `hud_layout.rs` is vanilla’s `Hud` as draw calls, which the parity fixture compares with
+  the vanilla client: engine, like `hud_overlays.rs`.
 
 ## Sunrise
 
 Sunrise's own extras and its product, and every built-in address of an outside service vanilla doesn't contact.
 
-- **Belongs:** Sunrise's extras (zoom, Mouse Tweaks, sorting, smooth chat, the PvP & HUD presets and widgets, the
-  music page, keystrokes, auto-reconnect...), Play with Friends and its relay, Discord, the "I'm playing" ping,
+- **Belongs:** Sunrise's extras (zoom, Mouse Tweaks, sorting, smooth chat, the
+  music page, auto-reconnect...), Play with Friends and its relay, Discord, the "I'm playing" ping,
   telemetry and benchmark uploads, releases and updates, the hosting supervisor, the launcher.
 - **Examples:** `sunrise-addresses`, `sunrise-friends`, `sunrise-relay`, `sunrise-telemetry`,
   `sunrise-perf-share`, `sunrise-perf-overlay`, `sunrise-release-sign`, `sunrise-server`, `sunrise-mod-registry`,
   `sunrise-heartbeat`, `sunrise-official`, `sunrise-discord`, `sunrise-reconnect`, `https://github.com/sunrise-org/sunrise-launcher`. Still in
   engine crates today:
-  `game/extras.rs` and `game/extras/`, `extras_ui.rs`, `pvp.rs`.
+  `game/extras.rs` and `game/extras/`, `extras_ui.rs`, `chat_options.rs`.
 - **Rules:**
   - It uses the platform's public API only, never the engine.
   - Until it moves, every Sunrise feature in the game sits behind the `sunrise-extras` feature
@@ -177,7 +176,7 @@ The rule, in order (duckybertduck's):
 4. Everything else: **Sunrise**, or a native mod that players add themselves, since it can be built on what's below.
 
 A feature often splits along this rule: the part others build on is platform, and the finished feature on top of it
-is Sunrise (PvP & HUD, [above](#controllers-and-ui-pages)).
+is Sunrise or a native mod.
 
 The mod interface follows that split too: `sunrise-mod-vocab` is an engine crate, while
 `sunrise-mod-api` preserves the mod-facing paths through re-exports. The build-time generator
@@ -198,7 +197,6 @@ lookups; the platform owns profiling, resource access and Parts authoring. See t
 | Splitscreen | official native mod (planned) | removed from the engine and launcher; the mod will use the existing mod API and native patch route |
 | A render pipeline capability vanilla's path doesn't use but a higher layer can't add without rebuilding the pipeline (the compositor) | engine | `gfx.rs` and `gfx/`, doing nothing on vanilla's path |
 | A UI page others can add to, a HUD widget framework | platform | the page API, `hud_kit.rs` and `hud_kit/` |
-| A finished feature built on those (PvP presets) | Sunrise, or a native mod | behind `sunrise-extras` |
 | A Sunrise extra (a setting, screen or HUD element vanilla doesn't have) | Sunrise | its own module behind `sunrise-extras`, built on platform API; or an optional native mod that players add themselves |
 | Anything that talks to playsunrise.net or a third-party service by itself | Sunrise | a Sunrise crate, its address in `sunrise-addresses` |
 | Discord, telemetry, Play with Friends | Sunrise | `sunrise-discord`, `sunrise-telemetry`..., behind `sunrise-extras` |
@@ -399,7 +397,7 @@ pub enum Act { Press, PressBack, Slide(f32), Bind(String), Edit(String), Submit 
 pub fn connect(address: impl Into<String>);                   // from a Title page's act: join that server
 ```
 
-- `SunriseSettings`: a row on Sunrise Settings' Extras page, after PvP & HUD's, that opens the page.
+- `SunriseSettings`: a row on Sunrise Settings' Extras page that opens the page.
   `Title` and `Pause`: a button on the title screen or the pause menu that opens the page. These buttons
   exist only when something registered, so the vanilla menus keep vanilla's look. The page is drawn with the same widgets, tooltips,
   narration, controller focus and `sunrise-ctl` ids as the engine's pages.
@@ -433,7 +431,7 @@ pub trait Canvas {
     fn text_width(&self, text: &str) -> f32;
     fn text(&mut self, x: f32, y: f32, text: &str, argb: u32, shadow: bool);
     fn fill(&mut self, x: f32, y: f32, w: f32, h: f32, argb: u32);
-    /// A box of `w` × `h` in `corner`, stacked with the PvP widgets and mods' boxes;
+    /// A box of `w` × `h` in `corner`, stacked with other registered layers;
     /// `None` while the debug screen covers that corner.
     fn place(&mut self, corner: Corner, w: f32, h: f32) -> Option<(f32, f32)>;
 }
@@ -457,16 +455,11 @@ pub trait Layer: Sync {
 
 ### Look (`sunrise_platform::look`)
 
-What the engine draws differently for a crate above, as plain data: PvP & HUD's knobs today (#14217).
+What the engine draws differently for a crate above, as plain data: client presentation settings today (#14217).
 
 ```rust
 pub struct Look {       // #[non_exhaustive]; Default is vanilla's
-    pub legacy_pose: bool, pub hide_attack_indicator: bool,
-    pub mute_attack_sounds: bool, pub hide_attack_particles: bool,
-    pub frame: Frame,   // outline, hurt overlay and glint colours
-    pub shield_size: u8, pub totem_scale: f32, pub fire_lower: f32,
-    pub clear_lava: bool, pub clear_water: bool, pub chat: Chat,
-    pub hide_effect_icons: bool, pub time_of_day: Option<i64>, pub weather: Option<(f32, f32)>,
+    pub camera_name_tag: bool, pub chat: Chat,
 }
 pub fn update(change: impl FnOnce(&mut Look));  // the player whose turn it is (`seat()`)
 ```
@@ -630,10 +623,10 @@ plain data (id, name, version, authors, licence and its link, homepage, issues, 
 Sunrise's extras are Sunrise-layer code. Each one is a candidate to become an optional native mod that players add
 themselves, or stays a module linked into the official build, as auto-reconnect is (crate `sunrise-reconnect`). The list is here so new work doesn't add to them. See [extras.md](extras.md) for each one:
 
-- zoom (OptiFine-style), keystrokes and FPS overlays, own name tag;
+- zoom (OptiFine-style), own name tag;
 - Mouse Tweaks controls, sorting, scroll-wheel settings, smooth chat;
 - UI-sound channels, the music page;
-- the PvP & HUD presets and widgets, the AI agent page;
+- the AI agent page;
 - the Sunrise Settings menu itself, the advanced menu that hosts them;
 - the renderer's extras: fullbright, dynamic lights, hidden block-break particles;
 - chunk pregeneration.
