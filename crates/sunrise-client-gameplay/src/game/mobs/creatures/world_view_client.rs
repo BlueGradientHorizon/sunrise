@@ -180,15 +180,7 @@ impl crate::game::ClientGame<'_> {
             dim: self.common.dim,
             level,
             facts: self.common.res.facts(),
-            // The client's state holds no world tables: its suffocation rules and item table for
-            // the data-pack reads are the game's own, as `GameItems` gives them.
-            tables: BlockTables::new(&self.common.res, &self.common.pack).with_side_tables(
-                sunrise_gameplay_common::game::level_suffocation_of(None, &self.common.res),
-                self.common
-                    .server_items
-                    .as_deref()
-                    .unwrap_or_else(|| self.common.res.items()),
-            ),
+            tables: BlockTables::new(&self.common.res, &self.common.pack),
             biomes: match &self.common.world_biomes {
                 Some(b) => b,
                 None => self.common.res.biomes(),

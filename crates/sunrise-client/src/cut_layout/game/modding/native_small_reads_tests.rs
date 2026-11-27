@@ -566,11 +566,7 @@ fn client_player_state_reads_its_own_copy_only() {
                         game.common,
                         (None, level, false),
                         &remote.features,
-                        remote.tags.as_ref(),
-                        sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
-                            &game.common.res,
-                            &game.common.pack
-                        )
+                        remote.tags.as_ref()
                     );
                     let mut world = MotionWorld {
                         side: &side,

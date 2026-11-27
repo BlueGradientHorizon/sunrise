@@ -340,11 +340,7 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
                     common,
                     (state.lan_acting_uuid(), level, state.session_lock_active()),
                     state.side_level_features(common.level.enabled_features.as_arc()),
-                    state.side_game_tag_items(&common.res),
-                    sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
-                        &common.res,
-                        &common.pack
-                    )
+                    state.side_game_tag_items(&common.res)
                 );
                 let mut world = sunrise_sim::motion::MotionWorld {
                     side: &side,

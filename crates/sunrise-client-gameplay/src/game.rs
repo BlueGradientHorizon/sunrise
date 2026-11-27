@@ -48,20 +48,7 @@ macro_rules! client_game_side {
             $s.client
                 .remote
                 .as_ref()
-                .and_then(|remote| remote.tags.as_ref()),
-            // The client's state holds no world tables: its suffocation rules and item table
-            // for the data-pack reads are the game's own, as `GameItems` gives them.
-            sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
-                &$s.common.res,
-                &$s.common.pack,
-            )
-            .with_side_tables(
-                sunrise_gameplay_common::game::level_suffocation_of(None, &$s.common.res),
-                $s.common
-                    .server_items
-                    .as_deref()
-                    .unwrap_or_else(|| $s.common.res.items()),
-            )
+                .and_then(|remote| remote.tags.as_ref())
         )
     };
 }

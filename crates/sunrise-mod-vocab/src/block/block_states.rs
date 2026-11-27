@@ -546,8 +546,9 @@ impl BlockStates<'_> {
     /// the correct tool for `state`'s block (the first rule that sets `correct_for_drops` and
     /// names the block decides; no component or no such rule is false). The rules' block tags are,
     /// on the server, the open world's as its data packs bind them, through a host and inside a
-    /// level callback alike (the tags the game's own harvest reads); on the client, the game's
-    /// built-in tags until the client receives the world's tables (#6597). Reads only
+    /// block callback's level alike (the tags the game's own harvest reads); in a friction
+    /// part's level, the game's built-in tags (#ISSUE_FRICTION_TABLES); on the client, the
+    /// game's built-in tags until the client receives the world's tables (#6597). Reads only
     /// the stack: for the answer the game uses for a player, see
     /// `PlayerRef::has_correct_tool_for_drops`. None as for `replaceable`.
     pub fn is_correct_tool_for_drops(
@@ -737,9 +738,10 @@ impl BlockStates<'_> {
     /// alone: stone yes, glass and leaves no, a piston unless extended. It reads the suffocation
     /// rules [`LevelRef::state_is_suffocating`](crate::LevelRef::state_is_suffocating) reads. On
     /// the server those are the open world's, whose data packs' `#minecraft:causes_suffocation`
-    /// decides the default predicate, through a host and inside a level callback alike; on the
-    /// client they are the game's built-in rules until the client receives the world's tables
-    /// (#6597). None as for `replaceable`, and for a state whose answer
+    /// decides the default predicate, through a host and inside a block callback's level alike;
+    /// in a friction part's level they are the game's built-in rules (#ISSUE_FRICTION_TABLES);
+    /// on the client they are the game's built-in rules until the client receives the world's
+    /// tables (#6597). None as for `replaceable`, and for a state whose answer
     /// needs a position or a block entity (a closed shulker box, a shape a block entity publishes
     /// or an offset moves). For those, ask `LevelRef::state_is_suffocating` at a position, which
     /// also takes a state that is not placed there.

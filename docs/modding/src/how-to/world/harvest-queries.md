@@ -12,9 +12,9 @@ tool at all, the player, the position and every hook, so dirt answers `false` fo
 `None` for an unknown state.
 
 A rule's block tags (`#minecraft:mineable/pickaxe`) are, on the server, the open world's as its data packs
-bind them, the ones the game's own harvest reads, whether you ask through a host or inside a level
-callback. On the client they are the game's built-in tags until the client receives the world's tables
-(#6597).
+bind them, the ones the game's own harvest reads, whether you ask through a host or inside a block
+callback's level. A friction part's level reads the game's built-in tags (#ISSUE_FRICTION_TABLES).
+On the client they are the game's built-in tags until the client receives the world's tables (#6597).
 
 ## What the game uses for a player
 

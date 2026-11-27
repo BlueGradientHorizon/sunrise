@@ -3002,9 +3002,9 @@ pub(crate) mod tests {
     /// A world's data pack that replaces `#minecraft:causes_suffocation` and
     /// `#minecraft:mineable/pickaxe` changes the server's reads of those tables: both
     /// suffocation reads, the state alone and at a position, and the correct-tool read follow the
-    /// world's tables, which the server's state owns, through its host, inside a level callback
-    /// and through the side a motion tick lends a friction part. The client's host reads the
-    /// client's own tables, which hold no world's packs yet.
+    /// world's tables, which the server's state owns, through its host and inside a block
+    /// callback's level. The side a motion tick lends a friction part keeps the game's own
+    /// tables, and so does the client's host, whose state holds no world's packs yet.
     #[test]
     #[ignore = "daily"]
     fn a_world_pack_decides_the_hosts_table_reads_on_its_side() {
@@ -3121,7 +3121,9 @@ pub(crate) mod tests {
                     Some(true)
                 );
                 let world = [Some(false), Some(true), Some(false), Some(true)];
-                assert_eq!(views(game), [world, world]);
+                // A block callback's level follows the pack; the side a motion tick lends a
+                // friction part keeps the game's own tables (#ISSUE_FRICTION_TABLES).
+                assert_eq!(views(game), [world, own]);
                 // The client's host keeps the client's own tables.
                 assert_eq!(client.block_states().is_suffocating(stone), Some(true));
                 assert_eq!(

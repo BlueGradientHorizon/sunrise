@@ -49,23 +49,7 @@ macro_rules! server_game_side {
             (player_uuid, level, session_lock),
             $s.common.level.enabled_features.as_arc(),
             (session_lock && !$s.common.options.execution_role.is_client())
-                .then(|| $s.common.res.items()),
-            // The server's tables for the data-pack reads, taken from its fields once.
-            sunrise_gameplay_common::game::native_block_tables::BlockTables::new(
-                &$s.common.res,
-                &$s.common.pack,
-            )
-            .with_side_tables(
-                sunrise_gameplay_common::game::level_suffocation_of(
-                    $s.server.world_tables.0.as_ref(),
-                    &$s.common.res,
-                ),
-                match (&$s.common.server_items, $s.server.world_tables.0.as_ref()) {
-                    (Some(items), _) => &**items,
-                    (None, Some(t)) => &t.items,
-                    (None, None) => $s.common.res.items(),
-                },
-            )
+                .then(|| $s.common.res.items())
         )
     }};
 }
