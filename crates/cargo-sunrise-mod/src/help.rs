@@ -44,7 +44,7 @@ const COMMANDS: &[Command] = &[
         name: "hooks",
         everyday: true,
         usage: "hooks <text> [--all]",
-        summary: "Searches the pinned build's hooks, or with --all every item of its API, offline.",
+        summary: "Searches the pinned build's hooks, or with --all every item of its API, offline; reads the SDK that check has already fetched and verified in .sunrise/sdk/, and fetches or changes nothing.",
     },
     Command {
         name: "release",

@@ -8,13 +8,15 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 from unittest.mock import patch
 
-from tests.os_support import needs_runner_shell
+from tests.os_support import BASH, needs_runner_shell
 from tests.test_ci_concurrency import expression_value
 from tools.ci import pr_gate, vendored_yaml
 
@@ -248,7 +250,11 @@ class WorkflowTests(unittest.TestCase):
                 self.assertGreater(steps.index(checkout), 0)
                 self.assertEqual(checkout["with"]["ref"], "${{ needs.changes.outputs.pr_merge }}")
                 self.assertNotIn("outputs.pr_sha", self.job(name))
-                self.assertNotIn("permissions", jobs[name])
+                # verify-static reads the live pull request body for the launcher mirror check: read scopes only.
+                if name == "verify-static":
+                    self.assertEqual(jobs[name]["permissions"], {"contents": "read", "pull-requests": "read"})
+                else:
+                    self.assertNotIn("permissions", jobs[name])
         status = jobs["pr-status"]
         self.assertEqual(status["permissions"], {"statuses": "write"})
         self.assertEqual(status["if"], "always() && github.event_name == 'workflow_dispatch' && inputs.pr != '' && "
@@ -336,7 +342,7 @@ class WorkflowTests(unittest.TestCase):
         for same_repo, expected in (("false", "self_hosted=false"), ("true", "self_hosted=true")):
             env = {"PATH": os.environ["PATH"], "ENABLED": "true", "SAME_REPO": same_repo,
                    "EVENT": "workflow_dispatch", "LEASE": lease}
-            result = subprocess.run(["bash", ROOT / "tools/ci/dyna_ci_runner.sh"], env=env, capture_output=True,
+            result = subprocess.run([BASH, ROOT / "tools/ci/dyna_ci_runner.sh"], env=env, capture_output=True,
                                     text=True, check=True)
             self.assertEqual(result.stdout.strip(), expected, same_repo)
 
@@ -381,11 +387,12 @@ class WorkflowTests(unittest.TestCase):
         workflow = yaml.safe_load((ROOT / ".github/workflows/cargo-sunrise-mod-build.yml").read_text())
         step = next(step for step in workflow["jobs"]["plan"]["steps"] if step.get("id") == "platforms")
         def targets(event):
-            import tempfile
-            with tempfile.NamedTemporaryFile("r") as output:
-                subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, check=True,
-                               env={**os.environ, "EVENT_NAME": event, "GITHUB_OUTPUT": output.name})
-                return [platform["target"] for platform in json.loads(output.read().split("=", 1)[1])]
+            with tempfile.TemporaryDirectory() as folder:
+                output = Path(folder, "out")
+                script = step["run"].replace("python3 ", shlex.quote(Path(sys.executable).as_posix()) + " ")
+                subprocess.run([BASH, "-e", "-c", script], cwd=ROOT, check=True,
+                               env={**os.environ, "EVENT_NAME": event, "GITHUB_OUTPUT": output.as_posix()})
+                return [platform["target"] for platform in json.loads(output.read_text(encoding="utf-8").split("=", 1)[1])]
         self.assertEqual(targets("pull_request"), ["x86_64-unknown-linux-gnu"])
         from tools import sunrise_mod_binstall
         self.assertEqual(targets("workflow_dispatch"), [platform["target"] for platform in sunrise_mod_binstall.PLATFORMS])
