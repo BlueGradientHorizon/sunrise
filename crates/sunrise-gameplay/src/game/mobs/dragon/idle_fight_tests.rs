@@ -9,7 +9,6 @@
 //! its first tick scans; a level holding a ticket that keeps a dimension
 //! active resets `emptyTime` to 0 before the running tick counts it to 1, and
 //! an idle level counts on (2, 3, ... 299: 298 more fight ticks).
-use super::*;
 use crate::game::lan::LanSettings;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 use crate::game::server_travel::LevelTeleport;

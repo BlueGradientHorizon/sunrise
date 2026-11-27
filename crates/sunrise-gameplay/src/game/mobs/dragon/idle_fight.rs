@@ -4,7 +4,6 @@
 //! is in the level. Its player scan in that time is what takes a player who
 //! left the End off the dragon's boss bar (`updatePlayers`,
 //! `ServerBossEvent.removePlayer`).
-use super::*;
 use sunrise_gameplay_common::game::Dim;
 
 /// `ServerLevel.tick`: the level's entities and its fight tick while
