@@ -235,7 +235,7 @@ impl crate::game::ClientGame<'_> {
         };
         let at = [camera.x, camera.y, camera.z];
         let fog_type = self.camera_fog_type(at);
-        let (rain, thunder) = self.view_weather(self.common.clock.fraction() as f32);
+        let (rain, thunder) = self.weather_levels(self.common.clock.fraction() as f32);
         let title_fog = sunrise_client::fog::FogTables::default();
         let tables = if self.client.title.0.is_some() {
             &title_fog
@@ -260,7 +260,7 @@ impl crate::game::ClientGame<'_> {
         let fire_resistance = fog_effects.map_or_else(
             || self.common.potions.effects.get("fire_resistance").is_some(),
             |e| e.fire_resistance,
-        ) || (is_local && self.pvp_clear_fluids().0);
+        );
         let night_vision = fog_effects
             .map(|e| {
                 if e.darkness_blend.is_some() {
@@ -292,7 +292,7 @@ impl crate::game::ClientGame<'_> {
                 .as_ref()
                 .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator),
             fire_resistance,
-            full_water_vision: !is_local || self.pvp_clear_fluids().1,
+            full_water_vision: !is_local,
             night_vision,
             environment: self.client.client_pack.polytone_colors.env,
             fluid_fog: self.client.client_pack.polytone_colors.fluid_fog,
@@ -480,7 +480,6 @@ impl crate::game::ClientGame<'_> {
             block_overlay,
             water,
             on_fire: effects.on_fire && !effects.fire_suppressed,
-            fire_lower: self.pvp_fire_lower(),
             gui_overlays: &gui_overlays,
             custom: [&custom[0], &custom[1], &custom[2]],
         })
@@ -735,7 +734,7 @@ impl crate::game::ClientGame<'_> {
             eye[1].floor() as i32,
             eye[2].floor() as i32,
         ];
-        let rain = self.view_weather(1.0).0;
+        let rain = self.weather_levels(1.0).0;
         let biome = self
             .common
             .world
@@ -1153,8 +1152,8 @@ impl crate::game::ClientGame<'_> {
     /// time of day, the weather, and for expressions the packs' Polytone frame, or the time and
     /// weather alone when no Polytone pack makes one.
     fn update_animation_inputs(&mut self) {
-        let (rain, thunder) = self.view_weather(0.0);
-        let day_time = self.view_day_time();
+        let (rain, thunder) = self.weather_levels(0.0);
+        let day_time = self.common.world.day_time;
         let frame = self
             .client
             .client_pack
