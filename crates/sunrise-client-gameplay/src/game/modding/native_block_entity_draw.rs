@@ -2127,8 +2127,8 @@ impl crate::game::ClientGame<'_> {
     /// from its front), textured with the `uv` rectangle (u0, v0, u1, v1 in
     /// texels of 16 per side) of `sprite` (`mymod:entity/screen`,
     /// `mymod:block/casing`, `block/stone`) times the 0xRRGGBB `tint`
-    /// (0xFFFFFF for none). False, with nothing drawn, for an unknown sprite, a coordinate that
-    /// is not finite, or a quad the batch has no room for.
+    /// (0xFFFFFF for none). False, with nothing appended, for an unknown sprite, a coordinate
+    /// that is not finite, or a quad the batch has no room for.
     pub(in crate::game) fn native_draw_quad(
         &self,
         draw: &mut BlockEntityDraw,
