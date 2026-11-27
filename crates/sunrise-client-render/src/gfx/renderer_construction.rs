@@ -2417,6 +2417,7 @@ impl Renderer {
             custom_sky_draws: Vec::new(),
             custom_lightmap: None,
             lightmap_weather: None,
+            lightmap_drawn: core_lightmap::Drawn::Native,
             entity_outline,
             panorama,
             border_pipeline,

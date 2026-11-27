@@ -25,10 +25,18 @@ fn png_size(head: &[u8]) -> Option<(u32, u32)> {
     Some((number(16), number(20)))
 }
 
-/// The picture at `path` as width, height and RGBA, read only when its header gives a lightmap's
-/// size within the limits; none with a warning otherwise.
+/// The picture at `path` as width, height and RGBA: one read of at most [`MAX_BYTES`], whose own
+/// PNG header must give a lightmap's size within the limits before it is decoded; none with a
+/// warning otherwise.
 fn decode(root: &ResourceSource, path: &str) -> Option<(u32, u32, Vec<u8>)> {
-    let Some((width, height)) = root.read_head(path, 24).ok().as_deref().and_then(png_size) else {
+    let bytes = match root.read_limited(path, MAX_BYTES) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            log::warn!("{path}: {e}");
+            return None;
+        }
+    };
+    let Some((width, height)) = png_size(&bytes) else {
         log::warn!("{path}: a lightmap is a PNG");
         return None;
     };
@@ -36,11 +44,7 @@ fn decode(root: &ResourceSource, path: &str) -> Option<(u32, u32, Vec<u8>)> {
         log::warn!("{path}: a lightmap is 1 to {MAX_WIDTH} pixels wide and 32 or 64 tall");
         return None;
     }
-    match root
-        .read_limited(path, MAX_BYTES)
-        .map_err(Into::into)
-        .and_then(|bytes| crate::hud::decode_image_bytes(&bytes))
-    {
+    match crate::hud::decode_image_bytes(&bytes) {
         Ok(image) if (image.0, image.1) == (width, height) => Some(image),
         Ok(_) => {
             log::warn!("{path}: the picture's size is not its header's");
@@ -114,24 +118,44 @@ mod tests {
         assert_eq!(png_size(b"GIF89a.................."), None);
     }
 
+    /// A whole, decodable PNG of `width` by `height`.
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut encoder = png::Encoder::new(&mut out, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        writer
+            .write_image_data(&vec![255; (width * height * 4) as usize])
+            .unwrap();
+        drop(writer);
+        out
+    }
+
     #[test]
-    fn oversized_or_misshapen_pictures_are_refused_from_the_header() {
-        // Headers alone: a decode would fail, so a refusal here comes from the header.
+    fn whole_pngs_of_the_wrong_size_are_refused_and_the_right_one_decodes() {
+        // Whole pictures the decoder would read: a refusal can only come from the header check.
         let dir =
             std::env::temp_dir().join(format!("sunrise-lightmap-pack-{}", std::process::id()));
         let files = [
-            ("too_wide.png", header(MAX_WIDTH + 1, 32)),
-            ("too_tall.png", header(16, 33)),
+            ("too_wide.png", png(MAX_WIDTH + 1, 32)),
+            ("too_tall.png", png(16, 33)),
             ("not_png.png", b"not a png at all, just bytes".to_vec()),
+            ("ok.png", png(16, 64)),
         ];
         std::fs::create_dir_all(&dir).unwrap();
         for (name, bytes) in &files {
             std::fs::write(dir.join(name), bytes).unwrap();
         }
         let root = ResourceSource::directory(dir.clone());
-        for (name, _) in &files {
+        for name in ["too_wide.png", "too_tall.png", "not_png.png"] {
             assert!(decode(&root, name).is_none(), "{name}");
         }
+        assert_eq!(decode(&root, "ok.png").map(|i| (i.0, i.1)), Some((16, 64)));
+        assert!(
+            crate::hud::decode_image_bytes(&files[1].1).is_ok(),
+            "the decoder takes it"
+        );
         std::fs::remove_dir_all(dir).ok();
     }
 }

@@ -32,9 +32,6 @@ pub const LEVELS: usize = 16;
 /// A light texture: RGBA rows of sky level by block level (`(sky * 16 + block) * 4`).
 pub type Pixels = [u8; LEVELS * LEVELS * 4];
 
-/// Below this, a weight counts as none.
-const EPSILON: f32 = 1.0e-4;
-
 /// The worlds that have a lightmap: the game only asks for these.
 pub const WORLDS: [i32; 3] = [-1, 0, 1];
 
@@ -54,37 +51,26 @@ pub struct WorldFiles {
 
 impl Files {
     /// The lightmaps of the overlay at `root`; `optifine/` wins over the legacy `mcpatcher/`.
+    /// Only the exact names of [`WORLDS`] are looked for (`world0.png`, never `world+0.png`).
     pub fn scan(root: &ResourceSource) -> Self {
         let mut out = Self::default();
-        for top in ["optifine", "mcpatcher"] {
-            let prefix = format!("assets/minecraft/{top}/lightmap/");
-            let files: std::collections::BTreeSet<String> =
-                root.list(&prefix).into_iter().collect();
-            for file in &files {
-                let Some(world) = file
-                    .strip_prefix(&prefix)
-                    .and_then(|name| name.strip_prefix("world"))
-                    .and_then(|name| name.strip_suffix(".png"))
-                    .and_then(|n| n.parse::<i32>().ok())
-                    .filter(|world| WORLDS.contains(world))
-                else {
-                    continue;
+        for world in WORLDS {
+            for top in ["optifine", "mcpatcher"] {
+                let at = |suffix: &str| {
+                    let path = format!("assets/minecraft/{top}/lightmap/world{world}{suffix}.png");
+                    root.contains(&path).then_some(path)
                 };
-                if out.worlds.contains_key(&world) {
-                    continue;
+                if let Some(base) = at("") {
+                    out.worlds.insert(
+                        world,
+                        WorldFiles {
+                            base,
+                            rain: at("_rain"),
+                            thunder: at("_thunder"),
+                        },
+                    );
+                    break;
                 }
-                let beside = |suffix: &str| {
-                    let path = format!("{prefix}world{world}{suffix}.png");
-                    files.contains(&path).then_some(path)
-                };
-                out.worlds.insert(
-                    world,
-                    WorldFiles {
-                        base: file.clone(),
-                        rain: beside("_rain"),
-                        thunder: beside("_thunder"),
-                    },
-                );
             }
         }
         out
@@ -226,13 +212,20 @@ impl WorldLightmap {
             return None;
         }
         let weathered = !matches!(world, -1 | 1) && (self.rain.is_some() || self.thunder.is_some());
-        if !weathered || (input.rain <= EPSILON && input.thunder <= EPSILON) {
+        if !weathered || (input.rain <= 0.0 && input.thunder <= 0.0) {
             return self.base.pixels(input);
         }
-        let rain_picture = self.rain.as_ref().filter(|p| p.serves(input));
-        let rain_picture = rain_picture.unwrap_or(&self.base);
-        let thunder_picture = self.thunder.as_ref().filter(|p| p.serves(input));
-        let thunder_picture = thunder_picture.unwrap_or(rain_picture);
+        // A weather picture that does not serve (night vision without its rows) is the base; a
+        // missing thunder picture is the rain one, a missing rain picture the base.
+        let rain_picture = match &self.rain {
+            Some(picture) if picture.serves(input) => picture,
+            _ => &self.base,
+        };
+        let thunder_picture = match &self.thunder {
+            Some(picture) if picture.serves(input) => picture,
+            Some(_) => &self.base,
+            None => rain_picture,
+        };
         let rain = input.rain.clamp(0.0, 1.0);
         let thunder = input.thunder.clamp(0.0, rain);
         let weights = [1.0 - rain, rain - thunder, thunder];
@@ -241,7 +234,7 @@ impl WorldLightmap {
             .into_iter()
             .zip(weights)
         {
-            if weight <= EPSILON {
+            if weight <= 0.0 {
                 continue;
             }
             let pixels = picture.pixels(input)?;
@@ -251,7 +244,8 @@ impl WorldLightmap {
         }
         let mut out = [255u8; LEVELS * LEVELS * 4];
         for (n, total) in sum.iter().enumerate() {
-            out[n / 3 * 4 + n % 3] = total.clamp(0.0, 255.0) as u8;
+            // Rounded: weights that sum to one keep a channel the pictures share.
+            out[n / 3 * 4 + n % 3] = total.round().clamp(0.0, 255.0) as u8;
         }
         Some(out)
     }
@@ -579,6 +573,42 @@ mod tests {
     }
 
     #[test]
+    fn a_faint_storm_keeps_the_full_weight() {
+        let white = world(255, Some(255), Some(255));
+        let faint = Input {
+            rain: 0.00015,
+            thunder: 0.000075,
+            ..input()
+        };
+        let out = white.pixels(0, &faint).unwrap();
+        assert_eq!(&out[..3], &[255, 255, 255]);
+    }
+
+    #[test]
+    fn a_thunder_picture_without_night_vision_rows_is_the_base_not_the_rain_one() {
+        let tall = |v: u8| {
+            picture(
+                16,
+                64,
+                move |_, y| if (32..48).contains(&y) { v } else { 0 },
+            )
+        };
+        let short = picture(16, 32, |_, y| if y < 16 { 50 } else { 0 });
+        let w = WorldLightmap {
+            base: tall(200),
+            rain: Some(tall(100)),
+            thunder: Some(short),
+        };
+        let storm = Input {
+            night_vision: true,
+            rain: 1.0,
+            thunder: 1.0,
+            ..input()
+        };
+        assert_eq!(red(&w.pixels(0, &storm).unwrap(), 0, 0), 200);
+    }
+
+    #[test]
     fn a_missing_thunder_picture_is_the_rain_one() {
         let w = world(200, Some(100), None);
         let out = w
@@ -622,6 +652,8 @@ mod tests {
         at("assets/minecraft/mcpatcher/lightmap/world1.png");
         at("assets/minecraft/optifine/lightmap/notes.txt");
         at("assets/minecraft/optifine/lightmap/world7.png");
+        at("assets/minecraft/mcpatcher/lightmap/world+0.png");
+        at("assets/minecraft/optifine/lightmap/world+1.png");
         let files = Files::scan(&ResourceSource::directory(dir.clone()));
         std::fs::remove_dir_all(&dir).ok();
         let o = "assets/minecraft/optifine/lightmap";

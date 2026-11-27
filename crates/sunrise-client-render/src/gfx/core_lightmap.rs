@@ -175,6 +175,8 @@ impl Readback {
 /// It holds nothing of the level: a level change keeps it, and a pack change or reload makes a
 /// new renderer, which loads the packs' shader again (`set_lightmap_shader`).
 pub(crate) struct CoreLightmap {
+    /// Whose shader this is: a pack's override (the only kind loaded today), or vanilla's.
+    pub(crate) origin: ShaderOrigin,
     pipeline: wgpu::RenderPipeline,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
@@ -282,6 +284,7 @@ impl CoreLightmap {
             cache: None,
         });
         Self {
+            origin: ShaderOrigin::Pack,
             pipeline,
             group,
             uniform,
@@ -435,29 +438,59 @@ impl CoreLightmap {
     }
 }
 
+/// Where a lightmap shader comes from: a resource pack's own `core/lightmap`, or vanilla's, the
+/// default texture drawn by shader. A pack's override draws over a custom lightmap; vanilla's is
+/// only the default, which a custom lightmap replaces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShaderOrigin {
+    Pack,
+    #[allow(dead_code)] // The engine draws its default texture natively for now.
+    Vanilla,
+}
+
 /// Where a frame's light texture comes from, in this order: white under fullbright, a pack's
-/// `core/lightmap` shader, the world's custom lightmap when it has one that serves the frame
-/// (`crate::custom_lightmap`), or the default texture.
+/// override shader, the world's custom lightmap when it has one that serves the frame
+/// (`crate::custom_lightmap`), or the default texture (vanilla's shader where one is installed,
+/// else computed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Source {
     White,
     PackShader,
-    Palette,
+    Palette([u8; 16 * 16 * 4]),
     Default,
 }
 
 impl Source {
-    pub(crate) fn choose(fullbright: bool, pack_shader: bool, palette: bool) -> Self {
+    /// The frame's source, given fullbright, the installed shader's origin and the custom
+    /// lightmap's texture for the frame, which is only asked for when nothing before it wins.
+    pub(crate) fn select(
+        fullbright: bool,
+        shader: Option<ShaderOrigin>,
+        palette: impl FnOnce() -> Option<[u8; 16 * 16 * 4]>,
+    ) -> Self {
         if fullbright {
             Self::White
-        } else if pack_shader {
+        } else if shader == Some(ShaderOrigin::Pack) {
             Self::PackShader
-        } else if palette {
-            Self::Palette
+        } else if let Some(pixels) = palette() {
+            Self::Palette(pixels)
         } else {
             Self::Default
         }
     }
+}
+
+/// The custom lightmap's texture of `weather`'s world for a frame with `input` (its weather
+/// aside), if the world has one that serves; none without weather (a frame the game set none
+/// for).
+pub(crate) fn palette_pixels(
+    lightmaps: &dyn crate::custom_lightmap::Lightmaps,
+    weather: Option<crate::custom_lightmap::Weather>,
+    input: crate::custom_lightmap::Input,
+) -> Option<[u8; 16 * 16 * 4]> {
+    let weather = weather?;
+    let world = weather.world.filter(|&w| lightmaps.has(w))?;
+    lightmaps.pixels(world, &crate::custom_lightmap::Input { weather, ..input })
 }
 
 /// What drew the light texture: the native path (computed here, white under fullbright), or a
@@ -578,31 +611,14 @@ impl super::Renderer {
     /// The light texture's pixels for F3's lightmap chart, RGBA rows of sky level by block
     /// level: none until the texture drawn now has been read (`LightmapChart`).
     pub fn lightmap_sample(&self) -> Option<&[u8; 16 * 16 * 4]> {
-        let drawing = Drawn::now(self.fullbright, self.core_lightmap.is_some());
+        // With a custom lightmap, what drew the last frame's texture (a palette goes up as
+        // pixels even with a shader installed); without, what draws it now.
+        let drawing = if self.custom_lightmap.is_some() {
+            self.lightmap_drawn
+        } else {
+            Drawn::now(self.fullbright, self.core_lightmap.is_some())
+        };
         self.lightmap_chart.shown(drawing)
-    }
-
-    /// The pack's custom lightmap of `weather`'s world for the frame, if the world has one that
-    /// serves (`crate::custom_lightmap`); none to draw the default texture.
-    fn custom_lightmap_pixels(
-        &self,
-        frame: &super::Frame,
-        weather: crate::custom_lightmap::Weather,
-    ) -> Option<[u8; 16 * 16 * 4]> {
-        let lightmaps = self.custom_lightmap.as_ref()?;
-        let world = weather.world.filter(|&w| lightmaps.has(w))?;
-        lightmaps.pixels(
-            world,
-            &crate::custom_lightmap::Input {
-                sky: frame.sky.sky_light_factor,
-                flicker: frame.block_flicker,
-                // The brightness the default texture uses: the option, less the Darkness blend.
-                gamma: (self.gamma - frame.darkness.0).max(0.0),
-                night_vision: frame.night_vision > 0.0,
-                darkness: frame.darkness.1,
-                weather,
-            },
-        )
     }
 
     /// The frame's light texture (`LightmapRenderStateExtractor.extract`, then
@@ -627,16 +643,31 @@ impl super::Renderer {
             ambient_color: sky.ambient_light_color,
             night_vision_color: [0.6; 3],
         };
-        // The world and weather the game set for this frame; a frame that set none (the title,
-        // a loading or saving frame) has no custom lightmap.
-        let weather = self.lightmap_weather.take().filter(|_| !frame.title);
-        let pack_shader = self.core_lightmap.is_some();
-        let palette = (Source::choose(self.fullbright, pack_shader, true) == Source::Palette)
-            .then(|| weather.and_then(|w| self.custom_lightmap_pixels(frame, w)))
-            .flatten();
-        let source = Source::choose(self.fullbright, pack_shader, palette.is_some());
+        // A custom lightmap is opt-in: without one this is the default path, untouched.
+        let palette = self.custom_lightmap.clone().and_then(|lightmaps| {
+            // The world and weather the game set for this frame; a frame that set none (the
+            // title, a loading or saving frame) has no custom lightmap.
+            let weather = self.lightmap_weather.take().filter(|_| !frame.title);
+            let input = crate::custom_lightmap::Input {
+                sky: sky.sky_light_factor,
+                flicker: frame.block_flicker,
+                // The brightness the default texture uses: the option, less the Darkness blend.
+                gamma: info.brightness,
+                night_vision: frame.night_vision > 0.0,
+                darkness: frame.darkness.1,
+                weather: Default::default(),
+            };
+            let shader = self.core_lightmap.as_ref().map(|c| c.origin);
+            match Source::select(self.fullbright, shader, || {
+                palette_pixels(&*lightmaps, weather, input)
+            }) {
+                Source::Palette(pixels) => Some(pixels),
+                _ => None,
+            }
+        });
         // Only a pack's shader reads the globals: none are made without one.
-        let globals = (source == Source::PackShader).then(|| self.pack_globals(frame));
+        let globals = (palette.is_none() && !self.fullbright && self.core_lightmap.is_some())
+            .then(|| self.pack_globals(frame));
         if let Some(globals) = globals
             && let Some(core) = self.core_lightmap.as_mut()
         {
@@ -647,6 +678,7 @@ impl super::Renderer {
             core.draw(encoder, &self.lightmap, &self.lightmap_view);
             // The native pixels go up again when the pack's shader stops drawing.
             self.lightmap_uploaded = false;
+            self.lightmap_drawn = Drawn::Pack;
             return;
         }
         // Fullbright stops a pack's shader: what it copied before must not be read as current
@@ -654,11 +686,12 @@ impl super::Renderer {
         if let Some(core) = self.core_lightmap.as_mut() {
             core.forget_copies();
         }
-        let pixels = match (source, palette) {
-            (Source::White, _) => [255; 16 * 16 * 4],
-            (Source::Palette, Some(pixels)) => pixels,
-            _ => native_lightmap(&info),
-        };
+        // A palette or the computed texture goes up as pixels: the chart reads them at once.
+        self.lightmap_drawn = Drawn::Native;
+        let mut pixels = palette.unwrap_or_else(|| native_lightmap(&info));
+        if self.fullbright {
+            pixels.fill(255);
+        }
         // The lightmap changes with the time of day, flicker and effects,
         // not every frame: upload only what differs from the texture.
         if pixels == self.lightmap_chart.pixels && self.lightmap_uploaded {
