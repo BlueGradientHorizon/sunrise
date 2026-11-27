@@ -12,6 +12,7 @@ use sunrise_core::{
 };
 use sunrise_game_data::{Result, text::Text};
 use sunrise_gameplay_common::game::collider_rays::ColliderRays;
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 use sunrise_items::{blocks::Fluid, items::ItemStack};
 use sunrise_level::collisions::SceneCollisions;
@@ -1468,6 +1469,52 @@ impl crate::game::ServerGame<'_> {
                         .common
                         .boats
                         .update(i, |boat| boat.push_from_explosion(push)),
+                    EntityHandle::Projectile(i) => {
+                        let redirectable = self.is_redirectable_projectile_type(
+                            self.common.creatures.projectiles[i].entity_type(),
+                        );
+                        let (owner, owner_uuid, guest) = if redirectable {
+                            match self.server.combat.0.attack().attacker {
+                                id if id > 0 => {
+                                    use crate::game::server_side::lan_actions_server::CombatPlayer;
+                                    match self.combat_player(id as u32) {
+                                        Some(CombatPlayer::InPlace) => (
+                                            Some(Who::Player),
+                                            self.player_uuid_of(self.server.lan_acting),
+                                            None,
+                                        ),
+                                        Some(CombatPlayer::Parked(g)) => (
+                                            Some(Who::Player),
+                                            Some(sunrise_sim::lan::playerdata::uuid_ints(g.uuid)),
+                                            Some(g.conn),
+                                        ),
+                                        Some(CombatPlayer::Displaced(depth, _)) => {
+                                            let frame =
+                                                &self.server.lan_displaced_players.0[depth];
+                                            (
+                                                Some(Who::Player),
+                                                self.player_uuid_of(Some(frame.record_conn)),
+                                                Some(frame.record_conn),
+                                            )
+                                        }
+                                        None => (Some(Who::Mob(id as u32)), None, None),
+                                    }
+                                }
+                                _ => (None, None, None),
+                            }
+                        } else {
+                            (None, None, None)
+                        };
+                        self.common.creatures.projectiles.update(i, |p| {
+                            p.push_from_explosion(push);
+                            if redirectable {
+                                p.owner = owner;
+                                p.owner_uuid = owner_uuid;
+                                p.guest = guest;
+                                p.owner_vehicle = None;
+                            }
+                        });
+                    }
                     other => with_entity_mut!(self, other, e => e.push_from_explosion(push)),
                 }
             }
