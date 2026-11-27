@@ -768,18 +768,6 @@ A player's idea (#sunrise-ideas). The launcher's AppImage ships with each launch
 
 ### Sunrise extras
 
-#### A complete video studio inside the game
-
-Record, replay and edit videos without leaving the game: record in a keypress, replay a session, cut and finish the video. One of Sunrise's original goals.
-
-<details><summary>Technical</summary>
-
-Three stages. Recording: capture gameplay in a keypress with an encoder thread and little frame-time cost. Replay: a replay mode for recorded sessions. Editing: cuts, camera paths, titles and export. None of it exists yet; the agent-control socket ([docs/agent-control.md](docs/agent-control.md)) already lets tools drive the game for scripted shots.
-
-More: [#10025](https://github.com/horizon-rust/horizon/issues/10025)
-
-</details>
-
 #### Game menus in the launcher's style
 
 An optional look for the game's own menus and options that matches the Sunrise launcher. Off by default: the vanilla menus stay as they are.
