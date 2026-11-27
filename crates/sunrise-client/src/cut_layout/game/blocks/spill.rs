@@ -1145,7 +1145,8 @@ mod ominous_banner_tests {
             let BlockEntity::Banner(banner) = &loaded else {
                 panic!("placed banner");
             };
-            assert_eq!(banner.layers.len(), item_data::OMINOUS_LAYERS.len());
+            // Raid.getBannerComponentPatch: eight layers; the count is a fixture outcome, not a cap.
+            assert_eq!(banner.layers.len(), 8);
             let mut pending = Pending::default();
             pending.record_saved([pos.0, pos.1, pos.2], &saved);
             let mut items = sunrise_items::items::Items::for_tests(Default::default());
