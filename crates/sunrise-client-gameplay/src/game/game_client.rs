@@ -2416,14 +2416,7 @@ impl crate::game::ClientGame<'_> {
                         crosshair_attack.map(|(strength, _)| strength),
                         full,
                     );
-                    // The custom crosshair takes the sprite's place (the first draw); the
-                    // attack indicator stays.
-                    if g.custom_crosshair() {
-                        g.draw_custom_crosshair(batch, wi, hi);
-                        hud_layout::paint(batch, &g.client.gui.atlas, &draws[1..]);
-                    } else {
-                        hud_layout::paint(batch, &g.client.gui.atlas, &draws);
-                    }
+                    hud_layout::paint(batch, &g.client.gui.atlas, &draws);
                 }
             });
             self.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |g, batch| {
@@ -4691,7 +4684,6 @@ impl crate::game::ClientGame<'_> {
         if !title {
             self.eye_geometry(camera, &mut entities);
         }
-        self.outline_fill(&outline, camera, &mut entities);
         pr.lap("pr_screen_end");
         let weather = if !title && self.can_have_weather() && self.client.settings.sunrise.weather {
             sunrise_level::spans::time("weather", || self.weather_geometry(camera, alpha))
@@ -4844,7 +4836,6 @@ impl crate::game::ClientGame<'_> {
             outline,
             outline_after_terrain,
             outline_high_contrast: self.client.settings.file.bool("highContrastBlockOutline"),
-            pvp: self.pvp_render_frame(),
             debug_lines: &debug_lines,
             debug_lines_on_top: &debug_lines_on_top,
             debug_crosshair: &debug_crosshair,

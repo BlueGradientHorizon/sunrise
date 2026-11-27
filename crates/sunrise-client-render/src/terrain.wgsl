@@ -25,6 +25,7 @@ struct Globals {
     // Sunrise Extras' dynamic lights: camera-relative position and level (dynamic_light.rs).
     dynamic_lights: array<vec4<f32>, 16>,
     colored_lights: array<vec4<f32>, 32>,
+    // x: coloured light count; yzw: padding.
     colored_count: vec4<u32>,
     emissive_layers: array<vec4<u32>, 128>,
     emissive_count: vec4<u32>,

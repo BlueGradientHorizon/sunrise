@@ -468,7 +468,6 @@ What the engine draws differently for a crate above, as plain data: PvP & HUD's 
 pub struct Look {       // #[non_exhaustive]; Default is vanilla's
     pub legacy_pose: bool, pub hide_attack_indicator: bool,
     pub mute_attack_sounds: bool, pub hide_attack_particles: bool,
-    pub frame: Frame,   // outline and hurt overlay colours
     pub chat: Chat, pub hide_effect_icons: bool,
 }
 pub fn update(change: impl FnOnce(&mut Look));  // the player whose turn it is (`seat()`)

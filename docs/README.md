@@ -27,7 +27,7 @@ To play, use [the launcher](https://github.com/sunrise-org/sunrise-launcher/blob
 - [Benchmark](benchmark.md): Sunrise against vanilla 26.3 and vanilla with performance mods, on the same machine, world, path and settings: what is measured, how it is kept fair, how to reproduce it.
 - [Extras](extras.md): optional conveniences (fullbright, dynamic lights, inventory controls, auto-reconnect), all off by default.
 - [Forking](forking.md): this fork's permanent extras exclusions, independent build features and always-available mod management.
-- [PvP & HUD](pvp.md): optional client settings for PvP players (custom crosshair, block outline, hit color, HUD widgets), fair-play boundaries, and why each is off by default.
+- [PvP & HUD](pvp.md): optional client settings for PvP players (including HUD widgets), fair-play boundaries, and why each is off by default.
 - [Narrator](narrator.md): vanilla's text-to-speech (Ctrl+B): the voices per platform, how screens record what they narrate, `sunrise-ctl narration`, and where it still differs from vanilla.
 - [Shader packs](shaders.md): shader packs in the Iris/OptiFine `shaders/` format: where they go, picking one, its options, the shadow cache, and testing a pack frame by frame.
 - [The modding book](modding/src/introduction.md): content mods (data) and native mods (Rust), how to make, install and publish them. [Native mods](modding/src/how-to/native-mods.md): how they build. [API reference](modding/src/reference/api.md): rustdoc, hook notes and NeoForge counterparts.
