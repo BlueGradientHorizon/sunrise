@@ -168,7 +168,7 @@ fn a_pack_lightmap_with_an_older_larger_info_block_draws() {
         &|b| b == INFO_BLOCK,
     )
     .expect("the shaders translate");
-    let mut core = lightmap_for(&device, Some(&program), &[])
+    let mut core = lightmap_for(&device, Some(&program), &[], ShaderOrigin::Pack)
         .unwrap_or_else(|e| panic!("{e}"))
         .expect("the lightmap pipeline");
     core.set_readback(&device, true);
@@ -600,7 +600,7 @@ fn a_lightmap_shaders_blocks_count_for_the_stages_that_read_them() {
     let made = |vertex, fragment| {
         let (program, expressions) = expression_lightmap(vertex, fragment);
         let past = program.past_device_limit(&device.limits(), &[wgpu::TextureFormat::Rgba8Unorm]);
-        let made = lightmap_for(&device, Some(&program), &expressions)
+        let made = lightmap_for(&device, Some(&program), &expressions, ShaderOrigin::Pack)
             .unwrap_or_else(|e| panic!("{e}"))
             .is_some();
         (made, past)

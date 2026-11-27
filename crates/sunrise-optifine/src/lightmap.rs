@@ -226,8 +226,10 @@ impl WorldLightmap {
             Some(_) => &self.base,
             None => rain_picture,
         };
-        let rain = input.rain.clamp(0.0, 1.0);
-        let thunder = input.thunder.clamp(0.0, rain);
+        // A NaN strength reads as none (`clamp` would panic on a NaN bound).
+        let none_if_nan = |v: f32| if v.is_nan() { 0.0 } else { v };
+        let rain = none_if_nan(input.rain).clamp(0.0, 1.0);
+        let thunder = none_if_nan(input.thunder).clamp(0.0, rain);
         let weights = [1.0 - rain, rain - thunder, thunder];
         let mut sum = [0f32; LEVELS * LEVELS * 3];
         for (picture, weight) in [&self.base, rain_picture, thunder_picture]
@@ -570,6 +572,35 @@ mod tests {
         // No weather in the Nether or the End.
         assert_eq!(at(-1, 1.0, 1.0), 200);
         assert_eq!(at(1, 1.0, 0.0), 200);
+    }
+
+    #[test]
+    fn a_nan_weather_strength_reads_as_none() {
+        let w = world(200, Some(100), Some(0));
+        for (rain, thunder) in [(f32::NAN, 0.5), (0.5, f32::NAN), (f32::NAN, f32::NAN)] {
+            assert!(
+                w.pixels(
+                    0,
+                    &Input {
+                        rain,
+                        thunder,
+                        ..input()
+                    }
+                )
+                .is_some()
+            );
+        }
+        let out = w
+            .pixels(
+                0,
+                &Input {
+                    rain: f32::NAN,
+                    thunder: f32::NAN,
+                    ..input()
+                },
+            )
+            .unwrap();
+        assert_eq!(red(&out, 0, 0), 200);
     }
 
     #[test]

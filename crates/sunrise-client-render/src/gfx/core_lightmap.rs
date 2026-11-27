@@ -557,13 +557,14 @@ impl LightmapChart {
     }
 }
 
-/// The pack's lightmap pipeline for `program`, none without one or when it is past the device's
+/// The lightmap pipeline for `program`, whose shader is `origin`'s; none without one or when it is past the device's
 /// limits (`sunrise_glsl::PastDeviceLimit`: the light texture is then computed natively), or the
 /// device's refusal of `LIGHTMAP`.
 pub(super) fn lightmap_for(
     device: &wgpu::Device,
     program: Option<&Translated>,
     expressions: &[ExpressionUniform],
+    origin: ShaderOrigin,
 ) -> Result<Option<CoreLightmap>, String> {
     let pipeline = crate::hud::pack_text::LIGHTMAP[0].pipeline;
     (program.filter(|p| {
@@ -574,7 +575,12 @@ pub(super) fn lightmap_for(
             &[wgpu::TextureFormat::Rgba8Unorm],
         )
     }))
-    .map(|p| CoreLightmap::new(device, p, expressions))
+    .map(|p| {
+        CoreLightmap::new(device, p, expressions).map(|mut core| {
+            core.origin = origin;
+            core
+        })
+    })
     .transpose()
 }
 
@@ -591,7 +597,9 @@ impl super::Renderer {
         program: Option<&Translated>,
         expressions: &[ExpressionUniform],
     ) -> Result<(), String> {
-        self.core_lightmap = lightmap_for(&self.device, program, expressions)?;
+        // The packs' program: today only a pack's own override reaches here.
+        let origin = ShaderOrigin::Pack;
+        self.core_lightmap = lightmap_for(&self.device, program, expressions, origin)?;
         self.lightmap_uploaded = false;
         Ok(())
     }
@@ -678,7 +686,9 @@ impl super::Renderer {
             core.draw(encoder, &self.lightmap, &self.lightmap_view);
             // The native pixels go up again when the pack's shader stops drawing.
             self.lightmap_uploaded = false;
-            self.lightmap_drawn = Drawn::Pack;
+            if self.custom_lightmap.is_some() {
+                self.lightmap_drawn = Drawn::Pack;
+            }
             return;
         }
         // Fullbright stops a pack's shader: what it copied before must not be read as current
@@ -687,7 +697,9 @@ impl super::Renderer {
             core.forget_copies();
         }
         // A palette or the computed texture goes up as pixels: the chart reads them at once.
-        self.lightmap_drawn = Drawn::Native;
+        if self.custom_lightmap.is_some() {
+            self.lightmap_drawn = Drawn::Native;
+        }
         let mut pixels = palette.unwrap_or_else(|| native_lightmap(&info));
         if self.fullbright {
             pixels.fill(255);
