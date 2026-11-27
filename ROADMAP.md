@@ -36,8 +36,6 @@ Owner: [ludovic111](https://github.com/ludovic111) · Tracking: [#3909](https://
 
 Frame pacing at render distance 32 ([#678](https://github.com/horizon-rust/horizon/issues/678)): long frames come from work competing with the render thread. In review: no main-thread tick stutter at high render distances ([#3827](https://github.com/horizon-rust/horizon/issues/3827)), each proto chunk's light view built once ([#3815](https://github.com/horizon-rust/horizon/issues/3815)), video memory handed back by the vertex arena ([#3466](https://github.com/horizon-rust/horizon/issues/3466)), chunk batches assembled on helper threads ([#3036](https://github.com/horizon-rust/horizon/issues/3036)), free structure starts in the generation workers ([#1760](https://github.com/horizon-rust/horizon/issues/1760)). Still open: CPU-bound fields of block entities ([#717](https://github.com/horizon-rust/horizon/issues/717)). Every change shows before and after numbers from `tools/perf_bench.py` against vanilla 26.3 ([docs/benchmark.md](docs/benchmark.md)).
 
-More: [#718](https://github.com/horizon-rust/horizon/issues/718)
-
 </details>
 
 #### Servers that hold 20 TPS with 50 to 100 players

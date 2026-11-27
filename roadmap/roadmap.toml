@@ -86,7 +86,7 @@ In review: no main-thread tick stutter at high render distances (#3827), each pr
 (#3815), video memory handed back by the vertex arena (#3466), chunk batches assembled on helper threads (#3036), \
 free structure starts in the generation workers (#1760). Still open: CPU-bound fields of block entities (#717). Every \
 change shows before and after numbers from `tools/perf_bench.py` against vanilla 26.3 (docs/benchmark.md)."""
-links = ["#3827", "#3815", "#3466", "#3036", "#1760", "#678", "#718", "#717", "docs/benchmark.md"]
+links = ["#3827", "#3815", "#3466", "#3036", "#1760", "#678", "#717", "docs/benchmark.md"]
 
 [[item]]
 id = "modpack-worldgen"
