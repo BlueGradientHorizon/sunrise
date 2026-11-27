@@ -11,7 +11,6 @@ sunrise-world worldgen::generator::tests::end_identity_surface_matches_normal_su
 sunrise-world worldgen::generator::tests::far_surface_matches_undecorated_land_and_keeps_end_void lib daily resources
 sunrise-world worldgen::generator::tests::local_carver_cache_is_worker_owned_and_eviction_preserves_terrain lib daily resources
 sunrise-world worldgen::generator::tests::may_start_never_skips_a_start_the_chunk_holds lib daily resources
-sunrise-world worldgen::generator::tests::reduced_far_detail_paints_only_the_top_of_a_wide_column lib daily resources
 sunrise-world worldgen::generator::tests::released_caches_generate_the_same_chunks lib daily resources
 sunrise-world worldgen::generator::tests::ring_positions_are_shared_by_seed_and_dimension lib daily resources
 sunrise-world worldgen::generator::tests::stronghold_rings_match_vanilla lib daily resources
