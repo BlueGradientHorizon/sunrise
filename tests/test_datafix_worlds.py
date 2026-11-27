@@ -1,5 +1,6 @@
 """Unit tests for tools/datafix_worlds.py: the Java runtime choice, the bot's configuration phase, the server stop."""
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -69,7 +70,9 @@ class UnsupportedMachineTests(unittest.TestCase):
 class ServerStopTests(unittest.TestCase):
     def test_a_server_that_ignores_stop_is_killed_and_the_timeout_reaches_the_caller(self):
         server = worlds.Server.__new__(worlds.Server)
-        server.process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], stdin=subprocess.PIPE, text=True)
+        server.process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], stdin=subprocess.PIPE,
+                                           stdout=subprocess.PIPE, text=True)
+        server._pump_thread = None
         self.addCleanup(server.process.kill)
         real_wait = server.process.wait
         calls = []
@@ -84,17 +87,159 @@ class ServerStopTests(unittest.TestCase):
             server.stop()
         self.assertIsNotNone(server.process.poll())
         self.assertEqual(calls, [120, None])
+        self.assertTrue(server.process.stdout.closed)
 
     def test_a_server_already_killed_with_its_stdin_closed_stops_without_an_error(self):
         # A server may exit on its own before cleanup.
         server = worlds.Server.__new__(worlds.Server)
-        server.process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], stdin=subprocess.PIPE, text=True)
+        server.process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], stdin=subprocess.PIPE,
+                                           stdout=subprocess.PIPE, text=True)
+        server._pump_thread = None
         self.addCleanup(server.process.kill)
         server.process.kill()
         server.process.wait()
         server.process.stdin.close()
         server.stop()
         self.assertIsNotNone(server.process.poll())
+        self.assertTrue(server.process.stdout.closed)
+
+
+class FakeOutput(list):
+    """A process's stdout lines, with the close of a real pipe."""
+    closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class ServerStartupTests(unittest.TestCase):
+    def test_a_startup_that_fails_stops_java_and_raises_the_original_error(self):
+        process = mock.Mock(stdout=FakeOutput())
+        process.poll.side_effect = lambda: process.returncode
+        process.returncode = None
+        process.kill.side_effect = lambda: setattr(process, 'returncode', 1)
+        popen = mock.Mock(return_value=process)
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(worlds, 'subprocess', SimpleNamespace(Popen=popen, PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT)), \
+                mock.patch.object(worlds.Server, 'wait', side_effect=TimeoutError('no Done')) as wait, \
+                self.assertRaisesRegex(TimeoutError, 'no Done'):
+            worlds.Server(Path(temp), Path('server.jar'), 12345)
+        wait.assert_called_once_with('Done (', 600)
+        popen.assert_called_once()
+        process.stdin.write.assert_not_called()   # no graceful stop, which would save
+        process.kill.assert_called_once_with()
+        process.wait.assert_called_once_with()
+        process.stdin.close.assert_called_once_with()
+        self.assertTrue(process.stdout.closed)
+
+    def test_a_failing_cleanup_does_not_replace_the_startup_error(self):
+        process = mock.Mock(stdout=FakeOutput())
+        process.poll.return_value = None
+        process.kill.side_effect = OSError('kill failed')
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(worlds, 'subprocess', SimpleNamespace(Popen=lambda *a, **k: process, PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT)), \
+                mock.patch.object(worlds.Server, 'wait', side_effect=TimeoutError('no Done')), \
+                self.assertRaisesRegex(TimeoutError, 'no Done'):
+            worlds.Server(Path(temp), Path('server.jar'), 12345)
+        self.assertFalse(process.stdout.closed)   # Java may still run: its pipe is not closed under the reader
+
+
+class RealChildServerTests(unittest.TestCase):
+    """Server with a real child process behind real pipes, which Java is replaced by."""
+
+    def start(self, code, *, wait=None, thread_start=None):
+        """Run Server(...) on a child running `code`; returns (the Server or None, the error or None, the child)."""
+        children = []
+
+        def popen(command, **kwargs):
+            child = subprocess.Popen([sys.executable, '-c', code], **kwargs)
+            self.addCleanup(child.wait)
+            self.addCleanup(child.kill)
+            children.append(child)
+            return child
+        fake_subprocess = SimpleNamespace(Popen=popen, PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT)
+        server = error = None
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'subprocess', fake_subprocess), \
+                mock.patch.object(worlds.Server, 'wait', **(wait or {'return_value': []})), \
+                mock.patch.object(threading.Thread, 'start', **(thread_start or {'autospec': True, 'side_effect': threading.Thread.start})):
+            try:
+                server = worlds.Server(Path(temp), Path('server.jar'), 12345)
+            except Exception as caught:
+                error = caught
+        return server, error, children[0]
+
+    def assert_reaped_and_closed(self, child):
+        self.assertIsNotNone(child.poll())
+        self.assertTrue(child.stdin.closed)
+        self.assertTrue(child.stdout.closed)
+
+    def test_a_startup_timeout_reaps_the_child_and_closes_both_pipes(self):
+        server, error, child = self.start('import time; time.sleep(30)', wait={'side_effect': TimeoutError('no Done')})
+        self.assertIsInstance(error, TimeoutError)
+        self.assertEqual(str(error), 'no Done')
+        self.assertNotEqual(child.returncode, 0)
+        self.assert_reaped_and_closed(child)
+
+    def test_a_pump_that_cannot_start_reaps_the_child_and_closes_both_pipes(self):
+        server, error, child = self.start('import time; time.sleep(30)',
+                                          thread_start={'side_effect': RuntimeError("can't start new thread")})
+        self.assertIsInstance(error, RuntimeError)
+        self.assertEqual(str(error), "can't start new thread")
+        self.assertNotEqual(child.returncode, 0)
+        self.assert_reaped_and_closed(child)
+
+    def test_stop_with_save_waits_for_the_child_and_closes_both_pipes_after_its_output(self):
+        server, error, child = self.start('import sys; sys.stdin.readline(); print("saved", flush=True)')
+        self.assertIsNone(error)
+        server.stop(save=True)
+        self.assertEqual(child.returncode, 0)
+        self.assertEqual(server.lines, ['saved'])
+        self.assert_reaped_and_closed(child)
+
+    def test_stop_without_save_kills_the_child_and_closes_both_pipes(self):
+        server, error, child = self.start('import time; time.sleep(30)')
+        self.assertIsNone(error)
+        server.stop(save=False)
+        self.assertNotEqual(child.returncode, 0)
+        self.assert_reaped_and_closed(child)
+
+
+class PlayerIdleTests(unittest.TestCase):
+    def player(self, receive):
+        Player = worlds.scene12.make_player(worlds.Bot, worlds.varint, worlds.parse_varint, worlds.mcstring)
+        player = Player.__new__(Player)
+        player.sock = mock.Mock()
+        player.stop = threading.Event()
+        player.protocol = 340
+        player.receive = receive
+        return player
+
+    def test_a_packet_that_fails_to_parse_surfaces(self):
+        # A position packet cut short: struct.unpack of its coordinates fails.
+        packets = iter([(0x2F, b'short')])
+        player = self.player(lambda: next(packets))
+        with self.assertRaises(struct.error):
+            player.idle()
+
+    def test_a_closed_connection_ends_the_loop(self):
+        for error in (EOFError('closed'), ConnectionResetError('reset')):
+            with self.subTest(type(error).__name__):
+                def receive():
+                    raise error
+                self.player(receive).idle()
+
+    def test_a_receive_timeout_keeps_the_loop_running(self):
+        player = self.player(None)
+        calls = []
+
+        def receive():
+            calls.append(1)
+            if len(calls) == 1:
+                raise socket.timeout()
+            raise EOFError('closed')
+        player.receive = receive
+        player.idle()
+        self.assertEqual(len(calls), 2)
 
 
 class KnownPacksTests(unittest.TestCase):
@@ -160,8 +305,15 @@ class BotFailedJoinTests(unittest.TestCase):
                     pass
         threading.Thread(target=serve, daemon=True).start()
         made = []
-        create = socket.create_connection
-        with mock.patch.object(worlds.socket, 'create_connection', lambda *a, **k: made.append(create(*a, **k)) or made[-1]):
+
+        class RecordingSocket:   # worlds' own `socket`: the global module is left alone
+            def __getattr__(self, name):
+                return getattr(socket, name)
+
+            def create_connection(self, *args, **kwargs):
+                made.append(socket.create_connection(*args, **kwargs))
+                return made[-1]
+        with mock.patch.object(worlds, 'socket', RecordingSocket()):
             with self.assertRaises((RuntimeError, ValueError)) as caught:
                 worlds.Bot(listener.getsockname()[1], protocol, 'x')
         self.addCleanup(made[0].close)
@@ -281,7 +433,7 @@ class LegacyBuildTests(unittest.TestCase):
             process.returncode = None
             return process
 
-        self.process = process = mock.Mock(stdout=['Done (\n'], returncode=None)
+        self.process = process = mock.Mock(stdout=FakeOutput(['Done (\n']), returncode=None)
         process.poll.side_effect = lambda: process.returncode
         process.kill.side_effect = lambda: setattr(process, 'returncode', 1)
         self.stop = stop = mock.Mock()
@@ -307,6 +459,7 @@ class LegacyBuildTests(unittest.TestCase):
         self.process.kill.assert_called_once_with()
         self.process.wait.assert_called_once_with()
         self.process.stdin.close.assert_called_once_with()
+        self.assertTrue(self.process.stdout.closed)
         self.process.stdin.write.assert_not_called()  # a graceful stop would save over the last tick
 
     def test_legacy_world_owner_ends_the_server_once_without_resaving(self):

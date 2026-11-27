@@ -11,6 +11,7 @@ so that player data exists. The saved world is kept in datafix/worlds/VERSION in
   datafix_worlds.py [--force] [VERSION...]      (default: every version below)
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import math
@@ -210,13 +211,22 @@ class Server:
             props['initial-enabled-packs'] = ','.join(['vanilla', *packs])
         props.update(props_override or {})
         (directory / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in props.items()))
+        self._pump_thread = None   # set once it runs: stop() closes stdout only after the reader is gone
         self.process = subprocess.Popen([java, '-Xmx2G', '-jar', str(jar), 'nogui'], cwd=directory,
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        self.lines = []
-        self.queue = queue.Queue()
-        self.counter = 0
-        threading.Thread(target=self._pump, daemon=True).start()
-        self.wait('Done (', 600)
+        try:
+            self.lines = []
+            self.queue = queue.Queue()
+            self.counter = 0
+            pump = threading.Thread(target=self._pump, daemon=True)
+            pump.start()
+            self._pump_thread = pump
+            self.wait('Done (', 600)
+        except BaseException:
+            # The caller never gets this Server, so nothing else would stop Java and free its port and world folder.
+            with contextlib.suppress(Exception):   # a failed stop must not replace the startup error
+                self.stop(save=False)
+            raise
 
     def _pump(self):
         for line in self.process.stdout:
@@ -255,10 +265,23 @@ class Server:
                 self.process.stdin.flush()
                 self.process.wait(120)
         finally:
-            if self.process.poll() is None:
-                self.process.kill()
-                self.process.wait()   # the world folder and port are reused only once the process is gone
-            self.process.stdin.close()
+            try:
+                if self.process.poll() is None:
+                    self.process.kill()
+                    self.process.wait()   # the world folder and port are reused only once the process is gone
+            finally:
+                if self.process.stdin is not None:
+                    with contextlib.suppress(OSError, ValueError):   # already closed, or a pipe broken by the exit
+                        self.process.stdin.close()
+                # stdout is closed only once Java is gone and the pump has seen its EOF: closing it under an active reader
+                # would block or race. A process that could not be killed keeps its pipe.
+                if self.process.poll() is not None:
+                    pump = getattr(self, '_pump_thread', None)
+                    if pump is not None:
+                        pump.join(5)
+                    if (pump is None or not pump.is_alive()) and self.process.stdout is not None:
+                        with contextlib.suppress(OSError, ValueError):
+                            self.process.stdout.close()
 
 
 def failed(lines):
