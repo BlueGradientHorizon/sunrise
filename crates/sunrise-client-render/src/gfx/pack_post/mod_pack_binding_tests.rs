@@ -422,7 +422,8 @@ fn pack_owned_feature_stages_draw_only_unbound_prepared_mod_pipelines() {
                     }
                 };
                 assert!(!primitives.draw_pack_prepared(encoder, color, depth, &[ranges(1..2)]));
-                let rendered = primitives.draw_pack_prepared(encoder, color, depth, &[ranges(0..2)]);
+                let rendered =
+                    primitives.draw_pack_prepared(encoder, color, depth, &[ranges(0..2)]);
                 drew[usize::from(translucent)] = rendered;
                 rendered
             },

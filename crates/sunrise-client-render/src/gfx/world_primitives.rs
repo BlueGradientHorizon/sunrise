@@ -201,6 +201,22 @@ enum PreparedPass<'a> {
     Pack(&'a PrimitivePipelines),
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum PreparedPipelinePass<'a> {
+    World,
+    Oit(super::oit::Stage),
+    Pack { bound_slots: &'a [usize] },
+}
+
+impl<'a> PreparedPipelinePass<'a> {
+    pub(super) fn skip_slots(self) -> &'a [usize] {
+        match self {
+            Self::Pack { bound_slots } => bound_slots,
+            Self::World | Self::Oit(_) => &[],
+        }
+    }
+}
+
 /// The pipelines and buffers that draw a [`Batch`].
 pub struct WorldPrimitives {
     pipelines_standard: PrimitivePipelines,
@@ -1097,35 +1113,31 @@ impl WorldPrimitives {
         target: PreparedPass<'_>,
         draws: &[DrawRanges],
     ) -> bool {
-        let mut drew = match target {
-            PreparedPass::World => {
-                self.draw_prepared_primitives(pass, &self.pipelines_standard, false, draws)
-            }
-            PreparedPass::Oit(stage) => self.oit_pipelines.as_ref().is_some_and(|pipelines| {
-                self.draw_prepared_primitives(pass, &pipelines[stage as usize], true, draws)
-            }),
-            PreparedPass::Pack(pipelines) => {
-                self.draw_prepared_primitives(pass, pipelines, false, draws)
-            }
+        let (primitives, pipeline_pass) = match target {
+            PreparedPass::World => (Some(&self.pipelines_standard), PreparedPipelinePass::World),
+            PreparedPass::Oit(stage) => (
+                self.oit_pipelines.as_ref().map(|p| &p[stage as usize]),
+                PreparedPipelinePass::Oit(stage),
+            ),
+            PreparedPass::Pack(pipelines) => (
+                Some(pipelines),
+                PreparedPipelinePass::Pack {
+                    bound_slots: &self.bound_mod_slots,
+                },
+            ),
         };
-        let pack_bound_slots = match target {
-            PreparedPass::Pack(_) => Some(self.bound_mod_slots.as_slice()),
-            _ => None,
-        };
+        let mut drew = primitives.is_some_and(|pipelines| {
+            let oit = matches!(pipeline_pass, PreparedPipelinePass::Oit(_));
+            self.draw_prepared_primitives(pass, pipelines, oit, draws)
+        });
         let mut runs = draws
             .iter()
             .map(|draw| draw.pipeline_runs.clone())
             .filter(|range| !range.is_empty())
             .peekable();
         if runs.peek().is_some() {
-            match target {
-                PreparedPass::Oit(stage) => self
-                    .pipelines
-                    .draw_prepared_oit(pass, stage, &self.indices, runs),
-                _ => self
-                    .pipelines
-                    .draw_prepared_runs(pass, &self.indices, runs, pack_bound_slots),
-            }
+            self.pipelines
+                .draw_prepared_runs(pass, &self.indices, runs, pipeline_pass);
             drew = true;
         }
         let mut commands = draws
@@ -1134,17 +1146,8 @@ impl WorldPrimitives {
             .filter(|range| !range.is_empty())
             .peekable();
         if commands.peek().is_some() {
-            match target {
-                PreparedPass::Oit(stage) => self
-                    .pipelines
-                    .draw_prepared_oit_draws(pass, stage, &self.indices, commands),
-                _ => self.pipelines.draw_prepared_draws(
-                    pass,
-                    &self.indices,
-                    commands,
-                    pack_bound_slots,
-                ),
-            }
+            self.pipelines
+                .draw_prepared_draws(pass, &self.indices, commands, pipeline_pass);
             drew = true;
         }
         drew
