@@ -1002,7 +1002,7 @@ class PullRequestMergeFlagTests(unittest.TestCase):
         # (#6245's Launcher mirrors): each --base is the merge's first parent, through --pull-request-merge.
         steps = workflow("dyna-ci.yml")["jobs"]["verify-static"]["steps"]
         based = [step for step in steps if "--base" in step.get("run", "")]
-        self.assertEqual(len(based), 5)
+        self.assertEqual(len(based), 6)
         for step in based:
             with self.subTest(step=step["name"]):
                 self.assertIn("--pull-request-merge", step["run"])
