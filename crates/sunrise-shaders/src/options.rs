@@ -14,12 +14,14 @@ const SOURCES: [&str; 8] = ["vsh", "fsh", "gsh", "csh", "tcs", "tes", "glsl", "i
 
 /// The switch options that are on by default: the switches the scan [`options`] reads finds,
 /// on in every file that declares them and tested with `#ifdef NAME` or `#ifndef NAME`
-/// somewhere (8.1). An include guard is not one, as it is not an option.
+/// somewhere (8.1). An include guard is not one, as it is not an option. A declaration whose
+/// comment touches the name (`#define NAME//comment`) does not count here, as before the scan
+/// was shared.
 pub fn switches_on(pack: &Pack) -> BTreeSet<String> {
     let scan = scan(pack);
-    let mut on = scan.on;
+    let mut on = scan.switch_on;
     // Defined both ways is ambiguous (8.1): it keeps its default only where it is on everywhere.
-    on.retain(|name| scan.switch_tested.contains(name) && !scan.off.contains(name));
+    on.retain(|name| scan.switch_tested.contains(name) && !scan.switch_off.contains(name));
     on
 }
 
@@ -118,6 +120,8 @@ struct Declaration<'a> {
     values: Option<Vec<&'a str>>,
     /// `const bool`: a switch written as a value.
     boolean: bool,
+    /// `#define NAME//comment`: the comment starts right after the last word, with no space.
+    glued: bool,
 }
 
 /// `#define NAME`, `//#define NAME`, `#define NAME VALUE // [A B]`,
@@ -134,7 +138,10 @@ fn declaration(line: &str) -> Option<Declaration<'_>> {
         if !rest.starts_with(char::is_whitespace) {
             return None;
         }
-        let (code, comment) = rest.split_once("//").unwrap_or((rest, ""));
+        let (code, comment, glued) = match rest.split_once("//") {
+            Some((code, comment)) => (code, comment, !code.ends_with(char::is_whitespace)),
+            None => (rest, "", false),
+        };
         let mut words = code.split_whitespace();
         let name = words.next()?;
         let value = words.next();
@@ -147,6 +154,7 @@ fn declaration(line: &str) -> Option<Declaration<'_>> {
             commented,
             values: list_with_default(comment, value),
             boolean: false,
+            glued,
         });
     }
     if commented {
@@ -175,6 +183,7 @@ fn declaration(line: &str) -> Option<Declaration<'_>> {
             Some(list_with_default(comment, Some(value))?)
         },
         boolean,
+        glued: false,
     })
 }
 
@@ -206,6 +215,10 @@ struct Scan {
     /// in neither.
     on: BTreeSet<String>,
     off: BTreeSet<String>,
+    /// `on` and `off` without the declarations whose comment touches the name
+    /// (`#define NAME//comment`), as [`switches_on`] counts them.
+    switch_on: BTreeSet<String>,
+    switch_off: BTreeSet<String>,
     /// The names an `#ifdef`, `#ifndef`, `#if` or `#elif` line tests, as [`options`] counts it.
     tested: BTreeSet<String>,
     /// The names an `#ifdef` or `#ifndef` line tests, as [`switches_on`] counts it.
@@ -217,14 +230,19 @@ fn scan(pack: &Pack) -> Scan {
         values: BTreeMap::new(),
         on: BTreeSet::new(),
         off: BTreeSet::new(),
+        switch_on: BTreeSet::new(),
+        switch_off: BTreeSet::new(),
         tested: BTreeSet::new(),
         switch_tested: BTreeSet::new(),
     };
     for text in option_texts(pack) {
-        // `#ifndef NAME` just before `#define NAME`: an include guard, not an option.
+        // `#ifndef NAME` just before `#define NAME`, with only comment lines between: an
+        // include guard, not an option.
         let mut guard: Option<&str> = None;
+        let mut in_comment = false;
         for line in text.lines() {
             let trimmed = line.trim();
+            let comment = comment_only(trimmed, &mut in_comment);
             let opened = guard_name(trimmed);
             for directive in ["#ifdef", "#ifndef"] {
                 if let Some(name) = trimmed.strip_prefix(directive).map(str::trim) {
@@ -238,23 +256,28 @@ fn scan(pack: &Pack) -> Scan {
             if let Some(name) = switch_test(trimmed) {
                 scan.switch_tested.insert(name.to_owned());
             }
-            let Some(d) = declaration(line) else {
-                if opened.is_some() || !(trimmed.is_empty() || trimmed.starts_with("//")) {
-                    guard = opened;
+            let d = declaration(line);
+            if !comment {
+                let pending = std::mem::replace(&mut guard, opened);
+                if let Some(d) = &d
+                    && pending == Some(d.name)
+                    && d.value.is_none()
+                {
+                    continue;
                 }
-                continue;
-            };
-            if guard.take() == Some(d.name) && d.value.is_none() && !d.commented {
-                continue;
             }
+            let Some(d) = d else { continue };
             match (d.value, d.values) {
                 (None, _) => {
-                    let set = if d.commented {
-                        &mut scan.off
+                    let (all, counted) = if d.commented {
+                        (&mut scan.off, &mut scan.switch_off)
                     } else {
-                        &mut scan.on
+                        (&mut scan.on, &mut scan.switch_on)
                     };
-                    set.insert(d.name.to_owned());
+                    all.insert(d.name.to_owned());
+                    if !d.glued {
+                        counted.insert(d.name.to_owned());
+                    }
                 }
                 (Some((value, _)), Some(values)) if !d.commented && !values.is_empty() => {
                     // A `const bool` is often the pack's own setting rather than the player's:
@@ -305,23 +328,65 @@ pub fn options(pack: &Pack) -> BTreeMap<String, PackOption> {
     out
 }
 
-/// The name an `#ifndef NAME` or `#if !defined NAME` line tests (any space after `#`).
+/// The name an `#ifndef NAME`, `#if !defined NAME` or `#if !defined(NAME)` line tests, when
+/// that test is the whole condition (any space after `#`, a comment after it). Any other
+/// condition (`#if !defined(A) && defined(B)`) opens no include guard.
 fn guard_name(line: &str) -> Option<&str> {
     let line = line.strip_prefix('#')?.trim_start();
-    let rest = match line.strip_prefix("ifndef") {
-        Some(rest) => rest,
-        None => line
-            .strip_prefix("if")?
-            .trim_start()
-            .strip_prefix('!')?
-            .trim_start()
-            .strip_prefix("defined")?,
+    let (rest, paren) = match line.strip_prefix("ifndef") {
+        Some(rest) => (rest.strip_prefix(char::is_whitespace)?, false),
+        None => {
+            let rest = line
+                .strip_prefix("if")?
+                .trim_start()
+                .strip_prefix('!')?
+                .trim_start()
+                .strip_prefix("defined")?;
+            match rest.trim_start().strip_prefix('(') {
+                Some(rest) => (rest, true),
+                None => (rest.strip_prefix(char::is_whitespace)?, false),
+            }
+        }
     };
-    let rest = rest.trim_start().trim_start_matches('(').trim_start();
+    let rest = rest.trim_start();
     let end = rest
         .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
         .unwrap_or(rest.len());
-    (end > 0).then(|| &rest[..end])
+    let (name, after) = rest.split_at(end);
+    let after = after.trim_start();
+    let after = if paren {
+        after.strip_prefix(')')?
+    } else {
+        after
+    };
+    (!name.is_empty() && comment_only(after, &mut false)).then_some(name)
+}
+
+/// Whether `line` has no code outside comments. `in_block` carries a `/*` left open from the
+/// line before, and is left set when this line opens one it does not close.
+fn comment_only(line: &str, in_block: &mut bool) -> bool {
+    let mut rest = line;
+    let mut code = false;
+    loop {
+        if *in_block {
+            let Some(end) = rest.find("*/") else {
+                return !code;
+            };
+            *in_block = false;
+            rest = &rest[end + 2..];
+        }
+        match (rest.find("//"), rest.find("/*")) {
+            (Some(at), block) if block.is_none_or(|b| at < b) => {
+                return !code && rest[..at].trim().is_empty();
+            }
+            (_, Some(at)) => {
+                code |= !rest[..at].trim().is_empty();
+                *in_block = true;
+                rest = &rest[at + 2..];
+            }
+            _ => return !code && rest.trim().is_empty(),
+        }
+    }
 }
 
 /// The names `defined NAME` and `defined(NAME)` test in an `#if` line.
@@ -730,6 +795,78 @@ iris.features.required = NOT_A_FEATURE
             switches_on(&pack),
             BTreeSet::from(["AO".to_owned(), "DEFAULTED".to_owned()])
         );
+    }
+
+    /// A guard is opened only by the bare negated test (a comment may follow it), and only
+    /// comment lines may stand between it and its `#define`: `//` lines, a commented switch,
+    /// and block comments on one line or several. Any other condition opens no guard, so its
+    /// `#define` stays an ordinary option.
+    #[test]
+    fn guards_are_the_bare_negated_test_past_comment_lines() {
+        let pack = Pack::from_zip_bytes(
+            "P.zip",
+            zip(&[
+                (
+                    "shaders/lib/guards.glsl",
+                    "#ifndef BLOCK_GLSL\n/* note */\n#define BLOCK_GLSL\n#endif\n\
+                     #ifndef LINES_GLSL // guard\n//#define OTHER\n// note\n#define LINES_GLSL\n#endif\n\
+                     #if !defined( OPEN_GLSL ) /* a\nb\n*/\n/* c\n */ /* d */\n#define OPEN_GLSL\n#endif\n",
+                ),
+                (
+                    "shaders/lib/settings.glsl",
+                    "#if !defined(AO) && defined(SUPPORTED)\n#define AO\n#endif\n\
+                     #ifndef BLOOM_ON 1\n#define BLOOM_ON\n#endif\n\
+                     #ifndef CODE\nint x; /* c */\n#define CODE\n#endif\n\
+                     #ifndef SPLIT /* a\n*/ int y;\n#define SPLIT\n#endif\n",
+                ),
+                (
+                    "shaders/final.fsh",
+                    "#ifdef AO\n#endif\n#ifdef BLOOM_ON\n#endif\n#ifdef OTHER\n#endif\n\
+                     #ifdef BLOCK_GLSL\n#endif\n#ifdef LINES_GLSL\n#endif\n#ifdef OPEN_GLSL\n#endif\n",
+                ),
+            ]),
+        )
+        .unwrap();
+        let listed: Vec<String> = options(&pack).into_keys().collect();
+        assert_eq!(listed, ["AO", "BLOOM_ON", "CODE", "OTHER", "SPLIT"]);
+        assert_eq!(options(&pack)["OTHER"].default, "false");
+        assert_eq!(
+            switches_on(&pack),
+            BTreeSet::from(["AO", "BLOOM_ON", "CODE", "SPLIT"].map(str::to_owned))
+        );
+    }
+
+    /// `#define NAME//comment` (no space before the comment) is listed as a switch, as before
+    /// the scan was shared, and is still not one `shaders.properties` or a program enable sees
+    /// as on: the old switch reader read the name as `NAME//comment`. Declared spaced in another
+    /// file, the same name counts.
+    #[test]
+    fn a_switch_glued_to_its_comment_is_listed_but_not_on() {
+        let pack = Pack::from_zip_bytes(
+            "P.zip",
+            zip(&[
+                (
+                    "shaders/lib/settings.glsl",
+                    "#define GLUED//comment\n//#define GLUED_OFF//comment\n#define BOTH//c\n",
+                ),
+                ("shaders/lib/more.glsl", "#define BOTH // c\n"),
+                (
+                    "shaders/final.fsh",
+                    "#ifdef GLUED\n#endif\n#ifdef GLUED_OFF\n#endif\n#ifdef BOTH\n#endif\n",
+                ),
+            ]),
+        )
+        .unwrap();
+        let options = options(&pack);
+        let listed: Vec<(&str, &str)> = options
+            .values()
+            .map(|o| (o.name.as_str(), o.default.as_str()))
+            .collect();
+        assert_eq!(
+            listed,
+            [("BOTH", "true"), ("GLUED", "true"), ("GLUED_OFF", "false")]
+        );
+        assert_eq!(switches_on(&pack), BTreeSet::from(["BOTH".to_owned()]));
     }
 
     /// A custom uniform's or variable's line has the macros expanded: a value option, a
