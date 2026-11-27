@@ -30,7 +30,7 @@ class MirrorCheckout:
                    'version = 1\n\n[[mirror]]\nlauncher = "mirror"\nsources = ["crates/mirror/src"]\n\n'
                    '[[mirror]]\nlauncher = "mirror2"\nsources = ["crates/mirror2/src"]\n')
         self.check("--write")
-        self.git("init", "-q")
+        self.git("init", "-q", "--template=")
         self.git("add", ".")
         self.git("commit", "-qm", "base")
         self.base = self.git("rev-parse", "HEAD").strip()

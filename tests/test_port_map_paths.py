@@ -198,7 +198,7 @@ class PortMapPathTests(unittest.TestCase):
         # the two merge without a conflict.
         (self.root / guard.LIST).write_text("# Known stale rows.\n" + "".join(f"# note {n}\n" for n in range(5)),
                                             encoding="utf-8")
-        self.git("init", "-q")
+        self.git("init", "-q", "--template=")
         return self.commit("base")
 
     def add_stale_row(self, name, map_name="game-1.tsv", top=False):
