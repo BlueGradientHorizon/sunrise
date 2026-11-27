@@ -3,7 +3,8 @@
 //! name but a comment, in any stage or included file of the pack. Packs keep their options in
 //! included `.glsl` files (or files of any name a source includes) and test them elsewhere
 //! (OQ-13), so the test the spec asks for (`#ifdef NAME` / `#ifndef NAME`) may be in any file
-//! of the pack.
+//! of the pack. An include guard (`#ifndef NAME` then `#define NAME`, 1.4) is not a switch: one
+//! scan decides what declares an option, for the options list and the switches alike.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -11,38 +12,25 @@ use crate::Pack;
 
 const SOURCES: [&str; 8] = ["vsh", "fsh", "gsh", "csh", "tcs", "tes", "glsl", "inc"];
 
-/// The switch options that are on by default.
+/// The switch options that are on by default: the switches the scan [`options`] reads finds,
+/// on in every file that declares them and tested with `#ifdef NAME` or `#ifndef NAME`
+/// somewhere (8.1). An include guard is not one, as it is not an option.
 pub fn switches_on(pack: &Pack) -> BTreeSet<String> {
-    let (mut on, mut off, mut tested) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
-    for text in option_texts(pack) {
-        for line in text.lines() {
-            let line = line.trim();
-            let (commented, rest) = match line.strip_prefix("//") {
-                Some(rest) => (true, rest.trim_start()),
-                None => (false, line),
-            };
-            let Some((directive, rest)) = rest
-                .strip_prefix('#')
-                .map(str::trim_start)
-                .and_then(|r| r.split_once(|c: char| c.is_whitespace()))
-            else {
-                continue;
-            };
-            let mut words = rest.split_whitespace();
-            let Some(name) = words.next() else { continue };
-            match directive {
-                "ifdef" | "ifndef" if !commented => _ = tested.insert(name.to_owned()),
-                "define" if words.next().is_none_or(|w| w.starts_with("//")) => {
-                    let set = if commented { &mut off } else { &mut on };
-                    set.insert(name.to_owned());
-                }
-                _ => {}
-            }
-        }
-    }
+    let scan = scan(pack);
+    let mut on = scan.on;
     // Defined both ways is ambiguous (8.1): it keeps its default only where it is on everywhere.
-    on.retain(|name| tested.contains(name) && !off.contains(name));
+    on.retain(|name| scan.switch_tested.contains(name) && !scan.off.contains(name));
     on
+}
+
+/// The name a line tests with `#ifdef NAME` or `#ifndef NAME` (any space after `#`), as
+/// [`switches_on`] counts a test.
+fn switch_test(line: &str) -> Option<&str> {
+    let rest = line.trim().strip_prefix('#')?.trim_start();
+    let (directive, rest) = rest.split_once(|c: char| c.is_whitespace())?;
+    matches!(directive, "ifdef" | "ifndef")
+        .then(|| rest.split_whitespace().next())
+        .flatten()
 }
 
 /// The value options and their defaults: `#define NAME VALUE // [A B C]`, a value and the list
@@ -209,10 +197,29 @@ fn list(comment: &str) -> Option<Vec<&str>> {
     Some(inner.split_whitespace().collect())
 }
 
-/// Every option of the pack, by name, at its default.
-pub fn options(pack: &Pack) -> BTreeMap<String, PackOption> {
-    let mut out: BTreeMap<String, PackOption> = BTreeMap::new();
-    let (mut on, mut off, mut tested) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
+/// What one pass over the pack's option texts finds: the one place that decides what declares
+/// an option, so [`options`] and [`switches_on`] agree on it.
+struct Scan {
+    /// The value and `const` options, by name.
+    values: BTreeMap<String, PackOption>,
+    /// The switches declared on (`#define NAME`) and off (`//#define NAME`); include guards are
+    /// in neither.
+    on: BTreeSet<String>,
+    off: BTreeSet<String>,
+    /// The names an `#ifdef`, `#ifndef`, `#if` or `#elif` line tests, as [`options`] counts it.
+    tested: BTreeSet<String>,
+    /// The names an `#ifdef` or `#ifndef` line tests, as [`switches_on`] counts it.
+    switch_tested: BTreeSet<String>,
+}
+
+fn scan(pack: &Pack) -> Scan {
+    let mut scan = Scan {
+        values: BTreeMap::new(),
+        on: BTreeSet::new(),
+        off: BTreeSet::new(),
+        tested: BTreeSet::new(),
+        switch_tested: BTreeSet::new(),
+    };
     for text in option_texts(pack) {
         // `#ifndef NAME` just before `#define NAME`: an include guard, not an option.
         let mut guard: Option<&str> = None;
@@ -221,11 +228,15 @@ pub fn options(pack: &Pack) -> BTreeMap<String, PackOption> {
             let opened = guard_name(trimmed);
             for directive in ["#ifdef", "#ifndef"] {
                 if let Some(name) = trimmed.strip_prefix(directive).map(str::trim) {
-                    tested.insert(name.split_whitespace().next().unwrap_or("").to_owned());
+                    let name = name.split_whitespace().next().unwrap_or("");
+                    scan.tested.insert(name.to_owned());
                 }
             }
             if trimmed.starts_with("#if") || trimmed.starts_with("#elif") {
-                tested.extend(defined_names(trimmed));
+                scan.tested.extend(defined_names(trimmed));
+            }
+            if let Some(name) = switch_test(trimmed) {
+                scan.switch_tested.insert(name.to_owned());
             }
             let Some(d) = declaration(line) else {
                 if opened.is_some() || !(trimmed.is_empty() || trimmed.starts_with("//")) {
@@ -238,24 +249,42 @@ pub fn options(pack: &Pack) -> BTreeMap<String, PackOption> {
             }
             match (d.value, d.values) {
                 (None, _) => {
-                    let set = if d.commented { &mut off } else { &mut on };
+                    let set = if d.commented {
+                        &mut scan.off
+                    } else {
+                        &mut scan.on
+                    };
                     set.insert(d.name.to_owned());
                 }
                 (Some((value, _)), Some(values)) if !d.commented && !values.is_empty() => {
                     // A `const bool` is often the pack's own setting rather than the player's:
                     // it shows where a screen names it, not with `*`.
-                    out.entry(d.name.to_owned()).or_insert_with(|| PackOption {
-                        name: d.name.to_owned(),
-                        default: value.to_owned(),
-                        values: values.iter().map(|v| (*v).to_owned()).collect(),
-                        switch: d.boolean,
-                        tested: !d.boolean,
-                    });
+                    scan.values
+                        .entry(d.name.to_owned())
+                        .or_insert_with(|| PackOption {
+                            name: d.name.to_owned(),
+                            default: value.to_owned(),
+                            values: values.iter().map(|v| (*v).to_owned()).collect(),
+                            switch: d.boolean,
+                            tested: !d.boolean,
+                        });
                 }
                 _ => {}
             }
         }
     }
+    scan
+}
+
+/// Every option of the pack, by name, at its default.
+pub fn options(pack: &Pack) -> BTreeMap<String, PackOption> {
+    let Scan {
+        values: mut out,
+        on,
+        off,
+        tested,
+        ..
+    } = scan(pack);
     for name in on.iter().chain(&off) {
         if out.contains_key(name) {
             continue;
@@ -276,12 +305,13 @@ pub fn options(pack: &Pack) -> BTreeMap<String, PackOption> {
     out
 }
 
-/// The name an `#ifndef NAME` or `#if !defined NAME` line tests.
+/// The name an `#ifndef NAME` or `#if !defined NAME` line tests (any space after `#`).
 fn guard_name(line: &str) -> Option<&str> {
-    let rest = match line.strip_prefix("#ifndef") {
+    let line = line.strip_prefix('#')?.trim_start();
+    let rest = match line.strip_prefix("ifndef") {
         Some(rest) => rest,
         None => line
-            .strip_prefix("#if")?
+            .strip_prefix("if")?
             .trim_start()
             .strip_prefix('!')?
             .trim_start()
@@ -625,6 +655,81 @@ iris.features.required = NOT_A_FEATURE
             "#define LEVEL 2 //[1 2 3]\n"
         );
         assert_eq!(parse_chosen(&chosen_text(&chosen)), chosen);
+    }
+
+    /// An include guard (`#ifndef NAME`, `#if !defined NAME` or `# ifndef NAME`, then
+    /// `#define NAME` with nothing between but blank and comment lines) is not an option (8.1,
+    /// 1.4): the options list leaves it out, and `shaders.properties` and the
+    /// `program.<name>.enabled` expressions read it as undefined, through the real reader and
+    /// loader. A switch declared and tested the same way elsewhere still counts.
+    #[test]
+    fn include_guards_are_not_options_anywhere() {
+        const VSH: &str = "#version 120\nvoid main() { gl_Position = ftransform(); }";
+        const FSH: &str = "#version 120\n#include \"/lib/a.glsl\"\n#include \"/lib/b.glsl\"\n\
+                           #include \"/lib/c.glsl\"\n#include \"/lib/settings.glsl\"\n\
+                           /* DRAWBUFFERS:0 */\nvoid main() { gl_FragData[0] = vec4(1.0); }";
+        let mut files = vec![
+            (
+                "shaders/lib/a.glsl",
+                "#ifndef A_GLSL\n#define A_GLSL\n#endif\n",
+            ),
+            (
+                "shaders/lib/b.glsl",
+                "#if !defined(B_GLSL)\n\n// guard\n#define B_GLSL\n#endif\n#ifdef B_GLSL\n#endif\n",
+            ),
+            (
+                "shaders/lib/c.glsl",
+                "# ifndef C_GLSL\n# define C_GLSL\n# endif\n",
+            ),
+            (
+                "shaders/lib/settings.glsl",
+                "#define AO\n#ifdef AO\n#endif\n#ifndef DEFAULTED\nconst int x = 1;\n\
+                 #define DEFAULTED\n#endif\n",
+            ),
+            (
+                "shaders/shaders.properties",
+                "program.composite.enabled = A_GLSL\nprogram.composite1.enabled = B_GLSL\n\
+                 program.composite2.enabled = C_GLSL\nprogram.composite3.enabled = AO\n\
+                 program.composite4.enabled = DEFAULTED\n\
+                 #if defined A_GLSL || defined B_GLSL || defined C_GLSL\nscreen = guards\n#endif\n\
+                 #ifdef AO\nsliders = ao\n#endif\n",
+            ),
+            ("shaders/final.vsh", VSH),
+            ("shaders/final.fsh", FSH),
+        ];
+        let names = [
+            "composite",
+            "composite1",
+            "composite2",
+            "composite3",
+            "composite4",
+        ];
+        let paths: Vec<_> = names
+            .iter()
+            .flat_map(|n| [format!("shaders/{n}.vsh"), format!("shaders/{n}.fsh")])
+            .collect();
+        for path in &paths {
+            files.push((path.as_str(), if path.ends_with("vsh") { VSH } else { FSH }));
+        }
+        let pack = Pack::from_zip_bytes("guards.zip", zip(&files)).unwrap();
+        let listed: Vec<String> = options(&pack).into_keys().collect();
+        assert_eq!(listed, ["AO", "DEFAULTED"]);
+        let mut macros = crate::Macros::standard();
+        let (properties, _) = read_properties(&pack, &mut macros);
+        assert_eq!(properties.get("screen"), None);
+        assert_eq!(properties.get("sliders"), Some("ao"));
+        let post = crate::load_post(&pack, "", &properties, &macros, &Default::default());
+        let loaded: Vec<&str> = post.programs.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(
+            loaded,
+            ["composite3", "composite4", "final"],
+            "{:?}",
+            post.notes
+        );
+        assert_eq!(
+            switches_on(&pack),
+            BTreeSet::from(["AO".to_owned(), "DEFAULTED".to_owned()])
+        );
     }
 
     /// A custom uniform's or variable's line has the macros expanded: a value option, a
