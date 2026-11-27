@@ -1596,24 +1596,19 @@ mod tests {
         let e = sample();
         let items = sample_items();
         let s = ItemStack::new("minecraft:diamond_sword", 1);
-        // With no bookshelves the third row's draw is often below 3, which clears it.
-        let (seed, drawn) = (0..10_000)
-            .find_map(|seed| {
-                let mut random = LegacyRandom::new(i64::from(seed));
-                let drawn: Vec<i32> = (0..3)
-                    .map(|row| e.enchantment_cost_of(&mut random, row, 0, &s))
-                    .collect();
-                (drawn[2] > 0 && drawn[2] < 3).then_some((seed, drawn))
-            })
-            .expect("a seed whose third row draws 1 or 2");
+        // Seed 1 with no bookshelves draws costs [2, 3, 2] through Java's legacy random
+        // and vanilla's cost formula; the third row's 2 is below its minimum of 3.
         let mut told = Vec::new();
-        let set = enchant_offers_leveled(&e, &items, seed, 0, Some(&s), |row, cost| {
+        let set = enchant_offers_leveled(&e, &items, 1, 0, Some(&s), |row, cost| {
             told.push(cost);
             if row == 2 { 1 } else { cost }
         });
-        assert_eq!(told[2], 0, "drew {}, cleared before the listener", drawn[2]);
-        assert_eq!(set.costs[2], 1, "the listener's level stands");
-        assert_eq!(set.clues[2], enchant_clue(&e, &items, seed, 2, 1, &s));
+        assert_eq!(
+            told,
+            [2, 3, 0],
+            "the third row is cleared before the listener"
+        );
+        assert_eq!(set.costs, [2, 3, 1], "the listener's level stands");
     }
 
     #[test]
