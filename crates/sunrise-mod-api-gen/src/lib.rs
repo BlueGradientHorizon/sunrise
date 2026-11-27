@@ -20,12 +20,10 @@ use catalog::{Catalog, Contract, DrawContext, Hook, HostAccess, PartKind, PhaseC
 use heck::ToSnakeCase;
 pub use hook_wiring::{check_gameplay_hook_wiring, check_hook_wiring};
 use quote::ToTokens;
-#[cfg(test)]
-use std::path::PathBuf;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
 };
 #[cfg(test)]
@@ -582,56 +580,55 @@ mod dispatch;
 mod host_param;
 mod index;
 
-static GENERATED_ON_STDOUT: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-/// For a tool that prints generated text on stdout (`xtask mod-api coverage`): the generator's
-/// `cargo:rerun-if-changed` lines, meant for a build script's Cargo, are left out of it.
-pub fn generated_on_stdout() {
-    GENERATED_ON_STDOUT.store(true, std::sync::atomic::Ordering::Relaxed);
+/// Source files and directories read or probed during generation.
+/// Readers populate this quietly; only Cargo build scripts print `cargo:rerun-if-changed=` lines.
+#[derive(Default)]
+pub(crate) struct Inputs {
+    paths: BTreeSet<PathBuf>,
 }
 
-#[cfg(test)]
-thread_local! {
-    /// The paths `rerun_if_changed` was given while a test holds the capture.
-    static CAPTURED_RERUNS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
-}
-
-/// Reads a UTF-8 generator input file and registers it with Cargo (`cargo:rerun-if-changed`).
-pub(crate) fn read_input(path: &Path) -> std::io::Result<String> {
-    rerun_if_changed(&path.display());
-    fs::read_to_string(path)
-}
-
-/// Lists sorted Rust module stems in `dir` (excluding `mod.rs`) and registers `dir` with Cargo
-/// (`cargo:rerun-if-changed`).
-pub(crate) fn read_module_files(dir: &Path) -> Result<Vec<String>, String> {
-    rerun_if_changed(&dir.display());
-    sunrise_game_discovery::module_files(dir)
-}
-
-/// Tracks the stager's stamp, `.sunrise-source-staged`, only in a staged copy. Cargo reruns a build
-/// script on every build while a tracked path is missing, so tracking an absent stamp rebuilt
-/// sunrise-client and every crate above them on each `cargo` invocation of an
-/// ordinary checkout. A stamp never appears in a tree that was already built: staging writes it
-/// first, into a fresh copy, and refuses a tree that already has one.
-pub(crate) fn rerun_if_staged(root: &std::path::Path) {
-    let stamp = root.join(".sunrise-source-staged");
-    if stamp.is_file() {
-        rerun_if_changed(&stamp.display());
+impl Inputs {
+    pub(crate) fn record(&mut self, path: impl Into<PathBuf>) {
+        self.paths.insert(path.into());
     }
-}
 
-/// Tells the build script's Cargo to rerun it when `path` changes.
-pub(crate) fn rerun_if_changed(path: &impl std::fmt::Display) {
-    #[cfg(test)]
-    CAPTURED_RERUNS.with_borrow_mut(|capture| {
-        if let Some(captured) = capture.as_mut() {
-            captured.push(path.to_string());
+    /// Records `path` only when it currently exists: Cargo reruns a build script on every build
+    /// while a tracked path is absent.
+    pub(crate) fn record_existing(&mut self, path: impl AsRef<Path>) {
+        let path = path.as_ref();
+        if path.exists() {
+            self.paths.insert(path.to_path_buf());
         }
-    });
-    if !GENERATED_ON_STDOUT.load(std::sync::atomic::Ordering::Relaxed) {
-        println!("cargo:rerun-if-changed={path}");
+    }
+
+    pub(crate) fn read_to_string(&mut self, path: &Path) -> std::io::Result<String> {
+        let text = fs::read_to_string(path)?;
+        self.record(path);
+        Ok(text)
+    }
+
+    pub(crate) fn module_files(&mut self, dir: &Path) -> Result<Vec<String>, String> {
+        let modules = sunrise_game_discovery::module_files(dir)?;
+        self.record(dir);
+        Ok(modules)
+    }
+
+    /// Tracks the stager's stamp, `.sunrise-source-staged`, only in a staged copy.
+    /// A stamp never appears in a tree that was already built: staging writes it first, into a
+    /// fresh copy, and refuses a tree that already has one.
+    pub(crate) fn record_if_staged(&mut self, root: &Path) {
+        let stamp = root.join(".sunrise-source-staged");
+        if stamp.is_file() {
+            self.record(stamp);
+        }
+    }
+
+    pub(crate) fn extend_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.paths.extend(paths);
+    }
+
+    pub(crate) fn into_paths(self) -> Vec<PathBuf> {
+        self.paths.into_iter().collect()
     }
 }
 pub mod functions;
@@ -655,17 +652,20 @@ pub use counterparts::generate as generate_counterparts;
 pub use notes::generate as generate_hook_notes;
 
 /// Generate the dispatch test fixture without preventing xtask from filling new placeholders.
+/// Returns the watched input paths quietly for the caller's build script to emit.
 #[doc(hidden)]
-pub fn generate_test_hooks(root: &Path, out_dir: &Path) -> Result<(), String> {
-    let catalog = if SourceLayout::read(root)?.is_split() {
-        gameplay::Routing::load(root)?.catalog(root)?
+pub fn generate_test_hooks(root: &Path, out_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut inputs = Inputs::default();
+    let catalog = if SourceLayout::read_tracked(root, &mut inputs)?.is_split() {
+        gameplay::Routing::load_tracked(root, &mut inputs)?.catalog_tracked(root, &mut inputs)?
     } else {
-        Catalog::load(root)?
+        Catalog::load_tracked(root, &mut inputs)?
     };
-    dispatch_fixtures::generate(root, out_dir, &catalog)?;
+    dispatch_fixtures::generate_tracked(root, out_dir, &catalog, &mut inputs)?;
     let code = hooks_source(&catalog)?;
     syn::parse_file(&code).map_err(|e| format!("generated Rust: {e}"))?;
-    fs::write(out_dir.join("mod_api_generated.rs"), code).map_err(|e| e.to_string())
+    fs::write(out_dir.join("mod_api_generated.rs"), code).map_err(|e| e.to_string())?;
+    Ok(inputs.into_paths())
 }
 
 #[cfg(test)]

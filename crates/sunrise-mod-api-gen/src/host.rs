@@ -420,14 +420,19 @@ fn server_only_tiers(camel: &str, file: &syn::File) -> std::collections::BTreeSe
     set
 }
 
-/// The area files, `base` first and then by name, as the catalog's are.
 /// The area files, sorted by name, as the catalog's are.
 pub(crate) fn load(root: &Path) -> Result<Vec<Area>, String> {
+    load_tracked(root, &mut crate::Inputs::default())
+}
+
+pub(crate) fn load_tracked(root: &Path, inputs: &mut crate::Inputs) -> Result<Vec<Area>, String> {
     let dir = root.join(DIRECTORY);
     let mut areas = Vec::new();
-    for stem in crate::read_module_files(&dir)? {
+    for stem in inputs.module_files(&dir)? {
         let path = dir.join(format!("{stem}.rs"));
-        let source = crate::read_input(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let source = inputs
+            .read_to_string(&path)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
         let file = syn::parse_file(&source).map_err(|e| format!("{}: {e}", path.display()))?;
         let camel = stem.to_upper_camel_case();
         let tables =
@@ -449,8 +454,11 @@ pub(crate) fn load(root: &Path) -> Result<Vec<Area>, String> {
 /// them (`impl_host_areas!`, `impl_server_host_areas!`...) that implements the area traits of that
 /// union with their defaults, except the areas a double overrides: what a test double or a startup
 /// host writes instead of an `impl` for each area.
-pub(super) fn areas_source(root: &Path) -> Result<String, String> {
-    let areas = load(root)?;
+pub(super) fn areas_source_tracked(
+    root: &Path,
+    inputs: &mut crate::Inputs,
+) -> Result<String, String> {
+    let areas = load_tracked(root, inputs)?;
     areas_source_from(root, &areas)
 }
 
@@ -1760,34 +1768,56 @@ fn handle_method(
     )))
 }
 
-/// Domain `*/types.rs` files declared by the root exports, in deterministic order.
+/// Domain `*/types.rs` (or `*/types/mod.rs`) files imported at the API root, in deterministic order.
 fn domain_type_files(src_root: &Path, api_source: &str) -> Result<Vec<PathBuf>, String> {
-    let parsed = syn::parse_file(api_source).map_err(|e| e.to_string())?;
-    let mut dirs = BTreeSet::new();
-    for item in &parsed.items {
-        match item {
-            Item::Mod(module) if module.content.is_none() => {
-                dirs.insert(src_root.join(module.ident.to_string()));
-            }
-            Item::Use(use_item) => {
-                let mut tree = &use_item.tree;
-                if let syn::UseTree::Path(path) = tree
-                    && matches!(path.ident.to_string().as_str(), "crate" | "self")
-                {
-                    tree = &path.tree;
-                }
-                if let syn::UseTree::Path(domain) = tree {
-                    dirs.insert(src_root.join(domain.ident.to_string()));
-                }
-            }
-            _ => {}
+    fn collect_types_domains(tree: &syn::UseTree, domains: &mut BTreeSet<String>) {
+        let mut tree = tree;
+        if let syn::UseTree::Path(path) = tree
+            && matches!(path.ident.to_string().as_str(), "crate" | "self")
+        {
+            tree = &path.tree;
+        }
+        let syn::UseTree::Path(domain) = tree else {
+            return;
+        };
+        let names_types = |node: &syn::UseTree| match node {
+            syn::UseTree::Path(path) => path.ident == "types",
+            syn::UseTree::Name(name) => name.ident == "types",
+            syn::UseTree::Rename(rename) => rename.ident == "types",
+            syn::UseTree::Group(group) => group.items.iter().any(|item| match item {
+                syn::UseTree::Path(path) => path.ident == "types",
+                syn::UseTree::Name(name) => name.ident == "types",
+                syn::UseTree::Rename(rename) => rename.ident == "types",
+                _ => false,
+            }),
+            syn::UseTree::Glob(_) => false,
+        };
+        if names_types(&domain.tree) {
+            domains.insert(domain.ident.to_string());
         }
     }
-    Ok(dirs
-        .into_iter()
-        .map(|dir| dir.join("types.rs"))
-        .filter(|path| path.is_file())
-        .collect())
+
+    let parsed = syn::parse_file(api_source).map_err(|e| e.to_string())?;
+    let mut domains = BTreeSet::new();
+    for item in &parsed.items {
+        if let Item::Use(use_item) = item {
+            collect_types_domains(&use_item.tree, &mut domains);
+        }
+    }
+    let mut files = Vec::new();
+    for domain in domains {
+        let dir = src_root.join(domain);
+        let file = dir.join("types.rs");
+        if file.is_file() {
+            files.push(file);
+        } else {
+            let dir_mod = dir.join("types/mod.rs");
+            if dir_mod.is_file() {
+                files.push(dir_mod);
+            }
+        }
+    }
+    Ok(files)
 }
 
 /// The unions, the handles' methods and the hidden backends' side of the host.
@@ -1796,9 +1826,20 @@ pub(super) fn generate_with(
     areas: &[Area],
     exports_map: Option<&BTreeMap<String, String>>,
 ) -> Result<String, String> {
+    generate_tracked(root, areas, exports_map, &mut crate::Inputs::default())
+}
+
+pub(super) fn generate_tracked(
+    root: &Path,
+    areas: &[Area],
+    exports_map: Option<&BTreeMap<String, String>>,
+    inputs: &mut crate::Inputs,
+) -> Result<String, String> {
     let src_root = root.join("crates/sunrise-mod-vocab/src");
     let lib_path = src_root.join("lib.rs");
-    let api_source = crate::read_input(&lib_path).map_err(|e| e.to_string())?;
+    let api_source = inputs
+        .read_to_string(&lib_path)
+        .map_err(|e| e.to_string())?;
     let api_source = match exports_map {
         Some(generated) => super::exports::expand_with(&api_source, generated)?,
         None => super::exports::expand(root, &api_source)?,
@@ -1807,7 +1848,7 @@ pub(super) fn generate_with(
     // Parse domain files separately: their inner docs and attributes belong to
     // that file, not to the middle of a concatenated API root.
     for path in domain_type_files(&src_root, &api_source)? {
-        let source = crate::read_input(&path).map_err(|e| e.to_string())?;
+        let source = inputs.read_to_string(&path).map_err(|e| e.to_string())?;
         let domain = api_types(&source).map_err(|e| format!("{}: {e}", path.display()))?;
         for (receiver, name) in domain.handles {
             if types.handles.insert(receiver.clone(), name).is_some() {

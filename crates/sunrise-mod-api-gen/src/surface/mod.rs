@@ -81,7 +81,7 @@ impl Boundary {
                 boundary.roles.push((name.to_owned(), role));
             }
         }
-        for shape in crate::capability_keys::key_shapes(root)? {
+        for shape in crate::capability_keys::key_shapes(index)? {
             for owner in [shape.handler.clone(), shape.provider()] {
                 if !boundary.roles.iter().any(|(name, _)| name == &owner) {
                     boundary.roles.push((owner, Role::Implement));

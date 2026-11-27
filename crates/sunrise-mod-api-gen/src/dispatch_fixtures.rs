@@ -118,9 +118,19 @@ fn push(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn generate(root: &Path, out: &Path, catalog: &Catalog) -> Result<(), String> {
+    generate_tracked(root, out, catalog, &mut crate::Inputs::default())
+}
+
+pub(crate) fn generate_tracked(
+    root: &Path,
+    out: &Path,
+    catalog: &Catalog,
+    inputs: &mut crate::Inputs,
+) -> Result<(), String> {
     let dir = root.join(DIRECTORY);
-    let mut areas = crate::read_module_files(&root.join(DECLARATIONS))?;
+    let mut areas = inputs.module_files(&root.join(DECLARATIONS))?;
     // A fixture can support a declared engine target as well as a declaration file.
     // Their boundaries need not match when declarations are split per hook.
     const NATIVE: &str = "sunrise_client::game::native_hooks::";
@@ -141,13 +151,13 @@ pub(crate) fn generate(root: &Path, out: &Path, catalog: &Catalog) -> Result<(),
     }
     let mut output = BTreeMap::new();
     let mut seen = BTreeSet::new();
-    for area in crate::read_module_files(&dir)? {
+    for area in inputs.module_files(&dir)? {
         if area != "shared" && !areas.contains(&area) {
             return Err(format!("fixture area {area} has no catalog declaration"));
         }
         let path = dir.join(format!("{area}.rs"));
         collect(
-            &crate::read_input(&path).map_err(|e| e.to_string())?,
+            &inputs.read_to_string(&path).map_err(|e| e.to_string())?,
             area == "shared",
             &mut output,
             &mut seen,
@@ -160,9 +170,9 @@ pub(crate) fn generate(root: &Path, out: &Path, catalog: &Catalog) -> Result<(),
         if !folder.is_dir() {
             continue;
         }
-        for name in crate::read_module_files(&folder)? {
+        for name in inputs.module_files(&folder)? {
             let path = folder.join(format!("{name}.rs"));
-            let source = crate::read_input(&path).map_err(|e| e.to_string())?;
+            let source = inputs.read_to_string(&path).map_err(|e| e.to_string())?;
             for item in syn::parse_file(&source)
                 .map_err(|e| format!("{}: {e}", path.display()))?
                 .items

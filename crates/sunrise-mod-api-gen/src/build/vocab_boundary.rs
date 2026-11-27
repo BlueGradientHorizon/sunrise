@@ -10,10 +10,14 @@ pub(super) mod modules;
 
 pub(super) type Inventory = BTreeMap<String, BTreeMap<String, String>>;
 
-pub(super) fn inventory(root: &Path) -> Result<Inventory, String> {
+pub(super) fn inventory(root: &Path, inputs: &mut crate::Inputs) -> Result<Inventory, String> {
     let path = root.join("tools/layering/mod_vocab_state.json");
-    serde_json::from_str(&crate::read_input(&path).map_err(|e| format!("{}: {e}", path.display()))?)
-        .map_err(|e| e.to_string())
+    serde_json::from_str(
+        &inputs
+            .read_to_string(&path)
+            .map_err(|e| format!("{}: {e}", path.display()))?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

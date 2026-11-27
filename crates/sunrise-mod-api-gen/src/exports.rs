@@ -7,24 +7,30 @@ pub(crate) const DIRECTORY: &str = "crates/sunrise-mod-vocab/src/exports";
 use sunrise_game_discovery::exports::PREFIX;
 
 pub(crate) fn sources(root: &Path) -> Result<BTreeMap<String, String>, String> {
-    sources_with(root, None, None)
+    sources_tracked(root, None, None, &mut crate::Inputs::default())
 }
 
-pub(crate) fn sources_with(
+pub(crate) fn sources_tracked(
     root: &Path,
     areas_source: Option<&str>,
     parts_trait_exports: Option<&str>,
+    inputs: &mut crate::Inputs,
 ) -> Result<BTreeMap<String, String>, String> {
     let dir = root.join(DIRECTORY);
-    let areas = crate::read_module_files(&dir)?;
-    let (mut out, has_parts, has_host) =
-        sunrise_game_discovery::exports::fragments(root, areas, crate::read_input)?;
-    if has_host {
+    let areas = inputs.module_files(&dir)?;
+    let fragments = sunrise_game_discovery::exports::fragments(root, areas, |path| {
+        inputs.read_to_string(path)
+    })?;
+    for path in &fragments.module_paths {
+        inputs.record_existing(path);
+    }
+    let mut out = fragments.scopes;
+    if fragments.has_host {
         let areas_owned;
         let areas_code = match areas_source {
             Some(code) => code,
             None => {
-                areas_owned = super::host::areas_source(root)?;
+                areas_owned = super::host::areas_source_tracked(root, inputs)?;
                 &areas_owned
             }
         };
@@ -44,10 +50,10 @@ pub(crate) fn sources_with(
             }
         }
     }
-    if has_parts {
+    if fragments.has_parts {
         let exports = match parts_trait_exports {
             Some(code) => std::borrow::Cow::Borrowed(code),
-            None => std::borrow::Cow::Owned(super::parts::trait_exports(root)?),
+            None => std::borrow::Cow::Owned(super::parts::trait_exports_tracked(root, inputs)?),
         };
         out.get_mut("root").unwrap().push_str(&exports);
     }
