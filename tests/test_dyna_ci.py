@@ -449,7 +449,7 @@ class DynaRoutingTests(unittest.TestCase):
                                         capture_output=True, text=True)
                 if case in ("absent", "correct-link"):
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(target.resolve(), persistent)
+                    self.assertEqual(target.resolve(), persistent.resolve())
                 else:
                     self.assertNotEqual(result.returncode, 0)
                     after = target.lstat()
@@ -547,6 +547,56 @@ class DynaRoutingTests(unittest.TestCase):
             step_named(mutated, "The source stages with this commit's build data").update(change)
             with self.subTest(change=change), self.assertRaises(AssertionError):
                 self.assert_positive_stage_export(mutated)
+
+    @needs_runner_shell
+    def test_the_c_source_test_signs_with_homebrews_openssl_on_macos(self):
+        # macOS's LibreSSL has no `pkeyutl -rawin`, which sign_release.sh uses (daily run 45879175792).
+        steps = workflow("prebuilt-game-build.yml")["jobs"]["build"]["steps"]
+        names = [step.get("name") for step in steps]
+        signing = "A native mod with a C source builds through the mod tool"
+        step = step_named({"steps": steps}, "OpenSSL 3 for tools/ci/sign_release.sh")
+        self.assertEqual(names.count(step["name"]), 1)
+        self.assertLess(names.index(step["name"]), names.index(signing))
+        self.assertEqual(step["if"], "inputs.c_source_test && matrix.name == 'macos'")
+        self.assertEqual(step["env"], {"HOMEBREW_NO_AUTO_UPDATE": "1"})
+        self.assertIn("EPHEMERAL=yes bash tools/ci/sign_release.sh", step_named({"steps": steps}, signing)["run"])
+
+        for installed in (True, False):
+            with self.subTest(installed=installed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                prefix = root / "cellar" / "openssl@3"
+                (prefix / "bin").mkdir(parents=True)
+                stubs = root / "stubs"
+                stubs.mkdir()
+                calls = root / "calls"
+                # Scripts are written with LF endings whatever the platform.
+                (stubs / "brew").write_bytes((
+                    '#!/bin/sh\n'
+                    'echo "brew $*" >> "$CALLS"\n'
+                    'case "$1" in\n'
+                    '  list) [ "$INSTALLED" = 1 ] ;;\n'
+                    '  --prefix) echo "$PREFIX" ;;\n'
+                    '  install) ;;\n'
+                    '  *) exit 2 ;;\n'
+                    'esac\n').encode())
+                (prefix / "bin" / "openssl").write_bytes(
+                    b'#!/bin/sh\necho "openssl $*" >> "$CALLS"\necho "OpenSSL 3.stub"\n')
+                for stub in (stubs / "brew", prefix / "bin" / "openssl"):
+                    stub.chmod(0o755)
+                github_env = root / "github-env"
+                env = dict(os.environ, PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}", CALLS=calls.as_posix(),
+                           INSTALLED=str(int(installed)), PREFIX=prefix.as_posix(), GITHUB_ENV=github_env.as_posix(),
+                           **step["env"])
+                result = subprocess.run([BASH, "-e", "-c", step["run"]], cwd=root, env=env,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("OpenSSL 3.stub", result.stdout)
+                expected = ["brew list openssl@3"]
+                if not installed:
+                    expected.append("brew install openssl@3")
+                expected += ["brew --prefix openssl@3", "openssl version"]
+                self.assertEqual(calls.read_text().splitlines(), expected)
+                self.assertEqual(github_env.read_text(), f"OPENSSL={prefix.as_posix()}/bin/openssl\n")
 
     def test_optional_map_upload_is_nonblocking_and_reports_its_failure(self):
         verify = workflow("dyna-ci.yml")["jobs"]["verify-static"]
@@ -784,13 +834,32 @@ class LauncherMirrorsStepTests(unittest.TestCase):
                          {"contents": "read", "pull-requests": "read"})
 
 
+class BookQuickstartWorkflowTests(unittest.TestCase):
+    PREPARE = "Prepare dedicated server resources for the own-sdk tests"
+    SERVER_TESTS = ("m2m_mod_events", "convention_tags", "m2m_load_conditions")
+
+    def test_the_server_is_prepared_once_with_java_25_before_every_test_that_starts_one(self):
+        steps = workflow("book-quickstart.yml")["jobs"]["quickstart"]["steps"]
+        names = [step["name"] for step in steps if "name" in step]
+        self.assertEqual(len(names), len(set(names)))
+        prepare = steps.index(step_named({"steps": steps}, self.PREPARE))
+        for test in self.SERVER_TESTS:
+            first = next(index for index, step in enumerate(steps) if f"--test {test} " in step.get("run", ""))
+            self.assertLess(prepare, first, test)
+        java = [index for index, step in enumerate(steps) if step.get("uses") == "actions/setup-java@v4"]
+        self.assertEqual(len(java), 1)
+        self.assertLess(java[0], prepare)
+        self.assertEqual(steps[java[0]]["if"], "inputs.own_sdk")
+        self.assertEqual(steps[java[0]]["with"], {"distribution": "temurin", "java-version": "25"})
+
+
 class PullRequestMergeFlagTests(unittest.TestCase):
     def test_every_verify_static_step_that_takes_a_base_reads_the_pull_request_merge(self):
         # A step that compares with the event's base alone blames a pull request for what main changed after it
         # (#6245's Launcher mirrors): each --base is the merge's first parent, through --pull-request-merge.
         steps = workflow("dyna-ci.yml")["jobs"]["verify-static"]["steps"]
         based = [step for step in steps if "--base" in step.get("run", "")]
-        self.assertEqual(len(based), 6)
+        self.assertEqual(len(based), 5)
         for step in based:
             with self.subTest(step=step["name"]):
                 self.assertIn("--pull-request-merge", step["run"])

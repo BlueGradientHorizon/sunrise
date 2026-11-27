@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from tests import git_history
+from tests.git_fixture import isolated_git_env
 from tools.ci import check_port_map_paths as guard
 
 
@@ -38,7 +39,7 @@ class PortMapPathTests(unittest.TestCase):
 
     def git(self, *args):
         return subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@t",
-                               *args], check=True, capture_output=True, text=True).stdout
+                               *args], env=isolated_git_env(), check=True, capture_output=True, text=True).stdout
 
     def commit(self, message):
         self.git("add", "-A")

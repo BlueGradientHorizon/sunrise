@@ -44,8 +44,8 @@ def pull_request_base(base, merged, root=None):
     """(the ref to compare HEAD with, error). With `merged`, HEAD merges the pull request into a descendant of `base`
     (the event's base, where the branch last met main): main has changed since, and the merge holds those changes too,
     so only the merge's own change, against its first parent, is the pull request's. Shared by the gates that take
-    --base (check_addresses.py, check_layers.py, check_engine_boundary.py, check_launcher_mirrors.py,
-    check_port_map_paths.py and tools/hotspots/)."""
+    --base (check_addresses.py, check_layers.py, check_launcher_mirrors.py, check_port_map_paths.py
+    and tools/hotspots/)."""
     if not merged:
         return base, None
     root = root or ROOT  # read at the call, as the two-argument callers always had it
