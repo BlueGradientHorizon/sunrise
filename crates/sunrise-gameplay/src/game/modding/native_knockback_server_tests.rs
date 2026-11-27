@@ -1,6 +1,6 @@
 //! Server-side `living_knockback` tests that construct a server-private `damage_level_of!`
 //! damage level directly against `ServerGame` (`with_game`).
-use super::native_entity_refs::tests::{bind_local_player, with_game};
+use super::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
 use crate::game::ServerGame;
 use crate::game::server_side::entity_server::damage_level_of;
 use mod_api::{self, Hooks, LevelRandomHost, LivingKnockbackEvent};
@@ -103,6 +103,14 @@ fn with_detached_credit<R>(
 #[test]
 #[ignore = "daily"]
 fn a_loaded_sulfur_cube_launch_does_not_reach_the_living_listener() {
+    if run_fresh_cases(
+        "game::server_side::native_knockback_server_tests::a_loaded_sulfur_cube_launch_does_not_reach_the_living_listener",
+        "SUNRISE_SULFUR_CUBE_KNOCKBACK_CHILD",
+        &["vanilla_archetypes"],
+    ) {
+        return;
+    }
+
     let sounds = |m: &Mob| {
         m.outbox
             .iter()
@@ -113,6 +121,8 @@ fn a_loaded_sulfur_cube_launch_does_not_reach_the_living_listener() {
             .collect::<Vec<_>>()
     };
     let heard = heard(|game, log| {
+        game.server.world_root = game.options.game_dir.clone().unwrap();
+        game.open_world_datapacks(&[], None).unwrap();
         log.lock().unwrap().cancel = true;
         let kind = game
             .res
@@ -222,6 +232,7 @@ fn knockback_fires_and_lends_views_when_stacks_have_unprojectable_components_or_
             mob.velocity
         };
 
+        let doubled_push_velocity = Vec3::new(f64::from(0.8_f32), 0.0, 0.0);
         let mut broken_sword = ItemStack::new("minecraft:iron_sword", 1);
         broken_sword
             .data_mut()
@@ -232,7 +243,7 @@ fn knockback_fires_and_lends_views_when_stacks_have_unprojectable_components_or_
         );
         game.common.inventory[game.common.selected] = Some(broken_sword);
         game.offhand = Some(ItemStack::new("minecraft:shield", 1));
-        assert_eq!(push(game), Vec3::new(0.8, 0.0, 0.0));
+        assert_eq!(push(game), doubled_push_velocity);
 
         log.lock().unwrap().cancel = true;
         assert_eq!(push(game), Vec3::ZERO);
@@ -241,12 +252,12 @@ fn knockback_fires_and_lends_views_when_stacks_have_unprojectable_components_or_
         game.common.inventory[game.common.selected] =
             Some(ItemStack::new("unknown:missing_blade", 1));
         game.offhand = Some(ItemStack::new("minecraft:shield", 1));
-        assert_eq!(push(game), Vec3::new(0.8, 0.0, 0.0));
+        assert_eq!(push(game), doubled_push_velocity);
 
         game.common.inventory[game.common.selected] =
             Some(ItemStack::new("minecraft:iron_sword", 0));
         game.offhand = Some(ItemStack::new("minecraft:air", 1));
-        assert_eq!(push(game), Vec3::new(0.8, 0.0, 0.0));
+        assert_eq!(push(game), doubled_push_velocity);
     });
 
     let sword = Some("minecraft:iron_sword".to_string());

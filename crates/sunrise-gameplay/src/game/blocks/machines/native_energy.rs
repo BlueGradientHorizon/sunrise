@@ -155,10 +155,26 @@ mod tests {
         }
     }
 
+    fn with_capability_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+        struct ArmorStandKey;
+
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for ArmorStandKey {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let _ = r.entity_type_key("minecraft:armor_stand");
+            }
+        }
+
+        // Match the capability fixture's entity key slot before the game caches it.
+        let mods = vec![mod_api::ModEntry::new("doubler", Box::new(ArmorStandKey))].into();
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(test)
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn entity_energy_and_fluids_move_and_roll_back() {
-        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::{
             BlockUpdateFlags, ENERGY, ENTITY_ENERGY, ENTITY_FLUIDS, Holder, move_energy,
             resource_util::move_resources,
@@ -170,7 +186,7 @@ mod tests {
         use sunrise_level::fast_hash::FxHashMap;
         use sunrise_sim::entities::ArmorStand;
         use sunrise_sim::mobs::Mob;
-        with_game(|game| {
+        with_capability_game(|game| {
             let _mods = game_thread();
             // Installing the capability fixture replaces the registry snapshot.
             sunrise_gameplay_common::game::mods::register_iterated_registries(

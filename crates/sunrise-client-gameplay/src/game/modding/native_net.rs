@@ -131,7 +131,15 @@ mod tests {
                     sunrise_client::net::Session::packet_hold_probe();
                 let remote = game.client.remote.as_mut().unwrap();
                 remote.joined = true;
+                remote.level_load.finish();
                 remote.session = session;
+                game.client
+                    .render_snapshot
+                    .set(Some(crate::game::RenderSnapshot {
+                        framebuffer: [800, 600],
+                        prepared_generation: None,
+                        staged_prepared_draws: 0,
+                    }));
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
                 game.client.screen = Screen::Paused;
@@ -433,7 +441,9 @@ mod tests {
 
                     // Ordinary chat (Escape or a submit) dismisses the same way: one Closing, no
                     // Opening to veto, so a vetoed Opening cannot leave the box open.
+                    *probe.answer.lock().unwrap() = None;
                     assert!(game.begin_chat_screen("", false));
+                    assert_eq!(game.client.screen, Screen::Chat);
                     probe.events.lock().unwrap().clear();
                     *probe.answer.lock().unwrap() = Some(ScreenOpening::Cancel);
                     game.close_chat(ChatExit::Done);
@@ -498,10 +508,7 @@ mod tests {
                         game.client.chat_ui.chat_draft.as_ref().unwrap().text,
                         "saved draft"
                     );
-                    assert_eq!(
-                        std::mem::take(&mut *probe.events.lock().unwrap()),
-                        ["chat->chat"]
-                    );
+                    assert_eq!(*probe.events.lock().unwrap(), ["chat->chat"]);
                     *probe.answer.lock().unwrap() = None;
                     game.tick_in_bed_chat();
                     game.tick_in_bed_chat();

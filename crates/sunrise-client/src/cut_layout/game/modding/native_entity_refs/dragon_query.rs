@@ -18,7 +18,7 @@ mod tests {
         sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in,
         sunrise_gameplay::game::native_entity_refs::tests::collect_game_all_entities,
         sunrise_gameplay::game::native_entity_refs::tests::collect_game_entities_in,
-        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay::game::native_entity_refs::tests::{with_game, with_resident_game},
         sunrise_gameplay_common::game::dragon_common::Dragon,
     };
 
@@ -187,7 +187,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn spatial_visit_stops_before_later_matches() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
             game.item_frames.push(sunrise_sim::entities::ItemFrame {

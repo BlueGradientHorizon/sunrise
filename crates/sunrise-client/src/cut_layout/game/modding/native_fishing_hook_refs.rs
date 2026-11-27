@@ -4,7 +4,9 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{collect_game_entities_in, with_game};
+    use super::super::native_entity_refs::tests::{
+        collect_game_entities_in, with_game, with_resident_game,
+    };
     use super::*;
     use mod_api::FishingHookRef;
     use mod_api::WorldEpoch;
@@ -63,7 +65,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_cast_hook_narrows_reads_its_catch_and_goes_when_discarded() {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let kind = game
                 .res

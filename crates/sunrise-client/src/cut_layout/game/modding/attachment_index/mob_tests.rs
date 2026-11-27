@@ -196,7 +196,11 @@ fn saved_mob_binding_tracks_serialized_transfer_and_parked_levels() {
 #[test]
 #[ignore = "daily"]
 fn saved_mob_binding_rebinds_retained_id_with_a_new_generation() {
+    use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
+
     with_mana_game(|game, value_key| {
+        prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let id = game.load_mob(mob([25, 26, 27, 28]), None).unwrap();

@@ -671,6 +671,10 @@ pub(in crate::game) mod tests {
     fn a_mob_uses_either_hand_until_it_is_released() {
         use sunrise_items::equipment::{MAINHAND, OFFHAND};
         with_uses(|game, uses, _| {
+            crate::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
+                game,
+                sunrise_core::position::ChunkPos::new(0, 0),
+            );
             let kinds = [
                 (12, "minecraft:zombie"),
                 (13, "minecraft:piglin"),

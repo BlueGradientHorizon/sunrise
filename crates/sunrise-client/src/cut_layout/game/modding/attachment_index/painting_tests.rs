@@ -3,7 +3,7 @@ use super::*;
 use mod_api::AttachmentHolder;
 use mod_api::EntityRef;
 use std::collections::HashSet;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::{with_game, with_resident_game};
 use sunrise_gameplay_common::game::Dim;
 use sunrise_mod_runtime::attachments::Holder;
 use {
@@ -59,7 +59,7 @@ fn contents() -> Tag {
 #[test]
 #[ignore = "daily"]
 fn saved_painting_residency_precedes_reads_and_retires_at_the_sweep() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let uuid = [1, 2, 3, 4];

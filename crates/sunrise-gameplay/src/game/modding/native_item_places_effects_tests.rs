@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_resident_game;
     use mod_api::HostTransaction;
     use mod_api::{ENTITY_ITEMS, ItemResource, TransactionError};
     use sunrise_gameplay_common::game::{
@@ -12,7 +12,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn stand_equipment_effects_wait_for_root_commit() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let mut stand =
                 sunrise_sim::entities::ArmorStand::new(40, sunrise_core::geometry::Vec3::ZERO, 0.0);
             stand.first_tick = false;

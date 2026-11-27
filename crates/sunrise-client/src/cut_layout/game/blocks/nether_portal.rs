@@ -410,8 +410,12 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn passenger_callbacks_cannot_revisit_ancestors_or_discarded_siblings() {
+        use sunrise_core::position::ChunkPos;
+        use sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
+
         for attack in [1004, 1001, 1002] {
             with_gate(|game, spare, heard| {
+                prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
                 let kind = game.res.mob_types().get("minecraft:camel").unwrap().clone();
                 for id in [101, 102, 103] {
                     let mut mob = sunrise_sim::mobs::Mob::new(

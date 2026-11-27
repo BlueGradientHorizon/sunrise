@@ -1,17 +1,16 @@
 //! Adapter fixtures run the real Game transaction open/close, root journal,
 //! deferred drops, and save gate. They need resources; the acceptance matrix
 //! coordinator fixtures in decision_tests.rs do not.
-use crate::game::native_entity_refs::tests::with_game;
-use std::sync::Arc;
+use crate::game::native_entity_refs::tests::{fixture_resident_column, with_game};
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::transactions::decision::storage::{ActionHost, GameHost};
 use sunrise_gameplay_common::game::transactions::decision::{
     Effect, Identity, ItemStack, Menu, Mutation, Outcome, Reply, Side, Step, run, tests,
 };
-use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ArmorStand;
 
 fn identity(game: &mut crate::game::ServerGame<'_>) -> Identity {
+    fixture_resident_column(&mut game.common.world, (0, 0));
     game.common
         .armor_stands
         .push(ArmorStand::new(13, Vec3::ZERO, 0.0));
@@ -29,9 +28,6 @@ fn identity(game: &mut crate::game::ServerGame<'_>) -> Identity {
 fn cancel_action_undoes_real_game_listener_block_and_deferred_drop() {
     with_game(|game| {
         let identity = identity(game);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let stone = game
             .pack
             .assets
@@ -75,9 +71,6 @@ fn cancel_action_undoes_real_game_listener_block_and_deferred_drop() {
 fn nested_real_game_commit_then_trap_rolls_back_next_placement_succeeds() {
     with_game(|game| {
         let identity = identity(game);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let dirt = game
             .pack
             .assets
@@ -134,9 +127,6 @@ fn nested_real_game_commit_then_trap_rolls_back_next_placement_succeeds() {
 fn outer_real_game_abort_undoes_applied_menu_block_cost_rng_and_drops() {
     with_game(|game| {
         let identity = identity(game);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let stone = game
             .pack
             .assets

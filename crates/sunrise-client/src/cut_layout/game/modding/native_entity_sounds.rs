@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
     use mod_api::{EntityRef, SoundSource, WorldEpoch};
     use sunrise_command::args::GameMode;
     use sunrise_core::geometry::Vec3;
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn only_a_spectator_player_is_a_spectator() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let cow = spawn(game, 10, "minecraft:cow");
             assert_eq!(game.entity_spectator(cow), Some(false));
             acting_player(game);

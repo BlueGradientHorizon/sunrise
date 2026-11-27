@@ -107,7 +107,7 @@ fn check_layers(kind: &str, replace_allowed: bool, malformed_jar: bool) {
     let ordinary_path = "data/alpha/loot_table/ordinary.json";
     let lower_ordinary = br#"{"layer":"lower"}"#.to_vec();
     let higher_ordinary = br#"{"layer":"higher"}"#.to_vec();
-    let mut lower_jar_files = vec![(ordinary_path.into(), lower_ordinary)];
+    let mut lower_jar_files = vec![(ordinary_path.into(), lower_ordinary.clone())];
     let lower_id = if kind == "jar" {
         lower_jar_files.append(&mut lower_files);
         if malformed_jar {
@@ -202,7 +202,7 @@ fn check_layers(kind: &str, replace_allowed: bool, malformed_jar: bool) {
             .find(|(id, _)| id == "loot_table/alpha:ordinary")
             .unwrap()
             .1,
-        [higher_ordinary],
+        [lower_ordinary, higher_ordinary],
     );
     let context = LoadContext::new(
         DataLoadOrigin::ServerDataLoad,

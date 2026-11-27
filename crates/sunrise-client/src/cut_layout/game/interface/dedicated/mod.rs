@@ -213,13 +213,14 @@ pub(crate) mod tests {
 
 #[cfg(test)]
 mod console_source_tests {
-    use crate::game::load_resources;
-    use std::sync::Arc;
-    use sunrise_client_render::settings::Settings;
-    use sunrise_core::position::ChunkPos;
+    use std::sync::{Arc, mpsc};
+    use sunrise_core::geometry::Vec3;
+    use sunrise_game_data::text::Text;
+    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-    use sunrise_level::chunk::Chunk;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    use sunrise_sim::lan::{Out, PlayerSender, data::component_nbt};
+    use sunrise_sim::motion::PlayerMotion;
 
     /// Runs `command` as the console does and returns whether it worked and every message it printed.
     fn console(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, String) {
@@ -234,66 +235,61 @@ mod console_source_tests {
         (ok, said)
     }
 
-    /// `MinecraftServer.createCommandSourceStack`: the console's source has no entity and is named "Server"
-    /// (an RCON client's, `RconConsoleSource`, "Rcon"): `/me` says so, and `teammsg`, which needs an entity,
-    /// refuses it (`permissions.requires.entity`) instead of running as the player in place.
+    /// `MinecraftServer.createCommandSourceStack` and `RconConsoleSource.createCommandSourceStack` use named sources without entities.
     #[test]
     #[ignore = "daily"]
     fn the_console_runs_as_the_server_not_the_player_in_place() {
-        let root = std::path::PathBuf::from(
-            std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
-        );
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role =
-            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = sunrise_gameplay::game::ServerGame::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings.sim_settings(),
-            None,
-            crate::game::profile_resolver,
-        )
-        .unwrap();
-        game.build_registries();
-        game.set_allow_commands(true);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.block_ticks
-            .add_empty_chunk(ChunkPos::new(0, 0))
+        with_guests(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+            game.build_registries();
+            let (tx, rx) = mpsc::channel();
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
+            hub.update_guest(12, |guest| {
+                guest.sender = PlayerSender::new(tx, Arc::default())
+            })
             .unwrap();
-        let (ok, said) = console(&mut game, "me waves");
-        assert!(
-            ok && said.contains("chat.type.emote") && said.contains("\"Server\""),
-            "{said}"
-        );
-        game.server.rcon_source = true;
-        let (ok, said) = console(&mut game, "me waves");
-        assert!(ok && said.contains("\"Rcon\""), "{said}");
-        game.server.rcon_source = false;
-        let (ok, said) = console(&mut game, "teammsg hi");
-        assert!(
-            !ok && said.contains("permissions.requires.entity"),
-            "{said}"
-        );
-        // The console's source is put back after each line.
-        assert!(game.server.command_source.is_none());
+            let emote = hub
+                .registry_id("minecraft:chat_type", "minecraft:emote_command")
+                .unwrap();
+
+            for (rcon, name) in [(false, "Server"), (true, "Rcon")] {
+                game.server.rcon_source = rcon;
+                assert!(game.as_console_in_spawn_level(|g| g.run_command("me waves")));
+                let message = rx
+                    .try_iter()
+                    .flat_map(|out| match out {
+                        Out::Packet(body) => vec![body],
+                        Out::Packets(bodies) => bodies,
+                        Out::Disconnect(_) => Vec::new(),
+                    })
+                    .find_map(|body| {
+                        let mut reader = Reader::new(&body);
+                        match Clientbound::decode(reader.varint().unwrap(), reader.rest()).unwrap()
+                        {
+                            Clientbound::DisguisedChat(message) => Some(message),
+                            _ => None,
+                        }
+                    })
+                    .expect("the guest receives the console's emote");
+                assert_eq!(message.chat_type.chat_type, emote);
+                assert_eq!(
+                    message.chat_type.name,
+                    component_nbt(&Text::literal(name).component())
+                );
+                assert_eq!(
+                    message.message,
+                    component_nbt(&Text::literal("waves").component())
+                );
+            }
+
+            game.server.rcon_source = false;
+            let (ok, said) = console(game, "teammsg hi");
+            assert!(
+                !ok && said.contains("permissions.requires.entity"),
+                "{said}"
+            );
+            assert!(game.server.command_source.is_none());
+        });
     }
 }
 

@@ -257,7 +257,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn no_physics_reads_supported_entities_and_refuses_others() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use mod_api::WorldEpoch;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
@@ -265,7 +265,7 @@ mod tests {
         use sunrise_sim::projectiles::{Projectile, ProjectileKind};
         use sunrise_sim::thrown_trident::ThrownTrident;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -536,7 +536,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mod_cleared_no_physics_shulker_bullet_is_pushed_by_a_shulker_lid() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::{Aabb, Vec3};
         use sunrise_gameplay_common::game::piston_push::Lid;
         use sunrise_sim::mobs::Mob;
@@ -560,7 +560,7 @@ mod tests {
             id
         };
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let kind = game
                 .res
                 .mob_types()
@@ -605,12 +605,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_the_bullet_leaves_with_its_chunk() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use std::collections::HashSet;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::projectiles::Projectile;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let mut bullet = Projectile::new(
                 ProjectileKind::ShulkerBullet {
                     target: None,
@@ -643,11 +643,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_a_command_kills_a_shulker_bullet() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::projectiles::Projectile;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let mut bullet = Projectile::new(
                 ProjectileKind::ShulkerBullet {
                     target: None,
@@ -684,11 +684,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_a_players_blow_removes_a_shulker_bullet() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::projectiles::Projectile;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let mut bullet = Projectile::new(
                 ProjectileKind::ShulkerBullet {
                     target: None,

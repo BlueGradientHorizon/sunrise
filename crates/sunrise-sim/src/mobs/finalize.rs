@@ -1674,16 +1674,15 @@ impl<'a> EquipmentRead<'a> {
         }
     }
 
-    /// Encode selected extra components with the same gear overlay as a full projection.
-    /// Encode only the selected gear values over the resident patch, without cloning the slot.
+    /// Project selected live components and gear overlays without cloning the slot or encoding its damage scalar.
     pub fn extra_components_matching(
         &self,
         select: impl Fn(&str) -> bool,
     ) -> Option<sunrise_core::nbt::Tag> {
         use sunrise_core::nbt::Tag;
-        use sunrise_items::item_data::encode_extra_components_matching;
+        use sunrise_items::item_data::live_component_patch_matching;
 
-        let base = encode_extra_components_matching(self.base, &select);
+        let base = live_component_patch_matching(self.base, false, &select);
         if self.overlays.is_none()
             || !(select("minecraft:enchantments") || select("minecraft:trim"))
         {
@@ -1697,7 +1696,7 @@ impl<'a> EquipmentRead<'a> {
             extra: None,
         };
         self.overlay_gear(&mut shell, &select);
-        let Some(Tag::Compound(gear)) = encode_extra_components_matching(&shell, select) else {
+        let Some(Tag::Compound(gear)) = live_component_patch_matching(&shell, false, select) else {
             return base;
         };
         let Some(Tag::Compound(mut patch)) = base else {

@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::{with_game, with_resident_game};
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
@@ -58,7 +58,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 #[test]
 #[ignore = "daily"]
 fn restoring_keeps_both_owners_bound_and_old_batches_immutable() {
-    with_game(|game| {
+    with_resident_game(|game| {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let key = ("test".into(), "restore_lifetime".into());
         let mut values = Attachments::default();

@@ -14,14 +14,13 @@ fn compass_criterion_sees_two_compasses_before_the_block_takes_one() {
     mod_platform::testing::with_mods(mods, || {
         with_interaction_server_game(|game| {
             install_criteria(game, &[1, 2], "minecraft:compass");
+            Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:lodestone").unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
             game.common.inventory[game.common.selected] =
                 Some(ItemStack::new("minecraft:compass", 2));
-            // The block's turn takes a stick from the hand and passes; the
-            // item's turn then consumes the click.
             *observer.0.lock().unwrap() = Controls {
                 block_answer: Some(Answer::Pass),
                 take_in_block: true,

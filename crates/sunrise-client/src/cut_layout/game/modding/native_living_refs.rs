@@ -501,7 +501,7 @@ pub(crate) mod tests {
         use sunrise_sim::entities::ArmorStand;
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -1500,7 +1500,7 @@ pub(crate) mod tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             // Two zombies an arm's length apart, and one a stride away.
             let zombie = game
                 .res

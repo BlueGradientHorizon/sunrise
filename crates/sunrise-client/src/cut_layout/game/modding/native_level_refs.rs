@@ -2480,6 +2480,39 @@ mod tests {
         });
     }
 
+    fn with_night_client_game(
+        test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
+    ) {
+        use std::sync::Arc;
+        use sunrise_protocol::{
+            connection::Pipe,
+            packets::play::{self, Clientbound},
+        };
+
+        with_client_game(|game| {
+            let (pipe, _server) = Pipe::pair();
+            game.connect_local(pipe, "SkyDarkenReadTest").unwrap();
+            game.client.remote.as_mut().unwrap().logged_in = true;
+            let mut registries = (*game.client.remote.as_ref().unwrap().registries).clone();
+            registries.registries.insert(
+                "minecraft:world_clock".into(),
+                vec![("minecraft:overworld".into(), None)],
+            );
+            game.set_registries(Arc::new(registries)).unwrap();
+            game.handle_packet(Clientbound::SetTime(play::SetTime {
+                game_time: 0,
+                clocks: vec![play::ClockState {
+                    clock: 0,
+                    total_ticks: 18000,
+                    partial_tick: 0.0,
+                    rate: 1.0,
+                }],
+            }))
+            .unwrap();
+            test(game);
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn light_and_loaded_reads_match_the_games_query_and_load_nothing() {
@@ -2545,10 +2578,7 @@ mod tests {
             assert_eq!(game.world.chunks.len(), chunks, "nothing was loaded");
         });
         // A logged-in client reads the same darkening through the same view.
-        with_client_game(|game| {
-            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-            game.connect_local(pipe, "SkyDarkenReadTest").unwrap();
-            game.client.remote.as_mut().unwrap().logged_in = true;
+        with_night_client_game(|game| {
             let client = game.level("minecraft:overworld").unwrap();
             // The client's own world, at night as the server's time packet would set it.
             game.world.day_time = 18000;

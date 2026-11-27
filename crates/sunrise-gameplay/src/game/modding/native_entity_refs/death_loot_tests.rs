@@ -1,5 +1,7 @@
 use crate::game::ServerGame;
-use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
+use crate::game::native_entity_refs::tests::{
+    bind_local_player, run_fresh_cases, with_resident_game,
+};
 use mod_api::{
     DeathLootError, EntityRef, Identifier, LivingRef, LootDamageSource,
     prelude::{EntitiesHost as _, PlayersHost as _},
@@ -29,7 +31,7 @@ fn rolls_live_death_context_without_dropping() {
     ) {
         return;
     }
-    with_game(|game| {
+    with_resident_game(|game| {
         let files = [
             ("loot_table/test:death_preview".into(), vec![br#"{
                 "type":"minecraft:entity","pools":[

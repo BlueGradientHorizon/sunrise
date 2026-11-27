@@ -5072,7 +5072,7 @@ pub(crate) mod tests {
         };
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
-            for x in 0..=1 {
+            for x in 0..=2 {
                 game.world
                     .chunks
                     .insert((x, 0), Arc::new(Chunk::empty(x, 0)));

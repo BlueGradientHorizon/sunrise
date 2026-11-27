@@ -285,6 +285,10 @@ fn single_owner_reads_writes_reloads_exact_f64_and_contains_callback_panics() {
 
             // A panic disables only alpha's setting_changed callback. Its live write stands,
             // and beta continues to receive its own changes through the shared dispatch.
+            assert_eq!(
+                game.set_setting(alpha_on, SettingValue::Toggle(true)),
+                Ok(true)
+            );
             let seen_before_panic = alpha_seen.lock().unwrap().len();
             let _ = mod_api::__private::take_hook_panics();
             alpha_panic.store(true, Ordering::Relaxed);

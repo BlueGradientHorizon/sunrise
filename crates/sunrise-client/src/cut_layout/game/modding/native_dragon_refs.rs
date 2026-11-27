@@ -11,7 +11,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
     use super::*;
     use mod_api::{EntityReadError, MobRef, WorldEpoch};
     use std::ops::ControlFlow;
@@ -60,7 +60,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_dragon_is_a_mob_with_mob_state() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let kind = game
                 .res
                 .mob_types()
@@ -128,7 +128,7 @@ mod tests {
             assert!(mob.set_target(game, None));
             assert_eq!(mob.target(game), None);
 
-            // No PathNavigation: the dragon flies by its phase.
+            // The dragon flies by phase, so MobRef navigation calls are unavailable.
             assert!(!mob.move_to(game, [1.0, 1.0, 1.0], 1.0));
             assert!(!mob.stop(game));
             assert_eq!(mob.is_done(game), None);

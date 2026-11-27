@@ -4,7 +4,7 @@ use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::mobs::{Mob, nav::NavKind};
 use {
     crate::game::server_side::native_entity_refs::tests::with_client_game,
-    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::native_entity_refs::tests::{with_game, with_resident_game},
 };
 
 fn zombie(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> MobRef {
@@ -80,7 +80,7 @@ fn navigation_flags_refuse_stale_handle() {
 #[test]
 #[ignore = "daily"]
 fn navigation_flags_refuse_held_out_of_level() {
-    with_game(|game| {
+    with_resident_game(|game| {
         let mob = zombie(game);
         let held = game.mobs.lift();
         refused(game, mob);

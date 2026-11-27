@@ -142,7 +142,7 @@ fn tracked_facing(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) ->
 #[test]
 #[ignore = "daily"]
 fn a_hanging_entity_turned_back_to_south_is_sent_south() {
-    super::native_guest_turn_tests::with_guests(|game| {
+    super::native_guest_turn_tests::with_resident_guests(|game| {
         game.options.dedicated = Some(Vec::new());
         with_hanging_in(game);
         let frame = game.entity(FRAME).expect("the frame's handle");

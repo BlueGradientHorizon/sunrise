@@ -1,7 +1,7 @@
 //! A hit listener reads its victim and causing entity through the hit's host
 //! (`LivingIncomingDamageEvent.getEntity`, `DamageSource.getEntity`), at the three damage moments,
 //! from their live bodies, and reads their attachments without writing them.
-use super::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
+use super::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_resident_game};
 use mod_api::{
     ActiveEffect, AttachmentDescriptor, AttachmentError, AttachmentKey, EffectKey, Flow, Hand,
     HitHost, Holder, Hooks, LivingDamagePostEvent, LivingDamagePreEvent, LivingIncomingDamageEvent,
@@ -232,7 +232,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
+        with_resident_game(|game| {
             let mark = mark.lock().unwrap().clone().expect("probe:mark registered");
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             bind_local_player(game, 7, 7);
@@ -478,7 +478,7 @@ fn the_acting_guest_is_read_with_its_holder() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        super::native_guest_turn_tests::with_guests(|game| {
+        super::native_guest_turn_tests::with_resident_guests(|game| {
             let mark = mark.lock().unwrap().clone().expect("probe:mark registered");
             game.server
                 .lan

@@ -11,8 +11,9 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
 
 use {
-    sunrise_gameplay::game::native_entity_refs::tests::with_game,
-    sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::commands_common::Target,
+    sunrise_gameplay::game::native_entity_refs::tests::{with_game, with_resident_game},
+    sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::commands_common::Target,
 };
 
 fn add_mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, name: &str) -> EntityRef {
@@ -68,7 +69,7 @@ fn with_counter(
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             test(game, &heard);
         });

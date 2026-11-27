@@ -236,8 +236,7 @@ fn a_saved_mod_container_loads_its_table_before_its_items() {
     ) {
         return;
     }
-    // `RandomizableContainerBlockEntity.loadAdditional`: with a valid table the inventory
-    // starts empty and `Items` is not read, from a chunk and from a structure alike.
+    // ChestBlockEntity.loadAdditional skips saved items when there is a loot table.
     with_crate(|game, handle| {
         if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&KEY) {
             entity.items[0] = Some(ItemStack::new("minecraft:stone", 1));
@@ -266,7 +265,11 @@ fn a_saved_mod_container_loads_its_table_before_its_items() {
             .iter()
             .find(|(p, _)| *p == KEY)
             .unwrap();
-        assert_eq!(summary(entity.slots()), vec![None; SLOTS], "from a chunk");
+        assert_eq!(
+            sunrise_sim::save::block_mod_item_slots("fixture:crate"),
+            SLOTS
+        );
+        assert_eq!(entity.slots(), &[], "from a chunk");
         let BlockEntity::Mod(loaded_entity) = entity else {
             panic!("the crate's block entity")
         };
@@ -284,11 +287,7 @@ fn a_saved_mod_container_loads_its_table_before_its_items() {
             sunrise_sim::structure_blocks::generated_container("fixture:crate", &structure)
                 .unwrap();
         assert_eq!(pending.map(|p| p.table_id()), Some(TABLE.to_owned()));
-        assert_eq!(
-            summary(entity.slots()),
-            vec![None; SLOTS],
-            "from a structure"
-        );
+        assert_eq!(entity.slots(), &[], "from a structure");
     });
 }
 

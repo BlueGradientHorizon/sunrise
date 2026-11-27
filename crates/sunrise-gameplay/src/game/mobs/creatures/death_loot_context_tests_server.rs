@@ -240,7 +240,7 @@ fn death_loot_nested_death_keeps_outer_context() {
 #[test]
 #[ignore = "daily"]
 fn death_loot_uses_call_scoped_source_and_hand() {
-    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_resident_game};
     use sunrise_sim::mobs::{Damage, DamageKind, Who};
     if run_fresh_cases(
         "game::server_side::creatures_server::death_loot_context_tests::death_loot_uses_call_scoped_source_and_hand",
@@ -249,7 +249,7 @@ fn death_loot_uses_call_scoped_source_and_hand() {
     ) {
         return;
     }
-    with_game(|game| {
+    with_resident_game(|game| {
         let loot = sunrise_world::loot::LootData::load(
             &game.options.resources,
             &Default::default(),

@@ -44,7 +44,7 @@ pub(crate) mod tests {
 
     use sunrise_level::containers::BlockEntity;
 
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
 
     use mod_api::ServerHost;
 
@@ -1540,7 +1540,7 @@ pub(crate) mod tests {
         use mod_api::{EquipmentSlot, Tag};
         use sunrise_sim::mobs::gear;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let id = zombie(game);
             let living = game.living(game.entity(id).unwrap()).unwrap();
             let slot = EquipmentSlot::Chest;
@@ -1907,7 +1907,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_committed_equipment_write_matches_set_equipments() {
         use mod_api::EquipmentSlot;
-        with_game(|game| {
+        with_resident_game(|game| {
             zombie(game);
             game.common.mobs.push(sunrise_sim::mobs::Mob::new(
                 31,

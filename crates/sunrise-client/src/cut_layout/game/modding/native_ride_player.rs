@@ -47,6 +47,7 @@ mod tests {
                 super::super::native_entity_refs::tests::with_game(|game| {
                     // `entity_mount` is heard on a server thread.
                     game.options.dedicated = Some(Vec::new());
+                    fixture_resident_column(&mut game.world, (0, 0));
                     let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     game.mobs.push(Mob::new(80, pig, Vec3::ZERO, 0.0));
                     let player =

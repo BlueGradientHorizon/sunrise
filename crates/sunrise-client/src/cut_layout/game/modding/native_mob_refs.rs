@@ -15,7 +15,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
@@ -37,7 +37,7 @@ pub(crate) mod tests {
     fn fox_enderman_and_zombified_piglin_take_targets_with_their_side_effects() {
         use sunrise_core::random::{LegacyRandom, RandomSource};
         let mut client_events = Vec::new();
-        with_game(|game| {
+        with_resident_game(|game| {
             for (id, name) in [
                 (12, "minecraft:fox"),
                 (13, "minecraft:enderman"),

@@ -367,10 +367,10 @@ mod tests {
     fn destroying_a_cart_spills_all_slots_before_removing_its_row() {
         use super::super::{
             minecarts::{CartKind, Minecart},
-            native_entity_refs::tests::with_game,
+            native_entity_refs::tests::with_resident_game,
         };
         use super::*;
-        with_game(|game| {
+        with_resident_game(|game| {
             let mut cart = Minecart::new(600, CartKind::Chest, Vec3::new(1.0, 70.0, 2.0));
             cart.items[0] = Some(ItemStack::new("minecraft:stone", 64));
             cart.items[5] = Some(ItemStack::new("minecraft:stone", 19));
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn removal_dismounts_and_tells_mods_once_at_the_call() {
-        use super::super::{boats_common::Boat, native_entity_refs::tests::with_game};
+        use super::super::{boats_common::Boat, native_entity_refs::tests::with_resident_game};
         use mod_api::{EntityLeaveLevelEvent, Hooks, ServerHost};
         use std::sync::{Arc, Mutex};
         use sunrise_core::geometry::Vec3;
@@ -467,7 +467,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 game.native_joins_skip();
                 let boat_id = game.take_entity_id();
                 game.boats.push(Boat::new(
@@ -566,11 +566,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn discard_mob_and_refuse_players_and_stale_handles() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let kind = game
                 .res
                 .mob_types()
@@ -593,12 +593,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn spawn_at_location_drops_an_item_above_the_entity() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::Vec3;
         use sunrise_items::items::ItemStack;
         use sunrise_sim::mobs::Mob;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let kind = game
                 .res
                 .mob_types()
@@ -647,12 +647,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn spawn_at_location_offsets_hanging_entities_out_from_the_wall() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::Vec3;
         use sunrise_items::items::ItemStack;
         use sunrise_sim::entities::{ItemFrame, Painting};
 
-        with_game(|game| {
+        with_resident_game(|game| {
             for (id, glow, facing) in [(12, false, 5), (13, true, 4)] {
                 game.item_frames.push(ItemFrame {
                     attachment_lifetime: Default::default(),
@@ -685,12 +685,11 @@ mod tests {
                 check_interval: 0,
                 ticks: 0,
             });
-            // East frame, west glow frame, north painting. Expected origins
-            // are the hanging center plus 0.15 facing out and the 0.5 Y offset.
+            let offset = f64::from(0.15_f32);
             for (id, expected) in [
-                (12, Vec3::new(0.18125, 65.0, 0.5)),
-                (13, Vec3::new(0.81875, 65.0, 0.5)),
-                (14, Vec3::new(0.5, 65.0, 0.81875)),
+                (12, Vec3::new(0.03125 + offset, 65.0, 0.5)),
+                (13, Vec3::new(0.96875 - offset, 65.0, 0.5)),
+                (14, Vec3::new(0.5, 65.0, 0.96875 - offset)),
             ] {
                 let entity = game.entity(id).unwrap();
                 let item = entity

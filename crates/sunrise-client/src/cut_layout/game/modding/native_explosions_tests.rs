@@ -976,11 +976,10 @@ fn a_non_finite_radius_is_refused_and_one_of_zero_finds_no_blocks() {
     });
 }
 
-/// A still zombie at (11.5, 80, 8.5) and the survival player, flying or not,
-/// at (5.5, 80, 8.5): on either side of a [`wind_blast`]. The player is not
-/// bound to an entity id, so no detonate list leaves them out.
+/// A still zombie and a registered survival player on either side of a [`wind_blast`].
 fn targets(game: &mut sunrise_gameplay::game::ServerGame<'_>, flying: bool) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(5.5, 80.0, 8.5)).unwrap());
+    bind_local_player(game, 11, 123);
     game.set_mode_id(0);
     game.player.as_mut().unwrap().flying = flying;
     game.server.next_entity = 100;
@@ -1000,7 +999,7 @@ fn wind_charge(
 ) -> Option<EntityRef> {
     let charge = Projectile::new(kind, Vec3::new(8.5, 86.5, 8.5), None);
     let id = game.add_projectile(charge);
-    game.entity(id)
+    Some(game.entity(id).expect("wind charge must be resident"))
 }
 
 /// A blast at (8.5, 80.5, 8.5), radius 4, that keeps its blocks.

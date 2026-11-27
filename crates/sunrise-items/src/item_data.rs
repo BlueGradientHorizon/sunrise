@@ -2107,12 +2107,21 @@ fn canonical_other_component(id: &str, tag: &Tag) -> Tag {
 /// The live component patch, including transient components and explicit defaults.
 /// Omit the top-level damage field when the caller already carries it as a scalar.
 pub fn live_component_patch(stack: &ItemStack, include_damage: bool) -> Option<Tag> {
+    live_component_patch_matching(stack, include_damage, |_| true)
+}
+
+/// Select live component IDs without the `!` on removals. Nested stacks keep their full live patches.
+pub fn live_component_patch_matching(
+    stack: &ItemStack,
+    include_damage: bool,
+    selector: impl Fn(&str) -> bool,
+) -> Option<Tag> {
     let mut components = components_tag_inner(
         stack.damage,
         stack.data(),
         include_damage,
         true,
-        &|_| true,
+        &selector,
         &|nested| template_tag(nested, live_component_patch(nested, true)),
     )?;
     canonicalize_component_patch(&mut components);

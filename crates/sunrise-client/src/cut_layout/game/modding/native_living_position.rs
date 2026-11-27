@@ -6,7 +6,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
     use super::*;
     use mod_api::{PathType, Pose};
     use sunrise_sim::mobs::Mob;
@@ -34,7 +34,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn pose_regression_sleeping_stand() {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.armor_stands
                 .push(sunrise_sim::entities::ArmorStand::new(55, Vec3::ZERO, 0.0));
             let living = game.living(game.entity(55).unwrap()).unwrap();

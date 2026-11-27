@@ -1,7 +1,10 @@
 //! A mod's `teleport_to_level` into another level, kind by kind
 //! (`Entity.teleportCrossDimension`): what each kind keeps, and a kind it cannot move.
 use sunrise_core::geometry::Vec3;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::native_entity_refs::tests::{
+    prepare_entity_ticking_neighborhood, with_game, with_resident_game,
+};
 use sunrise_gameplay_common::game::Dim;
 
 /// A mod's `teleport_to_level` into another level carries an item and an arrow there as
@@ -182,7 +185,7 @@ fn a_mod_sends_a_firework_to_another_level_with_its_owner_and_motion() {
 #[test]
 #[ignore = "daily"]
 fn a_mod_sends_a_trident_to_another_level_with_its_stack_and_motion() {
-    with_game(|game| {
+    with_resident_game(|game| {
         sent_to_the_nether(
             game,
             "minecraft:trident",
@@ -227,7 +230,7 @@ fn portal_arrival_effects_mod_items_merge_immediately() {
 }
 
 pub(crate) fn run_portal_arrival_effects_mod_items_merge_immediately() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.native_lifecycle.world_open_ready().unwrap();
         game.spawn_item_own(
             sunrise_items::items::ItemStack::new("minecraft:diamond", 3),
@@ -238,6 +241,7 @@ pub(crate) fn run_portal_arrival_effects_mod_items_merge_immediately() {
         game.dropped[0].velocity = Vec3::new(0.1, 0.2, -0.3);
         let item = game.entity(game.dropped[0].id).unwrap();
         game.enter_level(Dim::Nether).unwrap();
+        prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, -1));
         game.spawn_item_own(
             sunrise_items::items::ItemStack::new("minecraft:diamond", 5),
             [3.5, 70.0, -2.5],

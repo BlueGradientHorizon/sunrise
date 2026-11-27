@@ -1314,9 +1314,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_pearl_reads_its_end_gateway_cooldown_and_refuses_the_write() {
-        use crate::game::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_resident_game;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             game.add_projectile(Projectile::new(
                 ProjectileKind::EnderPearl,
                 Vec3::ZERO,

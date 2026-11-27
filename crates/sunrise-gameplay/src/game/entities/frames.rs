@@ -32,12 +32,12 @@ pub(in crate::game) fn sound(f: &ItemFrame, what: &str) -> String {
     };
     format!("minecraft:entity.{prefix}.{what}")
 }
-/// `HangingEntity.spawnAtLocation`: drops sit 0.15 out from the wall.
+/// `HangingEntity.spawnAtLocation` widens the signed horizontal offsets after multiplying in f32.
 pub(in crate::game) fn hanging_drop_position(center: [f64; 3], step: [i32; 3]) -> [f64; 3] {
     [
-        center[0] + f64::from(step[0]) * 0.15,
+        center[0] + f64::from(step[0] as f32 * 0.15_f32),
         center[1],
-        center[2] + f64::from(step[2]) * 0.15,
+        center[2] + f64::from(step[2] as f32 * 0.15_f32),
     ]
 }
 impl crate::game::ServerGame<'_> {

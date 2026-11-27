@@ -374,6 +374,7 @@ fn parts_answer_the_abilities_at_every_site() {
 fn parts_answer_the_abilities_at_every_site_isolated() {
     use sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_protocol::packets::configuration::{RegistryTags, TagEntry, UpdateTags};
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "abilities",
         Box::new(Lights(vec![
@@ -398,6 +399,29 @@ fn parts_answer_the_abilities_at_every_site_isolated() {
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         with_client_game(|client| {
+            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+            client.connect_local(pipe, "Abilities").unwrap();
+            let items = client
+                .client
+                .remote
+                .as_ref()
+                .unwrap()
+                .builtin
+                .get("minecraft:item")
+                .unwrap();
+            let swords = client.res.items().item_tag_order["minecraft:swords"]
+                .iter()
+                .map(|item| items.id(item).unwrap())
+                .collect();
+            client.remote_update_tags(&UpdateTags {
+                registries: vec![RegistryTags {
+                    registry: "minecraft:item".into(),
+                    tags: vec![TagEntry {
+                        name: "minecraft:swords".into(),
+                        ids: swords,
+                    }],
+                }],
+            });
             assert_eq!(
                 sweeps(client),
                 [true, false, true],

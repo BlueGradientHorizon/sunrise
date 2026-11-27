@@ -4460,7 +4460,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mods_custom_name_and_its_visibility_are_sent() {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let kind = game
                 .res
                 .mob_types()
@@ -4895,7 +4895,7 @@ pub(in crate::game) mod tests {
                 }
             }
         }
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let settings = LanSettings {
                 port: 0,
                 guest_commands: false,

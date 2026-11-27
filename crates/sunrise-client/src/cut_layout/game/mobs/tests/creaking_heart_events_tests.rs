@@ -34,7 +34,7 @@ fn game<'a>(
         // A floor under the whole spawn search of a heart at y 202, and night
         // for `CREAKING_ACTIVE`.
         "fill -16 199 -16 16 199 16 stone",
-        "time set night",
+        "time set 13000",
         "tick freeze",
     ] {
         assert!(game.run_command(command), "{command}");
