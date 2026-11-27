@@ -350,22 +350,17 @@ fn mod_pack_linked_pass_honors_depth_compare_and_write() {
 
     let _gpu_guard = crate::gfx::test_gpu::lock();
     let gpu = Gpu::new().expect("an executed adapter is required for the linked depth fixture");
+    let passthrough = "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xyz,1.0);}";
     let red = "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){gl_FragData[0]=vec4(1.0,0.0,0.0,1.0);}";
     let files = [
-        (
-            "mod_depth.vsh",
-            "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xyz,1.0);}",
-        ),
+        ("mod_depth.vsh", passthrough),
         ("mod_depth.fsh", red),
         (
             "mod_slope.vsh",
             "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xy,0.5*gl_Vertex.x,1.0);}",
         ),
         ("mod_slope.fsh", red),
-        (
-            "gbuffers_damagedblock.vsh",
-            "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xyz,1.0);}",
-        ),
+        ("gbuffers_damagedblock.vsh", passthrough),
         ("gbuffers_damagedblock.fsh", red),
         ("final.vsh", VERTEX),
         (
