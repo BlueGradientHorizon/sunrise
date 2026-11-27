@@ -41,10 +41,13 @@ class HistoryScopeTests(unittest.TestCase):
 
     def test_an_artifact_in_head_history_fails(self):
         with TemporaryDirectory() as directory:
-            self.repo_with_artifact_on_a_branch(directory)
-            git(directory, "merge", "-q", "--no-edit", "other")
-            with mock.patch.dict("os.environ", decoy_git_env(Path(directory) / "decoy"), clear=True):
-                result = check(directory, "--history")
+            parent = Path(directory)
+            repo = parent / "repo"
+            repo.mkdir()
+            self.repo_with_artifact_on_a_branch(repo)
+            git(repo, "merge", "-q", "--no-edit", "other")
+            with mock.patch.dict("os.environ", decoy_git_env(parent / "decoy"), clear=True):
+                result = check(repo, "--history")
             self.assertEqual(result.returncode, 1)
             self.assertIn("Leak.java", result.stderr)
 

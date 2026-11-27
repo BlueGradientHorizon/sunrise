@@ -26,12 +26,14 @@ class RepositoryHygieneTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        parent = Path(self.temp.name)
+        self.root = parent / "repo"
+        self.root.mkdir()
         self.git("init", "-q")
         self.git("config", "user.name", "Fixture")
         self.git("config", "user.email", "fixture@example.invalid")
         self.write("clean.txt", "clean\n")
-        self.enterContext(mock.patch.dict("os.environ", decoy_git_env(self.root / "decoy"), clear=True))
+        self.enterContext(mock.patch.dict("os.environ", decoy_git_env(parent / "decoy"), clear=True))
 
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.root, env=isolated_git_env(), text=True).strip()
