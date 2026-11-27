@@ -1,8 +1,5 @@
 use super::*;
 
-/// `RegionFileStorage.MAX_CACHE_SIZE`: the region files of a folder kept
-/// open. Each holds a file descriptor: kept for every region ever visited,
-/// a server whose players travel runs out of them (`Too many open files`).
 /// The writer at work on a region, from `writing` until it is dropped.
 struct Writing<'a>(&'a RegionCache, (i32, i32));
 
@@ -26,6 +23,9 @@ impl Drop for Writing<'_> {
     }
 }
 
+/// `RegionFileStorage.MAX_CACHE_SIZE`: the region files of a folder kept
+/// open. Each holds a file descriptor: kept for every region ever visited,
+/// a server whose players travel runs out of them (`Too many open files`).
 pub(super) const MAX_OPEN_REGIONS: usize = 256;
 /// A folder's region files, and the ones known to be missing, by region,
 /// with when each was last asked for.
@@ -33,7 +33,7 @@ pub(super) const MAX_OPEN_REGIONS: usize = 256;
 pub(super) struct RegionFiles {
     pub(super) regions: HashMap<(i32, i32), (Option<Arc<Mutex<RegionFile>>>, u64)>,
     pub(super) clock: u64,
-    /// Each region's write stamp .
+    /// Each region's write stamp (`mark_written`).
     pub(super) written: HashMap<(i32, i32), u64>,
     #[cfg(test)]
     pub(super) close_on_evict: Option<fn(RegionFile) -> std::io::Result<()>>,
@@ -136,7 +136,7 @@ pub(super) fn write_prepared_region_records(
             let Some(region) = storage.open_cached((rx, rz), create)? else {
                 return Ok(());
             };
-            // Keep far readers on the exact locked read path until the flush completes.
+            // Keep unlocked readers on the exact locked read path until the flush completes.
             let _writing = writing(storage.cache, (rx, rz));
             let mut region = region
                 .lock()
