@@ -2242,7 +2242,7 @@ impl OptionsUi {
             shell.blur_search();
         }
     }
-    /// A switch of `sunrise-extras.txt` as the Gameplay page draws it: "Caption: On".
+    /// A switch from `sunrise-extras.txt` on the AI Agent page: "Caption: On".
     fn extra_button(&self, s: &Settings, item: crate::extras::Item) -> Widget {
         let label = Text::option_name_value(
             Text::literal(item.caption_text()),
@@ -5179,7 +5179,7 @@ mod tests {
         );
     }
 
-    /// The Gameplay page joins caption and value with the language's `options.generic_value`
+    /// The AI Agent page joins caption and value with the language's `options.generic_value`
     /// (26.3's templates), not an English ": " (#6072).
     #[test]
     fn extras_captions_use_the_languages_separator() {
