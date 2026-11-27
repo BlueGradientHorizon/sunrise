@@ -15,6 +15,7 @@ The crate graph comes from `tools/check_layers.py` (`load_config`), not a second
 
     python3 tools/ci/check_engine_boundary.py                # the ratchet
     python3 tools/ci/check_engine_boundary.py --base origin/main  # also refuse new entries vs the base
+    python3 tools/ci/check_engine_boundary.py --base "$BASE_SHA" --pull-request-merge  # CI: the pull request's merge
     python3 tools/ci/check_engine_boundary.py --write        # record today's offenders (first baseline only)
     python3 tools/ci/check_engine_boundary.py --list         # every offender and the modules it takes
 """
@@ -22,15 +23,32 @@ The crate graph comes from `tools/check_layers.py` (`load_config`), not a second
 from __future__ import annotations
 
 import argparse
+import importlib
+import importlib.util
 import json
 from pathlib import Path
-import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "tools" / "ci" / "engine_boundary.json"
 CONFIG_PATH = "tools/ci/engine_boundary.json"
 DOC = "docs/layers.md"
+
+
+def _load_tool(name):
+    """`tools/<name>.py`, by path when it is not importable as `tools.<name>`: importing this module must not edit
+    `sys.path`."""
+    try:
+        return importlib.import_module(f"tools.{name}")
+    except ImportError:
+        spec = importlib.util.spec_from_file_location(name, ROOT / "tools" / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+
+merge_base = _load_tool("merge_base")
+rust_tokens = _load_tool("rust_tokens")
 
 
 def load_config(path=CONFIG):
@@ -77,12 +95,7 @@ CRATE_HEADS = (
 
 def referenced_modules(source, modules):
     """Engine modules this source imports or namespaces through a crate head in `CRATE_HEADS`."""
-    try:
-        from tools.rust_tokens import tokens
-    except ImportError:
-        from rust_tokens import tokens
-
-    values = [value for value, _ in tokens(source)]
+    values = [value for value, _ in rust_tokens.tokens(source)]
     found = set()
     for i, value in enumerate(values[:-3]):
         if value in CRATE_HEADS and values[i + 1:i + 3] == [":", ":"]:
@@ -110,10 +123,8 @@ def offenders(config):
 
 def base_config(base):
     """The baseline as `base` has it, or None when the ref has no file (a first commit)."""
-    out = subprocess.run(["git", "show", f"{base}:{CONFIG_PATH}"], capture_output=True, text=True, cwd=ROOT)
-    if out.returncode != 0:
-        return None
-    return json.loads(out.stdout)
+    text = merge_base.text_at(merge_base.branch_base(base, ROOT), CONFIG_PATH, ROOT)
+    return json.loads(text) if text is not None else None
 
 
 def check(config, current, base=None):
@@ -155,17 +166,24 @@ def write(config, current):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base", help="refuse entries added since this git ref")
+    parser.add_argument("--pull-request-merge", action="store_true", help=merge_base.PULL_REQUEST_MERGE_HELP)
     parser.add_argument("--write", action="store_true", help="record today's offenders (first baseline only)")
     parser.add_argument("--list", action="store_true", help="print every offender and its modules")
     args = parser.parse_args(argv)
+    if args.pull_request_merge and not args.base:
+        parser.error("--pull-request-merge takes --base")
 
-    sys.path.insert(0, str(ROOT / "tools"))
-    import check_layers
-
+    check_layers = _load_tool("check_layers")
     layers = check_layers.load_config()
     for crate in ("sunrise-client", "sunrise-gameplay"):
         if layers["crates"].get(crate) != "engine":
             print(f"Engine boundary check failed: {crate} is not an engine crate in tools/layers.json")
+            return 1
+
+    if args.base:
+        args.base, error = merge_base.pull_request_base(args.base, args.pull_request_merge, ROOT)
+        if error:
+            print(f"Engine boundary check failed: {error}")
             return 1
 
     config = load_config()

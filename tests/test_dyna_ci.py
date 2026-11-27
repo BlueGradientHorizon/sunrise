@@ -11,6 +11,7 @@ import tempfile
 import time
 import unittest
 
+from tests import git_history
 from tests.os_support import BASH, POSIX_BASH, needs_runner_shell
 from tests.test_ci_concurrency import expression_value
 from tests.test_launcher_mirrors_check import MirrorCheckout
@@ -670,7 +671,13 @@ class LauncherMirrorsStepTests(unittest.TestCase):
         self.step = step_named(job, "Launcher mirrors")
         names = [step.get("name") for step in job["steps"]]
         self.assertLess(names.index("GitHub CLI for the launcher mirror check"), names.index("Launcher mirrors"))
-        self.checkout = MirrorCheckout(self)
+        self.prepare(MirrorCheckout(self))
+        # A pull request run checks out the test merge: two parents, the first main as it is now.
+        self.checkout.merge_pull_request(pr_change=lambda: self.checkout.write("crates/unrelated/note.txt", "x\n"))
+
+    def prepare(self, checkout):
+        """Stubs and environment for the step in `checkout`, whose event base is its first commit."""
+        self.checkout = checkout
         self.temp = self.checkout.root / "runner-temp"
         stubs = self.checkout.root / "stubs"
         stubs.mkdir()
@@ -681,9 +688,10 @@ class LauncherMirrorsStepTests(unittest.TestCase):
                                   encoding="utf-8", newline="\n")
         (stubs / "gh").chmod(0o755)
         self.temp.mkdir()
-        self.env = dict(os.environ, PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}", GH_CALLS=str(self.calls),
-                        GH_TOKEN="token-value", RUNNER_TEMP=str(self.temp), GITHUB_REPOSITORY="sunrise-org/sunrise",
-                        BASE_SHA=self.checkout.base, PR_NUMBER="42")
+        self.env = git_history.clean_env(PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}", GH_CALLS=str(self.calls),
+                                         GH_TOKEN="token-value", RUNNER_TEMP=str(self.temp),
+                                         GITHUB_REPOSITORY="sunrise-org/sunrise", BASE_SHA=self.checkout.base,
+                                         PR_NUMBER="42")
 
     def run_step(self, live=None, event=None, gh_exit=0, **env):
         """The step's script on a pull request. `live` is gh's answer, `event` the body the event file kept."""
@@ -704,6 +712,27 @@ class LauncherMirrorsStepTests(unittest.TestCase):
         result = self.run_step(live={"body": "Fix"}, event="launcher-mirror: the copy follows")
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("without a line starting launcher-mirror:", result.stdout)
+
+    def test_a_stale_event_base_is_not_the_baseline_of_a_merge_main_has_moved_past(self):
+        # #6245: main changed `mirror` (manifest recorded) after the event's base; the pull request does not touch it.
+        checkout = MirrorCheckout(self)
+        self.prepare(checkout)
+        checkout.merge_pull_request(main_change=lambda: checkout.change_surface(record=True),
+                                    pr_change=lambda: checkout.write("crates/unrelated/note.txt", "x\n"))
+        result = self.run_step(live={"body": ""})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Launcher mirror check passed", result.stdout)
+
+    def test_a_pull_request_that_changes_a_mirror_main_did_not_still_needs_its_line(self):
+        checkout = MirrorCheckout(self)
+        self.prepare(checkout)
+        checkout.merge_pull_request(main_change=lambda: checkout.change_surface(record=True),
+                                    pr_change=lambda: checkout.change_second_surface(record=True))
+        result = self.run_step(live={"body": ""})
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("launcher mirrors changed (mirror2)", result.stdout)
+        result = self.run_step(live={"body": "launcher-mirror: the copy follows"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_an_api_that_cannot_be_read_fails_the_step_whatever_the_event_says(self):
         self.checkout.change_surface(record=True)
@@ -753,6 +782,18 @@ class LauncherMirrorsStepTests(unittest.TestCase):
         self.assertNotIn("${{", self.step["run"])
         self.assertEqual(workflow("dyna-ci.yml")["jobs"]["verify-static"]["permissions"],
                          {"contents": "read", "pull-requests": "read"})
+
+
+class PullRequestMergeFlagTests(unittest.TestCase):
+    def test_every_verify_static_step_that_takes_a_base_reads_the_pull_request_merge(self):
+        # A step that compares with the event's base alone blames a pull request for what main changed after it
+        # (#6245's Launcher mirrors): each --base is the merge's first parent, through --pull-request-merge.
+        steps = workflow("dyna-ci.yml")["jobs"]["verify-static"]["steps"]
+        based = [step for step in steps if "--base" in step.get("run", "")]
+        self.assertEqual(len(based), 6)
+        for step in based:
+            with self.subTest(step=step["name"]):
+                self.assertIn("--pull-request-merge", step["run"])
 
 
 class PersistentTargetTests(unittest.TestCase):

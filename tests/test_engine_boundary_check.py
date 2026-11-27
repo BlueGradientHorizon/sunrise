@@ -1,7 +1,16 @@
 """The engine-boundary ratchet refuses new gameplay -> engine references and only shrinks."""
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 
+from tests import git_history
 from tools.ci import check_engine_boundary as boundary
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 CONFIG = {
@@ -74,6 +83,95 @@ class EngineBoundaryTests(unittest.TestCase):
         config = dict(CONFIG, scan=["elsewhere"], allowed={})
         problems, _ = boundary.check(config, {}, base)
         self.assertIn("scan roots and modules are fixed", problems[0])
+
+
+class EngineBoundaryBaseTests(unittest.TestCase):
+    """`--base` and `--pull-request-merge` in a throwaway checkout, run as the script CI runs."""
+    SCAN = "crates/sunrise-client/src/game/world"
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        for script in ("tools/ci/check_engine_boundary.py", "tools/rust_tokens.py", "tools/merge_base.py",
+                       "tools/check_layers.py", "tools/layers.json"):
+            (self.root / script).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(ROOT / script, self.root / script)
+        self.write("crates/sunrise-client/src/game/world/a.rs", "use crate::gfx::Frame;\n")
+        self.write("crates/sunrise-client/src/game/world/b.rs", "fn quiet() {}\n")
+        self.allow({"crates/sunrise-client/src/game/world/a.rs": ["gfx"]})
+        git_history.git(self.root, "init", "-q")
+        git_history.git(self.root, "add", ".")
+        git_history.git(self.root, "commit", "-qm", "base")
+        self.base = git_history.git(self.root, "rev-parse", "HEAD").stdout.strip()
+
+    def write(self, path, text):
+        git_history.write(self.root, path, text)
+
+    def allow(self, allowed):
+        self.write("tools/ci/engine_boundary.json", json.dumps(
+            {"scan": [self.SCAN], "modules": ["gfx", "audio", "window"], "allowed": allowed}, indent=2) + "\n")
+
+    def check(self, *arguments):
+        return subprocess.run([sys.executable, "tools/ci/check_engine_boundary.py", *arguments], cwd=self.root,
+                              env=git_history.clean_env(), capture_output=True, text=True, encoding="utf-8")
+
+    def merge(self, main_change, pr_change):
+        return git_history.merge_pull_request(self.root, self.base, ("crates", "tools"), main_change, pr_change)
+
+    def widen_with_b(self):
+        """A new offender b.rs, recorded in the baseline, as a change to the ratchet."""
+        self.write("crates/sunrise-client/src/game/world/b.rs", "use crate::audio::Audio;\n")
+        self.allow({"crates/sunrise-client/src/game/world/a.rs": ["gfx"],
+                    "crates/sunrise-client/src/game/world/b.rs": ["audio"]})
+
+    def test_a_stale_base_does_not_blame_the_pull_request_for_mains_new_entry(self):
+        # Main (after the event's base) recorded another offender; the pull request changes nothing of the sort.
+        pr, main = self.merge(self.widen_with_b, lambda: self.write("crates/unrelated.txt", "x\n"))
+        merged = self.check("--base", self.base, "--pull-request-merge")
+        self.assertEqual(merged.returncode, 0, merged.stdout + merged.stderr)
+        stale = self.check("--base", self.base)
+        self.assertEqual(stale.returncode, 1, stale.stdout)
+        self.assertIn("b.rs: added", stale.stdout)
+
+    def test_a_pull_request_that_adds_or_widens_an_entry_still_fails(self):
+        self.merge(lambda: self.write("crates/unrelated.txt", "x\n"), self.widen_with_b)
+        result = self.check("--base", self.base, "--pull-request-merge")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("b.rs: added", result.stdout)
+
+    def test_the_pull_request_merge_needs_a_merge_of_a_descendant_of_the_base(self):
+        single = self.check("--base", self.base, "--pull-request-merge")
+        self.assertEqual(single.returncode, 1, single.stdout)
+        self.assertIn("descendant of --base", single.stdout)
+        pr, _ = self.merge(lambda: None, lambda: self.write("crates/unrelated.txt", "x\n"))
+        wrong = self.check("--base", pr, "--pull-request-merge")
+        self.assertEqual(wrong.returncode, 1, wrong.stdout)
+        self.assertIn("descendant of --base", wrong.stdout)
+
+    def test_the_pull_request_merge_takes_a_base(self):
+        result = self.check("--pull-request-merge")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--pull-request-merge takes --base", result.stderr)
+
+    def test_a_baseline_that_cannot_be_read_fails_closed(self):
+        missing = self.check("--base", "0" * 40)
+        self.assertEqual(missing.returncode, 1, missing.stdout)
+        self.assertNotIn("Engine boundary check passed", missing.stdout)
+        git_history.git(self.root, "update-index", "--add", "--cacheinfo",
+                        "160000,1111111111111111111111111111111111111111,tools/ci/engine_boundary.json")
+        git_history.git(self.root, "commit", "-qm", "gitlink")
+        corrupt = git_history.git(self.root, "rev-parse", "HEAD").stdout.strip()
+        unreadable = self.check("--base", corrupt)
+        self.assertEqual(unreadable.returncode, 1, unreadable.stdout)
+        self.assertIn("tools/ci/engine_boundary.json", unreadable.stderr)
+        self.assertNotIn("Engine boundary check passed", unreadable.stdout)
+
+    def test_importing_the_check_leaves_sys_path_alone(self):
+        script = ("import sys; before = list(sys.path); import tools.ci.check_engine_boundary; "
+                  "assert sys.path == before, sys.path")
+        result = subprocess.run([sys.executable, "-c", script], cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
