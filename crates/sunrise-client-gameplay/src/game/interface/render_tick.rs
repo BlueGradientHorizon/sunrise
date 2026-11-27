@@ -275,7 +275,7 @@ impl crate::game::ClientGame<'_> {
             sky,
             water_fog_color,
             biome,
-            render_distance_chunks: self.terrain_distance(),
+            render_distance_chunks: self.effective_render_distance(),
             cloud_range_chunks: self.client.settings.cloud_range,
             camera_y: camera.y,
             min_y: self.level_min_y(),
@@ -557,7 +557,7 @@ impl crate::game::ClientGame<'_> {
                 near_yaw,
                 near_pitch,
                 sunrise_client::camera::depth_far(
-                    self.terrain_distance(),
+                    self.effective_render_distance(),
                     self.client.settings.cloud_range,
                 ),
             );

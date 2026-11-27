@@ -4415,10 +4415,12 @@ impl crate::game::ClientGame<'_> {
         } else {
             self.spinning_matrix(alpha as f32)
         };
-        let terrain_distance = self.terrain_distance();
-        let distance = (terrain_distance * 16) as f32;
-        let depth_far =
-            sunrise_client::camera::depth_far(terrain_distance, self.client.settings.cloud_range);
+        let render_distance_chunks = self.effective_render_distance();
+        let distance = (render_distance_chunks * 16) as f32;
+        let depth_far = sunrise_client::camera::depth_far(
+            render_distance_chunks,
+            self.client.settings.cloud_range,
+        );
         let mods_read_camera = !mod_api::__private::mods().is_empty();
         let view_transform = if camera_effects
             && self.common.player.is_some()

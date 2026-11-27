@@ -244,9 +244,6 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    pub fn terrain_distance(&self) -> i32 {
-        self.effective_render_distance()
-    }
     /// The renderer for the window, with the current block sprites, GUI
     /// atlas and world border texture.
     /// A new renderer's atlas holds only the pack's sprites: what was drawn into it at run time
