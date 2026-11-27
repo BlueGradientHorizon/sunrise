@@ -229,6 +229,10 @@ Their value is `-` on earlier level passes.
 - `tools/state_digest_compare.py A/digest.txt B/digest.txt` names the earliest differing group and reports each group’s first differing step and game time. First compare two runs of the same binary. With either comparator, repeat `--ignore-group GROUP` for observed run-to-run differences that should remain visible without failing the comparison. The player comparator also accepts `player_summary` for `players.txt`. Compare runs built with the same digest groups and Rust toolchain.
 - Keep the measured window free of chunk loading, generation and lighting, and of trial spawners, ominous item spawners and `/item modify` (clock-seeded UUIDs and loot random).
 
+### Packet capture
+
+A build with `--features net-trace` (with `-p sunrise-game`, `-p sunrise-client`, or `-p sunrise-sim`; off by default and compiled out) and `SUNRISE_PACKET_CAPTURE=<dir>` writes one `.pkt` file per play connection into `<dir>`. Each packet is recorded after holding and transaction scopes release it and before framing, compression, or encryption, with its per-connection sequence number, server game time (`tick`), packet id, body length, and XXH3-128 hash. To compare two runs, record each into its own directory and run `python3 tools/packet_capture_compare.py A B`: it matches connections by player name, prints the first difference per connection (sequence number, tick, packet id and name, lengths, and hashes), and exits non-zero on any mismatch, unequal count, or unmatched connection. Pass `--ignore` (off by default; `--help` lists the protocol packets carrying wall-clock fields) when comparing runs across different wall-clock times.
+
 ### Fuzzing scenarios
 
 `tools/parity_fuzz.py` runs generated scenarios in vanilla and Sunrise and reports each divergence group with a shrunk reproduction. A batch of scenarios runs as one command-exec script (`test_command_exec_parity.py --groups-file`). It is a separate tool: `parity.py` never selects it.
