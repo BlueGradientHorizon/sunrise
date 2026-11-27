@@ -65,13 +65,12 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
             }
         }
     }
-    // `updatePlayers` scans every 20 ticks; then `findOrCreateDragon` makes
-    // the fight's dragon.
+    // `updatePlayers` scans every 20 ticks, adding the player to the bar;
+    // then `findOrCreateDragon` makes the fight's dragon.
     for _ in 0..20 {
         game.tick_fight();
     }
     let id = game.dragon.as_ref().expect("the fight's dragon").id;
-    game.boss_overlay.reset();
     game.publish_boss_bars();
     let default = game
         .boss_overlay

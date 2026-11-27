@@ -1564,8 +1564,13 @@ impl Game<'_> {
         let mut result = Ok(());
         for phase in server_tick_phases(&dimensions, &order) {
             if let ServerTickPhase::IdleLevel(dim) = phase {
+                if let Some(runs) = running {
+                    self.count_fight_empty_time(dim, runs);
+                }
                 if running == Some(true) {
                     self.tick_level_environment(dim);
+                    // ServerLevel.tick: the fight still ticks while `emptyTime < 300`.
+                    self.tick_idle_fight(dim);
                 }
                 continue;
             }
@@ -1603,6 +1608,9 @@ impl Game<'_> {
             if let Err(e) = self.enter_level(dim) {
                 result = Err(e);
                 break;
+            }
+            if let Some(runs) = running {
+                self.count_fight_empty_time(dim, runs);
             }
             self.level_pass = Pass {
                 first: k == 0,
@@ -2067,6 +2075,9 @@ impl Game<'_> {
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
     pub(super) fn native_level_opened(&mut self, dim: Dim) {
+        if !self.options.execution_role.is_client() && self.remote.is_none() {
+            self.open_level_fight(dim);
+        }
         if dim == self.dim {
             self.levels.active_closed = false;
         }

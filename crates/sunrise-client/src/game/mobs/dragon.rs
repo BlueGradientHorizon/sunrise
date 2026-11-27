@@ -8,6 +8,8 @@
 //! exit portal, the egg and the next gateway; and its rendering and boss bar.
 #[path = "dragon/death.rs"]
 mod death;
+#[path = "dragon/idle_fight.rs"]
+mod idle_fight;
 #[path = "dragon/residency.rs"]
 mod residency;
 #[path = "dragon/save_lending.rs"]
@@ -200,10 +202,18 @@ pub(super) struct Fight {
     exit_portal: Option<[i32; 3]>,
     pub(super) alive_crystals: i32,
     crystal_scan: i32,
-    /// `ticksSinceLastPlayerScan`, and whether the last scan found a player
-    /// for the fight (`dragonEvent.getPlayers()` is not empty).
+    /// `ticksSinceLastPlayerScan`.
     player_scan: i32,
-    players: bool,
+    /// `dragonEvent.getPlayers()`: the viewers (by UUID) the last player scan
+    /// (`updatePlayers`) found, who hold the dragon's bar until another scan
+    /// leaves them out.
+    audience: Vec<u128>,
+    /// `dragonEvent`'s progress (`updateDragon`'s `setProgress`).
+    bar_progress: f32,
+    /// `ServerLevel.emptyTime` of the fight's level: the running ticks since
+    /// it last held a ticket that keeps a dimension active. The fight ticks
+    /// while it is under [`idle_fight::EMPTY_LEVEL_TICKS`], idle or not.
+    empty_time: i32,
     /// The spikes' crystals have been placed (worldgen does not place entities here).
     crystals_placed: bool,
     /// The respawn sequence (`DragonRespawnStage`) and its tick count.
@@ -233,7 +243,14 @@ impl Fight {
     /// arena's `TicketType.DRAGON` ticket. The bar is scanned every 20 ticks,
     /// as `updatePlayers` is.
     pub(super) fn arena_watched(&self) -> bool {
-        self.players
+        !self.audience.is_empty()
+    }
+    /// Whether the viewer `uuid` is in the bar's audience.
+    pub(super) fn hears(&self, uuid: u128) -> bool {
+        self.audience.contains(&uuid)
+    }
+    pub(super) fn bar_progress(&self) -> f32 {
+        self.bar_progress
     }
     /// The fight as mods read it.
     pub(super) fn api(&self) -> mod_api::DragonFightState {
@@ -1473,6 +1490,8 @@ impl Game<'_> {
             },
             // The first tick scans for players.
             player_scan: 21,
+            // `ServerBossEvent`'s progress starts full.
+            bar_progress: 1.0,
             ..Default::default()
         };
         if fight.gateways.is_empty() {
@@ -1618,36 +1637,86 @@ impl Game<'_> {
             }
         }
     }
-    /// `EnderDragonFight.validPlayer`: the players alive within 192 blocks of
-    /// (0, 128, 0), the host and the guests in the level alike.
-    fn fight_has_players(&self) -> bool {
+    /// `EnderDragonFight.updatePlayers`' `level.getPlayers(validPlayer)`: the
+    /// players of `level` alive within 192 blocks of (0, 128, 0), spectators
+    /// too, as the bar's viewers know them. The host counts when `level` is
+    /// the one in place.
+    fn fight_audience(&self, level: super::Dim) -> Vec<u128> {
         let near =
             |p: [f64; 3]| p[0].powi(2) + (p[1] - 128.0).powi(2) + p[2].powi(2) <= 192.0 * 192.0;
-        let host = self.player.as_ref().is_some_and(|p| {
-            !p.health.dead_or_dying() && near([p.position.x, p.position.y, p.position.z])
-        });
-        host || self.lan.as_ref().is_some_and(|h| {
+        let host = (level == self.dim)
+            .then_some(self.player.as_ref())
+            .flatten()
+            .filter(|p| {
+                !p.health.dead_or_dying() && near([p.position.x, p.position.y, p.position.z])
+            })
+            .map(|_| {
+                sunrise_client::lan::playerdata::ints_uuid(
+                    self.level.player_uuid.unwrap_or_else(|| self.acting_uuid()),
+                )
+            });
+        let guests = self.lan.as_ref().into_iter().flat_map(|h| {
             h.hub
                 .guests
                 .iter()
-                .any(|g| h.hub.here(g) && g.loaded && !g.dead && near(g.position))
-        })
+                .filter(|g| g.placed_in(level.id()) && g.loaded && !g.dead && near(g.position))
+                .map(|g| g.uuid)
+        });
+        host.into_iter().chain(guests).collect()
+    }
+    /// `EnderDragonFight.updatePlayers`: the audience becomes the players the
+    /// scan finds, and those who joined or left it are sent the change.
+    fn scan_fight_players(&mut self, level: super::Dim) {
+        let audience = self.fight_audience(level);
+        if audience == self.fight.audience {
+            return;
+        }
+        self.fight.audience = audience;
+        self.publish_dragon_bar();
+    }
+    /// `updateDragon`'s `setProgress`: the fight's dragon's health, read with
+    /// its level in place; full without one.
+    pub(super) fn fight_bar_progress(&mut self) {
+        self.fight.bar_progress = self
+            .dragon
+            .as_ref()
+            .map_or(1.0, |d| (d.health / MAX_HEALTH).clamp(0.0, 1.0));
+    }
+    /// Whether `level` is the one whose fight `self.fight` is: the End, which
+    /// the fight's file belongs to, when its type has a fight.
+    pub(super) fn owns_fight(&self, level: super::Dim) -> bool {
+        level == super::Dim::End && self.dimension_type_of(level).has_ender_dragon_fight
+    }
+    /// The start of `EnderDragonFight.tick` that both of its level's paths
+    /// share: the tick hook, then `updatePlayers` every 20 ticks. False when a
+    /// mod canceled the tick.
+    fn fight_tick_start(&mut self, level: super::Dim) -> bool {
+        let mut canceled = false;
+        if mod_api::__private::listened(mod_api::HookId::DragonFightTick) {
+            let handle = self.level_ref(self.lend_epoch(), level.key());
+            if level == self.dim {
+                self.native_dragon_fight_tick(handle, &mut canceled);
+            } else {
+                // The hook's writes need the fight's level in place.
+                self.with_level_in_place(level, |game| {
+                    game.native_dragon_fight_tick(handle, &mut canceled)
+                });
+            }
+        }
+        if canceled {
+            return false;
+        }
+        self.fight.player_scan += 1;
+        if self.fight.player_scan >= 20 {
+            self.fight.player_scan = 0;
+            self.scan_fight_players(level);
+        }
+        true
     }
     /// `EnderDragonFight.tick`, before the level ticks its entities.
     pub(super) fn tick_fight(&mut self) {
         self.load_fight();
-        let mut canceled = false;
-        if mod_api::__private::listened(mod_api::HookId::DragonFightTick) {
-            self.native_dragon_fight_tick(self.fight_level(), &mut canceled);
-        }
-        // updatePlayers, every 20 ticks.
-        if !canceled {
-            self.fight.player_scan += 1;
-            if self.fight.player_scan >= 20 {
-                self.fight.player_scan = 0;
-                self.fight.players = self.fight_has_players();
-            }
-        }
+        let canceled = !self.fight_tick_start(self.dim);
         if !self.arena_loaded() {
             return;
         }
@@ -1657,7 +1726,7 @@ impl Game<'_> {
             self.fight.crystals_placed = true;
             self.fight.dirty = true;
         }
-        if !canceled && self.fight.players {
+        if !canceled && self.fight.arena_watched() {
             if self.fight.needs_scan {
                 self.scan_state();
                 self.fight.needs_scan = false;
@@ -4014,27 +4083,6 @@ impl Game<'_> {
             !cancel
         })
     }
-    /// The dragon fight's bar for a player at `at`
-    /// (`EnderDragonFight.dragonEvent`, visible while the fight is not won
-    /// and the player is alive within 192 blocks of (0, 128, 0)).
-    pub(super) fn dragon_boss_progress(&self, at: [f64; 3], alive: bool) -> Option<f32> {
-        if !self.dimension_type().has_ender_dragon_fight
-            || !alive
-            || !self.fight.loaded
-            || self.fight.killed
-        {
-            return None;
-        }
-        let near = at[0].powi(2) + (at[1] - 128.0).powi(2) + at[2].powi(2) <= 192.0 * 192.0;
-        if !near {
-            return None;
-        }
-        Some(
-            self.dragon
-                .as_ref()
-                .map_or(1.0, |d| (d.health / MAX_HEALTH).clamp(0.0, 1.0)),
-        )
-    }
     /// `BossHealthOverlay.shouldPlayMusic`.
     pub(super) fn boss_music(&self) -> bool {
         self.boss_overlay.should_play_music()
@@ -4601,7 +4649,7 @@ impl Game<'_> {
         self.load_fight();
         // spawnExitPortal runs from scanState and the dragon's death, both
         // only with players in the fight.
-        self.fight.loaded && self.fight.players
+        self.fight.loaded && self.fight.arena_watched()
     }
     pub(super) fn exit_portal(&self) -> Option<[i32; 3]> {
         self.fight.exit_portal
@@ -5003,7 +5051,7 @@ impl Game<'_> {
                     _ => serde_json::Value::Null,
                 },
             })),
-            "players": self.fight.players,
+            "players": self.fight.arena_watched(),
             "crystals": self.crystals.len(),
             // The tracked id (0 until tracked) and position of each crystal.
             "crystal_list": self.crystals.iter().map(|c| serde_json::json!({
@@ -7598,6 +7646,9 @@ pub(in crate::game) mod tests {
 #[cfg(test)]
 #[path = "dragon/fight_hooks_tests.rs"]
 mod fight_hooks_tests;
+#[cfg(test)]
+#[path = "dragon/idle_fight_tests.rs"]
+mod idle_fight_tests;
 #[cfg(test)]
 #[path = "dragon/residency_tests.rs"]
 mod residency_tests;
