@@ -1843,9 +1843,11 @@ fn login_and_configure(
     }
     // Mod-declared sync(true) static custom registries (ConfigurationInitialization:38-41:
     // skipped on in-process single-player memory connections; LAN guests still sync).
-    if let Some(data) =
-        crate::custom_registry_net::server_payload(brand == "sunrise", c.is_memory())?
-    {
+    if let Some(data) = crate::custom_registry_net::server_payload(
+        &shared.custom_registries,
+        brand == "sunrise",
+        c.is_memory(),
+    )? {
         for data in crate::custom_registry_net::chunks(&data)? {
             send(
                 c,

@@ -1096,6 +1096,7 @@ impl crate::game::ClientGame<'_> {
                 lang.clone(),
                 item_data,
                 Arc::clone(&self.client.client_reports.0),
+                sunrise_sim::custom_registry_net::LocalRegistries::installed(),
             ),
             (None, Some(cookies)) => Session::connect_transferred(
                 address,
@@ -1106,6 +1107,7 @@ impl crate::game::ClientGame<'_> {
                 cookies,
                 item_data,
                 Arc::clone(&self.client.client_reports.0),
+                sunrise_sim::custom_registry_net::LocalRegistries::installed(),
             ),
             (None, None) => {
                 let connect = if lan {
@@ -1121,6 +1123,7 @@ impl crate::game::ClientGame<'_> {
                     lang.clone(),
                     item_data,
                     Arc::clone(&self.client.client_reports.0),
+                    sunrise_sim::custom_registry_net::LocalRegistries::installed(),
                 )
             }
         };

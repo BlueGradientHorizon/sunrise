@@ -504,9 +504,20 @@ impl Session {
         lang: Arc<Language>,
         resources: Arc<ItemData>,
         reports: Arc<crate::chunk_io::Reports>,
+        custom_registries: crate::custom_registry_net::LocalRegistries,
     ) -> Self {
         Self::start(
-            address, name, auth, info, lang, None, None, resources, reports, false,
+            address,
+            name,
+            auth,
+            info,
+            lang,
+            None,
+            None,
+            resources,
+            reports,
+            custom_registries,
+            false,
         )
     }
     /// `ClientHandshakePacketListenerImpl.handleHello`: LAN entries can continue
@@ -520,9 +531,20 @@ impl Session {
         lang: Arc<Language>,
         resources: Arc<ItemData>,
         reports: Arc<crate::chunk_io::Reports>,
+        custom_registries: crate::custom_registry_net::LocalRegistries,
     ) -> Self {
         Self::start(
-            address, name, auth, info, lang, None, None, resources, reports, true,
+            address,
+            name,
+            auth,
+            info,
+            lang,
+            None,
+            None,
+            resources,
+            reports,
+            custom_registries,
+            true,
         )
     }
     /// `ConnectScreen.startConnecting` for a `transfer`: the cookies the
@@ -536,6 +558,7 @@ impl Session {
         cookies: Cookies,
         resources: Arc<ItemData>,
         reports: Arc<crate::chunk_io::Reports>,
+        custom_registries: crate::custom_registry_net::LocalRegistries,
     ) -> Self {
         Self::start(
             address,
@@ -547,6 +570,7 @@ impl Session {
             Some(cookies),
             resources,
             reports,
+            custom_registries,
             false,
         )
     }
@@ -562,6 +586,7 @@ impl Session {
         lang: Arc<Language>,
         resources: Arc<ItemData>,
         reports: Arc<crate::chunk_io::Reports>,
+        custom_registries: crate::custom_registry_net::LocalRegistries,
     ) -> Self {
         Self::start(
             "local",
@@ -573,6 +598,7 @@ impl Session {
             None,
             resources,
             reports,
+            custom_registries,
             false,
         )
     }
@@ -607,6 +633,7 @@ impl Session {
         transfer_from: Option<Cookies>,
         resources: Arc<ItemData>,
         reports: Arc<crate::chunk_io::Reports>,
+        custom_registries: crate::custom_registry_net::LocalRegistries,
         lan: bool,
     ) -> Self {
         let (send, events) = event_channel();
@@ -659,6 +686,7 @@ impl Session {
                         &thread_payloads,
                         &thread_pings,
                         &reports,
+                        &custom_registries,
                         &mut after_login,
                     )
                 });
@@ -1472,6 +1500,7 @@ fn run(
     payloads: &Arc<crate::raw_payloads::Transport>,
     pings: &PingSamples,
     reports: &Arc<crate::chunk_io::Reports>,
+    custom_registries: &crate::custom_registry_net::LocalRegistries,
     after_login: &mut bool,
 ) -> Result<Reason, Reason> {
     let singleplayer = local.is_some();
@@ -1645,7 +1674,7 @@ fn run(
         writer.attach_droppable(queue.clone());
     }
     *shared_writer.lock().unwrap() = Some(writer);
-    let (registries, datapacks, custom_registries) = configure(
+    let (registries, datapacks, custom_registries_synced) = configure(
         &mut reader,
         shared_writer,
         configuring,
@@ -1654,12 +1683,13 @@ fn run(
         cookies,
         resources,
         payloads,
+        custom_registries,
     )?;
     let registries = Arc::new(registries);
     send.send_wait(Event::Joined {
         registries: registries.clone(),
         datapacks,
-        custom_registries,
+        custom_registries: custom_registries_synced,
         uuid: profile.uuid,
         name: profile.name,
     })
@@ -1677,6 +1707,7 @@ fn run(
         payloads,
         pings,
         reports,
+        custom_registries,
     )
 }
 
@@ -1986,6 +2017,7 @@ fn receive_play(
     payloads: &Arc<crate::raw_payloads::Transport>,
     pings: &PingSamples,
     reports: &Arc<crate::chunk_io::Reports>,
+    custom_registries: &crate::custom_registry_net::LocalRegistries,
 ) -> Result<Reason, Reason> {
     use play_bundle::{PlayBundle, PlayTurn};
     use sunrise_protocol::payload_negotiation::Phase;
@@ -2152,6 +2184,7 @@ fn receive_play(
                     cookies,
                     resources,
                     payloads,
+                    custom_registries,
                 )?;
                 registries = Arc::new(snapshot);
                 io = new_listener();
@@ -2246,6 +2279,7 @@ fn configure(
     cookies: &Cookies,
     resources: &ItemData,
     payloads: &Arc<crate::raw_payloads::Transport>,
+    local_registries: &crate::custom_registry_net::LocalRegistries,
 ) -> Result<
     (
         Dynamic,
@@ -2263,7 +2297,7 @@ fn configure(
     let mut negotiation =
         sunrise_protocol::payload_negotiation::Negotiation::new(payloads.local.manifest.clone());
     let mut datapacks = crate::datapack_net::Receiver::default();
-    let mut custom_registries = crate::custom_registry_net::Receiver::default();
+    let mut custom_registries = crate::custom_registry_net::Receiver::new(local_registries.clone());
     let reply = |p: cfg::Serverbound| -> Result<(), Reason> {
         match writer.lock().unwrap().as_mut() {
             Some(w) => p
@@ -2881,6 +2915,7 @@ mod tests {
                             &Cookies::default(),
                             &data,
                             &crate::raw_payloads::Transport::empty(),
+                            &crate::custom_registry_net::LocalRegistries::default(),
                         )
                     },
                     |_| {},
@@ -2953,6 +2988,7 @@ mod tests {
                                 &Cookies::default(),
                                 &data,
                                 &transport,
+                                &crate::custom_registry_net::LocalRegistries::default(),
                             )
                         },
                         |_| {},
@@ -3346,6 +3382,7 @@ mod tests {
                             &Cookies::default(),
                             &data,
                             &crate::raw_payloads::Transport::empty(),
+                            &crate::custom_registry_net::LocalRegistries::default(),
                         )
                     },
                     |_| {},
@@ -3681,6 +3718,7 @@ mod tests {
                 Arc::new(Language::new()),
                 Arc::clone(&data),
                 Arc::default(),
+                crate::custom_registry_net::LocalRegistries::default(),
             );
             let (stream, _) = listener.accept().unwrap();
             stream
@@ -3917,6 +3955,7 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
+                &crate::custom_registry_net::LocalRegistries::default(),
             ));
         });
         let ended = result
@@ -3980,6 +4019,7 @@ mod tests {
                         &Cookies::default(),
                         &data,
                         &crate::raw_payloads::Transport::empty(),
+                        &crate::custom_registry_net::LocalRegistries::default(),
                     )
                 },
                 |_| {},
@@ -4053,6 +4093,7 @@ mod tests {
                     &Cookies::default(),
                     &data,
                     &crate::raw_payloads::Transport::empty(),
+                    &crate::custom_registry_net::LocalRegistries::default(),
                 )
             },
             |event| {
@@ -4121,6 +4162,7 @@ mod tests {
                     &Cookies::default(),
                     &data,
                     &crate::raw_payloads::Transport::empty(),
+                    &crate::custom_registry_net::LocalRegistries::default(),
                 ),
                 |event| effects.push(event)
             )
@@ -4236,6 +4278,7 @@ mod tests {
                         &Cookies::default(),
                         &resources,
                         &crate::raw_payloads::Transport::empty(),
+                        &crate::custom_registry_net::LocalRegistries::default(),
                     )
                 });
                 // The configuration actor resolves codecs on the same thread that installed
@@ -4407,6 +4450,7 @@ mod tests {
                     &Cookies::default(),
                     &resources,
                     &crate::raw_payloads::Transport::empty(),
+                    &crate::custom_registry_net::LocalRegistries::default(),
                 )
             },
             |_| {},
@@ -4444,6 +4488,7 @@ mod tests {
                         &Cookies::default(),
                         &data,
                         &crate::raw_payloads::Transport::empty(),
+                        &crate::custom_registry_net::LocalRegistries::default(),
                     )
                 },
                 |_| {},
@@ -4511,6 +4556,7 @@ mod tests {
                         &Cookies::default(),
                         &data,
                         &crate::raw_payloads::Transport::empty(),
+                        &crate::custom_registry_net::LocalRegistries::default(),
                     )
                 },
                 |_| {},
@@ -4645,6 +4691,7 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
                 &thread_pings,
                 &Arc::default(),
+                &crate::custom_registry_net::LocalRegistries::default(),
             )
         });
         let mut server = Connection::local(server);
@@ -4737,6 +4784,7 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
+                &crate::custom_registry_net::LocalRegistries::default(),
             );
             report_connection_end(result, &writer, &send, true);
         });
@@ -5219,6 +5267,7 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
+                &crate::custom_registry_net::LocalRegistries::default(),
             )
         });
         let mut server = Connection::local(server);
@@ -5358,6 +5407,7 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
+                &crate::custom_registry_net::LocalRegistries::default(),
             )
         });
         let tick_end = play::Serverbound::ClientTickEnd(Empty);
@@ -5514,6 +5564,7 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
+                &crate::custom_registry_net::LocalRegistries::default(),
             )
         });
 
@@ -5741,6 +5792,7 @@ mod tests {
                 Arc::new(lang),
                 Arc::clone(&data),
                 Arc::default(),
+                crate::custom_registry_net::LocalRegistries::default(),
             );
             let (reason, _credit) = loop {
                 let (event, credit) = session
@@ -5853,6 +5905,7 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
+                &crate::custom_registry_net::LocalRegistries::default(),
             )
         });
 
@@ -6087,6 +6140,7 @@ mod tests {
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
+                &crate::custom_registry_net::LocalRegistries::default(),
             );
             let _ = done_tx.send(result);
         });
@@ -6561,6 +6615,7 @@ mod tests {
                                     &Cookies::default(),
                                     &data,
                                     &crate::raw_payloads::Transport::empty(),
+                                    &crate::custom_registry_net::LocalRegistries::default(),
                                 )
                             },
                             |_| {},
@@ -6622,6 +6677,7 @@ mod tests {
                                 &Cookies::default(),
                                 &data,
                                 &crate::raw_payloads::Transport::empty(),
+                                &crate::custom_registry_net::LocalRegistries::default(),
                             )
                         },
                         |_| {},

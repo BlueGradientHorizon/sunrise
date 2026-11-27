@@ -158,31 +158,34 @@ pub fn chunks(bytes: &[u8]) -> Result<impl Iterator<Item = Vec<u8>> + '_, String
 
 type Held = Mutex<Option<Arc<Snapshot>>>;
 static SERVED: Held = Mutex::new(None);
-#[cfg(any(test, feature = "test-publication-scope"))]
-static TEST_CLIENT_REGISTRIES: Mutex<Option<Vec<Arc<dyn mod_api::__private::RegistryDirectory>>>> =
-    Mutex::new(None);
 
-/// Override the local registries validated by [`Receiver`] on client network threads during
-/// loopback integration tests (never used outside test builds).
-#[cfg(any(test, feature = "test-publication-scope"))]
-pub fn set_test_client_registries(
-    registries: Option<Vec<Arc<dyn mod_api::__private::RegistryDirectory>>>,
-) {
-    *TEST_CLIENT_REGISTRIES
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = registries;
+/// The frozen custom registries a client connection validates the server's snapshot against,
+/// handed to the connection when it starts (production: [`LocalRegistries::installed`]).
+#[derive(Clone, Default)]
+pub struct LocalRegistries(Arc<[Arc<dyn mod_api::__private::RegistryDirectory>]>);
+
+impl LocalRegistries {
+    /// This process's installed mod registries.
+    pub fn installed() -> Self {
+        Self(
+            mod_api::__private::custom_registry_directories()
+                .iter()
+                .cloned()
+                .collect(),
+        )
+    }
+
+    pub fn new(registries: Vec<Arc<dyn mod_api::__private::RegistryDirectory>>) -> Self {
+        Self(registries.into())
+    }
 }
 
-fn client_local_registries() -> Vec<Arc<dyn mod_api::__private::RegistryDirectory>> {
-    #[cfg(any(test, feature = "test-publication-scope"))]
-    if let Some(override_dirs) = TEST_CLIENT_REGISTRIES
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
-    {
-        return override_dirs;
+impl std::fmt::Debug for LocalRegistries {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(self.0.iter().map(|dir| dir.id()))
+            .finish()
     }
-    mod_api::__private::custom_registry_directories().to_vec()
 }
 
 #[cfg(any(test, feature = "test-publication-scope"))]
@@ -235,19 +238,27 @@ pub fn served() -> Option<Arc<Snapshot>> {
     SERVED.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-/// Build the `sunrise:custom_registries` payload for a connecting client during configuration.
+/// The snapshot a server publishes to its joining clients: the one explicitly [`serve`]d on the
+/// calling thread, else this process's installed `sync(true)` registries. A listener captures it
+/// once when it starts, so its connection threads never read a thread's test scope.
+pub fn published() -> Arc<Snapshot> {
+    served().unwrap_or_else(|| Arc::new(Snapshot::from_installed()))
+}
+
+/// Build the `sunrise:custom_registries` payload of `snapshot` for a connecting client during
+/// configuration.
 ///
 /// Returns `Ok(None)` when:
 /// - the connection is in-process (`is_memory == true`, matching NeoForge's
 ///   `ConfigurationInitialization.configureEarlyTasks:38-41`),
 /// - the client is not a Sunrise client (`!sunrise_client`), or
 /// - there are no `sync(true)` custom registries to sync.
-pub fn server_payload(sunrise_client: bool, is_memory: bool) -> Result<Option<Vec<u8>>, String> {
-    if !sunrise_client || is_memory {
-        return Ok(None);
-    }
-    let snapshot = served().unwrap_or_else(|| Arc::new(Snapshot::from_installed()));
-    if snapshot.registries.is_empty() {
+pub fn server_payload(
+    snapshot: &Snapshot,
+    sunrise_client: bool,
+    is_memory: bool,
+) -> Result<Option<Vec<u8>>, String> {
+    if !sunrise_client || is_memory || snapshot.registries.is_empty() {
         return Ok(None);
     }
     snapshot.encode().map(Some)
@@ -363,18 +374,26 @@ pub fn validate_snapshot(
 }
 
 /// Per-connection client receiver for `sunrise:custom_registries` during configuration.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Receiver {
+    local: LocalRegistries,
     pending: Option<(usize, Vec<u8>)>,
     synced: SyncedCustomRegistries,
 }
 
 impl Receiver {
+    pub fn new(local: LocalRegistries) -> Self {
+        Self {
+            local,
+            pending: None,
+            synced: SyncedCustomRegistries::default(),
+        }
+    }
+
     pub fn accept_chunk(&mut self, packet: &[u8]) -> Result<(), String> {
         if let Some(bytes) = self.push_fragment(packet)? {
             let snapshot = Snapshot::decode(&bytes)?;
-            let local = client_local_registries();
-            self.synced = validate_snapshot(&snapshot, &local)?;
+            self.synced = validate_snapshot(&snapshot, &self.local.0)?;
         }
         Ok(())
     }
@@ -547,23 +566,22 @@ mod tests {
 
     #[test]
     fn memory_and_vanilla_connections_skip_sync_payload() {
-        let _guard = isolate_server_publication();
-        serve(Some(Arc::new(Snapshot {
+        let snapshot = Snapshot {
             registries: vec![SnapshotRegistry {
                 registry_id: "chemlib:gas".into(),
                 entries: vec!["chemlib:oxygen".into()],
             }],
-        })));
+        };
         assert!(
-            server_payload(true, true).unwrap().is_none(),
+            server_payload(&snapshot, true, true).unwrap().is_none(),
             "in-process memory connection skips sync"
         );
         assert!(
-            server_payload(false, false).unwrap().is_none(),
+            server_payload(&snapshot, false, false).unwrap().is_none(),
             "vanilla client skips sync"
         );
         assert!(
-            server_payload(true, false).unwrap().is_some(),
+            server_payload(&snapshot, true, false).unwrap().is_some(),
             "Sunrise TCP/LAN client gets sync"
         );
     }

@@ -6,12 +6,14 @@ use mod_api::Identifier;
 use std::{
     any::Any,
     collections::BTreeMap,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use sunrise_client::{
     chunk::MIN_Y,
-    custom_registry_net::{self, Snapshot, SnapshotRegistry, SyncedCustomRegistries},
+    custom_registry_net::{
+        self, LocalRegistries, Snapshot, SnapshotRegistry, SyncedCustomRegistries,
+    },
     lan::{
         Lan, NetConfig,
         chunks::ChunkEncoder,
@@ -36,8 +38,6 @@ use sunrise_world::{
     native_load_context::{DataLoadOrigin, LoadContext, LoadInputs},
     registry::BlockStateId,
 };
-
-static TURN: Mutex<()> = Mutex::new(());
 
 struct LocalDir {
     id: String,
@@ -84,24 +84,6 @@ impl mod_api::__private::RegistryDirectory for LocalDir {
     fn as_any(&self) -> &(dyn Any + Send + Sync) {
         self
     }
-}
-
-struct ResetOnDrop {
-    _turn: MutexGuard<'static, ()>,
-}
-
-impl Drop for ResetOnDrop {
-    fn drop(&mut self) {
-        custom_registry_net::serve(None);
-        custom_registry_net::set_test_client_registries(None);
-    }
-}
-
-fn begin() -> ResetOnDrop {
-    let turn = TURN.lock().unwrap_or_else(|e| e.into_inner());
-    custom_registry_net::serve(None);
-    custom_registry_net::set_test_client_registries(None);
-    ResetOnDrop { _turn: turn }
 }
 
 fn load_context(origin: DataLoadOrigin) -> LoadContext {
@@ -213,7 +195,12 @@ impl Host {
     }
 }
 
-fn connect(port: u16, name: &str, data: &Arc<ItemData>) -> Session {
+fn connect(
+    port: u16,
+    name: &str,
+    data: &Arc<ItemData>,
+    local_registries: LocalRegistries,
+) -> Session {
     Session::connect(
         &format!("127.0.0.1:{port}"),
         name,
@@ -222,6 +209,7 @@ fn connect(port: u16, name: &str, data: &Arc<ItemData>) -> Session {
         Arc::new(Default::default()),
         Arc::clone(data),
         Arc::default(),
+        local_registries,
     )
 }
 
@@ -278,7 +266,7 @@ fn drive_join(
 #[test]
 #[ignore = "daily"]
 fn matching_synced_registries_join_and_decode_tags_across_differing_orders() {
-    let _guard = begin();
+    let _publication = custom_registry_net::isolate_server_publication();
     custom_registry_net::serve(Some(Arc::new(Snapshot {
         registries: vec![
             SnapshotRegistry {
@@ -291,7 +279,7 @@ fn matching_synced_registries_join_and_decode_tags_across_differing_orders() {
             },
         ],
     })));
-    custom_registry_net::set_test_client_registries(Some(vec![
+    let local = LocalRegistries::new(vec![
         // Client registered oxygen (0) before steam (1), plus an extra client-only entry.
         LocalDir::arc(
             "chemlib:gas",
@@ -299,7 +287,7 @@ fn matching_synced_registries_join_and_decode_tags_across_differing_orders() {
             &["chemlib:oxygen", "boiler:steam", "clientonly:neon"],
         ),
         LocalDir::arc("clientonly:extra", true, &["clientonly:a"]),
-    ]));
+    ]);
 
     let mut sync = SyncData::empty();
     // Server tag `boiler:hot` contains server raw_id 0 (`boiler:steam`).
@@ -312,7 +300,7 @@ fn matching_synced_registries_join_and_decode_tags_across_differing_orders() {
     });
     let (_resources, data) = Resources::new("matching");
     let mut host = Host::start(sync);
-    let session = connect(host.port(), "Alchemist", &data);
+    let session = connect(host.port(), "Alchemist", &data, local);
     let (registries, synced) = drive_join(&mut host, &session).expect("matching client joins");
 
     // Server raw_id 0 decodes to `boiler:steam` despite client having oxygen at slot 0.
@@ -329,18 +317,18 @@ fn matching_synced_registries_join_and_decode_tags_across_differing_orders() {
 #[test]
 #[ignore = "daily"]
 fn client_missing_non_empty_synced_registry_disconnects_naming_registry() {
-    let _guard = begin();
+    let _publication = custom_registry_net::isolate_server_publication();
     custom_registry_net::serve(Some(Arc::new(Snapshot {
         registries: vec![SnapshotRegistry {
             registry_id: "chemlib:gas".into(),
             entries: vec!["chemlib:oxygen".into()],
         }],
     })));
-    custom_registry_net::set_test_client_registries(Some(vec![]));
+    let local = LocalRegistries::new(vec![]);
 
     let (_resources, data) = Resources::new("missing-reg");
     let mut host = Host::start(SyncData::empty());
-    let session = connect(host.port(), "PlainSunrise", &data);
+    let session = connect(host.port(), "PlainSunrise", &data, local);
     let reason = drive_join(&mut host, &session).unwrap_err();
     assert!(
         reason.contains("chemlib:gas"),
@@ -353,22 +341,22 @@ fn client_missing_non_empty_synced_registry_disconnects_naming_registry() {
 #[test]
 #[ignore = "daily"]
 fn client_missing_synced_entry_disconnects_naming_registry_and_entry() {
-    let _guard = begin();
+    let _publication = custom_registry_net::isolate_server_publication();
     custom_registry_net::serve(Some(Arc::new(Snapshot {
         registries: vec![SnapshotRegistry {
             registry_id: "chemlib:gas".into(),
             entries: vec!["chemlib:oxygen".into(), "boiler:steam".into()],
         }],
     })));
-    custom_registry_net::set_test_client_registries(Some(vec![LocalDir::arc(
+    let local = LocalRegistries::new(vec![LocalDir::arc(
         "chemlib:gas",
         true,
         &["chemlib:oxygen"],
-    )]));
+    )]);
 
     let (_resources, data) = Resources::new("missing-entry");
     let mut host = Host::start(SyncData::empty());
-    let session = connect(host.port(), "HalfModded", &data);
+    let session = connect(host.port(), "HalfModded", &data, local);
     let reason = drive_join(&mut host, &session).unwrap_err();
     assert!(
         reason.contains("chemlib:gas") && reason.contains("boiler:steam"),
@@ -382,7 +370,7 @@ fn client_missing_synced_entry_disconnects_naming_registry_and_entry() {
 #[test]
 #[ignore = "daily"]
 fn vanilla_client_joins_without_custom_registry_payload_or_disconnect() {
-    let _guard = begin();
+    let _publication = custom_registry_net::isolate_server_publication();
     custom_registry_net::serve(Some(Arc::new(Snapshot {
         registries: vec![SnapshotRegistry {
             registry_id: "chemlib:gas".into(),
