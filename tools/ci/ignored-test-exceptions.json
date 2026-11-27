@@ -2,6 +2,14 @@
   {
     "package": "sunrise-client",
     "target": "lib",
+    "test": "cut_layout::game::client_side::crosshair_pick_tests::review_parity_cases_match_26_3_witness",
+    "path": "crates/sunrise-client/src/cut_layout/game/entities/crosshair_pick_tests.rs",
+    "reason": "requires SUNRISE_CROSSHAIR_PICK_WITNESS",
+    "rationale": "tools/test_crosshair_pick_parity.py records the independent oracle input. The sunrise-client data workflow exports the witness before its shard runs this test, and runs without the witness skip it by exact name."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
     "test": "cut_layout::game::attachment_instruction_bench::attachment_instruction_count",
     "path": "crates/sunrise-client/src/cut_layout/game/modding/attachment_instruction_bench.rs",
     "reason": "callgrind fixture; needs SUNRISE_TEST_RESOURCES",

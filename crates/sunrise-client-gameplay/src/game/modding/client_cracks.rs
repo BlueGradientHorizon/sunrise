@@ -14,6 +14,9 @@ pub struct ClientCrack {
 impl crate::game::ClientGame<'_> {
     pub fn expire_client_cracks(&mut self) {
         let now = self.common.world.game_time;
+        if now % 20 != 0 {
+            return;
+        }
         self.client
             .destroying
             .retain(|_, crack| now.saturating_sub(crack.updated_at) <= 400);

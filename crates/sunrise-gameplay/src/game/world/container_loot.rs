@@ -166,12 +166,21 @@ impl ServerGame<'_> {
             0.0
         };
         let Some(mut slots) = (match target {
-            LootTarget::Block(key) => self
-                .common
-                .world
-                .block_entities
-                .get(&key)
-                .map(|e| e.slots().to_vec()),
+            LootTarget::Block(key) => {
+                let world = &self.common.world;
+                world.block_entities.get(&key).map(|entity| {
+                    let slots = entity.slots();
+                    if !matches!(entity, BlockEntity::Mod(_)) {
+                        return slots.to_vec();
+                    }
+                    let state = world.block(key.0, key.1, key.2);
+                    let block = &self.common.res.facts().get(state).name;
+                    let count = sunrise_sim::save::block_mod_item_slots(block);
+                    let mut items = slots[..slots.len().min(count)].to_vec();
+                    items.resize(count, None);
+                    items
+                })
+            }
             LootTarget::Cart(id) => self
                 .common
                 .carts

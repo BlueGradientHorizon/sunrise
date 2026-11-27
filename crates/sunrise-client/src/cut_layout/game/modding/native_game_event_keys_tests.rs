@@ -62,13 +62,14 @@ fn game_event_key_registry_data_reload_and_unavailable_sides() {
                     Ok(None)
                 );
             }
-            game.options.dedicated = None;
+            game.server.world_tables.0 = None;
             assert_eq!(
                 step.data(game, &Frequencies),
                 Err(DataMapError::Unavailable)
             );
-            game.options.dedicated = Some(Vec::new());
-            game.server.world_tables.0 = None;
+        });
+        super::native_entity_refs::tests::with_client_game(|game| {
+            let step = game.game_event_key("minecraft:step").unwrap();
             assert_eq!(
                 step.data(game, &Frequencies),
                 Err(DataMapError::Unavailable)

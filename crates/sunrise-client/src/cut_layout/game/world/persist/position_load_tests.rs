@@ -106,7 +106,7 @@ fn neutral_mob_load_notifies_target_even_without_saved_anger() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let decoded = entity_nbt::mob_from_nbt(
                 &entity("minecraft:wolf"),
                 game.res.mob_types(),

@@ -297,6 +297,7 @@ mod tests {
     #[ignore = "daily"]
     fn each_start_delay_write_forces_a_send_even_when_equal() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let text = push(game, 21, "minecraft:text_display");
             let other = push(game, 22, "minecraft:item_display");
             assert!(game.persist.forced_meta.is_empty());
@@ -320,6 +321,7 @@ mod tests {
     #[ignore = "daily"]
     fn stale_removed_and_client_displays_do_nothing() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let text = push(game, 21, "minecraft:text_display");
             let stale = DisplayRef::new(EntityRef::new(
                 WorldEpoch::new(text.entity().epoch().get() + 1),
@@ -333,6 +335,55 @@ mod tests {
             assert_eq!(text.kind(game), None);
             assert!(!text.set_width(game, 1.0));
         });
+        #[cfg(feature = "client")]
+        {
+            use super::super::native_entity_refs::tests::with_client_game;
+            use sunrise_client_gameplay::game::ClientGame;
+            use sunrise_protocol::{
+                connection::Pipe,
+                packets::play::{AddEntity, Clientbound},
+            };
+
+            // Implementing ServerHost on ClientGame would make this trait inference ambiguous.
+            trait WithoutServerWrites<Marker> {
+                fn check() {}
+            }
+            impl<T> WithoutServerWrites<()> for T {}
+            impl<T: mod_api::ServerHost> WithoutServerWrites<u8> for T {}
+            let _ = <ClientGame<'_> as WithoutServerWrites<_>>::check;
+
+            with_client_game(|game| {
+                let (client, _server) = Pipe::pair();
+                game.connect_local(client, "DisplayHandleTest").unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
+                remote.logged_in = true;
+                let kind = remote
+                    .builtin
+                    .get("minecraft:entity_type")
+                    .unwrap()
+                    .id("minecraft:text_display")
+                    .unwrap();
+                let position = [1.0, 70.0, 1.0];
+                game.handle_packet(Clientbound::AddEntity(AddEntity {
+                    id: 21,
+                    uuid: 21,
+                    kind,
+                    position,
+                    velocity: [0.0; 3],
+                    pitch: 0,
+                    yaw: 0,
+                    head_yaw: 0,
+                    data: 0,
+                }))
+                .unwrap();
+                let entity = game.entity(21).expect("the client tracks the display");
+                assert_eq!(entity.position(game), Some(position));
+                let text = DisplayRef::new(entity);
+                assert_eq!(text.kind(game), None);
+                assert_eq!(text.view_range(game), None);
+                assert!(text.text(game).unwrap().is_none());
+            });
+        }
     }
 
     #[test]

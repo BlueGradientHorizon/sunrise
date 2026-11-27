@@ -182,8 +182,7 @@ fn the_totem_hook_fires_after_the_health_is_gone_and_a_cancel_lets_the_mob_die()
         heard.totem,
         [(226005, Hand::Main, "minecraft:totem_of_undying".to_string())]
     );
-    // The totem is asked first, and Post closes `hurtServer`.
-    assert_eq!(heard.order, ["shield", "totem", "post"]);
+    assert_eq!(heard.order, ["shield", "totem", "protection", "post"]);
 }
 
 #[test]

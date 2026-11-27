@@ -346,20 +346,23 @@ pub(crate) mod tests {
                 _: LevelSide<'_>,
                 _: &mut BlockEntityEvent<'_>,
             ) -> Option<Compound> {
-                Some(Compound::from([("group".into(), Tag::Long(1))]))
+                Some(Compound::new())
             }
             fn block_entity_on_load(&self, event: &mut BlockEntityOnLoadEvent<'_>) {
                 let BlockEntitySideScope::Server(scope) = &mut event.subject else {
                     return;
                 };
-                let (level, pos, group) = scope
+                let Some((level, pos, group)) = scope
                     .with_view(|view| {
                         let Some(Tag::Long(group)) = view.nbt().get(&"group".into()) else {
-                            panic!("no saved group")
+                            return None;
                         };
-                        (view.level(), view.position(), *group as u64)
+                        Some((view.level(), view.position(), *group as u64))
                     })
-                    .expect("live resident block entity");
+                    .expect("live resident block entity")
+                else {
+                    return;
+                };
                 level
                     .set_connection_group(scope.host(), pos, Some(group))
                     .unwrap();

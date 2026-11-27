@@ -146,7 +146,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_phase_is_read_set_synced_and_saved() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let (entity, dragon) = dragon_in(game);
             // A constructed dragon (as with /summon) hovers; only the fight's
             // create_new_dragon switches it to the holding pattern.
@@ -226,7 +226,7 @@ mod tests {
     #[ignore = "daily"]
     fn leaving_flaming_discards_the_cloud_at_once() {
         use sunrise_gameplay_common::game::dragon_common::Breath;
-        with_game(|game| {
+        with_resident_game(|game| {
             let (_, dragon) = dragon_in(game);
             let cloud = |from_dragon| Breath {
                 attachment_lifetime: Default::default(),
@@ -274,7 +274,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_invulnerable_player_is_not_a_target() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let (entity, _) = dragon_in(game);
             let mob = game.mob(entity).unwrap();
             game.player =

@@ -2583,7 +2583,7 @@ fn arrow_hits_name_the_projectile_on_players_mobs_and_the_dragon() {
             entity,
             causing,
             direct: 912,
-            direct_type: None,
+            direct_type: Some("minecraft:arrow".into()),
         });
         assert_eq!(
             heard.sources, expected,

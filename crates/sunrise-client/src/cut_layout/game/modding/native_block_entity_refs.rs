@@ -161,28 +161,25 @@ pub(crate) mod tests {
                 if let Some(menu) = menu {
                     assert!(matches!(menu.slots, Slots::Block((5, 64, 0))));
                 }
-                let mut opens = Vec::new();
-                let mut closes = Vec::new();
+                let mut packets = Vec::new();
                 for out in rx.try_iter() {
                     if let Out::Packet(packet) = out {
                         let mut reader = Reader::new(&packet);
-                        match reader.varint().unwrap() {
-                            clientbound::OPEN_SCREEN => opens.push(reader.varint().unwrap()),
-                            clientbound::CONTAINER_CLOSE => closes.push(reader.varint().unwrap()),
-                            _ => {}
+                        let kind = reader.varint().unwrap();
+                        if matches!(
+                            kind,
+                            clientbound::OPEN_SCREEN | clientbound::CONTAINER_CLOSE
+                        ) {
+                            packets.push((kind, reader.varint().unwrap()));
                         }
                     }
                 }
-                assert_eq!(
-                    opens,
-                    menu.map(|menu| menu.window).into_iter().collect::<Vec<_>>()
-                );
-                let expected_closes = if case == "close_reentry" {
-                    Vec::new()
-                } else {
-                    previous.into_iter().collect()
-                };
-                assert_eq!(closes, expected_closes);
+                let expected: Vec<_> = previous
+                    .map(|window| (clientbound::CONTAINER_CLOSE, window))
+                    .into_iter()
+                    .chain(menu.map(|menu| (clientbound::OPEN_SCREEN, menu.window)))
+                    .collect();
+                assert_eq!(packets, expected);
                 return;
             }
             let furnace = game.block_entity(level, [2, 64, 0]).unwrap();

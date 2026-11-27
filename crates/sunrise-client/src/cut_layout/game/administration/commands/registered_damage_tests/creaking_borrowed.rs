@@ -237,7 +237,7 @@ pub(crate) fn run_borrowed_creaking_hurt_finishes_before_the_tick_continues() {
             }
             for command in [
                 "forceload add 0 0",
-                "time set night",
+                "time set 13000",
                 "summon creaking 4.5 64 4.5 {UUID:[I;86,0,0,1],NoAI:1b,NoGravity:1b}",
                 "setblock 8 63 8 minecraft:pale_oak_log[axis=y]",
                 "setblock 8 64 8 minecraft:creaking_heart[axis=y,creaking_heart_state=awake]{creaking:[I;86,0,0,1]}",

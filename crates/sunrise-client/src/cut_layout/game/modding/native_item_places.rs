@@ -421,7 +421,7 @@ pub(crate) mod tests {
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
         use sunrise_sim::{lan::Out, mobs::gear};
 
-        with_game(|game| {
+        with_resident_game(|game| {
             open_to_lan(game);
             let (tx, rx) = mpsc::channel();
             let mut viewer = guest(1);
@@ -1690,7 +1690,7 @@ pub(crate) mod tests {
             AttributeModifier, AttributeOperation, EquipmentSlot, Identifier, ModifierLifetime, Tag,
         };
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let entity = zombie(game);
             let living = game.living(game.entity(entity).unwrap()).unwrap();
             let slot = EquipmentSlot::Chest;
@@ -1755,7 +1755,7 @@ pub(crate) mod tests {
         };
 
         for commit in [false, true] {
-            with_game(|game| {
+            with_resident_game(|game| {
                 let entity = zombie(game);
                 let living = game.living(game.entity(entity).unwrap()).unwrap();
                 let slot = EquipmentSlot::Chest;
@@ -1837,7 +1837,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_equipment_moves_through_the_entity_items_handler() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let id = zombie(game);
             let host: &mut dyn ServerHost = game;
             let items = host
@@ -2107,7 +2107,7 @@ pub(crate) mod tests {
     fn a_kept_handler_reaches_nothing_once_its_cart_is_removed() {
         use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.carts.push(Minecart::new(
                 500,
@@ -2210,7 +2210,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_kept_handler_reaches_nothing_once_its_world_closes() {
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.carts.push(Minecart::new(
                 500,
@@ -3338,7 +3338,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_chest_minecarts_items_are_its_slots() {
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let position = sunrise_core::geometry::Vec3::new(0.5, 65.0, 0.5);
             game.carts

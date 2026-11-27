@@ -4,7 +4,7 @@ use std::sync::{
     atomic::{AtomicU8, Ordering},
 };
 use sunrise_core::random::RandomSource;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::with_resident_game;
 use sunrise_gameplay_common::game::creatures::{
     Arc, Hit, Mob, Projectile, ProjectileKind, Species, Vec3, Who,
 };
@@ -111,7 +111,7 @@ pub(crate) fn run_mob_pearls_use_the_hook_and_recheck_listener_writes_without_pl
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             for action in 0..4 {
                 mode.store(action, Ordering::SeqCst);

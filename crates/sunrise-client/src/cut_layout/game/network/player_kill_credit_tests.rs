@@ -56,6 +56,10 @@ fn game<'a>(
     assert!(game.run_command("difficulty normal"));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 6.5)).unwrap());
     game.player.as_mut().unwrap().entity_id = HOST as i32;
+    game.server.next_entity = game
+        .server
+        .next_entity
+        .max(HOST.max(VICTIM_ID).max(KILLER_ID));
     game.lan_host(
         sunrise_gameplay::game::lan::LanSettings {
             port: 0,

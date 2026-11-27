@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_gameplay_common::game::creatures::{SpawnReason, SpawnSite};
+use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use sunrise_sim::join_seq::residency::table::EntityLookup;
 
 fn live_mob_ids(game: &sunrise_gameplay::game::ServerGame<'_>, expected: usize) -> HashSet<u32> {
@@ -39,11 +40,14 @@ fn live_mob_ids(game: &sunrise_gameplay::game::ServerGame<'_>, expected: usize) 
 #[ignore = "daily"]
 fn runtime_id_allocator_remains_unique_across_loaded_levels_and_real_transfer() {
     with_game(|game| {
+        game.server.world_root = game.server.save.0.root.clone();
+        game.native_level_opened(Dim::Overworld);
         game.native_lifecycle.world_open_ready().unwrap();
         let mut spawned = Vec::new();
         for _ in 0..3 {
             for dimension in [Dim::Overworld, Dim::Nether, Dim::End] {
                 game.enter_level(dimension).unwrap();
+                fixture_resident_column(&mut game.world, (0, 0));
                 let id = game
                     .spawn_mob(
                         "minecraft:cow",

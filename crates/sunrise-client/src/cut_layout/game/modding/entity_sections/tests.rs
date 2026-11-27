@@ -995,6 +995,7 @@ fn a_refused_player_add_does_not_hide_the_resident_entities_crossing() {
 fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
     observe(|calls| {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.native_lifecycle.world_open_ready().unwrap();
             game.summon_with_nbt(
                 "minecraft:item",

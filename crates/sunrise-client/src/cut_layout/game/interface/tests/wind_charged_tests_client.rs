@@ -6,6 +6,19 @@ use crate::game::server_side::wind::wind_charged_tests::boat_speed;
 use crate::game::server_side::wind::wind_charged_tests::with_game;
 use crate::game::server_side::wind::wind_charged_tests::*;
 
+use std::{path::Path, sync::Arc};
+use sunrise_protocol::registry::Builtin;
+use sunrise_sim::lan::data::SyncData;
+
+const SMALL_GUST: &str = "minecraft:gust_emitter_small";
+const LARGE_GUST: &str = "minecraft:gust_emitter_large";
+
+fn gust_sync(resources: &Path) -> Arc<SyncData> {
+    let mut sync = SyncData::empty();
+    sync.builtin = Builtin::load(&Builtin::find(resources).unwrap()).unwrap();
+    Arc::new(sync)
+}
+
 /// Count `Clientbound::Explode` packets carrying emitter particle id `particle_id`.
 fn gusts(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>, particle_id: i32) -> usize {
     use sunrise_protocol::{buf::Reader, packets::play};
@@ -38,12 +51,12 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
     let Some(outcome) = with_game(|game| {
         let (hub, near, _far) = sunrise_gameplay::game::server_side::lan_particles::tests::test_hub(
             "WindChargeSilentTest",
-            vec![
-                "minecraft:gust_emitter_small".into(),
-                "minecraft:gust_emitter_large".into(),
-            ],
-            None,
+            Vec::new(),
+            Some(gust_sync(&game.options.resources)),
         );
+        let gust_id = hub
+            .registry_id("minecraft:particle_type", SMALL_GUST)
+            .unwrap();
         game.server.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
         let mut outcome = Vec::new();
         for silent in [false, true] {
@@ -64,7 +77,7 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
                 silent,
                 heard(game, WIND_CHARGE_BURST) - charge,
                 heard(game, BREEZE_BURST) - breeze,
-                gusts(&near, 0),
+                gusts(&near, gust_id),
                 boat_speed(game, boat) > 0.0,
             ));
             game.boats.clear();
@@ -96,12 +109,12 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
     let Some(outcome) = with_game(|game| {
         let (hub, near, _far) = sunrise_gameplay::game::server_side::lan_particles::tests::test_hub(
             "WindChargedMobTest",
-            vec![
-                "minecraft:gust_emitter_small".into(),
-                "minecraft:gust_emitter_large".into(),
-            ],
-            None,
+            Vec::new(),
+            Some(gust_sync(&game.options.resources)),
         );
+        let gust_id = hub
+            .registry_id("minecraft:particle_type", LARGE_GUST)
+            .unwrap();
         game.server.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
         let mut outcome = Vec::new();
         for silent in [false, true] {
@@ -112,7 +125,7 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
                 silent,
                 heard(game, BREEZE_BURST) - breeze,
                 heard(game, WIND_CHARGE_BURST) - charge,
-                gusts(&near, 1),
+                gusts(&near, gust_id),
                 boat_speed(game, boat) > 0.0,
             ));
             game.boats.clear();

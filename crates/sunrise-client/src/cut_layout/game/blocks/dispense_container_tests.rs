@@ -77,6 +77,7 @@ struct Notices {
     pub contents: Arc<Mutex<Vec<DimensionKey>>>,
     fluids: Arc<Mutex<Vec<(String, String)>>>,
     pub reopen_on_pickup: bool,
+    use_stock_bucket_behavior: bool,
     pub pickup_snapshots: Option<Arc<Mutex<Vec<PickupSnapshot>>>>,
     replacement: Replacement,
 }
@@ -131,8 +132,10 @@ impl Hooks for Containers {
             "minecraft:glass_bottle",
             "minecraft:clay_ball",
         ] {
-            let key = r.item_key(item);
-            r.item_part(key, Container);
+            if item != "minecraft:bucket" || !self.0.use_stock_bucket_behavior {
+                let key = r.item_key(item);
+                r.item_part(key, Container);
+            }
         }
         r.item_capability(
             &ITEM_FLUIDS,
@@ -1153,6 +1156,7 @@ fn fluid_pickup_publishes_before_remainder_insertion_or_overflow_draws() {
     let snapshots = Arc::new(Mutex::new(Vec::new()));
     let notices = Notices {
         pickup_snapshots: Some(snapshots.clone()),
+        use_stock_bucket_behavior: true,
         ..Notices::default()
     };
     with_dispenser_notices(notices, |game, _, _| {

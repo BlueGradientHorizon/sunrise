@@ -21,13 +21,10 @@ impl crate::game::ClientGame<'_> {
                 add(pos, u32::from(crack.stage));
             }
         }
-        let now = self.common.world.game_time;
         for crack in self.client.destroying.values() {
-            if now.saturating_sub(crack.updated_at) <= 400 {
-                add(crack.pos, u32::from(crack.stage));
-                for &pos in &crack.positions {
-                    add(pos, u32::from(crack.stage));
-                }
+            add(crack.pos, u32::from(crack.stage));
+            for &pos in &crack.positions {
+                add(pos, u32::from(crack.stage));
             }
         }
         stages
@@ -63,7 +60,11 @@ impl crate::game::ClientGame<'_> {
             })
             .filter(|(pos, _)| {
                 let state = self.common.world.block(pos[0], pos[1], pos[2]);
-                self.common.res.facts().get(state).destroy_overlay
+                let facts = self.common.res.facts();
+                let block = facts.get(state);
+                !facts.is_air(state)
+                    && block.render_shape == sunrise_items::blocks::RenderShape::Model
+                    && block.destroy_overlay
             })
             .filter_map(|(pos, stage)| Some((pos, self.crack_origin(stage)?)))
             .collect()

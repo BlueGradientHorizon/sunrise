@@ -77,6 +77,7 @@ impl ServerGame<'_> {
                             .or_insert(StrictBlockStep {
                                 to,
                                 row: None,
+                                created_generation: None,
                                 clear_connection_group: clears_group,
                             });
                     },
@@ -109,7 +110,6 @@ impl ServerGame<'_> {
         let mut made =
             make_block_entities(&wanted, |state| self.new_block_entity_for_state(*state))
                 .into_iter();
-        let mut replaced_placements = Vec::new();
         if publication.is_some() {
             // Keep the original row, including absence, before the strict writer creates or
             // removes a resident. Keep its drops suppressed just as in an immediate bulk edit.
@@ -124,15 +124,6 @@ impl ServerGame<'_> {
                             .is_some_and(|row| row.fits(&name(new))))
                 {
                     self.journal_block_entity(pos);
-                    if self
-                        .common
-                        .world
-                        .block_entities
-                        .generation(&pos)
-                        .is_some_and(|generation| self.is_placement_entity(pos, generation))
-                    {
-                        replaced_placements.push(pos);
-                    }
                 }
             }
         }
@@ -143,10 +134,6 @@ impl ServerGame<'_> {
             |_| made.next().flatten(),
             publication.as_ref().map(|_| &mut steps),
         );
-        for pos in replaced_placements {
-            self.common.world.block_names.remove(&pos);
-            self.common.world.forget_block_entity_source(pos);
-        }
         if let Some(publication) = publication {
             self.after_commit(
                 sunrise_gameplay_common::game::transactions::After::BulkBlocks(
@@ -292,15 +279,25 @@ fn replace_block_entities(
                     .is_some_and(|e| e.fits(&now)))
         {
             let pos = (x, y, z);
-            if let Some(step) = staged.as_deref_mut().and_then(|steps| steps.get_mut(&pos))
-                && step.row.is_none()
-            {
-                step.row = Some(ReplayEntity::take(world, pos));
-            } else {
-                world.block_entities.remove(&pos);
+            let mut step = staged.as_deref_mut().and_then(|steps| steps.get_mut(&pos));
+            match step.as_deref_mut() {
+                Some(step) if step.row.is_none() => {
+                    step.row = Some(ReplayEntity::take(world, pos));
+                }
+                _ => {
+                    world.block_entities.remove(&pos);
+                }
             }
-            if let Some(entity) = new_entity(&now) {
-                world.block_entities.insert((x, y, z), entity);
+            if step.is_some() {
+                world.block_names.remove(&pos);
+                world.forget_block_entity_source_unmodified(pos);
+            }
+            let created_generation = new_entity(&now).and_then(|entity| {
+                world.block_entities.insert(pos, entity);
+                world.block_entities.generation(&pos)
+            });
+            if let Some(step) = step {
+                step.created_generation = created_generation;
             }
         }
     }

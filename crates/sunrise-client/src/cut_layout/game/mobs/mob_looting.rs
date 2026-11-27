@@ -49,7 +49,7 @@ mod tests {
         crate::entry::install_client_hooks();
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+            sunrise_gameplay::game::native_entity_refs::tests::with_resident_game(|game| {
                 let mobs = [
                     (1, "minecraft:zombie", 64.0),
                     (2, "minecraft:skeleton", 64.0),

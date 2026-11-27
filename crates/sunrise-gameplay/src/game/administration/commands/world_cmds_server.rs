@@ -11,7 +11,7 @@ use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::creatures::KnownCause;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{
-    mobs::{Damage, Who},
+    mobs::{Damage, MobEvent, Who},
     scoreboard_cmd::Tracker,
 };
 
@@ -647,6 +647,34 @@ impl crate::game::ServerGame<'_> {
             Vec::new()
         };
         if hurt {
+            let outbox = &mut self.common.mobs[index].outbox;
+            let sounds: Vec<_> = outbox
+                .extract_if(queued.min(outbox.len()).., |event| {
+                    matches!(event, MobEvent::Sound(..) | MobEvent::SoundId(..))
+                })
+                .collect();
+            for sound in sounds {
+                match sound {
+                    MobEvent::Sound("enchant.thorns.hit", at, volume, pitch) => self
+                        .server_play_sound_on(
+                            mod_api::SoundSource::Hostile.index(),
+                            "minecraft:enchant.thorns.hit",
+                            at,
+                            volume,
+                            pitch,
+                        ),
+                    MobEvent::Sound(name, at, volume, pitch) => self.server_play_sound(
+                        &sunrise_sim::mobs::entity_sounds::full_id(name),
+                        at,
+                        volume,
+                        pitch,
+                    ),
+                    MobEvent::SoundId(name, at, volume, pitch) => {
+                        self.server_play_sound(&name, at, volume, pitch);
+                    }
+                    _ => unreachable!(),
+                }
+            }
             self.flush_mob_death_protection(id);
             if damage.attacker == Some(Who::Player) {
                 self.remember_mob_player_credit(id);

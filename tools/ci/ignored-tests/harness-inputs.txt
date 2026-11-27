@@ -7,3 +7,4 @@ sunrise-client cut_layout::game::server_side::functions::typed_state_range_read_
 sunrise-client cut_layout::game::server_side::functions::typed_state_range_read_tests::loaded_pack_direction_ranges_keep_full_and_filtered_domains SUNRISE_TYPED_RANGE_PACK needs
 sunrise-client cut_layout::game::server_side::potions_server::arrow_contents::actual_arrow_contents_match_pinned_methods SUNRISE_POTION_INPUT needs
 sunrise-client cut_layout::game::server_side::special_attack_fixture::tests::special_attack_cases_without_world_startup SUNRISE_SPECIAL_ATTACK_CASES needs
+sunrise-client cut_layout::game::client_side::crosshair_pick_tests::review_parity_cases_match_26_3_witness SUNRISE_CROSSHAIR_PICK_WITNESS needs

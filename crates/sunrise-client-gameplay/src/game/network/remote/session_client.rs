@@ -269,7 +269,6 @@ impl crate::game::ClientGame<'_> {
                 );
             world.shape = format.shape;
             world.game_time = self.common.world.game_time;
-            world.weather = self.common.world.weather;
             r.constructing_level = Some(ConstructingClientLevel {
                 handle,
                 world,

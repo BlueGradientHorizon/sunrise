@@ -102,19 +102,28 @@ impl Attack {
     /// The current player's source, shared by every phase and equipment continuation.
     pub fn player_source<'a>(&'a self, damage_type: &'a str, causing: i32) -> HurtSource<'a> {
         let melee = direct_entity_source(damage_type);
+        let direct = self.direct.unwrap_or_else(|| {
+            if melee {
+                causing
+            } else {
+                self.projectile_direct(damage_type)
+            }
+        });
         HurtSource {
             damage_type,
             causing: self.arrow_cause(damage_type, causing),
-            direct: self.direct.unwrap_or_else(|| {
-                if melee {
-                    causing
-                } else {
-                    self.projectile_direct(damage_type)
-                }
-            }),
-            direct_type: self.direct_type.as_deref(),
+            direct,
+            direct_type: self.direct_entity_type(direct),
             position: self.position,
         }
+    }
+
+    fn direct_entity_type(&self, direct: i32) -> Option<&str> {
+        self.direct_type.as_deref().or_else(|| {
+            (direct != 0 && self.projectile == Some(direct))
+                .then_some(self.projectile_type)
+                .flatten()
+        })
     }
 
     fn arrow_cause(&self, damage_type: &str, causing: i32) -> i32 {
@@ -212,18 +221,18 @@ pub fn mob_source<'a>(damage: &Damage, attack: &'a Attack) -> HurtSource<'a> {
         None => 0,
     };
     let damage_type = source_damage_type(*damage);
-    let melee = melee(damage.kind);
-    HurtSource {
-        damage_type,
-        causing: attack.arrow_cause(damage_type, causing),
-        direct: if let Some(direct) = attack.direct {
-            direct
-        } else if melee {
+    let direct = attack.direct.unwrap_or_else(|| {
+        if melee(damage.kind) {
             causing
         } else {
             attack.projectile_direct(damage_type)
-        },
-        direct_type: attack.direct_type.as_deref(),
+        }
+    });
+    HurtSource {
+        damage_type,
+        causing: attack.arrow_cause(damage_type, causing),
+        direct,
+        direct_type: attack.direct_entity_type(direct),
         position: damage.from,
     }
 }

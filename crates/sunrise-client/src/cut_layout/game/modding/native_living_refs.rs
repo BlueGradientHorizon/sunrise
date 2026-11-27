@@ -45,7 +45,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mod_base_write_stays_in_range_and_a_vanilla_one_does_not() {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             for (id, entity) in [(55, "minecraft:pig"), (56, "minecraft:slime")] {
                 let ty = game.res.mob_types().get(entity).unwrap().clone();
                 game.mobs.push(Mob::new(id, ty, Vec3::ZERO, 0.0));
@@ -75,7 +75,7 @@ pub(crate) mod tests {
         use mod_api::ServerHost;
         use sunrise_core::random::RandomSource;
         use sunrise_sim::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let living = game.living(game.entity(20).unwrap()).unwrap();
@@ -557,7 +557,7 @@ pub(crate) mod tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::{Damage, Mob};
 
-        super::super::native_guest_turn_tests::with_guests(|game| {
+        super::super::native_guest_turn_tests::with_resident_guests(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let wolf = game.res.mob_types().get("minecraft:wolf").unwrap().clone();
             game.mobs.push(Mob::new(100, pig, Vec3::ZERO, 0.0));
@@ -800,7 +800,7 @@ pub(crate) mod tests {
     fn set_health_can_store_zero() {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -820,7 +820,7 @@ pub(crate) mod tests {
     fn set_health_journal_restores_nested_player_and_mob_writes() {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -1050,7 +1050,7 @@ pub(crate) mod tests {
         use mod_api::ServerHost;
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             game.selected = 3;
@@ -1836,7 +1836,7 @@ pub(crate) mod tests {
     fn mob_equipment_writes_emit_vanilla_equip_events() {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             let kind = game
                 .res
                 .mob_types()

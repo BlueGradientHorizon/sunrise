@@ -9,7 +9,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
+    use super::super::native_entity_refs::tests::with_resident_game;
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
@@ -49,7 +49,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_furnace_carts_push_is_read_and_set_through_its_handle() {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let furnace = spawn(game, 50, CartKind::Furnace);
             let chest = spawn(game, 51, CartKind::Chest);
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_carts_display_block_and_offset_round_trip_through_its_handle() {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let cart = spawn(game, 60, CartKind::Chest);
             assert_eq!(cart.custom_display_block(game), Some(None));

@@ -193,8 +193,17 @@ impl crate::game::ServerGame<'_> {
         reg.banned_ips = own_banned_ips;
         reg.whitelisted = own_whitelisted;
         reg.trigger_objectives = own_triggers;
-        // ServerCommandSuggestionsProvider.limitSuggestionCount.
-        suggestions.truncate(1000);
+        suggestions.retain(|suggestion| {
+            suggestion.text.encode_utf16().count() <= sunrise_command::MAX_SUGGESTION_TEXT
+                && suggestion.tooltip.as_deref().is_none_or(|tooltip| {
+                    tooltip
+                        .encode_utf16()
+                        .map(sunrise_core::modified_utf8::unit_len)
+                        .sum::<usize>()
+                        <= sunrise_command::MAX_SUGGESTION_TOOLTIP
+                })
+        });
+        suggestions.truncate(sunrise_command::MAX_PROVIDER_SUGGESTIONS);
         let utf16 = |byte: usize| command[..byte.min(command.len())].encode_utf16().count() as i32;
         let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         w.varint(id);

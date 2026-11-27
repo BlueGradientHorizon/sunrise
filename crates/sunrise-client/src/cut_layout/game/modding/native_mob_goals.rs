@@ -129,7 +129,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn follow_mob_uses_the_mobs_actual_navigation() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let mob = mob_in_game(game, "minecraft:cow", 501);
             let goal = GoalSpec::FollowMob {
                 speed: 1.0,
@@ -180,7 +180,7 @@ mod tests {
                 m.health = cx.level.random().next_int_bound(1000).unwrap() as f32;
             }
         }
-        with_game(|game| {
+        with_resident_game(|game| {
             let handle = mob_in_game(game, "minecraft:zombie", 99);
             mob_in_game(game, "minecraft:zombie", 100);
             let mut mobs = game.mobs.lift();
@@ -230,7 +230,7 @@ mod tests {
             goals::Cx,
             raider::{self, HoldGroundAttack},
         };
-        with_game(|game| {
+        with_resident_game(|game| {
             let handle = mob_in_game(game, "minecraft:pillager", 99);
             mob_in_game(game, "minecraft:pillager", 100);
             let mut mobs = game.mobs.lift();

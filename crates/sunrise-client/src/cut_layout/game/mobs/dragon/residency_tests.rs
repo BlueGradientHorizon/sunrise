@@ -2,7 +2,7 @@
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::{with_game, with_resident_game};
 use sunrise_gameplay_common::game::creatures::SpawnSite;
 use sunrise_gameplay_common::game::dragon_common::Dragon;
 
@@ -40,7 +40,7 @@ fn singleton_dragon_spawn_install_refusal_and_kill() {
 #[test]
 #[ignore = "daily"]
 fn singleton_dragon_load_keeps_state_and_reserves_nine_ids() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.dragon.discard();
         let mut saved = Dragon::new(Vec3::new(2.0, 90.0, 3.0), 25.0, 0);
         saved.health = 73.0;

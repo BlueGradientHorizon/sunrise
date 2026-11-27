@@ -880,6 +880,7 @@ fn item_use_overlap_matrix_on_the_server() {
                 .unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
+            Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
             item_used_on_block_tests::install_criteria(game, &[0], "minecraft:air");
             for hand in [Hand::Main, Hand::Off] {
                 for held in [false, true] {

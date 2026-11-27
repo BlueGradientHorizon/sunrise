@@ -323,6 +323,13 @@ impl mod_api::CommandArgumentType for OversizedAndMany {
     }
 
     fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+        if self.mixed && !request.prefix.is_empty() {
+            return vec![
+                request.suggest("short"),
+                request.suggest_from(request.prefix.len() - 1, "b".repeat(766)),
+                request.suggest_from(request.prefix.len() - 1, "b".repeat(767)),
+            ];
+        }
         if self.mixed {
             return vec![
                 request.suggest("a".repeat(32768)),
@@ -336,6 +343,7 @@ impl mod_api::CommandArgumentType for OversizedAndMany {
         (0..1050)
             .rev()
             .map(|i| request.suggest(format!("cand_{i:04}")))
+            .chain(std::iter::once(request.suggest("a".repeat(32768))))
             .collect()
     }
 }
@@ -382,6 +390,21 @@ fn oversized_entries_drop_individually_and_large_regular_replies_sort_before_tru
         suggestions(&mut game, &rx, "mixed "),
         ["ok_sibling".to_owned(), "z".repeat(32767)]
     );
+    let dispatcher = &game.ui.dispatcher.0;
+    let registries = &game.ui.registries;
+    let (_, local) =
+        dispatcher.client_suggestions(&dispatcher.parse("mixed ", registries), 6, registries);
+    assert_eq!(local.len(), 5);
+    assert!(local.iter().any(|entry| entry.text == "a".repeat(32768)));
+    assert!(local.iter().any(|entry| entry.text == "bad_tip"));
+    assert!(local.iter().any(|entry| entry.text == "bad_nul"));
+
+    let prefix = "a".repeat(32001);
+    assert_eq!(
+        suggestions(&mut game, &rx, &format!("mixed {prefix}a")),
+        [format!("{prefix}{}", "b".repeat(766)), "short".into()]
+    );
+
     let truncated = suggestions(&mut game, &rx, "probe ");
     assert_eq!(truncated.len(), 1000);
     assert_eq!(truncated[0], "cand_0000");

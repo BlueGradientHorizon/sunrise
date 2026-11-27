@@ -74,27 +74,24 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         }
         let [x, y, z] = pos;
         let key = (x, y, z);
-        if !self.game.res.behaviours().keeps_block_entity(old, state) {
-            if self.game.world.block_entities.contains_key(&key) {
-                self.game.journal_block_replacement(key);
-            }
+        let replaces_entity = !self.game.res.behaviours().keeps_block_entity(old, state);
+        if replaces_entity && self.game.world.block_entities.contains_key(&key) {
+            self.game.journal_block_replacement(key);
+        }
+        if self.game.captures_placement() && !self.game.world.block_entities.contains_key(&key) {
+            self.game.ensure_stateful_entity_table();
+            let entity = self.game.with_placement_preview_level(|_, level, _| {
+                level.new_block_entity_for_state(state)
+            });
+            self.game.journal_stage_block_entity(key, entity);
+        } else if replaces_entity {
             self.game.ensure_stateful_entity_table();
             if !self.game.world.block_entities.stateful_entity(state.0)
                 && self.game.res.facts().get(old).name != self.game.res.facts().get(state).name
                 && let Some(entity) = self.game.new_block_entity_for_state(state)
             {
-                self.game.journal_block_entity(key);
-                self.game.world.block_entities.insert(key, entity);
+                self.game.journal_stage_block_entity(key, Some(entity));
             }
-        }
-        if self.game.captures_placement()
-            && !self.game.world.block_entities.contains_key(&(x, y, z))
-        {
-            self.game.ensure_stateful_entity_table();
-            let entity = self.game.with_placement_preview_level(|_, level, _| {
-                level.new_block_entity_for_state(state)
-            });
-            self.game.journal_stage_placement_entity((x, y, z), entity);
         }
         true
     }

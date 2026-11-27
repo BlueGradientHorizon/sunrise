@@ -780,24 +780,21 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    /// The client level's particle sources and the engine's tick, in one go.
+    /// Advance particle effects without advancing the client level.
     #[allow(dead_code)]
     pub fn tick_particles(&mut self) {
+        self.prepare_particle_sources();
+        tick_client_weather_effects(self);
         self.tick_particle_sources();
         self.tick_particle_engine();
     }
 
-    /// What adds particles in `Minecraft.tick` and the level's ambient: `animateTick`, the rain,
-    /// the vignette and fog, before the block entities tick.
-    pub(in crate::game::client_side) fn tick_particle_sources(&mut self) {
-        // A client mod's `clear_particles`, before this tick adds any.
+    #[inline(always)]
+    pub(in crate::game::client_side) fn prepare_particle_sources(&mut self) {
         self.apply_mod_particle_clear();
-        self.update_animation_inputs();
         let mut laps = sunrise_level::spans::laps();
-        let eye = self.common.eye_position();
-        // Vanilla particle culling, weather splashes, and rain fog read `mainCamera().position()` directly.
         let cam_pos = self.client.view.position;
-        if eye.is_some() {
+        if self.common.eye_position().is_some() {
             let inside_portal = self.client_portal_effect();
             self.client.screen_fx.tick_portal(inside_portal);
             // LocalPlayer.aiStep: processPortalCooldown after the transition effect.
@@ -817,6 +814,12 @@ impl crate::game::ClientGame<'_> {
         laps.lap("tp_fx");
         self.client.particles.0.particle_level = self.client.settings.particles;
         self.client.particles.0.camera = cam_pos;
+    }
+
+    /// ClientLevel.animateTick, after the level's own tick and before ParticleEngine.tick.
+    pub(in crate::game::client_side) fn tick_particle_sources(&mut self) {
+        self.update_animation_inputs();
+        let mut laps = sunrise_level::spans::laps();
         let (rain, thunder) = self.weather_levels(1.0);
         let ambient_attribute = attribute(AMBIENT_PARTICLES).expect("registered ambient particles");
         let marker =
@@ -833,27 +836,13 @@ impl crate::game::ClientGame<'_> {
         let ultrawarm = self.dimension_type().water_evaporates;
         // Whether the picks ask for the mod block parts' `animate_tick`.
         let parts = self.mod_animate_parts();
-        let block = eye.map(|e| e.map(|v| v.floor() as i32));
+        let block = self
+            .common
+            .eye_position()
+            .map(|e| e.map(|v| v.floor() as i32));
         let mut sampling = block.map(AnimateSampling::new);
         let sea_level = self.weather_sea_level();
         let biome_zoom = self.client.streaming.biome_zoom;
-        // `ClientLevel.animateTick`, then the rain and the campfires. The sampling stops in each
-        // pick whose block has a part, for the game to call it there (`mod_animate_tick`); the
-        // context borrows the game, so it is made again for the rest of the tick.
-        let mut rain_sounds = Vec::new();
-        // A mod's `tick_weather_effects` may take this tick's weather effects over.
-        let weather_canceled = mod_api::__private::listened(mod_api::HookId::TickWeatherEffects)
-            && {
-                let mut canceled = false;
-                self.native_tick_weather_effects(
-                    self.common.dim.id(),
-                    self.common.world.game_time,
-                    cam_pos,
-                    rain,
-                    &mut canceled,
-                );
-                canceled
-            };
         loop {
             let client_pack = &self.client.client_pack;
             let marker_options = |state| {
@@ -999,117 +988,8 @@ impl crate::game::ClientGame<'_> {
                     continue;
                 }
                 laps.lap("tp_animate");
-                // The Sunrise Weather option off means no rain visuals or sounds at all.
-                if !weather_canceled && rain > 0.0 && self.client.settings.sunrise.weather {
-                    let weather_block = cam_pos.map(|v| v.floor() as i32);
-                    // ClientLevel.tickWeatherEffects: rain splashes around the camera, and the rain sound.
-                    let mut random =
-                        LegacyRandom::new(self.common.world.game_time.wrapping_mul(312_987_231));
-                    let radius = self.client.settings.weather_radius;
-                    let diameter = 2 * radius + 1;
-                    let count = (0.225 * (diameter * diameter) as f32 * rain * rain) as i32
-                        / if self.client.settings.particles == 1 {
-                            2
-                        } else {
-                            1
-                        };
-                    let mut rain_position = None;
-                    for _ in 0..count {
-                        let x = weather_block[0]
-                            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
-                            .wrapping_sub(radius);
-                        let z = weather_block[2]
-                            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
-                            .wrapping_sub(radius);
-                        let Some(top) = splash_height(world, properties, x, weather_block[1], z)
-                        else {
-                            continue;
-                        };
-                        if precipitation_at(
-                            world,
-                            biomes,
-                            biome_zoom,
-                            BlockPos::new(x, top, z),
-                            sea_level,
-                        ) != Some(false)
-                        {
-                            continue;
-                        }
-                        let below = top.wrapping_sub(1);
-                        rain_position = Some([x, below, z]);
-                        // The Minimal option stops at the first spot that rains (the
-                        // rain sound still plays there).
-                        if self.client.settings.particles >= 2 {
-                            break;
-                        }
-                        let (bx, bz) = (random.next_double(), random.next_double());
-                        let state = world.block(x, below, z);
-                        let f = facts.get(state);
-                        let block_top = self
-                            .common
-                            .collision
-                            .cached_shapes()
-                            .cached_collision_top(state, [x, below, z], bx, bz)
-                            .ok()
-                            .flatten()
-                            .unwrap_or(0.0);
-                        let fluid_top = if f.fluid == Fluid::None {
-                            0.0
-                        } else {
-                            f64::from(f.fluid_level) / 9.0
-                        };
-                        let smoke = f.fluid == Fluid::Lava
-                            || &*f.name == "minecraft:magma_block"
-                            || (f.name.ends_with("campfire")
-                                && self.client_res().animate().is_lit_campfire(state.0));
-                        let ty = if smoke {
-                            ParticleType::Smoke
-                        } else {
-                            ParticleType::Rain
-                        };
-                        let p = [
-                            f64::from(x) + bx,
-                            f64::from(below) + block_top.max(fluid_top),
-                            f64::from(z) + bz,
-                        ];
-                        self.client
-                            .particles
-                            .0
-                            .add(&ParticleOptions::simple(ty), p, [0.0; 3]);
-                    }
-                    // The last rain column of the tick makes the sound, more often the
-                    // longer it has been quiet; indoors it is the quieter one.
-                    if let Some(at) = rain_position {
-                        let waited = self.client.rain_sound_time;
-                        self.client.rain_sound_time += 1;
-                        if random.next_int_bound(3).unwrap_or(0) < waited {
-                            self.client.rain_sound_time = 0;
-                            let roof = motion_blocking_height(
-                                world,
-                                properties,
-                                weather_block[0],
-                                weather_block[2],
-                            );
-                            let (name, volume, pitch) = if at[1] > weather_block[1].wrapping_add(1)
-                                && roof > weather_block[1]
-                            {
-                                ("minecraft:weather.rain.above", 0.1, 0.5)
-                            } else {
-                                ("minecraft:weather.rain", 0.2, 1.0)
-                            };
-                            let p = at.map(|c| f64::from(c) + 0.5);
-                            // playLocalSound: guests make their own rain, so a host
-                            // must not capture it for them.
-                            rain_sounds.push((name, p, volume, pitch));
-                        }
-                    }
-                }
             }
-            laps.lap("tp_rain_campfire");
             break;
-        }
-        for (name, p, volume, pitch) in rain_sounds {
-            self.play_audio_unshared(name, Some(p), volume, pitch);
         }
     }
 
@@ -1299,6 +1179,137 @@ impl crate::game::ClientGame<'_> {
             renderer.set_animation_inputs(day_time, [rain, thunder], Some(&frame), screen);
         }
     }
+}
+
+/// ClientLevel.tickWeatherEffects uses the game time already advanced by tickTime.
+#[cfg(feature = "client")]
+pub(in crate::game::client_side) fn tick_client_weather_effects(
+    game: &mut crate::game::ClientGame<'_>,
+) {
+    let mut laps = sunrise_level::spans::laps();
+    let cam_pos = game.client.view.position;
+    let rain = game.weather_levels(1.0).0;
+    // A mod's `tick_weather_effects` may take this tick's weather effects over.
+    let weather_canceled = mod_api::__private::listened(mod_api::HookId::TickWeatherEffects) && {
+        let mut canceled = false;
+        game.native_tick_weather_effects(
+            game.common.dim.id(),
+            game.common.world.game_time,
+            cam_pos,
+            rain,
+            &mut canceled,
+        );
+        canceled
+    };
+    if weather_canceled
+        || rain <= 0.0
+        || !game.client.settings.sunrise.weather
+        || game.common.eye_position().is_none()
+    {
+        return;
+    }
+    let world = &game.common.world;
+    let properties = &game.common.pack.assets.properties;
+    let facts = game.common.res.facts();
+    let biomes = world_biomes!(game.common);
+    let sea_level = game.weather_sea_level();
+    let biome_zoom = game.client.streaming.biome_zoom;
+    let weather_block = cam_pos.map(|v| v.floor() as i32);
+    // ClientLevel.tickWeatherEffects: rain splashes around the camera, and the rain sound.
+    let mut random = LegacyRandom::new(game.common.world.game_time.wrapping_mul(312_987_231));
+    let radius = game.client.settings.weather_radius;
+    let diameter = 2 * radius + 1;
+    let count = (0.225 * (diameter * diameter) as f32 * rain * rain) as i32
+        / if game.client.settings.particles == 1 {
+            2
+        } else {
+            1
+        };
+    let mut rain_position = None;
+    for _ in 0..count {
+        let x = weather_block[0]
+            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
+            .wrapping_sub(radius);
+        let z = weather_block[2]
+            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
+            .wrapping_sub(radius);
+        let Some(top) = splash_height(world, properties, x, weather_block[1], z) else {
+            continue;
+        };
+        if precipitation_at(
+            world,
+            biomes,
+            biome_zoom,
+            BlockPos::new(x, top, z),
+            sea_level,
+        ) != Some(false)
+        {
+            continue;
+        }
+        let below = top.wrapping_sub(1);
+        rain_position = Some([x, below, z]);
+        // The Minimal option stops at the first spot that rains (the
+        // rain sound still plays there).
+        if game.client.settings.particles >= 2 {
+            break;
+        }
+        let (bx, bz) = (random.next_double(), random.next_double());
+        let state = world.block(x, below, z);
+        let f = facts.get(state);
+        let block_top = game
+            .common
+            .collision
+            .cached_shapes()
+            .cached_collision_top(state, [x, below, z], bx, bz)
+            .ok()
+            .flatten()
+            .unwrap_or(0.0);
+        let fluid_top = if f.fluid == Fluid::None {
+            0.0
+        } else {
+            f64::from(f.fluid_level) / 9.0
+        };
+        let smoke = f.fluid == Fluid::Lava
+            || &*f.name == "minecraft:magma_block"
+            || (f.name.ends_with("campfire")
+                && game.client_res().animate().is_lit_campfire(state.0));
+        let ty = if smoke {
+            ParticleType::Smoke
+        } else {
+            ParticleType::Rain
+        };
+        let p = [
+            f64::from(x) + bx,
+            f64::from(below) + block_top.max(fluid_top),
+            f64::from(z) + bz,
+        ];
+        game.client
+            .particles
+            .0
+            .add(&ParticleOptions::simple(ty), p, [0.0; 3]);
+    }
+    // The last rain column of the tick makes the sound, more often the
+    // longer it has been quiet; indoors it is the quieter one.
+    if let Some(at) = rain_position {
+        let waited = game.client.rain_sound_time;
+        game.client.rain_sound_time += 1;
+        if random.next_int_bound(3).unwrap_or(0) < waited {
+            game.client.rain_sound_time = 0;
+            let roof =
+                motion_blocking_height(world, properties, weather_block[0], weather_block[2]);
+            let (name, volume, pitch) =
+                if at[1] > weather_block[1].wrapping_add(1) && roof > weather_block[1] {
+                    ("minecraft:weather.rain.above", 0.1, 0.5)
+                } else {
+                    ("minecraft:weather.rain", 0.2, 1.0)
+                };
+            let p = at.map(|c| f64::from(c) + 0.5);
+            // playLocalSound: guests make their own rain, so a host
+            // must not capture it for them.
+            game.play_audio_unshared(name, Some(p), volume, pitch);
+        }
+    }
+    laps.lap("tp_rain");
 }
 
 /// The packs' expression uniforms on core shaders (`shader_modifiers`, wiki "Shaders").

@@ -113,14 +113,8 @@ impl ClientGame<'_> {
         });
         match self.send_play(payload) {
             PlaySend::Admitted => {}
-            PlaySend::Cancelled => {
-                self.client.packet_holds.borrow_mut().clear();
-                return Err(Error::Cancelled);
-            }
-            PlaySend::Unavailable => {
-                self.client.packet_holds.borrow_mut().clear();
-                return Err(Error::Unavailable);
-            }
+            PlaySend::Cancelled => return Err(Error::Cancelled),
+            PlaySend::Unavailable => return Err(Error::Unavailable),
         }
         // The send hook's listeners only read the host: the player is still there.
         let player = self.common.player.as_mut().expect("checked above");

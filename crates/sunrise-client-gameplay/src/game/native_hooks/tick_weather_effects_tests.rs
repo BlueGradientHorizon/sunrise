@@ -11,11 +11,11 @@ use sunrise_core::geometry::Vec3;
 use sunrise_level::{biome::Biomes, chunk::Chunk};
 use sunrise_sim::motion::PlayerMotion;
 
-/// The dimension and rain each call heard; cancels when `cancel` is set.
+/// The dimension, game time, and rain each call heard; cancels when `cancel` is set.
 #[derive(Clone, Default)]
 struct Weather {
     cancel: Arc<Mutex<bool>>,
-    heard: Arc<Mutex<Vec<(String, f32)>>>,
+    heard: Arc<Mutex<Vec<(String, i64, f32)>>>,
 }
 #[mod_api::__subscriptions]
 impl Hooks for Weather {
@@ -27,7 +27,7 @@ impl Hooks for Weather {
         self.heard
             .lock()
             .unwrap()
-            .push((event.dimension.to_owned(), event.rain));
+            .push((event.dimension.to_owned(), event.game_time, event.rain));
         if *self.cancel.lock().unwrap() {
             Flow::Cancel
         } else {
@@ -76,7 +76,7 @@ fn a_mod_takes_the_weather_effects_over() {
             game.camera_view(1.0).expect("camera over the stone floor");
             let rain = |game: &mut ClientGame<'_>| {
                 game.client.particles.0.requested = Some(Vec::new());
-                game.tick_particles();
+                game.tick_remote_level().unwrap();
                 game.client
                     .particles
                     .0
@@ -87,6 +87,7 @@ fn a_mod_takes_the_weather_effects_over() {
                     .filter(|(options, ..)| options.ty == ParticleType::Rain)
                     .count()
             };
+            game.world.game_time = 700;
             assert!(rain(game) > 0, "vanilla's rain splashes");
             *weather.cancel.lock().unwrap() = true;
             let sound_time = game.client.test_rain_sound_time();
@@ -96,12 +97,10 @@ fn a_mod_takes_the_weather_effects_over() {
                 sound_time,
                 "and the rain sound's timing"
             );
-            let heard = weather.heard.lock().unwrap();
-            assert_eq!(heard.len(), 2, "asked once a tick");
-            assert!(
-                heard
-                    .iter()
-                    .all(|(dimension, rain)| dimension == game.dim.id() && *rain == 1.0)
+            let dimension = game.dim.id().to_owned();
+            assert_eq!(
+                *weather.heard.lock().unwrap(),
+                [(dimension.clone(), 701, 1.0), (dimension, 702, 1.0)],
             );
         });
     });

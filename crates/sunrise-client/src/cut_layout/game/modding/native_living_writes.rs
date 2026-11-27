@@ -2,7 +2,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3;
 
@@ -27,7 +27,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mob_swings_while_its_hand_and_loot_flags_live_on_the_mob_handle() {
-        with_game(|game| {
+        with_resident_game(|game| {
             for (id, kind) in [(12, "minecraft:zombie"), (13, "minecraft:cow")] {
                 let kind = game.res.mob_types().get(kind).unwrap().clone();
                 game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
@@ -372,7 +372,7 @@ pub(crate) mod tests {
         use sunrise_sim::lan::{
             Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
         };
-        with_game(|game| {
+        with_resident_game(|game| {
             let settings = LanSettings {
                 port: 0,
                 guest_commands: false,

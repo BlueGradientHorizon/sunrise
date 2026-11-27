@@ -36,7 +36,7 @@ fn game<'a>(
         "forceload add 0 0 143 15",
         "tick freeze",
         "difficulty easy",
-        "time set midnight",
+        "time set 18000",
         "gamerule advance_time false",
         "gamerule spawn_mobs false",
     ] {

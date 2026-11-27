@@ -1,5 +1,8 @@
 use sunrise_core::geometry::Vec3;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::native_entity_refs::tests::{
+    prepare_entity_ticking_neighborhood, with_game, with_resident_game,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -28,8 +31,9 @@ fn relative_item_teleports_keep_only_relative_horizontal_motion() {
 #[test]
 #[ignore = "daily"]
 fn an_item_teleported_into_another_level_arrives_there_still() {
-    with_game(|game| {
-        game.ui.registries.permission = 4;
+    with_resident_game(|game| {
+        game.build_registries();
+        game.set_allow_commands(true);
         game.spawn_item_own(
             sunrise_items::items::ItemStack::new("minecraft:stick", 3),
             [0.0, 64.0, 0.0],
@@ -60,7 +64,7 @@ fn portal_arrival_effects_command_items_merge_immediately() {
 }
 
 pub(crate) fn run_portal_arrival_effects_command_items_merge_immediately() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
         game.spawn_item_own(
@@ -73,6 +77,7 @@ pub(crate) fn run_portal_arrival_effects_command_items_merge_immediately() {
         let incoming_uuid = game.uuid_for(game.dropped[0].id);
         game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
             .unwrap();
+        prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
         game.spawn_item_own(
             sunrise_items::items::ItemStack::new("minecraft:stick", 3),
             [1.5, 70.0, 1.5],

@@ -2,7 +2,7 @@
 #![cfg(test)]
 use mod_api::Identifier;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::with_resident_game;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;
 
@@ -17,7 +17,7 @@ fn owner_launch_sets_owner_before_insertion_and_uses_projectile_random() {
     ) {
         return;
     }
-    with_game(|game| {
+    with_resident_game(|game| {
         let kind = game
             .res
             .mob_types()

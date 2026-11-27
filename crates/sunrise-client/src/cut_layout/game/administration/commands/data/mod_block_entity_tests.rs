@@ -1,9 +1,9 @@
-//! Actual command execution with prepared resources. Canonical membership is
-//! installed only in a fresh process; no native mod bundle or trait hooks are used.
+//! Actual commands with prepared resources and fixture-only registration in a fresh process.
 use std::{path::PathBuf, sync::Arc};
 use sunrise_core::nbt::Tag;
 use sunrise_core::nbt::parse_snbt;
 use sunrise_gameplay::game::commands::data::DataRef;
+use sunrise_gameplay::game::commands::items::{Owner, Slot};
 use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ModBlockEntity, ModRevision},
@@ -120,6 +120,7 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
                 .name
                 .clone()
         }));
+        mod_api::__private::install_content_owners([(BLOCK, "fixture")], [], [], []);
         // Normal mod startup freezes canonical membership before loading resources.
         // This fixture bypasses that startup, but saved-data commands still validate
         // the entity against the block before loading its fields in place.
@@ -158,6 +159,8 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         )
         .unwrap();
         game.world = World::new(game.res.facts().air, 1);
+        let containers = game.native_containers();
+        game.world.block_entities.set_mod_containers(containers);
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -193,13 +196,12 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
                 ("added", Tag::Short(9)),
             ]))
         );
-        assert_eq!(
-            loaded.items.len(),
-            4,
-            "the container keeps its declared size"
-        );
         assert!(
-            [0, 2, 3].iter().all(|&slot| loaded.items[slot].is_none()),
+            loaded
+                .items
+                .iter()
+                .enumerate()
+                .all(|(slot, item)| slot == 1 || item.is_none()),
             "only the decoded stack occupies a slot after loading"
         );
         let stack = loaded.items[1].as_ref().unwrap();
@@ -209,8 +211,6 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
             stack.data().unwrap().other("minecraft:custom_data"),
             Some(&Tag::compound([("stamp", Tag::Byte(8))]))
         );
-        assert!(loaded.items[2].is_none());
-        assert!(loaded.items[3].is_none());
 
         let before = run(&mut game, "data remove block 2 64 2 Opaque.typed");
         changed(&game, before);
@@ -224,16 +224,27 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         assert_eq!(projected.get("Items"), Some(&expected));
         let before = run(&mut game, "data remove block 2 64 2 Items");
         changed(&game, before);
-        assert_eq!(
-            entity(&game).items,
-            [None, None, None, None],
-            "removing the saved inventory clears the slots without shrinking the container"
-        );
+        assert!(entity(&game).items.iter().all(Option::is_none));
         assert!(!entity(&game).nbt.contains_key(&"Items".into()));
         assert_eq!(
             game.data_of(&DataRef::Block(POS)).unwrap().get("Items"),
             None
         );
+        assert_eq!(
+            game.slots_named(&Owner::Block(POS), "container.*"),
+            [0, 1, 2, 3].map(|index| Slot::Block(POS, index))
+        );
+        run(
+            &mut game,
+            "item replace block 2 64 2 container.3 with minecraft:diamond",
+        );
+        let stack = entity(&game).items[3].as_ref().unwrap();
+        assert_eq!(stack.item.as_ref(), "minecraft:diamond");
+        assert_eq!(stack.count, 1);
+        let before = run(&mut game, "data remove block 2 64 2 Items");
+        changed(&game, before);
+        assert!(entity(&game).items.iter().all(Option::is_none));
+
         let before = run(&mut game, "data remove block 2 64 2 Opaque");
         changed(&game, before);
         assert!(!entity(&game).nbt.contains_key(&"Opaque".into()));
@@ -241,7 +252,7 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         // Unknown, non-inventory Items belongs to the mod's opaque saved data.
         let before = run(&mut game, "data merge block 2 64 2 {Items:{opaque:5b}}");
         changed(&game, before);
-        assert_eq!(entity(&game).items, [None, None, None, None]);
+        assert!(entity(&game).items.iter().all(Option::is_none));
         assert_eq!(
             entity(&game).nbt.get(&"Items".into()),
             Some(&Tag::compound([("opaque", Tag::Byte(5))]))

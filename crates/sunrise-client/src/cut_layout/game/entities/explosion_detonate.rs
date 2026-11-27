@@ -66,7 +66,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, SPARED, -2.0);
                 explode(game);
@@ -170,7 +170,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, 910, -2.0);
                 game.server.combat.0.explosion_direct = Some((900, "minecraft:zombie"));
@@ -259,7 +259,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, 901, 1.0);
                 zombie(game, 902, -1.0);
@@ -344,7 +344,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 zombie(game, SPARED, -2.0);
                 // The outer blast lists its entities and spares the zombie.
                 let mut blocks = Vec::new();
@@ -391,7 +391,7 @@ mod tests {
             let mut health = 20.0;
             let mut random = 0;
             mod_platform::testing::with_mods(mods, || {
-                with_game(|game| {
+                with_resident_game(|game| {
                     zombie(game, 900, 2.0);
                     let mut boat = sunrise_gameplay_common::game::boats_common::Boat::new(
                         930,

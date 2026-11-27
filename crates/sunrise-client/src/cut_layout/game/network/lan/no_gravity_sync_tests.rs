@@ -3,7 +3,7 @@
 //! `isNoGravity`. A host sent it only for falling blocks (#5028): a dropped item or a mob with
 //! the flag fell on its clients until the next position sync.
 use sunrise_core::geometry::Vec3;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::with_resident_game;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::entity_data::{Value, serializer};
 use sunrise_sim::lan::entity::States;
@@ -36,7 +36,7 @@ fn no_gravity_entry(
 #[test]
 #[ignore = "daily"]
 fn an_items_and_a_mobs_no_gravity_reaches_the_tracker() {
-    with_game(|game| {
+    with_resident_game(|game| {
         let _rx = sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(game);
         // A pig and a dropped item with the flag, as a summon's `NoGravity:1b` loads them.
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();

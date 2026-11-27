@@ -48,6 +48,7 @@ fn the_item_phase_criterion_sees_the_stack_from_before_the_block_phase() {
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_server_game(|game| {
+            Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
             install_criteria(game, &[1, 2], "minecraft:stick");
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();

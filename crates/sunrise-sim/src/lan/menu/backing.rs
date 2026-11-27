@@ -18,7 +18,7 @@ impl Slots {
         {
             let mut offset = n - range.start;
             for &pos in links {
-                let count = shown(world, pos).map_or(0, <[Option<ItemStack>]>::len);
+                let count = world.container_slot_count(pos).unwrap_or(0);
                 if offset < count {
                     return Some(SlotBacking::Block(pos, offset));
                 }

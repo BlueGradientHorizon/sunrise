@@ -84,6 +84,10 @@ fn wanted_position_moves_and_navigation_replaces_the_wish() {
 #[ignore = "daily"]
 fn wanted_position_names_invalid_inputs_and_refuses_unavailable_mobs() {
     with_game(|game| {
+        sunrise_gameplay_common::game::test_fixtures::fixture_resident_column(
+            &mut game.world,
+            (0, 0),
+        );
         let kind = game
             .res
             .mob_types()

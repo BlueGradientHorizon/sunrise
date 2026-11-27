@@ -203,13 +203,15 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             game.world.weather.settle_levels();
             let rain = [12, 65, 10];
             let plains = game.res.biomes().id("minecraft:plains");
-            let qy = (rain[1] - game.world.bottom_y()) >> 2;
-            Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).set_biome_cell(
-                rain[0] >> 2,
-                qy,
-                rain[2] >> 2,
-                plains,
-            );
+            let [qx, qy, qz] = game
+                .client
+                .streaming
+                .biome_zoom
+                .quart_at_block(BlockPos::new(rain[0], rain[1], rain[2]));
+            let column = (qx >> 2, qz >> 2);
+            let local_qy = qy - (game.world.bottom_y() >> 2);
+            Arc::make_mut(game.world.chunks.get_mut(&column).unwrap())
+                .set_biome_cell(qx, local_qy, qz, plains);
             let raining_live = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {
                 game.with_level(|_, live, _| mod_api::LevelHost::is_raining_at(live, rain))
             };

@@ -4042,7 +4042,7 @@ pub(crate) mod tests {
         use crate::settings::Settings;
         use mod_api::{Authority, BlockShapeKind};
         use std::{sync::Arc, time::Instant};
-        use sunrise_gameplay_common::game::{Options, Progress};
+        use sunrise_gameplay_common::game::{Dim, Options, Progress};
         use sunrise_level::chunk::Chunk;
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -4061,6 +4061,8 @@ pub(crate) mod tests {
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        options.game_dir = Some(saves.path().to_path_buf());
         options.resources = root.clone();
         options.execution_role =
             sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
@@ -4073,6 +4075,7 @@ pub(crate) mod tests {
             crate::game::profile_resolver,
         )
         .unwrap();
+        game.server.world_root = saves.path().to_path_buf();
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -4086,12 +4089,10 @@ pub(crate) mod tests {
         }
         game.native_lifecycle
             .begin_open(Some(Authority::IntegratedServer));
+        game.native_level_opened(Dim::Overworld);
 
         let level = game.level("minecraft:overworld").unwrap();
-        assert!(
-            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
-                .is_some()
-        );
+        assert!(game.enter_command_level(Dim::Nether).is_some());
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -4124,10 +4125,7 @@ pub(crate) mod tests {
             Ok(ControlFlow::Break(()))
         );
         assert_eq!(visited, [level]);
-        assert!(
-            game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
-                .is_some()
-        );
+        assert!(game.enter_command_level(Dim::Overworld).is_some());
         let cube = vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]];
         assert_eq!(
             game.collect_level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Outline),

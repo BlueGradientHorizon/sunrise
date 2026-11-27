@@ -92,7 +92,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mobs_set_absorption_survives_a_save_and_reload() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = absorbing_zombie(game);
             game.mobs.push(zombie);
             let living = game.living(game.entity(12).unwrap()).unwrap();

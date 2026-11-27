@@ -380,7 +380,6 @@ impl crate::game::ClientGame<'_> {
                 self.client_placed_moving_colliders(),
             )
         });
-        self.expire_client_cracks();
         if self.client.agent.hold_server {
             return Ok(());
         }

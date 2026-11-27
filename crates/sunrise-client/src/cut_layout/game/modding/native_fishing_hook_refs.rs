@@ -4,9 +4,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{
-        collect_game_entities_in, with_game, with_resident_game,
-    };
+    use super::super::native_entity_refs::tests::{collect_game_entities_in, with_resident_game};
     use super::*;
     use mod_api::FishingHookRef;
     use mod_api::WorldEpoch;
@@ -29,7 +27,7 @@ mod tests {
             copy_on_death: false,
             sync_codec: None,
         };
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let id = game.take_entity_id();
             game.install_fishing_hook(Hook::remote(id, Vec3::ZERO, [1, 2, 3, 4]));
@@ -116,15 +114,15 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_live_hook_keeps_its_uuid_across_memory_pruning() {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let id = game.take_entity_id();
             game.install_fishing_hook(Hook::remote(id, Vec3::ZERO, [0, 0, 0, id as i32]));
             let entity = game.entity(id).unwrap();
             let before = game.entity_uuid(entity).unwrap();
+            assert_eq!(before, u128::from(id));
             game.prune_entity_memory();
             assert!(game.entity(id).is_some());
-            assert_eq!(game.entity_uuid(entity), Some(before));
             assert_eq!(game.entity_uuid(entity), Some(before));
         });
     }
@@ -132,7 +130,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_hook_belongs_to_the_player_who_cast_it() {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 20, 123);

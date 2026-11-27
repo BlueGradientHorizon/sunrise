@@ -4213,6 +4213,9 @@ impl crate::game::ServerGame<'_> {
             }
             SpawnSite::Plain | SpawnSite::Raw => Default::default(),
         };
+        if finalized.veto_admission {
+            return None;
+        }
         if !finalized.skip_initialization {
             // Mob.finalizeSpawn (EnderDragon keeps it): the follow range's
             // triangle and left-handed roll, neither of which changes how the dragon flies.
@@ -4222,9 +4225,6 @@ impl crate::game::ServerGame<'_> {
                 .random
                 .triangle(0.0, 0.114_850_000_000_000_01);
             let _ = self.common.world.random.next_float();
-        }
-        if finalized.veto_admission {
-            return None;
         }
         // The dragon's own random (`Entity.random`), not the level's.
         let seed = random_source::unique_seed();

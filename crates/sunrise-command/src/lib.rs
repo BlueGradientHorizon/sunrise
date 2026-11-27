@@ -731,13 +731,6 @@ pub fn merge_suggestions(input: &str, list: Vec<Suggestion>) -> (Range, Vec<Sugg
             s.text,
             &input[s.range.1..end]
         );
-        // Padding grows the text past what the suggestion itself holds: a long prefix, and a
-        // suggestion starting later, expand to the whole merged range. Each one was within the
-        // packet's limit alone, so the expanded text is measured again and the ones that no
-        // longer fit are left out, keeping the others.
-        if text.encode_utf16().count() > MAX_SUGGESTION_TEXT {
-            continue;
-        }
         let expanded = Suggestion {
             range: (start, end),
             text,
@@ -751,10 +744,6 @@ pub fn merge_suggestions(input: &str, list: Vec<Suggestion>) -> (Range, Vec<Sugg
         if seen.insert((expanded.text.clone(), expanded.tooltip.clone())) {
             out.push(expanded);
         }
-    }
-    if out.is_empty() {
-        // Every completion was too long to send: nothing to show, and no range to show it in.
-        return ((0, 0), out);
     }
     let ints = out.iter().filter(|s| s.int_value.is_some()).count();
     if ints == 0 || ints == out.len() {

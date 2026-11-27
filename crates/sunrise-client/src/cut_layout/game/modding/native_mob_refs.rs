@@ -15,7 +15,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
+    use super::super::native_entity_refs::tests::with_resident_game;
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
@@ -157,7 +157,7 @@ pub(crate) mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_resident_game(|game| {
                 sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan(game);
                 let level = game.level(game.dim.id()).unwrap();
                 let fake = game.fake_player(level, 1234, "fake").unwrap();
@@ -177,7 +177,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn sitting_pose_reads_and_writes_a_tamable_animal_only() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let wolf = add_mob(game, 12, "minecraft:wolf");
             let horse = add_mob(game, 13, "minecraft:horse");
             assert_eq!(wolf.is_in_sitting_pose(game), Some(false));
@@ -222,7 +222,7 @@ pub(crate) mod tests {
             sunrise_gameplay_common::game::boats_common::Boat,
         };
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let settings = LanSettings {
                 port: 0,
                 guest_commands: false,
@@ -322,7 +322,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_portal_eligibility_matches_gameplay() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let cow = add_mob(game, 12, "minecraft:cow");
             let wither = add_mob(game, 13, "minecraft:wither");
             let check =
@@ -401,7 +401,7 @@ pub(crate) mod tests {
     fn mob_flags_baby_setter_uses_species_age_and_attribute_boundaries() {
         use sunrise_sim::mobs::finalize::{Attr, base_value};
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let mut id = 12;
             for (no_ai, persistent) in [(false, false), (false, true), (true, false), (true, true)]
             {
@@ -471,7 +471,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_flags_baby_setter_refuses_no_baby_species_and_unavailable_mobs() {
-        with_game(|game| {
+        with_resident_game(|game| {
             for (id, name) in [(12, "minecraft:skeleton"), (13, "minecraft:parrot")] {
                 let mob = add_mob(game, id, name);
                 assert!(mob.set_no_ai(game, true));
@@ -523,7 +523,7 @@ pub(crate) mod tests {
         use sunrise_protocol::packets::configuration::ClientInformation;
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let settings = sunrise_gameplay::game::server_side::lan::LanSettings {
                 port: 0,
                 guest_commands: false,
@@ -870,7 +870,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn look_and_jump_go_through_the_mobs_own_controls() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()
@@ -989,7 +989,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_extreme_restriction_answers_as_vanilla() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let zombie = game
                 .res
                 .mob_types()

@@ -87,9 +87,7 @@ fn internal_slots_preserve_automation_limits_and_nested_transactions() {
             let BlockEntity::Mod(holder) = game.world.block_entities.get_mut(&pos).unwrap() else {
                 panic!()
             };
-            holder
-                .items
-                .push(Some(ItemStack::new("minecraft:gold_ingot", 3)));
+            *holder.item_slot_mut(2) = Some(ItemStack::new("minecraft:gold_ingot", 3));
             game.world.modified.clear();
             let aborted: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
                 .transaction(|host, tx| {

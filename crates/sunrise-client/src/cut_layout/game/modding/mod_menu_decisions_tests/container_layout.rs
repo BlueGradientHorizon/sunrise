@@ -157,10 +157,13 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
                     game.lan_guest_packet(12, container_click(window, 33, 1));
 
                     assert_eq!(CLICK.get(), Some((6, 33)));
-                    let inventory = &game.server.lan.as_ref().unwrap().hub.guests[0].inventory;
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
+                    let inventory = &guest.inventory;
                     assert_eq!(inventory[0], None, "the clicked hotbar slot must empty");
                     assert_eq!(inventory[6].as_ref(), Some(&untouched));
-                    let slots = game.world.block_entities.get(&POS).unwrap().slots();
+                    let slots = sunrise_sim::lan::menu::Slots::Block(POS)
+                        .read(&game.world, guest)
+                        .unwrap();
                     assert_eq!(
                         slots,
                         [

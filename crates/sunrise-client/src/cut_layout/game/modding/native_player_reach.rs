@@ -5,7 +5,7 @@ mod tests {
     use mod_api::{EntityReach, EntityRef, GameMode, Hand, LivingRef};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, nbt::Tag};
-    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use sunrise_gameplay::game::native_guest_turn_tests::with_resident_guests;
     use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_player_reach::NativePlayerReachGameExt1;
@@ -26,7 +26,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn reach_runs_from_the_eyes_to_the_closest_point_and_flight_follows_the_ability() {
-        with_guests(|game| {
+        with_resident_guests(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let eye_y = 64.0 + 1.62;
             let half = 0.44999998807907104;

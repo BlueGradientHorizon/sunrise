@@ -216,7 +216,7 @@ fn saved_paintings_stay_in_their_dimension_and_empty_reads_do_not_bind() {
 #[test]
 #[ignore = "daily"]
 fn first_write_painting_publication_and_rollback() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let uuid = [31, 32, 33, 34];

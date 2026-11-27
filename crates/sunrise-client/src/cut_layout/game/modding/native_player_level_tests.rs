@@ -4,6 +4,7 @@ use super::native_entity_refs::tests::run_fresh_cases;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, ItemPlace, ServerHost};
 use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata;
 
@@ -330,7 +331,11 @@ fn a_give_to_a_borrowed_player_drops_in_their_level() {
             })
             .unwrap();
         let player = game.player(13).unwrap();
-        let before = dropped(game);
+        let overworld_before = game.dropped.len();
+        game.enter_level(Dim::Nether).unwrap();
+        fixture_resident_column(&mut game.world, (0, 0));
+        let nether_before = game.dropped.len();
+        game.enter_level(Dim::Overworld).unwrap();
         let joined = GiveJoin::default();
         let mods = vec![mod_api::ModEntry::new(
             "give_join",
@@ -348,7 +353,7 @@ fn a_give_to_a_borrowed_player_drops_in_their_level() {
             assert_eq!(given, Ok(None));
             assert_eq!(thrown, Ok(Some(diamond)));
             assert_eq!(game.dim, Dim::Overworld);
-            assert_eq!(dropped(game), [before[0], before[1] + 1]);
+            assert_eq!(dropped(game), [overworld_before, nether_before + 1]);
         });
         game.enter_level(Dim::Nether).unwrap();
         let item = game.dropped.last().unwrap();

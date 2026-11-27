@@ -259,6 +259,10 @@ mod tests {
         use sunrise_sim::mobs::Mob;
         with_cobbler(|game, asked| {
             game.options.dedicated = Some(Vec::new());
+            sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
+                game,
+                sunrise_core::position::ChunkPos::new(0, 0),
+            );
             let kind = game
                 .res
                 .mob_types()

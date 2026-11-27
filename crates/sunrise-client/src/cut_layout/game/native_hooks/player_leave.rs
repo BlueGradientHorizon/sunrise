@@ -2,34 +2,19 @@
 
 #[cfg(test)]
 pub(crate) mod player_leave_tests {
-    use mod_api::{Hooks, PlayerBedLeaveEvent, PlayerLoggedOutEvent, Registrar, ServerHost};
+    use mod_api::{
+        AttachmentKey, Hooks, PlayerBedLeaveEvent, PlayerLoggedOutEvent, Registrar, ServerHost,
+    };
     use std::sync::{Arc, Mutex};
     use sunrise_core::nbt::{Compound, Tag};
     use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
-    use sunrise_mod_runtime::attachments::{
-        AttachmentCodec, AttachmentError, AttachmentType, Holder,
-    };
+    use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, Holder};
 
     /// Each case runs in a fresh child process: the fixture loads the prepared resources into
     /// the process-wide tables (languages, POIs, cauldron interactions).
     pub(crate) const FLAG: &str = "SUNRISE_PLAYER_LEAVE_CHILD";
     pub(crate) const SAVED: &str = "cut_layout::game::server_side::native_hooks_server::player_leave::player_leave_tests::what_a_listener_changes_on_a_leaving_player_is_saved";
     pub(crate) const ASLEEP: &str = "cut_layout::game::native_hooks::player_leave::player_leave_tests::a_sleeping_player_wakes_before_logging_out";
-
-    pub(crate) const VALUE: AttachmentType<i32> = AttachmentType {
-        namespace: "leave_test",
-        name: "value",
-        default: || 0,
-        codec: Some(AttachmentCodec {
-            encode: |n| Ok(Compound::from([("n".into(), Tag::Int(*n))])),
-            decode: |data| match data.get(&"n".into()) {
-                Some(Tag::Int(n)) => Ok(*n),
-                _ => Err(AttachmentError::Decode),
-            },
-        }),
-        copy_on_death: false,
-        sync_codec: None,
-    };
 
     /// What a listener heard, in order.
     #[derive(Debug, PartialEq)]
@@ -47,19 +32,30 @@ pub(crate) mod player_leave_tests {
         },
     }
 
-    pub(crate) struct Leave(pub(crate) Arc<Mutex<Vec<Heard>>>);
+    pub(crate) struct Leave {
+        pub(crate) heard: Arc<Mutex<Vec<Heard>>>,
+        pub(crate) value: Mutex<Option<AttachmentKey<i32>>>,
+    }
     #[mod_api::__subscriptions]
     impl Hooks for Leave {
         fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-            registrar
-                .register_attachment_type(mod_api::AttachmentDescriptor::new(
-                    "leave_test:value",
-                    || 0i32,
-                ))
+            let value = registrar
+                .register_attachment_type(
+                    mod_api::AttachmentDescriptor::new("leave_test:value", || 0i32).serialize(
+                        AttachmentCodec {
+                            encode: |n| Ok(Compound::from([("n".into(), Tag::Int(*n))])),
+                            decode: |data| match data.get(&"n".into()) {
+                                Some(Tag::Int(n)) => Ok(*n),
+                                _ => Err(AttachmentError::Decode),
+                            },
+                        },
+                    ),
+                )
                 .unwrap();
+            *self.value.lock().unwrap() = Some(value);
         }
         fn player_bed_leave(&self, _: &mut dyn ServerHost, event: &mut PlayerBedLeaveEvent<'_>) {
-            self.0
+            self.heard
                 .lock()
                 .unwrap()
                 .push(Heard::BedLeave(event.wake_immediately, event.update_level));
@@ -78,9 +74,10 @@ pub(crate) mod player_leave_tests {
             let player = host.player(event.player);
             let living = player.and_then(|player| host.living(player.entity()));
             let asleep = living.is_some_and(|living| living.sleeping_pos(host).is_some());
-            let attached = VALUE.set(host, Holder::Player(event.player), 77);
+            let value = self.value.lock().unwrap().clone().unwrap();
+            let attached = value.set(host, Holder::Player(event.player), 77);
             let healed = living.is_some_and(|living| living.set_health(host, 7.0));
-            self.0.lock().unwrap().push(Heard::LoggedOut {
+            self.heard.lock().unwrap().push(Heard::LoggedOut {
                 listed,
                 found: player.is_some(),
                 asleep,

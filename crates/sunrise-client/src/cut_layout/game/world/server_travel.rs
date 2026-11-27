@@ -13,6 +13,7 @@ pub(crate) mod tests {
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
     use mod_api::ServerHost;
+    use sunrise_gameplay::game::native_entity_refs::tests::fixture_resident_column;
 
     use std::sync::Arc;
     use sunrise_sim::nether_portal::PLAYER_DELAY;
@@ -245,6 +246,7 @@ pub(crate) mod tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.native_joins_skip();
+                fixture_resident_column(&mut game.world, (0, 0));
                 let base = game.server.next_entity;
                 game.server.next_entity += 2;
                 game.carts.push(minecarts::Minecart::new(
@@ -372,6 +374,8 @@ pub(crate) mod tests {
                         .cooldown = 19;
                     let source = game.dim;
                     game.enter_level(Dim::Nether).unwrap();
+                    fixture_resident_column(&mut game.world, (0, 0));
+                    fixture_resident_column(&mut game.world, (2, 3));
                     let owner = conflict.then(|| {
                     let tag = sunrise_core::nbt::parse_snbt(r#"{id:"minecraft:zombie",UUID:[I;703,0,0,1],Pos:[0.0d,70.0d,0.0d],NoAI:1b}"#).unwrap().0;
                     game.load_mob(tag, None).unwrap()
@@ -469,6 +473,7 @@ pub(crate) mod tests {
                 assert!(game.persist.off_level.contains_key(&pig));
                 let source = game.dim;
                 game.enter_level(Dim::Nether).unwrap();
+                fixture_resident_column(&mut game.world, (2, 3));
                 game.arrive_vehicle(source, chicken, Vec3::new(32.0, 90.0, 48.0), 0.0);
                 assert!(game.entity(pig).is_some());
                 assert!(game.entity(chicken).is_some());
@@ -581,7 +586,10 @@ pub(crate) mod transfer_lifetime_tests {
         for kind in ["minecraft:minecart", "minecraft:oak_boat", "minecraft:pig"] {
             for bound in [true, false] {
                 super::super::native_entity_refs::tests::with_game(|game| {
-                    game.server.tickets.0.update(None);
+                    sunrise_gameplay::game::native_entity_refs::tests::fixture_resident_column(
+                        &mut game.world,
+                        (0, 0),
+                    );
                     let target = game
                         .summon_with_nbt(kind, [0.5, 70.0, 0.5], "{}")
                         .unwrap()
@@ -632,6 +640,10 @@ pub(crate) mod transfer_lifetime_tests {
                     let mut stale_map = map.clone();
                     game.entity_attachments.insert(id, map);
                     game.enter_level(Dim::Nether).unwrap();
+                    sunrise_gameplay::game::native_entity_refs::tests::fixture_resident_column(
+                        &mut game.world,
+                        (0, 0),
+                    );
                     let destination_ref =
                         mod_api::EntityRef::new(game.level(game.dim.id()).unwrap().epoch(), id);
                     assert_eq!(source_ref, destination_ref);

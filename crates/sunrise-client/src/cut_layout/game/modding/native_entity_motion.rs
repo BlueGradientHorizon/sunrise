@@ -21,7 +21,7 @@ pub(crate) mod tests {
                 .expect("a fake has a motion")
                 .fall_distance
         }
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_fake(game);
             game.options.dedicated = Some(Vec::new());
             let kind = game

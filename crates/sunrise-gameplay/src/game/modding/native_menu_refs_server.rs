@@ -617,8 +617,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
     }
-    /// Lend the admitted player's live slots and crafting result to a rule ask, without
-    /// constructing a scratch menu or cloning the container, inventory, or cursor.
+    /// Lend the player's live slots and crafting result, expanding sparse container storage if needed.
     pub(in crate::game) fn with_live_slot_rules<R>(
         &self,
         guest: &Guest,
@@ -644,6 +643,8 @@ impl crate::game::ServerGame<'_> {
         let parts = self.menu_can_equip();
         let env = self.guest_slot_env(guest, &parts);
         let computed;
+        let main_slots;
+        let second_slots;
         let rules = match &guest.menu {
             None => LiveSlotRules {
                 kind: Kind::Inventory,
@@ -680,11 +681,12 @@ impl crate::game::ServerGame<'_> {
                     None if open.size == 9 => Kind::Dispenser,
                     None => Kind::Chest(open.size / 9),
                 };
-                let (mut main, main_second) = open.slots.shown_slices(
+                (main_slots, second_slots) = open.slots.shown_slices(
                     world,
                     guest,
                     acting.then_some(&self.server.ender_items[..]),
                 );
+                let mut main = main_slots.as_ref();
                 if let Kind::Mod(layout) = kind {
                     main = &main[..main.len().min(layout.slots)];
                 }
@@ -707,7 +709,7 @@ impl crate::game::ServerGame<'_> {
                     registry_id,
                     pos: open.pos.map(|(x, y, z)| [x, y, z]),
                     main,
-                    main_second,
+                    main_second: second_slots.as_ref(),
                     linked: open.linked_slots(world),
                     grid,
                     result,

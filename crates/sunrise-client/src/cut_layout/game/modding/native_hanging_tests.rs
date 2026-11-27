@@ -186,7 +186,7 @@ fn a_client_turns_its_painting_with_the_servers_direction() {
 #[ignore = "daily"]
 fn a_frame_is_hidden_and_shown_through_its_handle() {
     use sunrise_protocol::entity_data::Value;
-    sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
+    sunrise_gameplay::game::native_guest_turn_tests::with_resident_guests(|game| {
         game.options.dedicated = Some(Vec::new());
         with_hanging_in(game);
         let frame = game.entity(FRAME).expect("the frame's handle");

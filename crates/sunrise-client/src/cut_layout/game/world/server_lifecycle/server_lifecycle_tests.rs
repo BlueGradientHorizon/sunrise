@@ -434,9 +434,9 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         }
                         let result = game.run_server_lifecycle(dedicated, |game| {
                             if case == "bind-failed-init" {
-                                return Ok(ServerRunOutcome::FailedInit(
-                                    std::io::Error::other("fixture initialization error"),
-                                ));
+                                return Ok(ServerRunOutcome::FailedInit(std::io::Error::other(
+                                    "fixture initialization error",
+                                )));
                             }
                             game.native_configs_server_start(&root, dedicated);
                             game.native_server_about_to_start(dedicated);
@@ -449,41 +449,22 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 return Err("failed init".into());
                             }
                             if case == "opening-failed-init" {
-                                return Ok(ServerRunOutcome::FailedInit(
-                                    std::io::Error::other("fixture initialization error"),
-                                ));
+                                return Ok(ServerRunOutcome::FailedInit(std::io::Error::other(
+                                    "fixture initialization error",
+                                )));
                             }
                             game.native_server_starting(dedicated);
                             game.native_lifecycle_world_ready();
                             if case == "runtime-extra-level" {
                                 game.join_world_rest().unwrap();
-
-
-                                let pack = root.join("datapacks/pocket");
-                                let stems = pack.join("data/test/dimension");
-                                std::fs::create_dir_all(&stems).unwrap();
-                                std::fs::write(
-                                    pack.join("pack.mcmeta"),
-                                    r#"{"pack":{"description":"Pocket","min_format":[121,0],"max_format":[121,0]}}"#,
-                                )
-                                .unwrap();
-                                std::fs::write(
-                                    stems.join("pocket.json"),
-                                    r#"{"type":"minecraft:overworld","generator":{"type":"minecraft:flat","settings":{
-                                        "biome":"minecraft:plains","features":false,"lakes":false,"structure_overrides":[],
-                                        "layers":[{"height":1,"block":"minecraft:bedrock"}]}}}"#,
-                                )
-                                .unwrap();
-                                std::fs::write(
-                                    root.join("datapacks.json"),
-                                    r#"{"enabled":["vanilla","file/pocket"],"disabled":[]}"#,
-                                )
-                                .unwrap();
-                                Dim::add_extra("test:pocket");
-                                let pocket = Dim::extra("test:pocket").unwrap();
-                                let parked = game.open_level(pocket).unwrap();
-                                game.server.levels.0.parked.insert(pocket, parked);
-                                game.native_level_opened(pocket);
+                                let level = mod_api::RuntimeLevel::new(
+                                    "minecraft:overworld",
+                                    mod_api::RuntimeGenerator::Flat,
+                                    1,
+                                );
+                                game.runtime_level_open("test:pocket", level).unwrap();
+                                game.apply_runtime_levels();
+                                assert!(game.runtime_level_is_open("test:pocket"));
                             }
                             match case {
                                 "tick-error" => Err("failed tick".into()),

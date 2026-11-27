@@ -408,6 +408,7 @@ pub struct StrictBlockStep {
     pub to: BlockStateId,
     // Before the first replacement on this cell; swapped for the new row at commit.
     pub row: Option<ReplayEntity>,
+    pub created_generation: Option<u64>,
     /// A strict replacement ends the old block's connection-group lifetime.
     pub clear_connection_group: bool,
 }
@@ -1763,18 +1764,18 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
         }
     }
 
-    fn journal_stage_placement_entity(&mut self, pos: Pos, entity: Option<BlockEntity>) {
+    fn journal_stage_block_entity(&mut self, pos: Pos, entity: Option<BlockEntity>) {
         if let Some(entity) = entity {
             self.journal_block_entity(pos);
             self.world.block_names.remove(&pos);
-            self.world.forget_block_entity_source(pos);
+            self.world.forget_block_entity_source_unmodified(pos);
             self.world.block_entities.insert(pos, entity);
         }
         let common = self.common_mut();
         let generation = common.world.block_entities.generation(&pos);
         let level = entities::open_in(&mut common.transactions, common.dim).unwrap();
         let Some(After::Block(step)) = level.after.last_mut() else {
-            unreachable!("factory staging follows the captured block write");
+            unreachable!("factory staging follows the journaled block write");
         };
         debug_assert_eq!(step.pos, pos);
         step.creation = BlockEntityCreation::Staged {
@@ -1819,19 +1820,38 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
     }
 
     fn is_placement_entity(&self, pos: Pos, generation: u64) -> bool {
+        self.has_journaled_block_entity_creation(pos, generation, true)
+    }
+
+    fn has_journaled_block_entity_creation(
+        &self,
+        pos: Pos,
+        generation: u64,
+        placement_only: bool,
+    ) -> bool {
         self.transactions.iter().any(|frame| {
-            frame.dimension == Some(self.dim) && frame.blocks.contains_key(&pos)
-                && frame.after.iter().rev().any(|after| {
-                    matches!(after, After::Block(step) if step.pos == pos && matches!(step.creation,
-                        BlockEntityCreation::Staged { generation: Some(created), .. } if created == generation))
+            frame.dimension == Some(self.dim)
+                && frame.blocks.contains_key(&pos)
+                && frame.after.iter().rev().any(|after| match after {
+                    After::Block(step) => {
+                        step.pos == pos
+                            && (!placement_only || step.placement)
+                            && matches!(step.creation, BlockEntityCreation::Staged {
+                            generation: Some(created), ..
+                        } if created == generation)
+                    }
+                    After::BulkBlocks(_, _, _, steps) if !placement_only => steps
+                        .get(&pos)
+                        .is_some_and(|step| step.created_generation == Some(generation)),
+                    _ => false,
                 })
         })
     }
 
-    /// Block-entity edits to an unpublished placement must not send a block update yet.
-    fn defer_placed_block_entity_update(&mut self, pos: Pos) -> bool {
+    /// A journaled creation is still unpublished until the enclosing transaction commits.
+    fn defer_unpublished_block_entity_update(&mut self, pos: Pos) -> bool {
         if let Some(generation) = self.world.block_entities.generation(&pos)
-            && self.is_placement_entity(pos, generation)
+            && self.has_journaled_block_entity_creation(pos, generation, false)
         {
             self.after_commit(After::UpdatePlacedBlockEntity(pos, generation));
             return true;

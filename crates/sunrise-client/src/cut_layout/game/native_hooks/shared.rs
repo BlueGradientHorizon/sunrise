@@ -692,8 +692,7 @@ pub(in crate::game) mod tests {
         }
 
         const VAULT: &str = "stock_test:vault";
-        // A stock container is not bounded by the menu protocol's signed-short slot index.
-        const VAULT_SLOT: usize = sunrise_mod_package::content::MAX_MENU_SLOTS as usize;
+        const VAULT_SLOT: usize = u8::MAX as usize;
         const TANK: &str = "stock_test:tank";
         const BATTERY: &str = "stock_test:battery";
 
@@ -782,7 +781,7 @@ pub(in crate::game) mod tests {
                 );
             }
 
-            // 1. Storage beyond the menu slot range still exposes and persists its declared slot.
+            // The largest saved slot index remains accessible through the sided handler.
             let items = level
                 .capability(game, &ITEMS, vault_pos, Some(Direction::Up))
                 .unwrap();

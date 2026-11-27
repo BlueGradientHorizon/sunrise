@@ -31,7 +31,8 @@ pub(crate) fn check_answer(g: &sunrise_gameplay::game::ServerGame<'_>, slot: usi
         let source = g.mobs[0].last_damage.unwrap().0;
         assert_eq!(source.kind, DamageKind::Thorns);
         assert_eq!(source.attacker, Some(Who::Mob(42)));
-        assert_eq!(sounds[0].position, g.mobs[0].center());
+        assert_eq!(sounds[0].position, g.mobs[0].position.components());
+        assert_eq!(sounds[0].source, mod_api::SoundSource::Hostile.index());
     }
 }
 

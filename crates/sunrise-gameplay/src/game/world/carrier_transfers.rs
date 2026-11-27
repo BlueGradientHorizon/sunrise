@@ -242,14 +242,14 @@ impl ServerGame<'_> {
 
         // The store exists only from the first actual transfer. The
         // capacity override is the tests' retention seam.
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         let capacity = self
             .common
             .world
             .carrier_fences
             .capacity_override
             .unwrap_or(MAX_CARRIERS);
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "test-support")))]
         let capacity = MAX_CARRIERS;
         let mut store = match Store::open_with_capacity(&self.server.world_root, capacity) {
             Ok(sunrise_sim::save::carrier::Opened::Live(store)) => store,
@@ -539,14 +539,14 @@ impl ServerGame<'_> {
         let registry = self.common.pack.assets.registry;
         envelope_preflight(registry).map_err(|_| TransferError::Envelope)?;
 
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         let capacity = self
             .common
             .world
             .carrier_fences
             .capacity_override
             .unwrap_or(MAX_CARRIERS);
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "test-support")))]
         let capacity = MAX_CARRIERS;
         let mut store = match Store::open_with_capacity(&self.server.world_root, capacity) {
             Ok(sunrise_sim::save::carrier::Opened::Live(store)) => store,

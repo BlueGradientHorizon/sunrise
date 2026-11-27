@@ -1,5 +1,7 @@
 //! `LevelEventHandler` 1039 (`LevelEvent.SOUND_PHANTOM_BITE`): the sound a
 //! phantom's bite posts on the client.
+use mod_api::{ClientHost, Hooks, SoundPlay, SoundSource};
+use std::sync::{Arc, Mutex};
 use sunrise_core::random::{LegacyRandom, RandomSource};
 use sunrise_gameplay_common::game::World;
 
@@ -17,22 +19,48 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::Cl
 #[test]
 #[ignore = "daily"]
 fn a_phantom_bite_level_event_plays_the_bite_at_0_3_volume() {
-    with_game(|g| {
-        // The client level's random, seeded so the pitch has an expected value.
-        *g.client.particles.0.level_random() = LegacyRandom::new(7);
-        let pitch = LegacyRandom::new(7).next_float() * 0.1 + 0.9;
-        g.client.audio.0.engine.loaded = true;
-        g.client_level_event_at(1039, [0, 64, 0], 0);
-        let bite = (0..=8u64)
-            .filter_map(|id| g.client.audio.0.engine.instance(id))
-            .find(|i| i.identifier == "minecraft:entity.phantom.bite")
-            .expect("level event 1039 plays the phantom's bite");
-        assert_eq!(bite.volume, 0.3);
-        assert_eq!(bite.pitch, pitch);
-        assert_eq!(bite.position, [0.5, 64.5, 0.5]);
-        assert_eq!(
-            sunrise_level::sim_settings::SOUND_SOURCES[bite.source],
-            "hostile"
-        );
+    use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs, LoopSide};
+
+    struct ObserveBite(Arc<Mutex<Vec<SoundPlay>>>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for ObserveBite {
+        fn play_sound(&self, _: &mut dyn ClientHost, event: &mut mod_api::PlaySoundEvent<'_>) {
+            if event.starting && event.original.identifier == "minecraft:entity.phantom.bite" {
+                self.0.lock().unwrap().push(event.original.clone());
+            }
+        }
+    }
+
+    let sounds = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "phantom-bite-observer",
+        Box::new(ObserveBite(sounds.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|g| {
+            let inputs = Arc::new(LoadInputs::new(
+                Default::default(),
+                g.options.resources.clone(),
+            ));
+            let context = LoadContext::new(DataLoadOrigin::ClientPreload, inputs, []);
+            g.client
+                .audio
+                .0
+                .set_loop_context(context.loop_context(LoopSide::Client, []));
+            g.client.audio.0.engine.loaded = true;
+            *g.client.particles.0.level_random() = LegacyRandom::new(7);
+            let pitch = LegacyRandom::new(7).next_float() * 0.1 + 0.9;
+            g.client_level_event_at(1039, [0, 64, 0], 0);
+            let sounds = sounds.lock().unwrap();
+            assert_eq!(sounds.len(), 1);
+            let bite = &sounds[0];
+            assert_eq!(bite.volume, 0.3);
+            assert_eq!(bite.pitch, pitch);
+            assert_eq!(bite.position, [0.5, 64.5, 0.5]);
+            assert_eq!(bite.source, SoundSource::Hostile);
+            assert!(g.client.audio.0.capture.as_ref().unwrap().is_empty());
+        });
     });
 }

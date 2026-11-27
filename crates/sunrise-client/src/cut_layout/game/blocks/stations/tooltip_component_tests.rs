@@ -2492,8 +2492,7 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
     }
 
     use sunrise_assets::resource_source::{Resource, ResourceSource};
-    // Logical lam + alef each take 9px; their visual ligature takes 5px. With a 2px
-    // space between the words, the unsplit text is 38px logical but only 12px shaped.
+    // The two words measure 38px in logical order and 12px after shaping.
     let source = ResourceSource::indexed(std::collections::BTreeMap::from([(
         "assets/minecraft/font/default.json".into(),
         Resource::bytes(br#"{"providers":[{"type":"space","advances":{"\u0644":9,"\u0627":9,"\ufefb":5," ":2}}]}"#.to_vec()),
@@ -2508,15 +2507,19 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
             game.client.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
             let stack = ItemStack::new("minecraft:stick", 1);
             let line = sunrise_game_data::text::Text::literal("\u{644}\u{627} \u{644}\u{627}");
-            // The listener uses max_width; the fast path gets the same 25px from the screen edge.
             let width = if listened { 320.0 } else { 51.0 };
             let mut components = game
                 .gather_tooltip_components(&stack, vec![(line, u32::MAX)], 10, (width, 240.0))
                 .unwrap_ready();
-            assert_eq!(
-                text_lines(&components),
-                ["\u{644}\u{627}", "\u{644}\u{627}"]
-            );
+            let (lines, expected_rect): (&[&str], _) = if listened {
+                (
+                    &["\u{644}\u{627}", "\u{644}\u{627}"],
+                    [22.0, 8.0, 5.0, 20.0],
+                )
+            } else {
+                (&["\u{644}\u{627} \u{644}\u{627}"], [22.0, 8.0, 12.0, 8.0])
+            };
+            assert_eq!(text_lines(&components), lines);
             let mut batch = HudBatch::scratch([width as u32, 240]);
             let rect = game.draw_prepared_tooltip(
                 &mut batch,
@@ -2526,7 +2529,7 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
                 &DefaultTooltipPositioner,
                 true,
             );
-            assert_eq!(rect, Some([22.0, 8.0, 5.0, 20.0]));
+            assert_eq!(rect, Some(expected_rect));
         });
     }
 }

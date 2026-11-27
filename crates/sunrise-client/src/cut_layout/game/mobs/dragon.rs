@@ -402,7 +402,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_stationary_no_ai_dragon_runs_its_living_body_turn() {
         use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-        sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+        sunrise_gameplay::game::native_entity_refs::tests::with_resident_game(|game| {
             game.create_new_dragon();
             let dragon = game.common.dragon.as_mut().unwrap();
             assert_ne!(dragon.yaw, 0.0);

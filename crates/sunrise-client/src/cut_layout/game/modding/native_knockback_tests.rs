@@ -954,7 +954,7 @@ fn queued_player_hurts_select_the_current_source_not_an_older_hit_of_the_same_ty
         game.knock_back_player(0.4, 1.0, 0.0, source(0), &NO_ATTACK, 0.0);
         assert_eq!(
             game.player.as_ref().unwrap().velocity,
-            Vec3::new(0.8, 0.0, 0.0)
+            Vec3::new(f64::from(0.8_f32), 0.0, 0.0)
         );
     });
     assert_eq!(

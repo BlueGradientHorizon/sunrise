@@ -1459,6 +1459,24 @@ impl sunrise_sim::menu::SlotRules for ClientGame<'_> {
             self, menu, slot, stack, context, may_place, may_pickup, max_stack,
         );
     }
+
+    fn pick_all_listens(&self, menu: &str) -> bool {
+        sunrise_gameplay_common::game::slot_rules::GameSlotRules::pick_all_listens(self, menu)
+    }
+
+    fn pick_all(
+        &self,
+        menu: &str,
+        slot: usize,
+        carried: &sunrise_items::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
+        context: sunrise_sim::menu::SlotContext<'_>,
+        allowed: &mut bool,
+    ) {
+        sunrise_gameplay_common::game::slot_rules::GameSlotRules::pick_all(
+            self, menu, slot, carried, stack, context, allowed,
+        );
+    }
 }
 
 impl mod_api::AttachmentHost for ClientGame<'_> {

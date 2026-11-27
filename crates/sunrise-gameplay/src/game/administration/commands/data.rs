@@ -516,7 +516,7 @@ impl crate::game::ServerGame<'_> {
     /// What `BlockDataAccessor.setData` tells the world after a load: `setChanged` and
     /// `sendBlockUpdated(3)`, even when the block state stays the same.
     pub(in crate::game::server_side) fn block_entity_updated(&mut self, key: (i32, i32, i32)) {
-        if self.defer_placed_block_entity_update(key) {
+        if self.defer_unpublished_block_entity_update(key) {
             return;
         }
         self.mark_block_entity_updated(key);

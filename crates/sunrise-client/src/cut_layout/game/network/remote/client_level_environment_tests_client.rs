@@ -8,6 +8,7 @@ use crate::game::server_side::native_entity_refs::tests::with_uncached_client_ga
 use std::sync::Arc;
 use sunrise_gameplay_common::world_biomes;
 use sunrise_protocol::connection::Pipe;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// Cloud preparation and atmospheric fog read the synced attributes, not the skybox, while
 /// precipitation in a loaded column uses the joined level's sea level from the spawn packet.
@@ -78,6 +79,8 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                     entered.seed = 42;
                     if index == 0 {
                         login(game, entered);
+                        game.handle_packet(C::SetChunkCacheRadius(play::Distance { distance: 8 }))
+                            .unwrap();
                     } else {
                         respawn(game, entered);
                     }
@@ -97,7 +100,7 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                     no_tint.sunrise_color[3] = 0.0;
                     let mut sample = |forward, distance, sky, draws_sky| {
                         game.client.view.forwards = [forward, 0.0, 0.0];
-                        game.client.streaming.radius = distance;
+                        game.client.settings.render_distance = distance;
                         game.client.settings.sunrise.sky = draws_sky;
                         let f = game.frame_fog(camera, sky, 0, [0.0; 3]);
                         let [r, g, b, _] = f.color;

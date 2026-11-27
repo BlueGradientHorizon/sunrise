@@ -14,7 +14,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn pose_regression_dying_avatar_is_fixed() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let ty = game
                 .res
                 .mob_types()
@@ -82,7 +82,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn pose_regression_scaled_stand() {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.armor_stands
                 .push(sunrise_sim::entities::ArmorStand::new(55, Vec3::ZERO, 0.0));
             let living = game.living(game.entity(55).unwrap()).unwrap();

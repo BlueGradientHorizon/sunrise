@@ -7,6 +7,7 @@ use sunrise_sim::mobs::Mob;
 use sunrise_sim::mobs::MobEvent;
 use sunrise_sim::mobs::MobWorld;
 use sunrise_sim::mobs::{
+    Species,
     finalize::{Attr, set_base},
     goals::Breed,
 };
@@ -74,9 +75,10 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
             game.mobs
                 .push(Mob::new(base + 2, cow, Vec3::new(1.0, 64.0, 0.0), 0.0));
             game.native_joins_skip();
+            let warm = game.world_variants().cow.lookup("minecraft:warm").unwrap();
             let parent = game.mobs.iter_mut().find(|mob| mob.id == base + 1).unwrap();
+            parent.extra.cow_variant = Some(warm);
             parent.random = sunrise_core::random::LegacyRandom::new(0);
-            parent.extra.variant = 1;
             parent.extra.age = 6000;
             let child = game.breed(
                 base + 1,
@@ -128,8 +130,8 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                     .find(|mob| mob.id == base + 3)
                     .unwrap()
                     .extra
-                    .variant,
-                1
+                    .cow_variant,
+                Some(warm)
             );
             assert_eq!(
                 game.mobs
@@ -244,6 +246,11 @@ pub(crate) fn tick_breeding(
     partner.extra.tame = true;
     parent.extra.variant = 1;
     partner.extra.variant = 2;
+    if parent.species() == Species::Wolf {
+        let coats = &game.world_variants().wolf;
+        parent.extra.wolf_variant = Some(coats.lookup("minecraft:ashen").unwrap());
+        partner.extra.wolf_variant = Some(coats.lookup("minecraft:black").unwrap());
+    }
     parent.extra.variant2 = 1;
     partner.extra.variant2 = if sunrise_sim::mobs::llama::is_llama(partner.species()) {
         4

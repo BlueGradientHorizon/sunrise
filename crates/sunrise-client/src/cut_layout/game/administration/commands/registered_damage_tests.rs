@@ -127,12 +127,12 @@ fn damage_command_uses_the_worlds_fall_tags() {
                 assert!(game.run_command(&format!(
                     "summon pig 0.5 64 0.5 {{UUID:[I;83,0,0,{id}],NoAI:1b}}"
                 )));
-                gear::upgrade(
-                    game.mobs.last_mut().unwrap(),
-                    gear::FEET,
-                    "minecraft:feather_falling",
-                    4,
+                let pig = game.mobs.last_mut().unwrap();
+                pig.extra.set_slot_id(
+                    sunrise_core::equipment_slot::EquipmentSlot::Feet as usize,
+                    Some("minecraft:leather_boots".into()),
                 );
+                gear::upgrade(pig, gear::FEET, "minecraft:feather_falling", 4);
                 assert!(
                     game.run_command(&format!("damage 00000053-0000-0000-0000-{id:012x} 5 {ty}"))
                 );
@@ -359,7 +359,7 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
     with_game(|game| {
         setup_live_damage_world(game);
         assert!(game.run_command("forceload add 0 0"));
-        assert!(game.run_command("time set night"));
+        assert!(game.run_command("time set 13000"));
         assert!(
             game.run_command("summon creaking 4.5 64 4.5 {UUID:[I;85,0,0,1],NoAI:1b,NoGravity:1b}")
         );

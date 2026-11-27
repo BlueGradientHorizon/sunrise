@@ -4,7 +4,8 @@ use crate::game::minecarts::lifetime_tests::assert_vehicle_residency_retired;
 use std::sync::Arc;
 use std::sync::Mutex;
 use sunrise_core::geometry::Vec3;
-use sunrise_core::random::RandomSource;
+use sunrise_core::{position::ChunkPos, random::RandomSource};
+use sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
 use sunrise_gameplay_common::game::minecarts::CartKind;
 use sunrise_gameplay_common::game::minecarts::Minecart;
 use sunrise_mod_runtime::attachments::{
@@ -161,7 +162,7 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_resident_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 game.server.tickets.0.update(None);
                 game.reset_entity_residency();
@@ -183,11 +184,10 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
                 cart.damage = 7.0;
                 cart.fuse = 0;
                 game.carts.push(cart);
-                game.carts.push(Minecart::new(
-                    73,
-                    CartKind::Rideable,
-                    Vec3::new(400.5, 70.0, 0.5),
-                ));
+                let other = Vec3::new(400.5, 70.0, 0.5);
+                prepare_entity_ticking_neighborhood(game, ChunkPos::new(25, 0));
+                game.carts
+                    .push(Minecart::new(73, CartKind::Rideable, other));
                 // Prevent the other cart's own tick from changing the hook's write.
                 game.riding = Some(73);
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -348,7 +348,7 @@ fn disabled_tnt_rule_discards_primed_carts_but_keeps_unprimed_ticks() {
 fn terminal_vehicle_damage_and_native_removal_retire_residency() {
     for cart in [false, true] {
         for mode in 0..3 {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_resident_game(|game| {
                 game.reset_entity_residency();
                 game.server.tickets.0.update(None);
                 game.summon_with_nbt(

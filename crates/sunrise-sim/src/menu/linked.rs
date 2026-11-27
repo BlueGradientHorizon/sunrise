@@ -1,21 +1,37 @@
 //! A menu's linked storage in menu order: the block entities whose containers
 //! it reads through `ModLinks`.
-use crate::{containers::BlockEntity, items::ItemStack, world::World};
+use crate::{items::ItemStack, world::World};
+use std::borrow::Cow;
 
-/// The slots of the block entity at `k` its menu shows: a mod container's
-/// count, though items past it stay saved.
-pub(crate) fn shown(world: &World, k: (i32, i32, i32)) -> Option<&[Option<ItemStack>]> {
-    let e = world.block_entities.get(&k)?;
-    let slots = e.slots();
-    if !matches!(e, BlockEntity::Mod(_)) {
-        return Some(slots);
+pub(crate) struct ShownSlots<'a> {
+    stored: &'a [Option<ItemStack>],
+    count: usize,
+}
+
+impl<'a> ShownSlots<'a> {
+    pub(crate) fn iter(self) -> impl Iterator<Item = &'a Option<ItemStack>> {
+        let missing = self.count - self.stored.len();
+        self.stored
+            .iter()
+            .chain(std::iter::repeat_n(&None, missing))
     }
-    let state = world.block(k.0, k.1, k.2).0;
-    let count = world
-        .block_entities
-        .mod_container(state)
-        .map_or(0, |c| c.slots);
-    Some(&slots[..count.min(slots.len())])
+
+    pub(crate) fn into_contiguous(self) -> Cow<'a, [Option<ItemStack>]> {
+        if self.stored.len() == self.count {
+            Cow::Borrowed(self.stored)
+        } else {
+            Cow::Owned(self.iter().cloned().collect())
+        }
+    }
+}
+
+pub(crate) fn shown(world: &World, pos: (i32, i32, i32)) -> Option<ShownSlots<'_>> {
+    let stored = world.block_entities.get(&pos)?.slots();
+    let count = world.container_slot_count(pos)?;
+    Some(ShownSlots {
+        stored: &stored[..count.min(stored.len())],
+        count,
+    })
 }
 
 /// A menu's linked storage in menu order. An index in the linked range without backing
@@ -53,7 +69,7 @@ impl<'a> LinkedSlots<'a> {
         }
         let mut offset = slot - range.start;
         for &pos in self.links {
-            let len = shown(self.world, pos).map_or(0, <[_]>::len);
+            let len = self.world.container_slot_count(pos).unwrap_or(0);
             if offset < len {
                 return Some(Some((pos, offset)));
             }
@@ -92,13 +108,14 @@ pub(crate) fn linked_stacks<'a>(
 ) -> impl Iterator<Item = &'a Option<ItemStack>> {
     links
         .iter()
-        .flat_map(|&k| shown(world, k).unwrap_or_default().iter())
+        .filter_map(|&pos| shown(world, pos))
+        .flat_map(ShownSlots::iter)
 }
 
 /// How many slots the linked containers `links` have between them.
 pub fn linked_slot_count(world: &World, links: &[(i32, i32, i32)]) -> usize {
     links
         .iter()
-        .map(|&k| shown(world, k).map_or(0, <[_]>::len))
+        .filter_map(|&pos| world.container_slot_count(pos))
         .sum()
 }

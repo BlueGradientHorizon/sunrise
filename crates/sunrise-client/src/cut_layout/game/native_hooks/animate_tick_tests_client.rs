@@ -125,14 +125,10 @@ fn the_limiter_roll_of_add_particle_moves_the_parts_random() {
     });
 }
 
-/// Review of #2656: the part runs inside its pick. A thunderstorm over a floor of waterlogged
-/// lightning rods: each rod pick sparks (the block's own effect, from the level random), then
-/// the part adds its heart, then the water's effects follow; the next pick comes after, and the
-/// rain's splashes after every pick. The engine's request log keeps every particle asked for in
-/// call order.
+/// ClientLevel.tickWeatherEffects precedes animateTick, whose block part runs before the pick's fluid.
 #[test]
 #[ignore = "daily"]
-fn the_part_runs_inside_its_pick_before_the_fluid_the_next_pick_and_the_rain() {
+fn rain_precedes_animation_and_the_part_runs_before_its_fluid() {
     with_hearts(|game, calls| {
         let registry = &game.pack.assets.registry;
         let rod = registry.default_state("minecraft:lightning_rod").unwrap();
@@ -201,17 +197,17 @@ fn the_part_runs_inside_its_pick_before_the_fluid_the_next_pick_and_the_rain() {
                 _ => {}
             }
         }
-        let last_heart = log
+        let first_heart = log
             .iter()
-            .rposition(|(t, _)| *t == ParticleType::Heart)
+            .position(|(t, _)| *t == ParticleType::Heart)
             .unwrap();
-        let first_rain = log
+        let last_rain = log
             .iter()
-            .position(|(t, _)| *t == ParticleType::Rain)
+            .rposition(|(t, _)| *t == ParticleType::Rain)
             .unwrap();
         assert!(
-            last_heart < first_rain,
-            "the rain splashes after every pick"
+            last_rain < first_heart,
+            "the level tick splashes rain before animation"
         );
     });
 }

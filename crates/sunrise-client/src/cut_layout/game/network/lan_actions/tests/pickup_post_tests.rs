@@ -7,7 +7,6 @@ use mod_api::{
 };
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
-use sunrise_gameplay::game::native_entity_refs::tests::collect_all_entities;
 use sunrise_items::items::ItemStack;
 
 #[derive(Clone, Default)]
@@ -90,15 +89,22 @@ impl Hooks for Probe {
         event: &mut ItemPickedUpPostEvent<'_>,
     ) {
         self.0.lock().unwrap().posted.push(event.item.entity().id());
-        self.heard(host, event.player, event.original, event.remaining);
+        self.heard(
+            host,
+            event.item,
+            event.player,
+            event.original,
+            event.remaining,
+        );
     }
 }
 
 impl Probe {
     /// Records the notice, then makes the case's changes.
-    pub(crate) fn heard(
+    fn heard(
         &self,
         host: &mut dyn ServerHost,
+        item: mod_api::ItemEntityRef,
         player: u128,
         original: &mod_api::ItemStack,
         remaining: &mut Option<mod_api::ItemStack>,
@@ -121,13 +127,7 @@ impl Probe {
             *remaining = None;
         }
         if kill {
-            // A command where one runs (a LAN host), else the entity handle's removal, which
-            // the level sweeps out of its list later.
-            let _ = host.commands().run_command("kill @e[type=minecraft:item]");
-            let level = host.level("minecraft:overworld").unwrap();
-            for entity in collect_all_entities(host, level).unwrap_or_default() {
-                let _ = entity.discard(host);
-            }
+            assert!(item.entity().discard(host));
         }
     }
 }
@@ -277,6 +277,13 @@ pub(crate) fn guest_case(
     let id = spawn(game, [3.0, 64.0, 5.0], case);
     let gi = game.guest_index(12).unwrap();
     game.guest_pickups(gi);
+    if case.kill {
+        assert!(
+            game.entity(id).is_none(),
+            "Post discard takes effect immediately"
+        );
+    }
+    game.native_removals_flush();
     let guest = game.server.lan.as_ref().unwrap().hub.guest(12).unwrap();
     let first = guest.inventory[0].as_ref().map_or(0, |stack| {
         if &*stack.item == "minecraft:apple" {
@@ -294,7 +301,7 @@ pub(crate) fn guest_case(
 fn guest_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
     let probe = Probe::default();
     with_probe(&probe, || {
-        sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
+        sunrise_gameplay::game::native_guest_turn_tests::with_resident_guests(|game| {
             // The whole stack goes in: one post notice naming guest 12, original 8.
             assert_eq!(
                 guest_case(game, &probe, &CASE),

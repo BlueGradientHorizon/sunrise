@@ -129,6 +129,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn resolved_keys_keep_the_mobs_hidden_effect_identity() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs.push(Mob::new(22, kind, Vec3::ZERO, 0.0));
             let cow = game.living(game.entity(22).unwrap()).unwrap();
@@ -149,6 +150,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn effect_writes_on_a_removed_mob_change_nothing() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs.push(Mob::new(24, kind, Vec3::ZERO, 0.0));
             let cow = game.living(game.entity(24).unwrap()).unwrap();
@@ -169,6 +171,7 @@ pub(crate) mod tests {
         use sunrise_core::random::RandomSource;
         use sunrise_items::items::ItemStack;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
             let cow = game.living(game.entity(12).unwrap()).unwrap();

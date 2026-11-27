@@ -6,6 +6,7 @@ use sunrise_command::args::GameMode;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::configuration::{RegistryData, RegistryEntry};
 use sunrise_sim::first_person_sim::Hand;
 use sunrise_world::registry::BlockStateId;
 use {sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit};
@@ -328,9 +329,6 @@ fn a_builder_use_on_is_unaffected() {
     assert_eq!(held(&game), None, "the egg is used up");
 }
 
-/// `Minecraft.startUseItem`'s own prediction runs the same gate on the client:
-/// in adventure mode off a matching `can_place_on` an axe does not predict the
-/// strip (no sound, no swing), while a builder or a matching stack does.
 #[test]
 #[ignore = "daily"]
 fn an_adventure_use_on_is_not_predicted_on_the_client() {
@@ -342,6 +340,16 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
             sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(
                 game,
             );
+        let remote = game.client.remote.as_mut().unwrap();
+        std::sync::Arc::make_mut(&mut remote.registries).add(RegistryData {
+            registry: "minecraft:block_transformer".into(),
+            entries: vec![RegistryEntry {
+                id: "minecraft:axe".into(),
+                data: None,
+            }],
+        });
+        game.install_server_items();
+
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
@@ -359,38 +367,33 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
         let axe = ItemStack::new("minecraft:iron_axe", 1);
         *game.held_mut() = Some(axe.clone());
         assert!(
-            !predicts(game, &axe, &hit(log)),
+            !game.remote_use_block(
+                Hand::Main,
+                mod_api::InteractionAttempt::Press,
+                Some(hit(log))
+            ),
             "the axe's strip was predicted"
         );
-        let matching = placeable("minecraft:iron_axe", 1, "minecraft:oak_log");
-        *game.held_mut() = Some(matching.clone());
+        *game.held_mut() = Some(placeable("minecraft:iron_axe", 1, "minecraft:oak_log"));
         assert!(
-            predicts(game, &matching, &hit(log)),
+            game.remote_use_block(
+                Hand::Main,
+                mod_api::InteractionAttempt::Press,
+                Some(hit(log))
+            ),
             "a matching can_place_on still predicts the strip"
         );
         game.set_local_mode(GameMode::Survival);
+        *game.held_mut() = Some(axe);
         assert!(
-            predicts(game, &matching, &hit(log)),
+            game.remote_use_block(
+                Hand::Main,
+                mod_api::InteractionAttempt::Press,
+                Some(hit(log))
+            ),
             "a builder's axe still predicts the strip"
         );
     });
 }
 
-/// The client's `Item.useOn` prediction behind `ItemStack.useOn`'s adventure gate, which the
-/// fork's use phase applies before it selects the prediction.
-fn predicts(
-    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
-    stack: &ItemStack,
-    hit: &Hit,
-) -> bool {
-    game.with_hand(Hand::Main, |g| {
-        (g.may_build() || g.can_place_on_in_adventure(hit.pos))
-            && g.predict_item_on_block(stack, hit)
-    })
-}
-
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

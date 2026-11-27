@@ -60,82 +60,53 @@ pub(crate) mod teleport_player_rider_tests;
 #[cfg(test)]
 pub(crate) mod query_feedback_tests {
 
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     #[test]
     #[ignore = "daily"]
     fn a_silent_source_drops_query_results_but_still_stores_them() {
-        use crate::game::load_resources;
-        use crate::settings::Settings;
-        use {
-            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
-            sunrise_gameplay_common::game::execution_role::ExecutionRole,
-        };
-        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role =
-            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = sunrise_gameplay::game::ServerGame::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings.sim_settings(),
-            None,
-            crate::game::profile_resolver,
-        )
-        .unwrap();
-        game.build_registries();
-        game.set_allow_commands(true);
-        assert!(game.run_command("time set 1234"));
-        assert!(game.run_command("scoreboard objectives add q dummy"));
-        let queries = [
-            "time query time",
-            "time query day",
-            "time query day repetition",
-            "time query gametime",
-            "seed",
-            "gamerule keep_inventory",
-            "difficulty",
-            "list",
-            "help seed",
-        ];
-        // A function's source (silent, like `run_command_quietly`) is told nothing.
-        for command in queries {
+        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+
+        let _publication = sunrise_sim::datapack_net::isolate_server_publication();
+        with_game(|game| {
+            game.server.world_root = game.options.game_dir.clone().unwrap();
+            game.open_world_datapacks(&[], None).unwrap();
+            game.set_allow_commands(true);
+            assert!(game.run_command("time set 1234"));
+            assert!(game.run_command("scoreboard objectives add q dummy"));
+            let queries = [
+                "time query time",
+                "time query day",
+                "time query day repetition",
+                "time query gametime",
+                "seed",
+                "gamerule keep_inventory",
+                "difficulty",
+                "list",
+                "help seed",
+            ];
+            // A function's source (silent, like `run_command_quietly`) is told nothing.
+            for command in queries {
+                game.server.chat_capture = Some(Vec::new());
+                assert!(game.run_command_quietly(command), "{command}");
+                let lines = game.server.chat_capture.take().unwrap();
+                assert!(lines.is_empty(), "{command}: {:?}", lines[0].plain());
+            }
+            // The player's own source still sees each result.
+            for command in queries {
+                game.server.chat_capture = Some(Vec::new());
+                assert!(game.run_command(command), "{command}");
+                assert_eq!(
+                    game.server.chat_capture.take().unwrap().len(),
+                    1,
+                    "{command}"
+                );
+            }
+            // The result still reaches `execute store`.
+            assert!(game.run_command_quietly("execute store result score #t q run time query day"));
             game.server.chat_capture = Some(Vec::new());
-            assert!(game.run_command_quietly(command), "{command}");
+            assert!(game.run_command("scoreboard players get #t q"));
             let lines = game.server.chat_capture.take().unwrap();
-            assert!(lines.is_empty(), "{command}: {:?}", lines[0].plain());
-        }
-        // The player's own source still sees each result.
-        for command in queries {
-            game.server.chat_capture = Some(Vec::new());
-            assert!(game.run_command(command), "{command}");
-            assert_eq!(
-                game.server.chat_capture.take().unwrap().len(),
-                1,
-                "{command}"
-            );
-        }
-        // The result still reaches `execute store`.
-        assert!(game.run_command_quietly("execute store result score #t q run time query day"));
-        game.server.chat_capture = Some(Vec::new());
-        assert!(game.run_command("scoreboard players get #t q"));
-        let lines = game.server.chat_capture.take().unwrap();
-        assert!(lines[0].plain().contains("1234"), "{:?}", lines[0].plain());
+            assert!(lines[0].plain().contains("1234"), "{:?}", lines[0].plain());
+        });
     }
 
     #[test]

@@ -95,7 +95,7 @@ fn a_player_vehicle_is_refused_by_name_forced_or_not_before_entity_mount() {
 #[test]
 #[ignore = "daily"]
 fn a_cycle_is_refused_by_name() {
-    with_game(|game| {
+    with_resident_game(|game| {
         add_mob(game, 30, "minecraft:pig");
         add_mob(game, 31, "minecraft:pig");
         assert_eq!(
@@ -113,7 +113,7 @@ fn a_cycle_is_refused_by_name() {
 #[test]
 #[ignore = "daily"]
 fn a_removed_vehicle_is_refused_as_no_entity() {
-    with_game(|game| {
+    with_resident_game(|game| {
         let rider = add_mob(game, 50, "minecraft:zombie");
         let vehicle = add_mob(game, 51, "minecraft:pig");
         game.mobs.retain(|m| m.id != 51);
@@ -155,7 +155,7 @@ fn a_vehicle_in_another_level_is_refused_as_no_entity() {
 #[test]
 #[ignore = "daily"]
 fn a_full_vehicle_is_refused_by_name_unless_forced() {
-    with_game(|game| {
+    with_resident_game(|game| {
         add_mob(game, 70, "minecraft:zombie");
         add_mob(game, 71, "minecraft:pig");
         add_mob(game, 72, "minecraft:skeleton");
@@ -179,7 +179,7 @@ fn a_full_vehicle_is_refused_by_name_unless_forced() {
 #[test]
 #[ignore = "daily"]
 fn the_same_entity_and_a_second_mount_on_the_same_vehicle_are_refused_by_name() {
-    with_game(|game| {
+    with_resident_game(|game| {
         add_mob(game, 80, "minecraft:zombie");
         add_mob(game, 81, "minecraft:pig");
         assert_eq!(
@@ -200,7 +200,7 @@ fn the_same_entity_and_a_second_mount_on_the_same_vehicle_are_refused_by_name() 
 #[test]
 #[ignore = "daily"]
 fn a_boarding_cooldown_is_refused_as_cannot_ride_unless_forced() {
-    with_game(|game| {
+    with_resident_game(|game| {
         add_mob(game, 90, "minecraft:zombie");
         add_mob(game, 91, "minecraft:pig");
         game.mobs[0].extra.boarding_cooldown = 10;

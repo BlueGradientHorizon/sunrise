@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{with_game, with_resident_game};
+    use super::super::native_entity_refs::tests::with_resident_game;
     use mod_api::{EntityRef, SoundSource, WorldEpoch};
     use sunrise_command::args::GameMode;
     use sunrise_core::geometry::Vec3;
@@ -27,7 +27,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn sound_sources_follow_the_entity_class() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let cow = spawn(game, 10, "minecraft:cow");
             let zombie = spawn(game, 11, "minecraft:zombie");
             let ghast = spawn(game, 12, "minecraft:ghast");
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn game_and_entity_events_come_from_the_entity() {
-        with_game(|game| {
+        with_resident_game(|game| {
             let cow = spawn(game, 10, "minecraft:cow");
             dispense_fixture::start_recording();
             assert!(game.entity_game_event(cow, "minecraft:step"));
@@ -102,12 +102,14 @@ mod tests {
                 dispense_fixture::stop_recording(),
                 ["G 1,64,2 minecraft:step"]
             );
+            game.start_audio_capture();
             assert!(game.entity_broadcast_event(cow, 3));
             assert_eq!(game.server.lan_entity_events, [(10, 3)]);
             let stale = EntityRef::new(WorldEpoch::new(cow.epoch().get() + 1), 10);
             assert!(!game.entity_broadcast_event(stale, 3));
             assert!(!game.entity_game_event(stale, "minecraft:step"));
             assert_eq!(game.server.lan_entity_events.len(), 1);
+            game.stop_audio_capture();
         });
     }
 

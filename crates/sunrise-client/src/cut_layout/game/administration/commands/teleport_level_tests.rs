@@ -3,7 +3,7 @@
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
 use sunrise_gameplay::game::native_entity_refs::tests::{
-    prepare_entity_ticking_neighborhood, with_game, with_resident_game,
+    prepare_entity_ticking_neighborhood, with_resident_game,
 };
 use sunrise_gameplay_common::game::Dim;
 
@@ -14,7 +14,7 @@ use sunrise_gameplay_common::game::Dim;
 #[test]
 #[ignore = "daily"]
 fn a_mod_sends_an_item_and_an_arrow_to_another_level_with_their_motion() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.native_lifecycle.world_open_ready().unwrap();
         game.summon_with_nbt(
             "minecraft:item",
@@ -80,7 +80,7 @@ fn a_mod_sends_an_item_and_an_arrow_to_another_level_with_their_motion() {
 #[test]
 #[ignore = "daily"]
 fn a_mod_sends_a_minecart_to_another_level_with_its_known_movement() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.native_lifecycle.world_open_ready().unwrap();
         game.summon_with_nbt(
             "minecraft:minecart",
@@ -126,7 +126,7 @@ fn sent_to_the_nether(
 #[test]
 #[ignore = "daily"]
 fn a_mod_sends_a_primed_tnt_to_another_level_with_its_fuse_and_motion() {
-    with_game(|game| {
+    with_resident_game(|game| {
         sent_to_the_nether(
             game,
             "minecraft:tnt",
@@ -145,7 +145,7 @@ fn a_mod_sends_a_primed_tnt_to_another_level_with_its_fuse_and_motion() {
 #[test]
 #[ignore = "daily"]
 fn a_mod_sends_an_experience_orb_to_another_level_with_its_value_and_motion() {
-    with_game(|game| {
+    with_resident_game(|game| {
         sent_to_the_nether(
             game,
             "minecraft:experience_orb",
@@ -165,7 +165,7 @@ fn a_mod_sends_an_experience_orb_to_another_level_with_its_value_and_motion() {
 #[test]
 #[ignore = "daily"]
 fn a_mod_sends_a_firework_to_another_level_with_its_owner_and_motion() {
-    with_game(|game| {
+    with_resident_game(|game| {
         sent_to_the_nether(
             game,
             "minecraft:firework_rocket",
@@ -204,7 +204,7 @@ fn a_mod_sends_a_trident_to_another_level_with_its_stack_and_motion() {
 #[test]
 #[ignore = "daily"]
 fn a_mod_sends_an_armor_stand_to_another_level() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.native_lifecycle.world_open_ready().unwrap();
         game.summon_with_nbt("minecraft:armor_stand", [0.5, 80.0, 0.5], "{}")
             .unwrap();

@@ -50,8 +50,7 @@ pub const MAX_SUGGESTION_TEXT: usize = 32767;
 /// modified UTF-8 (vanilla NBT `TAG_String` u16 length limit).
 pub const MAX_SUGGESTION_TOOLTIP: usize = 65535;
 
-/// The most candidates a reply keeps for one argument (`ServerSuggestionProvider.limitSuggestionCount`),
-/// counted after the engine drops what it cannot offer.
+/// The most candidates the server keeps in a sorted reply (`ServerCommandSuggestionsProvider.limitSuggestionCount`).
 pub const MAX_PROVIDER_SUGGESTIONS: usize = 1000;
 
 /// A mod's registered argument type, as the dispatcher parses and completes it.
@@ -688,33 +687,15 @@ fn parsed_arguments(context: &Context, input: &str, start: usize) -> Vec<ParsedA
         .collect()
 }
 
-/// The bytes a text occupies in Java modified UTF-8: a tooltip's NBT string limit counts those.
-fn modified_utf8_len(text: &str) -> usize {
-    text.encode_utf16()
-        .map(sunrise_core::modified_utf8::unit_len)
-        .sum()
-}
-
-/// A mod's completions for custom argument `id` (typed so far: `prefix`, which starts at
-/// `builder.start`) as the builder's suggestions. Each keeps its own byte range inside the
-/// prefix, tooltip and numeric sort value. One whose range is out of bounds or splits a
-/// character, that equals the text it replaces, repeats an earlier text and tooltip pair, or is
-/// past the packet's text bounds (`ClientboundCommandSuggestionsPacket`: 32,767 UTF-16 code units
-/// of text, 65,535 bytes of modified UTF-8 of tooltip) is dropped alone and reported; the others
-/// stay. The reply keeps at most [`MAX_PROVIDER_SUGGESTIONS`] of them. Nothing here panics.
+/// Collect valid replacements in their original ranges for the dispatcher to merge.
 fn add_custom_suggestions(
     builder: &mut SuggestionsBuilder,
     id: &str,
     prefix: &str,
     candidates: Vec<crate::Suggestion>,
 ) {
-    let count = candidates.len();
     let mut seen = std::collections::HashSet::new();
-    let mut kept = 0;
     for candidate in candidates {
-        if kept == MAX_PROVIDER_SUGGESTIONS {
-            break;
-        }
         let (start, end) = candidate.range;
         if start > end
             || end > prefix.len()
@@ -739,32 +720,12 @@ fn add_custom_suggestions(
         {
             continue;
         }
-        // Suggestions use STRING_UTF8 (UTF-16 length); tooltips are literal NBT strings, whose
-        // modified UTF-8 byte length is an unsigned u16.
-        let tooltip = candidate.tooltip.as_deref().map_or(0, modified_utf8_len);
-        if candidate.text.encode_utf16().count() > MAX_SUGGESTION_TEXT
-            || tooltip > MAX_SUGGESTION_TOOLTIP
-        {
-            eprintln!(
-                "custom command argument `{id}` suggestion `{}` is past the protocol's text \
-                 limit; dropped",
-                candidate.text
-            );
-            continue;
-        }
         builder.out.push(crate::Suggestion {
             range: (builder.start + start, builder.start + end),
             text: candidate.text,
             tooltip: candidate.tooltip,
             int_value: candidate.int_value,
         });
-        kept += 1;
-    }
-    if count > MAX_PROVIDER_SUGGESTIONS {
-        eprintln!(
-            "custom command argument `{id}` answered {count} suggestions; at most \
-             {MAX_PROVIDER_SUGGESTIONS} are kept"
-        );
     }
 }
 /// SharedSuggestionProvider.filterResources (no prefix).

@@ -61,6 +61,7 @@ pub(crate) mod tests {
         use sunrise_core::nbt::Tag;
         use sunrise_sim::mobs::gear;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let zombie = living(game, 12);
             let attack = |game: &sunrise_gameplay::game::ServerGame<'_>| {
@@ -106,6 +107,7 @@ pub(crate) mod tests {
         use mod_api::EquipmentSlot;
         use sunrise_core::nbt::Tag;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let zombie = living(game, 12);
             let mut own = ItemStack::new("minecraft:diamond_chestplate", 1);
@@ -165,6 +167,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_base_write_preserves_covered_for_damage_and_attribute_sync() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game
                 .res
                 .mob_types()
@@ -327,6 +330,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_zombie_reads_its_defaults() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             assert_eq!(
                 read(game, 12, "minecraft:max_health"),
@@ -346,6 +350,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_read_builds_the_map_once() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             assert!(game.mobs[0].extra.live.built().is_none());
             read(game, 12, "minecraft:max_health");
@@ -435,6 +440,7 @@ pub(crate) mod tests {
     fn a_saved_base_and_modifier_are_read_and_saved_again() {
         use sunrise_core::nbt::Tag;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let saved = Tag::List(vec![Tag::compound([
                 ("id", Tag::String("minecraft:max_health".into())),
@@ -540,6 +546,7 @@ pub(crate) mod tests {
         use AttributeOperation::*;
         use ModifierLifetime::*;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let speed = "minecraft:movement_speed";
             let zombie = living(game, 12);
@@ -597,6 +604,7 @@ pub(crate) mod tests {
         use AttributeOperation::*;
         use ModifierLifetime::*;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let gravity = "minecraft:gravity";
             let zombie = living(game, 12);

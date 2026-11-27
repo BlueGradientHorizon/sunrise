@@ -16,6 +16,7 @@ use crate::{
     world::World,
 };
 use mod_api::{Hand, MenuOpeningItem};
+use std::borrow::Cow;
 use sunrise_world::native_load_context::LoopContext;
 
 /// The equipment slots of the inventory menu's armour slots 5 to 8, in menu order.
@@ -377,22 +378,25 @@ pub enum SlotBacking {
 }
 
 impl Slots {
-    /// Borrow the backing storage in menu order, without overlaying linked slots or previews.
+    /// View the backing storage in menu order, padding sparse slots with empty cells.
     /// For a double chest, each slice is a separate half, as in `CompoundContainer`.
     pub fn shown_slices<'a>(
         self,
         world: &'a World,
         guest: &'a Guest,
         acting_ender: Option<&'a [Option<ItemStack>]>,
-    ) -> (&'a [Option<ItemStack>], &'a [Option<ItemStack>]) {
+    ) -> (Cow<'a, [Option<ItemStack>]>, Cow<'a, [Option<ItemStack>]>) {
+        let view =
+            |pos| shown(world, pos).map_or(Cow::Borrowed(&[][..]), |slots| slots.into_contiguous());
+        let empty = Cow::Borrowed(&[][..]);
         match self {
-            Self::Block(pos) => (shown(world, pos).unwrap_or_default(), &[]),
-            Self::Double(a, b) => (
-                shown(world, a).unwrap_or_default(),
-                shown(world, b).unwrap_or_default(),
+            Self::Block(pos) => (view(pos), empty),
+            Self::Double(a, b) => (view(a), view(b)),
+            Self::Ender => (
+                Cow::Borrowed(acting_ender.unwrap_or(&guest.ender_items)),
+                empty,
             ),
-            Self::Ender => (acting_ender.unwrap_or(&guest.ender_items), &[]),
-            Self::Native => (&guest.native_menu, &[]),
+            Self::Native => (Cow::Borrowed(&guest.native_menu), empty),
         }
     }
 
@@ -439,15 +443,15 @@ impl Slots {
     pub fn backing(self, world: &World, n: usize) -> Option<SlotBacking> {
         match self {
             Slots::Block(pos) => {
-                (n < shown(world, pos)?.len()).then_some(SlotBacking::Block(pos, n))
+                (n < world.container_slot_count(pos)?).then_some(SlotBacking::Block(pos, n))
             }
             Slots::Double(a, b) => {
-                let first = shown(world, a)?.len();
+                let first = world.container_slot_count(a)?;
                 if n < first {
                     Some(SlotBacking::Block(a, n))
                 } else {
                     let n = n - first;
-                    (n < shown(world, b)?.len()).then_some(SlotBacking::Block(b, n))
+                    (n < world.container_slot_count(b)?).then_some(SlotBacking::Block(b, n))
                 }
             }
             Slots::Ender => Some(SlotBacking::Ender(n)),
@@ -482,7 +486,7 @@ impl Slots {
             Slots::Ender | Slots::Native => None,
             _ => Some(
                 self.halves()
-                    .map(|k| shown(world, k).map_or(0, <[_]>::len))
+                    .filter_map(|pos| world.container_slot_count(pos))
                     .sum(),
             ),
         }
@@ -511,7 +515,7 @@ impl Slots {
         })
     }
     /// Container slot `n`.
-    pub fn get(self, world: &World, guest: &Guest, mut n: usize) -> Option<ItemStack> {
+    pub fn get(self, world: &World, guest: &Guest, n: usize) -> Option<ItemStack> {
         if self == Slots::Ender {
             return guest.ender_items.get(n).cloned().flatten();
         }
@@ -532,14 +536,10 @@ impl Slots {
         {
             return held.cloned().flatten();
         }
-        for k in self.halves() {
-            let slots = shown(world, k)?;
-            if n < slots.len() {
-                return slots[n].clone();
-            }
-            n -= slots.len();
-        }
-        None
+        let SlotBacking::Block(pos, slot) = self.backing(world, n)? else {
+            return None;
+        };
+        world.block_entities.get(&pos)?.slots().get(slot)?.clone()
     }
     /// The actual block storage of a held slot, excluding a crafting preview.
     /// A linked slot lives in the connected container, not the menu's block.
@@ -582,7 +582,7 @@ impl Slots {
         }
         let mut items = Vec::new();
         for k in self.halves() {
-            items.extend_from_slice(shown(world, k)?);
+            items.extend(shown(world, k)?.iter().cloned());
         }
         if let Some((slot, result)) = guest.menu.as_ref().and_then(Menu::craft_result)
             && let Some(item) = items.get_mut(slot)
@@ -627,11 +627,11 @@ impl Slots {
         }
         let mut rest = items.into_iter();
         for k in self.halves() {
-            let n = shown(world, k).map_or(0, <[_]>::len);
+            let n = world.container_slot_count(k).unwrap_or(0);
             if let Some(e) = world.block_entities.get_mut(&k) {
                 for i in 0..n {
                     let stack = rest.next().flatten();
-                    if e.slots()[i] != stack {
+                    if e.slots().get(i).and_then(Option::as_ref) != stack.as_ref() {
                         *e.slot_mut(i).unwrap() = stack;
                     }
                 }
@@ -661,7 +661,7 @@ pub fn write_links(
     let mut rest = stacks.into_iter();
     let mut changed = Vec::new();
     for &k in links {
-        let n = shown(world, k).map_or(0, <[_]>::len);
+        let n = world.container_slot_count(k).unwrap_or(0);
         let Some(e) = world.block_entities.get_mut(&k) else {
             continue;
         };
@@ -670,7 +670,7 @@ pub fn write_links(
             let Some(stack) = rest.next() else {
                 break;
             };
-            if e.slots()[i] != stack {
+            if e.slots().get(i).and_then(Option::as_ref) != stack.as_ref() {
                 *e.slot_mut(i).unwrap() = stack;
                 moved = true;
             }

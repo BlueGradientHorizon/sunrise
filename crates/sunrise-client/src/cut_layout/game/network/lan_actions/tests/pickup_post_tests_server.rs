@@ -65,6 +65,10 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
             game.server.world_root = scratch.clone();
             game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
                 .unwrap();
+            sunrise_gameplay::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap());
             game.level.player_uuid = Some(sunrise_sim::lan::playerdata::uuid_ints(7));
             game.server.lan_acting_uuid = Some(7);
@@ -114,8 +118,7 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
             );
             assert_eq!(host_stat(game), stat + 8);
 
-            // The listener on a partial pickup kills the item, lent back to the level while it
-            // hears: it stays gone, and the pickup counts 8.
+            // The listener on a partial pickup discards the item after five were inserted.
             let stat = host_stat(game);
             let killed = Case {
                 kill: true,
@@ -125,7 +128,7 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
                 host_case(game, &probe, &killed),
                 (vec![(7, 8, Some(3))], None, 64)
             );
-            assert_eq!(host_stat(game), stat + 8);
+            assert_eq!(host_stat(game), stat + 5);
 
             // Refused by `item_picked_up`: nothing is told.
             let refused = Case {

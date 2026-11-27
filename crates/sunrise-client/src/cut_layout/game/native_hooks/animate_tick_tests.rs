@@ -1,7 +1,4 @@
-//! `animate_tick`: a pick of `ClientLevel.animateTick`'s sampling whose block has a part
-//! answering it calls that part inside the pick (after the block's own effects, before its
-//! fluid's, the next pick and the rain), with the level's random itself: the part's draws and
-//! `add_particle`'s limiter roll move one stream in call order.
+//! ClientLevel.animateTick lends the level random to each block part before that pick's fluid runs.
 use mod_api::{
     AnimateTickEvent, BlockPart, BlockPos, ClientHost, Hooks, ModEntry, ParticleOptions, Registrar,
     RegistrationContext,

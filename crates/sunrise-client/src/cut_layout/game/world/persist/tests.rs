@@ -419,7 +419,7 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
         }
     }
 
-    super::super::native_entity_refs::tests::with_game(|game| check(game, None));
+    super::super::native_entity_refs::tests::with_resident_game(|game| check(game, None));
     let observed = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![mod_api::ModEntry::new(
         "observe",
@@ -427,7 +427,9 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        super::super::native_entity_refs::tests::with_game(|game| check(game, Some(&observed)));
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
+            check(game, Some(&observed))
+        });
     });
 }
 

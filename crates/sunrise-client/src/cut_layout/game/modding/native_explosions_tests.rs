@@ -976,26 +976,50 @@ fn a_non_finite_radius_is_refused_and_one_of_zero_finds_no_blocks() {
     });
 }
 
-/// A still zombie and a registered player on either side of a [`wind_blast`].
-fn targets(game: &mut sunrise_gameplay::game::ServerGame<'_>, flying: bool) {
+/// Runs with a still zombie and a placed server player on either side of a [`wind_blast`].
+fn heard_with_targets(
+    flying: bool,
+    test: impl Fn(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Mutex<Heard>>)
+    + Send
+    + Sync
+    + 'static,
+) {
     use sunrise_command::args::GameMode;
+    use sunrise_gameplay::game::native_guest_turn_tests::{add_fixture_guests, open_fixture_hub};
 
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(5.5, 80.0, 8.5)).unwrap());
-    bind_local_player(game, 11, 123);
-    game.set_mode(if flying {
-        GameMode::Creative
-    } else {
-        GameMode::Survival
+    heard(move |game, events| {
+        const PLAYER: u32 = 12;
+        assert!(game.run_command("difficulty normal"));
+        open_fixture_hub(game);
+        add_fixture_guests(game);
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(PLAYER, |guest| {
+                // Keep the ordinary blast in range but nonlethal for the player.
+                guest.position = [3.5, 80.0, 8.5];
+                guest.loaded = true;
+                guest.load_timeout = 0;
+                if flying {
+                    let mode = GameMode::Creative.id();
+                    guest.change_game_mode(mode);
+                    guest.abilities.update_for_mode(mode);
+                    guest.abilities.flying = true;
+                }
+            })
+            .unwrap();
+        game.server.next_entity = 100;
+        mob(
+            game,
+            48,
+            "minecraft:zombie",
+            Vec3::new(11.5, 80.0, 8.5),
+            20.0,
+        );
+        game.as_guest(PLAYER, |game| test(game, events)).unwrap();
     });
-    game.player.as_mut().unwrap().flying = flying;
-    game.server.next_entity = 100;
-    mob(
-        game,
-        48,
-        "minecraft:zombie",
-        Vec3::new(11.5, 80.0, 8.5),
-        20.0,
-    );
 }
 
 /// A wind charge of `kind` above the blast, as its source.
@@ -1041,8 +1065,7 @@ fn pushes(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (Vec3, Vec3) {
 #[ignore = "daily"]
 fn a_wind_charge_source_damages_neither_a_mob_nor_a_player() {
     for kind in [ProjectileKind::WindCharge, ProjectileKind::BreezeWindCharge] {
-        heard(move |game, heard| {
-            targets(game, false);
+        heard_with_targets(false, move |game, heard| {
             let source = wind_charge(game, kind.clone());
             explode(game, wind_blast(source, None), Ok(()));
             let player = game.player.as_ref().unwrap().health.health();
@@ -1063,8 +1086,7 @@ fn a_wind_charge_source_pushes_by_1_22_for_a_players_and_1_for_a_breezes() {
         (ProjectileKind::BreezeWindCharge, 1.0),
     ];
     for (kind, multiplier) in cases {
-        heard(move |game, _| {
-            targets(game, false);
+        heard_with_targets(false, move |game, _| {
             explode(game, wind_blast(None, unhurt()), Ok(()));
             let plain = pushes(game);
             let source = wind_charge(game, kind.clone());
@@ -1087,8 +1109,7 @@ fn a_wind_charge_source_pushes_by_1_22_for_a_players_and_1_for_a_breezes() {
 #[ignore = "daily"]
 fn a_flying_player_is_not_moved_by_a_wind_charge_source() {
     for kind in [ProjectileKind::WindCharge, ProjectileKind::BreezeWindCharge] {
-        heard(move |game, _| {
-            targets(game, true);
+        heard_with_targets(true, move |game, _| {
             let source = wind_charge(game, kind.clone());
             explode(game, wind_blast(source, None), Ok(()));
             let (zombie, player) = pushes(game);
@@ -1105,20 +1126,23 @@ fn a_flying_player_is_not_moved_by_a_wind_charge_source() {
 #[test]
 #[ignore = "daily"]
 fn a_passed_calculator_replaces_a_wind_charges_entity_rules() {
-    heard(move |game, _| {
-        targets(game, false);
+    heard_with_targets(false, |game, _| {
         explode(game, wind_blast(None, unhurt()), Ok(()));
-        let (plain, _) = pushes(game);
+        let (plain_zombie, plain_player) = pushes(game);
+        assert!(plain_zombie.x > 0.0, "{plain_zombie:?}");
+        assert!(plain_player.x < 0.0, "{plain_player:?}");
+        assert_eq!(game.mobs[0].health, 20.0);
+        assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
         let source = wind_charge(game, ProjectileKind::WindCharge);
         let calculator = Some(ExplosionCalculator::default());
         explode(game, wind_blast(source, calculator), Ok(()));
-        // The calculator's rules: both are damaged, and pushed by its 1, not
-        // the charge's 1.22.
-        let player = game.player.as_ref().unwrap().health.health();
+        // The explicit calculator damages both targets and uses the ordinary push multiplier.
+        let player_health = game.player.as_ref().unwrap().health.health();
         assert!(game.mobs[0].health < 20.0);
-        assert!(player < 20.0, "{player}");
-        let (zombie, _) = pushes(game);
-        assert_eq!(zombie, plain);
+        assert!(player_health < 20.0, "{player_health}");
+        let (zombie, player) = pushes(game);
+        assert_eq!(zombie, plain_zombie, "zombie knockback");
+        assert_eq!(player, plain_player, "player knockback");
     });
 }
 

@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(feature = "client")]
+use crate::game::client_side::render_tick::tick_client_weather_effects;
 pub(in crate::game::client_side) use sunrise_gameplay_common::game::remote::client_level_tick::advance_clock;
 
 /// Per-level client work bracketed by the shared LevelTickEvent hooks.
@@ -6,7 +8,14 @@ pub(in crate::game::client_side) use sunrise_gameplay_common::game::remote::clie
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     pub fn tick_remote_level(&mut self) -> Result<()> {
-        self.tick_remote_level_with(Self::tick_remote_level_body)
+        self.tick_remote_level_with(Self::tick_remote_level_body)?;
+        if self.common.clock.runs_normally()
+            && self.client.remote.as_ref().is_some_and(Remote::has_level)
+        {
+            self.tick_particle_sources();
+            self.tick_particle_engine();
+        }
+        Ok(())
     }
     pub(in crate::game::client_side) fn tick_remote_level_body(&mut self) -> Result<()> {
         // MultiPlayerGameMode.tick, first in Minecraft.tick, before the GUI and its screens tick:
@@ -56,10 +65,6 @@ impl crate::game::ClientGame<'_> {
         if !hold {
             self.tick_item_activation();
         }
-        if running {
-            self.common.world.game_time += 1;
-            self.remote_clock_tick();
-        }
         // Weather levels drift toward their targets between server updates.
         let w = &mut self.common.world.weather;
         w.rain_level.0 = w.rain_level.1;
@@ -71,7 +76,16 @@ impl crate::game::ClientGame<'_> {
         // Window callbacks only queue clicks, so an interaction cannot leak
         // between CLIENT_TICK_END and a later pong.
         self.remote_handle_input();
-        self.tick_remote_player(running, hold)
+        self.tick_remote_player(running, hold)?;
+        // ClientLevel.tick advances time and sweeps only after input, entity ticks and player sync.
+        if running && self.client.remote.as_ref().is_some_and(Remote::has_level) {
+            self.common.world.game_time += 1;
+            self.remote_clock_tick();
+            tick_client_weather_effects(self);
+            self.expire_client_cracks();
+        }
+        self.tick_end_flash();
+        Ok(())
     }
     pub fn tick_remote_level_with(
         &mut self,

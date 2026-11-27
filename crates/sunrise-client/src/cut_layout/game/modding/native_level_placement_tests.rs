@@ -548,6 +548,7 @@ fn a_state_is_fitted_to_its_neighbours_without_a_write() {
 fn a_break_effect_is_played_for_a_state() {
     with_game(|game| {
         loaded(game);
+        game.server.audio_capture_active = true;
         let level = game.level(game.dim.id()).unwrap();
         let stone = state(game, "minecraft:stone");
         game.server.lan_events.clear();

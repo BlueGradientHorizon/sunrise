@@ -1028,6 +1028,18 @@ impl World {
         (0..3).all(|axis| (min[axis]..max[axis]).contains(&pos[axis]))
             && self.shape.contains_y(pos[1])
     }
+    /// Logical container capacity, including empty slots omitted by sparse mod storage.
+    pub fn container_slot_count(&self, key: (i32, i32, i32)) -> Option<usize> {
+        let entity = self.block_entities.get(&key)?;
+        Some(match entity {
+            crate::containers::BlockEntity::Mod(_) => self
+                .block_entities
+                .mod_container(self.block(key.0, key.1, key.2).0)
+                .map_or(0, |container| container.slots),
+            _ => entity.slots().len(),
+        })
+    }
+
     /// Persisted container capacity override; absence preserves vanilla capacity.
     pub fn container_stack_limit(&self, key: (i32, i32, i32)) -> Option<u32> {
         self.chunks

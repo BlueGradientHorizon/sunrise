@@ -453,6 +453,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn mixed_passengers_follow_boarding_not_connection_order() {
         with_gate(|game, _, heard| {
+            prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
             let kind = game
                 .res
                 .mob_types()

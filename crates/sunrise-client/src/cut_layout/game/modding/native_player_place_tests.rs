@@ -117,12 +117,9 @@ fn a_plain_write_before_placement_preserves_the_staged_chest_transfer() {
                     level.set_block(game, DEST, north, BlockUpdateFlags::NONE),
                     Ok(true)
                 );
-                assert!(
-                    game.block_entity(level, DEST).is_none(),
-                    "the plain write does not stage a row"
-                );
-                player.place_block(game, level, DEST, south, BlockFace::Up, false)?;
                 let staged = game.block_entity(level, DEST).unwrap();
+                player.place_block(game, level, DEST, south, BlockFace::Up, false)?;
+                assert_eq!(game.block_entity(level, DEST), Some(staged));
                 let to = level.capability(game, &ITEMS, DEST, None).unwrap();
                 assert_eq!(from.extract_at(game, tx, 0, &resource, 12), Ok(12));
                 assert_eq!(to.insert_at(game, tx, 0, &resource, 12), Ok(12));
@@ -152,9 +149,9 @@ fn a_plain_write_before_placement_preserves_the_staged_chest_transfer() {
 #[ignore = "daily"]
 fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
     use mod_api::{
-        BlockEntityRef, BlockPart, BlockState, BlockUpdateFlags, BlocksEvent, EntityPlaceEvent,
-        Flow, Hooks, ITEMS, ItemResource, LevelTicksHost, LivingRef, ModEntry, Mods, Placement,
-        Registrar, RegistrationContext, ServerHost, UpdateShapeEvent,
+        BlockEdit, BlockEntityRef, BlockPart, BlockRun, BlockState, BlockUpdateFlags, BlocksEvent,
+        EntityPlaceEvent, Flow, Hooks, ITEMS, ItemResource, LevelTicksHost, LivingRef, ModEntry,
+        Mods, Placement, Registrar, RegistrationContext, ServerHost, UpdateShapeEvent,
     };
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
@@ -179,6 +176,11 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
         &[
             "chest-accept",
             "chest-veto",
+            "chest-compatible-accept",
+            "chest-compatible-veto",
+            "chest-compatible-bulk-accept",
+            "chest-compatible-bulk-veto",
+            "chest-compatible-retire",
             "chest-replace",
             "chest-round-trip",
             "chest-skip-removal",
@@ -360,8 +362,24 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
             let chest = api_state(game, "minecraft:chest");
             let barrel = api_state(game, "minecraft:barrel");
             let is_bed = case.starts_with("bed-");
+            let compatible = case.starts_with("chest-compatible-");
+            let facing_chest = |direction| {
+                let state = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:chest")
+                    .unwrap();
+                game.with_props(state, &[("facing", direction)])
+                    .unwrap()
+                    .try_into_api()
+                    .unwrap()
+            };
+            let north = facing_chest("north");
+            let south = facing_chest("south");
             let (before, chosen) = match case.as_str() {
                 _ if is_bed => (chest, foot),
+                _ if compatible => (air, south),
                 "chest-replace" => (barrel, chest),
                 "chest-round-trip" => (chest, chest),
                 "chest-skip-removal" => (chest, barrel),
@@ -427,6 +445,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                 );
             }
             game.world.block_log = Some(Vec::new());
+            game.world.bulk_log.clear();
             let place = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
                 game.as_guest(12, |game| {
                     let face = if case == "bed-head" {
@@ -439,6 +458,80 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                 .unwrap()
             };
             let result = match case.as_str() {
+                _ if compatible => game.storage_transaction(|game, _| {
+                    if case.starts_with("chest-compatible-bulk-") {
+                        let [x, y, z] = AT;
+                        let edit = BlockEdit {
+                            palette: vec![north],
+                            filters: vec![],
+                            runs: vec![BlockRun {
+                                x,
+                                y,
+                                z,
+                                block: 0,
+                                height: 1,
+                                surface: None,
+                                only: None,
+                            }],
+                        };
+                        assert_eq!(level.edit_blocks(game, &edit), Ok(1));
+                    } else {
+                        assert_eq!(
+                            level.set_block(game, AT, north, BlockUpdateFlags::NONE),
+                            Ok(true)
+                        );
+                    }
+                    let original = game.block_entity(level, AT).unwrap();
+                    let result = place(game);
+                    assert_eq!(*entity.lock().unwrap(), Some(original));
+                    assert_eq!(game.block_entity(level, AT), Some(original));
+                    assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                    assert!(game.world.bulk_log.is_empty());
+                    result?;
+                    if case == "chest-compatible-retire" {
+                        use sunrise_level::{
+                            chunk::PendingContainerLoot, world::BlockEntityExtras,
+                        };
+                        let pos = (AT[0], AT[1], AT[2]);
+                        assert_eq!(
+                            game.world.block_names.get(&pos),
+                            Some(&Tag::String(NAME.into()))
+                        );
+                        let extras = BlockEntityExtras {
+                            source: Some(Tag::Compound(Default::default())),
+                            pending_loot: Some(PendingContainerLoot {
+                                table: Tag::String("minecraft:empty".into()),
+                                seed: None,
+                            }),
+                        };
+                        game.world.set_block_entity_extras(pos, extras.clone());
+                        let replace = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
+                            assert_eq!(
+                                level.set_block(game, AT, barrel, BlockUpdateFlags::NONE),
+                                Ok(true)
+                            );
+                            let replacement = game.block_entity(level, AT).unwrap();
+                            assert_ne!(replacement, original);
+                            assert_eq!(
+                                game.world.block_entity_extras(pos),
+                                BlockEntityExtras::default()
+                            );
+                            assert!(!game.world.block_names.contains_key(&pos));
+                        };
+                        game.storage_scope(|game, _| {
+                            replace(game);
+                            ((), false)
+                        });
+                        assert_eq!(game.block_entity(level, AT), Some(original));
+                        assert_eq!(
+                            game.world.block_names.get(&pos),
+                            Some(&Tag::String(NAME.into()))
+                        );
+                        assert_eq!(game.world.block_entity_extras(pos), extras);
+                        replace(game);
+                    }
+                    Ok(())
+                }),
                 "chest-round-trip" | "chest-skip-removal" => {
                     game.world
                         .block_entities
@@ -614,16 +707,48 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                         count
                     );
                 }
-                "chest-accept" | "chest-replace" => {
+                "chest-compatible-retire" => {
                     assert_eq!(result, Ok(()));
-                    assert_eq!(level.block_state(game, AT), Some(chest));
+                    assert_eq!(level.block_state(game, AT), Some(barrel));
+                    let replacement = game.block_entity(level, AT).unwrap();
+                    assert_ne!(Some(replacement), *entity.lock().unwrap());
+                    assert!(!game.world.block_names.contains_key(&(2, 70, 2)));
+                    assert_eq!(
+                        game.world.block_entity_extras((2, 70, 2)),
+                        Default::default()
+                    );
+                }
+                "chest-accept"
+                | "chest-replace"
+                | "chest-compatible-accept"
+                | "chest-compatible-bulk-accept" => {
+                    assert_eq!(result, Ok(()));
+                    assert_eq!(level.block_state(game, AT), Some(chosen));
                     assert_eq!(game.block_entity(level, AT), *entity.lock().unwrap());
                     assert_eq!(
                         game.world.block_names.get(&(2, 70, 2)),
                         Some(&Tag::String(NAME.into()))
                     );
+                    if compatible {
+                        assert_eq!(
+                            game.world.bulk_log.contains(&(0, 0)),
+                            case == "chest-compatible-bulk-accept"
+                        );
+                        let placement_updates = usize::from(game.test_block_ticking(0, 0));
+                        let at = (AT[0], AT[1], AT[2]);
+                        let updates = game.world.block_log.as_ref().unwrap();
+                        assert_eq!(
+                            updates.iter().filter(|&&pos| pos == at).count(),
+                            placement_updates + 1,
+                            "the accepted data update is sent in addition to any placement update"
+                        );
+                    }
                 }
-                "chest-veto" | "bed-veto" | "bed-stale" => {
+                "chest-veto"
+                | "chest-compatible-veto"
+                | "chest-compatible-bulk-veto"
+                | "bed-veto"
+                | "bed-stale" => {
                     assert_eq!(
                         result,
                         if case == "bed-stale" {
@@ -643,6 +768,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     assert_eq!(level.block_state(game, WRITE), Some(air));
                     assert_eq!(level.block_state(game, HEAD), Some(air));
                     assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                    assert!(game.world.bulk_log.is_empty());
                 }
                 _ => unreachable!(),
             }

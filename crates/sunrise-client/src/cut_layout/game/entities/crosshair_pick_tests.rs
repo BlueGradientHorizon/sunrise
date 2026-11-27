@@ -701,7 +701,7 @@ pub(crate) fn run_nested_ride_root_vehicle_exclusion_matches_26_3_witness() {
 /// Review parity: dragon wrapping IDs & tracking lifetime, spectator players, shulker bullet radius,
 /// leash knots, section order, section moves, displaced camera, AttackRange, and strict reaches.
 #[test]
-#[ignore = "daily"]
+#[ignore = "requires SUNRISE_CROSSHAIR_PICK_WITNESS"]
 fn review_parity_cases_match_26_3_witness() {
     run_review_parity_cases_match_26_3_witness();
 }

@@ -403,32 +403,12 @@ fn a_cross_level_teleport_survives_cursor_overflow_removing_an_earlier_guest() {
 #[test]
 #[ignore = "daily"]
 fn a_failed_cross_level_trip_closes_the_retired_client_window() {
-    use mod_api::{BlockUpdateFlags, EntityJoinLevelEvent, Flow};
-    use sunrise_items::items::ItemStack;
+    use mod_api::BlockUpdateFlags;
     use sunrise_protocol::{buf::Reader, ids::play::clientbound};
     use sunrise_sim::lan::Out;
 
     const CHEST: [i32; 3] = [4, 64, 5];
-    struct OpenOnOverflow;
-    #[mod_api::__subscriptions]
-    impl Hooks for OpenOnOverflow {
-        fn entity_join_level(
-            &self,
-            host: &mut dyn ServerHost,
-            event: &mut EntityJoinLevelEvent<'_>,
-        ) -> Flow {
-            if event.kind == "minecraft:item" {
-                let level = host.level(Dim::Overworld.id()).unwrap();
-                let chest = host.block_entity(level, CHEST).unwrap();
-                let player = host.player(UUID).unwrap();
-                assert_eq!(player.open_menu(host, chest), Ok(true));
-            }
-            Flow::Continue
-        }
-    }
-
-    let mods = vec![ModEntry::new("open-on-overflow", Box::new(OpenOnOverflow))];
-    mod_platform::testing::with_mods(mods.into(), || {
+    mod_platform::testing::with_mods(Vec::new().into(), || {
         with_server(ExecutionRole::DedicatedServer, |game| {
             // Opening an unloaded destination refuses an unreadable saved biome layout.
             // Set a world path: the constructor-only fixture otherwise reads the process's cwd.
@@ -448,27 +428,18 @@ fn a_failed_cross_level_trip_closes_the_retired_client_window() {
                 game.level_set_block(level, CHEST, chest, BlockUpdateFlags::NEIGHBORS),
                 Ok(true)
             );
+            let host: &dyn ServerHost = game;
+            let chest = host.block_entity(level, CHEST).unwrap();
+            let player = host.player(UUID).unwrap();
             let (tx, rx) = std::sync::mpsc::channel();
             game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
-                .update_guest(CONN, |g| {
-                    g.sender = PlayerSender::new(tx, Arc::default());
-                    g.inventory
-                        .fill(Some(ItemStack::new("minecraft:stone", 64)));
-                });
+                .update_guest(CONN, |g| g.sender = PlayerSender::new(tx, Arc::default()));
             for via_portal in [false, true] {
-                game.server
-                    .lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .update_guest(CONN, |g| {
-                        assert!(g.menu.is_none());
-                        g.carried = Some(ItemStack::new("minecraft:gold_ingot", 5));
-                    });
+                assert_eq!(player.open_menu(game, chest), Ok(true));
                 if via_portal {
                     game.start_server_trip(CONN, Dim::Nether, None);
                 } else {

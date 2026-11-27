@@ -1363,6 +1363,7 @@ pub mod tests {
         use std::sync::Arc;
         use sunrise_gameplay_common::game::Dim;
         use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+        use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
         game.server.world_root = game.server.save.0.root.clone();
         game.enter_level(Dim::Nether).unwrap();
         game.world
@@ -1374,6 +1375,7 @@ pub mod tests {
         game.build_registries();
         assert!(game.as_console(|game| game.run_command("forceload add 0 0")));
         game.enter_level(Dim::Overworld).unwrap();
+        fixture_resident_column(&mut game.world, (0, 0));
         let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
         let zombie = summon_mob(game, "minecraft:zombie", ZOMBIE_NBT);
         let hit = sunrise_sim::mobs::Damage::mob(zombie, [0.5, 70.0, 0.5]);

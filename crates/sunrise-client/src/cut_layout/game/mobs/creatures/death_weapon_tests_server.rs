@@ -106,7 +106,7 @@ pub(crate) fn weapon_case(item: &str, enchantment: &str, level: u32, projectile:
     if isolated() {
         return;
     }
-    sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+    sunrise_gameplay::game::native_entity_refs::tests::with_resident_game(|game| {
         let scratch = tempfile::tempdir().unwrap();
         game.server.world_root = scratch.path().to_path_buf();
         game.server.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(

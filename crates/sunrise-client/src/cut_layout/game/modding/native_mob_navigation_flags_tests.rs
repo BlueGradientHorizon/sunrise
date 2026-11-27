@@ -68,7 +68,7 @@ fn navigation_flags_literal_values_and_current_path_unchanged() {
 #[test]
 #[ignore = "daily"]
 fn navigation_flags_refuse_stale_handle() {
-    with_game(|game| {
+    with_resident_game(|game| {
         let mob = zombie(game);
         let mob = MobRef::new(EntityRef::new(
             WorldEpoch::new(mob.entity().epoch().get() + 1),

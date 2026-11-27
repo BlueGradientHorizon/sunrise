@@ -4,7 +4,7 @@ use mod_api::{
     ExperienceOrbCanMergeEvent, ExperienceOrbMergeEvent, ExperienceOrbRef, Flow, Hooks, ServerHost,
 };
 use sunrise_core::geometry::Vec3;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::{with_game, with_resident_game};
 use sunrise_sim::entities::ExperienceOrb;
 use sunrise_sim::entity_nbt::{orb_to_nbt, orbs_from_nbt};
 use {
@@ -169,7 +169,7 @@ fn mods(hooks: impl Hooks + 'static) -> mod_api::Mods {
 fn a_resident_merge_of_three_times_two_and_five_saves_and_pays_eleven() {
     let mut paid = 0;
     mod_platform::testing::with_mods(mods(Normalize), || {
-        with_game(|game| {
+        with_resident_game(|game| {
             open(game);
             game.orbs.push(orb(1, 0.5, 3, 2));
             game.orbs.push(orb(41, 0.7, 5, 1));
@@ -192,7 +192,7 @@ fn a_resident_merge_of_three_times_two_and_five_saves_and_pays_eleven() {
 fn a_spawning_merge_of_three_times_two_and_five_saves_and_pays_eleven() {
     let mut paid = 0;
     mod_platform::testing::with_mods(mods(Normalize), || {
-        with_game(|game| {
+        with_resident_game(|game| {
             open(game);
             game.orbs.push(orb(41, 0.5, 3, 2));
             game.award_orb([0.5, 70.0, 0.5], 5, 1);
@@ -212,7 +212,7 @@ fn a_spawning_merge_of_three_times_two_and_five_saves_and_pays_eleven() {
 #[ignore = "daily"]
 fn a_canceled_merge_keeps_both_orbs_as_they_were() {
     mod_platform::testing::with_mods(mods(Cancel), || {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.orbs.push(orb(1, 0.5, 3, 2));
             game.orbs.push(orb(41, 0.7, 5, 1));
@@ -231,7 +231,7 @@ fn a_canceled_merge_keeps_both_orbs_as_they_were() {
 #[ignore = "daily"]
 fn a_canceled_spawning_merge_puts_the_destination_back_and_spawns_its_own_orb() {
     mod_platform::testing::with_mods(mods(Cancel), || {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.orbs.push(orb(41, 0.5, 3, 2));
             game.award_orb([0.5, 70.0, 0.5], 5, 1);
@@ -265,7 +265,7 @@ fn a_spawning_merge_tells_the_hook_the_signed_destination_value() {
 #[ignore = "daily"]
 fn a_changed_source_refuses_the_merge_and_puts_the_written_orb_back() {
     mod_platform::testing::with_mods(mods(Stale), || {
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.orbs.push(orb(1, 0.5, 3, 2));
             game.orbs.push(orb(41, 0.7, 5, 1));

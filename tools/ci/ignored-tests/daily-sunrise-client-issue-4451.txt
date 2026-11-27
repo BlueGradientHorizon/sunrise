@@ -200,7 +200,7 @@ sunrise-client cut_layout::game::server_side::chiseled_bookshelf::tests::an_empt
 sunrise-client cut_layout::game::client_side::client_ambient::effect_particle_tests::an_oozing_player_swirls_slime_ball_crumbs lib daily resources
 sunrise-client-gameplay game::client_side::client_ambient::sprint_handle_tests::client_entity_sprint_particles_use_the_local_block_and_reject_stale_handles lib daily resources
 sunrise-client cut_layout::game::client_side::client_attack_targets::tests::client_attack_batch_keeps_order_deduplication_and_server_constraints lib daily resources
-sunrise-client cut_layout::game::client_side::client_cracks::tests::client_cracks_clear_expire_and_do_not_cross_worlds lib daily resources
+sunrise-client cut_layout::game::client_side::client_cracks::tests::client_cracks_clear_on_world_reset_and_age_only_in_a_level_tick lib daily resources
 sunrise-client cut_layout::game::client_side::client_reload::tests::an_arm_pose_answer_replaces_the_pose_the_item_gives lib daily resources
 sunrise-client cut_layout::game::client_side::client_reload::tests::client_completion_reads_published_resources_without_world_access lib daily resources
 sunrise-client cut_layout::game::client_side::client_reload::tests::client_reload_reads_real_assets_with_pack_overrides lib daily resources

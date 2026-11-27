@@ -3,7 +3,8 @@
 #[cfg(test)]
 pub(crate) mod tests {
     use mod_api::{
-        BlockPart, BlockPos, BreakProgressPositionsEvent, ClientHost, Hooks, ModEntry, Registrar,
+        AnimateTickEvent, BlockPart, BlockPos, BreakProgressPositionsEvent, ClientHost, Flow,
+        Hooks, InteractionKey, InteractionKeyMappingTriggeredEvent, ModEntry, Registrar,
         RegistrationContext,
     };
     use std::sync::{
@@ -12,6 +13,8 @@ pub(crate) mod tests {
     };
     use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_level::chunk::Chunk;
+
+    const PROGRESS_POS: [i32; 3] = [4, 64, 4];
     use {
         crate::game::server_side::native_entity_refs::tests::with_client_game,
         sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
@@ -22,9 +25,20 @@ pub(crate) mod tests {
         calls: Arc<Mutex<Vec<u8>>>,
         invalid: Arc<AtomicBool>,
         reenter: bool,
+        refresh_on_animate: Arc<AtomicBool>,
     }
     #[mod_api::sunrise_part]
     impl BlockPart for ExtraPositions {
+        fn animate_tick(&self, host: &mut dyn ClientHost, event: &mut AnimateTickEvent<'_>) {
+            if self.refresh_on_animate.swap(false, Ordering::Relaxed) {
+                assert!(
+                    event
+                        .level
+                        .set_client_break_progress(host, 10, PROGRESS_POS, 5)
+                );
+            }
+        }
+
         fn break_progress_positions(
             &self,
             host: &mut dyn ClientHost,
@@ -76,6 +90,7 @@ pub(crate) mod tests {
         calls: Arc<Mutex<Vec<u8>>>,
         invalid: Arc<AtomicBool>,
         reenter: bool,
+        refresh_on_animate: Arc<AtomicBool>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for Register {
@@ -87,8 +102,23 @@ pub(crate) mod tests {
                     calls: self.calls.clone(),
                     invalid: self.invalid.clone(),
                     reenter: self.reenter,
+                    refresh_on_animate: self.refresh_on_animate.clone(),
                 },
             );
+        }
+
+        fn interaction_key_mapping_triggered(
+            &self,
+            host: &mut dyn ClientHost,
+            event: &mut InteractionKeyMappingTriggeredEvent,
+        ) -> Flow {
+            if event.key != InteractionKey::Attack {
+                return Flow::Continue;
+            }
+            let level = host.level("minecraft:overworld").unwrap();
+            assert!(level.set_client_break_progress(host, 10, PROGRESS_POS, 5));
+            event.swing_hand = false;
+            Flow::Cancel
         }
     }
 
@@ -97,12 +127,14 @@ pub(crate) mod tests {
     fn crack_positions_are_scoped_stored_bounded_and_cleared_for_both_sources() {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let invalid = Arc::new(AtomicBool::new(false));
+        let refresh_on_animate = Arc::new(AtomicBool::new(false));
         let mods = vec![ModEntry::new(
             "cracks",
             Box::new(Register {
                 calls: calls.clone(),
                 invalid: invalid.clone(),
                 reenter: false,
+                refresh_on_animate: refresh_on_animate.clone(),
             }),
         )]
         .into();
@@ -124,7 +156,7 @@ pub(crate) mod tests {
                     .registry
                     .default_state("minecraft:dirt")
                     .unwrap();
-                let pos = [4, 64, 4];
+                let pos = PROGRESS_POS;
                 let four = [[4, 64, 4], [4, 64, 5], [5, 64, 4], [5, 64, 5]];
                 for p in four {
                     game.world.set(p[0], p[1], p[2], stone).unwrap();
@@ -202,6 +234,7 @@ pub(crate) mod tests {
                     game.world.set(far[0], far[1], far[2], stone).unwrap();
                 }
                 invalid.store(true, Ordering::Relaxed);
+                game.world.game_time = 0;
                 game.destroy_block_progress(10, pos, 5);
                 let drawn = game.crack_stages();
                 assert_eq!(drawn.len(), 65, "base plus at most 64 display extras");
@@ -244,16 +277,67 @@ pub(crate) mod tests {
                 game.world.game_time += 100;
                 let calls_before = calls.lock().unwrap().len();
                 game.destroy_block_progress(10, pos, 5);
+                game.destroy_block_progress(11, [9, 64, 4], 1);
                 assert_eq!(calls.lock().unwrap().len(), calls_before);
-                game.world.game_time += 400;
-                game.expire_client_cracks();
-                assert_eq!(game.client.destroying.len(), 1, "400 ticks is still live");
-                game.world.game_time += 1;
-                game.expire_client_cracks();
+
+                game.world.game_time = 499;
+                game.tick_remote_level().unwrap();
+                assert_eq!(game.world.game_time, 500);
+                assert_eq!(game.client.destroying.len(), 2, "400 ticks is still live");
+                game.tick_remote_level().unwrap();
+                assert_eq!(game.world.game_time, 501);
+                assert_eq!(game.crack_stage_map().get(&pos), Some(&5));
+                assert!(game.cracks(camera).iter().any(|(p, _)| *p == pos));
+
+                game.client.title.0 = None;
+                game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
+                game.client.remote.as_mut().unwrap().loaded_sent = true;
+                game.player = Some(
+                    sunrise_sim::motion::PlayerMotion::new(
+                        game.motion,
+                        sunrise_core::geometry::Vec3::new(4.5, 65.0, 4.5),
+                    )
+                    .unwrap(),
+                );
+                game.set_local_mode(sunrise_command::args::GameMode::Survival);
+                game.world.game_time = 519;
+                game.vanilla_key_mapping("key.attack")
+                    .unwrap()
+                    .click(game)
+                    .unwrap();
+                game.tick_remote_level().unwrap();
+                assert_eq!(game.world.game_time, 520);
+                assert!(!game.client.destroying.contains_key(&11));
+                assert_eq!(game.client.destroying[&10].updated_at, 519);
+                assert_eq!(game.crack_stage_map().get(&pos), Some(&5));
+                assert_eq!(calls.lock().unwrap().len(), calls_before);
+
+                game.world.game_time = 919;
+                game.tick_remote_level().unwrap();
                 assert!(
                     game.client.destroying.is_empty(),
                     "expiry drops the stored extras too"
                 );
+                game.client.remote.as_mut().unwrap().loaded_sent = false;
+                game.player.as_mut().unwrap().position =
+                    sunrise_core::geometry::Vec3::new(4.5, 65.0, 4.5);
+                for x in 0..=8 {
+                    for z in 0..=8 {
+                        for y in 64..=70 {
+                            game.world.set(x, y, z, stone).unwrap();
+                        }
+                    }
+                }
+                game.client.particles.0.seed_randoms(0, 0, 0);
+                game.world.game_time = 1000;
+                game.destroy_block_progress(10, pos, 5);
+                let calls_before = calls.lock().unwrap().len();
+                refresh_on_animate.store(true, Ordering::Relaxed);
+                game.world.game_time = 1419;
+                game.tick_remote_level().unwrap();
+                assert!(!refresh_on_animate.load(Ordering::Relaxed));
+                assert_eq!(game.client.destroying[&10].updated_at, 1420);
+                assert_eq!(calls.lock().unwrap().len(), calls_before + 1);
                 game.destroy_block_progress(10, pos, 0);
                 game.set_client_mining(mining(0.25));
                 game.reset_client_world(0);
@@ -275,6 +359,7 @@ pub(crate) mod tests {
                 calls: calls.clone(),
                 invalid: Arc::new(AtomicBool::new(false)),
                 reenter: true,
+                refresh_on_animate: Arc::new(AtomicBool::new(false)),
             }),
         )]
         .into();
@@ -303,7 +388,7 @@ pub(crate) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn client_cracks_clear_expire_and_do_not_cross_worlds() {
+    fn client_cracks_clear_on_world_reset_and_age_only_in_a_level_tick() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.destroy_block_progress(-10, [1, 64, 1], 4);
             game.destroy_block_progress(-11, [2, 64, 1], 9);
@@ -311,14 +396,13 @@ pub(crate) mod tests {
             game.destroy_block_progress(-10, [1, 64, 1], -1);
             assert!(!game.client.destroying.contains_key(&-10));
             assert!(game.client.destroying.contains_key(&-11));
-            game.world.game_time += 401;
+            game.world.game_time += 420;
             game.tick().unwrap();
             assert_eq!(
                 game.ticks, 0,
                 "a client without a remote must not tick a server level"
             );
-            assert!(game.client.destroying.is_empty());
-            game.destroy_block_progress(-11, [2, 64, 1], 3);
+            assert!(game.client.destroying.contains_key(&-11));
             game.reset_client_world(0);
             assert!(game.client.destroying.is_empty());
         });

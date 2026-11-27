@@ -9,12 +9,12 @@ use sunrise_items::equipment::{BODY, CHEST, SADDLE};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ArmorStand;
 
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_entity_refs::tests::with_resident_game;
 
 #[test]
 #[ignore = "daily"]
 fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
-    with_game(|game| {
+    with_resident_game(|game| {
         game.build_registries();
         game.ui.registries.permission = 4;
         game.armor_stands.push(ArmorStand::new(16, Vec3::ZERO, 0.0));

@@ -4,7 +4,7 @@
 mod tests {
     use mod_api::client::first_person::Hand;
     use sunrise_core::geometry::Vec3;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_resident_game;
     use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_living_blocking::NativeLivingBlockingGameExt1;
@@ -18,7 +18,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_raised_shield_blocks_after_its_delay_for_a_player_and_a_mob() {
         use sunrise_items::equipment::OFFHAND;
-        with_game(|game| {
+        with_resident_game(|game| {
             sunrise_gameplay::game::native_entity_refs::tests::resolve_parts(game).unwrap();
             game.player =
                 Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());

@@ -141,10 +141,15 @@ fn entity_selection_has_no_additional_count_cap() {
                         let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
                         // Reversed insertion order rules out accidental list/ID ordering.
                         for id in (1000..1300).rev() {
+                            let x = id - 1000 + 4;
+                            sunrise_gameplay_common::game::test_fixtures::fixture_resident_column(
+                                &mut game.world,
+                                ((x >> 4) as i32, 0),
+                            );
                             game.mobs.push(Mob::new(
                                 id,
                                 cow.clone(),
-                                Vec3::new(f64::from(id - 1000) + 4.0, 64.0, 5.0),
+                                Vec3::new(f64::from(x), 64.0, 5.0),
                                 0.0,
                             ));
                         }

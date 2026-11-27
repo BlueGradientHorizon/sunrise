@@ -718,7 +718,7 @@ pub(crate) mod hook_mutation_regressions {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+            sunrise_gameplay::game::native_entity_refs::tests::with_resident_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 game.carts
                     .push(Minecart::new(71, CartKind::Rideable, Vec3::ZERO));
@@ -757,7 +757,7 @@ pub(crate) mod hook_mutation_regressions {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
+            sunrise_gameplay::game::native_entity_refs::tests::with_resident_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 game.carts
                     .push(Minecart::new(71, CartKind::Rideable, Vec3::ZERO));

@@ -7,10 +7,9 @@ pub(crate) mod player_leave_tests {
     use crate::game::native_hooks::player_leave::player_leave_tests::Heard;
     use crate::game::native_hooks::player_leave::player_leave_tests::Leave;
     use crate::game::native_hooks::player_leave::player_leave_tests::SAVED;
-    use crate::game::native_hooks::player_leave::player_leave_tests::VALUE;
     use mod_api::ModEntry;
     use std::sync::{Arc, Mutex};
-    use sunrise_mod_runtime::attachments::Holder;
+    use sunrise_core::nbt::Tag;
     use sunrise_sim::lan::{NetEvent, playerdata};
     use {
         sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
@@ -26,7 +25,14 @@ pub(crate) mod player_leave_tests {
         check: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, Vec<Heard>),
     ) {
         let heard = Arc::new(Mutex::new(Vec::new()));
-        let mods = vec![ModEntry::new("leave_test", Box::new(Leave(heard.clone())))].into();
+        let mods = vec![ModEntry::new(
+            "leave_test",
+            Box::new(Leave {
+                heard: heard.clone(),
+                value: Mutex::new(None),
+            }),
+        )]
+        .into();
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
                 game.server.world_root = game.server.save.0.root.clone();
@@ -92,7 +98,15 @@ pub(crate) mod player_leave_tests {
                 let mut saved = guest(12);
                 saved.uuid = 12;
                 assert!(playerdata::load(&mut saved, &game.server.world_root));
-                assert_eq!(VALUE.get(&mut saved.attachments, Holder::Level), Ok(77));
+                let attachments = Tag::Compound(saved.attachments.try_to_nbt().unwrap());
+                assert_eq!(
+                    attachments
+                        .get("leave_test")
+                        .and_then(|mod_data| mod_data.get("value"))
+                        .and_then(|entry| entry.get("value"))
+                        .and_then(|payload| payload.get("n")),
+                    Some(&Tag::Int(77))
+                );
                 if !credits {
                     assert_eq!(saved.health, 7.0);
                 }
