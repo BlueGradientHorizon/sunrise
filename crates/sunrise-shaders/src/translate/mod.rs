@@ -57,8 +57,10 @@ pub struct Interface {
     /// 1 where `shadowtex0`, `shadowtex1`, `shadow` and `watershadow` (x to w) read through a
     /// plain sampler filter linearly, 0 where they take the nearest texel.
     pub uniform_size: u32,
+    /// Translated members are listed in increasing offset order, but unlisted members can
+    /// leave gaps. Each member's own byte range is within `initial_values`.
     pub uniforms: Vec<Uniform>,
-    /// std140 initial contents; runtime values overwrite their members each frame.
+    /// The full std140 block (`uniform_size` bytes); runtime values overwrite their members.
     pub initial_values: Vec<u8>,
     /// Each sampler: texture at `binding`, sampler object at `binding + 1`.
     pub samplers: Vec<Sampler>,
@@ -99,6 +101,9 @@ pub struct ComputeProgram {
     pub notes: Vec<Error>,
     pub work_groups: Option<[u32; 3]>,
     pub work_groups_render: [f32; 2],
+    /// `indirect.<pass>`: the counts come from a storage buffer instead, and `work_groups`
+    /// is `None`.
+    pub indirect: Option<crate::post::Indirect>,
 }
 
 /// The uniforms a gbuffers program reads per draw (5.3's "D"), in a block of their own
@@ -117,6 +122,8 @@ pub struct Uniform {
     /// The type the pack declared (`float`, `ivec2`, `mat4`; `bool` is stored as an `int`).
     pub ty: String,
     pub offset: u32,
+    /// The member's std140 byte size, excluding any alignment gap before the next member.
+    pub size: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -363,10 +370,8 @@ fn translate(
     } else {
         GBUFFERS_MATRICES.to_owned()
     };
-    let (vertex_flat, fragment_flat) = (
-        reachability::prepare(vertex),
-        reachability::prepare(fragment),
-    );
+    let vertex_flat = reachability::prepare(vertex).map_err(|e| vec![e])?;
+    let fragment_flat = reachability::prepare(fragment).map_err(|e| vec![e])?;
     let vertex = vertex_flat.as_ref().unwrap_or(vertex);
     let fragment = fragment_flat.as_ref().unwrap_or(fragment);
     // A `bool` member of a storage buffer travels as a `uint` (`buffer_bools`).
@@ -811,10 +816,10 @@ fn translate(
         (a, b) => return Err(a.err().into_iter().chain(b.err()).flatten().collect()),
     };
     let (initial_values, notes) = defaults::merge([(&v, &vertex), (&f, &fragment)])?;
-    let (uniform_size, offsets) = block_layout(&fragment);
-    let uniforms = offsets
+    let (uniform_size, members) = block_layout(&fragment);
+    let uniforms = members
         .into_iter()
-        .filter_map(|(member, offset)| {
+        .filter_map(|(member, offset, size)| {
             let name = member
                 .strip_prefix("hz_bool_")
                 .unwrap_or(&member)
@@ -824,7 +829,12 @@ fn translate(
             } else {
                 uniforms.get(&name)?.clone()
             };
-            Some(Uniform { name, ty, offset })
+            Some(Uniform {
+                name,
+                ty,
+                offset,
+                size,
+            })
         })
         .collect();
     let outputs = f.outputs.iter().copied().collect();
@@ -988,9 +998,19 @@ fn resources(
 
 /// Translates a compute program (`.csh`).
 pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<Error>> {
+    translate_compute_with(compute, None)
+}
+
+/// [`translate_compute`] for a program dispatched as `indirect` says, when it is `Some`: its
+/// `workGroups` is not what runs, so it is not folded into a dispatch wgpu takes (that would
+/// fix `gl_NumWorkGroups` and `gl_WorkGroupID` to its counts).
+pub(crate) fn translate_compute_with(
+    compute: &Preprocessed,
+    indirect: Option<crate::post::Indirect>,
+) -> Result<ComputeProgram, Vec<Error>> {
     let named = anonymous_structs::name(compute.code()).map(|code| compute.with_code(code));
     let compute = named.as_ref().unwrap_or(compute);
-    let split = atomic_vectors::rewrite(compute);
+    let split = atomic_vectors::rewrite(compute).map_err(|e| vec![e])?;
     let compute = split.as_ref().unwrap_or(compute);
     let (bools, bool_errors) = buffer_bools::rewrite(compute);
     let compute = bools.as_ref().unwrap_or(compute);
@@ -1016,8 +1036,12 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
         .collect();
     let mut images = bind_images([&c, &c], samplers.len());
     // `workGroups` is an ivec3, `workGroupsRender` a vec2 (a third number, the depth of a 2D
-    // render, is taken as 1); anything else is not understood rather than guessed.
+    // render, is taken as 1); anything else is not understood rather than guessed. A shader
+    // read indirectly runs neither, so neither is read or checked.
     let mut sizes = |name: &str, counts: &[usize]| {
+        if indirect.is_some() {
+            return None;
+        }
         let v = constant(&c, name)?;
         if !counts.contains(&v.len()) {
             errors.push(Error::new(
@@ -1096,14 +1120,14 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
         errors.extend(e);
         std::mem::take(&mut errors)
     })?;
-    let (uniform_size, offsets) = block_layout(&module);
+    let (uniform_size, members) = block_layout(&module);
     let (initial_values, notes) = defaults::merge([(&c, &module)])?;
     let mut interface = Interface {
         uniform_size,
         initial_values,
-        uniforms: offsets
+        uniforms: members
             .into_iter()
-            .filter_map(|(member, offset)| {
+            .filter_map(|(member, offset, size)| {
                 let name = member
                     .strip_prefix("hz_bool_")
                     .unwrap_or(&member)
@@ -1113,7 +1137,12 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
                 } else {
                     uniforms.get(&name)?.clone()
                 };
-                Some(Uniform { name, ty, offset })
+                Some(Uniform {
+                    name,
+                    ty,
+                    offset,
+                    size,
+                })
             })
             .collect(),
         samplers,
@@ -1129,6 +1158,7 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
         interface,
         work_groups,
         work_groups_render,
+        indirect,
     })
 }
 
@@ -1462,8 +1492,8 @@ fn compile(
     )
 }
 
-/// The uniform block's size and member offsets, from naga's layout.
-fn block_layout(module: &naga::Module) -> (u32, Vec<(String, u32)>) {
+/// The uniform block's size and its named members' offsets and sizes, from naga's layout.
+fn block_layout(module: &naga::Module) -> (u32, Vec<(String, u32, u32)>) {
     for (_, var) in module.global_variables.iter() {
         let frame = var
             .binding
@@ -1473,14 +1503,18 @@ fn block_layout(module: &naga::Module) -> (u32, Vec<(String, u32)>) {
             continue;
         }
         if let naga::TypeInner::Struct { members, span } = &module.types[var.ty].inner {
-            let offsets = members
+            let members = members
                 .iter()
-                .filter_map(|m| Some((m.name.clone()?, m.offset)))
+                .filter_map(|m| {
+                    let name = m.name.clone()?;
+                    let size = module.types[m.ty].inner.size(module.to_ctx());
+                    Some((name, m.offset, size))
+                })
                 .collect();
-            return (*span, offsets);
+            return (*span, members);
         }
     }
-    (16, vec![("hz_target".into(), 0)])
+    (16, vec![("hz_target".into(), 0, 16)])
 }
 
 #[cfg(test)]

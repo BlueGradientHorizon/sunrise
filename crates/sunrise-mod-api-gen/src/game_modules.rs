@@ -6,7 +6,7 @@ use syn::spanned::Spanned;
 /// `source` with the host forwarders' include replaced by the generated items, without needing OUT_DIR.
 /// Other includes are left alone: source tools must not evaluate arbitrary build-time code.
 /// Re-parsing the returned text gives the internals pass spans for editing the generated items.
-pub(crate) fn expand(path: &Path, source: &str) -> Result<String, String> {
+pub(crate) fn expand(root: &Path, path: &Path, source: &str) -> Result<String, String> {
     // The filename itself may be escaped in a string literal.
     if !source.contains("include") {
         return Ok(source.to_owned());
@@ -18,7 +18,7 @@ pub(crate) fn expand(path: &Path, source: &str) -> Result<String, String> {
         .collect();
     let mut replacements = Vec::new();
     for item in &file.items {
-        if let Some(generated) = host_include(path, item, scope.before(item).shadowed())? {
+        if let Some(generated) = host_include(root, path, item, scope.before(item).shadowed())? {
             let span = item.span();
             let start = crate::source::offset(source, &lines, span.start());
             let end = crate::source::offset(source, &lines, span.end());
@@ -35,10 +35,14 @@ pub(crate) fn expand(path: &Path, source: &str) -> Result<String, String> {
 /// Write the generated host forwarders into a disposable game source copy before external tools
 /// traverse it, without widening visibility or requiring an OUT_DIR. Never pass a downloaded cache.
 pub fn materialize_generated_host(root: &Path) -> Result<(), String> {
-    for file in crate::source::game_files(&root.join("crates/sunrise-client/src"), false)? {
+    materialize_with_layout(root, crate::SourceLayout::read(root)?)
+}
+
+fn materialize_with_layout(root: &Path, layout: crate::source::SourceLayout) -> Result<(), String> {
+    for file in layout.files(root, false)? {
         let source =
             fs::read_to_string(&file.path).map_err(|e| format!("{}: {e}", file.path.display()))?;
-        let expanded = expand(&file.path, &source)?;
+        let expanded = expand(root, &file.path, &source)?;
         if expanded != source {
             fs::write(&file.path, expanded).map_err(|e| format!("{}: {e}", file.path.display()))?;
         }
@@ -48,12 +52,12 @@ pub fn materialize_generated_host(root: &Path) -> Result<(), String> {
 
 /// `source` parsed once, with the host forwarders' include replaced by the generated items in
 /// the tree. Spans address `source`, so an edit that needs them uses [`expand`] instead.
-pub(crate) fn parse(path: &Path, source: &str) -> Result<syn::File, String> {
+pub(crate) fn parse(root: &Path, path: &Path, source: &str) -> Result<syn::File, String> {
     let mut file = syn::parse_file(source).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut scope = IncludeScope::default().with_imports(&file.items);
     let mut items = Vec::with_capacity(file.items.len());
     for item in file.items {
-        if let Some(generated) = host_include(path, &item, scope.before(&item).shadowed())? {
+        if let Some(generated) = host_include(root, path, &item, scope.before(&item).shadowed())? {
             items.extend(generated.items);
         } else {
             items.push(item);
@@ -65,6 +69,7 @@ pub(crate) fn parse(path: &Path, source: &str) -> Result<syn::File, String> {
 
 /// Recognize and gate the host include identically for analysis and source editing.
 fn host_include(
+    root: &Path,
     path: &Path,
     item: &syn::Item,
     shadowed: bool,
@@ -75,21 +80,26 @@ fn host_include(
     if name != crate::build::HOST_OUTPUT {
         return Ok(None);
     }
-    let mut file = generated_host(path)?;
+    let mut file = generated_host(root, path)?;
     file.items = gate_items(file.items, attrs).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(Some(file))
 }
 
 /// The generated forwarders of the game file at `path`, parsed.
-fn generated_host(path: &Path) -> Result<syn::File, String> {
-    let root = path
-        .canonicalize()
-        .map_err(|e| e.to_string())?
-        .ancestors()
-        .nth(6)
-        .ok_or("game host source outside the game tree")?
-        .to_owned();
-    syn::parse_file(&crate::build::game_host_generated(&root)?).map_err(|e| e.to_string())
+fn generated_host(root: &Path, path: &Path) -> Result<syn::File, String> {
+    let physical_root = root.canonicalize().ok();
+    let package = crate::GameplayPackage::ALL.into_iter().find(|package| {
+        let domain = package.domain();
+        path.starts_with(domain.package_path(root))
+            || physical_root
+                .as_ref()
+                .is_some_and(|root| path.starts_with(domain.package_path(root)))
+    });
+    let generated = match package {
+        Some(package) => crate::gameplay::host_source(root, package)?,
+        None => crate::build::game_host_generated(root)?,
+    };
+    syn::parse_file(&generated).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -101,11 +111,12 @@ mod tests {
     /// Git for Windows checks sources out with CRLF by default.
     #[test]
     fn the_host_include_becomes_its_generated_items_whatever_ends_its_line() {
-        let host =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../sunrise-client/src/game/host/mod.rs");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         for end in ["\n", "\r\n"] {
             let source = format!("pub(crate) mod draw;{end}{HOST}{end}");
-            let file = syn::parse_file(&expand(&host, &source).unwrap()).unwrap();
+            let file =
+                syn::parse_file(&expand(&root, Path::new("game/host/mod.rs"), &source).unwrap())
+                    .unwrap();
             let names: Vec<_> = file
                 .items
                 .iter()
@@ -117,20 +128,23 @@ mod tests {
             assert_eq!(names, ["draw", "generated"], "{end:?}");
         }
         let other = "include!(concat!(env!(\"OUT_DIR\"), \"/mod_api_fire_generated.rs\"));\n";
-        assert_eq!(expand(&host, other).unwrap(), other);
+        assert_eq!(
+            expand(&root, Path::new("game/native_hooks/fire.rs"), other).unwrap(),
+            other
+        );
     }
 
     #[test]
     fn parse_and_expand_keep_shadowed_includes_and_gate_qualified_ones() {
-        let host =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../sunrise-client/src/game/host/mod.rs");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let host = Path::new("game/host/mod.rs");
         let source = format!(
             "macro_rules! include {{ ($($t:tt)*) => {{}}; }}\n{HOST}\n#[cfg(test)]\nstd::{HOST} // keep this comment\npub(crate) mod draw;\n"
         );
-        let expanded = expand(&host, &source).unwrap();
+        let expanded = expand(&root, host, &source).unwrap();
         assert!(expanded.contains("// keep this comment"));
         for file in [
-            parse(&host, &source).unwrap(),
+            parse(&root, host, &source).unwrap(),
             syn::parse_file(&expanded).unwrap(),
         ] {
             assert!(
@@ -150,12 +164,12 @@ mod tests {
 
     #[test]
     fn parse_and_expand_use_the_scope_at_each_include() {
-        let host =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../sunrise-client/src/game/host/mod.rs");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let host = Path::new("game/host/mod.rs");
         let source = format!("{HOST}\nmacro_rules! include {{ ($($t:tt)*) => {{}}; }}\n{HOST}\n");
-        let expanded = expand(&host, &source).unwrap();
+        let expanded = expand(&root, host, &source).unwrap();
         for file in [
-            parse(&host, &source).unwrap(),
+            parse(&root, host, &source).unwrap(),
             syn::parse_file(&expanded).unwrap(),
         ] {
             assert!(matches!(&file.items[0], syn::Item::Mod(it) if it.ident == "generated"));
@@ -167,13 +181,13 @@ mod tests {
 
     #[test]
     fn parse_and_expand_refuse_cfg_attr_at_the_host_include() {
-        let host =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../sunrise-client/src/game/host/mod.rs");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let host = Path::new("game/host/mod.rs");
         let source = format!("#[cfg_attr(unix, cfg(test), allow(dead_code))]\n{HOST}\n");
-        let parse_error = parse(&host, &source)
+        let parse_error = parse(&root, host, &source)
             .err()
             .expect("cfg_attr is unsupported");
-        let expand_error = expand(&host, &source).unwrap_err();
+        let expand_error = expand(&root, host, &source).unwrap_err();
         assert!(parse_error.contains("cfg_attr"), "{parse_error}");
         assert_eq!(parse_error, expand_error);
     }

@@ -33,11 +33,12 @@ cargo sunrise-mod check             # validate the project before release
   ([writing hooks](../start/writing-hooks.md)). Any other `--template` is refused.
 - `build` packs the checked project into `target/sunrise-mod/<id>.smod`: `sunrise-mod.toml`, `assets/`,
   `data/`, optional `icon.png` and, for code, the root Cargo project. It reads content with the game's own package
-  rules and runs the reference checks of `check` below. If `target/` or `target/sunrise-mod/` is a symlink, the build
-  refuses it without touching the previous package. Otherwise, once the build reaches output cleanup, it removes the
-  previous `<id>.smod` before running the reference checks. Earlier failures, such as a manifest or SDK error,
-  can leave the previous package in place. A content build compiles nothing; a native build compiles against the pinned SDK. Native code requires
-  both `Cargo.toml` and `[native]`; inconsistent declarations and a manifest without capability `registries` are refused.
+  rules and runs the reference checks of `check` below. Once it accepts the options, manifest and output path,
+  `build` removes the previous `<id>.smod` before resolving the SDK, compiling or checking references.
+  Earlier refusals leave the previous package untouched, including invalid options, an invalid manifest, or a
+  symlink at `target/` or `target/sunrise-mod/`. A content build compiles nothing; a native build compiles against
+  the pinned SDK. Native code requires both `Cargo.toml` and `[native]`; inconsistent declarations and a manifest
+  without capability `registries` are refused.
 - For content mods, `run` builds, then starts `sunrise-client` (on `PATH`, or `--game PATH`, or `SUNRISE_CLIENT`) with
   `--dev-mod target/sunrise-mod/<id>.smod`, always on. Native projects use the pinned SDK's game. Use `--jars <dir>`
   to choose a folder of [original Java jars](#java-jars-as-external-assets). Arguments after `--` go to the game.
@@ -53,7 +54,7 @@ cargo sunrise-mod check             # validate the project before release
     plus `tags/worldgen/biome` and `tags/worldgen/structure`. Tag files can be in any namespace, including
     `minecraft`; other tag folders, optional entries and removals are not checked.
   - Loot item entries' `name` and block-state conditions' `block` fields. Recipes, tags, loot tables and loot pools
-    that `neoforge:conditions` may disable are left alone.
+    that `neoforge:conditions` or `fabric:load_conditions` may disable are left alone.
 
   A missing reference is an **error** (exit 1) only when the tool has enough information to confirm it. When a
   manifest lists `[[jar]]`, `check` and `build` read each jar from the local jar store (fetching any missing jar
@@ -229,7 +230,7 @@ swim in it or get pushed by it. In the world it draws its `sprite`, a block atla
 its `tint`; with neither it looks like water, and a `tint` alone colours water's textures. A client mod's
 `register_fluid_models` hook accepts `mod_api::FluidModel` values with separate flowing and overlay sprites via
 `event.register(model)`. The hook runs again before each resource bake, so a resource reload can change model
-identifiers as well as textures. Far terrain (LOD) omits mod fluids. LAN and dedicated server players play with
+identifiers as well as textures. LAN and dedicated server players play with
 them when they run the same mods: a client whose mods add different content is refused when it joins, with
 the reason.
 
@@ -1481,7 +1482,7 @@ load order.
 
 Paths use vanilla's resource characters, at most 65,536 files, 16 MiB each and 512 MiB in all. A mod whose
 content is refused is left out, with the reason in the log. The game reads this content into its block and item
-tables (`sunrise_client::mod_content`, [modpacks.md](https://github.com/sunrise-org/sunrise/blob/main/docs/modpacks.md)). A tag entry
+tables (`sunrise_sim::mod_content`, [modpacks.md](https://github.com/sunrise-org/sunrise/blob/main/docs/modpacks.md)). A tag entry
 naming an id nobody registers (a block a port left out, another mod's item) is dropped, so the rest of the tag
 loads; vanilla would drop the whole tag. In a block or item tag, an entry naming a `#minecraft:…` tag that neither
 vanilla nor an installed mod defines is also dropped. The warning names the entry and its file; an optional
@@ -1635,7 +1636,7 @@ file and attribute. A client plays these from the biome data the server sends. I
 three ambient sound fields together make the one `ambient_sounds` value, and a value out of range refuses the mods at
 startup.
 
-**When they apply.** Modifiers are applied while the world's worldgen data is loaded, before any chunk is generated: the content build writes the modified biomes into the content root, and when a world opens, `sunrise_client::vanillagen::biome_modifiers_over_packs` applies them again over the world's data packs (`shared_data_with` for the generator, `packed_biomes` for the game's biome table), so a pack that replaces a vanilla biome keeps the mods' changes and a pack's own biome a tag selects gets them. Modifiers a mod declares in code (`Registrar::declare_biome_modifier`) register before any world opens and are read at the same moment. The generator's data is loaded once per bundle and set of packs and shared by the world's dimensions, so a modifier never applies halfway through a world. The dedicated server is the same game run headless (`sunrise-client --dedicated`, [server.md](https://github.com/sunrise-org/sunrise/blob/main/docs/server.md)), so it takes this path too; `sunrise-server` only supervises it.
+**When they apply.** Modifiers are applied while the world's worldgen data is loaded, before any chunk is generated: the content build writes the modified biomes into the content root, and when a world opens, `sunrise_sim::vanillagen::biome_modifiers_over_packs` applies them again over the world's data packs (`shared_data_with` for the generator, `packed_biomes` for the game's biome table), so a pack that replaces a vanilla biome keeps the mods' changes and a pack's own biome a tag selects gets them. Modifiers a mod declares in code (`Registrar::declare_biome_modifier`) register before any world opens and are read at the same moment. The generator's data is loaded once per bundle and set of packs and shared by the world's dimensions, so a modifier never applies halfway through a world. The dedicated server is the same game run headless (`sunrise-client --dedicated`, [server.md](https://github.com/sunrise-org/sunrise/blob/main/docs/server.md)), so it takes this path too; `sunrise-server` only supervises it.
 
 A biome holder set can also use Sunrise's own `sunrise:climate` type, alone or nested in those boolean sets; it is not
 a NeoForge format. It filters each biome's base `temperature` and `downfall` (the names in

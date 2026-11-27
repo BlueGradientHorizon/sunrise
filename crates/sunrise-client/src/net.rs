@@ -8,6 +8,69 @@
 //! encrypts the connection (ClientHandshakePacketListenerImpl.handleHello).
 use crate::auth::AuthSession;
 mod client_inbox;
+
+#[cfg(test)]
+mod client_payload_test_support {
+    use crate::raw_payloads::connection::record_overhead;
+    use crate::raw_payloads::{Side, Transport};
+    use mod_api::{
+        Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, PayloadId, Registrar,
+    };
+    use std::sync::Arc;
+    pub(super) const CHANNEL: &str = "raw_hub_probe:message";
+    struct Probe;
+    impl IPayloadHandler for Probe {
+        fn handle(
+            &self,
+            _: PayloadBytes,
+            _: &mut dyn IPayloadContext,
+        ) -> Result<(), mod_api::PayloadHandleError> {
+            Ok(())
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Probe {
+        fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            registrar
+                .payload_handlers()
+                .registrar("1")
+                .play_to_server(PayloadId(CHANNEL.into()), Arc::new(Probe));
+        }
+    }
+    pub(super) fn with_peer<R>(run: impl FnOnce(Arc<Transport>) -> R) -> R {
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("raw_hub_probe", Box::new(Probe))].into(),
+            || {
+                mod_platform::__private::part_tests::install_parts_fixture(
+                    mod_api::__private::mods(),
+                )
+                .unwrap();
+                let transport = Transport::capture(Side::Server, record_overhead(&[])).unwrap();
+                assert!(
+                    transport.local.owns(CHANNEL),
+                    "fixture declaration was not installed"
+                );
+                transport
+                    .accept(transport.local.manifest.entries())
+                    .unwrap();
+                transport.finish_configuration().unwrap();
+                run(transport)
+            },
+        )
+    }
+    pub(super) fn with_client<R>(run: impl FnOnce(Arc<Transport>) -> R) -> R {
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("raw_hub_probe", Box::new(Probe))].into(),
+            || {
+                mod_platform::__private::part_tests::install_parts_fixture(
+                    mod_api::__private::mods(),
+                )
+                .unwrap();
+                run(Transport::capture(Side::Client, record_overhead(&[])).unwrap())
+            },
+        )
+    }
+}
 pub use client_inbox::{ClientTask, ClientTasks};
 #[cfg(test)]
 #[path = "net/bundle_tests.rs"]
@@ -24,9 +87,8 @@ pub use play_bundle::{BundleMember, BundleStep, CompletedBundle};
 #[cfg(test)]
 #[path = "net/mod_packet_tests.rs"]
 mod mod_packet_tests;
-pub(crate) mod queued_writer;
-use queued_writer::{PrepareRefusal, QueuedWriter, SendFailure};
-pub use queued_writer::{PreparedPacket, PreparedPayload};
+use crate::raw_payloads::queued_writer::{PrepareRefusal, QueuedWriter, SendFailure};
+pub use crate::raw_payloads::queued_writer::{PreparedPacket, PreparedPayload};
 #[cfg(test)]
 use std::sync::mpsc::channel;
 use std::{
@@ -63,8 +125,7 @@ use sunrise_hooks::tunnel;
 /// connection (`TransferState`), so a proxy's backend switch keeps them.
 pub type Cookies = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 
-/// A recording of the session's packets: the tap a replay recorder plugs into. Replay recording is a
-/// platform feature (docs/layers.md, "Controllers, replays and UI pages"); the engine only
+/// A recording of the session's packets. The engine only
 /// hands it the packets: the network thread what it receives, the game thread what the client makes for
 /// the recording itself (its own movement, pose and swings).
 pub trait PacketRecorder: Send {
@@ -111,8 +172,6 @@ pub enum Event {
     QuietCommands,
     /// The server supports private custom recipe-book synchronization.
     CustomBooks,
-    /// The server samples far terrain for this client (`lod_net`).
-    FarTerrain(crate::lod_net::Offer),
     /// ClientConfigurationPacketListenerImpl.handleEnabledFeatures.
     Features(Vec<String>),
     /// Configuration finished: the play state begins with these registries.
@@ -214,7 +273,6 @@ impl Event {
             | Self::Joined { .. }
             | Self::Reconfigured { .. }
             | Self::Features(_)
-            | Self::FarTerrain(_)
             | Self::CustomBooks
             | Self::QuietCommands
             | Self::DecodeError(_)
@@ -250,11 +308,6 @@ impl Event {
             Self::Configuration(task) => task.owned_bytes(),
             Self::Cookie(task) => size_of::<CookieTask>() + task.cookie.owned_bytes(),
             Self::QuietCommands | Self::CustomBooks | Self::ClearDialog | Self::PackPop(_) => 0,
-            Self::FarTerrain(crate::lod_net::Offer {
-                distance: _,
-                in_flight: _,
-                per_second: _,
-            }) => 0,
             Self::Features(values) => values.owned_heap_bytes(),
             // configure only inserts/replaces before freezing these snapshots.
             Self::Joined {
@@ -414,8 +467,6 @@ pub struct Session {
     pub cookies: Cookies,
     /// SUNRISE_NET_DEBUG=1 logs every packet sent from the game thread.
     debug: bool,
-    /// The far terrain requests waiting for the server (`lod_net`).
-    far: Arc<crate::lod_net::Inbox>,
     /// The recording running, if any.
     recorder: RecorderSlot,
     pings: PingSamples,
@@ -518,7 +569,7 @@ impl Session {
             false,
         )
     }
-    /// A lightweight session for studio replay playback without background network IO.
+    /// A lightweight offline session without background network IO.
     pub fn replay(name: &str) -> Self {
         let (_send, events) = event_channel();
         Self {
@@ -528,12 +579,11 @@ impl Session {
             configuring: Arc::new(AtomicBool::new(false)),
             thread: None,
             payloads: crate::raw_payloads::Transport::empty(),
-            address: "studio-replay".to_owned(),
+            address: "offline".to_owned(),
             name: name.to_owned(),
             counters: Arc::new(Mutex::new(None)),
             cookies: Default::default(),
             debug: false,
-            far: Arc::new(crate::lod_net::Inbox::default()),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -570,8 +620,6 @@ impl Session {
         let (thread_writer, thread_counters, thread_cookies) =
             (writer.clone(), counters.clone(), cookies.clone());
         let thread_configuring = configuring.clone();
-        let far = Arc::new(crate::lod_net::Inbox::default());
-        let thread_far = far.clone();
         let recorder = Arc::new(Mutex::new(None));
         let thread_recorder = recorder.clone();
         let pings = Arc::default();
@@ -597,7 +645,6 @@ impl Session {
                         &thread_configuring,
                         &thread_counters,
                         &thread_cookies,
-                        &thread_far,
                         transfer_from,
                         &resources,
                         lan,
@@ -612,7 +659,6 @@ impl Session {
                 // the payload epoch when main drops the listener, so a bundle
                 // already in its member loop still has its handler table.
                 report_connection_end(result, &thread_writer, &send, after_login);
-                thread_far.cancel();
             })
             .inspect_err(|error| {
                 // No reader runs to report the end: say it here, or the session waits forever.
@@ -637,7 +683,6 @@ impl Session {
             counters,
             cookies,
             debug,
-            far,
             recorder,
             pings,
             serial: next_serial(),
@@ -732,7 +777,7 @@ impl Session {
         initialize(&recorder);
         *slot = Some(Box::new(recorder));
     }
-    /// Stop recording and finalize the `.mcpr` archive.
+    /// Stop recording and finalize the recorder output.
     pub fn stop_recording(&self) -> Option<std::io::Result<PathBuf>> {
         let rec = self.recorder.lock().unwrap().take()?;
         Some(rec.stop())
@@ -830,36 +875,6 @@ impl Session {
             .as_ref()
             .ok_or(mod_api::PayloadSendError::Disconnected)?
             .prepare_payload(body, id)
-    }
-    /// Far terrain the server samples, as it offered (`Event::FarTerrain`):
-    /// biomes named by this client's indices, block states below `states`.
-    pub fn far_terrain(
-        &self,
-        offer: crate::lod_net::Offer,
-        biomes: HashMap<String, u16>,
-        states: u32,
-    ) -> Arc<crate::lod_net::RemoteSource> {
-        crate::lod_net::RemoteSource::new(self.far.clone(), offer, biomes, states)
-    }
-    /// The far terrain requests its samplers queued go to the server, from
-    /// the game thread, among its other packets.
-    pub fn send_far_terrain(&self) {
-        for data in self.far.requests() {
-            self.send(play::Serverbound::CustomPayload(cfg::CustomPayload {
-                channel: crate::lod_net::CHANNEL.into(),
-                data,
-            }));
-        }
-    }
-    /// The far terrain made with [`Self::far_terrain`] ends: its samplers
-    /// stop waiting for the server.
-    pub fn cancel_far_terrain(&self) {
-        self.far.cancel();
-    }
-    /// The connection is configured again (a proxy's next server): requests
-    /// the old server held never come back, so their slots are freed.
-    pub fn reset_far_terrain(&self) {
-        self.far.reset();
     }
     /// ServerboundResourcePackPacket, in whichever phase the connection is.
     pub fn send_pack_status(&self, id: u128, action: i32) {
@@ -1443,7 +1458,6 @@ fn run(
     configuring: &Arc<AtomicBool>,
     shared_counters: &Mutex<Option<Arc<Counters>>>,
     cookies: &Cookies,
-    far: &Arc<crate::lod_net::Inbox>,
     transfer_from: Option<Cookies>,
     resources: &ItemData,
     lan: bool,
@@ -1650,7 +1664,6 @@ fn run(
         lang,
         send,
         cookies,
-        far,
         resources,
         recorder,
         payloads,
@@ -1865,13 +1878,11 @@ enum PlayIoAction {
     KeepAlive(cfg::KeepAlive),
     ChunkBatchStart,
     ChunkBatchFinished(i32),
-    FarTile(Vec<u8>),
 }
 
 pub struct PlayIo {
     common: Arc<CommonIo>,
     lang: Arc<Language>,
-    far: Arc<crate::lod_net::Inbox>,
     pings: PingSamples,
     reports: Arc<crate::chunk_io::Reports>,
     // ClientPacketListener.chunkBatchSizeCalculator.
@@ -1920,7 +1931,6 @@ impl PlayIo {
                     chunks_per_tick: batch.desired_chunks_per_tick(),
                 })
             }
-            PlayIoAction::FarTile(data) => return self.far.deliver(data),
         };
         if let Some(writer) = self.common.writer.lock().unwrap().as_ref() {
             let _ = writer.send_bypassing_held(&reply.encode());
@@ -1963,7 +1973,6 @@ fn receive_play(
     lang: &Arc<Language>,
     send: &ingress::Producer<Event>,
     cookies: &Cookies,
-    far: &Arc<crate::lod_net::Inbox>,
     resources: &ItemData,
     recorder: &RecorderSlot,
     payloads: &Arc<crate::raw_payloads::Transport>,
@@ -1976,7 +1985,6 @@ fn receive_play(
         Arc::new(PlayIo {
             common: CommonIo::new(shared_writer, cookies, Phase::Play),
             lang: lang.clone(),
-            far: far.clone(),
             pings: pings.clone(),
             reports: reports.clone(),
             batch: Mutex::default(),
@@ -1985,6 +1993,14 @@ fn receive_play(
     let mut io = new_listener();
     let mut bundle = PlayBundle::default();
     loop {
+        #[cfg(feature = "test-support")]
+        if !bundle.assembling() {
+            // Report only packets whose ingress work (including a complete bundle) has been published.
+            let counters = &reader.counters;
+            counters
+                .play_ingress_received
+                .store(counters.received.load(Ordering::Relaxed), Ordering::Release);
+        }
         let (id, payload) = reader.recv().map_err(|e| connection_lost(e, lang))?;
         let decode_names = ClientboundDecodeNames {
             registries: registries.as_ref(),
@@ -2153,10 +2169,6 @@ fn receive_play(
             }
             play::Clientbound::CustomPayload(p) if p.channel == "minecraft:brand" => {
                 receive_brand(&p, send);
-            }
-            // A far tile, straight to the sampler waiting for it.
-            play::Clientbound::CustomPayload(p) if p.channel == crate::lod_net::CHANNEL => {
-                io.handle(PlayIoAction::FarTile(p.data));
             }
             play::Clientbound::CustomPayload(payload) => {
                 if let Some(payload) = receive_application(
@@ -2501,9 +2513,6 @@ fn brand_event(payload: &cfg::CustomPayload) -> Option<Event> {
             .map(Event::Brand),
         sunrise_protocol::quiet::CHANNEL => Some(Event::QuietCommands),
         sunrise_protocol::custom_book::CHANNEL => Some(Event::CustomBooks),
-        crate::lod_net::CHANNEL => {
-            crate::lod_net::Offer::decode(&payload.data).map(Event::FarTerrain)
-        }
         _ => None,
     }
 }
@@ -2655,19 +2664,7 @@ fn json_text_with<'a>(v: &serde_json::Value, lookup: impl Fn(&str) -> Option<&'a
     walk(v, &lookup)
 }
 
-/// The language a session resolves server-sent components with: the selected
-/// one as `lang` loaded it (`en_us` under it, packs included, without mod
-/// run-time overrides so clearing a mod falls back to the packs' values). A
-/// process with no language set (a dedicated server's log) reads en_us.json.
-pub fn load_language(resources: &std::path::Path) -> Language {
-    if let Some(lang) = crate::lang::current() {
-        return lang.pack_map();
-    }
-    // No language screen ran (a dedicated server's log): en_us, with
-    // Sunrise's own strings included — the net thread resolves keys with
-    // this map (`Reason::keyed`).
-    sunrise_client_core::lang::Language::load(&[&resources.to_path_buf()], "en_us").pack_map()
-}
+pub use sunrise_sim::lang_load::load_language;
 
 /// Ask a server for its status (ServerStatusPinger): MOTD, players and the
 /// round trip time in milliseconds.
@@ -2911,7 +2908,7 @@ mod tests {
         use sunrise_protocol::payload_negotiation::{CHANNEL, Control};
         for server_asks in [false, true] {
             let (root, data) = empty_item_data(&format!("mod-client-{server_asks}"));
-            let sent = crate::raw_payloads::test_support::with_client(|transport| {
+            let sent = client_payload_test_support::with_client(|transport| {
                 assert!(transport.local.has_mod_declarations());
                 let (client, server) = sunrise_protocol::connection::Pipe::pair();
                 let (mut reader, writer) = Connection::local(client).split();
@@ -2991,7 +2988,7 @@ mod tests {
                     manifest
                         .entries()
                         .iter()
-                        .any(|e| e.id() == crate::raw_payloads::test_support::CHANNEL),
+                        .any(|e| e.id() == client_payload_test_support::CHANNEL),
                     "the Offer lists the mod's channel"
                 );
             } else {
@@ -3471,8 +3468,7 @@ mod tests {
             );
         }
 
-        // Connection opened with an active override captures the pack-only map, uses the live
-        // overlay while present, and restores the pack value once cleared.
+        // A session opened during an override still captures the pack-only fallback.
         {
             let _isolated = lang::isolate_publication(ClientLanguage::of(
                 "en_us",
@@ -3891,7 +3887,6 @@ mod tests {
                 &Arc::new(disconnect_language()),
                 &send,
                 &Cookies::default(),
-                &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
@@ -4565,7 +4560,6 @@ mod tests {
                 counters: Arc::new(Mutex::new(None)),
                 cookies: Cookies::default(),
                 debug: false,
-                far: Arc::default(),
                 recorder: Arc::new(Mutex::new(None)),
                 pings: Arc::default(),
                 serial: next_serial(),
@@ -4621,7 +4615,6 @@ mod tests {
                 &Arc::new(Language::new()),
                 &send,
                 &Cookies::default(),
-                &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
@@ -4698,7 +4691,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -4715,7 +4707,6 @@ mod tests {
                 &Arc::new(Language::new()),
                 &send,
                 &cookies,
-                &Arc::default(),
                 &data,
                 &recorder,
                 &crate::raw_payloads::Transport::empty(),
@@ -5198,7 +5189,6 @@ mod tests {
                 &Arc::new(Language::new()),
                 &send,
                 &Cookies::default(),
-                &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
@@ -5258,7 +5248,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -5320,7 +5309,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -5340,7 +5328,6 @@ mod tests {
                 &Arc::new(Language::new()),
                 &send,
                 &Cookies::default(),
-                &Arc::default(),
                 &data,
                 &thread_recorder,
                 &crate::raw_payloads::Transport::empty(),
@@ -5477,7 +5464,6 @@ mod tests {
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -5498,7 +5484,6 @@ mod tests {
                 &Arc::new(Language::new()),
                 &send,
                 &thread_cookies,
-                &Arc::default(),
                 &data,
                 &thread_recorder,
                 &crate::raw_payloads::Transport::empty(),
@@ -5776,7 +5761,7 @@ mod tests {
         fn status(&self) -> RecorderStatus {
             RecorderStatus {
                 active: true,
-                path: PathBuf::from("test.mcpr"),
+                path: PathBuf::from("packets.log"),
                 elapsed: Duration::ZERO,
                 packet_count: self.0.lock().unwrap().len() as u64,
                 bytes_written: 0,
@@ -5784,7 +5769,7 @@ mod tests {
             }
         }
         fn stop(self: Box<Self>) -> std::io::Result<PathBuf> {
-            Ok(PathBuf::from("test.mcpr"))
+            Ok(PathBuf::from("packets.log"))
         }
     }
     impl TestRecorder {
@@ -5799,7 +5784,7 @@ mod tests {
 
     #[test]
     fn session_recorder_gets_the_play_packets_the_network_thread_receives() {
-        let (root, data) = empty_item_data("studio_recording");
+        let (root, data) = empty_item_data("packet_recording");
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, writer) = Connection::local(client).split();
         let (send, events) = event_channel();
@@ -5811,11 +5796,10 @@ mod tests {
             configuring: Arc::new(AtomicBool::new(false)),
             thread: None,
             address: "local".into(),
-            name: "StudioTester".into(),
+            name: "PacketTester".into(),
             counters: Arc::new(Mutex::new(None)),
             cookies: Cookies::default(),
             debug: false,
-            far: Arc::default(),
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
@@ -5839,7 +5823,6 @@ mod tests {
                 &Arc::new(Language::new()),
                 &send,
                 &Cookies::default(),
-                &Arc::default(),
                 &data,
                 &thread_recorder,
                 &crate::raw_payloads::Transport::empty(),
@@ -5867,7 +5850,7 @@ mod tests {
 
         assert_eq!(
             session.stop_recording().unwrap().unwrap(),
-            PathBuf::from("test.mcpr")
+            PathBuf::from("packets.log")
         );
         assert!(!session.is_recording());
         // The recorder is handed both; what a recording keeps is the recorder's choice.
@@ -5879,7 +5862,7 @@ mod tests {
     fn session_recorder_gets_the_packets_the_client_makes() {
         use sunrise_protocol::entity_data::{Value, serializer};
 
-        let session = Session::replay("StudioTester");
+        let session = Session::replay("PacketTester");
         session.record_clientbound(&play::Clientbound::SwingAnimation(play::SwingAnimation {
             id: 1,
             hand: 0,
@@ -6074,7 +6057,6 @@ mod tests {
                 &lang,
                 &send,
                 &Cookies::default(),
-                &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
                 &crate::raw_payloads::Transport::empty(),
