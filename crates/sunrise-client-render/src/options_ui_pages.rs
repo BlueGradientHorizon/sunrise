@@ -117,7 +117,6 @@ pub(super) fn sunrise_page_tooltip(page: Page) -> Option<&'static str> {
         Page::Sunrise => "sunrise.pages.settings.tooltip",
         Page::Studio => "sunrise.pages.studio.tooltip",
         Page::Controller => "sunrise.pages.controller.tooltip",
-        Page::Pvp => "sunrise.pages.pvp.tooltip",
         Page::Agent => "sunrise.pages.agent.tooltip",
         Page::Mods => "sunrise.pages.mods.tooltip",
         Page::Music => "sunrise.pages.music.tooltip",

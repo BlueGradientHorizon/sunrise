@@ -235,9 +235,6 @@ pub(in crate::game) mod held_items_client;
 #[path = "modding/hotbar_items.rs"]
 pub(in crate::game) mod hotbar_items;
 #[cfg(feature = "client")]
-#[path = "interface/hud_editor.rs"]
-pub(in crate::game) mod hud_editor;
-#[cfg(feature = "client")]
 #[path = "interface/hud_room.rs"]
 pub(in crate::game) mod hud_room;
 #[cfg(feature = "client")]
@@ -1666,7 +1663,7 @@ pub struct ClientState {
     )>,
     /// Settings and HUD state: `game/interface/extras.rs`.
     pub(in crate::game) extras: extras::ExtrasState,
-    /// The PvP & HUD options' state (`game/entities/pvp.rs`).
+    /// Client presentation state (`game/entities/pvp.rs`).
     pub(in crate::game::client_side) pvp: pvp::PvpState,
     /// The item panel beside container screens (`game/modding/native_panel.rs`).
     pub panel: native_panel::Panel,

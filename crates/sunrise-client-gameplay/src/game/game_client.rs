@@ -1716,7 +1716,6 @@ impl crate::game::ClientGame<'_> {
                         Screen::WorldOptions if d != 0.0 => self.world_options_scroll(d),
                         Screen::ServerLinks if d != 0.0 => self.server_links_scroll(d),
                         Screen::DebugOptions if d != 0.0 => self.debug_options_scroll(d),
-                        Screen::HudEditor if d != 0.0 => self.hud_editor_scroll(f64::from(d)),
                         Screen::Advancements => self.advancements_scroll(scroll[0] as f32, d),
                         _ => false,
                     };
@@ -2458,8 +2457,7 @@ impl crate::game::ClientGame<'_> {
                 }
             });
             self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
-                // The PvP & HUD effects widget takes the icons' place.
-                if show_hud && !g.pvp_effects_shown() {
+                if show_hud {
                     g.draw_effect_icons(batch);
                 }
             });
@@ -2768,7 +2766,6 @@ impl crate::game::ClientGame<'_> {
             Screen::CommandBlock => self.draw_command_block(&mut batch),
             Screen::BlockEditor => self.draw_block_editor(&mut batch),
             Screen::DebugOptions => self.draw_debug_options(&mut batch),
-            Screen::HudEditor => self.draw_hud_editor(&mut batch),
             Screen::Inventory => {
                 let from = batch.vertices.len();
                 if self.draw_inventory(&mut batch) {
@@ -5207,10 +5204,7 @@ impl crate::game::ClientGame<'_> {
             // Neither edge of a bound button is an ordinary slot click.
             return Ok(true);
         }
-        if pressed
-            && (self.sort_mouse_press(button)
-                || self.hud_editor_key_press(&sunrise_client::keybinds::mouse_name(button)))
-        {
+        if pressed && self.sort_mouse_press(button) {
             return Ok(true);
         }
         // AbstractContainerScreen.mouseClicked (also Creative's fallback) handles
@@ -5253,12 +5247,6 @@ impl crate::game::ClientGame<'_> {
             Screen::ServerLinks if left_press => self.server_links_click()?,
             Screen::DebugOptions if left_press => self.debug_options_click(),
             Screen::DebugOptions if left => self.debug_options_release(),
-            Screen::HudEditor
-                if pressed && matches!(button, MouseButton::Left | MouseButton::Right) =>
-            {
-                self.hud_editor_press(!left)
-            }
-            Screen::HudEditor if left => self.hud_editor_release(),
             Screen::ConfirmLink if left_press => self.confirm_link_click(),
             Screen::DemoIntro if left_press => self.demo_intro_click(),
             Screen::DialogWarning if left_press => self.dialog_warning_click()?,
@@ -5319,7 +5307,6 @@ impl crate::game::ClientGame<'_> {
             Screen::Advancements if left => self.advancements_drag(),
             Screen::Stats if left => self.stats_drag(),
             Screen::DebugOptions if left => self.debug_options_drag(),
-            Screen::HudEditor if left => self.hud_editor_drag(),
             Screen::WorldOptions if left => self.world_options_drag(),
             Screen::Options if left => self.options_drag()?,
             Screen::Creative => {

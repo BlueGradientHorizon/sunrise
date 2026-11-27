@@ -207,10 +207,6 @@ pub(crate) mod native_local_player_writes;
 pub(crate) mod native_living_effects_client;
 
 #[cfg(feature = "client")]
-#[path = "modding/native_key_mappings.rs"]
-pub(crate) mod native_key_mappings;
-
-#[cfg(feature = "client")]
 #[path = "modding/native_item_particles.rs"]
 pub(crate) mod native_item_particles;
 

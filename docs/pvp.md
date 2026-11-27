@@ -1,15 +1,13 @@
-# PvP & HUD
+# Client presentation
 
-Settings PvP players expect from a client, on **Options → Sunrise Settings... → PvP & HUD...**. Every one is
+Optional client presentation settings, on **Options → Sunrise Settings... → Gameplay**. Every one is
 off by default: a fresh install looks exactly like vanilla 26.3, and turning one off restores vanilla.
 
 ## Fair play
 
 Nothing here tells the player more than vanilla does or plays for them, so the game stays fine on servers
 that ban unfair clients. That rules out, on purpose: entities on the minimap, freelook, auto-clicking or any
-other automatic action, seeing through walls, and hitboxes beyond vanilla's F3+B. The HUD widgets read only
-what this client already has: they send no packet and ask the server nothing, so an anticheat sees nothing new.
-The reach widget measures your own last hit and never changes reach.
+other automatic action, seeing through walls, and hitboxes beyond vanilla's F3+B.
 Each feature is built from what it visibly does, never from another client's or mod's code.
 
 ## Where it lives
@@ -17,7 +15,7 @@ Each feature is built from what it visibly does, never from another client's or 
 | Part | Code |
 |---|---|
 | Settings, parsing, the page's rows | `crates/sunrise-client-render/src/pvp.rs` (stored in `sunrise-extras.txt`, see [extras.md](extras.md)) |
-| The page | `options_ui.rs` (`Page::Pvp`), the rows of `pvp::rows()`, opened from Sunrise Settings' Extras page |
+| Settings rows | `extras::rows()` includes `pvp::rows()` on Gameplay |
 | Game glue | `crates/sunrise-client-gameplay/src/game/entities/pvp.rs` |
 
 ## Crosshair (`crosshair`, default off)
@@ -48,61 +46,6 @@ Each feature is built from what it visibly does, never from another client's or 
   vanilla's: `OverlayTexture`'s red over 30%.
 - The texel rides in the frame's uniforms (`colored_count.y`, 0 for vanilla's), so changing it costs nothing.
 - Shader packs keep vanilla's red (`pack_entities::entity_color`).
-
-## HUD widgets (each default off)
-
-Boxes in the screen corners, placed like mods' boxes (`extras_hud::Corners`), each in a corner of
-its own, with an optional dark background (on by default). F3's debug screen takes the top corners as it does from
-mods' boxes. Code: `crates/sunrise-client-render/src/pvp_hud.rs` (lines, cache, layout) and `crates/sunrise-client-gameplay/src/game/entities/pvp.rs`.
-
-- **Armour** (bottom right): each piece worn, head first, with the uses left as a number or a percent, coloured
-  like the item's durability bar (green to red). Only what the inventory already shows.
-- **Effects** (top right): icon, name and level, time left, for every active effect; in place of vanilla's
-  icons there (`Hud.extractEffects`), as the inventory's effect panels show them.
-- **Held item count** (bottom right): how many of the held item the inventory and off hand hold; with a bow or
-  crossbow, the arrows. Hidden for a single item.
-
-Cost: a widget keeps its lines (`pvp_hud::Widget`) and rebuilds them only when what it shows changes (a piece
-takes damage, an effect's second ticks, the count changes); a frame reads a few slots, compares, and adds the
-box's quads. With nothing changing, a frame allocates nothing.
-- **Ping** (top left): the latency the server's player list reports for you (the tab list's bars as a number); nothing until the server's first latency update, up to 30 s after joining.
-  Multiplayer only.
-- **Coordinates** (top left): block position and the direction faced (`Direction.fromYRot`), as F3 shows them.
-  Hidden whenever F3 is reduced (`reducedDebugInfo`: the option, the game rule or the server), so it never shows
-  what the server hides.
-- **Server address** (top left): the address you joined (`net::shown_address`: invite codes stay hidden).
-  Multiplayer only.
-- **Combo counter** (top left): your hits in a row, each counted when the server reports an entity hurt with you
-  as the damage's direct entity (`ClientboundDamageEventPacket`: melee and spear hits, not arrows or fire). A
-  report that names no attacker counts once, within a second of a swing at that entity. Back to 0 when you are hurt or
-  3 seconds pass without a hit. It counts what the game already shows (the target's hurt flash).
-- **FPS** (`hudFps`, top left): the frames drawn in the last second, as F3's first line counts them.
-- **Clicks per second** (`hudCps`, top left): your left and right presses in the last second, "CPS: 8 | 3".
-  Counted from the mouse buttons while playing (no screen open); nothing is sent for them.
-- **Keystrokes** (`hudKeys`, bottom left): W A S D, both mouse buttons with their clicks per second, and jump,
-  lit while held. The letters follow your key bindings.
-- **Clock** (`hudClock`, top right): your computer's local time, HH:MM.
-- **Reach** (`hudReach`, top left): for 3 seconds after you hit an entity, how far from your eyes the hit
-  landed (the pick's distance to its box), "Reach: 2.87". It reads the pick the attack already used.
-- **Speed** (`hudSpeed`, top left): your speed across the ground in blocks per second, over the last quarter
-  second; a teleport reads 0.
-
-Each `hud…` option has a `hud…Corner` beside it. With every widget off, a frame costs one test of the options.
-
-Style, for every widget: **Background opacity** (`hudOpacity`, 0 to 100, default 47, under the background
-switch), **Text colour** (`hudTextColour`, default white; coloured lines such as durability keep their colour)
-and **Text shadow** (`hudShadow`, default on).
-
-Layout: a widget moved by hand stays where it was put, as `hudPlace:<widget>,<x>,<y>,<scale>` lines (`x` and `y`
-are fractions of the room the screen leaves beside the widget, so it stays on screen after a resize; `corner` instead of them keeps the corner; scale in
-percent, 50 to 200). Widgets without such a line keep their corner. `pvp_hud::Layout`, `pvp_hud::snap`.
-
-**HUD editor**: the **Edit HUD** button on the PvP & HUD page (in a world), or the **HUD editor key** (unbound by
-default). The game pauses where it can; each widget that is on gets a frame. Drag one anywhere: it snaps to the
-screen's edges and middle and to the other widgets' edges (the guides show where). The mouse wheel over a widget
-scales it by 10%, a right click puts it back in its corner at 100%, and the buttons set the text colour, shadow,
-background and its opacity, put every widget back in its corner at 100% (Reset), or close the editor (Esc too). The layout is saved when it closes.
-Code: `crates/sunrise-client-gameplay/src/game/interface/hud_editor.rs`.
 
 ## Chat (each default off)
 

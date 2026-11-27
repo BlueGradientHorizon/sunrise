@@ -13,16 +13,15 @@ pub const SHADER_PACK_KEY: &str = "sunrise.shader_pack_key";
 /// Sunrise's own key bindings and their captions, in the order Controls -> Key Binds lists
 /// them under its "Sunrise" category, after vanilla's: the same bindings the Extras page and
 /// the PvP page set.
-pub const KEYS: [(&str, &str); 3] = [
+pub const KEYS: [(&str, &str); 2] = [
     (SHADER_PACK_KEY, "sunrise.extras.shader_pack_key"),
-    (crate::pvp::HUD_EDITOR_KEY, "sunrise.pvp.hud_editor_key"),
     (SORT_KEY, "sunrise.extras.sort_key"),
 ];
 /// The caption of Sunrise's own category on Controls -> Key Binds.
 pub const KEY_CATEGORY: &str = "sunrise.key.category";
 
 // no wire: this is private to the built-in HUD layout.
-/// A screen corner for Sunrise's internal extras and PvP HUD boxes.
+/// A screen corner for Sunrise's registered HUD layers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Corner {
     TopLeft,
@@ -37,20 +36,6 @@ impl Corner {
         Corner::BottomLeft,
         Corner::BottomRight,
     ];
-    pub fn name(self) -> &'static str {
-        match self {
-            Corner::TopLeft => "top_left",
-            Corner::TopRight => "top_right",
-            Corner::BottomLeft => "bottom_left",
-            Corner::BottomRight => "bottom_right",
-        }
-    }
-    pub fn parse(s: &str, default: Corner) -> Corner {
-        Self::ALL
-            .into_iter()
-            .find(|c| c.name() == s)
-            .unwrap_or(default)
-    }
     pub fn top(self) -> bool {
         matches!(self, Corner::TopLeft | Corner::TopRight)
     }
@@ -129,7 +114,7 @@ pub struct Extras {
     /// The file is there but couldn't be read whole (an I/O error, or bytes that aren't UTF-8):
     /// it is never written over, so nothing in it is lost.
     keep_file: bool,
-    /// The PvP & HUD page's options (`pvp`).
+    /// Client presentation options (`pvp`).
     pub pvp: crate::pvp::Pvp,
 }
 impl Default for Extras {
@@ -295,7 +280,6 @@ impl Extras {
         Some(match name {
             SORT_KEY => &self.sort_key,
             SHADER_PACK_KEY => &self.shader_pack_key,
-            crate::pvp::HUD_EDITOR_KEY => &self.pvp.editor_key,
             _ => return None,
         })
     }
@@ -312,7 +296,6 @@ impl Extras {
         match name {
             SORT_KEY => self.sort_key = value,
             SHADER_PACK_KEY => self.shader_pack_key = value,
-            crate::pvp::HUD_EDITOR_KEY => self.pvp.editor_key = value,
             _ => return false,
         }
         true
@@ -486,7 +469,7 @@ pub enum Item {
     /// The Select Resource Packs screen's Add button (Modrinth).
     PackBrowser,
     Pregen,
-    /// On the PvP & HUD page (`pvp::rows`).
+    /// Client presentation options (`pvp::rows`).
     Pvp(crate::pvp::Opt),
 }
 /// Sunrise Settings' Gameplay page: headers (language keys) and items.
@@ -495,7 +478,7 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
     // Fullbright, Dynamic lights and Hide block-break particles change the picture: they
     // are on the graphics screen's Quality page (`graphics_ui::rows`), not here. A section a crate
     // adds joins the group its title names (`sunrise_hooks::pages::Place::Extras`).
-    vec![
+    let mut rows = vec![
         Err("sunrise.extras.header.third_person"),
         Ok(OwnNameTag),
         Err("sunrise.extras.header.inventory"),
@@ -515,7 +498,9 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
         Err("sunrise.extras.header.menus"),
         Ok(WheelCyclesSettings),
         Ok(PackBrowser),
-    ]
+    ];
+    rows.extend(crate::pvp::rows().into_iter().map(|row| row.map(Pvp)));
+    rows
 }
 impl Item {
     /// The language key of the caption (`sunrise.*`, assets/sunrise/lang).
@@ -730,7 +715,7 @@ impl Item {
             },
         }
     }
-    /// A click (`back` for the right button: a PvP & HUD choice steps back; a switch flips
+    /// A click (`back` for the right button: a client presentation choice steps back; a switch flips
     /// either way). The sort key binds instead.
     pub fn cycle(self, e: &mut Extras, back: bool) {
         match self {
@@ -760,7 +745,6 @@ impl Item {
         match self {
             Item::SortKey => Some(SORT_KEY),
             Item::ShaderPackKey => Some(SHADER_PACK_KEY),
-            Item::Pvp(crate::pvp::Opt::HudEditorKey) => Some(crate::pvp::HUD_EDITOR_KEY),
             _ => None,
         }
     }
@@ -825,8 +809,6 @@ mod tests {
         let out = e.serialize();
         assert_eq!(out.matches("\nsortKey:").count(), 1, "{out}");
         assert!(!out.contains("foo"));
-        let e = Extras::parse("hudEditorKey:foo\n");
-        assert!(e.unknown.is_empty());
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {

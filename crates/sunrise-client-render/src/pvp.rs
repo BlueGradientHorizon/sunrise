@@ -1,9 +1,4 @@
-//! PvP and HUD options (`docs/pvp.md`): a custom crosshair, block outline, hit colour and HUD
-//! widgets (`pvp_hud`). Kept in
-//! `sunrise-extras.txt` with the other extras ([`crate::extras::Extras::pvp`]) and shown on
-//! Sunrise Settings > PvP & HUD. Every option is off by default, so the game looks like
-//! vanilla until the player changes one, and none of them shows anything vanilla doesn't
-//! already tell the player.
+//! Client presentation options stored in `sunrise-extras.txt` and shown in Sunrise Settings.
 
 /// Colours the PvP options pick from. `Inverted` is vanilla's crosshair blend: the colour
 /// under it, inverted.
@@ -449,142 +444,6 @@ impl Pvp {
     }
 }
 
-/// The HUD widgets (`pvp_hud`), each in a corner of its own.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Hud {
-    /// The armour worn, head first, with each piece's durability.
-    pub armour: bool,
-    pub armour_corner: Corner,
-    pub armour_percent: bool,
-    /// The active effects: icon, name and level, time left. They replace vanilla's icons.
-    pub effects: bool,
-    pub effects_corner: Corner,
-    /// How many of the held item the inventory holds (arrows with a bow or crossbow).
-    pub held: bool,
-    pub held_corner: Corner,
-    /// The latency the server reports for this player (the tab list's bars), in multiplayer.
-    pub ping: bool,
-    pub ping_corner: Corner,
-    /// The block position and the direction faced, as F3 shows them; hidden when F3 is
-    /// reduced (`reducedDebugInfo`).
-    pub coords: bool,
-    pub coords_corner: Corner,
-    /// The server's address, in multiplayer.
-    pub server: bool,
-    pub server_corner: Corner,
-    /// Hits in a row the server confirmed, until this player is hurt or 3 seconds pass.
-    pub combo: bool,
-    pub combo_corner: Corner,
-    /// Frames drawn in the last second.
-    pub fps: bool,
-    pub fps_corner: Corner,
-    /// Left and right clicks in the last second.
-    pub cps: bool,
-    pub cps_corner: Corner,
-    /// The movement keys, mouse buttons and jump, lit while held, with clicks per second.
-    pub keys: bool,
-    pub keys_corner: Corner,
-    /// The computer's local time.
-    pub clock: bool,
-    pub clock_corner: Corner,
-    /// How far the last hit landed from the eyes, for 3 seconds; it only measures.
-    pub reach: bool,
-    pub reach_corner: Corner,
-    /// Horizontal speed in blocks per second.
-    pub speed: bool,
-    pub speed_corner: Corner,
-    /// A dark box behind each widget.
-    pub background: bool,
-    /// The boxes' opacity, in percent.
-    pub opacity: u8,
-    /// The widgets' text colour (durability keeps its own).
-    pub text: Colour,
-    /// A shadow under the widgets' text, as vanilla's HUD text has.
-    pub shadow: bool,
-}
-impl Hud {
-    /// Whether any widget is on: with none, the HUD draws nothing and reads nothing.
-    pub fn any(&self) -> bool {
-        [
-            self.armour,
-            self.effects,
-            self.held,
-            self.ping,
-            self.coords,
-            self.server,
-            self.combo,
-            self.fps,
-            self.cps,
-            self.keys,
-            self.clock,
-            self.reach,
-            self.speed,
-        ]
-        .contains(&true)
-    }
-}
-impl Default for Hud {
-    fn default() -> Self {
-        Self {
-            armour: false,
-            armour_corner: Corner::BottomRight,
-            armour_percent: false,
-            effects: false,
-            effects_corner: Corner::TopRight,
-            held: false,
-            held_corner: Corner::BottomRight,
-            ping: false,
-            ping_corner: Corner::TopLeft,
-            coords: false,
-            coords_corner: Corner::TopLeft,
-            server: false,
-            server_corner: Corner::TopLeft,
-            combo: false,
-            combo_corner: Corner::TopLeft,
-            fps: false,
-            fps_corner: Corner::TopLeft,
-            cps: false,
-            cps_corner: Corner::TopLeft,
-            keys: false,
-            keys_corner: Corner::BottomLeft,
-            clock: false,
-            clock_corner: Corner::TopRight,
-            reach: false,
-            reach_corner: Corner::TopLeft,
-            speed: false,
-            speed_corner: Corner::TopLeft,
-            background: true,
-            opacity: HUD_OPACITY,
-            text: Colour::White,
-            shadow: true,
-        }
-    }
-}
-pub use crate::extras::Corner;
-/// The widgets' boxes at first: the extras' 0x78 alpha, 47%.
-pub const HUD_OPACITY: u8 = 47;
-pub const HUD_OPACITIES: (u8, u8) = (0, 100);
-impl Hud {
-    /// The boxes' colour, ARGB.
-    pub fn background_argb(&self) -> u32 {
-        alpha(self.opacity) << 24
-    }
-}
-fn corner_english(c: Corner) -> &'static str {
-    match c {
-        Corner::TopLeft => "Top left",
-        Corner::TopRight => "Top right",
-        Corner::BottomLeft => "Bottom left",
-        Corner::BottomRight => "Bottom right",
-    }
-}
-fn corner_label(c: Corner) -> String {
-    crate::lang::get_or(
-        &format!("sunrise.pvp.corner.{}", c.name()),
-        corner_english(c),
-    )
-}
-
 /// Chat options.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ChatOptions {
@@ -639,26 +498,16 @@ pub struct Pvp {
     pub crosshair: Crosshair,
     pub outline: Outline,
     pub hit: Hit,
-    pub hud: Hud,
     pub chat: ChatOptions,
-    /// Where each HUD widget sits and its size.
-    pub layout: crate::pvp_hud::Layout,
-    /// The key that opens the HUD editor from the game (unbound at first).
-    pub editor_key: String,
     pub combat: Combat,
 }
-/// The HUD editor key's name for the controls (`Extras::set_key`).
-pub const HUD_EDITOR_KEY: &str = "sunrise.hud_editor";
 impl Default for Pvp {
     fn default() -> Self {
         Self {
             crosshair: Crosshair::default(),
             outline: Outline::default(),
             hit: Hit::default(),
-            hud: Hud::default(),
             chat: ChatOptions::default(),
-            layout: crate::pvp_hud::Layout::default(),
-            editor_key: "key.keyboard.unknown".into(),
             combat: Combat::default(),
         }
     }
@@ -677,7 +526,7 @@ impl Pvp {
     /// One `key:value` line of `sunrise-extras.txt`; false when the key isn't a PvP one.
     pub fn parse_line(&mut self, key: &str, value: &str) -> bool {
         let c = &mut self.crosshair;
-        let (o, h, u) = (&mut self.outline, &mut self.hit, &mut self.hud);
+        let (o, h) = (&mut self.outline, &mut self.hit);
         match key {
             "crosshair" => c.custom = flag(value, c.custom),
             "crosshairShape" => c.shape = Shape::parse(value).unwrap_or(c.shape),
@@ -706,47 +555,6 @@ impl Pvp {
             "hit" => h.custom = flag(value, h.custom),
             "hitColour" => h.colour = Colour::parse(value).unwrap_or(h.colour),
             "hitOpacity" => h.opacity = num(value, HIT_OPACITIES, h.opacity),
-            "hudArmour" => u.armour = flag(value, u.armour),
-            "hudArmourCorner" => u.armour_corner = Corner::parse(value, u.armour_corner),
-            "hudArmourPercent" => u.armour_percent = flag(value, u.armour_percent),
-            "hudEffects" => u.effects = flag(value, u.effects),
-            "hudEffectsCorner" => u.effects_corner = Corner::parse(value, u.effects_corner),
-            "hudHeld" => u.held = flag(value, u.held),
-            "hudHeldCorner" => u.held_corner = Corner::parse(value, u.held_corner),
-            "hudBackground" => u.background = flag(value, u.background),
-            "hudOpacity" => u.opacity = num(value, HUD_OPACITIES, u.opacity),
-            "hudTextColour" => {
-                u.text = Colour::parse(value)
-                    .filter(|c| *c != Colour::Inverted)
-                    .unwrap_or(u.text)
-            }
-            "hudShadow" => u.shadow = flag(value, u.shadow),
-            "hudPlace" => self.layout.parse(value),
-            "hudEditorKey" => {
-                if value.starts_with("key.") {
-                    self.editor_key = value.to_owned();
-                }
-            }
-            "hudPing" => u.ping = flag(value, u.ping),
-            "hudPingCorner" => u.ping_corner = Corner::parse(value, u.ping_corner),
-            "hudCoords" => u.coords = flag(value, u.coords),
-            "hudCoordsCorner" => u.coords_corner = Corner::parse(value, u.coords_corner),
-            "hudServer" => u.server = flag(value, u.server),
-            "hudServerCorner" => u.server_corner = Corner::parse(value, u.server_corner),
-            "hudCombo" => u.combo = flag(value, u.combo),
-            "hudComboCorner" => u.combo_corner = Corner::parse(value, u.combo_corner),
-            "hudFps" => u.fps = flag(value, u.fps),
-            "hudFpsCorner" => u.fps_corner = Corner::parse(value, u.fps_corner),
-            "hudCps" => u.cps = flag(value, u.cps),
-            "hudCpsCorner" => u.cps_corner = Corner::parse(value, u.cps_corner),
-            "hudKeys" => u.keys = flag(value, u.keys),
-            "hudKeysCorner" => u.keys_corner = Corner::parse(value, u.keys_corner),
-            "hudClock" => u.clock = flag(value, u.clock),
-            "hudClockCorner" => u.clock_corner = Corner::parse(value, u.clock_corner),
-            "hudReach" => u.reach = flag(value, u.reach),
-            "hudReachCorner" => u.reach_corner = Corner::parse(value, u.reach_corner),
-            "hudSpeed" => u.speed = flag(value, u.speed),
-            "hudSpeedCorner" => u.speed_corner = Corner::parse(value, u.speed_corner),
             "chatTimestamps" => self.chat.timestamps = flag(value, self.chat.timestamps),
             "chatCompact" => self.chat.compact = flag(value, self.chat.compact),
             "chatCopy" => self.chat.copy = flag(value, self.chat.copy),
@@ -792,60 +600,6 @@ impl Pvp {
             h.colour.name(),
             h.opacity,
         );
-        let u = &self.hud;
-        let _ = write!(
-            out,
-            "hudArmour:{}\nhudArmourCorner:{}\nhudArmourPercent:{}\nhudEffects:{}\nhudEffectsCorner:{}\nhudHeld:{}\nhudHeldCorner:{}\nhudBackground:{}\n",
-            u.armour,
-            u.armour_corner.name(),
-            u.armour_percent,
-            u.effects,
-            u.effects_corner.name(),
-            u.held,
-            u.held_corner.name(),
-            u.background,
-        );
-        let _ = write!(
-            out,
-            "hudPing:{}\nhudPingCorner:{}\nhudCoords:{}\nhudCoordsCorner:{}\nhudServer:{}\nhudServerCorner:{}\nhudCombo:{}\nhudComboCorner:{}\n",
-            u.ping,
-            u.ping_corner.name(),
-            u.coords,
-            u.coords_corner.name(),
-            u.server,
-            u.server_corner.name(),
-            u.combo,
-            u.combo_corner.name(),
-        );
-        let _ = write!(
-            out,
-            "hudFps:{}\nhudFpsCorner:{}\nhudCps:{}\nhudCpsCorner:{}\nhudKeys:{}\nhudKeysCorner:{}\n",
-            u.fps,
-            u.fps_corner.name(),
-            u.cps,
-            u.cps_corner.name(),
-            u.keys,
-            u.keys_corner.name(),
-        );
-        let _ = write!(
-            out,
-            "hudClock:{}\nhudClockCorner:{}\nhudReach:{}\nhudReachCorner:{}\nhudSpeed:{}\nhudSpeedCorner:{}\n",
-            u.clock,
-            u.clock_corner.name(),
-            u.reach,
-            u.reach_corner.name(),
-            u.speed,
-            u.speed_corner.name(),
-        );
-        let _ = write!(
-            out,
-            "hudOpacity:{}\nhudTextColour:{}\nhudShadow:{}\n",
-            u.opacity,
-            u.text.name(),
-            u.shadow,
-        );
-        self.layout.serialize(out);
-        let _ = writeln!(out, "hudEditorKey:{}", self.editor_key);
         let c = &self.chat;
         let _ = write!(
             out,
@@ -862,7 +616,7 @@ impl Pvp {
     }
 }
 
-/// The options of the PvP & HUD page: each one's id (its language keys are `sunrise.pvp.<id>`
+/// The options of the client presentation: each one's id (its language keys are `sunrise.pvp.<id>`
 /// and `sunrise.pvp.<id>.tooltip`), English caption and description (en_us.json has the same
 /// text; a test keeps them equal).
 macro_rules! opts {
@@ -908,48 +662,6 @@ opts! {
         "Changes the colour mobs and players flash when they are hurt. Red at 30% is vanilla's.";
     HitColour, "hit_colour", "Colour", "The colour hurt mobs and players flash.";
     HitOpacity, "hit_opacity", "Opacity", "How much of the colour covers them.";
-    HudArmour, "hud_armour", "Armour",
-        "The armour you wear, head first, with how many uses each piece has left.";
-    HudArmourCorner, "hud_armour_corner", "Armour corner", "Where the armour shows.";
-    HudArmourPercent, "hud_armour_percent", "Durability in %",
-        "Uses left as a percent of the piece's maximum instead of a number.";
-    HudEffects, "hud_effects", "Effects",
-        "Your effects with their names, levels and time left, in place of the icons at the top right.";
-    HudEffectsCorner, "hud_effects_corner", "Effects corner", "Where the effects show.";
-    HudHeld, "hud_held", "Held item count",
-        "How many of the item in your hand your inventory holds; arrows with a bow or crossbow.";
-    HudHeldCorner, "hud_held_corner", "Held count corner", "Where the count shows.";
-    HudPing, "hud_ping", "Ping", "The latency the server reports for you, in milliseconds. Multiplayer only.";
-    HudPingCorner, "hud_ping_corner", "Ping corner", "Where the ping shows.";
-    HudCoords, "hud_coords", "Coordinates",
-        "Your block position and the direction you face, as F3 shows them. Hidden when the world or server reduces F3.";
-    HudCoordsCorner, "hud_coords_corner", "Coordinates corner", "Where the coordinates show.";
-    HudServer, "hud_server", "Server address", "The address of the server you play on. Multiplayer only.";
-    HudServerCorner, "hud_server_corner", "Server corner", "Where the address shows.";
-    HudCombo, "hud_combo", "Combo counter",
-        "Hits in a row the server confirmed, until you are hurt or 3 seconds pass without one.";
-    HudComboCorner, "hud_combo_corner", "Combo corner", "Where the combo shows.";
-    HudFps, "hud_fps", "FPS", "Frames drawn in the last second.";
-    HudFpsCorner, "hud_fps_corner", "FPS corner", "Where the FPS shows.";
-    HudCps, "hud_cps", "Clicks per second", "Your left and right clicks in the last second.";
-    HudCpsCorner, "hud_cps_corner", "CPS corner", "Where the clicks per second show.";
-    HudKeys, "hud_keys", "Keystrokes",
-        "Your movement keys, mouse buttons and jump, lit while you hold them, with clicks per second.";
-    HudKeysCorner, "hud_keys_corner", "Keystrokes corner", "Where the keystrokes show.";
-    HudClock, "hud_clock", "Clock", "Your computer's time.";
-    HudClockCorner, "hud_clock_corner", "Clock corner", "Where the clock shows.";
-    HudReach, "hud_reach", "Reach",
-        "How far from your eyes your last hit landed, for 3 seconds. It only measures: your reach stays vanilla's.";
-    HudReachCorner, "hud_reach_corner", "Reach corner", "Where the reach shows.";
-    HudSpeed, "hud_speed", "Speed", "How fast you move across the ground, in blocks per second.";
-    HudSpeedCorner, "hud_speed_corner", "Speed corner", "Where the speed shows.";
-    HudBackground, "hud_background", "Widget backgrounds", "A dark box behind each widget.";
-    HudOpacity, "hud_opacity", "Background opacity", "How dark the boxes behind the widgets are.";
-    HudTextColour, "hud_text_colour", "Text colour",
-        "The widgets' text colour. Durability keeps its green to red.";
-    HudShadow, "hud_shadow", "Text shadow", "A shadow under the widgets' text, as vanilla's HUD text has.";
-    HudEditorKey, "hud_editor_key", "HUD editor key",
-        "Opens the HUD editor from the game. Click, then press a key; Escape unbinds it.";
     ChatTimestamps, "chat_timestamps", "Timestamps", "The time each message came in, before it.";
     ChatCompact, "chat_compact", "Compact chat",
         "A message repeated in a row shows once, with how many times it came: (x3).";
@@ -964,7 +676,7 @@ opts! {
     CombatSounds, "combat_sounds", "1.8 hit sounds",
         "Under Legacy, leaves out the attack sounds 1.9 added (strong, weak, sweep, critical...). Hurt sounds stay.";
 }
-/// The PvP & HUD page: headers (language keys) and options.
+/// The client presentation: headers (language keys) and options.
 pub fn rows() -> Vec<Result<Opt, &'static str>> {
     use Opt::*;
     let mut rows = vec![Err("sunrise.pvp.header.crosshair")];
@@ -995,44 +707,6 @@ pub fn rows() -> Vec<Result<Opt, &'static str>> {
     );
     rows.push(Err("sunrise.pvp.header.hit"));
     rows.extend([Hit, HitColour, HitOpacity].map(Ok));
-    rows.push(Err("sunrise.pvp.header.hud"));
-    rows.extend(
-        [
-            HudArmour,
-            HudArmourCorner,
-            HudArmourPercent,
-            HudEffects,
-            HudEffectsCorner,
-            HudHeld,
-            HudHeldCorner,
-            HudPing,
-            HudPingCorner,
-            HudCoords,
-            HudCoordsCorner,
-            HudServer,
-            HudServerCorner,
-            HudCombo,
-            HudComboCorner,
-            HudFps,
-            HudFpsCorner,
-            HudCps,
-            HudCpsCorner,
-            HudKeys,
-            HudKeysCorner,
-            HudClock,
-            HudClockCorner,
-            HudReach,
-            HudReachCorner,
-            HudSpeed,
-            HudSpeedCorner,
-            HudBackground,
-            HudOpacity,
-            HudTextColour,
-            HudShadow,
-            HudEditorKey,
-        ]
-        .map(Ok),
-    );
     rows.push(Err("sunrise.pvp.header.chat"));
     rows.extend([ChatTimestamps, ChatCompact, ChatCopy, ChatSearch].map(Ok));
     rows.push(Err("sunrise.pvp.header.combat"));
@@ -1047,25 +721,8 @@ impl Opt {
             Crosshair | Outline | Hit => None,
             OutlineColour | OutlineOpacity | OutlineThickness | OutlineFill => Some(Outline),
             HitColour | HitOpacity => Some(Hit),
-            HudArmour | HudEffects | HudHeld | HudPing | HudCoords | HudServer | HudCombo
-            | HudFps | HudCps | HudKeys | HudClock | HudReach | HudSpeed | HudBackground
-            | HudTextColour | HudShadow | HudEditorKey => None,
-            HudOpacity => Some(HudBackground),
-            HudFpsCorner => Some(HudFps),
-            HudCpsCorner => Some(HudCps),
-            HudKeysCorner => Some(HudKeys),
-            HudClockCorner => Some(HudClock),
-            HudReachCorner => Some(HudReach),
-            HudSpeedCorner => Some(HudSpeed),
             ChatTimestamps | ChatCompact | ChatCopy | ChatSearch => None,
             CombatFeel | CombatIndicator | CombatSounds => None,
-            HudPingCorner => Some(HudPing),
-            HudCoordsCorner => Some(HudCoords),
-            HudServerCorner => Some(HudServer),
-            HudComboCorner => Some(HudCombo),
-            HudArmourCorner | HudArmourPercent => Some(HudArmour),
-            HudEffectsCorner => Some(HudEffects),
-            HudHeldCorner => Some(HudHeld),
             _ => Some(Crosshair),
         }
     }
@@ -1077,22 +734,6 @@ impl Opt {
             Opt::CrosshairDot => c.dot,
             Opt::Outline => p.outline.custom,
             Opt::Hit => p.hit.custom,
-            Opt::HudArmour => p.hud.armour,
-            Opt::HudArmourPercent => p.hud.armour_percent,
-            Opt::HudEffects => p.hud.effects,
-            Opt::HudHeld => p.hud.held,
-            Opt::HudBackground => p.hud.background,
-            Opt::HudShadow => p.hud.shadow,
-            Opt::HudPing => p.hud.ping,
-            Opt::HudCoords => p.hud.coords,
-            Opt::HudServer => p.hud.server,
-            Opt::HudCombo => p.hud.combo,
-            Opt::HudFps => p.hud.fps,
-            Opt::HudCps => p.hud.cps,
-            Opt::HudKeys => p.hud.keys,
-            Opt::HudClock => p.hud.clock,
-            Opt::HudReach => p.hud.reach,
-            Opt::HudSpeed => p.hud.speed,
             Opt::ChatTimestamps => p.chat.timestamps,
             Opt::ChatCompact => p.chat.compact,
             Opt::ChatCopy => p.chat.copy,
@@ -1124,22 +765,6 @@ impl Opt {
             },
             Opt::HitColour => p.hit.colour.label(),
             Opt::HitOpacity => format!("{}%", p.hit.opacity),
-            Opt::HudArmourCorner => corner_label(p.hud.armour_corner),
-            Opt::HudEffectsCorner => corner_label(p.hud.effects_corner),
-            Opt::HudHeldCorner => corner_label(p.hud.held_corner),
-            Opt::HudPingCorner => corner_label(p.hud.ping_corner),
-            Opt::HudCoordsCorner => corner_label(p.hud.coords_corner),
-            Opt::HudServerCorner => corner_label(p.hud.server_corner),
-            Opt::HudComboCorner => corner_label(p.hud.combo_corner),
-            Opt::HudFpsCorner => corner_label(p.hud.fps_corner),
-            Opt::HudCpsCorner => corner_label(p.hud.cps_corner),
-            Opt::HudKeysCorner => corner_label(p.hud.keys_corner),
-            Opt::HudClockCorner => corner_label(p.hud.clock_corner),
-            Opt::HudReachCorner => corner_label(p.hud.reach_corner),
-            Opt::HudSpeedCorner => corner_label(p.hud.speed_corner),
-            Opt::HudOpacity => format!("{}%", p.hud.opacity),
-            Opt::HudTextColour => p.hud.text.label(),
-            Opt::HudEditorKey => crate::keybinds::display_name(&p.editor_key).plain(),
             Opt::CombatFeel => match p.combat.legacy {
                 true => crate::lang::get_or("sunrise.pvp.combat_feel.legacy", "Legacy (1.8.9)"),
                 false => crate::lang::get_or("sunrise.pvp.combat_feel.modern", "Modern"),
@@ -1150,8 +775,7 @@ impl Opt {
     /// A click; `back` (right button, wheel up) goes the other way.
     pub fn cycle(self, p: &mut Pvp, back: bool) {
         let c = &mut p.crosshair;
-        let (o, h, u) = (&mut p.outline, &mut p.hit, &mut p.hud);
-        let corner = |c: Corner| step(&Corner::ALL, c, back);
+        let (o, h) = (&mut p.outline, &mut p.hit);
         // Off, then every solid colour.
         let solid_or_off = |v: Option<Colour>| {
             let all = [None]
@@ -1187,39 +811,6 @@ impl Opt {
             Opt::Hit => h.custom = !h.custom,
             Opt::HitColour => h.colour = h.colour.step_solid(back),
             Opt::HitOpacity => h.opacity = step_by(h.opacity, HIT_OPACITIES, 10, back),
-            Opt::HudArmour => u.armour = !u.armour,
-            Opt::HudArmourCorner => u.armour_corner = corner(u.armour_corner),
-            Opt::HudArmourPercent => u.armour_percent = !u.armour_percent,
-            Opt::HudEffects => u.effects = !u.effects,
-            Opt::HudEffectsCorner => u.effects_corner = corner(u.effects_corner),
-            Opt::HudHeld => u.held = !u.held,
-            Opt::HudHeldCorner => u.held_corner = corner(u.held_corner),
-            Opt::HudBackground => u.background = !u.background,
-            Opt::HudOpacity => u.opacity = step_by(u.opacity, HUD_OPACITIES, 10, back),
-            Opt::HudTextColour => u.text = u.text.step_solid(back),
-            Opt::HudShadow => u.shadow = !u.shadow,
-            // Bound through the controls' key capture (`Item::key_name`).
-            Opt::HudEditorKey => {}
-            Opt::HudPing => u.ping = !u.ping,
-            Opt::HudPingCorner => u.ping_corner = corner(u.ping_corner),
-            Opt::HudCoords => u.coords = !u.coords,
-            Opt::HudCoordsCorner => u.coords_corner = corner(u.coords_corner),
-            Opt::HudServer => u.server = !u.server,
-            Opt::HudServerCorner => u.server_corner = corner(u.server_corner),
-            Opt::HudCombo => u.combo = !u.combo,
-            Opt::HudComboCorner => u.combo_corner = corner(u.combo_corner),
-            Opt::HudFps => u.fps = !u.fps,
-            Opt::HudFpsCorner => u.fps_corner = corner(u.fps_corner),
-            Opt::HudCps => u.cps = !u.cps,
-            Opt::HudCpsCorner => u.cps_corner = corner(u.cps_corner),
-            Opt::HudKeys => u.keys = !u.keys,
-            Opt::HudKeysCorner => u.keys_corner = corner(u.keys_corner),
-            Opt::HudClock => u.clock = !u.clock,
-            Opt::HudClockCorner => u.clock_corner = corner(u.clock_corner),
-            Opt::HudReach => u.reach = !u.reach,
-            Opt::HudReachCorner => u.reach_corner = corner(u.reach_corner),
-            Opt::HudSpeed => u.speed = !u.speed,
-            Opt::HudSpeedCorner => u.speed_corner = corner(u.speed_corner),
             Opt::ChatTimestamps => p.chat.timestamps = !p.chat.timestamps,
             Opt::ChatCompact => p.chat.compact = !p.chat.compact,
             Opt::ChatCopy => p.chat.copy = !p.chat.copy,
@@ -1447,32 +1038,10 @@ mod tests {
         for header in rows().into_iter().filter_map(Result::err) {
             assert!(en.get(header).is_some(), "{header}");
         }
-        for c in Corner::ALL {
-            let key = format!("sunrise.pvp.corner.{}", c.name());
-            assert!(en.get(&key).is_some(), "{key}");
-        }
         let names = Colour::ALL.map(|c| (format!("sunrise.pvp.colour.{}", c.name()), c.english()));
         let shapes = Shape::ALL.map(|c| (format!("sunrise.pvp.shape.{}", c.name()), c.english()));
         for (key, english) in names.iter().chain(&shapes) {
             assert_eq!(en.get(key), Some(*english), "{key}");
-        }
-    }
-
-    #[test]
-    fn each_corner_label_comes_from_its_own_catalogue_key() {
-        let fixture = crate::lang::Language::of(
-            "xx_xx",
-            Corner::ALL.map(|c| {
-                (
-                    format!("sunrise.pvp.corner.{}", c.name()),
-                    format!("fixture {}", c.name()),
-                )
-            }),
-        );
-        let (labels, missed) = crate::lang::scoped(fixture, || Corner::ALL.map(corner_label));
-        assert!(missed.is_empty());
-        for (c, label) in Corner::ALL.into_iter().zip(labels) {
-            assert_eq!(label, format!("fixture {}", c.name()));
         }
     }
 

@@ -349,9 +349,6 @@ pub(in crate::game) use client_side::hand;
 pub(in crate::game) use client_side::headless;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::hud_editor;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::hud_room;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]

@@ -132,7 +132,6 @@ pub mod preedit;
 pub use sunrise_level::profile_lookup;
 pub use sunrise_level::providers;
 pub mod pvp;
-pub mod pvp_hud;
 pub mod spectator_shaders;
 pub use sunrise_assets::resource_source;
 pub use sunrise_level::api_context;
