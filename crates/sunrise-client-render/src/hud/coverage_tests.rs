@@ -69,7 +69,8 @@ fn repeated_partial_scissors_preserve_the_unclipped_gradient_pixels() {
 #[ignore = "daily"]
 fn standalone_picture_draw_order_and_screen_exit_release() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(mut gpu) = Gpu::new() else { return };
+    let mut gpu = Gpu::new()
+        .expect("standalone_picture_draw_order_and_screen_exit_release requires the GPU fixture");
     let image = Arc::new(pictures::Picture {
         id: u64::MAX,
         width: 1,
@@ -382,9 +383,8 @@ fn coverage_follows_hud_blends_discard_scissor_and_depth_without_changing_colour
 #[ignore = "daily"]
 fn each_hud_draw_clips_at_white_as_on_an_8_bit_frame() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(gpu) = Gpu::new() else {
-        return;
-    };
+    let gpu = Gpu::new()
+        .expect("each_hud_draw_clips_at_white_as_on_an_8_bit_frame requires the GPU fixture");
     let mut batch = HudBatch::scratch([4, 2]);
     quad(
         &mut batch,
@@ -422,10 +422,20 @@ fn each_hud_draw_clips_at_white_as_on_an_8_bit_frame() {
 #[ignore = "daily"]
 fn coverage_preserves_each_cit_blend_and_its_destination_alpha() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(mut gpu) = Gpu::new() else {
-        return;
-    };
+    let mut gpu = Gpu::new().expect(
+        "coverage_preserves_each_cit_blend_and_its_destination_alpha requires the GPU fixture",
+    );
     use sunrise_optifine::cit::parse_blend;
+    // Derivation of the expected bytes. In `fs_cit_glint` each glint RGB is 102/255 and alpha
+    // 128/255 (the slot's rgba and the vertex alpha are 1). Over a zero clear, coverage equals
+    // 255 * c after saturation, with c from `wrap` in gfx/hud_coverage.rs:
+    // - alpha and `770 771 772 773` (SrcAlpha, OneMinusSrcAlpha): c = a, 128.
+    // - add, dodge, glint: an additive primary blend, so coverage writes are masked off, 0.
+    // - burn (Zero, OneMinusSrcColor): c = max rgb, 102.
+    // - multiply (DstColor, OneMinusSrcAlpha): c = a - min rgb, 128 - 102 = 26.
+    // - overlay (DstColor, SrcColor): c = 1 - 2 * min rgb, 255 - 204 = 51.
+    // - screen, subtract, replace: fully covering, 255.
+    // - `0 768` (Zero, SrcColor) and `774 0` (DstColor, Zero): c = 1 - min rgb, 255 - 102 = 153.
     for (name, expected) in [
         ("alpha", 128),
         ("add", 0),
@@ -484,9 +494,8 @@ fn coverage_preserves_each_cit_blend_and_its_destination_alpha() {
 #[ignore = "daily"]
 fn coverage_uses_pack_texts_final_alpha_and_discard() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(mut gpu) = Gpu::new() else {
-        return;
-    };
+    let mut gpu = Gpu::new()
+        .expect("coverage_uses_pack_texts_final_alpha_and_discard requires the GPU fixture");
     // A translated-style struct result and early return; no dependency on game resources.
     let program = crate::core_shader::validated(
         naga::front::wgsl::parse_str("@vertex fn main(@location(0) p: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4(p.x / 2.0 - 1.0, 1.0 - p.y, 0.0, 1.0); }").unwrap(),
@@ -520,9 +529,7 @@ fn coverage_uses_pack_texts_final_alpha_and_discard() {
 #[ignore = "daily"]
 fn a_pack_text_shader_without_a_colour_output_is_dropped_not_wrapped() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(mut gpu) = Gpu::new() else {
-        return;
-    };
+    let mut gpu = Gpu::new().expect("a_pack_text_shader_without_a_colour_output_is_dropped_not_wrapped requires the GPU fixture");
     let program = crate::core_shader::validated(
         naga::front::wgsl::parse_str("@vertex fn main(@location(0) p: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4(p, 0.0, 1.0); }").unwrap(),
         naga::front::wgsl::parse_str("@fragment fn main() -> @location(1) vec4<f32> { return vec4(1.0); }").unwrap(),
@@ -558,7 +565,8 @@ fn prepare(gpu: &mut Gpu, batch: &HudBatch) {
 #[ignore = "daily"]
 fn a_repeating_picture_past_u_2_draws_itself_not_a_glint() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(mut gpu) = Gpu::new() else { return };
+    let mut gpu = Gpu::new()
+        .expect("a_repeating_picture_past_u_2_draws_itself_not_a_glint requires the GPU fixture");
     let image = red_green();
     // The harness's frame is 4 x 2 GUI pixels.
     let mut batch = HudBatch::scratch([4, 2]);
@@ -586,7 +594,9 @@ fn a_repeating_picture_past_u_2_draws_itself_not_a_glint() {
 #[ignore = "daily"]
 fn a_held_picture_keeps_its_texture_between_frames_until_released() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(mut gpu) = Gpu::new() else { return };
+    let mut gpu = Gpu::new().expect(
+        "a_held_picture_keeps_its_texture_between_frames_until_released requires the GPU fixture",
+    );
     // `held` is the atlas's strong reference to a standalone texture.
     let held = red_green();
     let mut batch = HudBatch::scratch([2, 1]);
