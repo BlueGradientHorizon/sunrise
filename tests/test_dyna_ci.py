@@ -5,6 +5,7 @@ import json
 import os
 import re
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -38,7 +39,7 @@ class DynaRoutingTests(unittest.TestCase):
     def route(self, event, same_repo="true", enabled="true", lease=None):
         env = dict(os.environ, EVENT=event, SAME_REPO=same_repo, ENABLED=enabled,
                    LEASE=str(int(time.time()) + 3600) if lease is None else lease)
-        return subprocess.check_output(["bash", ROOT / "tools/ci/dyna_ci_runner.sh"], env=env, text=True).strip()
+        return subprocess.check_output([BASH, ROOT / "tools/ci/dyna_ci_runner.sh"], env=env, text=True).strip()
 
     @unittest.skipUnless(POSIX_BASH, "needs a bash that is not WSL's")
     def test_only_allowed_events_and_same_repository(self):
@@ -53,6 +54,74 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertEqual(self.route("push", enabled="false"), "self_hosted=false")
         for lease in ("", "bad", "0"):
             self.assertEqual(self.route("push", lease=lease), "self_hosted=false")
+
+    def snapshot_route(self, directory, *, now, snapshot, created_at, started_at, attempt, live="", path=None):
+        """The route script's stdout, with a `gh` in `directory` that answers its reads from these values.
+
+        `path` replaces PATH entirely (to run where python3 is absent); by default `directory` precedes it."""
+        gh = Path(directory) / "gh"
+        gh.write_text('#!/usr/bin/env bash\ncase "$*" in *SELF_HOSTED*) echo "$LIVE_ENABLED";; '
+                      '*POOL_UNTIL*) echo "$LIVE";; *runs/7*.run_started_at) echo "$STARTED_AT";; '
+                      '*runs/7*.created_at) echo "$CREATED_AT";; *) exit 1;; esac\n',
+                      encoding="utf-8", newline="\n")
+        gh.chmod(0o755)
+        env = dict(os.environ, PATH=path or f"{directory}{os.pathsep}{os.environ['PATH']}", EVENT="workflow_dispatch",
+                   SAME_REPO="true", VARS_ENABLED="true", VARS_LEASE=snapshot, LIVE=live,
+                   LIVE_ENABLED="true" if live else "", CREATED_AT=created_at, STARTED_AT=started_at,
+                   GITHUB_REPOSITORY="sunrise-org/sunrise", GITHUB_RUN_ID="7",
+                   GITHUB_RUN_ATTEMPT=str(attempt), NOW=str(now))
+        env.pop("GITHUB_OUTPUT", None)
+        return subprocess.run([BASH, ROOT / "tools/ci/dyna_ci_route.sh"], env=env,
+                              capture_output=True, text=True, check=True).stdout
+
+    def assert_bsd_date_fails_closed(self, now, stamp):
+        """With a BSD-like `date` (macOS) first on PATH, the route script never asks it `-d`: python3 reads the stamp,
+        and where python3 is absent the script fails closed rather than trust a `date -d` that sets DST and succeeds."""
+        # BSD date: no --version (exit 1), -d <integer> means "set DST" and succeeds printing the current time, and any
+        # other -d is rejected. Every -d is logged; every other use of date is the real one.
+        bsd_date = ('#!/usr/bin/env bash\nif [ "$1" = --version ]; then exit 1; fi\n'
+                    'if [ "$1" = -d ]; then echo "$*" >> "$DATE_LOG"\n'
+                    '  case "$2" in *[!0-9]* | "") echo "date: illegal option -- d" >&2; exit 1;; esac\n'
+                    '  date +%%s; exit 0; fi\nexec %s "$@"\n')
+        # snapshot lease, created_at, started_at, attempt, expected with python3: to the second, from the field the
+        # attempt names. Without python3 every one is refused.
+        cases = ((str(now - 55 * 60 + 12 * 60), stamp(55 * 60), stamp(60), 1, "true"),
+                 (str(now - 55 * 60 - 1), stamp(55 * 60), stamp(60), 1, "false"),
+                 (str(now - 30), stamp(2 * 3600), stamp(60), 2, "true"),
+                 (str(now - 61), stamp(2 * 3600), stamp(60), 2, "false"),
+                 # A stamp it cannot read, or one with no zone, judges nothing: the snapshot is refused.
+                 ("9999999999", "not a timestamp", stamp(60), 1, "false"),
+                 ("9999999999", "0", stamp(60), 1, "false"),
+                 ("9999999999", stamp(60).removesuffix("Z"), stamp(60), 1, "false"),
+                 ("9999999999", stamp(60), "", 2, "false"),
+                 ("9999999999", stamp(60), stamp(60), 1, "true"))
+        # Git Bash's usr/bin is often off the Windows PATH, so ask the POSIX shell where each program is.
+        which = lambda name: subprocess.check_output([BASH, "-c", f"command -v {name}"], text=True).strip()
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as bare:
+            Path(directory, "date").write_text(bsd_date % shlex.quote(which("date")),
+                                               encoding="utf-8", newline="\n")
+            Path(directory, "date").chmod(0o755)
+            # A PATH with no python3: the stubs, and wrappers for the only other programs the script runs.
+            for name in ("bash", "dirname"):
+                Path(bare, name).write_text(f'#!/bin/sh\nexec {shlex.quote(which(name))} "$@"\n',
+                                            encoding="utf-8", newline="\n")
+                Path(bare, name).chmod(0o755)
+            Path(bare, "date").write_text(Path(directory, "date").read_text(encoding="utf-8"),
+                                          encoding="utf-8", newline="\n")
+            Path(bare, "date").chmod(0o755)
+            log = Path(directory, "date.log")
+            os.environ["DATE_LOG"] = str(log)
+            self.addCleanup(os.environ.pop, "DATE_LOG")
+            for snapshot, created_at, started_at, attempt, expected in cases:
+                with self.subTest(snapshot=snapshot, created_at=created_at, started_at=started_at, attempt=attempt):
+                    result = self.snapshot_route(directory, now=now, snapshot=snapshot, created_at=created_at,
+                                                 started_at=started_at, attempt=attempt)
+                    self.assertEqual(result, f"self_hosted={expected}\n")
+                with self.subTest(python3="absent", snapshot=snapshot, created_at=created_at):
+                    result = self.snapshot_route(bare, now=now, snapshot=snapshot, created_at=created_at,
+                                                 started_at=started_at, attempt=attempt, path=bare)
+                    self.assertEqual(result, "self_hosted=false\n")
+            self.assertFalse(log.exists(), "BSD date -d is never invoked, with or without python3")
 
     @unittest.skipUnless(POSIX_BASH, "needs a bash that is not WSL's")
     def test_route_reads_the_lease_live_else_judges_the_snapshot_at_the_attempts_creation(self):
@@ -71,22 +140,12 @@ class DynaRoutingTests(unittest.TestCase):
                  ("", str(now - 61), 2 * 3600, 2, 60, "false"),
                  ("", "9999999999", 2 * 3600, 2, 3601, "false"))
         with tempfile.TemporaryDirectory() as directory:
-            gh = Path(directory) / "gh"
-            gh.write_text('#!/usr/bin/env bash\ncase "$*" in *SELF_HOSTED*) echo "$LIVE_ENABLED";; '
-                          '*POOL_UNTIL*) echo "$LIVE";; *runs/7*.run_started_at) echo "$STARTED_AT";; '
-                          '*runs/7*.created_at) echo "$CREATED_AT";; *) exit 1;; esac\n')
-            gh.chmod(0o755)
             for live, snapshot, age, attempt, started, expected in cases:
                 with self.subTest(live=live, snapshot=snapshot, age=age, attempt=attempt):
-                    env = dict(os.environ, PATH=f"{directory}:{os.environ['PATH']}", EVENT="workflow_dispatch",
-                               SAME_REPO="true", VARS_ENABLED="true", VARS_LEASE=snapshot, LIVE=live,
-                               LIVE_ENABLED="true" if live else "", CREATED_AT=stamp(age), STARTED_AT=stamp(started),
-                               GITHUB_REPOSITORY="sunrise-org/sunrise", GITHUB_RUN_ID="7",
-                               GITHUB_RUN_ATTEMPT=str(attempt), NOW=str(now))
-                    env.pop("GITHUB_OUTPUT", None)
-                    result = subprocess.run(["bash", ROOT / "tools/ci/dyna_ci_route.sh"], env=env,
-                                            capture_output=True, text=True, check=True)
-                    self.assertEqual(result.stdout, f"self_hosted={expected}\n")
+                    result = self.snapshot_route(directory, now=now, snapshot=snapshot, created_at=stamp(age),
+                                                 started_at=stamp(started), attempt=attempt, live=live)
+                    self.assertEqual(result, f"self_hosted={expected}\n")
+        self.assert_bsd_date_fails_closed(now, stamp)
 
     def test_every_workflow_routes_through_the_route_script(self):
         # A job that handed the run's lease snapshot straight to dyna_ci_runner.sh judged it against the time the job
@@ -124,7 +183,7 @@ class DynaRoutingTests(unittest.TestCase):
                                             ("yes", 1, "")):
                 with self.subTest(given=given):
                     output.write_text("")
-                    result = subprocess.run(["bash", "-e", "-c", script], cwd=ROOT, capture_output=True, text=True,
+                    result = subprocess.run([BASH, "-e", "-c", script], cwd=ROOT, capture_output=True, text=True,
                                             env=dict(os.environ, GIVEN=given, GITHUB_OUTPUT=str(output)))
                     self.assertEqual(result.returncode, status, result.stdout)
                     self.assertEqual(output.read_text(), expected)
@@ -147,7 +206,7 @@ class DynaRoutingTests(unittest.TestCase):
             with self.subTest(source=source, lease=lease, created=created, now=now):
                 env = dict(os.environ, EVENT="push", SAME_REPO="true", ENABLED="true",
                            LEASE=lease, LEASE_SOURCE=source, CREATED=created, NOW=now)
-                result = subprocess.check_output(["bash", ROOT / "tools/ci/dyna_ci_runner.sh"],
+                result = subprocess.check_output([BASH, ROOT / "tools/ci/dyna_ci_runner.sh"],
                                                  env=env, text=True)
                 self.assertEqual(result.strip(), f"self_hosted={str(expected).lower()}")
 
@@ -166,7 +225,7 @@ class DynaRoutingTests(unittest.TestCase):
             cargo_home = cache / "dyna-cargo"
             env = dict(os.environ, DYNA_CI_BUILD=directory, GITHUB_ENV=str(envfile), GITHUB_PATH=str(pathfile),
                        CARGO_HOME=str(cargo_home))
-            subprocess.run(["bash", script], env=env, check=True)
+            subprocess.run([BASH, script], env=env, check=True)
             exports = envfile.read_text()
             self.assertIn(f"RUSTUP_HOME={cache / 'rustup'}\n", exports)
             for key in ("CARGO_TARGET_DIR", "CARGO_HOME", "CARGO_INCREMENTAL"):
@@ -206,7 +265,7 @@ class DynaRoutingTests(unittest.TestCase):
                            GITHUB_ENV=str(root / "env"), GITHUB_PATH=str(root / "path"),
                            MISSING=str(int(missing)), APT_CALLS=str(root / "apt-calls"), DYNA_CI_APT_TRIES="1",
                            EXTRACTION_ERROR=str(int(extraction_error)), EXTRACTION_RECEIPT=str(root / "extracted"))
-                result = subprocess.run(["bash", script], env=env, capture_output=True, text=True)
+                result = subprocess.run([BASH, script], env=env, capture_output=True, text=True)
                 calls = (root / "apt-calls").read_text() if (root / "apt-calls").exists() else ""
                 if missing:
                     self.assertTrue(calls, "a missing package must run the download fallback")
@@ -249,7 +308,7 @@ class DynaRoutingTests(unittest.TestCase):
                        GITHUB_ENV=str(root / "env"), GITHUB_PATH=str(root / "path"),
                        DYNA_CI_APT_PAUSE="0", DYNA_CI_APT_TRIES="3")
             (root / "build").mkdir()
-            result = subprocess.run(["bash", script], env=env, capture_output=True, text=True)
+            result = subprocess.run([BASH, script], env=env, capture_output=True, text=True)
             count = int((root / "count").read_text()) if (root / "count").exists() else 0
             return result, count
 
@@ -407,7 +466,7 @@ class DynaRoutingTests(unittest.TestCase):
                     output = Path(directory, "output")
                     output.write_text("")
                     env = dict(os.environ, BASE_SHA=base, HEAD_SHA=head, FILES=files, ENTRIES=entries, GITHUB_OUTPUT=str(output))
-                    subprocess.run(["bash", "-e", "-c", select["run"].replace("tools/ci/", f"{ROOT}/tools/ci/")],
+                    subprocess.run([BASH, "-e", "-c", select["run"].replace("tools/ci/", f"{ROOT}/tools/ci/")],
                                    cwd=directory, env=env, check=True)
                     self.assertIn(f"rust_required={rust}\n", output.read_text())
         # format skips rustfmt when no Rust changed; the repository checks still run.
@@ -454,7 +513,7 @@ class DynaRoutingTests(unittest.TestCase):
                 before = target.lstat() if case != "absent" else None
                 before_link = os.readlink(target) if case in ("wrong-link", "dangling-link") else None
                 env = dict(os.environ, CARGO_TARGET_DIR=str(persistent))
-                result = subprocess.run(["bash", "-e", "-c", script], cwd=root, env=env,
+                result = subprocess.run([BASH, "-e", "-c", script], cwd=root, env=env,
                                         capture_output=True, text=True)
                 if case in ("absent", "correct-link"):
                     self.assertEqual(result.returncode, 0, result.stderr)
@@ -500,7 +559,7 @@ class DynaRoutingTests(unittest.TestCase):
                 env = dict(os.environ, PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}",
                            RUNNER_TEMP=str(root), GITHUB_ENV=str(environment), JOBS="",
                            STAGE_ARTIFACTS="".join(json.dumps(message) + "\n" for message in messages))
-                result = subprocess.run(["bash", "-e", "-c", script], cwd=ROOT, env=env,
+                result = subprocess.run([BASH, "-e", "-c", script], cwd=ROOT, env=env,
                                         capture_output=True, text=True)
                 if case == "normal-and-harness":
                     self.assertEqual(result.returncode, 0, result.stderr)
@@ -649,17 +708,17 @@ class DynaRoutingTests(unittest.TestCase):
                     (seed / name).mkdir(parents=True)
                 script = step["run"].replace("/cache/sunrise-local", seed.as_posix())
                 summary = root / "summary"
-                env = dict(os.environ, EVENT=event, GITHUB_STEP_SUMMARY=str(summary))
+                env = dict(os.environ, EVENT=event, GITHUB_STEP_SUMMARY=summary.as_posix())
 
                 def check(unavailable=None):
-                    summary.write_text("")
-                    run = subprocess.run(["bash", "-e", "-c", script], cwd=root, env=env,
+                    summary.write_text("", encoding="utf-8", newline="\n")
+                    run = subprocess.run([BASH, "-e", "-c", script], cwd=root, env=env,
                                          capture_output=True, text=True)
                     self.assertEqual(run.stderr, "")
                     self.assertEqual(run.returncode, 1 if unavailable else 0, run.stdout)
                     self.assertEqual(run.stdout, f"::error::prepared data unavailable on this runner: {unavailable}\n"
                                      if unavailable else "")
-                    self.assertEqual(summary.read_text(), f"Prepared data unavailable: {unavailable} ({event})\n"
+                    self.assertEqual(summary.read_text(encoding="utf-8"), f"Prepared data unavailable: {unavailable} ({event})\n"
                                      if unavailable and is_shard else "")
 
                 check()
@@ -768,7 +827,7 @@ class DynaRoutingTests(unittest.TestCase):
                 "run(['cargo', 'test', '--locked', '-p', 'sunrise-gameplay', '--lib', 'w'])\n")
             env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
                    "PARITY_LOG_DIR": temporary, "RUNNER_TEMP": temporary, "BUCKET": "1"}
-            subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
+            subprocess.run([BASH, "-e", "-c", script], cwd=tree, env=env, check=True)
             fixtures = "build --locked --profile test -p sunrise-parity-fixtures"
             self.assertEqual(calls.read_text().splitlines(), [
                 "test --locked --no-run -p sunrise-client --lib",
@@ -780,15 +839,15 @@ class DynaRoutingTests(unittest.TestCase):
             calls.unlink()
             (Path(temporary, "plan")).mkdir()
             Path(temporary, "plan", "bucket-1.json").write_text('["gameplay#2", "fast"]\n')
-            subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
+            subprocess.run([BASH, "-e", "-c", script], cwd=tree, env=env, check=True)
             self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-gameplay --lib"])
             calls.unlink()
             Path(temporary, "plan", "bucket-1.json").write_text("[]\n")
-            subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
+            subprocess.run([BASH, "-e", "-c", script], cwd=tree, env=env, check=True)
             self.assertFalse(calls.exists())
             # A plan it cannot read fails the step with a fixed annotation, not a silent empty build.
             Path(temporary, "plan", "bucket-1.json").write_text("not json\n")
-            failed = subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, capture_output=True, text=True)
+            failed = subprocess.run([BASH, "-e", "-c", script], cwd=tree, env=env, capture_output=True, text=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertEqual(failed.stdout, "::error::Could not read the game-probe plan for this parity share.\n")
             self.assertFalse(calls.exists())
@@ -946,7 +1005,7 @@ class IgnoredTestsKeepTests(unittest.TestCase):
                     "NAME": "77-2-3"}
 
     def keep_step(self):
-        return subprocess.run(["bash", "-e", "-c", self.steps[self.STEP]["run"]], cwd=self.root, env=self.env,
+        return subprocess.run([BASH, "-e", "-c", self.steps[self.STEP]["run"]], cwd=self.root, env=self.env,
                               capture_output=True, text=True)
 
     def test_the_run_step_writes_where_the_keep_step_reads(self):
@@ -985,7 +1044,7 @@ class IgnoredTestsKeepTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([path.name for path in root.iterdir()], ["76-1-0"])
         # A host with no keep variable is left alone.
-        result = subprocess.run(["bash", "-e", "-c", self.steps[self.STEP]["run"]], cwd=self.root,
+        result = subprocess.run([BASH, "-e", "-c", self.steps[self.STEP]["run"]], cwd=self.root,
                                 env={key: value for key, value in self.env.items() if key != "DYNA_CI_KEEP"},
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -1007,7 +1066,7 @@ class ParityWorkflowTests(unittest.TestCase):
         self.slot = self.root / "parity-keep/77-2-bucket-0"
 
     def step(self, name):
-        return subprocess.run(["bash", "-e", "-c", self.steps[name]["run"]], cwd=self.root, env=self.env,
+        return subprocess.run([BASH, "-e", "-c", self.steps[name]["run"]], cwd=self.root, env=self.env,
                               capture_output=True, text=True)
 
     def initialise(self):
@@ -1026,7 +1085,7 @@ class ParityWorkflowTests(unittest.TestCase):
             "  --> crates/sunrise-client/src/lib.rs:1:1\nprivate source excerpt\n"
             "error[E0609]: no field `PRIVATE`\n  --> crates/sunrise-client/src/untracked_generated_probe.rs:3:9\n"
             "error: could not compile\n")
-        result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, capture_output=True, text=True,
+        result = subprocess.run([BASH, "-e", "-c", step["run"]], cwd=ROOT, capture_output=True, text=True,
                                 env=self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("game-probes failed:", result.stdout)
@@ -1058,13 +1117,13 @@ class ParityWorkflowTests(unittest.TestCase):
             path.mkdir(parents=True)
         os.utime(stale, (0, 0))
         # A green share: nothing captured, the expired copy still goes.
-        result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
+        result = subprocess.run([BASH, "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
                                 env=dict(self.env, DYNA_CI_KEEP=str(keep)))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(stale.exists())
         self.assertTrue(fresh.exists())
         # A host whose keep holds no captured logs is left as it is.
-        result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
+        result = subprocess.run([BASH, "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
                                 env=dict(self.env, DYNA_CI_KEEP=str(self.root / "empty-keep")))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.root / "empty-keep").exists())
@@ -1134,7 +1193,7 @@ class ParityWorkflowTests(unittest.TestCase):
             run = scope | {"run_attempt": "1"} if bucket == 1 else scope
             report.write_text(json.dumps({"bucket": bucket, "of": 3, "selected": [name], "passed": [],
                                           "failed": [name], "complete": True, "scope": run}) if bucket != 2 else "{")
-        result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=self.root, env=env,
+        result = subprocess.run([BASH, "-e", "-c", step["run"]], cwd=self.root, env=env,
                                 capture_output=True, text=True, check=True)
         self.assertEqual(result.stdout.splitlines(), ["FAIL loot_a"])
         merged = json.loads((self.root / "parity.json").read_text())
