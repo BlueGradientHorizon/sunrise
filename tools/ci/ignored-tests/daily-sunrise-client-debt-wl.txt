@@ -1,3 +1,4 @@
+sunrise-client game::integrated::tests::a_slow_server_starting_listener_does_not_time_out_the_owner_login lib daily child-process
 sunrise-client game::integrated::tests::integrated_quit_unloads_the_client_before_requesting_server_stop lib daily resources
 sunrise-client game::integrated::tests::integrated_startup_saves_and_starts_before_handing_out_ready lib daily resources
 sunrise-client game::integrated::tests::new_authenticated_world_saves_profile_without_player_before_login lib daily resources

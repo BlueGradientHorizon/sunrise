@@ -799,14 +799,23 @@ impl Game<'_> {
         ready: &Sender<Ready>,
         opening: Opening,
     ) -> Result<super::server_lifecycle::ServerRunOutcome> {
-        let (pipe, world_name) = self.integrated_open(&launch, &flags, tasks, opening)?;
+        let world_name = self.integrated_open(&launch, &flags, tasks, opening)?;
         // IntegratedServer.initServer ends with `ServerStartingEvent`, right before
         // `MinecraftServer.runServer` fires `ServerStartedEvent`.
         self.native_server_starting(false);
         // The server thread's `server_started` site, before the tick loop.
         self.native_lifecycle_world_ready();
-        // Hand the local connection pipe to the client only after `server_started`,
-        // so a failed or panicking startup never hands out a live pipe.
+        // `Minecraft.doWorldLoad` waits for the server before `startMemoryChannel` and
+        // `connectToLocalServer`: the memory connection (and its login timeout) starts only
+        // now, so a slow `server_starting` listener cannot run the owner's login out. A failed
+        // or panicking startup never hands out a live pipe.
+        let pipe = self
+            .lan
+            .as_ref()
+            .ok_or("the integrated server did not start")?
+            .hub
+            .lan
+            .connect_local()?;
         let _ = ready.send(Ok((
             pipe,
             world_name,
@@ -961,7 +970,7 @@ impl Game<'_> {
         flags: &Arc<Flags>,
         tasks: Receiver<OwnerRequest>,
         opening: Opening,
-    ) -> Result<(Pipe, String)> {
+    ) -> Result<String> {
         // Minecraft creates Services in the game directory, shared by all its worlds.
         if let Ok(dir) = std::env::current_dir() {
             let (cache, warnings) =
@@ -1049,7 +1058,7 @@ impl Game<'_> {
             sunrise_client::lan::hub::effective_view_distance(view_distance);
         self.streaming.radius = self.settings.render_distance;
         let commands = self.allow_commands();
-        let pipe = {
+        {
             let host = self
                 .lan
                 .as_mut()
@@ -1062,8 +1071,7 @@ impl Game<'_> {
                 uuid: owner,
                 saved: Some(saved),
             });
-            host.hub.lan.connect_local()?
-        };
+        }
         self.serving = Some(Serving {
             flags: flags.clone(),
             tasks,
@@ -1088,7 +1096,7 @@ impl Game<'_> {
             }
             self.save_world_after_players(false)
         })?;
-        Ok((pipe, self.level.name.clone()))
+        Ok(self.level.name.clone())
     }
 
     /// `MinecraftServer.stopServer`: abort generation, then run the shared shutdown.
@@ -2537,6 +2545,112 @@ pub(super) mod tests {
                 ]
             );
         });
+    }
+
+    /// The owner's memory connection starts after `server_starting` and `server_started`, so a
+    /// listener that blocks past the 10 s login timeout of `lan::conn` cannot run the owner's
+    /// login out: the owner still reaches play, on the server as well as in the window.
+    #[test]
+    #[ignore = "daily"]
+    fn a_slow_server_starting_listener_does_not_time_out_the_owner_login() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+        use mod_api::{Hooks, ModEntry, ServerHost};
+
+        /// Longer than `lan::conn`'s login timeout (10 s), by a margin that only covers the
+        /// timer, not scheduling: a connection opened before this listener runs has timed out
+        /// by the time the listener returns.
+        const BLOCK: Duration = Duration::from_secs(12);
+
+        struct Block {
+            gate: Mutex<Receiver<()>>,
+            blocked_for: Arc<Mutex<Option<Duration>>>,
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for Block {
+            fn server_starting(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &mut mod_api::ServerStartingEvent,
+            ) {
+                let started = Instant::now();
+                // One wait on a gate nobody opens; the test keeps its sender alive.
+                let opened = self.gate.lock().unwrap().recv_timeout(BLOCK);
+                assert_eq!(opened, Err(RecvTimeoutError::Timeout));
+                *self.blocked_for.lock().unwrap() = Some(started.elapsed());
+            }
+        }
+
+        const NAME: &str = "game::integrated::tests::a_slow_server_starting_listener_does_not_time_out_the_owner_login";
+        if run_fresh_cases(
+            NAME,
+            "SUNRISE_INTEGRATED_STARTING_BLOCK_CHILD",
+            &["blocked"],
+        ) {
+            return;
+        }
+        let (gate_open, gate) = channel();
+        let blocked_for = Arc::new(Mutex::new(None));
+        let mods = vec![ModEntry::new(
+            "starting_block",
+            Box::new(Block {
+                gate: Mutex::new(gate),
+                blocked_for: blocked_for.clone(),
+            }),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                game.settings.render_distance = 2;
+                game.settings.simulation_distance = 2;
+                let options = WorldOptions {
+                    world_type: sunrise_client::save::WorldPreset::Flat,
+                    ..Default::default()
+                };
+                let owner = offline_uuid(&game.options.player_name());
+                game.open_integrated(
+                    "slow_server_starting",
+                    Some("Slow server starting"),
+                    Some(1),
+                    true,
+                    Some(&options),
+                )
+                .unwrap();
+                assert!(
+                    blocked_for.lock().unwrap().is_some_and(|d| d >= BLOCK),
+                    "the listener held startup past the login timeout"
+                );
+                let deadline = Instant::now() + Duration::from_secs(60);
+                while !game
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.logged_in && r.joined)
+                {
+                    if let Err(error) = game.poll_remote() {
+                        panic!("the owner's login failed after the slow start: {error}");
+                    }
+                    assert!(Instant::now() < deadline, "the owner never reached play");
+                    std::thread::yield_now();
+                }
+                let placed = game
+                    .integrated
+                    .as_ref()
+                    .unwrap()
+                    .call(move |server| {
+                        server
+                            .lan
+                            .as_ref()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .iter()
+                            .any(|g| g.uuid == owner && g.placed)
+                    })
+                    .expect("the integrated server answered");
+                assert!(placed, "the server placed the owner in the world");
+                game.leave_server(None).unwrap();
+            });
+        });
+        drop(gate_open);
     }
 
     #[test]
