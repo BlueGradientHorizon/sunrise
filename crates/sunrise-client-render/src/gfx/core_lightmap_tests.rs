@@ -711,3 +711,23 @@ fn copies_from_before_fullbright_are_never_read() {
 fn the_not_gamma_scale_multiplies_in_the_shaders_order() {
     assert_eq!(max_scaled(0.0015).to_bits(), 1_002_711_808);
 }
+
+#[test]
+fn the_light_texture_source_is_fullbright_then_pack_shader_then_palette_then_default() {
+    use super::Source;
+    for (fullbright, shader, palette, source) in [
+        (true, true, true, Source::White),
+        (true, false, false, Source::White),
+        (false, true, true, Source::PackShader),
+        (false, true, false, Source::PackShader),
+        (false, false, true, Source::Palette),
+        // No palette for the world, or none that serves the frame (night vision without its rows).
+        (false, false, false, Source::Default),
+    ] {
+        assert_eq!(
+            Source::choose(fullbright, shader, palette),
+            source,
+            "{fullbright} {shader} {palette}"
+        );
+    }
+}

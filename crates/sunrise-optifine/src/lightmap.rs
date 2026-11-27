@@ -3,16 +3,22 @@
 //! the weather. A world with one has its light texture (the 16x16 table of sky light by block
 //! light every world shader reads) taken from the picture instead of computed.
 //!
-//! A picture is at least 16 pixels wide and 32 tall. Its rows 0 to 15 are the sky light at levels
+//! A picture is any width and exactly 32 or 64 pixels tall. Its rows 0 to 15 are the sky light at levels
 //! 0 to 15 and rows 16 to 31 the block light; across, a column is a moment: the sky's from its
 //! darkest (left) to its brightest (right), the block light's from the dimmest flicker to the
 //! brightest. A frame takes one column of each, blended between the two nearest pixel columns,
 //! and adds them per level: sky level `s` and block level `b` light as `sky[s] + block[b]`. With
-//! night vision on, a picture 64 tall is read from rows 32 to 63 instead; a shorter one is then
-//! not used, and the game computes the texture.
+//! night vision on (any strength: the effect, its fading pulse or conduit water vision), a picture
+//! 64 tall is read from rows 32 to 63 instead; with a 32-tall one the game computes the texture.
 //!
 //! In a world with weather (not the Nether or the End), a pack's rain and thunder pictures are
-//! blended in by the rain and thunder strength.
+//! blended in: the base picture by `1 - rain`, the rain one by `rain - thunder` and the thunder
+//! one by `thunder`, the thunder strength being the storm's (already scaled by the rain), so the
+//! weights always sum to one.
+//!
+//! The brightness option lifts the dark end as 26.3's lightmap does: by the brightest channel
+//! (`1 - (1 - max)^4`, the colour scaled to it), mixed in by the option, so a tinted picture keeps
+//! its channels' ratios.
 //!
 //! Written from OptiFine's public documentation of the format (the Custom Lightmaps page of
 //! OptiDocs) and checked against OptiFine's behaviour.
@@ -26,8 +32,11 @@ pub const LEVELS: usize = 16;
 /// A light texture: RGBA rows of sky level by block level (`(sky * 16 + block) * 4`).
 pub type Pixels = [u8; LEVELS * LEVELS * 4];
 
-/// Below this, a weight (or the gamma option) counts as none.
+/// Below this, a weight counts as none.
 const EPSILON: f32 = 1.0e-4;
+
+/// The worlds that have a lightmap: the game only asks for these.
+pub const WORLDS: [i32; 3] = [-1, 0, 1];
 
 /// The lightmap files of every world a pack gives one, by world number.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -57,6 +66,7 @@ impl Files {
                     .and_then(|name| name.strip_prefix("world"))
                     .and_then(|name| name.strip_suffix(".png"))
                     .and_then(|n| n.parse::<i32>().ok())
+                    .filter(|world| WORLDS.contains(world))
                 else {
                     continue;
                 };
@@ -113,11 +123,19 @@ pub struct Picture {
 }
 
 impl Picture {
-    /// The picture from its RGBA bytes; none when it is narrower than 16 pixels, shorter than
-    /// 32, or the bytes are not `width * height` pixels.
+    /// Whether a picture `width` by `height` is a lightmap: any width, 32 or 64 tall.
+    pub fn valid_size(width: u32, height: u32) -> bool {
+        width > 0 && (height == 32 || height == 64)
+    }
+
+    /// The picture from its RGBA bytes; none when it is not a lightmap's size
+    /// ([`Self::valid_size`]) or the bytes are not `width * height` pixels.
     pub fn from_rgba(width: u32, height: u32, rgba: &[u8]) -> Option<Self> {
+        if !Self::valid_size(width, height) {
+            return None;
+        }
         let (width, height) = (width as usize, height as usize);
-        if width < LEVELS || height < 2 * LEVELS || rgba.len() != width * height * 4 {
+        if rgba.len() != width * height * 4 {
             return None;
         }
         let rgb = rgba
@@ -144,17 +162,18 @@ impl Picture {
         })
     }
 
-    /// The light texture this picture gives for `input`; none with night vision on and no
-    /// night vision rows.
+    /// Whether the picture serves `input`: with night vision on, only one with its rows does.
+    pub fn serves(&self, input: &Input) -> bool {
+        !input.night_vision || self.height >= 4 * LEVELS
+    }
+
+    /// The light texture this picture gives for `input`; none when it does not serve it
+    /// ([`Self::serves`]).
     pub fn pixels(&self, input: &Input) -> Option<Pixels> {
-        let top = if input.night_vision {
-            if self.height < 4 * LEVELS {
-                return None;
-            }
-            2 * LEVELS
-        } else {
-            0
-        };
+        if !self.serves(input) {
+            return None;
+        }
+        let top = if input.night_vision { 2 * LEVELS } else { 0 };
         let last = (self.width - 1) as f32;
         let sky = if input.lightning {
             1.0
@@ -167,15 +186,19 @@ impl Picture {
         let mut out = [0u8; LEVELS * LEVELS * 4];
         for (s, sky) in sky.iter().enumerate() {
             for (b, block) in block.iter().enumerate() {
+                let mut c: [f32; 3] =
+                    std::array::from_fn(|k| (sky[k] + block[k] - input.darkness).clamp(0.0, 1.0));
+                // 26.3's brightness curve: the colour scaled so its brightest channel follows
+                // `1 - (1 - max)^4`, mixed in by the option.
+                let max = c[0].max(c[1]).max(c[2]).max(1e-6);
+                let inverted = 1.0 - max;
+                let scale = (1.0 - inverted * inverted * inverted * inverted) / max;
+                for v in &mut c {
+                    *v += (*v * scale - *v) * gamma;
+                }
                 let i = (s * LEVELS + b) * 4;
                 for k in 0..3 {
-                    let mut v = (sky[k] + block[k] - input.darkness).clamp(0.0, 1.0);
-                    // The brightness option lifts the dark end the way vanilla's curve does.
-                    if gamma > EPSILON {
-                        let u = 1.0 - v;
-                        v = gamma * (1.0 - u * u * u * u) + (1.0 - gamma) * v;
-                    }
-                    out[i + k] = (v * 255.0) as u8;
+                    out[i + k] = (c[k].clamp(0.0, 1.0) * 255.0) as u8;
                 }
                 out[i + 3] = 255;
             }
@@ -195,24 +218,25 @@ pub struct WorldLightmap {
 impl WorldLightmap {
     /// The light texture of world `world` for `input`: the base picture's, blended with the rain
     /// and thunder pictures by the weather where the world has weather. A missing thunder picture
-    /// is the rain one, and a missing rain picture the base one. None when no picture serves
-    /// (night vision without its rows).
+    /// is the rain one, and a missing rain picture the base one; under night vision a weather
+    /// picture without its rows is the base one too. None when the base picture does not serve
+    /// (night vision without its rows): the game computes the whole texture then.
     pub fn pixels(&self, world: i32, input: &Input) -> Option<Pixels> {
+        if !self.base.serves(input) {
+            return None;
+        }
         let weathered = !matches!(world, -1 | 1) && (self.rain.is_some() || self.thunder.is_some());
         if !weathered || (input.rain <= EPSILON && input.thunder <= EPSILON) {
             return self.base.pixels(input);
         }
-        let rain_picture = self.rain.as_ref().unwrap_or(&self.base);
-        let thunder_picture = self.thunder.as_ref().unwrap_or(rain_picture);
-        // The thunder strength is the storm's share of the rain.
-        let thunder = if input.rain > 0.0 {
-            input.thunder / input.rain
-        } else {
-            input.thunder
-        };
-        let weights = [1.0 - input.rain, input.rain - thunder, thunder];
+        let rain_picture = self.rain.as_ref().filter(|p| p.serves(input));
+        let rain_picture = rain_picture.unwrap_or(&self.base);
+        let thunder_picture = self.thunder.as_ref().filter(|p| p.serves(input));
+        let thunder_picture = thunder_picture.unwrap_or(rain_picture);
+        let rain = input.rain.clamp(0.0, 1.0);
+        let thunder = input.thunder.clamp(0.0, rain);
+        let weights = [1.0 - rain, rain - thunder, thunder];
         let mut sum = [0f32; LEVELS * LEVELS * 3];
-        let mut any = false;
         for (picture, weight) in [&self.base, rain_picture, thunder_picture]
             .into_iter()
             .zip(weights)
@@ -220,21 +244,16 @@ impl WorldLightmap {
             if weight <= EPSILON {
                 continue;
             }
-            let Some(pixels) = picture.pixels(input) else {
-                continue;
-            };
-            any = true;
+            let pixels = picture.pixels(input)?;
             for (n, total) in sum.iter_mut().enumerate() {
                 *total += f32::from(pixels[n / 3 * 4 + n % 3]) * weight;
             }
         }
-        any.then(|| {
-            let mut out = [255u8; LEVELS * LEVELS * 4];
-            for (n, total) in sum.iter().enumerate() {
-                out[n / 3 * 4 + n % 3] = total.clamp(0.0, 255.0) as u8;
-            }
-            out
-        })
+        let mut out = [255u8; LEVELS * LEVELS * 4];
+        for (n, total) in sum.iter().enumerate() {
+            out[n / 3 * 4 + n % 3] = total.clamp(0.0, 255.0) as u8;
+        }
+        Some(out)
     }
 }
 
@@ -256,7 +275,7 @@ impl Lightmaps {
             let (width, height, rgba) = decode(path)?;
             let picture = Picture::from_rgba(width, height, &rgba);
             if picture.is_none() {
-                log::warn!("{path}: a lightmap is at least 16x32 pixels");
+                log::warn!("{path}: a lightmap is 32 or 64 pixels tall");
             }
             picture
         };
@@ -327,11 +346,32 @@ mod tests {
     }
 
     #[test]
-    fn too_small_pictures_are_refused() {
-        assert!(Picture::from_rgba(15, 32, &[0; 15 * 32 * 4]).is_none());
-        assert!(Picture::from_rgba(16, 31, &[0; 16 * 31 * 4]).is_none());
+    fn lightmaps_are_any_width_and_32_or_64_tall() {
+        assert!(
+            Picture::from_rgba(1, 32, &[0; 32 * 4]).is_some(),
+            "a narrow palette"
+        );
+        assert!(Picture::from_rgba(16, 64, &[0; 16 * 64 * 4]).is_some());
+        assert!(Picture::from_rgba(0, 32, &[]).is_none());
+        for height in [31, 33, 63, 65] {
+            assert!(Picture::from_rgba(16, height, &vec![0; 16 * height as usize * 4]).is_none());
+        }
         assert!(Picture::from_rgba(16, 32, &[0; 16 * 32 * 4 - 1]).is_none());
-        assert!(Picture::from_rgba(16, 32, &[0; 16 * 32 * 4]).is_some());
+    }
+
+    #[test]
+    fn a_one_pixel_wide_palette_is_constant() {
+        let p = picture(1, 32, |_, y| if y < 16 { y as u8 * 10 } else { 5 });
+        for sky in [0.0, 0.5, 1.0] {
+            let out = p
+                .pixels(&Input {
+                    sky,
+                    flicker: 0.3,
+                    ..input()
+                })
+                .unwrap();
+            assert_eq!(red(&out, 3, 0), 35);
+        }
     }
 
     #[test]
@@ -408,6 +448,66 @@ mod tests {
     }
 
     #[test]
+    fn brightness_keeps_a_tinted_palettes_channel_ratios() {
+        // Sky rows (0.5, 0.25, 0): the brightest channel's curve scales all three.
+        let mut rgba = Vec::new();
+        for y in 0..32 {
+            for _ in 0..16 {
+                rgba.extend(if y < 16 {
+                    [128, 64, 0, 255]
+                } else {
+                    [0, 0, 0, 255]
+                });
+            }
+        }
+        let p = Picture::from_rgba(16, 32, &rgba).unwrap();
+        let out = p
+            .pixels(&Input {
+                gamma: 1.0,
+                ..input()
+            })
+            .unwrap();
+        let (r, g, b) = (out[0], out[1], out[2]);
+        assert_eq!(b, 0);
+        assert!(r > 128 && g > 64, "brightened: {r} {g}");
+        let ratio = f32::from(r) / f32::from(g);
+        assert!((ratio - 2.0).abs() < 0.05, "ratio {ratio}");
+        // At half the option, halfway between the picture and the curve.
+        let half = p
+            .pixels(&Input {
+                gamma: 0.5,
+                ..input()
+            })
+            .unwrap();
+        assert!((i32::from(half[0]) - (128 + i32::from(r)) / 2).abs() <= 1);
+    }
+
+    #[test]
+    fn night_vision_uses_the_base_for_weather_pictures_without_its_rows() {
+        let tall = picture(16, 64, |_, y| if (32..48).contains(&y) { 200 } else { 0 });
+        let short = picture(16, 32, |_, y| if y < 16 { 50 } else { 0 });
+        let w = WorldLightmap {
+            base: tall,
+            rain: Some(short.clone()),
+            thunder: None,
+        };
+        let nv = |rain| Input {
+            night_vision: true,
+            rain,
+            ..input()
+        };
+        assert_eq!(red(&w.pixels(0, &nv(0.5)).unwrap(), 0, 0), 200);
+        assert_eq!(red(&w.pixels(0, &nv(1.0)).unwrap(), 0, 0), 200);
+        // A base without the rows: the game's texture for the whole frame.
+        let w = WorldLightmap {
+            base: short,
+            rain: None,
+            thunder: None,
+        };
+        assert!(w.pixels(0, &nv(0.0)).is_none());
+    }
+
+    #[test]
     fn night_vision_reads_its_own_rows_or_none() {
         assert!(
             picture(16, 32, |_, _| 0)
@@ -459,6 +559,20 @@ mod tests {
         assert_eq!(at(0, 1.0, 0.0), 100);
         assert_eq!(at(0, 0.5, 0.0), 150);
         assert_eq!(at(0, 1.0, 1.0), 0);
+        // The weights sum to one with rain and thunder both partway in.
+        assert_eq!(at(0, 0.5, 0.25), (200.0 * 0.5 + 100.0 * 0.25) as u8);
+        let same = world(100, Some(100), Some(100));
+        let out = same
+            .pixels(
+                0,
+                &Input {
+                    rain: 0.25,
+                    thunder: 0.1875,
+                    ..input()
+                },
+            )
+            .unwrap();
+        assert!((99..=100).contains(&red(&out, 0, 0)), "{}", red(&out, 0, 0));
         // No weather in the Nether or the End.
         assert_eq!(at(-1, 1.0, 1.0), 200);
         assert_eq!(at(1, 1.0, 0.0), 200);
@@ -507,6 +621,7 @@ mod tests {
         at("assets/minecraft/mcpatcher/lightmap/world-1.png");
         at("assets/minecraft/mcpatcher/lightmap/world1.png");
         at("assets/minecraft/optifine/lightmap/notes.txt");
+        at("assets/minecraft/optifine/lightmap/world7.png");
         let files = Files::scan(&ResourceSource::directory(dir.clone()));
         std::fs::remove_dir_all(&dir).ok();
         let o = "assets/minecraft/optifine/lightmap";

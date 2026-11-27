@@ -19,6 +19,7 @@ impl crate::game::ClientGame<'_> {
         camera: [f64; 3],
         sky: &sunrise_level::environment::Sky,
         (rain, thunder): (f32, f32),
+        lightning: bool,
         title: bool,
     ) {
         let Some(mut draws) = self
@@ -71,23 +72,24 @@ impl crate::game::ClientGame<'_> {
             );
             self.client.custom_sky.state = state;
         }
-        // Custom lightmaps (OptiFine's format): the world and weather the light texture is for.
-        // The Nether has one too.
-        let lightmap_world = (!title).then_some(match self.common.dim {
-            Dim::Overworld | Dim::Extra(_) => 0,
-            Dim::Nether => -1,
-            Dim::End => 1,
-        });
-        let lightning =
-            self.common.flash > 0 && !self.client.settings.file.bool("hideLightningFlashes");
         if let Some(renderer) = self.client.renderer.0.as_mut() {
             *renderer.custom_sky_draws() = draws;
-            renderer.set_lightmap_weather(sunrise_client::custom_lightmap::Weather {
-                world: lightmap_world,
-                rain,
-                thunder,
-                lightning,
-            });
+            // Custom lightmaps (OptiFine's format): the world and weather this frame's light
+            // texture is for, only when the pack has some. The Nether has one too; another
+            // world takes the Overworld's.
+            if !title && renderer.has_custom_lightmap() {
+                let world = match self.common.dim {
+                    Dim::Overworld | Dim::Extra(_) => 0,
+                    Dim::Nether => -1,
+                    Dim::End => 1,
+                };
+                renderer.set_lightmap_weather(sunrise_client::custom_lightmap::Weather {
+                    world: Some(world),
+                    rain,
+                    thunder,
+                    lightning,
+                });
+            }
         }
     }
 }

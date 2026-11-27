@@ -15,7 +15,8 @@ pub struct Weather {
     /// The world's number (`-1` the Nether, `0` the Overworld and other worlds, `1` the End);
     /// none on the title screen.
     pub world: Option<i32>,
-    /// The rain and thunder strength at the frame, 0 to 1.
+    /// The rain strength at the frame, 0 to 1, and the storm's: the thunder level already
+    /// scaled by the rain (so at most `rain`), as the level reports it.
     pub rain: f32,
     pub thunder: f32,
     /// Lightning flashes the sky.
@@ -25,12 +26,15 @@ pub struct Weather {
 /// What the light texture depends on, besides the world.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Input {
-    /// The sky light factor, 0 to 1.
+    /// The sky light factor, 0 to 1. In the End it carries the End flash, so an End lightmap's
+    /// column follows the flash as the default texture does.
     pub sky: f32,
     /// The block light's flicker (`Frame::block_flicker`).
     pub flicker: f32,
-    /// The brightness option, 0 to 1.
+    /// The brightness the default texture uses: the option, less the Darkness effect's blend.
     pub gamma: f32,
+    /// Night vision of any strength (the effect, its fading pulse, conduit water vision): a
+    /// lightmap has night vision rows or not, with nothing in between.
     pub night_vision: bool,
     /// The darkness effect's pulse.
     pub darkness: f32,
@@ -39,6 +43,8 @@ pub struct Input {
 
 /// A pack's custom lightmaps, by world.
 pub trait Lightmaps: Send + Sync {
+    /// Whether there are none at all.
+    fn is_empty(&self) -> bool;
     /// Whether `world` has one.
     fn has(&self, world: i32) -> bool;
     /// `world`'s light texture for `input`; none to compute it as usual.
@@ -49,6 +55,10 @@ pub trait Lightmaps: Send + Sync {
 struct NoLightmaps;
 
 impl Lightmaps for NoLightmaps {
+    fn is_empty(&self) -> bool {
+        true
+    }
+
     fn has(&self, _: i32) -> bool {
         false
     }
@@ -88,7 +98,7 @@ mod tests {
             },
         };
         let none = empty();
-        assert!(!none.has(0));
+        assert!(none.is_empty() && !none.has(0));
         assert!(none.pixels(0, &input).is_none());
     }
 }

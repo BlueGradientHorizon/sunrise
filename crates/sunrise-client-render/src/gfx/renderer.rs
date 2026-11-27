@@ -200,8 +200,10 @@ pub struct Renderer {
     pub(crate) custom_sky_draws: Vec<crate::custom_sky::Draw>,
     /// The pack's custom lightmaps (`crate::custom_lightmap::load`), and the world and weather
     /// the next frame's light texture is for.
-    pub(crate) custom_lightmap: std::sync::Arc<dyn crate::custom_lightmap::Lightmaps>,
-    pub(crate) lightmap_weather: crate::custom_lightmap::Weather,
+    /// None when the pack has none.
+    pub(crate) custom_lightmap: Option<std::sync::Arc<dyn crate::custom_lightmap::Lightmaps>>,
+    /// Set by the game for one frame, taken by the frame's `update_lightmap`.
+    pub(crate) lightmap_weather: Option<crate::custom_lightmap::Weather>,
     /// The glowing entities' outline (`LevelRenderer.entityOutlineTarget`).
     pub(crate) entity_outline: entity_outline::EntityOutline,
     pub(crate) panorama: panorama::Panorama,
