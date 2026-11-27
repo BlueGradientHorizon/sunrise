@@ -779,13 +779,35 @@ impl super::mod_gpu::ModGpuResources {
     /// Record a distinct frame-graph cycle warning once per reload/world session.
     pub fn warn_frame_graph_cycle_once(&self, passes: &[String]) {
         let mut warned = self
-            .warned_frame_graph_cycles
+            .warned_frame_graph
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if warned.insert(passes.to_vec()) {
+        if warned.insert(super::mod_gpu::FrameGraphWarning::Cycle(passes.to_vec())) {
             log::warn!(
                 "Sunrise: frame graph cycle detected between {}",
                 passes.join(", ")
+            );
+        }
+    }
+
+    /// Log once per reload/world session, in the set the cycle warnings use, that pass `pass`
+    /// sampled `target` without declaring it in its reads and the binding was refused.
+    pub fn warn_undeclared_transient_read_once(
+        &self,
+        pass: &str,
+        target: mod_api::TransientTargetId,
+    ) {
+        let mut warned = self
+            .warned_frame_graph
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if warned.insert(super::mod_gpu::FrameGraphWarning::UndeclaredTransientRead(
+            pass.to_owned(),
+            target,
+        )) {
+            let raw = target.raw();
+            log::warn!(
+                "Sunrise: frame graph pass {pass} samples transient target {raw} without declaring it in its reads; binding refused"
             );
         }
     }

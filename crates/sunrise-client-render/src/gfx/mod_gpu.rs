@@ -35,6 +35,16 @@ pub(crate) struct ModFrameState {
     pub(crate) pack_iris: bool,
 }
 
+/// A frame-graph problem logged once per reload, keyed by its kind so a cycle can never
+/// suppress an undeclared-read warning that shares its labels.
+#[derive(PartialEq, Eq, Hash)]
+pub(crate) enum FrameGraphWarning {
+    /// The pass labels of one detected cycle.
+    Cycle(Vec<String>),
+    /// A pass (by label) that sampled a transient target it did not declare in its reads.
+    UndeclaredTransientRead(String, mod_api::TransientTargetId),
+}
+
 /// Handles on the device and the mod tables of one [`Renderer`](super::Renderer); cloning shares
 /// them.
 ///
@@ -54,8 +64,8 @@ pub struct ModGpuResources {
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
-    /// Distinct frame-graph cycle pass-label sets already logged once since last reload.
-    pub(crate) warned_frame_graph_cycles: Arc<Mutex<HashSet<Vec<String>>>>,
+    /// Distinct [`FrameGraphWarning`]s already logged once since last reload.
+    pub(super) warned_frame_graph: Arc<Mutex<HashSet<FrameGraphWarning>>>,
     render_capabilities: RenderCapabilities,
     max_buffer_size: u64,
     /// Retained GPU vertex/index buffers backing [`mod_api::MeshRef`].
@@ -97,7 +107,7 @@ impl ModGpuResources {
             adapter,
             device,
             queue,
-            warned_frame_graph_cycles: Arc::default(),
+            warned_frame_graph: Arc::default(),
             meshes: Arc::default(),
             uniforms,
             storage: previous.map_or_else(Arc::default, |old| old.storage.clone()),

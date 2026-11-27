@@ -239,6 +239,9 @@ pub enum ComputeDispatchError {
     /// The pipeline handle is from before a resource reload, or its pipeline did not build.
     Pipeline(ComputePipelineError),
     /// A binding is missing, of the wrong kind, stale, or not allowed for this dispatch.
+    ///
+    /// It is also returned for a sampled transient the pass does not declare in its reads; see
+    /// [`crate::PipelineDrawError::InvalidBinding`] for what a pass declares.
     InvalidBinding,
     /// The device refused the sampler pipeline variant in renderer preparation, after submission.
     /// The dispatch is refused and the log names the pipeline and the device error.

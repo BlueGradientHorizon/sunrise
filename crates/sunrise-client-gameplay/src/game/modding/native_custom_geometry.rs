@@ -696,6 +696,8 @@ impl ClientGame<'_> {
             bindings,
             None,
             &[],
+            "",
+            &[],
             pack_linked,
             &mut |bytes| draw.borrow_mut().push_inline_uniform(bytes),
             &mut |bytes| draw.borrow_mut().push_texel_data(bytes),
@@ -713,6 +715,8 @@ impl ClientGame<'_> {
         bindings: &mod_api::DrawBindings<'_>,
         active_target: Option<(mod_api::FrameTarget, u32)>,
         transients: &[mod_api::RenderTargetDescriptor],
+        pass_label: &str,
+        reads: &[mod_api::FrameTarget],
         pack_linked: bool,
         push_inline: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
         push_texel: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
@@ -740,6 +744,8 @@ impl ClientGame<'_> {
             bindings,
             active_target,
             transients,
+            pass_label,
+            reads,
             pack_linked,
             push_inline,
             push_texel,
@@ -748,7 +754,8 @@ impl ClientGame<'_> {
 
     /// [`Self::resolve_draw_bindings_into`] for any pipeline kind: `layout` is the pipeline's
     /// declared bind group, `pc_size` its push-constant bytes (0 for compute) and `writes_depth`
-    /// whether it writes depth (a depth-sampling hazard).
+    /// whether it writes depth (a depth-sampling hazard). Transient samples must be among
+    /// `reads`, the declared reads of `pass_label`; see [`PipelineDrawError::InvalidBinding`].
     #[allow(clippy::too_many_arguments)]
     pub(in crate::game) fn resolve_bindings_against(
         &self,
@@ -758,6 +765,8 @@ impl ClientGame<'_> {
         bindings: &mod_api::DrawBindings<'_>,
         active_target: Option<(mod_api::FrameTarget, u32)>,
         transients: &[mod_api::RenderTargetDescriptor],
+        pass_label: &str,
+        reads: &[mod_api::FrameTarget],
         pack_linked: bool,
         push_inline: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
         push_texel: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
@@ -803,9 +812,19 @@ impl ClientGame<'_> {
         {
             return Err(PipelineDrawError::TargetReadWriteHazard);
         }
-        let active_transient_target = match active_target {
-            Some((mod_api::FrameTarget::Transient(id), _)) => Some(id),
-            _ => None,
+        let resolve_transient = |id: mod_api::TransientTargetId| {
+            let target = mod_api::FrameTarget::Transient(id);
+            if active_target.is_some_and(|(active, _)| active == target) {
+                return Err(PipelineDrawError::TargetReadWriteHazard);
+            }
+            let desc = transients
+                .get(id.raw() as usize)
+                .ok_or(PipelineDrawError::InvalidBinding)?;
+            if !reads.contains(&target) {
+                gpu.warn_undeclared_transient_read_once(pass_label, id);
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            Ok(desc)
         };
 
         // Validate every declared entry before appending to byte pools so a refused draw appends
@@ -884,13 +903,7 @@ impl ClientGame<'_> {
                 ) => {
                     let (entry, format) = match source {
                         mod_api::TextureSource::TransientTargetColor(target, attachment) => {
-                            if active_transient_target == Some(*target) {
-                                return Err(PipelineDrawError::TargetReadWriteHazard);
-                            }
-                            let Some(desc) = transients.get(target.raw() as usize) else {
-                                return Err(PipelineDrawError::InvalidBinding);
-                            };
-                            let format = desc
+                            let format = resolve_transient(*target)?
                                 .color_targets
                                 .get(*attachment as usize)
                                 .ok_or(PipelineDrawError::InvalidBinding)?;
@@ -903,13 +916,7 @@ impl ClientGame<'_> {
                             )
                         }
                         mod_api::TextureSource::TransientTargetDepth(target) => {
-                            if active_transient_target == Some(*target) {
-                                return Err(PipelineDrawError::TargetReadWriteHazard);
-                            }
-                            let Some(desc) = transients.get(target.raw() as usize) else {
-                                return Err(PipelineDrawError::InvalidBinding);
-                            };
-                            let format = wgpu_depth_format(desc.depth)
+                            let format = wgpu_depth_format(resolve_transient(*target)?.depth)
                                 .ok_or(PipelineDrawError::InvalidBinding)?;
                             (StagedEntry::TransientDepth { target: *target }, format)
                         }
@@ -1572,6 +1579,8 @@ impl ClientGame<'_> {
                 bindings,
                 None,
                 transients,
+                &pass.label,
+                &pass.reads,
                 false,
                 &mut |bytes| {
                     let start = inline.len();
@@ -1670,6 +1679,8 @@ impl ClientGame<'_> {
             bindings,
             active_target,
             transients,
+            &pass.label,
+            &pass.reads,
             false,
             &mut |bytes| {
                 let start = pass.inline_uniforms.len();
@@ -1732,6 +1743,8 @@ impl ClientGame<'_> {
             indirect.bindings,
             active_target,
             transients,
+            &pass.label,
+            &pass.reads,
             false,
             &mut |bytes| {
                 let start = pass.inline_uniforms.len();
@@ -1861,6 +1874,8 @@ impl ClientGame<'_> {
             bindings,
             active_target,
             transients,
+            &pass.label,
+            &pass.reads,
             false,
             &mut |bytes| {
                 let start = pass.inline_uniforms.len();
@@ -5412,6 +5427,349 @@ void main() {
             assert_eq!(
                 [depth.texture().width(), depth.texture().height()],
                 window_size
+            );
+            drop(game.client.renderer.0.take());
+            drop(game.client.mod_gpu.take());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_sampled_transient_the_pass_does_not_declare_in_its_reads_is_refused() {
+        use crate::game::host::draw::GameFrameGraphContext;
+        use mod_api::{ComputeDispatchError, DrawBindings, FrameGraphContext, FrameTarget};
+        use sunrise_assets::resource_source::{Resource, ResourceSource};
+        use sunrise_client::gfx::mod_pipelines::{PipelineVertex, ResolvedSet1Entry};
+        use sunrise_client::world_geometry::FrameGraphSurface;
+
+        // Pipeline registration is process-global; publish only in the fresh child.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::client_side::native_custom_geometry::tests::a_sampled_transient_the_pass_does_not_declare_in_its_reads_is_refused",
+            "SUNRISE_UNDECLARED_TRANSIENT_READ_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let (_event_loop, window) =
+                crate::game::native_hooks::particle_count_tests::hidden_window();
+            game.common.options.offscreen = true;
+            let renderer = game.new_renderer(window.clone()).unwrap();
+            game.set_renderer(renderer);
+            game.client.window.0 = Some(window);
+
+            let draw_id = Identifier::parse("transient_probe:core/sample").unwrap();
+            let compute_id = Identifier::parse("transient_probe:sample").unwrap();
+            let layout = mod_api::BindGroupLayout::builder()
+                .uniform_buffer("ProbeParams", 16)
+                .sampler(
+                    "InputTex",
+                    mod_api::Sampler::new(
+                        mod_api::SamplerFilter::Nearest,
+                        mod_api::SamplerAddress::ClampToEdge,
+                    ),
+                );
+            let draw_pipeline = mod_api::RenderPipeline::new(
+                draw_id.clone(),
+                draw_id.clone(),
+                mod_api::PipelineBlend::Opaque,
+                mod_api::WorldDepth::ThroughWalls,
+            )
+            .bind_group_layout(layout.clone().build().unwrap());
+            let compute_pipeline =
+                mod_api::ComputePipeline::builder(compute_id.clone(), compute_id.clone())
+                    .bind_group_layout(
+                        layout
+                            .entry(mod_api::BindEntry::new(
+                                "Out",
+                                mod_api::BindingKind::StorageBuffer {
+                                    read_only: false,
+                                    min_size: 4,
+                                },
+                            ))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build();
+            let vanilla = tempfile::tempdir().unwrap();
+            std::fs::write(
+                vanilla.path().join("render-pipelines.json"),
+                r#"{"required":["minecraft:pipeline/solid_block"],"optional":["minecraft:pipeline/wireframe"]}"#,
+            )
+            .unwrap();
+            sunrise_client_render::mod_pipelines::register(vec![draw_pipeline], vanilla.path())
+                .unwrap();
+            sunrise_client_render::mod_compute::register(vec![compute_pipeline]).unwrap();
+
+            let shaders = ResourceSource::indexed(
+                [
+                    (
+                        "assets/transient_probe/shaders/core/sample.vsh",
+                        "#version 330
+in vec3 Position;
+in vec2 UV0;
+in vec4 Color;
+out vec2 vUv;
+out vec4 vColor;
+void main() {
+    gl_Position = vec4(Position.xy, 0.5, 1.0);
+    vUv = UV0;
+    vColor = Color;
+}
+",
+                    ),
+                    (
+                        "assets/transient_probe/shaders/core/sample.fsh",
+                        "#version 330
+layout(std140) uniform ProbeParams { vec4 Bias; };
+uniform sampler2D InputTex;
+in vec2 vUv;
+in vec4 vColor;
+out vec4 fragColor;
+void main() { fragColor = texture(InputTex, vUv) * vColor + Bias; }
+",
+                    ),
+                    (
+                        "assets/transient_probe/shaders/compute/sample.csh",
+                        "#version 450
+layout(local_size_x = 1) in;
+layout(std140) uniform ProbeParams { vec4 Bias; };
+uniform sampler2D InputTex;
+layout(std430) buffer Out { uint values[]; };
+void main() { values[0] = floatBitsToUint(textureLod(InputTex, vec2(0.5), 0.0).r + Bias.x); }
+",
+                    ),
+                ]
+                .into_iter()
+                .map(|(path, shader)| (path.into(), Resource::bytes(shader.as_bytes().to_vec())))
+                .collect(),
+            );
+            let mut render = sunrise_client_render::assets::RenderAssets::unpublished();
+            render.mod_pipelines =
+                sunrise_client_render::mod_pipelines::Pipelines::load(&shaders, 7).unwrap();
+            game.client
+                .renderer
+                .0
+                .as_mut()
+                .unwrap()
+                .build_mod_pipelines(&render.mod_pipelines, &|_| None)
+                .unwrap();
+            let pipeline = render.mod_pipelines.resolve(&draw_id).unwrap();
+            let compute = render.mod_pipelines.compute().resolve(&compute_id).unwrap();
+            game.client.client_pack.render = std::sync::Arc::new(render);
+
+            let storage = game
+                .create_storage_buffer(&mod_api::StorageBufferDescriptor::new(16))
+                .unwrap();
+            let vertices =
+                [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]].map(|[x, y]| PipelineVertex {
+                    pos: [x, y, 0.0],
+                    uv: [(x + 1.0) / 2.0, (y + 1.0) / 2.0],
+                    color: u32::MAX,
+                });
+            let inline = [0u8; 16];
+
+            // The refusals below and the cycle after them log through the production warning
+            // set; this test process is fresh, so installing its logger changes nothing shared.
+            static WARNINGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+            struct Capture;
+            impl log::Log for Capture {
+                fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+                    metadata.level() == log::Level::Warn
+                }
+                fn log(&self, record: &log::Record<'_>) {
+                    let text = record.args().to_string();
+                    if self.enabled(record.metadata()) && text.starts_with("Sunrise: frame graph") {
+                        WARNINGS.lock().unwrap().push(text);
+                    }
+                }
+                fn flush(&self) {}
+            }
+            log::set_logger(&Capture).unwrap();
+            log::set_max_level(log::LevelFilter::Warn);
+
+            // Per case: whether the draw declares the read, lists the transient in `.writes`,
+            // or renders into it, and what the draw returns. The compute dispatch, which samples
+            // the transient's depth, follows the first two cases only.
+            for (declared, writes_only, own_attachment, expected) in [
+                (true, false, false, Ok(())),
+                (false, false, false, Err(PipelineDrawError::InvalidBinding)),
+                (false, true, false, Err(PipelineDrawError::InvalidBinding)),
+                (
+                    false,
+                    false,
+                    true,
+                    Err(PipelineDrawError::TargetReadWriteHazard),
+                ),
+            ] {
+                let accepted = expected.is_ok();
+                let with_compute = !writes_only && !own_attachment;
+                let mut surface = FrameGraphSurface::default();
+                let mut graph = GameFrameGraphContext::new(game, &mut surface);
+                let input = graph
+                    .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
+                        [8, 8],
+                        mod_api::RenderTargetDepth::Depth32Float,
+                    ))
+                    .unwrap();
+                let target = if own_attachment {
+                    input
+                } else {
+                    graph
+                        .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
+                            [8, 8],
+                            mod_api::RenderTargetDepth::None,
+                        ))
+                        .unwrap()
+                };
+                let mut draw =
+                    mod_api::FramePassDescriptor::new("draw", FrameTarget::Transient(target));
+                if declared {
+                    draw = draw.reads(FrameTarget::Transient(input));
+                }
+                if writes_only {
+                    draw = draw.writes(FrameTarget::Transient(input));
+                }
+
+                // The valid inline uniform is first in both layouts, so a partial append by
+                // the draw recorder would leave bytes even if it later refused the sampler.
+                let draw_bindings = DrawBindings::new()
+                    .inline_uniform("ProbeParams", &inline)
+                    .texture(
+                        "InputTex",
+                        mod_api::TextureSource::TransientTargetColor(input, 0),
+                    );
+                graph
+                    .add_pass(draw, &mut |pass| {
+                        assert_eq!(
+                            pass.draw_vertices(
+                                pipeline,
+                                &[bytemuck::cast_slice(&vertices)],
+                                None,
+                                mod_api::MeshDraw::vertices(0..4),
+                                &draw_bindings,
+                            ),
+                            expected,
+                        );
+                    })
+                    .unwrap();
+                if with_compute {
+                    // Declaring another read does not declare this transient.
+                    let dispatch =
+                        mod_api::ComputePassDescriptor::new("compute").reads(if declared {
+                            FrameTarget::Transient(input)
+                        } else {
+                            FrameTarget::MainDepth
+                        });
+                    let compute_bindings = DrawBindings::new()
+                        .inline_uniform("ProbeParams", &inline)
+                        .texture(
+                            "InputTex",
+                            mod_api::TextureSource::TransientTargetDepth(input),
+                        )
+                        .storage_buffer("Out", storage.slice(0, 16));
+                    graph
+                        .add_compute_pass(dispatch, &mut |node| {
+                            assert_eq!(
+                                node.dispatch(compute, &compute_bindings, [1, 1, 1]),
+                                if declared {
+                                    Ok(())
+                                } else {
+                                    Err(ComputeDispatchError::InvalidBinding)
+                                },
+                            );
+                        })
+                        .unwrap();
+                }
+
+                let draw = &surface.graph.passes[0];
+                if accepted {
+                    assert_eq!(draw.draws.len(), 1);
+                    assert_eq!(draw.inline_uniforms, inline);
+                    assert!(matches!(
+                        draw.draws[0].bindings.as_ref().unwrap().entries.as_slice(),
+                        [ResolvedSet1Entry::InlineUniform { .. }, ResolvedSet1Entry::TransientColor { target, attachment: 0 }]
+                            if *target == input
+                    ));
+                } else {
+                    assert!(draw.draws.is_empty());
+                    assert!(draw.transient_vertices.is_empty());
+                    assert!(draw.inline_uniforms.is_empty());
+                }
+                if with_compute {
+                    let dispatches = surface.graph.passes[1].dispatches.as_deref().unwrap();
+                    if accepted {
+                        assert_eq!(dispatches.len(), 1);
+                        assert_eq!(dispatches[0].inline, inline);
+                        assert!(matches!(
+                            dispatches[0].entries.as_slice(),
+                            [ResolvedSet1Entry::InlineUniform { .. }, ResolvedSet1Entry::TransientDepth { target }, ResolvedSet1Entry::StorageBuffer { .. }]
+                                if *target == input
+                        ));
+                    } else {
+                        assert!(dispatches.is_empty());
+                    }
+                }
+            }
+
+            // A cycle whose pass labels are exactly the old string-prefixed key of the refusal
+            // above ("undeclared transient read", "draw", "0"), refused twice: it is admitted
+            // once, and it neither suppresses nor is suppressed by the refusal of pass "draw"
+            // sampling transient 0 that was logged during the cases.
+            let mut surface = FrameGraphSurface::default();
+            let mut graph = GameFrameGraphContext::new(game, &mut surface);
+            let output = graph
+                .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
+                    [8, 8],
+                    mod_api::RenderTargetDepth::None,
+                ))
+                .unwrap();
+            let first = graph
+                .add_pass(
+                    mod_api::FramePassDescriptor::new(
+                        "undeclared transient read",
+                        FrameTarget::Transient(output),
+                    ),
+                    &mut |_| {},
+                )
+                .unwrap();
+            let second = graph
+                .add_pass(
+                    mod_api::FramePassDescriptor::new("draw", FrameTarget::Transient(output))
+                        .after_pass(first),
+                    &mut |_| {},
+                )
+                .unwrap();
+            for _ in 0..2 {
+                assert_eq!(
+                    graph
+                        .add_pass(
+                            mod_api::FramePassDescriptor::new("0", FrameTarget::Transient(output))
+                                .after_pass(second)
+                                .before_pass(first),
+                            &mut |_| {},
+                        )
+                        .unwrap_err(),
+                    mod_api::FrameGraphError::Cycle {
+                        passes: vec![
+                            "undeclared transient read".to_owned(),
+                            "draw".to_owned(),
+                            "0".to_owned(),
+                        ],
+                    },
+                );
+            }
+
+            // Each warning kind is logged once however often it recurs: the draw refusals of
+            // the second and third cases share the first one's key, and the second cycle
+            // attempt shares the first one's.
+            assert_eq!(
+                *WARNINGS.lock().unwrap(),
+                [
+                    "Sunrise: frame graph pass draw samples transient target 0 without declaring it in its reads; binding refused",
+                    "Sunrise: frame graph pass compute samples transient target 0 without declaring it in its reads; binding refused",
+                    "Sunrise: frame graph cycle detected between undeclared transient read, draw, 0",
+                ]
             );
             drop(game.client.renderer.0.take());
             drop(game.client.mod_gpu.take());
