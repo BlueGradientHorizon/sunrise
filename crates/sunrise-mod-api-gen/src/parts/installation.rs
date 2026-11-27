@@ -648,11 +648,6 @@ impl VisitMut for Substitute<'_> {
     }
 }
 
-#[cfg(test)]
-pub(super) fn source(root: &Path) -> Result<String, String> {
-    source_with(root, &[])
-}
-
 pub(super) fn source_with(
     root: &Path,
     parsed_parts: &[(PathBuf, String, syn::File)],
@@ -770,7 +765,7 @@ mod tests {
         "#;
         fs::write(dir.join("parts/shared.rs"), storage).unwrap();
         fs::write(dir.join("meta.rs"), metadata).unwrap();
-        let generated = source(&root).unwrap();
+        let generated = source_with(&root, &[]).unwrap();
         let native = format!(
             r#"
             pub trait Part: Send + Sync {{}} impl Part for u32 {{}}
