@@ -1189,26 +1189,4 @@ mod tests {
         // The resize freed the first allocation's texture and the release the second's.
         assert_eq!(targets.take_released().len(), 2);
     }
-
-    /// A cycle whose labels equal what the undeclared-read warning once stored as a string-prefixed
-    /// key does not stand for that warning: the kinds are distinct keys of the one set.
-    #[test]
-    fn a_cycle_warning_never_stands_for_an_undeclared_read_warning() {
-        use crate::gfx::mod_gpu::FrameGraphWarning;
-        let mut warned = std::collections::HashSet::new();
-        let probe = mod_api::TransientTargetId::from_raw(0);
-        assert!(warned.insert(FrameGraphWarning::Cycle(vec![
-            "undeclared transient read".to_owned(),
-            "probe".to_owned(),
-            "0".to_owned(),
-        ])));
-        assert!(warned.insert(FrameGraphWarning::UndeclaredTransientRead(
-            "probe".to_owned(),
-            probe,
-        )));
-        assert!(!warned.insert(FrameGraphWarning::UndeclaredTransientRead(
-            "probe".to_owned(),
-            probe,
-        )));
-    }
 }

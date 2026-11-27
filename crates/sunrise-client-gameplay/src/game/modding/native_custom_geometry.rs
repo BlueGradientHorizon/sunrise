@@ -5482,7 +5482,42 @@ void main() { values[0] = floatBitsToUint(textureLod(InputTex, vec2(0.5), 0.0).r
                     color: u32::MAX,
                 });
             let inline = [0u8; 16];
-            for declared in [false, true] {
+
+            // The refusals below and the cycle after them log through the production warning
+            // set; this test process is fresh, so installing its logger changes nothing shared.
+            static WARNINGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+            struct Capture;
+            impl log::Log for Capture {
+                fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+                    metadata.level() == log::Level::Warn
+                }
+                fn log(&self, record: &log::Record<'_>) {
+                    let text = record.args().to_string();
+                    if self.enabled(record.metadata()) && text.starts_with("Sunrise: frame graph") {
+                        WARNINGS.lock().unwrap().push(text);
+                    }
+                }
+                fn flush(&self) {}
+            }
+            log::set_logger(&Capture).unwrap();
+            log::set_max_level(log::LevelFilter::Warn);
+
+            // Per case: whether the draw declares the read, lists the transient in `.writes`,
+            // or renders into it, and what the draw returns. The compute dispatch, which samples
+            // the transient's depth, follows the first two cases only.
+            for (declared, writes_only, own_attachment, expected) in [
+                (true, false, false, Ok(())),
+                (false, false, false, Err(PipelineDrawError::InvalidBinding)),
+                (false, true, false, Err(PipelineDrawError::InvalidBinding)),
+                (
+                    false,
+                    false,
+                    true,
+                    Err(PipelineDrawError::TargetReadWriteHazard),
+                ),
+            ] {
+                let accepted = expected.is_ok();
+                let with_compute = !writes_only && !own_attachment;
                 let mut surface = FrameGraphSurface::default();
                 let mut graph = GameFrameGraphContext::new(game, &mut surface);
                 let input = graph
@@ -5491,21 +5526,23 @@ void main() { values[0] = floatBitsToUint(textureLod(InputTex, vec2(0.5), 0.0).r
                         mod_api::RenderTargetDepth::Depth32Float,
                     ))
                     .unwrap();
-                let output = graph
-                    .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
-                        [8, 8],
-                        mod_api::RenderTargetDepth::None,
-                    ))
-                    .unwrap();
+                let target = if own_attachment {
+                    input
+                } else {
+                    graph
+                        .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
+                            [8, 8],
+                            mod_api::RenderTargetDepth::None,
+                        ))
+                        .unwrap()
+                };
                 let mut draw =
-                    mod_api::FramePassDescriptor::new("draw", FrameTarget::Transient(output));
-                let mut dispatch = mod_api::ComputePassDescriptor::new("compute");
+                    mod_api::FramePassDescriptor::new("draw", FrameTarget::Transient(target));
                 if declared {
                     draw = draw.reads(FrameTarget::Transient(input));
-                    dispatch = dispatch.reads(FrameTarget::Transient(input));
-                } else {
-                    // Declaring another read does not declare this transient.
-                    dispatch = dispatch.reads(FrameTarget::MainDepth);
+                }
+                if writes_only {
+                    draw = draw.writes(FrameTarget::Transient(input));
                 }
 
                 // The valid inline uniform is first in both layouts, so a partial append by
@@ -5526,37 +5563,41 @@ void main() { values[0] = floatBitsToUint(textureLod(InputTex, vec2(0.5), 0.0).r
                                 mod_api::MeshDraw::vertices(0..4),
                                 &draw_bindings,
                             ),
-                            if declared {
-                                Ok(())
-                            } else {
-                                Err(PipelineDrawError::InvalidBinding)
-                            },
+                            expected,
                         );
                     })
                     .unwrap();
-                let compute_bindings = DrawBindings::new()
-                    .inline_uniform("ProbeParams", &inline)
-                    .texture(
-                        "InputTex",
-                        mod_api::TextureSource::TransientTargetDepth(input),
-                    )
-                    .storage_buffer("Out", storage.slice(0, 16));
-                graph
-                    .add_compute_pass(dispatch, &mut |node| {
-                        assert_eq!(
-                            node.dispatch(compute, &compute_bindings, [1, 1, 1]),
-                            if declared {
-                                Ok(())
-                            } else {
-                                Err(ComputeDispatchError::InvalidBinding)
-                            },
-                        );
-                    })
-                    .unwrap();
+                if with_compute {
+                    // Declaring another read does not declare this transient.
+                    let dispatch =
+                        mod_api::ComputePassDescriptor::new("compute").reads(if declared {
+                            FrameTarget::Transient(input)
+                        } else {
+                            FrameTarget::MainDepth
+                        });
+                    let compute_bindings = DrawBindings::new()
+                        .inline_uniform("ProbeParams", &inline)
+                        .texture(
+                            "InputTex",
+                            mod_api::TextureSource::TransientTargetDepth(input),
+                        )
+                        .storage_buffer("Out", storage.slice(0, 16));
+                    graph
+                        .add_compute_pass(dispatch, &mut |node| {
+                            assert_eq!(
+                                node.dispatch(compute, &compute_bindings, [1, 1, 1]),
+                                if declared {
+                                    Ok(())
+                                } else {
+                                    Err(ComputeDispatchError::InvalidBinding)
+                                },
+                            );
+                        })
+                        .unwrap();
+                }
 
                 let draw = &surface.graph.passes[0];
-                let dispatches = surface.graph.passes[1].dispatches.as_deref().unwrap();
-                if declared {
+                if accepted {
                     assert_eq!(draw.draws.len(), 1);
                     assert_eq!(draw.inline_uniforms, inline);
                     assert!(matches!(
@@ -5564,75 +5605,86 @@ void main() { values[0] = floatBitsToUint(textureLod(InputTex, vec2(0.5), 0.0).r
                         [ResolvedSet1Entry::InlineUniform { .. }, ResolvedSet1Entry::TransientColor { target, attachment: 0 }]
                             if *target == input
                     ));
-                    assert_eq!(dispatches.len(), 1);
-                    assert_eq!(dispatches[0].inline, inline);
-                    assert!(matches!(
-                        dispatches[0].entries.as_slice(),
-                        [ResolvedSet1Entry::InlineUniform { .. }, ResolvedSet1Entry::TransientDepth { target }, ResolvedSet1Entry::StorageBuffer { .. }]
-                            if *target == input
-                    ));
                 } else {
                     assert!(draw.draws.is_empty());
                     assert!(draw.transient_vertices.is_empty());
                     assert!(draw.inline_uniforms.is_empty());
-                    assert!(draw.texel_data.is_empty());
-                    assert!(dispatches.is_empty());
+                }
+                if with_compute {
+                    let dispatches = surface.graph.passes[1].dispatches.as_deref().unwrap();
+                    if accepted {
+                        assert_eq!(dispatches.len(), 1);
+                        assert_eq!(dispatches[0].inline, inline);
+                        assert!(matches!(
+                            dispatches[0].entries.as_slice(),
+                            [ResolvedSet1Entry::InlineUniform { .. }, ResolvedSet1Entry::TransientDepth { target }, ResolvedSet1Entry::StorageBuffer { .. }]
+                                if *target == input
+                        ));
+                    } else {
+                        assert!(dispatches.is_empty());
+                    }
                 }
             }
 
-            // A transient listed only in `.writes(...)` of the drawing pass is not a declared
-            // read, and one that is the pass's own attachment is a read-write hazard: neither
-            // records anything.
-            for (writes_only, expected) in [
-                (true, PipelineDrawError::InvalidBinding),
-                (false, PipelineDrawError::TargetReadWriteHazard),
-            ] {
-                let mut surface = FrameGraphSurface::default();
-                let mut graph = GameFrameGraphContext::new(game, &mut surface);
-                let input = graph
-                    .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
-                        [8, 8],
-                        mod_api::RenderTargetDepth::None,
-                    ))
-                    .unwrap();
-                let output = graph
-                    .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
-                        [8, 8],
-                        mod_api::RenderTargetDepth::None,
-                    ))
-                    .unwrap();
-                let desc = if writes_only {
+            // A cycle whose pass labels are exactly the old string-prefixed key of the refusal
+            // above ("undeclared transient read", "draw", "0"), refused twice: it is admitted
+            // once, and it neither suppresses nor is suppressed by the refusal of pass "draw"
+            // sampling transient 0 that was logged during the cases.
+            let mut surface = FrameGraphSurface::default();
+            let mut graph = GameFrameGraphContext::new(game, &mut surface);
+            let output = graph
+                .create_transient(&mod_api::RenderTargetDescriptor::rgba8(
+                    [8, 8],
+                    mod_api::RenderTargetDepth::None,
+                ))
+                .unwrap();
+            let first = graph
+                .add_pass(
+                    mod_api::FramePassDescriptor::new(
+                        "undeclared transient read",
+                        FrameTarget::Transient(output),
+                    ),
+                    &mut |_| {},
+                )
+                .unwrap();
+            let second = graph
+                .add_pass(
                     mod_api::FramePassDescriptor::new("draw", FrameTarget::Transient(output))
-                        .writes(FrameTarget::Transient(input))
-                } else {
-                    mod_api::FramePassDescriptor::new("draw", FrameTarget::Transient(input))
-                };
-                let draw_bindings = DrawBindings::new()
-                    .inline_uniform("ProbeParams", &inline)
-                    .texture(
-                        "InputTex",
-                        mod_api::TextureSource::TransientTargetColor(input, 0),
-                    );
-                graph
-                    .add_pass(desc, &mut |pass| {
-                        assert_eq!(
-                            pass.draw_vertices(
-                                pipeline,
-                                &[bytemuck::cast_slice(&vertices)],
-                                None,
-                                mod_api::MeshDraw::vertices(0..4),
-                                &draw_bindings,
-                            ),
-                            Err(expected),
-                        );
-                    })
-                    .unwrap();
-                let draw = &surface.graph.passes[0];
-                assert!(draw.draws.is_empty());
-                assert!(draw.transient_vertices.is_empty());
-                assert!(draw.inline_uniforms.is_empty());
-                assert!(draw.texel_data.is_empty());
+                        .after_pass(first),
+                    &mut |_| {},
+                )
+                .unwrap();
+            for _ in 0..2 {
+                assert_eq!(
+                    graph
+                        .add_pass(
+                            mod_api::FramePassDescriptor::new("0", FrameTarget::Transient(output))
+                                .after_pass(second)
+                                .before_pass(first),
+                            &mut |_| {},
+                        )
+                        .unwrap_err(),
+                    mod_api::FrameGraphError::Cycle {
+                        passes: vec![
+                            "undeclared transient read".to_owned(),
+                            "draw".to_owned(),
+                            "0".to_owned(),
+                        ],
+                    },
+                );
             }
+
+            // Each warning kind is logged once however often it recurs: the draw refusals of
+            // the second and third cases share the first one's key, and the second cycle
+            // attempt shares the first one's.
+            assert_eq!(
+                *WARNINGS.lock().unwrap(),
+                [
+                    "Sunrise: frame graph pass draw samples transient target 0 without declaring it in its reads; binding refused",
+                    "Sunrise: frame graph pass compute samples transient target 0 without declaring it in its reads; binding refused",
+                    "Sunrise: frame graph cycle detected between undeclared transient read, draw, 0",
+                ]
+            );
             drop(game.client.renderer.0.take());
             drop(game.client.mod_gpu.take());
         });

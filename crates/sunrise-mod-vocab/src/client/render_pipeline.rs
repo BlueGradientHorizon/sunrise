@@ -4169,9 +4169,11 @@ pub enum PipelineDrawError {
     /// A draw or compute dispatch that samples a transient colour or depth attachment must
     /// declare `.reads(FrameTarget::Transient(id))` on a consumer pass that does not write that
     /// transient; the graph computes the target's lifetime from declared uses, as vanilla's
-    /// `FramePass.reads` does. An undeclared sample is refused at submit and logged once, with
-    /// this error for a draw and [`crate::ComputeDispatchError::InvalidBinding`] for a dispatch,
-    /// even when the pass lists the transient in `.writes(...)`. A draw sampling its own
+    /// `FramePass.reads` does. An undeclared sample is refused at submit, with this error for a
+    /// draw and [`crate::ComputeDispatchError::InvalidBinding`] for a dispatch, even when the
+    /// pass lists the transient in `.writes(...)`. The renderer logs the refusal once per pass
+    /// label and transient id, not once per command, and only when the id names a transient of
+    /// the graph and the draw is not sampling its own attachment. A draw sampling its own
     /// transient attachment returns [`Self::TargetReadWriteHazard`] instead. Declaring the read
     /// on a pass that also writes the transient is refused before recording with
     /// [`crate::FrameGraphError::SelfDependency`]: split the producer and the consumer. A
@@ -4201,6 +4203,9 @@ pub enum PipelineDrawError {
     /// [`DrawBindings`] binds a mip level of a [`RenderTargetRef`] both as a storage image and
     /// as something else the draw reads or writes (a sampled view, or a storage image of another
     /// access), which one render pass cannot do.
+    ///
+    /// A draw that samples the transient attachment it renders into also returns this error,
+    /// before the undeclared-read refusal documented on [`Self::InvalidBinding`] applies.
     TargetReadWriteHazard,
 }
 
