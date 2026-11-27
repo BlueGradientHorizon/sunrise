@@ -7,9 +7,7 @@ use std::{
 };
 use syn::{Attribute, Item, Meta, UseTree, Visibility};
 
-use crate::modules::{
-    gate_items, generated_include, inherited_include_shadowing, standard_include,
-};
+use crate::modules::{IncludeScope, gate_items, generated_include, standard_include};
 
 /// The first of `values` this tool's own target has, as `cfg!` saw it when the tool was built.
 macro_rules! built_for {
@@ -216,7 +214,7 @@ pub struct Module {
     pub krate: String,
     pub path: Vec<String>,
     pub items: Vec<Item>,
-    include_shadowed: bool,
+    include_scope: IncludeScope,
 }
 
 /// A named item a signature refers to.
@@ -561,8 +559,8 @@ impl<'a> Index<'a> {
         if let Some(&id) = self.by_path.get(&(krate.clone(), path.to_vec())) {
             return Ok(id);
         }
-        let (items, include_shadowed) = if let Some(load) = &mut self.load_module {
-            (load(&krate, path)?, false)
+        let (items, include_scope) = if let Some(load) = &mut self.load_module {
+            (load(&krate, path)?, IncludeScope::default())
         } else {
             self.parse_module(&krate, path)?
         };
@@ -571,22 +569,26 @@ impl<'a> Index<'a> {
             krate: krate.clone(),
             path: path.to_vec(),
             items,
-            include_shadowed,
+            include_scope,
         });
         self.by_path.insert((krate, path.to_vec()), id);
         Ok(id)
     }
 
-    fn parse_module(&mut self, krate: &str, path: &[String]) -> Result<(Vec<Item>, bool), String> {
+    fn parse_module(
+        &mut self,
+        krate: &str,
+        path: &[String],
+    ) -> Result<(Vec<Item>, IncludeScope), String> {
         Ok(match path.split_last() {
             None => {
                 let file = self.root_files.get(krate).map_or("lib.rs", String::as_str);
-                self.parse(krate, file, false)?
+                self.parse(krate, file, IncludeScope::default())?
             }
             Some((last, parent)) => {
                 let parent = self.module(krate, parent)?;
                 let scope = &self.modules[parent];
-                let shadowed = scope.include_shadowed;
+                let include_scope = scope.include_scope.child();
                 let declarations = &scope.items;
                 let has_declaration = declarations
                     .iter()
@@ -611,55 +613,64 @@ impl<'a> Index<'a> {
                     ));
                 }
                 match declared {
-                    Some((Some((_, items)), _)) => self.expand_includes(items, shadowed)?,
+                    Some((Some((_, items)), _)) => self.expand_includes(items, include_scope)?,
                     // A generated `#[path]` is absolute.
                     Some((None, Some(file))) if Path::new(&file).is_absolute() => {
-                        self.parse(krate, &file, shadowed)?
+                        self.parse(krate, &file, include_scope)?
                     }
                     // `#[path]` is relative to the declaring file's directory: `parent.rs`
                     // sits beside it, `parent/mod.rs` below.
                     Some((None, Some(file))) => {
                         let beside = parent_dir(&path[..path.len() - 1]);
                         let below = parent_dir(path);
-                        self.parse(krate, &format!("{beside}{file}"), shadowed)
-                            .or_else(|_| self.parse(krate, &format!("{below}{file}"), shadowed))?
+                        self.parse(krate, &format!("{beside}{file}"), include_scope)
+                            .or_else(|_| {
+                                self.parse(krate, &format!("{below}{file}"), include_scope)
+                            })?
                     }
                     _ => {
                         let dir = path.join("/");
-                        self.parse(krate, &format!("{dir}.rs"), shadowed)
-                            .or_else(|_| self.parse(krate, &format!("{dir}/mod.rs"), shadowed))?
+                        self.parse(krate, &format!("{dir}.rs"), include_scope)
+                            .or_else(|_| {
+                                self.parse(krate, &format!("{dir}/mod.rs"), include_scope)
+                            })?
                     }
                 }
             }
         })
     }
 
-    fn parse(&self, krate: &str, file: &str, shadowed: bool) -> Result<(Vec<Item>, bool), String> {
+    fn parse(
+        &self,
+        krate: &str,
+        file: &str,
+        include_scope: IncludeScope,
+    ) -> Result<(Vec<Item>, IncludeScope), String> {
         let dir = self.crate_dir(krate).expect("a known crate").1;
         let path = self.root.join(dir).join(file);
         let source = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         self.read.borrow_mut().push(path.clone());
         let source = (self.expand)(self.root, &source)?;
         let file = syn::parse_file(&source).map_err(|e| format!("{}: {e}", path.display()))?;
-        self.expand_includes(file.items, shadowed)
+        self.expand_includes(file.items, include_scope)
     }
 
     /// `items` with each standard `include!` of a generated file replaced by that file's items,
     /// under the invocation's `cfg` gates. Any other standard `include!` is an error; a bare one
-    /// where `items` shadow the name is that macro's and stays.
+    /// in a scope that shadows the name is that macro's and stays.
     fn expand_includes(
         &self,
         items: Vec<Item>,
-        inherited: bool,
-    ) -> Result<(Vec<Item>, bool), String> {
-        let shadowed = inherited_include_shadowing(inherited, &items);
+        include_scope: IncludeScope,
+    ) -> Result<(Vec<Item>, IncludeScope), String> {
+        let include_scope = include_scope.with_items(&items);
         let mut out = Vec::new();
         for item in items {
-            let Some(mac) = standard_include(&item, shadowed) else {
+            let Some(mac) = standard_include(&item, include_scope.shadowed()) else {
                 out.push(item);
                 continue;
             };
-            let (name, source, attrs) = generated_include(&item, shadowed)
+            let (name, source, attrs) = generated_include(&item, include_scope.shadowed())
                 .and_then(|(file, attrs)| {
                     let (name, source) = self.included.iter().find(|(name, _)| *name == file)?;
                     Some((name, source, attrs))
@@ -668,7 +679,7 @@ impl<'a> Index<'a> {
             let file = syn::parse_file(source).map_err(|e| format!("{name}: {e}"))?;
             out.extend(gate_items(file.items, attrs).map_err(|e| format!("{name}: {e}"))?);
         }
-        Ok((out, shadowed))
+        Ok((out, include_scope))
     }
 
     /// What `name` means in `module`: an item defined there, a `use` of it, or a glob import

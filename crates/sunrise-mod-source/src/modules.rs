@@ -385,34 +385,55 @@ pub fn standard_include(item: &Item, shadowed: bool) -> Option<&syn::ItemMacro> 
     standard.then_some(item)
 }
 
-/// Whether a bare `include!` in this module is shadowed locally or in an enclosing module.
-pub(crate) fn inherited_include_shadowing(inherited: bool, items: &[Item]) -> bool {
-    inherited || include_shadowed(items)
+/// Shadowing in a module. Literal include fragments stay in that module; child `mod`s
+/// inherit only textual `macro_rules!` bindings, not the parent's named imports.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct IncludeScope {
+    lexical: bool,
+    imported: bool,
 }
 
-/// Whether `items` define a `macro_rules! include` or import a name `include`. The tools then
-/// read a bare `include!` there, and in the modules inside, as that macro.
-pub fn include_shadowed(items: &[Item]) -> bool {
-    fn binds(tree: &syn::UseTree) -> bool {
-        match tree {
-            syn::UseTree::Path(path) => binds(&path.tree),
-            syn::UseTree::Name(name) => name.ident == "include",
-            syn::UseTree::Rename(rename) => rename.rename == "include",
-            syn::UseTree::Group(group) => group.items.iter().any(binds),
-            syn::UseTree::Glob(_) => false,
+impl IncludeScope {
+    pub(crate) fn with_items(mut self, items: &[Item]) -> Self {
+        fn binds(tree: &syn::UseTree) -> bool {
+            match tree {
+                syn::UseTree::Path(path) => binds(&path.tree),
+                syn::UseTree::Name(name) => name.ident == "include",
+                syn::UseTree::Rename(rename) => rename.rename == "include",
+                syn::UseTree::Group(group) => group.items.iter().any(binds),
+                syn::UseTree::Glob(_) => false,
+            }
+        }
+        for item in items {
+            match item {
+                Item::Macro(defined) if defined.mac.path.is_ident("macro_rules") => {
+                    self.lexical |= defined
+                        .ident
+                        .as_ref()
+                        .is_some_and(|ident| ident == "include");
+                }
+                Item::Use(used) => self.imported |= binds(&used.tree),
+                _ => {}
+            }
+        }
+        self
+    }
+
+    pub(crate) fn shadowed(self) -> bool {
+        self.lexical || self.imported
+    }
+
+    pub(crate) fn child(self) -> Self {
+        Self {
+            imported: false,
+            ..self
         }
     }
-    items.iter().any(|item| match item {
-        Item::Macro(defined) => {
-            defined.mac.path.is_ident("macro_rules")
-                && defined
-                    .ident
-                    .as_ref()
-                    .is_some_and(|ident| ident == "include")
-        }
-        Item::Use(used) => binds(&used.tree),
-        _ => false,
-    })
+}
+
+/// Whether `items` define a `macro_rules! include` or import a name `include` in this module.
+pub fn include_shadowed(items: &[Item]) -> bool {
+    IncludeScope::default().with_items(items).shadowed()
 }
 
 /// Whether some build can hold every predicate in `conditions` at once: an assignment of the
@@ -500,7 +521,7 @@ pub fn walk_module_variants(
             },
             dir,
             ancestors: Vec::new(),
-            shadowed: false,
+            scope: IncludeScope::default(),
         }],
         variants: Vec::new(),
     };
@@ -508,7 +529,7 @@ pub fn walk_module_variants(
         mut file,
         dir,
         mut ancestors,
-        shadowed,
+        scope,
     }) = walker.pending.pop()
     {
         // A target with only conditional paths need not have a conventional file. A literal
@@ -543,7 +564,7 @@ pub fn walk_module_variants(
             &dir,
             &mut Vec::new(),
             &ancestors,
-            shadowed,
+            scope,
         );
         walker.variants.push(ModuleVariant {
             file,
@@ -564,12 +585,12 @@ struct Walker {
 }
 
 /// A file to read, the directory Rust uses for its conventional children, its physical
-/// ancestors and whether a bare `include!` reaching it names a shadowing macro.
+/// ancestors and the include shadowing scope reaching it.
 struct Pending {
     file: ModuleFile,
     dir: PathBuf,
     ancestors: Vec<PathBuf>,
-    shadowed: bool,
+    scope: IncludeScope,
 }
 
 impl Walker {
@@ -594,11 +615,11 @@ impl Walker {
         dir: &Path,
         inline: &mut Vec<usize>,
         ancestors: &[PathBuf],
-        shadowed: bool,
+        scope: IncludeScope,
     ) {
-        let shadowed = inherited_include_shadowing(shadowed, items);
+        let scope = scope.with_items(items);
         for (index, item) in items.iter().enumerate() {
-            if let Some((relative, attrs)) = literal_include(item, shadowed)
+            if let Some((relative, attrs)) = literal_include(item, scope.shadowed())
                 && self.keep(attrs)
             {
                 let mut included_file = file.clone();
@@ -613,7 +634,7 @@ impl Walker {
                     file: included_file,
                     dir: dir.to_owned(),
                     ancestors: ancestors.to_vec(),
-                    shadowed,
+                    scope,
                 });
             }
             let Item::Mod(declared) = item else { continue };
@@ -668,7 +689,13 @@ impl Walker {
                     };
                     inline.push(index);
                     self.children(
-                        &child, inner, &inner_dir, &inner_dir, inline, ancestors, shadowed,
+                        &child,
+                        inner,
+                        &inner_dir,
+                        &inner_dir,
+                        inline,
+                        ancestors,
+                        scope.child(),
                     );
                     self.variants.push(ModuleVariant {
                         file: child,
@@ -697,7 +724,7 @@ impl Walker {
                         },
                         dir: child_dir,
                         ancestors: ancestors.to_vec(),
-                        shadowed,
+                        scope: scope.child(),
                     });
                 }
             }
@@ -757,6 +784,106 @@ mod shadow {
             let mut files = walk(root.path(), include_tests).unwrap();
             files.sort();
             assert_eq!(files, ["lib.rs", "qualified.rs", "unix.rs"]);
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn include_shadowing_matches_rustc_across_child_modules() {
+        use crate::index::Index;
+
+        // A missing file must never be read where the custom macro is in scope. The
+        // standard includes in the imported macro's children must supply a real type.
+        let lib = r#"
+#[macro_export]
+macro_rules! dummy { ($($t:tt)*) => {}; }
+mod imported {
+    use crate::dummy as include;
+    include!("never-read.rs");
+    pub mod inline { include!("gen.rs"); }
+    pub mod file;
+}
+mod lexical {
+    macro_rules! include { ($($t:tt)*) => {}; }
+    mod inline { include!("never-read.rs"); }
+    mod file;
+}
+pub fn generated() {
+    let _ = (imported::inline::Generated, imported::file::Generated);
+}
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        for parent in ["imported", "lexical"] {
+            fs::create_dir_all(src.join(parent)).unwrap();
+        }
+        let generated = [("gen.rs", "pub struct Generated;")];
+        fs::write(src.join("gen.rs"), generated[0].1).unwrap();
+        fs::write(src.join("imported/gen.rs"), generated[0].1).unwrap();
+        fs::write(src.join("lexical/file.rs"), r#"include!("never-read.rs");"#).unwrap();
+
+        for out_dir in [false, true] {
+            let write = |path: &str, text: &str| {
+                let text = if out_dir {
+                    text.replace(r#""gen.rs""#, r#"concat!(env!("OUT_DIR"), "/gen.rs")"#)
+                } else {
+                    text.to_owned()
+                };
+                fs::write(src.join(path), text).unwrap();
+            };
+            write("lib.rs", lib);
+            write("imported/file.rs", r#"include!("gen.rs");"#);
+            let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+            let output = std::process::Command::new(rustc)
+                .args(["--crate-type=lib", "--edition=2024", "--emit=metadata"])
+                .arg(src.join("lib.rs"))
+                .arg("--out-dir")
+                .arg(dir.path())
+                .env("OUT_DIR", &src)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            if out_dir {
+                let mut index = Index::new(dir.path(), &generated, &[("k", "src")]);
+                for (parent, expanded) in [("imported", true), ("lexical", false)] {
+                    for child in ["inline", "file"] {
+                        let module = index.module("k", &[parent.into(), child.into()]).unwrap();
+                        assert_eq!(
+                            index.resolve(module, "Generated").is_ok(),
+                            expanded,
+                            "{parent}::{child}"
+                        );
+                    }
+                }
+            } else {
+                let files = walk_module_files(
+                    "k".into(),
+                    src.join("lib.rs"),
+                    src.clone(),
+                    false,
+                    false,
+                    |_, text| syn::parse_file(text).map_err(|err| err.to_string()),
+                )
+                .unwrap();
+                let mut included: Vec<_> = files
+                    .iter()
+                    .filter(|file| file.included)
+                    .map(|file| (file.module.as_str(), file.path.strip_prefix(&src).unwrap()))
+                    .collect();
+                included.sort_unstable();
+                assert_eq!(
+                    included,
+                    [
+                        ("k::imported::file", Path::new("imported/gen.rs")),
+                        ("k::imported::inline", Path::new("gen.rs")),
+                    ]
+                );
+            }
         }
     }
 
