@@ -13,8 +13,7 @@ impl Renderer {
         block_ids: &[i32],
     ) -> std::result::Result<Option<(Vec<String>, Vec<String>)>, pack_post::Refused> {
         if pack.is_none() {
-            self.pack_atlas = None;
-            self.pack_material_atlases = None;
+            self.forget_pack_atlas();
         }
         let draws = self.pack_terrain_draws();
         let buffers = pack_terrain_buffers();
@@ -114,8 +113,7 @@ impl Renderer {
             Ok(post) => post,
             Err(e) => {
                 self.pack_post = Some((dimension, None));
-                self.pack_atlas = None;
-                self.pack_material_atlases = None;
+                self.forget_pack_atlas();
                 return Err(e);
             }
         };
@@ -330,14 +328,25 @@ impl Renderer {
                     draws: draws_sections,
                 });
             }
-            Err(e) => {
-                log::error!("shader pack {label}: no thread to build it on: {e}");
-                // Off for this dimension, as a pack that fails, not tried again every frame.
-                self.pack_loading = None;
-                self.pack_changed();
-                self.pack_post = Some((dimension, None));
-            }
+            Err(e) => self.pack_thread_failed(dimension, &label, &e),
         }
+    }
+    /// `load_shader_pack` found no thread to build its pack on: the pack is refused for
+    /// `dimension`, as one that fails to build is (`install_shader_pack`), so it is not tried
+    /// again every frame and its atlases go.
+    pub(crate) fn pack_thread_failed(
+        &mut self,
+        dimension: i32,
+        label: &str,
+        error: &std::io::Error,
+    ) {
+        log::error!("shader pack {label}: no thread to build it on: {error}");
+        self.pack_loading = None;
+        let refused = pack_post::Refused {
+            reason: format!("no thread to build it on: {error}"),
+            notes: Vec::new(),
+        };
+        let _ = self.install_shader_pack(dimension, Err(refused), Vec::new());
     }
     /// The pack `load_shader_pack` builds, once its thread is done: it runs from now on, as
     /// `set_shader_pack` would run it. Its dimension, label, start and what `set_shader_pack`
@@ -381,9 +390,15 @@ impl Renderer {
         self.pack_loading = None;
         self.pack_changed();
         self.pack_post = None;
-        self.pack_atlas = None;
+        self.forget_pack_atlas();
         self.separate_ao = false;
         self.pack_block_ids = None;
+    }
+    /// Frees the pack's block atlas and the material atlases made in its layout
+    /// (`pack_terrain_inputs` makes them again, together).
+    fn forget_pack_atlas(&mut self) {
+        self.pack_atlas = None;
+        self.pack_material_atlases = None;
     }
     /// Sets whether shader pack terrain inputs pass vertex alpha to `hz_Color.a` (`separateAo=true`).
     pub fn set_separate_ao(&mut self, separate_ao: bool) {
@@ -415,7 +430,7 @@ impl Renderer {
         // Flat draws read each sprite's place from a table: the atlas is stitched as the game's.
         // Other draws need the grid.
         if !flat && self.pack_atlas.as_ref().is_some_and(|a| a.is_stitched()) {
-            self.pack_atlas = None;
+            self.forget_pack_atlas();
         }
         if self.pack_atlas.is_none() {
             let mut encoder = self.device.create_command_encoder(&Default::default());
