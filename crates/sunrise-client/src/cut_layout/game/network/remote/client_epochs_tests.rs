@@ -106,7 +106,7 @@ fn a_dimension_change_replaces_a_signed_world_border() {
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_epochs_tests::a_dimension_change_replaces_a_signed_world_border",
+        "cut_layout::game::remote::tests::client_epochs_tests::a_dimension_change_replaces_a_signed_world_border",
         || {
             with_client_game(|client| {
                 let _transport = logged_client(client);
@@ -176,7 +176,7 @@ fn a_dimension_change_uses_the_destination_weather_strengths() {
 
     const WET: &str = "test:wet_overworld";
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_epochs_tests::a_dimension_change_uses_the_destination_weather_strengths",
+        "cut_layout::game::remote::tests::client_epochs_tests::a_dimension_change_uses_the_destination_weather_strengths",
         || {
             with_guests(|server| {
                 let mut host = server.server.lan.take().unwrap();

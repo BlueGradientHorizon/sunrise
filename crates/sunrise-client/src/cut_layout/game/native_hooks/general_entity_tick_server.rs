@@ -21,7 +21,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn general_subject_and_host_writes_commit_or_abort_together() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::native_hooks_server::general_entity_tick::tests::general_subject_and_host_writes_commit_or_abort_together",
+            "cut_layout::game::server_side::native_hooks_server::general_entity_tick::tests::general_subject_and_host_writes_commit_or_abort_together",
             || {
                 with_game(|game| {
                     game.options.dedicated = Some(Vec::new());

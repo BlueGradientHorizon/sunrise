@@ -769,7 +769,7 @@ mod tests {
     fn a_code_opened_backed_menu_respects_its_display_only_slot() {
         // Content registries are process-global.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_menu_places::tests::a_code_opened_backed_menu_respects_its_display_only_slot",
+            "cut_layout::game::server_side::native_menu_places::tests::a_code_opened_backed_menu_respects_its_display_only_slot",
             "SUNRISE_MENU_PLACES_HIDDEN_CHILD",
             &["hidden"],
         ) {

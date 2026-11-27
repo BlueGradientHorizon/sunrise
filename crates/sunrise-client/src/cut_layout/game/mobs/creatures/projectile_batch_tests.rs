@@ -271,7 +271,7 @@ fn no_impact_expiration_retires_only_the_expired_owner() {
 #[ignore = "daily"]
 fn canceled_impacts_keep_projectile_batch_joins_and_survivor_order() {
     if run_fresh_cases(
-        "game::creatures::projectile_batch_tests::canceled_impacts_keep_projectile_batch_joins_and_survivor_order",
+        "cut_layout::game::creatures::projectile_batch_tests::canceled_impacts_keep_projectile_batch_joins_and_survivor_order",
         "SUNRISE_PROJECTILE_BATCH_CASE",
         &["cancel"],
     ) {
@@ -306,7 +306,7 @@ fn canceled_impacts_keep_projectile_batch_joins_and_survivor_order() {
 #[ignore = "daily"]
 fn a_projectile_removed_in_its_impact_hook_stays_removed_after_replay() {
     if run_fresh_cases(
-        "game::creatures::projectile_batch_tests::a_projectile_removed_in_its_impact_hook_stays_removed_after_replay",
+        "cut_layout::game::creatures::projectile_batch_tests::a_projectile_removed_in_its_impact_hook_stays_removed_after_replay",
         "SUNRISE_PROJECTILE_BATCH_CASE",
         &["discard"],
     ) {
@@ -396,7 +396,7 @@ pub(crate) fn terminal_egg(action: Action, abort: bool) {
 #[ignore = "daily"]
 fn discarding_an_egg_during_impact_skips_the_hit_and_replay() {
     if !run_fresh_cases(
-        "game::creatures::projectile_batch_tests::discarding_an_egg_during_impact_skips_the_hit_and_replay",
+        "cut_layout::game::creatures::projectile_batch_tests::discarding_an_egg_during_impact_skips_the_hit_and_replay",
         "SUNRISE_PROJECTILE_BATCH_CASE",
         &["egg-discard"],
     ) {
@@ -408,7 +408,7 @@ fn discarding_an_egg_during_impact_skips_the_hit_and_replay() {
 #[ignore = "daily"]
 fn aborting_an_impact_discard_keeps_the_same_egg_in_flight() {
     if !run_fresh_cases(
-        "game::creatures::projectile_batch_tests::aborting_an_impact_discard_keeps_the_same_egg_in_flight",
+        "cut_layout::game::creatures::projectile_batch_tests::aborting_an_impact_discard_keeps_the_same_egg_in_flight",
         "SUNRISE_PROJECTILE_BATCH_CASE",
         &["egg-abort"],
     ) {
@@ -420,7 +420,7 @@ fn aborting_an_impact_discard_keeps_the_same_egg_in_flight() {
 #[ignore = "daily"]
 fn two_discarded_eggs_leave_once_without_dying() {
     if run_fresh_cases(
-        "game::creatures::projectile_batch_tests::two_discarded_eggs_leave_once_without_dying",
+        "cut_layout::game::creatures::projectile_batch_tests::two_discarded_eggs_leave_once_without_dying",
         "SUNRISE_PROJECTILE_BATCH_CASE",
         &["two-discards"],
     ) {
@@ -490,7 +490,7 @@ pub(crate) fn shoot_arrow_at_wall(
 fn an_arrow_lands_before_its_first_shot_event_at_the_backed_off_position() {
     const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
     if run_fresh_cases(
-        "game::creatures::projectile_batch_tests::an_arrow_lands_before_its_first_shot_event_at_the_backed_off_position",
+        "cut_layout::game::creatures::projectile_batch_tests::an_arrow_lands_before_its_first_shot_event_at_the_backed_off_position",
         CASE,
         &["allow", "no-impacts"],
     ) {
@@ -514,7 +514,7 @@ fn an_arrow_lands_before_its_first_shot_event_at_the_backed_off_position() {
 #[ignore = "daily"]
 fn an_arrow_files_both_section_crossings_at_a_section_edge_wall() {
     if run_fresh_cases(
-        "game::creatures::projectile_batch_tests::an_arrow_files_both_section_crossings_at_a_section_edge_wall",
+        "cut_layout::game::creatures::projectile_batch_tests::an_arrow_files_both_section_crossings_at_a_section_edge_wall",
         "SUNRISE_PROJECTILE_BATCH_CASE",
         &["wall-at-section-edge"],
     ) {
@@ -545,7 +545,7 @@ fn an_arrow_files_both_section_crossings_at_a_section_edge_wall() {
 fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
     const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
     if run_fresh_cases(
-        "game::creatures::projectile_batch_tests::wind_charges_retrace_only_after_gameplay_breaks_a_vehicle",
+        "cut_layout::game::creatures::projectile_batch_tests::wind_charges_retrace_only_after_gameplay_breaks_a_vehicle",
         CASE,
         &[
             "allow",
@@ -676,7 +676,7 @@ fn a_subscriber_enabled_by_a_section_callback_hears_the_flights_after_it() {
         }
     }
     if run_fresh_cases(
-        "game::creatures::projectile_batch_tests::a_subscriber_enabled_by_a_section_callback_hears_the_flights_after_it",
+        "cut_layout::game::creatures::projectile_batch_tests::a_subscriber_enabled_by_a_section_callback_hears_the_flights_after_it",
         "SUNRISE_PROJECTILE_REENABLE_CASE",
         &["off"],
     ) {

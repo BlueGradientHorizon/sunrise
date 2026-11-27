@@ -18,7 +18,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn ordinary_moves_and_short_farmland_landings_do_not_pause() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::native_hooks_server::farmland_trample::tests::ordinary_moves_and_short_farmland_landings_do_not_pause",
+            "cut_layout::game::server_side::native_hooks_server::farmland_trample::tests::ordinary_moves_and_short_farmland_landings_do_not_pause",
             || {
                 use sunrise_sim::{
                     health::{DamageLevel, LentLevel},

@@ -529,7 +529,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn player_and_mob_trampling_without_a_listener_follow_vanilla_order() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::player_and_mob_trampling_without_a_listener_follow_vanilla_order",
+            "cut_layout::game::native_hooks::farmland_trample::tests::player_and_mob_trampling_without_a_listener_follow_vanilla_order",
             || {
                 for body in [WALKING, Body::Pig] {
                     land(body, Choice::Absent);
@@ -542,7 +542,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn the_lift_reads_a_bystanders_bounds_after_an_earlier_lift_callback() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::the_lift_reads_a_bystanders_bounds_after_an_earlier_lift_callback",
+            "cut_layout::game::native_hooks::farmland_trample::tests::the_lift_reads_a_bystanders_bounds_after_an_earlier_lift_callback",
             || {
                 land(Body::Pig, Choice::MoveBystander);
             },
@@ -553,7 +553,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn an_allowing_listener_keeps_the_player_and_mob_landing_order() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::an_allowing_listener_keeps_the_player_and_mob_landing_order",
+            "cut_layout::game::native_hooks::farmland_trample::tests::an_allowing_listener_keeps_the_player_and_mob_landing_order",
             || {
                 for body in [WALKING, Body::Pig] {
                     let baseline = land(body, Choice::Absent);
@@ -568,7 +568,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_trapping_listener_rolls_back_without_preventing_fall_damage() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::a_trapping_listener_rolls_back_without_preventing_fall_damage",
+            "cut_layout::game::native_hooks::farmland_trample::tests::a_trapping_listener_rolls_back_without_preventing_fall_damage",
             || {
                 for body in [WALKING, Body::Pig] {
                     land(body, Choice::Trap);
@@ -581,7 +581,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn cancelling_keeps_the_crop_without_preventing_fall_damage() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::cancelling_keeps_the_crop_without_preventing_fall_damage",
+            "cut_layout::game::native_hooks::farmland_trample::tests::cancelling_keeps_the_crop_without_preventing_fall_damage",
             || {
                 for body in [WALKING, Body::Pig] {
                     land(body, Choice::Cancel);
@@ -594,7 +594,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn cancelling_listener_keeps_writes_and_destroys_crop() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::cancelling_listener_keeps_writes_and_destroys_crop",
+            "cut_layout::game::native_hooks::farmland_trample::tests::cancelling_listener_keeps_writes_and_destroys_crop",
             || {
                 for body in [WALKING, Body::Pig] {
                     land(body, Choice::CancelAndBreakCrop);
@@ -607,7 +607,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_sneaking_player_keeps_the_farmland_and_a_walking_one_tramples_it() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::a_sneaking_player_keeps_the_farmland_and_a_walking_one_tramples_it",
+            "cut_layout::game::native_hooks::farmland_trample::tests::a_sneaking_player_keeps_the_farmland_and_a_walking_one_tramples_it",
             || {
                 land(Body::Guest { sneaking: true }, Choice::AvoidSneak);
                 land(WALKING, Choice::AvoidSneak);
@@ -619,7 +619,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_guest_landing_uses_its_own_move_in_a_batch() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::a_guest_landing_uses_its_own_move_in_a_batch",
+            "cut_layout::game::native_hooks::farmland_trample::tests::a_guest_landing_uses_its_own_move_in_a_batch",
             || {
                 land_with_later_packet(
                     Body::Guest { sneaking: true },
@@ -644,7 +644,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_crouching_mob_keeps_the_farmland_and_a_standing_one_tramples_it() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::a_crouching_mob_keeps_the_farmland_and_a_standing_one_tramples_it",
+            "cut_layout::game::native_hooks::farmland_trample::tests::a_crouching_mob_keeps_the_farmland_and_a_standing_one_tramples_it",
             || {
                 for crouching in [true, false] {
                     land(Body::Cat { crouching }, Choice::AvoidSneak);
@@ -657,7 +657,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_listener_that_changes_the_block_refuses_the_trample() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::a_listener_that_changes_the_block_refuses_the_trample",
+            "cut_layout::game::native_hooks::farmland_trample::tests::a_listener_that_changes_the_block_refuses_the_trample",
             || {
                 for body in [WALKING, Body::Pig] {
                     land(body, Choice::Replace);
@@ -765,7 +765,7 @@ pub(crate) mod tests {
             ModEntry::new("gardener", Box::new(LazyCreativeGardener(built.clone()))),
         ];
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::a_panicking_creative_listener_during_trample_does_not_abort_the_trample",
+            "cut_layout::game::native_hooks::farmland_trample::tests::a_panicking_creative_listener_during_trample_does_not_abort_the_trample",
             || {
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_game(|game| {

@@ -41,7 +41,7 @@ impl Hooks for Oily {
 #[ignore = "daily"]
 fn a_mods_fluid_is_placed_flows_is_collected_and_saved() {
     if run_fresh_cases(
-        "game::world_fluid_tests::a_mods_fluid_is_placed_flows_is_collected_and_saved",
+        "cut_layout::game::world_fluid_tests::a_mods_fluid_is_placed_flows_is_collected_and_saved",
         "SUNRISE_WORLD_FLUID_CHILD",
         &["valid"],
     ) {

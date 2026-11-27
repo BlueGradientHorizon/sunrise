@@ -136,7 +136,7 @@ fn drawn_with(
 #[ignore = "daily"]
 fn a_mod_container_draws_the_fluid_its_part_reports() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::contained_fluid_tests::a_mod_container_draws_the_fluid_its_part_reports",
+        "cut_layout::game::contained_fluid_tests::a_mod_container_draws_the_fluid_its_part_reports",
         a_mod_container_draws_the_fluid_its_part_reports_isolated,
     );
 }

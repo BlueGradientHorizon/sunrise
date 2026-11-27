@@ -940,7 +940,7 @@ fn a_refused_player_add_does_not_hide_the_resident_entities_crossing() {
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::entity_sections::tests::a_refused_player_add_does_not_hide_the_resident_entities_crossing",
+        "cut_layout::game::entity_sections::tests::a_refused_player_add_does_not_hide_the_resident_entities_crossing",
         || {
             observe(|calls| {
                 with_client_game(|game| {
@@ -1060,7 +1060,7 @@ fn section_host_reads_entity_type_defaults_without_unwinding() {
 #[ignore = "daily"]
 fn section_host_and_game_read_the_same_entity_type_defaults() {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::entity_sections::tests::section_host_and_game_read_the_same_entity_type_defaults",
+        "cut_layout::game::entity_sections::tests::section_host_and_game_read_the_same_entity_type_defaults",
         "SUNRISE_ENTITY_TYPE_DEFAULTS_CHILD",
         &["host"],
     ) {

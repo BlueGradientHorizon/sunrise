@@ -352,6 +352,14 @@ impl crate::game::ClientGame<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(player) => Some(player.is_in_lava()),
             Body::Mob(mob) => Some(mob.fluids.in_lava),
+            Body::Other(Target::General(id)) => Some(
+                self.common
+                    .resident_entities
+                    .general
+                    .row(id)?
+                    .fluids
+                    .in_lava,
+            ),
             Body::Other(_) => None,
         }
     }

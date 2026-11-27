@@ -540,11 +540,22 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn secondary_use_reads_reachable_client_handles_and_keeps_server_flags() {
+        use std::sync::Arc;
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
         use sunrise_protocol::connection::Pipe;
-
         use winit::keyboard::KeyCode;
+
         super::super::native_entity_refs::tests::with_client_game(|game| {
+            for z in -2..=2 {
+                for x in -2..=2 {
+                    if !game.world.chunks.contains_key(&(x, z)) {
+                        let mut chunk = Chunk::empty(x, z);
+                        chunk.lit = true;
+                        game.world.chunks.insert((x, z), Arc::new(chunk));
+                    }
+                }
+            }
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "SneakReadTest").unwrap();
             // The joined client's state; the local-player and entity constructors must both
@@ -572,6 +583,7 @@ pub(crate) mod tests {
             game.client.remote.as_mut().unwrap().logged_in = false;
             assert!(game.local_player().is_none());
             assert_eq!(entity.is_shift_key_down(game), None);
+            game.clear_device_keys();
         });
         with_player(|game, player| {
             game.player.as_mut().unwrap().shift_key_down = true;
@@ -699,7 +711,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_client_reads_the_main_arm_the_server_sent() {
         if run_fresh_cases(
-            "game::server_side::native_entity_state::tests::a_client_reads_the_main_arm_the_server_sent",
+            "cut_layout::game::server_side::native_entity_state::tests::a_client_reads_the_main_arm_the_server_sent",
             "SUNRISE_TEST_CLIENT_MAIN_ARM_CASE",
             &["client"],
         ) {
@@ -794,7 +806,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_server_reads_the_reported_main_hand_and_the_left_handed_flag() {
         if run_fresh_cases(
-            "game::server_side::native_entity_state::tests::a_server_reads_the_reported_main_hand_and_the_left_handed_flag",
+            "cut_layout::game::server_side::native_entity_state::tests::a_server_reads_the_reported_main_hand_and_the_left_handed_flag",
             "SUNRISE_TEST_SERVER_MAIN_ARM_CASE",
             &["server"],
         ) {

@@ -169,7 +169,7 @@ pub(crate) mod hotbar_slot_tests {
         const MODE: &str = "SUNRISE_HOTBAR_SLOT_THE_DEBUG_REQUESTS_FOLLOW_THE_CARRIED_SLOT_IN_THE_PING_THEN_SUBSCRIPTION_ORDER";
         if std::env::var_os(MODE).is_none() {
             sunrise_gameplay::game::mods::tests::run_in_child(
-                "game::client_side::native_hotbar_slot::hotbar_slot_tests::the_debug_requests_follow_the_carried_slot_in_the_ping_then_subscription_order",
+                "cut_layout::game::client_side::native_hotbar_slot::hotbar_slot_tests::the_debug_requests_follow_the_carried_slot_in_the_ping_then_subscription_order",
                 MODE,
             );
             return;
@@ -212,7 +212,7 @@ pub(crate) mod hotbar_slot_tests {
     #[ignore = "daily"]
     fn a_received_tick_sample_draws_the_full_and_method_bars() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::client_side::native_hotbar_slot::hotbar_slot_tests::a_received_tick_sample_draws_the_full_and_method_bars",
+            "cut_layout::game::client_side::native_hotbar_slot::hotbar_slot_tests::a_received_tick_sample_draws_the_full_and_method_bars",
             || {
                 with_client_game(|game| {
                     use sunrise_client::hud_layout::GuiDraw;
@@ -262,7 +262,7 @@ pub(crate) mod hotbar_slot_tests {
         const MODE: &str = "SUNRISE_HOTBAR_SLOT_NO_DEBUG_REQUEST_GOES_OUT_BEFORE_THE_LOGIN";
         if std::env::var_os(MODE).is_none() {
             sunrise_gameplay::game::mods::tests::run_in_child(
-                "game::client_side::native_hotbar_slot::hotbar_slot_tests::no_debug_request_goes_out_before_the_login",
+                "cut_layout::game::client_side::native_hotbar_slot::hotbar_slot_tests::no_debug_request_goes_out_before_the_login",
                 MODE,
             );
             return;

@@ -256,8 +256,7 @@ pub(crate) mod tests {
         name: &str,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, BlockStateId, &Probe),
     ) {
-        let name = format!("game::server_side::disabled_block_tests::tests::{name}");
-        if fixture::run_fresh_cases(&name, "SUNRISE_INERT_BLOCK_CHILD", &["valid"]) {
+        if fixture::run_fresh_cases(name, "SUNRISE_INERT_BLOCK_CHILD", &["valid"]) {
             return;
         }
         use mod_api::__private::native::BuiltMod;
@@ -342,7 +341,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn reenabled_owner_resumes_held_scheduled_tick() {
         with_inert_block(
-            "reenabled_owner_resumes_held_scheduled_tick",
+            "cut_layout::game::server_side::disabled_block_tests::tests::reenabled_owner_resumes_held_scheduled_tick",
             |game, state, probe| {
                 game.server
                     .tickets
@@ -408,7 +407,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn disabled_hydration_holds_farmland_until_the_owner_returns() {
         with_inert_block(
-            "disabled_hydration_holds_farmland_until_the_owner_returns",
+            "cut_layout::game::server_side::disabled_block_tests::tests::disabled_hydration_holds_farmland_until_the_owner_returns",
             |game, _, _| {
                 let registry = game.pack.assets.registry;
                 let state = |id| registry.default_state(id).unwrap();
@@ -504,7 +503,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn disabled_blocks_survive_piston_pushes_without_authorizing_placement() {
         with_inert_block(
-            "disabled_blocks_survive_piston_pushes_without_authorizing_placement",
+            "cut_layout::game::server_side::disabled_block_tests::tests::disabled_blocks_survive_piston_pushes_without_authorizing_placement",
             |game, _, _| {
                 let base = BlockPos::new(3, 70, 5);
                 let registry = &game.pack.assets.registry;
@@ -578,7 +577,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn disabled_sand_survives_falling_entity_landing() {
         with_inert_block(
-            "disabled_sand_survives_falling_entity_landing",
+            "cut_layout::game::server_side::disabled_block_tests::tests::disabled_sand_survives_falling_entity_landing",
             |game, _, _| {
                 let target = POS.offset(1, 0, 0);
                 let sand = game
@@ -633,7 +632,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn inert_tool_keeps_block_but_global_listener_sees_vanilla_candidate() {
         with_inert_block(
-            "inert_tool_keeps_block_but_global_listener_sees_vanilla_candidate",
+            "cut_layout::game::server_side::disabled_block_tests::tests::inert_tool_keeps_block_but_global_listener_sees_vanilla_candidate",
             |game, state, probe| {
                 let registry = game.pack.assets.registry;
                 let candidate = registry.default_state("minecraft:observer").unwrap();

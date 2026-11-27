@@ -268,16 +268,21 @@ impl crate::game::ClientGame<'_> {
             .with_entries(entries.iter().map(|(n, v)| (*n, v)))
             .map_err(|error| format!("refused enchantment registry: {error}"))?
             .map(Arc::new);
-        // Bind a per-session biome pair so client biome-color mods never mutate `pack.context`.
-        let world_biomes = registries
-            .registries
-            .get(BIOME_REGISTRY)
-            .map(|list| client_biomes(self.common.res.biomes(), list))
-            .transpose()
-            .map_err(|error| format!("refused biome registry: {error}"))?
-            .flatten()
-            .map(Arc::new)
-            .unwrap_or_else(|| self.common.res.biomes().clone());
+        let world_biomes = if self.client.integrated.is_none() {
+            Some(
+                registries
+                    .registries
+                    .get(BIOME_REGISTRY)
+                    .map(|list| client_biomes(self.common.res.biomes(), list))
+                    .transpose()
+                    .map_err(|error| format!("refused biome registry: {error}"))?
+                    .flatten()
+                    .map(Arc::new)
+                    .unwrap_or_else(|| self.common.res.biomes().clone()),
+            )
+        } else {
+            None
+        };
         // The trims render from the registries the server sent, in its sync order.
         self.client
             .armor_stand_assets
@@ -285,12 +290,15 @@ impl crate::game::ClientGame<'_> {
             .trims
             .set_synced(&registries)
             .map_err(|error| format!("refused trim registry: {error}"))?;
-        self.common.world_biomes_base = Some(world_biomes.clone());
-        self.common.world_biomes = Some(world_biomes);
-        let context = self.worker_context();
-        self.client
-            .streaming
-            .reload_resources(&mut self.common.world, context);
+        // Bind a per-session biome pair so client biome-color mods never mutate `pack.context`.
+        if let Some(table) = world_biomes {
+            self.common.world_biomes_base = Some(table.clone());
+            self.common.world_biomes = Some(table);
+            let context = self.worker_context();
+            self.client
+                .streaming
+                .reload_resources(&mut self.common.world, context);
+        }
         let biomes: Vec<u16> = registries
             .registries
             .get(BIOME_REGISTRY)

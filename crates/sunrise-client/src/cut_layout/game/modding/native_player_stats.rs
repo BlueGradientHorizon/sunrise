@@ -45,7 +45,7 @@ mod tests {
         use sunrise_sim::lan::{Out, PlayerSender, playerdata::uuid_ints};
 
         if run_fresh_cases(
-            "game::server_side::native_player_stats::tests::statistics_restore_updates_live_scores_and_next_request_without_awarding",
+            "cut_layout::game::server_side::native_player_stats::tests::statistics_restore_updates_live_scores_and_next_request_without_awarding",
             "SUNRISE_STATISTICS_SNAPSHOT_CHILD",
             &["restore"],
         ) {

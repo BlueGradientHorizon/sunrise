@@ -116,7 +116,7 @@ pub(crate) mod tests {
             sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
             sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
         };
-        const NAME: &str = "game::server_side::native_hooks_server::block_entity_save_additional_tests::tests::save_edits_slotless_items_but_keeps_declared_slots_after_a_skipped_tick";
+        const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_save_additional_tests::tests::save_edits_slotless_items_but_keeps_declared_slots_after_a_skipped_tick";
         if run_fresh_cases(NAME, "SUNRISE_SAVE_ITEMS_CHILD", &["save"]) {
             return;
         }

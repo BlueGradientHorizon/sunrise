@@ -108,7 +108,7 @@ impl SpecialModelRenderer for Unmatched {
 #[ignore = "daily"]
 fn built_in_scenes_cost_nothing_more_without_a_listener() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::native_special_renderers::cost_tests::built_in_scenes_cost_nothing_more_without_a_listener",
+        "cut_layout::game::client_side::native_special_renderers::cost_tests::built_in_scenes_cost_nothing_more_without_a_listener",
         built_in_scenes_cost_nothing_more_without_a_listener_isolated,
     );
 }

@@ -11,6 +11,7 @@ use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
 use crate::game::client_side::launch_options_client::{is_client_start, time_limit};
 #[cfg(feature = "client")]
 use sunrise_client::window::PointerSample;
+#[cfg(feature = "client")]
 use winit::event::WindowEvent;
 
 #[cfg(feature = "client")]
@@ -636,6 +637,7 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
     }
 }
 
+#[cfg(feature = "client")]
 fn track_window_state(
     origin: input_trace::InputOrigin,
     event: &WindowEvent,

@@ -58,7 +58,7 @@ pub(crate) fn in_two_levels(lines: &[(&str, &str, &[u32])]) {
 #[ignore = "daily"]
 fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_server_server::selector_tests::native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections",
+        "cut_layout::game::server_side::native_server_server::selector_tests::native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections",
         || {
             let heard = Arc::new(Mutex::new(Vec::new()));
             mod_platform::testing::with_mods(

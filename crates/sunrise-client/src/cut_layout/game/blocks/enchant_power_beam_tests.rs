@@ -151,7 +151,7 @@ fn with_query_probe_client(
 #[ignore = "daily"]
 fn enchant_power_query_uses_the_supplied_states_tag_default() {
     with_query_probe(
-        "game::client_side::enchant_power_beam_tests::enchant_power_query_uses_the_supplied_states_tag_default",
+        "cut_layout::game::client_side::enchant_power_beam_tests::enchant_power_query_uses_the_supplied_states_tag_default",
         ExecutionRole::IntegratedServer,
         false,
         |game, calls| {
@@ -174,7 +174,7 @@ fn enchant_power_query_uses_the_supplied_states_tag_default() {
 #[ignore = "daily"]
 fn enchant_power_query_reads_the_named_server_level_and_refuses_cycles() {
     with_query_probe(
-        "game::client_side::enchant_power_beam_tests::enchant_power_query_reads_the_named_server_level_and_refuses_cycles",
+        "cut_layout::game::client_side::enchant_power_beam_tests::enchant_power_query_reads_the_named_server_level_and_refuses_cycles",
         ExecutionRole::IntegratedServer,
         true,
         |game, calls| {
@@ -235,7 +235,7 @@ fn enchant_power_query_reads_the_named_server_level_and_refuses_cycles() {
 #[ignore = "daily"]
 fn enchant_power_query_reads_the_logged_in_client_level() {
     with_query_probe_client(
-        "game::client_side::enchant_power_beam_tests::enchant_power_query_reads_the_logged_in_client_level",
+        "cut_layout::game::client_side::enchant_power_beam_tests::enchant_power_query_reads_the_logged_in_client_level",
         ExecutionRole::Client,
         false,
         |game, calls| {
@@ -271,7 +271,7 @@ pub(crate) fn place<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
 #[ignore = "daily"]
 fn block_parts_answer_the_enchanting_power_and_the_beam_colour() {
     if run_fresh_cases(
-        "game::client_side::enchant_power_beam_tests::block_parts_answer_the_enchanting_power_and_the_beam_colour",
+        "cut_layout::game::client_side::enchant_power_beam_tests::block_parts_answer_the_enchanting_power_and_the_beam_colour",
         "SUNRISE_ENCHANT_OFFER_CHILD",
         &["offers"],
     ) {
@@ -362,7 +362,7 @@ fn enchant_particles_share_native_power_and_rebuild_only_on_parts_reload() {
 
     const CHILD: &str = "SUNRISE_ENCHANT_PARTICLES_CHILD";
     if run_fresh_cases(
-        "game::client_side::enchant_power_beam_tests::enchant_particles_share_native_power_and_rebuild_only_on_parts_reload",
+        "cut_layout::game::client_side::enchant_power_beam_tests::enchant_particles_share_native_power_and_rebuild_only_on_parts_reload",
         CHILD,
         &["vanilla", "parts"],
     ) {
@@ -498,7 +498,7 @@ fn enchant_particles_share_native_power_and_rebuild_only_on_parts_reload() {
 #[ignore = "daily"]
 fn mods_add_scanned_offsets_and_decide_which_shelves_count() {
     if run_fresh_cases(
-        "game::client_side::enchant_power_beam_tests::mods_add_scanned_offsets_and_decide_which_shelves_count",
+        "cut_layout::game::client_side::enchant_power_beam_tests::mods_add_scanned_offsets_and_decide_which_shelves_count",
         "SUNRISE_ENCHANT_SHELF_CHILD",
         &["shelves"],
     ) {

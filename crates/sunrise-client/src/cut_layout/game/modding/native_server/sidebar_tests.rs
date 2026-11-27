@@ -32,7 +32,7 @@ fn received_sidebar_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
 #[ignore = "daily"]
 fn sidebar_routes_by_live_identity_and_publishes_only_valid_committed_changes() {
     if run_fresh_cases(
-        "game::native_server::sidebar_tests::sidebar_routes_by_live_identity_and_publishes_only_valid_committed_changes",
+        "cut_layout::game::native_server::sidebar_tests::sidebar_routes_by_live_identity_and_publishes_only_valid_committed_changes",
         "SUNRISE_TEST_PERSONAL_SIDEBAR",
         &["sidebar"],
     ) {

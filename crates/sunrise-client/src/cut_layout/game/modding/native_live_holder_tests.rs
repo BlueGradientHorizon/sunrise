@@ -183,7 +183,7 @@ pub(super) fn mod_holder(
 #[ignore = "daily"]
 fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
     use mod_api::BlockEntityDataError;
-    const NAME: &str = "game::native_live_holder_tests::data_slot_sizing_after_creation_and_load_joins_the_existing_journal";
+    const NAME: &str = "cut_layout::game::native_live_holder_tests::data_slot_sizing_after_creation_and_load_joins_the_existing_journal";
     with_mod_parts(NAME, |root| {
         sunrise_gameplay::game::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
@@ -324,7 +324,7 @@ fn a_declared_type_ticks_once_whichever_path_named_it() {
     // `native_declared()` caches the first fire per process, so tests sharing
     // one process poison each other's mod content (`mods::tests::run_in_child`).
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::native_live_holder_tests::a_declared_type_ticks_once_whichever_path_named_it",
+        "cut_layout::game::native_live_holder_tests::a_declared_type_ticks_once_whichever_path_named_it",
         "SUNRISE_TICK_PATHS_GAME_CHILD",
         &["run"],
     ) {

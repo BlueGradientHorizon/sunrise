@@ -328,7 +328,7 @@ fn replace_dispenser_with_chest(host: &mut dyn ServerHost, dimension: &str) {
 
 fn spawn_dispenser_case(test: &str) -> bool {
     run_fresh_cases(
-        &format!("game::dispense_container_tests::{test}"),
+        &format!("cut_layout::game::dispense_container_tests::{test}"),
         "SUNRISE_DISPENSE_CONTAINER_CASE",
         &["dispenser"],
     )
@@ -428,7 +428,7 @@ fn item(stack: &Option<ItemStack>) -> Option<(String, u32)> {
 #[ignore = "daily"]
 fn dispenser_writes_follow_the_parked_level_handle() {
     if run_fresh_cases(
-        "game::dispense_container_tests::dispenser_writes_follow_the_parked_level_handle",
+        "cut_layout::game::dispense_container_tests::dispenser_writes_follow_the_parked_level_handle",
         "SUNRISE_DISPENSE_ROUTE_CHILD",
         &["parked"],
     ) {

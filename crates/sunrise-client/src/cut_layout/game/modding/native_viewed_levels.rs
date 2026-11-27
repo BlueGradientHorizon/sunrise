@@ -93,7 +93,7 @@ mod tests {
     #[ignore = "daily"]
     fn brightness_reads_the_requested_client_world() {
         if run_fresh_cases(
-            "game::client_side::native_viewed_levels::tests::brightness_reads_the_requested_client_world",
+            "cut_layout::game::client_side::native_viewed_levels::tests::brightness_reads_the_requested_client_world",
             "SUNRISE_TEST_VIEWED_LEVEL_BRIGHTNESS",
             &["brightness"],
         ) {
@@ -251,7 +251,7 @@ mod tests {
         use core::ops::ControlFlow::{Break, Continue};
 
         if run_fresh_cases(
-            "game::client_side::native_viewed_levels::tests::block_collision_visit_uses_the_named_level_and_stops_on_break",
+            "cut_layout::game::client_side::native_viewed_levels::tests::block_collision_visit_uses_the_named_level_and_stops_on_break",
             "SUNRISE_BLOCK_COLLISION_VISIT_CHILD",
             &["viewed"],
         ) {

@@ -237,7 +237,7 @@ pub(crate) fn finish_projectile_death(game: &mut sunrise_gameplay::game::ServerG
 #[ignore = "daily"]
 fn player_bow_death_retains_the_incoming_source_and_full_weapon() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::player_bow_death_retains_the_incoming_source_and_full_weapon",
+        "cut_layout::game::native_hooks::death_source_tests::player_bow_death_retains_the_incoming_source_and_full_weapon",
         || {
             observed(false, false, |game, seen| {
                 player(game);
@@ -279,7 +279,7 @@ fn player_bow_death_retains_the_incoming_source_and_full_weapon() {
 #[ignore = "daily"]
 fn skeleton_arrow_death_credits_the_skeleton_not_the_player() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::skeleton_arrow_death_credits_the_skeleton_not_the_player",
+        "cut_layout::game::native_hooks::death_source_tests::skeleton_arrow_death_credits_the_skeleton_not_the_player",
         || {
             observed(false, false, |game, seen| {
                 player(game);
@@ -364,7 +364,7 @@ pub(crate) fn cancelled_mob(heal: bool) {
 #[ignore = "daily"]
 fn cancelled_mob_death_preserves_listener_health_five_without_loot() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::cancelled_mob_death_preserves_listener_health_five_without_loot",
+        "cut_layout::game::native_hooks::death_source_tests::cancelled_mob_death_preserves_listener_health_five_without_loot",
         || cancelled_mob(true),
     );
 }
@@ -373,7 +373,7 @@ fn cancelled_mob_death_preserves_listener_health_five_without_loot() {
 #[ignore = "daily"]
 fn cancelled_unhealed_mob_is_removed_at_twenty_ticks_without_loot_or_redispatch() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::cancelled_unhealed_mob_is_removed_at_twenty_ticks_without_loot_or_redispatch",
+        "cut_layout::game::native_hooks::death_source_tests::cancelled_unhealed_mob_is_removed_at_twenty_ticks_without_loot_or_redispatch",
         || cancelled_mob(false),
     );
 }
@@ -446,7 +446,7 @@ pub(crate) fn cancelled_player(heal: bool) {
 #[ignore = "daily"]
 fn cancelled_player_death_preserves_listener_health_five_and_inventory() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::cancelled_player_death_preserves_listener_health_five_and_inventory",
+        "cut_layout::game::native_hooks::death_source_tests::cancelled_player_death_preserves_listener_health_five_and_inventory",
         || cancelled_player(true),
     );
 }
@@ -455,7 +455,7 @@ fn cancelled_player_death_preserves_listener_health_five_and_inventory() {
 #[ignore = "daily"]
 fn cancelled_unhealed_player_ticks_away_without_drops_or_redispatch() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::cancelled_unhealed_player_ticks_away_without_drops_or_redispatch",
+        "cut_layout::game::native_hooks::death_source_tests::cancelled_unhealed_player_ticks_away_without_drops_or_redispatch",
         || cancelled_player(false),
     );
 }
@@ -464,7 +464,7 @@ fn cancelled_unhealed_player_ticks_away_without_drops_or_redispatch() {
 #[ignore = "daily"]
 fn cancelled_body_reconstruction_keeps_the_hit_and_original_twenty_tick_deadline() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::cancelled_body_reconstruction_keeps_the_hit_and_original_twenty_tick_deadline",
+        "cut_layout::game::native_hooks::death_source_tests::cancelled_body_reconstruction_keeps_the_hit_and_original_twenty_tick_deadline",
         || {
             observed(true, false, |game, seen| {
                 player(game);
@@ -520,7 +520,7 @@ fn cancelled_body_reconstruction_keeps_the_hit_and_original_twenty_tick_deadline
 #[ignore = "daily"]
 fn later_cancelled_mob_revival_is_transactional_and_a_second_kill_drops_loot() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::later_cancelled_mob_revival_is_transactional_and_a_second_kill_drops_loot",
+        "cut_layout::game::native_hooks::death_source_tests::later_cancelled_mob_revival_is_transactional_and_a_second_kill_drops_loot",
         || {
             observed(true, false, |game, seen| {
                 player(game);
@@ -577,7 +577,7 @@ fn later_cancelled_mob_revival_is_transactional_and_a_second_kill_drops_loot() {
 #[ignore = "daily"]
 fn cancelled_corpse_ordinary_saved_load_does_not_retry_death_or_restart_its_clock() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::cancelled_corpse_ordinary_saved_load_does_not_retry_death_or_restart_its_clock",
+        "cut_layout::game::native_hooks::death_source_tests::cancelled_corpse_ordinary_saved_load_does_not_retry_death_or_restart_its_clock",
         || {
             observed(true, false, |game, seen| {
                 player(game);
@@ -622,7 +622,7 @@ fn cancelled_corpse_ordinary_saved_load_does_not_retry_death_or_restart_its_cloc
 #[ignore = "daily"]
 fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inventory() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inventory",
+        "cut_layout::game::native_hooks::death_source_tests::later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inventory",
         || {
             observed(true, false, |game, seen| {
                 sunrise_gameplay::game::native_player_death::tests::add_guest(game);
@@ -713,7 +713,7 @@ fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inven
 #[ignore = "daily"]
 fn a_killed_guest_with_no_combat_entry_reports_its_drops() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::a_killed_guest_with_no_combat_entry_reports_its_drops",
+        "cut_layout::game::native_hooks::death_source_tests::a_killed_guest_with_no_combat_entry_reports_its_drops",
         || {
             observed(false, false, |game, seen| {
                 sunrise_gameplay::game::native_player_death::tests::add_guest(game);
@@ -798,7 +798,7 @@ pub(crate) fn skeleton_shot_at_guest(game: &mut sunrise_gameplay::game::ServerGa
 #[ignore = "daily"]
 fn an_arrow_killed_guest_reports_the_arrow_to_living_drops() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::an_arrow_killed_guest_reports_the_arrow_to_living_drops",
+        "cut_layout::game::native_hooks::death_source_tests::an_arrow_killed_guest_reports_the_arrow_to_living_drops",
         || {
             observed(false, false, |game, seen| {
                 let id = standing_guest(game, [6.0, 80.0, 4.5], 1.0);
@@ -827,7 +827,7 @@ fn an_arrow_killed_guest_reports_the_arrow_to_living_drops() {
 #[ignore = "daily"]
 fn a_guest_killed_after_a_hit_reports_generic_kill() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::a_guest_killed_after_a_hit_reports_generic_kill",
+        "cut_layout::game::native_hooks::death_source_tests::a_guest_killed_after_a_hit_reports_generic_kill",
         || {
             observed(false, false, |game, seen| {
                 let id = standing_guest(game, [6.0, 80.0, 4.5], 20.0);
@@ -863,7 +863,7 @@ fn a_guest_killed_after_a_hit_reports_generic_kill() {
 #[ignore = "daily"]
 fn mob_death_and_handle_preserve_namespaced_types() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::death_source_tests::mob_death_and_handle_preserve_namespaced_types",
+        "cut_layout::game::native_hooks::death_source_tests::mob_death_and_handle_preserve_namespaced_types",
         || {
             observed(false, false, |game, seen| {
                 // Entity-type keys are frozen once per Parts snapshot. This

@@ -5015,6 +5015,7 @@ dependencies = [
  "sunrise-game-data",
  "sunrise-gameplay-common",
  "sunrise-items",
+ "sunrise-java-properties",
  "sunrise-level",
  "sunrise-mod-api",
  "sunrise-mod-api-gen",

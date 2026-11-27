@@ -188,7 +188,7 @@ fn player_pong_observes_order_and_sends_typed_ping() {
 
     const CHILD: &str = "SUNRISE_PLAYER_PONG_CHILD";
     if run_fresh_cases(
-        "game::server_side::play_ping_tests::player_pong_observes_order_and_sends_typed_ping",
+        "cut_layout::game::server_side::play_ping_tests::player_pong_observes_order_and_sends_typed_ping",
         CHILD,
         &["placed", "respawning"],
     ) {

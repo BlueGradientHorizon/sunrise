@@ -25,7 +25,7 @@ pub(crate) mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
         }
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_config_files::tests::a_mod_saves_its_config_through_the_game_and_the_reload_hears_it",
+            "cut_layout::game::server_side::native_config_files::tests::a_mod_saves_its_config_through_the_game_and_the_reload_hears_it",
             "SUNRISE_CONFIG_FILES_CHILD",
             &["game"],
         ) {
@@ -106,7 +106,7 @@ pub(crate) mod tests {
         }
 
         if run_fresh_cases(
-            "game::server_side::native_config_files::tests::world_bulk_files_survive_save_reload_backup_and_world_deletion",
+            "cut_layout::game::server_side::native_config_files::tests::world_bulk_files_survive_save_reload_backup_and_world_deletion",
             "SUNRISE_BULK_FILES_CHILD",
             &["game"],
         ) {

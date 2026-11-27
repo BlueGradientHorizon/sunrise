@@ -95,6 +95,15 @@ impl crate::game::ServerGame<'_> {
         {
             self.with_advancement_hub(|hub, owners| hub.reload_resources(sync, owners));
         }
+        // Clients need UpdateTags before decoding datapack snapshots with holder sets.
+        if !self
+            .server
+            .lan
+            .as_ref()
+            .is_some_and(|lan| lan.hub.native_reload_pending)
+        {
+            self.send_datapack_snapshots();
+        }
         self.common.adv.tree = advancements;
         self.common.adv.reset_tree();
         self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: true });

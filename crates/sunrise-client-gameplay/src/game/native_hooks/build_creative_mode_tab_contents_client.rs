@@ -1,11 +1,6 @@
 use super::*;
-#[allow(unused_imports)]
-use mod_api::{
-    CreativeModeTabs, CreativeTabEditError, CreativeTabList, CreativeTabPermissions,
-    CreativeTabReadError, CreativeTabVisibility,
-};
 use sunrise_hooks::items::engine::CreativeOrder;
-use sunrise_items::creative_catalog::{Catalog, Holders, Parameters};
+use sunrise_items::creative_catalog::{Catalog, Holders};
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_creative_holders(&self) -> Option<Holders> {
@@ -68,28 +63,9 @@ impl crate::game::ClientGame<'_> {
     /// The built-in sorter is only a reader. A cold sort previews stock order
     /// without publishing anything or giving mods a creative callback.
     pub fn stock_sort_order(&self) -> CreativeOrder {
-        let preview;
-        let lists = if let Some(published) = &self.common.creative_contents.published {
-            &published.lists
-        } else {
-            preview = self.client.creative_screen.0.catalog().build(
-                Parameters {
-                    features: self.enabled_feature_ids(),
-                    operator: false,
-                    holders: &self.client_creative_holders().unwrap_or_default(),
-                    items: self.items(),
-                },
-                None,
-                |_, _, _| {},
-            );
-            &preview
-        };
-        self.client.creative_screen.0.stock_order(lists)
+        let lists = self.stock_creative_lists();
+        self.client.creative_screen.0.stock_order(&lists)
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks as _;

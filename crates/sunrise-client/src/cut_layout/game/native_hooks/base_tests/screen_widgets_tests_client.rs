@@ -75,7 +75,7 @@ pub(crate) fn attach_offscreen_window(
 #[ignore = "daily"]
 fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::button_on_press_state_mutation_keyboard_and_synchronous_transitions",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::button_on_press_state_mutation_keyboard_and_synchronous_transitions",
         "SUNRISE_WIDGETS_BUTTON_TRANSITION_CHILD",
         &["window"],
     ) {
@@ -261,7 +261,7 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
 #[ignore = "daily"]
 fn controller_activates_the_selected_mount_and_edits_its_field() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::controller_activates_the_selected_mount_and_edits_its_field",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::controller_activates_the_selected_mount_and_edits_its_field",
         "SUNRISE_CONTROLLER_MOUNTS_CASE",
         &["controller"],
     ) {
@@ -382,7 +382,7 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
 #[ignore = "daily"]
 fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::custom_screen_widget_callbacks_and_per_widget_panic_isolation",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::custom_screen_widget_callbacks_and_per_widget_panic_isolation",
         "SUNRISE_WIDGETS_CUSTOM_PANIC_CHILD",
         &["window"],
     ) {
@@ -700,7 +700,7 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
 #[ignore = "daily"]
 fn init_post_edits_ordered_children_and_discards_a_failed_stage() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::init_post_edits_ordered_children_and_discards_a_failed_stage",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::init_post_edits_ordered_children_and_discards_a_failed_stage",
         "SUNRISE_WIDGETS_EDIT_CHILD",
         &["window"],
     ) {
@@ -828,7 +828,7 @@ fn init_post_edits_ordered_children_and_discards_a_failed_stage() {
 #[ignore = "daily"]
 fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::mounted_button_sprites_keep_their_pixels_and_accessibility",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::mounted_button_sprites_keep_their_pixels_and_accessibility",
         "SUNRISE_WIDGET_SPRITES_CHILD",
         &["sprites"],
     ) {
@@ -1028,7 +1028,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
 #[ignore = "daily"]
 fn mounted_widgets_draw_as_the_games_own() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::mounted_widgets_draw_as_the_games_own",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::mounted_widgets_draw_as_the_games_own",
         "SUNRISE_WIDGET_STOCK_ART_CHILD",
         &["stock"],
     ) {
@@ -1172,7 +1172,7 @@ fn mounted_widgets_draw_as_the_games_own() {
 #[ignore = "daily"]
 fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::mounting_lifecycle_focus_remove_resize_and_close_dispose",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::mounting_lifecycle_focus_remove_resize_and_close_dispose",
         "SUNRISE_WIDGETS_LIFECYCLE_CHILD",
         &["window"],
     ) {
@@ -1408,7 +1408,7 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
 #[ignore = "daily"]
 fn separate_input_pre_post_parity_and_receiving_screen() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::separate_input_pre_post_parity_and_receiving_screen",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::separate_input_pre_post_parity_and_receiving_screen",
         "SUNRISE_WIDGETS_INPUT_POST_CHILD",
         &["window"],
     ) {
@@ -2498,7 +2498,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
 #[ignore = "daily"]
 fn text_field_editing_ime_and_double_click_word_selection() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::text_field_editing_ime_and_double_click_word_selection",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::text_field_editing_ime_and_double_click_word_selection",
         "SUNRISE_WIDGETS_TEXTFIELD_CHILD",
         &["window"],
     ) {
@@ -2680,7 +2680,7 @@ fn text_field_editing_ime_and_double_click_word_selection() {
 #[ignore = "daily"]
 fn title_init_post_lists_and_removes_the_title_screens_own_widgets() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::title_init_post_lists_and_removes_the_title_screens_own_widgets",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::title_init_post_lists_and_removes_the_title_screens_own_widgets",
         "SUNRISE_WIDGETS_TITLE_CHILDREN",
         &["window"],
     ) {
@@ -2875,7 +2875,7 @@ fn title_init_post_lists_and_removes_the_title_screens_own_widgets() {
 fn config_opens_the_mods_own_screen_and_closing_it_returns_to_the_mods_screen() {
     use sunrise_client::options_ui::{Event, Page};
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::config_opens_the_mods_own_screen_and_closing_it_returns_to_the_mods_screen",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::config_opens_the_mods_own_screen_and_closing_it_returns_to_the_mods_screen",
         "SUNRISE_CONFIG_SCREEN_CHILD",
         &["window"],
     ) {

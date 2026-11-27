@@ -109,7 +109,7 @@ fn target(id: i32) -> Option<InteractTarget> {
 #[ignore = "daily"]
 fn actual_item_interact_mob_fallback_priority_and_filters() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::item_interact_mob_tests::actual_item_interact_mob_fallback_priority_and_filters",
+        "cut_layout::game::item_interact_mob_tests::actual_item_interact_mob_fallback_priority_and_filters",
         actual_item_interact_mob_fallback_priority_and_filters_isolated,
     );
 }

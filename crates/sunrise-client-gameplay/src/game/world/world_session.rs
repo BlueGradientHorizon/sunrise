@@ -225,8 +225,11 @@ impl crate::game::ClientGame<'_> {
         if self.client.saved_for_exit {
             return Ok(());
         }
-        // exitWorldAndClose disconnects the client from its world.
         self.client_logging_out();
+        if self.client.title.0.is_some() {
+            self.client.saved_for_exit = true;
+            return Ok(());
+        }
         // Native application termination can bypass the close request, so make the same
         // client-side worker abort explicit before the game-owned streaming state is dropped.
         self.client.streaming.abort_generation();

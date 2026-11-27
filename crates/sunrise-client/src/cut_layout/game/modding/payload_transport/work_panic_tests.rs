@@ -87,7 +87,7 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
     };
 
     if run_fresh_cases(
-        "game::payload_transport::work_panic_tests::a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner",
+        "cut_layout::game::payload_transport::work_panic_tests::a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner",
         "SUNRISE_PAYLOAD_WORK_PANIC_CHILD",
         &["run"],
     ) {

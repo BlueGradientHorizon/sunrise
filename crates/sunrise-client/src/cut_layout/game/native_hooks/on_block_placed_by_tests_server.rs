@@ -23,7 +23,7 @@ use {sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit
 #[ignore = "daily"]
 fn block_items_notify_after_setup_and_before_consumption() {
     if run_fresh_cases(
-        "game::server_side::native_hooks_server::on_block_placed_by_tests::block_items_notify_after_setup_and_before_consumption",
+        "cut_layout::game::server_side::native_hooks_server::on_block_placed_by_tests::block_items_notify_after_setup_and_before_consumption",
         "SUNRISE_BLOCK_ITEM_PLACED_CHILD",
         &["game"],
     ) {

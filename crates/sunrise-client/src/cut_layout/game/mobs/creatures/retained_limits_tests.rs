@@ -17,7 +17,7 @@ pub(crate) const OTHER_GUEST: u32 = 13;
 #[ignore = "daily"]
 fn pending_pushes_deliver_once_and_do_not_cross_world_reset() {
     if run_fresh_cases(
-        "game::creatures::retained_limits_tests::pending_pushes_deliver_once_and_do_not_cross_world_reset",
+        "cut_layout::game::creatures::retained_limits_tests::pending_pushes_deliver_once_and_do_not_cross_world_reset",
         "SUNRISE_PENDING_MOB_PUSHES_CASE",
         &["delivery-and-reset"],
     ) {

@@ -13,7 +13,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn dedicated_checkpoints_continue_only_after_record_refusals() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::dedicated::tests::dedicated_checkpoints_continue_only_after_record_refusals",
+            "cut_layout::game::server_side::dedicated::tests::dedicated_checkpoints_continue_only_after_record_refusals",
             || {
                 use mod_api::{Authority, Hooks, ModEntry, ServerHost, ServerStoppedEvent};
                 use std::sync::{Arc, Mutex};

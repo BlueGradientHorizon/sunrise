@@ -7,7 +7,7 @@ use sunrise_client_gameplay::game::{
     ClientGame, client_side::model_baking_completed_tests::reload,
 };
 
-const NAME: &str = "game::client_side::packs::core_shaders_reload_tests::a_pack_whose_core_shader_a_required_pipeline_refuses_fails_the_load";
+const NAME: &str = "cut_layout::game::client_side::packs::core_shaders_reload_tests::a_pack_whose_core_shader_a_required_pipeline_refuses_fails_the_load";
 const CASE: &str = "SUNRISE_CORE_SHADERS_RELOAD_CASE";
 
 /// `resourcepacks/<name>`: a pack of `files` (path under `assets/minecraft/shaders/core/`, text).

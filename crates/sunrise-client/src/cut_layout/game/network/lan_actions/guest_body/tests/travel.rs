@@ -267,7 +267,7 @@ fn a_player_travel_edit_updates_server_velocity_without_correction() {
 #[ignore = "daily"]
 fn an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets() {
     if run_fresh_cases(
-        "game::lan_actions::guest_body::tests::travel::an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets",
+        "cut_layout::game::lan_actions::guest_body::tests::travel::an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets",
         "SUNRISE_PLAYER_TRAVEL_CHILD",
         &["travel"],
     ) {
@@ -371,7 +371,7 @@ fn a_tiny_travel_edit_and_move_veto_leave_the_player_outcome_unchanged() {
 #[ignore = "daily"]
 fn vanilla_travel_operations_apply_large_and_non_finite_edits_independently() {
     if run_fresh_cases(
-        "game::lan_actions::guest_body::tests::travel::vanilla_travel_operations_apply_large_and_non_finite_edits_independently",
+        "cut_layout::game::lan_actions::guest_body::tests::travel::vanilla_travel_operations_apply_large_and_non_finite_edits_independently",
         "SUNRISE_PLAYER_TRAVEL_CHILD",
         &["travel"],
     ) {

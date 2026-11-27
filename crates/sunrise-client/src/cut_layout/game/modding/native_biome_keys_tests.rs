@@ -126,18 +126,18 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
                 );
             }
 
-            game.options.dedicated = None;
-            assert_eq!(
-                game.biome("minecraft:plains"),
-                Err(BiomeKeyError::Unavailable)
-            );
-            assert_eq!(plains.view(game), Err(BiomeKeyError::Unavailable));
-            assert_eq!(
-                plains.data(game, &VillagerTypes),
-                Err(DataMapError::Unavailable)
-            );
+            super::native_entity_refs::tests::with_client_game(|game| {
+                assert_eq!(
+                    game.biome("minecraft:plains"),
+                    Err(BiomeKeyError::Unavailable)
+                );
+                assert_eq!(plains.view(game), Err(BiomeKeyError::Unavailable));
+                assert_eq!(
+                    plains.data(game, &VillagerTypes),
+                    Err(DataMapError::Unavailable)
+                );
+            });
 
-            game.options.dedicated = Some(Vec::new());
             game.server.world_tables.0 = None;
             assert_eq!(
                 game.biome("minecraft:plains"),

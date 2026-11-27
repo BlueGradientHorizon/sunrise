@@ -648,8 +648,10 @@ pub mod tests {
             assert_eq!(
                 collect_entity_visit(|visit| root.visit_indirect_passengers(game, visit))
                     .unwrap()
-                    .len(),
-                70
+                    .into_iter()
+                    .map(|rider| rider.id())
+                    .collect::<Vec<_>>(),
+                (201..=270).collect::<Vec<_>>()
             );
         });
     }

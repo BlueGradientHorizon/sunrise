@@ -65,7 +65,7 @@ fn eating(body: impl FnOnce(&mut ServerGame<'_>)) {
 #[ignore = "daily"]
 fn a_part_keeps_or_stops_a_use_whatever_the_hand_holds() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::continue_using_tests::a_part_keeps_or_stops_a_use_whatever_the_hand_holds",
+        "cut_layout::game::server_side::continue_using_tests::a_part_keeps_or_stops_a_use_whatever_the_hand_holds",
         || {
             let asked = || ASKED.lock().unwrap().drain(..).collect::<Vec<_>>();
             eating(|game| {

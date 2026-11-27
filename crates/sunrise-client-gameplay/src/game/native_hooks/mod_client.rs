@@ -338,6 +338,10 @@ impl crate::game::ClientGame<'_> {
     /// What `set_screen` does once the hooks have answered: `screen` opens,
     /// and the mod `owner`'s own screen when one answered `ModScreen`.
     pub(in crate::game) fn apply_screen(&mut self, screen: Screen, owner: Option<&str>) {
+        self.client.pointer_grab_request.set(None);
+        if self.client.screen_grab {
+            self.capture(false);
+        }
         // `before` may already have closed it. Overlays that keep Inventory
         // underneath don't pass through this replacement path.
         if screen != Screen::Inventory {
@@ -1045,6 +1049,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn open_screen_target(&mut self, target: ScreenTarget) {
         let before_instance = self.client.screen_state.0.screen_instance;
         self.client.screen_state.0.replacing = true;
+        self.client.screen_state.0.build.reopened();
         match target {
             ScreenTarget::Pause => {
                 self.client.pause_focus = None;
@@ -1078,6 +1083,7 @@ impl crate::game::ClientGame<'_> {
                 self.set_screen(Screen::Playing);
             }
         }
+        self.build_screen();
         // Every target takes the pointer, even one opened in place of a
         // request that grabbed none (a mod's screen asked for while playing).
         self.capture(false);

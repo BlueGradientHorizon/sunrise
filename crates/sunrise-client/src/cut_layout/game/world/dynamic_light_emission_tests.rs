@@ -244,7 +244,7 @@ fn with_lights_sides(
 #[ignore = "daily"]
 fn light_query_uses_the_supplied_state_and_its_declared_default() {
     with_lights(
-        "game::dynamic_light_emission_tests::light_query_uses_the_supplied_state_and_its_declared_default",
+        "cut_layout::game::dynamic_light_emission_tests::light_query_uses_the_supplied_state_and_its_declared_default",
         |game, level, States { plain, .. }, depth| {
             game.world.set(1, 65, 2, plain).unwrap();
             let host: &dyn Host = game;
@@ -287,6 +287,7 @@ fn assert_live_answers<'g, G: SideGame<'g> + Host>(
     level: LevelRef,
     depth: &Depth,
     expected_dimension: &str,
+    ask_edited: impl FnOnce(&mut G),
     before_query: impl FnOnce(&mut G),
     after_query: impl FnOnce(&mut G),
 ) {
@@ -295,7 +296,7 @@ fn assert_live_answers<'g, G: SideGame<'g> + Host>(
     game.world
         .set_with_notification(1, 70, 2, fixed, false)
         .unwrap();
-    game.ask_edited_light_emission();
+    ask_edited(game);
     game.world.light_edits.clear();
     assert_eq!(answer(game, 70), Some(5));
     assert_eq!(level.brightness(game, LightLayer::Block, pos), Some(0));
@@ -336,13 +337,14 @@ fn assert_live_answers<'g, G: SideGame<'g> + Host>(
 #[ignore = "daily"]
 fn light_query_reads_live_answers_in_the_named_level_without_publication() {
     with_lights_sides(
-        "game::dynamic_light_emission_tests::light_query_reads_live_answers_in_the_named_level_without_publication",
+        "cut_layout::game::dynamic_light_emission_tests::light_query_reads_live_answers_in_the_named_level_without_publication",
         |game, level, _, depth, _| {
             assert_live_answers(
                 game,
                 level,
                 &depth,
                 "minecraft:overworld",
+                |game| game.test_ask_edited_light_emission(game.dim),
                 |game| {
                     assert_eq!(game.enter_command_level(Dim::Nether), Some(Dim::Overworld));
                 },
@@ -352,7 +354,15 @@ fn light_query_reads_live_answers_in_the_named_level_without_publication() {
             );
         },
         |game, level, _, depth, _| {
-            assert_live_answers(game, level, &depth, "lights:remote", |_| {}, |_| {});
+            assert_live_answers(
+                game,
+                level,
+                &depth,
+                "lights:remote",
+                |game| game.ask_edited_light_emission(),
+                |_| {},
+                |_| {},
+            );
         },
     );
 }
@@ -361,7 +371,7 @@ fn light_query_reads_live_answers_in_the_named_level_without_publication() {
 #[ignore = "daily"]
 fn light_providers_can_delegate_but_an_active_cycle_refuses() {
     with_lights_server(
-        "game::dynamic_light_emission_tests::light_providers_can_delegate_but_an_active_cycle_refuses",
+        "cut_layout::game::dynamic_light_emission_tests::light_providers_can_delegate_but_an_active_cycle_refuses",
         |game, level, _, depth, calls| {
             let host: &dyn Host = game;
             let proxy = host.block_state_id(PROXY).unwrap();
@@ -403,7 +413,7 @@ fn answer(game: &sunrise_gameplay_common::game::CommonGame<'_>, y: i32) -> Optio
 #[ignore = "daily"]
 fn a_dynamic_light_part_answers_by_position_for_declared_blocks_only() {
     with_lights(
-        "game::dynamic_light_emission_tests::a_dynamic_light_part_answers_by_position_for_declared_blocks_only",
+        "cut_layout::game::dynamic_light_emission_tests::a_dynamic_light_part_answers_by_position_for_declared_blocks_only",
         |game, _, States { lamp, plain, air }, depth| {
             for (y, state) in [(-10, lamp), (64, lamp), (65, lamp), (66, lamp), (67, lamp)] {
                 game.world
@@ -466,7 +476,7 @@ fn a_dynamic_light_part_answers_by_position_for_declared_blocks_only() {
 #[ignore = "daily"]
 fn an_edit_pending_when_its_level_parks_uses_that_levels_dynamic_emission() {
     with_lights(
-        "game::dynamic_light_emission_tests::an_edit_pending_when_its_level_parks_uses_that_levels_dynamic_emission",
+        "cut_layout::game::dynamic_light_emission_tests::an_edit_pending_when_its_level_parks_uses_that_levels_dynamic_emission",
         |game, overworld, States { lamp, .. }, depth| {
             depth.glow.store(11, Ordering::Relaxed);
             game.world
@@ -503,7 +513,7 @@ fn a_full_read_prepares_a_saved_columns_dynamic_light() {
     use sunrise_sim::save::{Persistent, SaveDir};
 
     with_lights(
-        "game::dynamic_light_emission_tests::a_full_read_prepares_a_saved_columns_dynamic_light",
+        "cut_layout::game::dynamic_light_emission_tests::a_full_read_prepares_a_saved_columns_dynamic_light",
         |game, _, States { lamp, .. }, depth| {
             let scratch = tempfile::tempdir().unwrap();
             let registry = game.pack.assets.registry;
@@ -558,7 +568,7 @@ fn a_full_read_prepares_a_saved_columns_dynamic_light() {
 #[ignore = "daily"]
 fn check_light_and_a_light_update_ask_the_part_again() {
     with_lights(
-        "game::dynamic_light_emission_tests::check_light_and_a_light_update_ask_the_part_again",
+        "cut_layout::game::dynamic_light_emission_tests::check_light_and_a_light_update_ask_the_part_again",
         |game, level, States { lamp, plain, .. }, depth| {
             depth.glow.store(5, Ordering::Relaxed);
             game.world
@@ -612,7 +622,7 @@ fn check_light_and_a_light_update_ask_the_part_again() {
 #[ignore = "daily"]
 fn a_light_update_asks_the_part_again_on_the_client() {
     with_lights_sides(
-        "game::dynamic_light_emission_tests::a_light_update_asks_the_part_again_on_the_client",
+        "cut_layout::game::dynamic_light_emission_tests::a_light_update_asks_the_part_again_on_the_client",
         |_, _, _, _, _| {},
         |game, _, States { lamp, .. }, depth, _| {
             depth.glow.store(11, Ordering::Relaxed);

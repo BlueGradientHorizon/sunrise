@@ -71,7 +71,7 @@ impl BlockEntityPart for StoreShiftClick {
 #[test]
 #[ignore = "daily"]
 fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
-    const TEST: &str = "game::client_side::mod_menu_decisions_tests::container_layout::six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write";
+    const TEST: &str = "cut_layout::game::client_side::mod_menu_decisions_tests::container_layout::six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write";
     const CASE: &str = "SUNRISE_TEST_MOD_CONTAINER_LAYOUT_CASE";
     if run_fresh_cases(TEST, CASE, &["fresh", "sparse-save"]) {
         return;

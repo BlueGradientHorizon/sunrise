@@ -247,4 +247,3 @@ sunrise-client cut_layout::game::dynamic_light_emission_tests::a_light_update_as
 sunrise-client cut_layout::game::server_side::game_mode::adventure_gate_tests::an_adventure_placement_is_predicted_when_can_place_on_names_the_clicked_block lib daily game-boot
 sunrise-client cut_layout::game::server_side::native_entity_refs::tests::server_box_queries_use_live_display_positions_and_section_order lib daily resources
 sunrise-client cut_layout::game::server_side::use_hand::adventure_use_on_tests::an_adventure_use_on_is_not_predicted_on_the_client lib daily game-boot
-sunrise-client cut_layout::game::creatures::pending_birth_tests::a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level lib daily child-process

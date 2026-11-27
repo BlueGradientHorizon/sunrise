@@ -16,7 +16,7 @@ pub(crate) mod tests {
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::item_use::tests::a_stacks_use_animation_carries_the_mods_answer_on_both_sides",
+            "cut_layout::game::server_side::item_use::tests::a_stacks_use_animation_carries_the_mods_answer_on_both_sides",
             || {
                 /// A stick is drunk from.
                 #[derive(Clone)]
@@ -87,7 +87,7 @@ pub(crate) mod tests {
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         use std::sync::{Arc, Mutex};
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::item_use::tests::a_use_animation_read_inside_the_part_is_not_asked_again",
+            "cut_layout::game::server_side::item_use::tests::a_use_animation_read_inside_the_part_is_not_asked_again",
             || {
                 /// Reads its stack's effective animation, then answers Drink.
                 #[derive(Clone)]
@@ -146,7 +146,7 @@ pub(crate) mod tests {
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         use std::sync::{Arc, Mutex};
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::item_use::tests::another_stacks_part_is_asked_from_inside_a_part",
+            "cut_layout::game::server_side::item_use::tests::another_stacks_part_is_asked_from_inside_a_part",
             || {
                 fn stack(id: &str) -> mod_api::ItemStack {
                     mod_api::ItemStack::of(mod_api::__private::item_key(id).unwrap())
@@ -212,7 +212,7 @@ pub(crate) mod tests {
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         use std::sync::{Arc, Mutex};
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::item_use::tests::a_part_reading_a_transformed_copy_is_not_asked_again",
+            "cut_layout::game::server_side::item_use::tests::a_part_reading_a_transformed_copy_is_not_asked_again",
             || {
                 /// Reads a copy of its stack with one more in the count, then answers Drink.
                 #[derive(Clone)]
@@ -860,7 +860,7 @@ pub(crate) mod interact_vibration_tests {
         use sunrise_gameplay::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 
         if run_fresh_cases(
-            "game::server_side::item_use::interact_vibration_tests::admitted_minecraft_and_custom_items_start_and_complete_timed_native_use",
+            "cut_layout::game::server_side::item_use::interact_vibration_tests::admitted_minecraft_and_custom_items_start_and_complete_timed_native_use",
             "SUNRISE_MINECRAFT_ITEM_USE_CHILD",
             &["valid"],
         ) {

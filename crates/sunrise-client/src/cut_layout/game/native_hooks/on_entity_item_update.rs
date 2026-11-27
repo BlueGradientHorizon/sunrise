@@ -139,7 +139,7 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_enti
     #[ignore = "daily"]
     fn a_canceling_part_holds_its_own_item_and_nothing_else() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::on_entity_item_update::on_entity_item_update_tests::a_canceling_part_holds_its_own_item_and_nothing_else",
+            "cut_layout::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::a_canceling_part_holds_its_own_item_and_nothing_else",
             a_canceling_part_holds_its_own_item_and_nothing_else_isolated,
         );
     }
@@ -280,7 +280,7 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_enti
     #[ignore = "daily"]
     fn dropped_subject_and_host_writes_commit_or_abort_together() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::on_entity_item_update::on_entity_item_update_tests::dropped_subject_and_host_writes_commit_or_abort_together",
+            "cut_layout::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::dropped_subject_and_host_writes_commit_or_abort_together",
             || {
                 with_game(|game| {
                     floor(game);
@@ -370,7 +370,7 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_enti
     #[ignore = "daily"]
     fn dropped_scope_reborrows_its_item_after_slots_shift() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::on_entity_item_update::on_entity_item_update_tests::dropped_scope_reborrows_its_item_after_slots_shift",
+            "cut_layout::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::dropped_scope_reborrows_its_item_after_slots_shift",
             || {
                 with_game(|game| {
                     floor(game);

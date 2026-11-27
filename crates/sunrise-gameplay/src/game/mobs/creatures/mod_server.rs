@@ -12,7 +12,7 @@ use crate::game::server_side::native_projectiles::{
     Impact, PendingImpact, ProjectileHit, projectile_impact_event,
 };
 use mod_api::{EquipmentSlot, LootDrops, SoundSource};
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
@@ -57,10 +57,11 @@ use {
     sunrise_sim::join_seq::JoinSeq, sunrise_sim::mobs::Damage, sunrise_sim::mobs::DamageKind,
     sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobEvent, sunrise_sim::mobs::MobWorld,
     sunrise_sim::mobs::PlayerView, sunrise_sim::mobs::Seen, sunrise_sim::mobs::Species,
-    sunrise_sim::mobs::Who, sunrise_sim::mobs::ai::eating_sound,
-    sunrise_sim::mobs::ai::eating_sound_is_bound, sunrise_sim::mobs::ai::feed_animal,
-    sunrise_sim::mobs::ai::takes_food, sunrise_sim::mobs::entity_sounds::full_id,
-    sunrise_sim::mobs::finalize::Group, sunrise_sim::mobs::spawning, sunrise_sim::projectiles::Hit,
+    sunrise_sim::mobs::Who, sunrise_sim::mobs::ai::eating_sound_is_bound,
+    sunrise_sim::mobs::ai::eating_sound_with_variants,
+    sunrise_sim::mobs::ai::feed_animal_with_variants, sunrise_sim::mobs::ai::takes_food,
+    sunrise_sim::mobs::entity_sounds::full_id, sunrise_sim::mobs::finalize::Group,
+    sunrise_sim::mobs::spawning, sunrise_sim::projectiles::Hit,
     sunrise_sim::projectiles::Projectile, sunrise_sim::projectiles::ProjectileKind,
 };
 
@@ -508,28 +509,21 @@ impl crate::game::ServerGame<'_> {
             .as_ref()
             .and_then(|a| a.fired_from_weapon.as_ref())
         {
-            let victim = self.entity_kind_for_who(who);
-            let owner = arrow.owner.and_then(|o| self.entity_kind_for_who(o));
-            let arrow_type = if arrow.is_spectral_arrow() {
-                "minecraft:spectral_arrow"
-            } else {
-                "minecraft:arrow"
+            let (victim, kind) = match who {
+                Who::Player => (self.own_entity_id() as u32, "minecraft:player".to_owned()),
+                Who::Mob(id) => (
+                    id,
+                    self.common
+                        .mobs
+                        .iter()
+                        .find(|m| m.id == id)
+                        .map_or_else(String::new, |m| m.kind.id.clone()),
+                ),
             };
-            let ctx = sunrise_items::enchant::EffectContext {
-                this: victim.as_deref(),
-                attacker: owner.as_deref(),
-                direct_attacker: Some(arrow_type),
-                damage_type: Some("minecraft:arrow"),
-                items: Some(self.common.res.items()),
-                ..Default::default()
-            };
-            self.common.res.stations().enchantments.modify_value(
-                Some(weapon),
-                "minecraft:knockback",
-                &ctx,
-                &mut self.common.world.random,
-                0.0,
-            )
+            let attack = self.projectile_attack(arrow);
+            let source = sunrise_sim::health::mob_source(&source, &attack);
+            let ctx = attack.enchantment_context(source, &kind);
+            self.evaluate_weapon_value(weapon, "minecraft:knockback", Some(victim), ctx, 0.0)
         } else {
             arrow.bonus.punch as f32
         };
@@ -2122,13 +2116,29 @@ impl crate::game::ServerGame<'_> {
                     // CaveSpider, Husk and WitherSkeleton.doHurtTarget: the
                     // effect sits inside the branch where the hit landed, and
                     // `LivingEntity.addEffect` takes a mob as well as a player.
+                    let attacker = source.attacker;
                     self.server.combat.0.hit_landed = self.mob_attacks_mob(target, amount, source);
                     if self.server.combat.0.hit_landed {
-                        if let Some(Who::Mob(attacker)) = source.attacker {
+                        if let Some(Who::Mob(attacker)) = attacker {
                             self.remember_mob_target(attacker, Some(target));
                         }
-                        if let Some(t) = self.common.mobs.iter_mut().find(|m| m.id == target) {
-                            t.add_effect(effect, ticks, amplifier);
+                        if let Some(def) = sunrise_level::brewing::effect(effect) {
+                            let effect_source = match attacker {
+                                Some(Who::Mob(id)) => self.entity(id),
+                                Some(Who::Player) => self
+                                    .common
+                                    .player
+                                    .as_ref()
+                                    .and_then(|p| self.entity(p.entity_id as u32)),
+                                None => None,
+                            };
+                            self.add_mob_effect(
+                                target,
+                                sunrise_level::effects::EffectInstance::from_def(
+                                    def, ticks, amplifier,
+                                ),
+                                effect_source,
+                            );
                         }
                     }
                 }
@@ -2283,6 +2293,9 @@ impl crate::game::ServerGame<'_> {
                         }
                         Who::Mob(id) => self.mob_hits_mob(id, amount, source),
                     };
+                    if self.server.fake_action.0.acting() {
+                        self.server.combat.0.hit_landed = hurt;
+                    }
                     if hurt {
                         let resistance = match target {
                             Who::Player => self.common.player.as_mut().map_or(0.0, |p| {
@@ -2951,8 +2964,12 @@ impl crate::game::ServerGame<'_> {
                     ticks,
                     amplifier,
                 } => {
-                    if let Some(t) = self.common.mobs.iter_mut().find(|m| m.id == target) {
-                        t.add_effect(effect, ticks, amplifier);
+                    if let Some(def) = sunrise_level::brewing::effect(effect) {
+                        self.add_mob_effect(
+                            target,
+                            sunrise_level::effects::EffectInstance::from_def(def, ticks, amplifier),
+                            None,
+                        );
                     }
                 }
                 MobEvent::Ignite(target, seconds) => self.common.ignite_entity(target, seconds)?,
@@ -3632,7 +3649,8 @@ impl crate::game::ServerGame<'_> {
         let mut give: Option<&str> = None;
         let mut sound: Option<(&str, f32, f32)> = None;
         // Sounds played as vanilla plays them: (event, volume, pitch) at the feet.
-        let mut eat: Option<(&'static str, f32, f32)> = None;
+        let mut eat: Option<(Cow<'static, str>, f32, f32)> = None;
+        let mut shear = None;
         let feet = [m.position.x, m.position.y, m.position.z];
         let mut handled = true;
         let mut ignited_creeper = false;
@@ -3684,7 +3702,7 @@ impl crate::game::ServerGame<'_> {
                         give = Some("minecraft:suspicious_stew");
                         give_stew = Some(effects);
                         // `playSound(.., 1.0F, 1.0F)` at the feet.
-                        eat = Some(("entity.mooshroom.suspicious_milk", 1.0, 1.0));
+                        eat = Some((Cow::Borrowed("entity.mooshroom.suspicious_milk"), 1.0, 1.0));
                     }
                     None => {
                         give = Some("minecraft:mushroom_stew");
@@ -3707,22 +3725,14 @@ impl crate::game::ServerGame<'_> {
                 } else {
                     m.extra.stew_effects = Some(effects.to_vec());
                     consume = true;
-                    eat = Some(("entity.mooshroom.eat", 2.0, 1.0));
+                    eat = Some((Cow::Borrowed("entity.mooshroom.eat"), 2.0, 1.0));
                     stew_particles = Some(true);
                 }
             }
             Species::Sheep if shears && !m.extra.sheared && !m.is_baby() => {
-                let silent = m.silent;
+                shear = Some((m.id, m.silent));
                 m.extra.sheared = true;
                 let color = sunrise_level::dyes::DYE_NAMES[m.extra.color as usize & 15];
-                if !silent {
-                    self.play_bound_sound(
-                        LevelSound::new("minecraft:entity.sheep.shear", feet, 1.0, 1.0)
-                            .in_source(mod_api::SoundSource::Neutral),
-                        mob.0,
-                        None,
-                    );
-                }
                 drops_table = format!("minecraft:shearing/sheep/{color}");
                 let stacks = world_items!(self).loot_table(
                     &drops_table,
@@ -3746,7 +3756,7 @@ impl crate::game::ServerGame<'_> {
             {
                 armor_drop = m.equipment_stacks()[6].clone();
                 m.extra.set_body_stack(None);
-                eat = Some(("item.armor.unequip_wolf", 1.0, 1.0));
+                eat = Some((Cow::Borrowed("item.armor.unequip_wolf"), 1.0, 1.0));
                 equip_event = Some(false);
                 self.damage_held_tool();
             }
@@ -3782,7 +3792,7 @@ impl crate::game::ServerGame<'_> {
                 body.extra = held_extra;
                 m.extra.set_body_stack(Some(body));
                 consume = true;
-                eat = Some(("item.armor.equip_wolf", 1.0, 1.0));
+                eat = Some((Cow::Borrowed("item.armor.equip_wolf"), 1.0, 1.0));
                 equip_event = Some(true);
             }
             // Wolf.mobInteract: an armadillo scute repairs a sitting wolf's
@@ -3800,7 +3810,7 @@ impl crate::game::ServerGame<'_> {
                         - (sunrise_sim::mobs::WOLF_ARMOR_DURABILITY as f32 * 0.125) as i32,
                 );
                 consume = true;
-                eat = Some(("item.wolf_armor.repair", 1.0, 1.0));
+                eat = Some((Cow::Borrowed("item.wolf_armor.repair"), 1.0, 1.0));
             }
             Species::Wolf
                 if m.extra.tame
@@ -3921,7 +3931,8 @@ impl crate::game::ServerGame<'_> {
                     heal,
                 );
                 consume = true;
-                eat = eating_sound(m, &mut self.common.world.random);
+                let variants = world_variants!(self);
+                eat = eating_sound_with_variants(m, &mut self.common.world.random, Some(variants));
             }
             // Cat.mobInteract: Animal.mobInteract first breeds an adult or
             // grows a baby with the food; only when it did not does the owner
@@ -3961,7 +3972,8 @@ impl crate::game::ServerGame<'_> {
                     m.extra.owner = Some(acting);
                     m.extra.sitting = true;
                 }
-                eat = eating_sound(m, &mut self.common.world.random);
+                let variants = world_variants!(self);
+                eat = eating_sound_with_variants(m, &mut self.common.world.random, Some(variants));
                 // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
                 self.mob_event_particles(self.common.mobs[index].id, if tamed { 7 } else { 6 });
                 if tamed {
@@ -3985,7 +3997,11 @@ impl crate::game::ServerGame<'_> {
                     25.0,
                 );
                 consume = true;
-                eat = Some(("entity.iron_golem.repair", 1.0, m.golem_repair_pitch()));
+                eat = Some((
+                    Cow::Borrowed("entity.iron_golem.repair"),
+                    1.0,
+                    m.golem_repair_pitch(),
+                ));
             }
             Species::Creeper if creeper_igniter => {
                 m.extra.flag = true;
@@ -3997,7 +4013,7 @@ impl crate::game::ServerGame<'_> {
                 } else {
                     "item.flintandsteel.use"
                 };
-                eat = Some((event, 1.0, m.random.next_float() * 0.4 + 0.8));
+                eat = Some((Cow::Borrowed(event), 1.0, m.random.next_float() * 0.4 + 0.8));
                 if damageable {
                     self.damage_held_tool();
                 } else {
@@ -4017,24 +4033,34 @@ impl crate::game::ServerGame<'_> {
                     .is_some_and(|t| t.contains(&*item)) =>
             {
                 consume = true;
-                m.add_effect("minecraft:poison", 900, 0);
                 let id = m.id;
-                let hurt = m.damage(
-                    crate::game::server_side::entity_server::damage_level_of!(
-                        self,
-                        &sunrise_sim::health::NO_ATTACK,
-                        &mut credit_plan.lend(&mut self.server.last_hurt_by_player),
-                        None
-                    ),
-                    f32::MAX,
-                    sunrise_sim::mobs::Damage::player(player_at.unwrap_or(center)),
+                let join = m.join;
+                self.add_mob_effect(
+                    id,
+                    sunrise_level::effects::EffectInstance::new("poison", 900, 0),
+                    None,
                 );
-                if let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) {
-                    // The feeder gets the kill, as for a normal player attack.
-                    if hurt {
-                        self.remember_mob_player_credit(id);
+                if let Some(index) = self.common.mob_index.find(&self.common.mobs, id)
+                    && self.common.mobs[index].join == join
+                    && !self.common.mobs[index].removed
+                {
+                    let hurt = self.common.mobs[index].damage(
+                        crate::game::server_side::entity_server::damage_level_of!(
+                            self,
+                            &sunrise_sim::health::NO_ATTACK,
+                            &mut credit_plan.lend(&mut self.server.last_hurt_by_player),
+                            None
+                        ),
+                        f32::MAX,
+                        sunrise_sim::mobs::Damage::player(player_at.unwrap_or(center)),
+                    );
+                    if let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) {
+                        // The feeder gets the kill, as for a normal player attack.
+                        if hurt {
+                            self.remember_mob_player_credit(id);
+                        }
+                        self.finish_mob_damage_at(index);
                     }
-                    self.finish_mob_damage_at(index);
                 }
             }
             // Parrot.mobInteract: parrot food may tame a wild one (one time in
@@ -4043,7 +4069,7 @@ impl crate::game::ServerGame<'_> {
                 consume = true;
                 if !m.silent {
                     let pitch = 1.0 + (m.random.next_float() - m.random.next_float()) * 0.2;
-                    eat = Some(("entity.parrot.eat", 1.0, pitch));
+                    eat = Some((Cow::Borrowed("entity.parrot.eat"), 1.0, pitch));
                 }
                 let rolled = m.random.next_int_bound(10).unwrap_or(1) == 0;
                 let tamed =
@@ -4064,7 +4090,7 @@ impl crate::game::ServerGame<'_> {
             // Dolphin.mobInteract: a fish makes a baby grow by a tenth and an
             // adult remember it (`gotFish`), to swim to a treasure.
             Species::Dolphin if fish => {
-                eat = Some(("entity.dolphin.eat", 1.0, 1.0));
+                eat = Some((Cow::Borrowed("entity.dolphin.eat"), 1.0, 1.0));
                 if sunrise_sim::mobs::ai::can_age_up(m) {
                     let secs = ((-m.extra.age / 20) as f32 * 0.1) as i32;
                     sunrise_sim::mobs::ai::age_up(m, secs, true);
@@ -4095,11 +4121,13 @@ impl crate::game::ServerGame<'_> {
                         "minecraft:wither_rose" | "minecraft:open_eyeblossom"
                     ) =>
             {
-                if &*item == "minecraft:wither_rose" {
-                    m.add_effect("minecraft:wither", 40, 0);
+                let id = m.id;
+                let effect = if &*item == "minecraft:wither_rose" {
+                    sunrise_level::effects::EffectInstance::new("wither", 40, 0)
                 } else {
-                    m.add_effect("minecraft:poison", 25, 0);
-                }
+                    sunrise_level::effects::EffectInstance::new("poison", 25, 0)
+                };
+                self.add_mob_effect(id, effect, None);
                 consume = true;
             }
             // Ocelot.mobInteract: raw fish from a hand within 3 blocks, while it comes for the
@@ -4134,7 +4162,13 @@ impl crate::game::ServerGame<'_> {
             {
                 // Animal.mobInteract: breed adults, speed up babies, then
                 // playEatingSound (silent unless the species overrides it).
-                match feed_animal(m, &mut self.common.world.random, Some(acting)) {
+                let variants = world_variants!(self);
+                match feed_animal_with_variants(
+                    m,
+                    &mut self.common.world.random,
+                    Some(acting),
+                    Some(variants),
+                ) {
                     Some(sound) => {
                         consume = true;
                         eat = sound;
@@ -4237,8 +4271,20 @@ impl crate::game::ServerGame<'_> {
             }
             None => {}
         }
+        if let Some((id, silent)) = shear {
+            self.server_play_bound_sound(
+                "minecraft:entity.sheep.shear",
+                SoundSource::Players.index(),
+                feet,
+                1.0,
+                1.0,
+                id,
+                silent,
+                None,
+            );
+        }
         if let Some((s, volume, pitch)) = eat {
-            let name = full_id(s);
+            let name = full_id(&s);
             if eating_sound_is_bound(species) {
                 let id = self.common.mobs[index].id;
                 let sound =
@@ -4753,7 +4799,7 @@ impl crate::game::ServerGame<'_> {
             let t = &mut self.common.mobs[ti];
             hurt = hit;
             // Squid.hurtServer can report false after its superclass accepted a lethal hit.
-            settle = t.damage_completion.is_some();
+            settle = t.damage_completion.is_some() || t.has_protected_hurt();
             if hit && catch_up && t.invulnerable > previous_invulnerable {
                 t.hurt_time = (t.hurt_time - 1).max(0);
                 t.invulnerable = (t.invulnerable - 1).max(0);
@@ -5004,7 +5050,6 @@ impl crate::game::ServerGame<'_> {
             if deflected.arrow.is_some() {
                 self.finish_arrow_hit(deflected, EntityHit::Deflected);
             } else {
-                self.sweep_projectile_inside(&mut deflected, None);
                 let (pid, from, to) = (deflected.id, deflected.previous, deflected.position);
                 self.common.reinsert_continuing_projectile(deflected);
                 self.entity_section_step(pid, from.components(), to.components());
@@ -5536,17 +5581,18 @@ impl crate::game::ServerGame<'_> {
                                 [p.previous.x, p.previous.y, p.previous.z],
                                 dmg_type,
                             );
+                            self.shot_post_attack(p, who, "minecraft:fireball");
                         }
                         Who::Mob(id) => {
                             if self.common.mob_index.find(&self.common.mobs, id).is_some() {
                                 self.damage_projectile_with_weapon(p, id, 6.0, source, aim);
-                                self.shot_post_attack(p, who, dmg_type);
+                                self.shot_post_attack(p, who, "minecraft:fireball");
                             } else {
                                 let info =
                                     ProjectileHitInfo::from_projectile(p, dmg_type, 6.0, None);
                                 let _ = self.projectile_hurts_non_mob(&info, id);
                                 // LargeFireball.onHitEntity runs doPostAttackEffects unconditionally.
-                                self.shot_post_attack(p, who, dmg_type);
+                                self.shot_post_attack(p, who, "minecraft:fireball");
                             }
                         }
                     }
@@ -5636,11 +5682,13 @@ impl crate::game::ServerGame<'_> {
             (ProjectileKind::LlamaSpit, Hit::Entity { who, .. }) => {
                 match who {
                     Who::Player => {
-                        self.mob_hits_player(
+                        if self.mob_hits_player(
                             1.0,
                             [p.previous.x, p.previous.y, p.previous.z],
                             "minecraft:spit",
-                        );
+                        ) {
+                            self.shot_post_attack(p, who, "minecraft:spit");
+                        }
                     }
                     Who::Mob(id) => {
                         if self.common.mob_index.find(&self.common.mobs, id).is_some() {
@@ -5986,9 +6034,26 @@ impl crate::game::ServerGame<'_> {
                 .map(|m| m.on_climbable(&w))
                 .collect()
         };
+        let inactive_equipment = if self.common.is_logical_server() {
+            Some((
+                self.entity_ticking_area(),
+                world_items!(self),
+                &self.common.motion.attributes,
+            ))
+        } else {
+            None
+        };
         for (m, climbing) in self.common.mobs.iter_mut().zip(climbing) {
             m.on_climbable = climbing;
+            if let Some((ticking, items, catalog)) = &inactive_equipment
+                && !m.removed
+                && (!m.extra.equipment.is_empty() || m.extra.live.has_worn())
+                && !ticking(m.position.x.floor() as i32, m.position.z.floor() as i32)
+            {
+                super::living_attributes::collect_equipment(catalog, items, m);
+            }
         }
+        self.flush_pending_mob_parts();
         let mut snapshot = std::mem::take(&mut self.common.creatures.seen_buf);
         snapshot.extend(self.common.mobs.iter().map(|m| seen(m, uuid, self.items())));
         let mut events = std::mem::take(&mut self.common.creatures.event_buf);
@@ -6130,8 +6195,7 @@ impl crate::game::ServerGame<'_> {
         self.common.creatures.pending.insert(level_id, pending);
         self.common.creatures.event_buf = events;
         if let Some(payload) = dispatch_panic {
-            // Restoration may itself panic and replace this payload; a second
-            // destructor panic may abort. panic=abort cannot recover at all.
+            self.emit_death_poofs(gone);
             std::panic::resume_unwind(payload);
         }
         stand_result?;
@@ -6200,7 +6264,7 @@ impl crate::game::ServerGame<'_> {
         // player's or a dispenser's, which join before the pass, tick now.
         let through = self.server.ticked_entities_through;
         let mut round = self.native_tick_round();
-        let told = round.pre() || round.post();
+        let told = round.told_listening();
         let mut hear = self.native_hears_impacts();
         // ThrownEnderpearl.tick: a dead player's pearl is discarded in
         // place of its tick while ender_pearls_vanish_on_death is on.
@@ -6670,7 +6734,9 @@ impl crate::game::ServerGame<'_> {
             FxHashMap::default()
         };
         for (id, block, position, movement) in snow_contacts {
-            if !hears_impact || !game.projectile_removal_pending(id) {
+            if !destroyed_ids.contains(&id)
+                && (!hears_impact || !game.projectile_removal_pending(id))
+            {
                 game.powder_snow_particle(block, position, movement);
             }
         }
@@ -6694,9 +6760,10 @@ impl crate::game::ServerGame<'_> {
             game.server_apply_item_splash(splash);
         }
         for (id, at, event) in arrow_events {
-            if !hears_impact
-                || !projectile_impact_event(&event)
-                || !game.projectile_removal_pending(id)
+            if !destroyed_ids.contains(&id)
+                && (!hears_impact
+                    || !projectile_impact_event(&event)
+                    || !game.projectile_removal_pending(id))
             {
                 game.server_arrow_event(at, event);
             }
@@ -7383,10 +7450,7 @@ impl crate::game::ServerGame<'_> {
             terrain.set_spawn_conditions(self.difficulty_id() as u8, self.common.world.day_time);
         }
     }
-    /// `Mob.finalizeSpawn` behind `FinalizeSpawnEvent`: the one fire point for
-    /// the mobs the game spawns where vanilla calls `finalizeSpawn`. The class's
-    /// follow-ups (raider flags and the like) are part of `finalizeSpawn`, so a
-    /// site skips them on [`Finalized::Skipped`].
+    /// Fires `FinalizeSpawnEvent`, lets listeners skip class initialization, and returns whether the mob may be admitted.
     pub fn finalize_with(
         &mut self,
         mob: &mut Mob,
@@ -8106,12 +8170,13 @@ impl crate::game::ServerGame<'_> {
                     .update(pos, |p| p.previous = at);
                 continue;
             }
-            let _save_lease = self
-                .common
-                .creatures
-                .projectiles
-                .visibility_lease()
-                .ok_or_else(sunrise_sim::join_seq::visibility::PassLease::enter);
+            let mut _save_lease = Some(
+                self.common
+                    .creatures
+                    .projectiles
+                    .visibility_lease()
+                    .ok_or_else(sunrise_sim::join_seq::visibility::PassLease::enter),
+            );
             let Some(mut p) = self.common.creatures.projectiles.extract(join) else {
                 continue;
             };
@@ -8136,6 +8201,7 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             let section_from = p.position;
+            let before = (self.native_hears_impacts() && !p.stuck).then(|| p.clone());
             let mob_shot = !matches!(p.owner, Some(Who::Player));
             let pvp = !mob_shot && crate::game::lan_pvp::meets_players(&p.kind);
             let shooter = p.guest.filter(|_| !mob_shot).and_then(|c| {
@@ -8202,6 +8268,76 @@ impl crate::game::ServerGame<'_> {
             if shooter.is_some() {
                 p.owner = Some(Who::Player);
             }
+            if hit != Hit::None
+                && let Some(mut before) = before
+            {
+                let snapshot = p.clone();
+                let target = self.native_impact_target(hit);
+                drop(_save_lease.take());
+                let place = pos.min(self.common.creatures.projectiles.len());
+                self.common.creatures.projectiles.put_back(place, p);
+                let canceled = self.native_projectile_impact_canceled(&snapshot, hit);
+                _save_lease = Some(
+                    self.common
+                        .creatures
+                        .projectiles
+                        .visibility_lease()
+                        .ok_or_else(sunrise_sim::join_seq::visibility::PassLease::enter),
+                );
+                let unchanged = !self.projectile_removal_pending(pid)
+                    && self
+                        .common
+                        .creatures
+                        .projectiles
+                        .locate(join)
+                        .is_some_and(|i| self.common.creatures.projectiles[i] == snapshot)
+                    && target.is_some()
+                    && target == self.native_impact_target(hit);
+                if !unchanged {
+                    drop(_save_lease.take());
+                    continue;
+                }
+                if canceled {
+                    before.has_been_shot = snapshot.has_been_shot;
+                    if let (Some(arrow), Some(shot)) = (&mut before.arrow, &snapshot.arrow) {
+                        arrow.has_been_shot = shot.has_been_shot;
+                    }
+                    let (flown, flies, events) = self.native_projectile_through(before);
+                    let (owner, guest, to) = (flown.owner, flown.guest, flown.position);
+                    if let Some(i) = self.common.creatures.projectiles.locate(join) {
+                        if flies {
+                            self.common.creatures.projectiles.store_back(i, flown);
+                            if !keep
+                                && let Some(row) = self.common.creatures.projectiles.extract(join)
+                            {
+                                let end = self.common.creatures.projectiles.len();
+                                self.common.creatures.projectiles.put_back(end, row);
+                            }
+                        } else {
+                            self.common.creatures.projectiles.remove(i);
+                        }
+                    }
+                    drop(_save_lease.take());
+                    if flies {
+                        self.entity_section_step(pid, section_from.components(), to.components());
+                    }
+                    for (at, event) in events {
+                        if event == sunrise_sim::entities::arrows::ArrowEvent::ShootEvent
+                            && matches!(hit, Hit::Block { .. })
+                        {
+                            self.projectile_shoot_event(owner, guest, at.components());
+                        } else {
+                            self.server_arrow_event(at, event);
+                        }
+                    }
+                    continue;
+                }
+                let Some(row) = self.common.creatures.projectiles.extract(join) else {
+                    drop(_save_lease.take());
+                    continue;
+                };
+                p = row;
+            }
             for (block, position, movement) in snow_contacts {
                 self.powder_snow_particle(block, position, movement);
             }
@@ -8224,7 +8360,7 @@ impl crate::game::ServerGame<'_> {
                     .creatures
                     .projectiles
                     .retire_extracted(pid, join);
-                drop(_save_lease);
+                drop(_save_lease.take());
                 self.post_game_event("minecraft:entity_damage", at, ctx);
                 if is_lava && !silent {
                     self.lava_hurt_sound(at);
@@ -8265,7 +8401,7 @@ impl crate::game::ServerGame<'_> {
                     .creatures
                     .projectiles
                     .retire_extracted(pid, join);
-                drop(_save_lease);
+                drop(_save_lease.take());
                 self.apply_projectile_hit(&p, ceiling)?;
                 continue;
             }
@@ -8298,13 +8434,13 @@ impl crate::game::ServerGame<'_> {
                 let place = pos.min(self.common.creatures.projectiles.len());
                 if hit == Hit::None {
                     self.common.creatures.projectiles.put_back(place, p);
-                    drop(_save_lease);
+                    drop(_save_lease.take());
                     self.entity_section_step(pid, section_from.components(), to.components());
                     continue;
                 }
                 let hit_snapshot = p.clone();
                 self.common.creatures.projectiles.put_back(place, p);
-                drop(_save_lease);
+                drop(_save_lease.take());
                 self.entity_section_step(pid, section_from.components(), to.components());
                 let result = self.apply_projectile_hit(&hit_snapshot, hit);
                 if result.is_ok() && shot_after_hit {
@@ -8338,7 +8474,7 @@ impl crate::game::ServerGame<'_> {
                     .projectiles
                     .retire_extracted(pid, join);
             }
-            drop(_save_lease);
+            drop(_save_lease.take());
             if result.is_ok() && shot_after_hit {
                 self.projectile_shoot_event(p.owner, p.guest, p.position.components());
             }

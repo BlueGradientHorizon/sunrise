@@ -30,7 +30,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_mod_atlas_sprite_is_stitched_into_the_gui_atlas_until_a_reload_drops_it() {
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::client_reload::texture_atlases::tests::a_mod_atlas_sprite_is_stitched_into_the_gui_atlas_until_a_reload_drops_it",
+            "cut_layout::game::client_side::client_reload::texture_atlases::tests::a_mod_atlas_sprite_is_stitched_into_the_gui_atlas_until_a_reload_drops_it",
             "SUNRISE_ATLAS_RELOAD_CHILD",
             &["reload"],
         ) {

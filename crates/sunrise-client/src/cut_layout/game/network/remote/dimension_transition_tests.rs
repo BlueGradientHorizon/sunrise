@@ -70,7 +70,7 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
         }
     }
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::dimension_transition_tests::dimension_transition_screen_is_selected_at_entry_drawn_and_dropped",
+        "cut_layout::game::remote::tests::dimension_transition_tests::dimension_transition_screen_is_selected_at_entry_drawn_and_dropped",
         || {
             mod_platform::testing::with_mods(
                 vec![mod_api::ModEntry::new(OWNER, Box::new(Arrival))].into(),

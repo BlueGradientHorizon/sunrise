@@ -105,7 +105,7 @@ pub(in crate::game) fn tick_count(
 #[ignore = "daily"]
 fn a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero",
         || {
             with_client_game(|game| {
                 let _connection = join(game);
@@ -160,7 +160,7 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
     use mod_api::{EntityTickPreEvent, HostSide, PlayerTickPreEvent};
     use std::sync::{Arc, Mutex};
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::the_client_count_follows_the_entity_tick_not_the_motion",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::the_client_count_follows_the_entity_tick_not_the_motion",
         || {
             /// The counts each callback read, by entity id.
             struct Seen(Arc<Mutex<Vec<(u32, Option<i32>)>>>);
@@ -251,7 +251,7 @@ fn a_canceled_root_does_not_count_and_a_passenger_does() {
     use mod_api::{EntityTickPreEvent, HostSide};
     use std::sync::{Arc, Mutex};
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::a_canceled_root_does_not_count_and_a_passenger_does",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::a_canceled_root_does_not_count_and_a_passenger_does",
         || {
             /// Cancels pigs 20 (a root) and 22 (a passenger), and records what each Pre read.
             struct Cancel(Arc<Mutex<Vec<(u32, Option<i32>)>>>);
@@ -326,7 +326,7 @@ fn callbacks_read_other_entities_counts_as_their_visits_left_them() {
     use mod_api::{EntityTickPostEvent, EntityTickPreEvent, HostSide};
     use std::sync::{Arc, Mutex};
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::callbacks_read_other_entities_counts_as_their_visits_left_them",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::callbacks_read_other_entities_counts_as_their_visits_left_them",
         || {
             type Seen = Vec<(&'static str, u32, [Option<i32>; 3])>;
             /// Pigs are told alone; each callback reads pigs 20, 21 and 22, and 21's Pre is
@@ -409,7 +409,7 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
     use sunrise_client::locator_bar::ContextualBar;
     use sunrise_protocol::packets::play::{TrackedWaypoint, WaypointId, WaypointTarget};
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints",
         || {
             with_client_game(|game| {
                 let _connection = join(game);
@@ -492,7 +492,7 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
 #[ignore = "daily"]
 fn a_respawned_player_counts_from_its_admission() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::a_respawned_player_counts_from_its_admission",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::a_respawned_player_counts_from_its_admission",
         || {
             with_client_game(|game| {
                 let _connection = join(game);
@@ -528,7 +528,7 @@ fn a_respawned_player_counts_from_its_admission() {
 fn a_dying_mount_stays_the_jumpable_vehicle() {
     use sunrise_client::locator_bar::ContextualBar;
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::a_dying_mount_stays_the_jumpable_vehicle",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::a_dying_mount_stays_the_jumpable_vehicle",
         || {
             with_client_game(|game| {
                 let _connection = join(game);
@@ -561,7 +561,7 @@ fn a_dying_mount_stays_the_jumpable_vehicle() {
 #[ignore = "daily"]
 fn the_jump_riding_scale_follows_the_charge_on_a_jumpable_mount() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::the_jump_riding_scale_follows_the_charge_on_a_jumpable_mount",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::the_jump_riding_scale_follows_the_charge_on_a_jumpable_mount",
         || {
             with_client_game(|game| {
                 let _connection = join(game);
@@ -610,7 +610,7 @@ fn has_channel_follows_what_the_server_negotiated() {
     };
     use std::sync::Arc;
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::has_channel_follows_what_the_server_negotiated",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::has_channel_follows_what_the_server_negotiated",
         || {
             const CHANNEL: &str = "channels:to_server";
             struct Handler;
@@ -681,7 +681,7 @@ fn has_channel_follows_what_the_server_negotiated() {
 #[ignore = "daily"]
 fn a_client_reads_whether_a_vehicle_shows_its_health_from_its_type() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::a_client_reads_whether_a_vehicle_shows_its_health_from_its_type",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::a_client_reads_whether_a_vehicle_shows_its_health_from_its_type",
         || {
             with_client_game(|game| {
                 let _connection = join(game);
@@ -707,7 +707,7 @@ fn a_client_reads_whether_a_vehicle_shows_its_health_from_its_type() {
 #[ignore = "daily"]
 fn a_client_reads_hardcore_from_the_login_for_the_level_it_is_in() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_vanilla_reads_tests::a_client_reads_hardcore_from_the_login_for_the_level_it_is_in",
+        "cut_layout::game::remote::tests::client_vanilla_reads_tests::a_client_reads_hardcore_from_the_login_for_the_level_it_is_in",
         || {
             for hardcore in [false, true] {
                 with_client_game(|game| {

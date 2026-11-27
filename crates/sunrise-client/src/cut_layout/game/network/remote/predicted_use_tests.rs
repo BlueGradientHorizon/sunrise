@@ -33,7 +33,7 @@ pub(crate) use crate::game::server_side::remote_server::interaction_event_tests:
 #[ignore = "daily"]
 fn native_client_prediction_owns_the_hand_loop() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::interaction_event_tests::predicted_use_tests::native_client_prediction_owns_the_hand_loop",
+        "cut_layout::game::remote::interaction_event_tests::predicted_use_tests::native_client_prediction_owns_the_hand_loop",
         || {
             matrix(
                 vec![mod_api::ModEntry::new(

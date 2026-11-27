@@ -305,7 +305,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn panicking_command_executors_keep_other_usages_and_only_undo_journaled_writes() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_server::tests::panicking_command_executors_keep_other_usages_and_only_undo_journaled_writes",
+            "cut_layout::game::native_server::tests::panicking_command_executors_keep_other_usages_and_only_undo_journaled_writes",
             || {
                 use std::sync::atomic::AtomicUsize;
                 const JOURNALED: [i32; 3] = [2, 70, 2];
@@ -490,7 +490,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn native_unauthorized_commands_never_reach_the_listener() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_server::tests::native_unauthorized_commands_never_reach_the_listener",
+            "cut_layout::game::native_server::tests::native_unauthorized_commands_never_reach_the_listener",
             || {
                 struct Commands(Arc<Mutex<Vec<mod_api::CommandInvocation>>>);
                 #[mod_api::__subscriptions]

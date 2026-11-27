@@ -111,7 +111,7 @@ impl crate::game::ClientGame<'_> {
                 sound,
                 volume,
                 pitch,
-            } => self.client.audio.0.play_on(
+            } => self.play_audio_on(
                 6,
                 arrow_sound_name(sound),
                 Some([at.x, at.y, at.z]),

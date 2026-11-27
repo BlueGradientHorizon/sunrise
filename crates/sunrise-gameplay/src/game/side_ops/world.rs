@@ -8,6 +8,12 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_parked_border(&self, dim: Dim) -> Option<&sunrise_level::worldborder::WorldBorder> {
         self.levels.0.parked_border(dim)
     }
+    fn side_parked_lid_openers(
+        &self,
+        dimension: &str,
+    ) -> Option<&std::collections::HashMap<(i32, i32, i32), i32>> {
+        self.levels.0.parked_lid_openers_of(dimension)
+    }
     fn side_parked_world(&self, dimension: &str) -> Option<&World> {
         self.levels.0.parked_world_of(dimension)
     }

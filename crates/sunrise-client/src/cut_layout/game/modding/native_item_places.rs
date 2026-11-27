@@ -1967,7 +1967,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn player_slot_extract_matches_resident_damage_without_max_damage() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::native_item_places::tests::player_slot_extract_matches_resident_damage_without_max_damage",
+            "cut_layout::game::server_side::native_item_places::tests::player_slot_extract_matches_resident_damage_without_max_damage",
             || {
                 with_game(|game| {
                     open_to_lan(game);
@@ -2031,7 +2031,7 @@ pub(crate) mod tests {
         use mod_api::{ComponentId, Tag};
 
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_item_places::tests::player_slot_extracts_a_map_by_its_pending_lock_resource",
+            "cut_layout::game::server_side::native_item_places::tests::player_slot_extracts_a_map_by_its_pending_lock_resource",
             "SUNRISE_ITEM_RESOURCE_MAP_LOCK_CASE",
             &["run"],
         ) {
@@ -2648,7 +2648,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn crafted_by_replaces_the_map_in_a_handler_backed_slot() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_item_places::tests::crafted_by_replaces_the_map_in_a_handler_backed_slot",
+            "cut_layout::game::server_side::native_item_places::tests::crafted_by_replaces_the_map_in_a_handler_backed_slot",
             "SUNRISE_CRAFTED_BY_HANDLER_CASE",
             &["replace"],
         ) {
@@ -2691,7 +2691,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn crafted_by_refused_handler_write_drops_the_map_and_stat() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_item_places::tests::crafted_by_refused_handler_write_drops_the_map_and_stat",
+            "cut_layout::game::server_side::native_item_places::tests::crafted_by_refused_handler_write_drops_the_map_and_stat",
             "SUNRISE_CRAFTED_BY_HANDLER_CASE",
             &["refuse"],
         ) {
@@ -2729,7 +2729,7 @@ pub(crate) mod tests {
 
         const CASE: &str = "SUNRISE_CRAFTED_BY_PACKET_REFUSAL_CASE";
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_item_places::tests::crafted_by_packet_refusal_returns_commit_refused_and_drops_map_and_stat",
+            "cut_layout::game::server_side::native_item_places::tests::crafted_by_packet_refusal_returns_commit_refused_and_drops_map_and_stat",
             CASE,
             &["exchange", "settle"],
         ) {

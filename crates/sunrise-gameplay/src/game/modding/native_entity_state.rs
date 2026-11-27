@@ -174,6 +174,14 @@ impl crate::game::ServerGame<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.is_in_lava()),
             Body::Mob(m) => Some(m.fluids.in_lava),
+            Body::Other(Target::General(id)) => Some(
+                self.common
+                    .resident_entities
+                    .general
+                    .row(id)?
+                    .fluids
+                    .in_lava,
+            ),
             Body::Other(_) => None,
         }
     }

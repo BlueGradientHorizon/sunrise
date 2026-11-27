@@ -391,7 +391,7 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 fn initial_load_stages_and_applies_client_reload_listeners() {
     // Start a fresh process for the startup path, which installs the standalone model fixture.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "client_reload::tests::initial_load_stages_and_applies_client_reload_listeners",
+        "cut_layout::game::client_side::client_reload::tests::initial_load_stages_and_applies_client_reload_listeners",
         "SUNRISE_INITIAL_RELOAD_CHILD",
         &["startup"],
     ) {

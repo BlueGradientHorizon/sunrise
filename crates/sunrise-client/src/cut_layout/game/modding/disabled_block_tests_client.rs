@@ -12,7 +12,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn inert_dispense_keeps_a_legacy_over_max_stack_without_events() {
         with_inert_block(
-            "inert_dispense_keeps_a_legacy_over_max_stack_without_events",
+            "cut_layout::game::client_side::disabled_block_tests_client::tests::inert_dispense_keeps_a_legacy_over_max_stack_without_events",
             |game, _, probe| {
                 assert!(mod_api::__private::set_mod_enabled("enabled_prefix", false));
                 let dispenser = place_dispenser(game);
@@ -51,7 +51,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn rejected_dispense_reply_preserves_the_disabled_owners_fallback() {
         with_inert_block(
-            "rejected_dispense_reply_preserves_the_disabled_owners_fallback",
+            "cut_layout::game::client_side::disabled_block_tests_client::tests::rejected_dispense_reply_preserves_the_disabled_owners_fallback",
             |game, _, probe| {
                 let dispenser = place_dispenser(game);
                 game.start_audio_capture();

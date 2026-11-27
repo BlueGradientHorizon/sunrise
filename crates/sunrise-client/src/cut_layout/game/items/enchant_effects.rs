@@ -24,7 +24,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn mob_projectile_hits_on_players_run_thorns() {
         if run_fresh_cases(
-            "game::server_side::enchant_effects::tests::mob_projectile_hits_on_players_run_thorns",
+            "cut_layout::game::server_side::enchant_effects::tests::mob_projectile_hits_on_players_run_thorns",
             "SUNRISE_POST_ATTACK_PROJECTILE_CHILD",
             &["hits"],
         ) {
@@ -90,7 +90,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn enchantment_sound_skips_silent_entities_and_uses_their_category() {
         if run_fresh_cases(
-            "game::server_side::enchant_effects::tests::enchantment_sound_skips_silent_entities_and_uses_their_category",
+            "cut_layout::game::server_side::enchant_effects::tests::enchantment_sound_skips_silent_entities_and_uses_their_category",
             "SUNRISE_ENCHANTMENT_SOUND_CHILD",
             &["sound"],
         ) {
@@ -137,7 +137,7 @@ pub(crate) mod tests {
     fn apply_mob_effect_rounds_negative_ties_and_has_no_source() {
         use std::sync::{Arc, Mutex};
         if run_fresh_cases(
-            "game::server_side::enchant_effects::tests::apply_mob_effect_rounds_negative_ties_and_has_no_source",
+            "cut_layout::game::server_side::enchant_effects::tests::apply_mob_effect_rounds_negative_ties_and_has_no_source",
             "SUNRISE_POST_ATTACK_MOB_EFFECT_CHILD",
             &["apply"],
         ) {

@@ -34,7 +34,7 @@ fn at() -> Vec3 {
 #[ignore = "daily"]
 fn fire_lava_and_water_reach_a_projectile_in_its_tick() {
     if run_fresh_cases(
-        "game::creatures::projectile_block_effects_tests::fire_lava_and_water_reach_a_projectile_in_its_tick",
+        "game::server_side::creatures_server::projectile_block_effects_tests::fire_lava_and_water_reach_a_projectile_in_its_tick",
         CASE,
         &["fire", "lava", "water", "lava_impact_batch"],
     ) {

@@ -492,7 +492,7 @@ pub(crate) mod furnace_changed_tests {
     #[ignore = "daily"]
     fn a_refuel_while_lit_marks_the_chunk() {
         if run_fresh_cases(
-            "game::server_side::block_entity_ticks::furnace_changed_tests::a_refuel_while_lit_marks_the_chunk",
+            "cut_layout::game::server_side::block_entity_ticks::furnace_changed_tests::a_refuel_while_lit_marks_the_chunk",
             "SUNRISE_FURNACE_CHANGED_CASE",
             &["refuel"],
         ) {
@@ -561,7 +561,7 @@ pub(crate) mod furnace_changed_tests {
     #[ignore = "daily"]
     fn a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition() {
         if run_fresh_cases(
-            "game::server_side::block_entity_ticks::furnace_changed_tests::a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition",
+            "cut_layout::game::server_side::block_entity_ticks::furnace_changed_tests::a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition",
             "SUNRISE_FURNACE_CHANGED_CASE",
             &["nonpositive"],
         ) {
@@ -640,7 +640,7 @@ pub(crate) mod furnace_changed_tests {
         use sunrise_items::item_data::parse_stack;
 
         if run_fresh_cases(
-            "game::server_side::block_entity_ticks::furnace_changed_tests::a_world_pack_supplies_and_replaces_furnace_providers",
+            "cut_layout::game::server_side::block_entity_ticks::furnace_changed_tests::a_world_pack_supplies_and_replaces_furnace_providers",
             "SUNRISE_WORLD_FURNACE_PROVIDERS",
             &["enabled"],
         ) {
@@ -963,7 +963,7 @@ pub(crate) mod slot_mutation_tests {
     #[ignore = "daily"]
     fn an_added_entity_ticks_from_the_next_pass() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::block_entity_ticks::slot_mutation_tests::an_added_entity_ticks_from_the_next_pass",
+            "cut_layout::game::server_side::block_entity_ticks::slot_mutation_tests::an_added_entity_ticks_from_the_next_pass",
             || {
                 with_blocks(
                     &[(A, "minecraft:spawner"), (B, "minecraft:spawner")],
@@ -1143,7 +1143,7 @@ pub(crate) mod own_block_entity_tests {
     fn each_slot_counts_only_its_own_mods_block_entities() {
         // The content root freezes the process's block entity types.
         if run_fresh_cases(
-            "game::server_side::block_entity_ticks::own_block_entity_tests::each_slot_counts_only_its_own_mods_block_entities",
+            "cut_layout::game::server_side::block_entity_ticks::own_block_entity_tests::each_slot_counts_only_its_own_mods_block_entities",
             "SUNRISE_OWN_BLOCK_ENTITIES_CHILD",
             &["run"],
         ) {
@@ -1209,7 +1209,7 @@ pub(crate) mod own_block_entity_tests {
     fn a_mods_block_entity_on_a_vanilla_block_is_only_its_own_mods() {
         // The content root freezes the process's block entity types.
         if run_fresh_cases(
-            "game::server_side::block_entity_ticks::own_block_entity_tests::a_mods_block_entity_on_a_vanilla_block_is_only_its_own_mods",
+            "cut_layout::game::server_side::block_entity_ticks::own_block_entity_tests::a_mods_block_entity_on_a_vanilla_block_is_only_its_own_mods",
             "SUNRISE_OWN_BLOCK_ENTITIES_CHILD",
             &["run"],
         ) {
@@ -1258,7 +1258,7 @@ pub(crate) mod own_block_entity_tests {
     fn level_block_entities_name_each_type_while_taken_out_or_parked() {
         // The content root freezes the process's block entity types.
         if run_fresh_cases(
-            "game::server_side::block_entity_ticks::own_block_entity_tests::level_block_entities_name_each_type_while_taken_out_or_parked",
+            "cut_layout::game::server_side::block_entity_ticks::own_block_entity_tests::level_block_entities_name_each_type_while_taken_out_or_parked",
             "SUNRISE_OWN_BLOCK_ENTITIES_CHILD",
             &["run"],
         ) {
@@ -1380,7 +1380,7 @@ pub(crate) mod own_block_entity_tests {
     fn an_entity_replaced_by_another_mods_type_does_not_tick_as_the_old_one() {
         // The content root freezes the process's block entity types.
         if run_fresh_cases(
-            "game::server_side::block_entity_ticks::own_block_entity_tests::an_entity_replaced_by_another_mods_type_does_not_tick_as_the_old_one",
+            "cut_layout::game::server_side::block_entity_ticks::own_block_entity_tests::an_entity_replaced_by_another_mods_type_does_not_tick_as_the_old_one",
             "SUNRISE_OWN_BLOCK_ENTITIES_CHILD",
             &["run"],
         ) {

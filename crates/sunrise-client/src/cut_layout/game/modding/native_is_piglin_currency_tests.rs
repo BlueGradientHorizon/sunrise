@@ -185,7 +185,7 @@ fn thrown(game: &sunrise_gameplay::game::ServerGame<'_>) -> usize {
 #[ignore = "daily"]
 fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_is_piglin_currency_tests::a_part_makes_a_coin_currency_and_refuses_the_gold_ingot",
+        "cut_layout::game::native_is_piglin_currency_tests::a_part_makes_a_coin_currency_and_refuses_the_gold_ingot",
         a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated,
     );
 }
@@ -304,7 +304,7 @@ fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated() {
 #[ignore = "daily"]
 fn without_parts_only_the_gold_ingot_is_currency() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_is_piglin_currency_tests::without_parts_only_the_gold_ingot_is_currency",
+        "cut_layout::game::native_is_piglin_currency_tests::without_parts_only_the_gold_ingot_is_currency",
         without_parts_only_the_gold_ingot_is_currency_isolated,
     );
 }
@@ -419,7 +419,7 @@ fn loved_emerald_root(scratch: &std::path::Path) -> std::path::PathBuf {
 #[ignore = "daily"]
 fn a_loved_coin_from_the_ground_is_admired_and_bartered() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_is_piglin_currency_tests::a_loved_coin_from_the_ground_is_admired_and_bartered",
+        "cut_layout::game::native_is_piglin_currency_tests::a_loved_coin_from_the_ground_is_admired_and_bartered",
         a_loved_coin_from_the_ground_is_admired_and_bartered_isolated,
     );
 }

@@ -47,7 +47,7 @@ pub(crate) mod server_tick_rate_changed_tests {
     #[ignore = "daily"]
     fn a_listener_runs_before_the_autosave_wait_is_adjusted() {
         if run_fresh_cases(
-            "game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::a_listener_runs_before_the_autosave_wait_is_adjusted",
+            "cut_layout::game::server_side::native_hooks_server::server_tick_rate_changed::server_tick_rate_changed_tests::a_listener_runs_before_the_autosave_wait_is_adjusted",
             "SUNRISE_TICK_RATE_CHILD",
             &["nested"],
         ) {
@@ -117,7 +117,7 @@ pub(crate) mod server_tick_rate_changed_tests {
     #[ignore = "daily"]
     fn a_mod_hears_every_route_of_on_tick_rate_changed_once() {
         if run_fresh_cases(
-            "game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::a_mod_hears_every_route_of_on_tick_rate_changed_once",
+            "cut_layout::game::server_side::native_hooks_server::server_tick_rate_changed::server_tick_rate_changed_tests::a_mod_hears_every_route_of_on_tick_rate_changed_once",
             "SUNRISE_TICK_RATE_CHILD",
             &["routes"],
         ) {

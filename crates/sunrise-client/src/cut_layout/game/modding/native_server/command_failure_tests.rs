@@ -98,7 +98,7 @@ pub(crate) fn with_failure_sources(test: impl FnOnce(&mut sunrise_gameplay::game
 #[ignore = "daily"]
 fn executor_failure_respects_source_silence_and_stores_zero() {
     in_own_process(
-        "game::native_server::command_failure_tests::executor_failure_respects_source_silence_and_stores_zero",
+        "cut_layout::game::native_server::command_failure_tests::executor_failure_respects_source_silence_and_stores_zero",
         || {
             let calls = Arc::new(AtomicUsize::new(0));
             mod_platform::testing::with_mods(
@@ -224,7 +224,7 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
 #[ignore = "daily"]
 fn a_failure_line_then_zero_is_a_red_line_and_a_zero_result() {
     in_own_process(
-        "game::native_server::command_failure_tests::a_failure_line_then_zero_is_a_red_line_and_a_zero_result",
+        "cut_layout::game::native_server::command_failure_tests::a_failure_line_then_zero_is_a_red_line_and_a_zero_result",
         || {
             mod_platform::testing::with_mods(
                 vec![mod_api::ModEntry::new(
@@ -297,7 +297,7 @@ fn cart_failure_metadata_keeps_timestamp_and_literal_fragments() {
     use sunrise_sim::lan::entity::States;
 
     in_own_process(
-        "game::native_server::command_failure_tests::cart_failure_metadata_keeps_timestamp_and_literal_fragments",
+        "cut_layout::game::native_server::command_failure_tests::cart_failure_metadata_keeps_timestamp_and_literal_fragments",
         || {
             with_failure_sources(|game| {
                 // Eleven ASCII bytes of timestamp take the flattened output to

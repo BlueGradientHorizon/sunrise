@@ -484,10 +484,7 @@ impl crate::game::ServerGame<'_> {
             .as_mut()
             .map(|p| std::mem::take(&mut p.events))
             .unwrap_or_default();
-        // The callbacks a turn ends with (combat, armor, the food hook) can reach a
-        // mod and panic. The swap is still restored below and the guest's progress written
-        // back; the panic resumes at the end (#2240). `as_guest_at` catches a panic of the
-        // turn itself, so a panic here then goes on in place of that one.
+        // Catch exit-hook panics so the guest swap is restored before the caller chooses which fault to propagate.
         let callbacks = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if !turn_events.is_empty() {
                 self.record_combat(&turn_events);

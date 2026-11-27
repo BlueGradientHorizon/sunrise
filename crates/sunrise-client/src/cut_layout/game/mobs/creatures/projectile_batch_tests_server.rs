@@ -19,7 +19,7 @@ use {
 #[ignore = "daily"]
 fn a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing() {
     if run_fresh_cases(
-        "game::server_side::creatures_server::projectile_batch_tests::a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing",
+        "cut_layout::game::server_side::creatures_server::projectile_batch_tests::a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing",
         "SUNRISE_PROJECTILE_BATCH_CASE",
         &["clear-on-shoot"],
     ) {
@@ -63,7 +63,7 @@ pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_
     let witness = load_wind_continuation_witness_26_3();
     const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
     if run_fresh_cases(
-        "game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass",
+        "cut_layout::game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass",
         CASE,
         &["main", "ctrl4", "reversed", "mixed-batch"],
     ) {

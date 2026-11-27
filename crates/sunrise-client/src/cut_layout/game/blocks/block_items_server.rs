@@ -67,7 +67,7 @@ pub(crate) mod tests {
 
         const CHILD: &str = "SUNRISE_MOD_BLOCK_ENTITY_ITEM_CHILD";
         if run_fresh_cases(
-            "game::server_side::block_items_server::tests::a_mod_block_entity_rides_its_item_through_the_game",
+            "cut_layout::game::server_side::block_items_server::tests::a_mod_block_entity_rides_its_item_through_the_game",
             CHILD,
             &["game"],
         ) {
@@ -207,7 +207,7 @@ pub(crate) mod tests {
 
         const CHILD: &str = "SUNRISE_MOD_PICK_ITEM_CHILD";
         if run_fresh_cases(
-            "game::server_side::block_items_server::tests::a_content_blocks_pick_item_is_what_pick_block_takes",
+            "cut_layout::game::server_side::block_items_server::tests::a_content_blocks_pick_item_is_what_pick_block_takes",
             CHILD,
             &["game"],
         ) {
@@ -604,7 +604,7 @@ pub(crate) mod styled_name_model_tests {
         use sunrise_level::chunk::Chunk;
 
         if run_fresh_cases(
-            "game::block_items_server::tests::the_clone_item_stack_read_gives_the_pick_answer",
+            "cut_layout::game::server_side::block_items_server::styled_name_model_tests::the_clone_item_stack_read_gives_the_pick_answer",
             "SUNRISE_CLONE_STACK_READ_CHILD",
             &["read"],
         ) {

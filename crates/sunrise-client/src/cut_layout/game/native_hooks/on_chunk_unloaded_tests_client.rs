@@ -10,7 +10,7 @@ use {
 #[ignore = "daily"]
 fn each_mod_block_entity_of_an_unloading_chunk_is_told_once() {
     if run_fresh_cases(
-        "game::server_side::native_hooks_server::on_chunk_unloaded_tests::each_mod_block_entity_of_an_unloading_chunk_is_told_once",
+        "cut_layout::game::server_side::native_hooks_server::on_chunk_unloaded_tests::each_mod_block_entity_of_an_unloading_chunk_is_told_once",
         "SUNRISE_ON_CHUNK_UNLOADED_CHILD",
         &["game"],
     ) {

@@ -17,7 +17,7 @@ use {
 #[ignore = "daily"]
 fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
     isolated(
-        "sunrise_client::game::client_side::remote_client::tests::client_close_tests::server_close_keeps_shown_native_screen_alive_for_closing_and_veto",
+        "cut_layout::game::client_side::remote_client::tests::client_close_tests::server_close_keeps_shown_native_screen_alive_for_closing_and_veto",
         || {
             use mod_api::{
                 ClientHost, Hooks, MenuScreen, MenuScreenFactory, MenuScreenLayout, MenuScreenOpen,
@@ -262,7 +262,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
 #[ignore = "daily"]
 fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
     isolated(
-        "sunrise_client::game::client_side::remote_client::tests::client_close_tests::server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens",
+        "cut_layout::game::client_side::remote_client::tests::client_close_tests::server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens",
         || {
             use mod_api::{
                 ClientHost, Hooks, ModEntry, ScreenClosingEvent, ScreenOpening, ScreenOpeningEvent,
@@ -400,7 +400,7 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
 #[ignore = "daily"]
 fn server_close_restores_inventory_under_chat_without_echo() {
     isolated(
-        "sunrise_client::game::client_side::remote_client::tests::client_close_tests::server_close_restores_inventory_under_chat_without_echo",
+        "cut_layout::game::client_side::remote_client::tests::client_close_tests::server_close_restores_inventory_under_chat_without_echo",
         || {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
@@ -470,7 +470,7 @@ fn server_close_restores_inventory_under_chat_without_echo() {
 #[ignore = "daily"]
 fn server_close_runs_sign_and_inventory_removal_without_echo() {
     isolated(
-        "sunrise_client::game::client_side::remote_client::tests::client_close_tests::server_close_runs_sign_and_inventory_removal_without_echo",
+        "cut_layout::game::client_side::remote_client::tests::client_close_tests::server_close_runs_sign_and_inventory_removal_without_echo",
         || {
             with_client_game(|game| {
                 use sunrise_level::containers::BlockEntity;

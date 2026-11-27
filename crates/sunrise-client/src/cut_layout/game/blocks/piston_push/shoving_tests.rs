@@ -103,7 +103,7 @@ fn item(id: u32, x: f64, z: f64, velocity: Vec3) -> ItemEntity {
 #[ignore = "daily"]
 fn a_collider_shoves_a_body_crossed_only_mid_sweep() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_collider_shoves_a_body_crossed_only_mid_sweep",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_collider_shoves_a_body_crossed_only_mid_sweep",
         || {
             with_game(|game| {
                 empty_chunk(game);
@@ -129,7 +129,7 @@ fn a_collider_shoves_a_body_crossed_only_mid_sweep() {
 #[ignore = "daily"]
 fn a_collider_shove_stops_at_a_wall_without_impact_damage() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_collider_shove_stops_at_a_wall_without_impact_damage",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_collider_shove_stops_at_a_wall_without_impact_damage",
         || {
             with_game(|game| {
                 empty_chunk(game);
@@ -157,7 +157,7 @@ fn a_collider_shove_stops_at_a_wall_without_impact_damage() {
 #[ignore = "daily"]
 fn a_later_shove_collides_with_a_holder_already_displaced() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_later_shove_collides_with_a_holder_already_displaced",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_later_shove_collides_with_a_holder_already_displaced",
         || {
             with_game(|game| {
                 empty_chunk(game);
@@ -200,7 +200,7 @@ fn a_cancelled_turning_shove_leaves_velocity_alone() {
     }
     let mods: mod_api::Mods = vec![ModEntry::new("cancel_shove", Box::new(CancelShove))].into();
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_cancelled_turning_shove_leaves_velocity_alone",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_cancelled_turning_shove_leaves_velocity_alone",
         || {
             mod_platform::testing::with_mods(mods, || {
                 with_game(|game| {
@@ -222,7 +222,7 @@ fn a_cancelled_turning_shove_leaves_velocity_alone() {
 #[ignore = "daily"]
 fn an_upward_shove_leaves_the_colliders_vertical_speed() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::an_upward_shove_leaves_the_colliders_vertical_speed",
+        "cut_layout::game::piston_push::carrying::shoving::tests::an_upward_shove_leaves_the_colliders_vertical_speed",
         || {
             with_game(|game| {
                 empty_chunk(game);
@@ -267,7 +267,7 @@ fn an_upward_shove_leaves_the_colliders_vertical_speed() {
 #[ignore = "daily"]
 fn a_server_side_turning_shove_never_moves_the_local_player() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_server_side_turning_shove_never_moves_the_local_player",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_server_side_turning_shove_never_moves_the_local_player",
         || {
             with_game(|game| {
                 empty_chunk(game);
@@ -288,7 +288,7 @@ fn a_server_side_turning_shove_never_moves_the_local_player() {
 #[ignore = "daily"]
 fn a_client_side_turning_shove_moves_the_local_player() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_client_side_turning_shove_moves_the_local_player",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_client_side_turning_shove_moves_the_local_player",
         || {
             with_client_game(|game| {
                 empty_chunk(game);
@@ -329,7 +329,7 @@ fn a_client_side_turning_shove_moves_the_local_player() {
 #[ignore = "daily"]
 fn a_rider_on_a_turning_collider_is_carried_and_not_shoved_again() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_rider_on_a_turning_collider_is_carried_and_not_shoved_again",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_rider_on_a_turning_collider_is_carried_and_not_shoved_again",
         || {
             with_game(|game| {
                 empty_chunk(game);
@@ -363,7 +363,7 @@ fn a_vanilla_piston_shove_leaves_the_players_velocity_alone() {
     use sunrise_world::level::MovingPiston;
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_vanilla_piston_shove_leaves_the_players_velocity_alone",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_vanilla_piston_shove_leaves_the_players_velocity_alone",
         || {
             with_game(|game| {
                 let stone = game
@@ -424,7 +424,7 @@ fn a_vanilla_piston_shove_leaves_the_players_velocity_alone() {
 #[ignore = "daily"]
 fn a_predicted_collider_shove_passes_the_server_move_check() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::carrying::shoving::tests::a_predicted_collider_shove_passes_the_server_move_check",
+        "cut_layout::game::piston_push::carrying::shoving::tests::a_predicted_collider_shove_passes_the_server_move_check",
         || {
             let from = Vec3::new(5.0, 70.25, 4.5);
             let (packet, to) = {

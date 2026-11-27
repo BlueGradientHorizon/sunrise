@@ -81,7 +81,7 @@ impl Hooks for Garden {
 #[ignore = "daily"]
 fn declared_vegetation_places_and_breaks_independently_of_its_template() {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::declared_vegetation_tests::declared_vegetation_places_and_breaks_independently_of_its_template",
+        "cut_layout::game::declared_vegetation_tests::declared_vegetation_places_and_breaks_independently_of_its_template",
         "SUNRISE_VEGETATION_CHILD",
         &["run"],
     ) {

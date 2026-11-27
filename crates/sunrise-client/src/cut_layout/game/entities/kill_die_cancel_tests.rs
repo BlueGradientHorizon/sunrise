@@ -49,7 +49,7 @@ fn porkchops(game: &sunrise_gameplay::game::ServerGame<'_>) -> usize {
 #[ignore = "daily"]
 fn a_vetoed_kill_keeps_the_mob_and_a_later_kill_dies_once() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::kill_die_cancel_tests::a_vetoed_kill_keeps_the_mob_and_a_later_kill_dies_once",
+        "cut_layout::game::kill_die_cancel_tests::a_vetoed_kill_keeps_the_mob_and_a_later_kill_dies_once",
         a_vetoed_kill_keeps_the_mob_and_a_later_kill_dies_once_isolated,
     );
 }

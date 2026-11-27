@@ -17,7 +17,7 @@ mod resize_state_tests {
     fn viewport_resize_notifications_follow_each_player() {
         // Winit permits only one event loop per process, even after it is dropped.
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::options::resize_state_tests::viewport_resize_notifications_follow_each_player",
+            "cut_layout::game::client_side::options::resize_state_tests::viewport_resize_notifications_follow_each_player",
             "SUNRISE_RESIZE_STATE_CHILD",
             &["window"],
         ) {
@@ -96,7 +96,7 @@ mod resize_state_tests {
     fn window_size_reads_the_size_window_resize_reports() {
         // Winit permits only one event loop per process, even after it is dropped.
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::options::resize_state_tests::window_size_reads_the_size_window_resize_reports",
+            "cut_layout::game::client_side::options::resize_state_tests::window_size_reads_the_size_window_resize_reports",
             "SUNRISE_WINDOW_SIZE_CHILD",
             &["window"],
         ) {

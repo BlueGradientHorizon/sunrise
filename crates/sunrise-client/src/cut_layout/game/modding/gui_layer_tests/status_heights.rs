@@ -81,7 +81,7 @@ impl Hooks for Probe {
 fn a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left() {
     const CASE: &str = "SUNRISE_GUI_STATUS_HEIGHTS_FIXTURE";
     if run_fresh_cases(
-        "game::client_side::gui_layer_tests::status_heights::a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left",
+        "cut_layout::game::client_side::gui_layer_tests::status_heights::a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left",
         CASE,
         &["vanilla", "replace_armor", "set_right", "wrap_food"],
     ) {

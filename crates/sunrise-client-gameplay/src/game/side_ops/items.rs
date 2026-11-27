@@ -77,6 +77,9 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_acting_player_ref(game: &Self::Game<'_>) -> Option<mod_api::PlayerRef> {
         game.client_acting_player_ref()
     }
+    fn side_destroy_progress_player_ref(game: &Self::Game<'_>) -> Option<mod_api::PlayerRef> {
+        game.client_acting_player_ref()
+    }
     fn side_current_level_ref(game: &Self::Game<'_>) -> Option<mod_api::LevelRef> {
         game.client_current_level_ref()
     }

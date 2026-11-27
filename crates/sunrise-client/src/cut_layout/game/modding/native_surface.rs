@@ -101,7 +101,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_block_part_answers_the_friction_an_entity_reads() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_surface::tests::a_block_part_answers_the_friction_an_entity_reads",
+            "cut_layout::game::native_surface::tests::a_block_part_answers_the_friction_an_entity_reads",
             "SUNRISE_FRICTION_TRAVEL_CHILD",
             &["travel"],
         ) {
@@ -435,7 +435,7 @@ mod tests {
         };
 
         if run_fresh_cases(
-            "game::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
+            "cut_layout::game::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
             "SUNRISE_FRICTION_BLOCK_ENTITY_CHILD",
             &["server"],
         ) {

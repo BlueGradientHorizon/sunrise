@@ -66,7 +66,7 @@ fn water_column(game: &mut sunrise_gameplay_common::game::CommonGame<'_>) {
 #[ignore = "daily"]
 fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::swim_start_tests::local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query",
+        "cut_layout::game::remote::swim_start_tests::local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query",
         || {
             let rules = SwimRules::default();
             let mods = vec![
@@ -199,7 +199,7 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
         sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
     };
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::swim_start_tests::swim_entry_reads_each_authoritative_guests_own_equipment",
+        "cut_layout::game::remote::swim_start_tests::swim_entry_reads_each_authoritative_guests_own_equipment",
         || {
             let rules = SwimRules::default();
             let mods = vec![mod_api::ModEntry::new("swim", Box::new(rules.clone()))].into();

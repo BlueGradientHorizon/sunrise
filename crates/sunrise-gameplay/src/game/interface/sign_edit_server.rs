@@ -514,10 +514,9 @@ impl crate::game::ServerGame<'_> {
             return self.host_within_interaction_range(at, within);
         }
         self.server.lan.as_ref().is_some_and(|host| {
-            host.hub
-                .guests
-                .iter()
-                .any(|g| g.uuid == who && g.within_block_range(at, 4.0))
+            host.hub.guests.iter().any(|g| {
+                g.uuid == who && g.within_interaction_range(&self.common.loop_context, at, 4.0)
+            })
         })
     }
     /// `Player.getUUID` of the acting player: the one a sign remembers as its

@@ -473,7 +473,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_sprinting_rider_boards_a_camel_at_sprint_speed() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::client_side::remote_vehicles::tests::a_sprinting_rider_boards_a_camel_at_sprint_speed",
+            "cut_layout::game::client_side::remote_vehicles::tests::a_sprinting_rider_boards_a_camel_at_sprint_speed",
             || {
                 use sunrise_items::items::ItemStack;
                 use sunrise_sim::{mobs::camel, motion::PlayerMotion};

@@ -24,6 +24,7 @@ use {
 fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
     use sunrise_client::creative::Creative;
     use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
+    use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks as _;
     let row = |item: &str, visibility: &str| {
         serde_json::json!({
             "kind":"stack", "snbt":format!(r#"{{id:"{item}",count:1}}"#), "visibility":visibility,
@@ -50,7 +51,6 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         ModEntry::new("later_edit", Box::new(Observe)),
     ]
     .into();
-    let check_catalog = Creative::from_json(&catalog).unwrap().catalog().clone();
     fn check<'g, G>(
         game: &mut G,
         side: LogicalSide,
@@ -183,19 +183,41 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             let mut dedicated = None;
             with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
                 install_dedicated_holders(game, 2);
-                game.test_set_creative_catalog(check_catalog.clone());
+                let creative = Creative::from_json(&catalog).unwrap();
+                assert!(!creative.has_contents());
+                game.test_set_creative_catalog(creative.catalog().clone());
                 dedicated = Some(check(
                     game,
                     LogicalSide::Server,
                     &seen,
                     |game, flags| game.level.enabled_features = flags.into(),
-                    |_| {},
-                    |_| {},
+                    |game| {
+                        assert_eq!(
+                            creative.stock_order(&game.stock_creative_lists()).of(
+                                "minecraft:stick",
+                                sunrise_items::items::ItemStack::new("minecraft:stick", 1)
+                                    .merge_kind()
+                            ),
+                            Some(0)
+                        );
+                    },
+                    |game| {
+                        assert_eq!(
+                            creative.stock_order(&game.stock_creative_lists()).of(
+                                "minecraft:torch",
+                                sunrise_items::items::ItemStack::new("minecraft:torch", 1)
+                                    .merge_kind()
+                            ),
+                            Some(0)
+                        );
+                    },
                 ));
             });
             with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
                 install_dedicated_holders(game, 4);
-                game.test_set_creative_catalog(check_catalog.clone());
+                game.test_set_creative_catalog(
+                    Creative::from_json(&catalog).unwrap().catalog().clone(),
+                );
                 check_replacement(game, dedicated.as_deref().unwrap(), &seen);
             });
             with_client_game(|game| {
@@ -251,7 +273,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         })
     };
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::build_creative_mode_tab_contents::tests_client::creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides",
+        "cut_layout::game::client_side::native_hooks_client::build_creative_mode_tab_contents::tests::creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides",
         run,
     );
 }

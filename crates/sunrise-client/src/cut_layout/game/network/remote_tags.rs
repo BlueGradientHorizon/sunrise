@@ -3,7 +3,6 @@
 #[cfg(any())]
 pub(crate) mod tests {
 
-    use sunrise_client_gameplay::game::client_side::remote_tags::{Probe, Seen};
     use sunrise_gameplay_common::game::tables::WorldTablesExt;
 
     use sunrise_gameplay_common::game::client_side::remote_tags::login;
@@ -27,6 +26,48 @@ pub(crate) mod tests {
         play::{self, Clientbound as C},
     };
 
+    #[derive(Debug, PartialEq)]
+    struct Seen {
+        cause: TagsUpdateCause,
+        items: TagMembers<mod_api::ItemKey>,
+        empty_items: TagMembers<mod_api::ItemKey>,
+        fluids: TagMembers<mod_api::FluidKey>,
+        stone_in_block_tag: Option<bool>,
+        dirt_in_block_tag: Option<bool>,
+        stick_in_item_tag: Option<bool>,
+        lava_in_fluid_tag: Option<bool>,
+    }
+
+    struct Probe(Arc<Mutex<Vec<Seen>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Probe {
+        fn tags_updated(&self, context: &dyn mod_api::ReloadContext, event: &mut TagsUpdatedEvent) {
+            assert!(
+                matches!(event.cause, TagsUpdateCause::ClientPacketReceived { .. }),
+                "the server's tags are a client's to apply"
+            );
+            let tags = context.tags();
+            let key = |tag| tags.key(&Identifier::parse(tag).unwrap()).unwrap();
+            let stick = context
+                .item_key(&Identifier::parse("minecraft:stick").unwrap())
+                .unwrap();
+            let lava = mod_api::__private::fluid_key("minecraft:lava").unwrap();
+            let blocks = key("test:blocks").typed();
+            let items = key("test:items").typed();
+            let fluids = key("test:fluids").typed();
+            self.0.lock().unwrap().push(Seen {
+                cause: event.cause,
+                items: tags.items(items),
+                empty_items: tags.items(key("test:empty_items").typed()),
+                fluids: tags.fluids(fluids),
+                stone_in_block_tag: block_key("minecraft:stone").is_in_tag(tags, blocks),
+                dirt_in_block_tag: block_key("minecraft:dirt").is_in_tag(tags, blocks),
+                stick_in_item_tag: stick.is_in_tag(tags, items),
+                lava_in_fluid_tag: lava.is_in_tag(tags, fluids),
+            });
+        }
+    }
+
     #[test]
     #[ignore = "daily"]
     fn item_tag_lists_follow_server_reload_and_client_packets() {
@@ -39,7 +80,7 @@ pub(crate) mod tests {
         };
 
         if run_fresh_cases(
-            "game::client_side::remote_tags::tests::item_tag_lists_follow_server_reload_and_client_packets",
+            "cut_layout::game::client_side::remote_tags::tests::item_tag_lists_follow_server_reload_and_client_packets",
             "SUNRISE_ITEM_TAG_LIST_FIXTURE",
             &["reload"],
         ) {
@@ -544,7 +585,7 @@ pub(crate) mod tests {
         use mod_api::{LevelHost, Tags};
         use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
         if run_fresh_cases(
-            "game::client_side::remote_tags::tests::a_client_reads_the_damage_type_tags_its_server_sent",
+            "cut_layout::game::client_side::remote_tags::tests::a_client_reads_the_damage_type_tags_its_server_sent",
             "SUNRISE_TEST_CLIENT_DAMAGE_TYPE_TAGS",
             &["client", "no_group"],
         ) {

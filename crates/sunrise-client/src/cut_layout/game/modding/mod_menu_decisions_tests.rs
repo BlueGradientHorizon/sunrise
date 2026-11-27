@@ -607,7 +607,30 @@ fn inventory(game: &sunrise_gameplay::game::ServerGame<'_>, slot: usize) -> u32 
 #[test]
 #[ignore = "daily"]
 fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it() {
-    let mods: Mods = vec![ModEntry::new("clickmod", Box::new(ClickMod))].into();
+    struct HealthyMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for HealthyMod {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            r.menu_part("minecraft:generic_9x1", HealthyPart);
+        }
+    }
+    struct HealthyPart;
+    #[mod_api::sunrise_part]
+    impl mod_api::MenuPart for HealthyPart {
+        fn menu_clicked(&self, _: &mut dyn ServerHost, _: &mut MenuClickedEvent<'_>) -> Flow {
+            HEALTHY_DISPATCHES.set(HEALTHY_DISPATCHES.get() + 1);
+            Flow::Continue
+        }
+    }
+    thread_local! {
+        static HEALTHY_DISPATCHES: Cell<usize> = const { Cell::new(0) };
+    }
+
+    let mods: Mods = vec![
+        ModEntry::new("clickmod", Box::new(ClickMod)),
+        ModEntry::new("healthymod", Box::new(HealthyMod)),
+    ]
+    .into();
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         with_guests(|game| {
@@ -616,16 +639,16 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
                 game.lan_guest_packet(12, container_click(window, 3, 0));
                 game.run_native_menu_events();
             };
-            // Row 72: the mods hear the click once, inside the action, and what the listener
-            // wrote through the `Host` stays when it finishes.
+            HEALTHY_DISPATCHES.set(0);
             script(Script {
                 write_dirt: true,
                 ..Script::default()
             });
             click(game);
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(decided(), 1);
-            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
+            assert_eq!(HEALTHY_DISPATCHES.get(), 0, "Cancel stops later parts");
+            assert_eq!(decided(), 0, "no synthetic decided-action wrapper");
+            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [false]);
             assert_eq!(inventory(game, 20), 2);
             assert!(game.transactions.is_empty());
 
@@ -633,12 +656,12 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
             game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory[20] = None;
             });
+            HEALTHY_DISPATCHES.set(0);
             // Row 90: heard inside a transaction that then aborts: the write is undone.
             script(Script {
                 write_dirt: true,
                 ..Script::default()
             });
-            // Row 90: heard inside a transaction that then aborts: the write is undone.
             game.storage_scope(|game, _| {
                 click(game);
                 assert_eq!(inventory(game, 20), 2);
@@ -652,14 +675,30 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
             });
             click(game);
             assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(HEALTHY_DISPATCHES.get(), 1);
             assert_eq!(
                 inventory(game, 20),
-                0,
-                "Continue cannot change its read set"
+                2,
+                "Continue keeps prior callback writes"
             );
             assert!(game.transactions.is_empty());
-            // Rows 79 and 84: a write and then a panic: the write is undone and the callback
-            // is not heard on a subsequent click.
+
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.inventory[20] = None;
+            });
+            script(Script {
+                write_dirt: true,
+                ..Script::default()
+            });
+            game.storage_scope(|game, _| {
+                click(game);
+                assert_eq!(DISPATCHES.get(), 1);
+                assert_eq!(inventory(game, 20), 2);
+                ((), false)
+            });
+            assert_eq!(inventory(game, 20), 0);
+
+            HEALTHY_DISPATCHES.set(0);
             script(Script {
                 write_dirt: true,
                 panic: true,
@@ -667,11 +706,35 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
             });
             click(game);
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(inventory(game, 20), 0);
+            assert_eq!(
+                HEALTHY_DISPATCHES.get(),
+                1,
+                "sibling mod still runs after a panicking part"
+            );
+            assert_eq!(
+                inventory(game, 20),
+                0,
+                "the panicking callback's open transaction rolled back"
+            );
             assert!(game.transactions.is_empty());
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "clickmod",
+                    hook: "menu_clicked",
+                }],
+            );
+
+            HEALTHY_DISPATCHES.set(0);
             script(Script::default());
             click(game);
-            assert_eq!(DISPATCHES.get(), 0);
+            assert_eq!(
+                DISPATCHES.get(),
+                0,
+                "poisoned mod is skipped for the session"
+            );
+            assert_eq!(HEALTHY_DISPATCHES.get(), 1);
+            assert!(mod_api::__private::take_hook_panics().is_empty());
         });
     });
 }
@@ -1033,7 +1096,7 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
 fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
     // The log sink is process-global.
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::client_side::mod_menu_decisions_tests::a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback",
+        "cut_layout::game::client_side::mod_menu_decisions_tests::a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback",
         "SUNRISE_TEST_LIVE_QUICK_MOVE_PANIC_CHILD",
         &["panic"],
     ) {
@@ -2290,7 +2353,7 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                         ..Script::default()
                     });
                     game.lan_guest_packet(12, container_click(window, 0, 0));
-                    assert_eq!(decided(), 1);
+                    assert_eq!(decided(), 0);
                     assert_eq!(content(game, POS, 0), 10);
                     assert_eq!(content(game, SECOND, 0), 2);
                     assert!(
@@ -2330,7 +2393,7 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                             carried: None,
                         }),
                     );
-                    assert_eq!(decided(), 1, "the swap reached the click decision");
+                    assert_eq!(decided(), 0);
                     assert_eq!(content(game, POS, 0), 10);
                     assert_eq!(
                         game.server.lan.as_ref().unwrap().hub.guests[0].offhand,
@@ -2360,12 +2423,22 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                         ..Script::default()
                     });
                     game.lan_guest_packet(12, container_click(window, 0, 0));
-                    assert_eq!(decided(), 1);
+                    assert_eq!(decided(), 0);
+                    assert_eq!(content(game, POS, 0), 0);
                     assert_eq!(
-                        content(game, POS, 0),
-                        10,
-                        "the default's slot read set changed"
+                        count(&game.server.lan.as_ref().unwrap().hub.guests[0].carried),
+                        12,
+                        "default click ran on the live menu after callback writes"
                     );
+
+                    game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        g.carried = None;
+                    });
+                    let Some(BlockEntity::Mod(depot)) = game.world.block_entities.get_mut(&POS)
+                    else {
+                        panic!("missing depot at {POS:?}");
+                    };
+                    depot.items[0] = Some(ItemStack::new("minecraft:stone", 10));
 
                     script(Script {
                         clicked: Some(Flow::Continue),
@@ -2375,20 +2448,20 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                         ..Script::default()
                     });
                     game.lan_guest_packet(12, container_click(window, 0, 1));
-                    assert_eq!(decided(), 1);
+                    assert_eq!(decided(), 0);
                     assert_eq!(DISPATCHES.get(), 1, "the quick-move listener was reached");
                     IN_ACTION.with(|seen| {
                         assert_eq!(
                             *seen.borrow(),
                             [true],
-                            "the quick move ran inside the click action"
+                            "the quick move ran inside its own storage transaction"
                         );
                     });
                     assert_eq!(content(game, POS, 0), 10);
                     assert_eq!(
                         content(game, SECOND, 0),
-                        2,
-                        "a refused default aborts the click listener's write"
+                        4,
+                        "a refused default keeps prior unrelated menu_clicked writes"
                     );
 
                     script(Script {

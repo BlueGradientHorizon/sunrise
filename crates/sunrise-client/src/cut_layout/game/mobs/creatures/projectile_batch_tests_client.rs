@@ -12,7 +12,7 @@ use {
 fn an_arrow_does_not_stick_when_the_impact_listener_clears_its_block() {
     const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
     if run_fresh_cases(
-        "game::client_side::creatures_client::projectile_batch_tests::an_arrow_does_not_stick_when_the_impact_listener_clears_its_block",
+        "cut_layout::game::client_side::creatures_client::projectile_batch_tests::an_arrow_does_not_stick_when_the_impact_listener_clears_its_block",
         CASE,
         &["clear", "allow"],
     ) {

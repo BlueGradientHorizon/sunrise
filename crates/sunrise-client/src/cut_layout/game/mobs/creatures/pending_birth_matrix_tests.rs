@@ -124,7 +124,7 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
 #[ignore = "daily"]
 fn native_pending_children_shared_matrix() {
     if run_fresh_cases(
-        "game::creatures::pending_birth_matrix_tests::native_pending_children_shared_matrix",
+        "cut_layout::game::creatures::pending_birth_matrix_tests::native_pending_children_shared_matrix",
         "SUNRISE_PENDING_CHILDREN_MATRIX",
         &["native"],
     ) {

@@ -197,7 +197,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn carried_block_entities_draw_visible_pixels() {
         if sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
-            "game::client_side::native_block_entity_draw::tests::carried_block_entities_draw_visible_pixels",
+            "cut_layout::game::client_side::native_block_entity_draw::tests::carried_block_entities_draw_visible_pixels",
             "SUNRISE_CARRIED_BLOCK_ENTITY_CHILD",
             &["carried"],
         ) {

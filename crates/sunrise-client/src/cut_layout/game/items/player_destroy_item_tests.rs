@@ -161,7 +161,7 @@ fn take_notice(observer: &Observer, hand: Option<Hand>, item: &str, damage: u32)
 #[ignore = "daily"]
 fn original_stack_and_hand_reach_used_up_and_broken_item_notices() {
     in_own_process(
-        "game::player_destroy_item_tests::original_stack_and_hand_reach_used_up_and_broken_item_notices",
+        "cut_layout::game::player_destroy_item_tests::original_stack_and_hand_reach_used_up_and_broken_item_notices",
         run_isolated,
     );
 }

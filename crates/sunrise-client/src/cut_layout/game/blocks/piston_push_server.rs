@@ -942,7 +942,7 @@ pub(crate) mod lid_push_tests {
         use sunrise_world::entity_move::MoverType;
 
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::piston_push_server::lid_push_tests::forced_living_moves_land_booted_bodies_on_powder_snow",
+            "cut_layout::game::server_side::piston_push_server::lid_push_tests::forced_living_moves_land_booted_bodies_on_powder_snow",
             || {
                 with_game(|game| {
                     assert!(game.run_command("fill 8 200 8 15 200 8 powder_snow"));
@@ -983,7 +983,7 @@ pub(crate) mod lid_push_tests {
         use sunrise_core::position::BlockPos;
 
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::piston_push_server::lid_push_tests::shulker_push_updates_stand_support_in_both_join_orders",
+            "cut_layout::game::server_side::piston_push_server::lid_push_tests::shulker_push_updates_stand_support_in_both_join_orders",
             || {
                 with_game(|game| {
                     assert!(game.run_command("summon armor_stand 10.5 200.25 10.5"));

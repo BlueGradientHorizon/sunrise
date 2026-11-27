@@ -176,7 +176,7 @@ fn death_weapon_riptide_iii_uses_spin_trident() {
 fn death_weapon_harming_potion_does_not_read_thrower_sword() {
     use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     if run_fresh_cases(
-        "game::creatures::death_weapon::review_tests::death_weapon_harming_potion_does_not_read_thrower_sword",
+        "cut_layout::game::creatures::death_weapon::review_tests::death_weapon_harming_potion_does_not_read_thrower_sword",
         "SUNRISE_DEATH_WEAPON_POTION_CHILD",
         &["harming_potion"],
     ) {

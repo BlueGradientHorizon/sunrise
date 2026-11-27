@@ -1193,8 +1193,18 @@ impl crate::game::ServerGame<'_> {
         add_passengers(tag, riders);
     }
 
-    /// Non-player passengers in `getPassengers` order, shared by NBT and transfer state.
+    #[cfg(not(feature = "test-support"))]
     pub(in crate::game::server_side) fn vehicle_passenger_ids(&self, vehicle: u32) -> Vec<u32> {
+        self.non_player_passenger_ids(vehicle)
+    }
+
+    #[cfg(feature = "test-support")]
+    pub fn vehicle_passenger_ids(&self, vehicle: u32) -> Vec<u32> {
+        self.non_player_passenger_ids(vehicle)
+    }
+
+    /// Non-player passengers in `getPassengers` order, shared by NBT and transfer state.
+    fn non_player_passenger_ids(&self, vehicle: u32) -> Vec<u32> {
         self.seated_passengers(vehicle)
             .into_iter()
             .filter_map(|(_, id, player)| (!player).then_some(id))
@@ -1344,13 +1354,6 @@ impl crate::game::ServerGame<'_> {
             return out.finish();
         }
         if let Tag::Compound(c) = &mut tag {
-            // Display.addAdditionalSaveData omits the transient start delay.
-            if matches!(
-                o.kind.as_str(),
-                "minecraft:block_display" | "minecraft:item_display" | "minecraft:text_display"
-            ) {
-                c.remove(&"start_interpolation".into());
-            }
             if include_id {
                 c.insert("id".into(), Tag::String(o.kind.as_str().into()));
             } else {

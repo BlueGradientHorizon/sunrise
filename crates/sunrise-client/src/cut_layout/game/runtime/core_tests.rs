@@ -119,7 +119,7 @@ use {
 #[ignore = "daily"]
 fn blank_inventory_presses_are_handled_and_feed_double_click_history() {
     in_own_process(
-        "game::core_tests::blank_inventory_presses_are_handled_and_feed_double_click_history",
+        "cut_layout::game::core_tests::blank_inventory_presses_are_handled_and_feed_double_click_history",
         exercise_blank_inventory_presses,
     );
 }

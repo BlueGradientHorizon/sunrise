@@ -105,7 +105,7 @@ fn direct_chat_sends_through_play_without_the_chat_screen_gate() {
     use sunrise_protocol::packets::play::Serverbound as S;
 
     if run_fresh_cases(
-        "game::remote::tests::chat_event_tests::direct_chat_sends_through_play_without_the_chat_screen_gate",
+        "cut_layout::game::remote::tests::chat_event_tests::direct_chat_sends_through_play_without_the_chat_screen_gate",
         "SUNRISE_DIRECT_CHAT_CASE",
         &["send"],
     ) {
@@ -222,7 +222,7 @@ fn a_client_chat_listener_that_resends_is_not_reentered() {
     use sunrise_protocol::packets::play::Serverbound as S;
 
     if run_fresh_cases(
-        "game::remote::tests::chat_event_tests::a_client_chat_listener_that_resends_is_not_reentered",
+        "cut_layout::game::remote::tests::chat_event_tests::a_client_chat_listener_that_resends_is_not_reentered",
         "SUNRISE_CHAT_RESEND_CASE",
         &["resend"],
     ) {

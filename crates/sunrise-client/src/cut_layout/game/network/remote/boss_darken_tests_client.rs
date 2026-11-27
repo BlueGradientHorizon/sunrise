@@ -12,7 +12,7 @@ use {
 #[ignore = "daily"]
 fn boss_darkening_interpolates_across_zero_and_holds_the_negative_endpoint() {
     in_own_process(
-        "game::client_side::remote_client::client_level_tick::boss_darken_tests::boss_darkening_interpolates_across_zero_and_holds_the_negative_endpoint",
+        "cut_layout::game::client_side::remote_client::client_level_tick::boss_darken_tests::boss_darkening_interpolates_across_zero_and_holds_the_negative_endpoint",
         || {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();

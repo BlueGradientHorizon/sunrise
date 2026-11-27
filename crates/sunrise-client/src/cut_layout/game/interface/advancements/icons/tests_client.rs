@@ -22,7 +22,7 @@ use sunrise_sim::{
 fn advancement_icons_reach_local_and_remote_ui_surfaces() {
     const FLAG: &str = "SUNRISE_ADVANCEMENT_ICONS_CHILD";
     if run_fresh_cases(
-        "game::client_side::advancements_client::icons::tests::advancement_icons_reach_local_and_remote_ui_surfaces",
+        "cut_layout::game::client_side::advancements_client::icons::tests::advancement_icons_reach_local_and_remote_ui_surfaces",
         FLAG,
         &["local", "remote", "refused", "invalid"],
     ) {

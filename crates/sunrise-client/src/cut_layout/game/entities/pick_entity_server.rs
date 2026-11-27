@@ -16,7 +16,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn an_entitys_pick_result_reads_through_its_handle() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::pick_entity_server::tests::an_entitys_pick_result_reads_through_its_handle",
+            "cut_layout::game::server_side::pick_entity_server::tests::an_entitys_pick_result_reads_through_its_handle",
             || {
                 with_game(|game| {
                     game.player =
@@ -88,7 +88,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn server_entity_pick_returns_lead_and_delegates_dragon_parts() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::pick_entity_server::tests::server_entity_pick_returns_lead_and_delegates_dragon_parts",
+            "cut_layout::game::server_side::pick_entity_server::tests::server_entity_pick_returns_lead_and_delegates_dragon_parts",
             || {
                 with_game(|game| {
                     game.player =

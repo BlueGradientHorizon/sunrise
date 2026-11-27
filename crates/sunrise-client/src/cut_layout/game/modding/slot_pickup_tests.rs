@@ -889,7 +889,7 @@ fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
 fn quick_move_projection_failures_report_every_time_and_refuse_the_move() {
     // Use a separate process because the test logger is process-global.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::slot_pickup_tests::quick_move_projection_failures_report_every_time_and_refuse_the_move",
+        "cut_layout::game::slot_pickup_tests::quick_move_projection_failures_report_every_time_and_refuse_the_move",
         "SUNRISE_TEST_QUICK_MOVE_PROJECTION_CHILD",
         &["projection"],
     ) {

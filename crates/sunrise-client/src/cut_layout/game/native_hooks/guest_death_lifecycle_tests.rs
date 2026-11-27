@@ -134,7 +134,7 @@ fn lifecycle(heal: bool) {
 #[ignore = "daily"]
 fn cancelled_corpse_teleported_in_player_tick_keeps_original_removal_deadline() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::guest_death_lifecycle_tests::cancelled_corpse_teleported_in_player_tick_keeps_original_removal_deadline",
+        "cut_layout::game::native_hooks::guest_death_lifecycle_tests::cancelled_corpse_teleported_in_player_tick_keeps_original_removal_deadline",
         || lifecycle(false),
     );
 }
@@ -143,7 +143,7 @@ fn cancelled_corpse_teleported_in_player_tick_keeps_original_removal_deadline() 
 #[ignore = "daily"]
 fn listener_healed_guest_stays_visible_through_player_tick_teleport() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::guest_death_lifecycle_tests::listener_healed_guest_stays_visible_through_player_tick_teleport",
+        "cut_layout::game::native_hooks::guest_death_lifecycle_tests::listener_healed_guest_stays_visible_through_player_tick_teleport",
         || lifecycle(true),
     );
 }

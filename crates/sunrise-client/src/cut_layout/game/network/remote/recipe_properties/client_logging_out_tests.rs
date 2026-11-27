@@ -162,7 +162,7 @@ fn accept_into_configuration(server: &mut Connection, uuid: u128, name: &str) {
 #[ignore = "daily"]
 fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_transitions() {
     if run_fresh_cases(
-        "game::client_side::remote_client::client_logging_out_tests::client_player_logging_out_fires_once_before_teardown_and_handles_no_player_transitions",
+        "cut_layout::game::client_side::remote_client::client_logging_out_tests::client_player_logging_out_fires_once_before_teardown_and_handles_no_player_transitions",
         "SUNRISE_CLIENT_LOGOUT_TEST_CHILD",
         &["logout"],
     ) {

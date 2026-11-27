@@ -93,7 +93,7 @@ fn powder_snow_placement_uses_the_bucket_event_and_contextual_levels() {
     }
     const EMPTY_POWDER_SNOW: &str = "minecraft:item.bucket.empty_powder_snow";
     if !crate::game::native_block_sounds::tests::install_sound_fixture_in_child(
-        "game::server_side::remote_server::interaction_event_tests::powder_snow_placement_uses_the_bucket_event_and_contextual_levels",
+        "cut_layout::game::server_side::remote_server::interaction_event_tests::powder_snow_placement_uses_the_bucket_event_and_contextual_levels",
     ) {
         return;
     }

@@ -731,7 +731,7 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 mod_api::HookId::DestroyProgress,
                 state,
             )
-            && let Some(player) = self.side_acting_player_ref()
+            && let Some(player) = self.side_destroy_progress_player_ref()
         {
             let mut answer = None;
             let _dispatching = DestroyProgressDispatch::enter();

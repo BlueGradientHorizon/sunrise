@@ -10,7 +10,7 @@ pub(crate) mod entity_inside_tests {
     #[ignore = "daily"]
     fn landing_writes_apply_at_the_batch_end() {
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_hooks::entity_inside::entity_inside_tests::landing_writes_apply_at_the_batch_end",
+            "cut_layout::game::native_hooks::entity_inside::entity_inside_tests::landing_writes_apply_at_the_batch_end",
             "SUNRISE_INSIDE_LANDING_CHILD",
             &["landing"],
         ) {
@@ -642,6 +642,9 @@ pub(crate) mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_projectile_without_a_part_is_left_alone() {
+        if fresh("a_projectile_without_a_part_is_left_alone") {
+            return;
+        }
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
             let stone = game

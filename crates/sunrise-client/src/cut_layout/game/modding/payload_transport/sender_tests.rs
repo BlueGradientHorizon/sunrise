@@ -13,8 +13,7 @@ use sunrise_protocol::{
     packets::{Empty, configuration as cfg, play},
 };
 
-const NAME: &str =
-    "game::payload_transport::sender_tests::published_tcp_attributes_players_and_orders_actions";
+const NAME: &str = "cut_layout::game::payload_transport::sender_tests::published_tcp_attributes_players_and_orders_actions";
 const CHANNEL: &str = "sender_probe:marker";
 const PLAYERS: [&str; 2] = ["SenderOne", "SenderTwo"];
 #[derive(Default)]

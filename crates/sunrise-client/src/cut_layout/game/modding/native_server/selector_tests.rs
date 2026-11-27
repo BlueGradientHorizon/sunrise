@@ -125,7 +125,7 @@ fn selector_kinds_publish_vanilla_flags_and_share_parser_suggestions() {
 #[ignore = "daily"]
 fn entity_selection_has_no_additional_count_cap() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_server::selector_tests::entity_selection_has_no_additional_count_cap",
+        "cut_layout::game::native_server::selector_tests::entity_selection_has_no_additional_count_cap",
         || {
             let heard = Arc::new(Mutex::new(Vec::new()));
             mod_platform::testing::with_mods(
@@ -188,7 +188,7 @@ pub(crate) use crate::game::server_side::native_server_server::selector_tests::i
 #[ignore = "daily"]
 fn a_typed_entity_argument_reaches_an_entity_in_another_level() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_server::selector_tests::a_typed_entity_argument_reaches_an_entity_in_another_level",
+        "cut_layout::game::native_server::selector_tests::a_typed_entity_argument_reaches_an_entity_in_another_level",
         || {
             in_two_levels(&[
                 (
@@ -213,7 +213,7 @@ fn a_typed_entity_argument_reaches_an_entity_in_another_level() {
 #[ignore = "daily"]
 fn execute_moves_the_selector_source_to_its_level_and_entity() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_server::selector_tests::execute_moves_the_selector_source_to_its_level_and_entity",
+        "cut_layout::game::native_server::selector_tests::execute_moves_the_selector_source_to_its_level_and_entity",
         || {
             in_two_levels(&[
                 // No positional option: both levels, whatever level the source is in.

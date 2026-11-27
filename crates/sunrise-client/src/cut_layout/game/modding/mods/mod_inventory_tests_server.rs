@@ -191,7 +191,7 @@ fn content_mod_dropped_for_foreign_minecraft_remainder_is_absent_from_save_and_j
     use sunrise_mod_package::selection::SelectedPackage;
 
     if sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
-        "game::mods::tests::inventory::content_mod_dropped_for_foreign_minecraft_remainder_is_absent_from_save_and_join_inventories",
+        "cut_layout::game::server_side::mods_server::tests::inventory::content_mod_dropped_for_foreign_minecraft_remainder_is_absent_from_save_and_join_inventories",
         "SUNRISE_DROPPED_REMAINDER_INVENTORY_CHILD",
         &["valid"],
     ) {

@@ -313,7 +313,7 @@ fn players_advance_equipment_history_without_a_subscriber() {
 #[ignore = "daily"]
 fn mobs_compare_equipment_by_borrow_and_retain_only_changed_slots() {
     if sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
-        "game::player_equipment_change_tests::mobs_compare_equipment_by_borrow_and_retain_only_changed_slots",
+        "cut_layout::game::player_equipment_change_tests::mobs_compare_equipment_by_borrow_and_retain_only_changed_slots",
         "SUNRISE_MOB_EQUIPMENT_HISTORY_CASE",
         &["toggle"],
     ) {

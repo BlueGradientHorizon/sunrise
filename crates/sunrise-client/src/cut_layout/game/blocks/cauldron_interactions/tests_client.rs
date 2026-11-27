@@ -12,7 +12,7 @@ use sunrise_sim::cauldron::Outcome;
 #[ignore = "daily"]
 fn cauldron_client_skips_custom_prediction() {
     if run_fresh_cases(
-        "game::client_side::cauldron_interactions_client::tests::cauldron_client_skips_custom_prediction",
+        "cut_layout::game::client_side::cauldron_interactions_client::tests::cauldron_client_skips_custom_prediction",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -73,7 +73,7 @@ fn cauldron_client_skips_custom_prediction() {
 #[ignore = "daily"]
 fn cauldron_outer_abort_discards_effects_and_drops() {
     if run_fresh_cases(
-        "game::client_side::cauldron_interactions_client::tests::cauldron_outer_abort_discards_effects_and_drops",
+        "cut_layout::game::client_side::cauldron_interactions_client::tests::cauldron_outer_abort_discards_effects_and_drops",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {

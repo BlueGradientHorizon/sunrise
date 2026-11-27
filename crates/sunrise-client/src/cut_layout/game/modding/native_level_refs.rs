@@ -890,7 +890,7 @@ mod tests {
     fn paused_forced_loads_are_queued_and_stopped_generation_refuses_adds() {
         if run_fresh_cases(
             concat!(
-                "game::server_side::native_level_refs::tests::",
+                "cut_layout::game::server_side::native_level_refs::tests::",
                 "paused_forced_loads_are_queued_and_stopped_generation_refuses_adds"
             ),
             "SUNRISE_FORCED_STREAMING_CHILD",
@@ -1638,7 +1638,7 @@ mod tests {
             game.world = World::new(registry.default_state("minecraft:air").unwrap(), 0);
             game.world.chunks.insert((0, 0), Arc::new(chunk));
             game.server.save.0 = Arc::new(save);
-            game.server.levels.0.clear();
+            game.server.levels.0.reset_active_closed_for_test();
             game.native_lifecycle
                 .begin_open(Some(mod_api::Authority::IntegratedServer));
             let reopened = game.level(game.dim.id()).unwrap();
@@ -1971,7 +1971,7 @@ mod tests {
         // as the process's mods: a child process of its own.
         if run_fresh_cases(
             concat!(
-                "game::server_side::native_level_refs::tests::",
+                "cut_layout::game::server_side::native_level_refs::tests::",
                 "load_chunk_brings_a_lit_full_chunk_under_a_ticket_that_expires_after_a_tick"
             ),
             "SUNRISE_LOAD_CHUNK_CHILD",
@@ -2072,7 +2072,7 @@ mod tests {
         // The game fixture publishes process-wide worldgen tables: a child process of its own.
         if run_fresh_cases(
             concat!(
-                "game::server_side::native_level_refs::tests::",
+                "cut_layout::game::server_side::native_level_refs::tests::",
                 "a_resident_read_lets_load_chunk_answer_without_a_new_ticket"
             ),
             "SUNRISE_LOAD_CHUNK_READ_CHILD",

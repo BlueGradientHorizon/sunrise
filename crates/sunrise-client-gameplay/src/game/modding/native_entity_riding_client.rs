@@ -4,6 +4,7 @@ use std::ops::ControlFlow;
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_gameplay_common::game::entity_type_rows::entity_type_rows;
 use sunrise_gameplay_common::game::remote::passengers::passenger_root;
+use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
 
 impl crate::game::ClientGame<'_> {
     /// Resolve the client's packet-tracked riding state.
@@ -12,8 +13,15 @@ impl crate::game::ClientGame<'_> {
         if id == remote.entity_id
             || remote.tracked_entity(id).is_some()
             || self.common.dragon.as_ref().is_some_and(|d| {
-                sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, entity.id())
+                d.id != 0
+                    && id != 0
+                    && sunrise_gameplay_common::game::dragon_common::dragon_part_index(
+                        d.id,
+                        entity.id(),
+                    )
                     .is_some()
+                    && !self.common.persist.removals.contains(&Target::Dragon(d.id))
+                    && !self.target_removed(&Target::DragonPart(entity.id()))
             })
         {
             return Ok(remote);

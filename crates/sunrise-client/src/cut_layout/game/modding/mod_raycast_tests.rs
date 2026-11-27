@@ -1,7 +1,10 @@
 //! A client mod's `raycast` and `view_hit` hit loaded blocks only, far terrain on or off.
 use std::sync::Arc;
 use sunrise_client::{audio::Audio, settings::Settings};
+use sunrise_client_gameplay::game::ClientGame;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::ServerGame;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 use {
@@ -12,7 +15,7 @@ use {
 
 fn game<'a>(
     resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
-) -> sunrise_client_gameplay::game::ClientGame<'a> {
+) -> (ClientGame<'a>, ServerGame<'a>) {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -35,7 +38,20 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::Client;
     let res = &*resources.insert(loaded.resources);
-    let mut game = sunrise_client_gameplay::game::ClientGame::new(
+    let mut server_options = options.clone();
+    server_options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    let mut server = ServerGame::new(
+        res,
+        loaded.pack.clone(),
+        server_options,
+        settings.sim_settings(),
+        None,
+        crate::game::profile_resolver,
+    )
+    .unwrap();
+    server.build_registries();
+    server.set_allow_commands(true);
+    let mut game = ClientGame::new(
         res,
         loaded.client_res.unwrap(),
         loaded.pack,
@@ -56,28 +72,43 @@ fn game<'a>(
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    let stone = game
-        .pack
-        .assets
-        .registry
-        .default_state("minecraft:stone")
+    game.block_ticks
+        .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
         .unwrap();
-    for x in 0..=15 {
-        for z in 0..=15 {
-            game.world.set(x, 99, z, stone).unwrap();
-        }
-    }
-    game
+    assert!(run_command(
+        &mut game,
+        &mut server,
+        "fill 0 99 0 15 99 15 stone"
+    ));
+    (game, server)
+}
+
+fn run_command(client: &mut ClientGame<'_>, server: &mut ServerGame<'_>, command: &str) -> bool {
+    std::mem::swap(&mut client.common.world, &mut server.common.world);
+    std::mem::swap(
+        &mut client.common.block_ticks,
+        &mut server.common.block_ticks,
+    );
+    server.common.player.clone_from(&client.common.player);
+    server.common.yaw = client.common.yaw;
+    server.common.pitch = client.common.pitch;
+    let succeeded = server.run_command(command);
+    std::mem::swap(&mut client.common.world, &mut server.common.world);
+    std::mem::swap(
+        &mut client.common.block_ticks,
+        &mut server.common.block_ticks,
+    );
+    succeeded
 }
 
 #[test]
 #[ignore = "daily"]
 fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
     let mut resources = None;
-    let mut game = game(&mut resources);
+    let (mut game, mut server) = game(&mut resources);
     // Looking straight down at the stone under the player.
     game.pitch = 90.0;
-    let at = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, x: f64| {
+    let at = |game: &mut ClientGame<'_>, x: f64| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(x, 100.0, 0.5)).unwrap());
     };
     at(&mut game, 0.5);
@@ -112,17 +143,11 @@ fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
     game.block_ticks
         .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 100))
         .unwrap();
-    let stone = game
-        .pack
-        .assets
-        .registry
-        .default_state("minecraft:stone")
-        .unwrap();
-    for x in 0..=15 {
-        for y in 100..=103 {
-            game.world.set(x, y, 1600, stone).unwrap();
-        }
-    }
+    assert!(run_command(
+        &mut game,
+        &mut server,
+        "fill 0 100 1600 15 103 1600 stone"
+    ));
     game.yaw = 0.0;
     game.pitch = 0.0;
     at(&mut game, 0.5);
@@ -141,7 +166,11 @@ fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
 
     // Starting inside a block, neither query's shape clip depends on distant chunks.
     let distant = game.world.chunks.remove(&(0, 100)).unwrap();
-    game.world.set(0, 101, 0, stone).unwrap();
+    assert!(run_command(
+        &mut game,
+        &mut server,
+        "setblock 0 101 0 stone"
+    ));
     let inside_view = game.view_hit().expect("the stone containing the eye");
     assert_eq!(
         (

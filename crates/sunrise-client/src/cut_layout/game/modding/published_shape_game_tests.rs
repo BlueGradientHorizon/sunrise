@@ -109,7 +109,7 @@ const THIN: [f64; 6] = [0.45, 0.0, 0.45, 0.55, 0.25, 0.55];
 /// (the content root freezes the process's block entity types).
 fn fresh(name: &str) -> bool {
     run_fresh_cases(
-        &format!("game::published_shape_game_tests::{name}"),
+        &format!("cut_layout::game::published_shape_game_tests::{name}"),
         "SUNRISE_PUBLISHED_SHAPE_CHILD",
         &["run"],
     )

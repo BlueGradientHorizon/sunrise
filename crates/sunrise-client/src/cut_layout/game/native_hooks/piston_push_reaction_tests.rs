@@ -230,7 +230,7 @@ pub(crate) fn exercise(
 #[test]
 #[ignore = "daily"]
 fn piston_push_reaction_parts_cache_reload_and_replay() {
-    const NAME: &str = "game::native_hooks::piston_push_reaction_tests::piston_push_reaction_parts_cache_reload_and_replay";
+    const NAME: &str = "cut_layout::game::native_hooks::piston_push_reaction_tests::piston_push_reaction_parts_cache_reload_and_replay";
     const FLAG: &str = "SUNRISE_PISTON_REACTION_CASE";
     if run_fresh_cases(NAME, FLAG, &["server", "client", "no-part"]) {
         return;
@@ -495,7 +495,7 @@ impl Hooks for PayloadUser {
 #[test]
 #[ignore = "daily"]
 fn piston_push_reaction_real_block_entity_payload_lifecycle() {
-    const NAME: &str = "game::native_hooks::piston_push_reaction_tests::piston_push_reaction_real_block_entity_payload_lifecycle";
+    const NAME: &str = "cut_layout::game::native_hooks::piston_push_reaction_tests::piston_push_reaction_real_block_entity_payload_lifecycle";
     const FLAG: &str = "SUNRISE_PISTON_PAYLOAD_CASE";
     if run_fresh_cases(
         NAME,
@@ -706,7 +706,7 @@ impl Hooks for TagUser {
 #[test]
 #[ignore = "daily"]
 fn piston_push_reaction_client_received_tags_refresh_the_cache() {
-    const NAME: &str = "game::native_hooks::piston_push_reaction_tests::piston_push_reaction_client_received_tags_refresh_the_cache";
+    const NAME: &str = "cut_layout::game::native_hooks::piston_push_reaction_tests::piston_push_reaction_client_received_tags_refresh_the_cache";
     if run_fresh_cases(NAME, "SUNRISE_PISTON_TAG_CASE", &["client"]) {
         return;
     }
@@ -777,7 +777,7 @@ fn piston_push_reaction_client_received_tags_refresh_the_cache() {
 #[test]
 #[ignore = "daily"]
 fn piston_push_reaction_unowned_vanilla_data_stays_refused() {
-    const NAME: &str = "game::native_hooks::piston_push_reaction_tests::piston_push_reaction_unowned_vanilla_data_stays_refused";
+    const NAME: &str = "cut_layout::game::native_hooks::piston_push_reaction_tests::piston_push_reaction_unowned_vanilla_data_stays_refused";
     if run_fresh_cases(NAME, "SUNRISE_PISTON_UNOWNED_CASE", &["comparator"]) {
         return;
     }

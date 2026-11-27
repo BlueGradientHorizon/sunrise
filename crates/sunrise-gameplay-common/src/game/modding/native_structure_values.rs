@@ -1,23 +1,6 @@
-use mod_api::{Compound, StructureMirror, StructureRotation};
+use mod_api::{StructureMirror, StructureRotation};
 use sunrise_level::structure_block::parse_identifier;
-use sunrise_world::{
-    registry::BlockStateId,
-    worldgen::structure::{Mirror, Rotation},
-};
-
-/// Game-owned placement result; numeric states never escape to mods.
-#[derive(Debug, PartialEq)]
-pub struct TemplateSnapshot<'a> {
-    pub size: [i32; 3],
-    pub blocks: Vec<TemplateBlock<'a>>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TemplateBlock<'a> {
-    pub pos: [i32; 3],
-    pub state: BlockStateId,
-    pub nbt: Option<&'a Compound>,
-}
+use sunrise_world::worldgen::structure::{Mirror, Rotation};
 
 /// The engine's rotation for an API one; `None` for one this build doesn't know.
 pub fn engine_rotation(rotation: StructureRotation) -> Option<Rotation> {

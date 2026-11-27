@@ -203,7 +203,7 @@ fn stored(
 #[test]
 #[ignore = "daily"]
 fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
-    const NAME: &str = "game::server_side::block_entity_part_state_tests::part_state_is_per_block_entity_through_ticks_transactions_and_replacement";
+    const NAME: &str = "cut_layout::game::server_side::block_entity_part_state_tests::part_state_is_per_block_entity_through_ticks_transactions_and_replacement";
     with_state_mod(NAME, |game, keys| {
         let press_part = &keys.press;
         use sunrise_gameplay_common::game::api_values::TryIntoApi;
@@ -493,7 +493,7 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
 #[test]
 #[ignore = "daily"]
 fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
-    const NAME: &str = "game::server_side::block_entity_part_state_tests::part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle";
+    const NAME: &str = "cut_layout::game::server_side::block_entity_part_state_tests::part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle";
     with_state_mod(NAME, |game, keys| {
         let press_part = &keys.press;
         // A column far from the player, kept by a forced ticket while it is edited.
@@ -564,7 +564,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
 #[test]
 #[ignore = "daily"]
 fn item_slot_writes_save_but_menu_data_is_transient() {
-    const NAME: &str = "game::server_side::block_entity_part_state_tests::item_slot_writes_save_but_menu_data_is_transient";
+    const NAME: &str = "cut_layout::game::server_side::block_entity_part_state_tests::item_slot_writes_save_but_menu_data_is_transient";
     with_state_mod(NAME, |game, _| {
         use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use sunrise_items::items::ItemStack;
@@ -614,7 +614,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
 #[test]
 #[ignore = "daily"]
 fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
-    const NAME: &str = "game::server_side::block_entity_part_state_tests::an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction";
+    const NAME: &str = "cut_layout::game::server_side::block_entity_part_state_tests::an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction";
     with_state_mod(NAME, |game, _| {
         let chunk = (0, 0);
         let pos = (1, 64, 1);
@@ -712,7 +712,7 @@ fn indexed(
 #[test]
 #[ignore = "daily"]
 fn a_removal_retires_its_state_only_at_the_root_commit() {
-    const NAME: &str = "game::server_side::block_entity_part_state_tests::a_removal_retires_its_state_only_at_the_root_commit";
+    const NAME: &str = "cut_layout::game::server_side::block_entity_part_state_tests::a_removal_retires_its_state_only_at_the_root_commit";
     with_state_mod(NAME, |game, keys| {
         let press_part = &keys.press;
         let progress = press_part.state_key();
@@ -771,7 +771,7 @@ fn a_removal_retires_its_state_only_at_the_root_commit() {
 #[test]
 #[ignore = "daily"]
 fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
-    const NAME: &str = "game::server_side::block_entity_part_state_tests::a_save_or_unload_during_a_transaction_writes_only_committed_state";
+    const NAME: &str = "cut_layout::game::server_side::block_entity_part_state_tests::a_save_or_unload_during_a_transaction_writes_only_committed_state";
     with_state_mod(NAME, |game, keys| {
         let press_part = &keys.press;
         let (key, pos) = ((80, 80), (1283, 100, 1283));
@@ -840,7 +840,7 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
 #[test]
 #[ignore = "daily"]
 fn one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back() {
-    const NAME: &str = "game::server_side::block_entity_part_state_tests::one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back";
+    const NAME: &str = "cut_layout::game::server_side::block_entity_part_state_tests::one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back";
     with_state_mod(NAME, |game, keys| {
         let press_part = &keys.press;
         let progress = press_part.state_key();
@@ -937,7 +937,7 @@ fn tick_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i32, i3
 #[test]
 #[ignore = "daily"]
 fn part_state_counts_ticks_across_chunk_reload() {
-    const NAME: &str = "game::server_side::block_entity_part_state_tests::part_state_counts_ticks_across_chunk_reload";
+    const NAME: &str = "cut_layout::game::server_side::block_entity_part_state_tests::part_state_counts_ticks_across_chunk_reload";
     if super::native_entity_refs::tests::run_fresh_cases(
         NAME,
         "SUNRISE_PART_STATE_CHILD",

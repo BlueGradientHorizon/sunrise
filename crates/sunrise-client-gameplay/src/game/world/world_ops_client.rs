@@ -1,5 +1,6 @@
 //! Client-side implementations of `side_ops::world` and client-only world/harness helpers.
 use super::*;
+use sunrise_gameplay_common::game::end_common::EndGameExt as _;
 use sunrise_gameplay_common::game::piston_carry_common::PositionChange;
 use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
 use sunrise_sim::join_seq::{
@@ -145,7 +146,15 @@ impl crate::game::ClientGame<'_> {
         let rules = self.common.level_rules();
         let api_level = self.native_client_level();
         let liquid_transaction_open = self.has_level_transaction();
-        let environment = self.common.res.environment_of(&self.dimension_type().id);
+        let environment = Self::level_environment(
+            self.client
+                .remote
+                .as_ref()
+                .and_then(|r| r.level_environment.as_deref()),
+            &self.common.res,
+            self.common.dim.id(),
+            &self.dimension_type().id,
+        );
         let loot_storage = self.common.score.storage.snapshot();
         let loot_clocks = self.common.loot_clock_ticks();
         let side = client_game_side!(self, self.client_game_side_meta());

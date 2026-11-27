@@ -163,7 +163,7 @@ fn a_give_that_fits_plays_pickup_in_the_players_level() {
 #[ignore = "daily"]
 fn a_give_to_a_player_in_another_level_drops_overflow_there() {
     if run_fresh_cases(
-        "game::server_side::native_player_level_tests::a_give_to_a_player_in_another_level_drops_overflow_there",
+        "cut_layout::game::server_side::native_player_level_tests::a_give_to_a_player_in_another_level_drops_overflow_there",
         "SUNRISE_GIVE_OVERFLOW_CHILD",
         &["overflow"],
     ) {
@@ -312,7 +312,7 @@ impl mod_api::Hooks for GiveJoin {
 #[ignore = "daily"]
 fn a_give_to_a_borrowed_player_drops_in_their_level() {
     if run_fresh_cases(
-        "game::server_side::native_player_level_tests::a_give_to_a_borrowed_player_drops_in_their_level",
+        "cut_layout::game::server_side::native_player_level_tests::a_give_to_a_borrowed_player_drops_in_their_level",
         "SUNRISE_GIVE_OVERFLOW_CHILD",
         &["borrowed"],
     ) {
@@ -513,7 +513,7 @@ fn a_give_to_a_player_in_another_level_keeps_their_open_menu() {
 #[ignore = "daily"]
 fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() {
     if run_fresh_cases(
-        "game::server_side::native_player_level_tests::an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick",
+        "cut_layout::game::server_side::native_player_level_tests::an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick",
         "SUNRISE_GIVE_OVERFLOW_CHILD",
         &["advancement"],
     ) {

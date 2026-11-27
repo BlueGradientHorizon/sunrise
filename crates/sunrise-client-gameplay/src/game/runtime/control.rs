@@ -1309,6 +1309,8 @@ impl crate::game::ClientGame<'_> {
                 if sunrise_client::options_ui::OptionsUi::lists_shader_packs(page) {
                     self.client.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
+                    // A pack may have been replaced under the same name.
+                    self.client.native_shaders.pick_hdr.get_mut().forget();
                     self.open_shader_options();
                 }
                 ok()

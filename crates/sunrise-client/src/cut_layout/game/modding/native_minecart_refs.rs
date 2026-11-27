@@ -113,7 +113,7 @@ mod tests {
     #[ignore = "daily"]
     fn minecart_handles_narrow_read_and_write_by_kind() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_minecart_refs::tests::minecart_handles_narrow_read_and_write_by_kind",
+            "cut_layout::game::server_side::native_minecart_refs::tests::minecart_handles_narrow_read_and_write_by_kind",
             "SUNRISE_MINECART_HANDLES_CASE",
             &["handles"],
         ) {

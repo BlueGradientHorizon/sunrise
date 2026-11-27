@@ -16,7 +16,7 @@ pub(crate) mod tests {
     fn fluid_models_reload_recollects_before_baking() {
         // Concurrent resource loads replace the process-wide fluid looks and models.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::packs::tests::fluid_models_reload_recollects_before_baking",
+            "cut_layout::game::client_side::packs::tests::fluid_models_reload_recollects_before_baking",
             "SUNRISE_FLUID_RELOAD_CHILD",
             &["recollect"],
         ) {

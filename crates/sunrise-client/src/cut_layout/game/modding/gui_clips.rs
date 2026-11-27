@@ -64,7 +64,7 @@ mod dispatch_tests {
     #[ignore = "daily"]
     fn a_hook_call_clips_scoped_draws_and_restores_on_unwind() {
         sunrise_gameplay_common::game::in_own_process(
-            "cut_layout::game::gui_clips::dispatch_tests::a_hook_call_clips_scoped_draws_and_restores_on_unwind",
+            "cut_layout::game::client_side::gui_clips::dispatch_tests::a_hook_call_clips_scoped_draws_and_restores_on_unwind",
             || {
                 let text = Text::from(serde_json::json!({
                     "text": "x", "hover_event": { "action": "show_text", "value": "hi" }

@@ -1460,6 +1460,17 @@ pub mod tests {
 
     #[cfg(test)]
     #[test]
+    fn vec2_and_vec2_uncentered_do_not_share_a_node() {
+        let (_, _, problems) = tree(&[
+            mod_api::Command::new("go <to:vec2>"),
+            mod_api::Command::new("go <to:vec2_uncentered>"),
+        ]);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("another kind"), "{problems:?}");
+    }
+
+    #[cfg(test)]
+    #[test]
     fn positions_and_rotations_resolve_against_the_source() {
         let (tree, _, problems) = tree(&[mod_api::Command::new(POSITIONED)]);
         assert!(problems.is_empty(), "{problems:?}");

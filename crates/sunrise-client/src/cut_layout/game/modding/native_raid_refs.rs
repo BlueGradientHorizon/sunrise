@@ -16,6 +16,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+    use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
     use sunrise_sim::mobs::{Mob, raider};
 
     fn collect_visit<T, E>(
@@ -206,35 +207,45 @@ mod tests {
             assert_eq!(game.raid_bar_progress(raid), Some(0.0));
             assert_eq!(
                 collect_visit(|visit| raid.visit_heroes(game, visit)),
-                Ok(Vec::new())
+                Ok(vec![])
+            );
+            game.native_level_raids_mut(level)
+                .unwrap()
+                .get_mut(raid.id())
+                .unwrap()
+                .add_hero([1, 2, 3, 4]);
+            assert_eq!(
+                collect_visit(|visit| raid.visit_heroes(game, visit)),
+                Ok(vec![0x0000_0001_0000_0002_0000_0003_0000_0004])
             );
 
             raider_mob(game, 41, raid.id(), 1, 12.5);
             raider_mob(game, 42, raid.id(), 2, 7.5);
             raider_mob(game, 43, raid.id() + 1, 1, 9.0);
             assert_eq!(game.raid_living_health(raid), Some(20.0));
+            fixture_resident_column(&mut game.world, (0, 0));
             let first = game.entity(41).unwrap();
             let second = game.entity(42).unwrap();
             assert_eq!(
                 collect_visit(|visit| raid.visit_raiders(game, visit)),
                 Ok(vec![first, second])
             );
-            let mut stopped_after_first = Vec::new();
+            let mut visited = Vec::new();
             assert_eq!(
-                raid.visit_raiders(game, &mut |entity| {
-                    stopped_after_first.push(entity);
+                raid.visit_raiders(game, &mut |member| {
+                    visited.push(member);
                     ControlFlow::Break(())
                 }),
                 Ok(ControlFlow::Break(()))
             );
-            assert_eq!(stopped_after_first, [first]);
+            assert_eq!(visited, [first]);
             assert_eq!(
                 collect_visit(|visit| raid.visit_wave_raiders(game, 2, visit)),
                 Ok(vec![second])
             );
             assert_eq!(
                 collect_visit(|visit| raid.visit_wave_raiders(game, 3, visit)),
-                Ok(Vec::new())
+                Ok(vec![])
             );
             let mob = game.mob(first).unwrap();
             assert_eq!(game.mob_raid(mob), Some(raid));
@@ -255,6 +266,10 @@ mod tests {
             assert!(!game.raid_is_active(raid));
             assert!(!game.raid_stop(raid));
             assert_eq!(game.level_raid_at(level, [10, 70, 10]), None);
+            assert_eq!(
+                collect_visit(|visit| level.visit_raids(game, visit)),
+                Ok(vec![raid])
+            );
         });
     }
 
@@ -270,6 +285,7 @@ mod tests {
             raider_mob(game, 42, raid.id(), 2, 12.0);
             raider_mob(game, 43, raid.id(), 1, 0.0);
             raider_mob(game, 44, raid.id() + 7, 2, 18.0);
+            fixture_resident_column(&mut game.world, (0, 0));
             let member = game.entity(42).unwrap();
             let total = raid.total_health(game);
             let groups = raid.num_groups(game);

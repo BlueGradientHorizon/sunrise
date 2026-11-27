@@ -150,7 +150,7 @@ fn slots(
 #[ignore = "daily"]
 fn a_cache_asks_once_while_nothing_changes_and_again_when_invalidated() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_cache_asks_once_while_nothing_changes_and_again_when_invalidated",
+        "cut_layout::game::native_capability_cache_tests::a_cache_asks_once_while_nothing_changes_and_again_when_invalidated",
         |game, level| {
             let mut cache = cache(level);
             let start = ASKED.load(Ordering::Relaxed);
@@ -176,7 +176,7 @@ fn a_cache_asks_once_while_nothing_changes_and_again_when_invalidated() {
 #[ignore = "daily"]
 fn a_cache_lends_nothing_while_its_level_is_parked_and_asks_again_once_back() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_cache_lends_nothing_while_its_level_is_parked_and_asks_again_once_back",
+        "cut_layout::game::native_capability_cache_tests::a_cache_lends_nothing_while_its_level_is_parked_and_asks_again_once_back",
         |game, level| {
             let mut cache = cache(level);
             let start = ask(game, &mut cache).1;
@@ -205,7 +205,7 @@ fn a_cache_lends_nothing_while_its_level_is_parked_and_asks_again_once_back() {
 #[ignore = "daily"]
 fn a_cache_first_asked_while_its_level_is_parked_asks_again_once_in_place() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_cache_first_asked_while_its_level_is_parked_asks_again_once_in_place",
+        "cut_layout::game::native_capability_cache_tests::a_cache_first_asked_while_its_level_is_parked_asks_again_once_in_place",
         |game, level| {
             let mut cache = cache(level);
             let start = ASKED.load(Ordering::Relaxed);
@@ -229,7 +229,7 @@ fn a_cache_first_asked_while_its_level_is_parked_asks_again_once_in_place() {
 #[ignore = "daily"]
 fn a_cache_asks_again_when_the_block_state_changes() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_cache_asks_again_when_the_block_state_changes",
+        "cut_layout::game::native_capability_cache_tests::a_cache_asks_again_when_the_block_state_changes",
         |game, level| {
             let mut cache = cache(level);
             let start = ask(game, &mut cache).1;
@@ -254,7 +254,7 @@ fn a_cache_asks_again_when_the_block_state_changes() {
 #[ignore = "daily"]
 fn a_cache_follows_its_block_entity_removed_and_replaced() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_cache_follows_its_block_entity_removed_and_replaced",
+        "cut_layout::game::native_capability_cache_tests::a_cache_follows_its_block_entity_removed_and_replaced",
         |game, level| {
             let mut cache = cache(level);
             let start = ask(game, &mut cache).1;
@@ -282,7 +282,7 @@ fn a_cache_follows_its_block_entity_removed_and_replaced() {
 #[ignore = "daily"]
 fn a_cache_finds_nothing_while_its_chunk_is_unloaded() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_cache_finds_nothing_while_its_chunk_is_unloaded",
+        "cut_layout::game::native_capability_cache_tests::a_cache_finds_nothing_while_its_chunk_is_unloaded",
         |game, level| {
             let mut cache = cache(level);
             let start = ask(game, &mut cache).1;
@@ -312,7 +312,7 @@ fn a_cache_finds_nothing_while_its_chunk_is_unloaded() {
 #[ignore = "daily"]
 fn a_cache_finds_nothing_once_its_level_closes() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_cache_finds_nothing_once_its_level_closes",
+        "cut_layout::game::native_capability_cache_tests::a_cache_finds_nothing_once_its_level_closes",
         |game, level| {
             let mut cache = cache(level);
             assert!(ask(game, &mut cache).0);
@@ -330,7 +330,7 @@ fn a_cache_finds_nothing_once_its_level_closes() {
 #[ignore = "daily"]
 fn a_cache_asks_again_when_a_mod_is_switched_off_or_on() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_cache_asks_again_when_a_mod_is_switched_off_or_on",
+        "cut_layout::game::native_capability_cache_tests::a_cache_asks_again_when_a_mod_is_switched_off_or_on",
         |game, level| {
             let mut cache = cache(level);
             let start = ask(game, &mut cache).1;
@@ -356,7 +356,7 @@ fn a_cache_asks_again_when_a_mod_is_switched_off_or_on() {
 #[ignore = "daily"]
 fn moves_through_kept_handlers_conserve_every_item_when_some_abort() {
     with_cache_mod(
-        "game::native_capability_cache_tests::moves_through_kept_handlers_conserve_every_item_when_some_abort",
+        "cut_layout::game::native_capability_cache_tests::moves_through_kept_handlers_conserve_every_item_when_some_abort",
         |game, level| {
             let chest = game
                 .pack
@@ -444,7 +444,7 @@ fn moves_through_kept_handlers_conserve_every_item_when_some_abort() {
 #[ignore = "daily"]
 fn a_providers_invalidation_counts_once_after_its_commit_and_not_when_aborted() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_providers_invalidation_counts_once_after_its_commit_and_not_when_aborted",
+        "cut_layout::game::native_capability_cache_tests::a_providers_invalidation_counts_once_after_its_commit_and_not_when_aborted",
         |game, level| {
             let pos = [POS.0, POS.1, POS.2];
             let mut cache = cache(level);
@@ -497,7 +497,7 @@ fn a_providers_invalidation_counts_once_after_its_commit_and_not_when_aborted() 
 #[ignore = "daily"]
 fn a_block_invalidated_before_its_chunk_unloads_is_asked_again_after_it_reloads() {
     with_cache_mod(
-        "game::native_capability_cache_tests::a_block_invalidated_before_its_chunk_unloads_is_asked_again_after_it_reloads",
+        "cut_layout::game::native_capability_cache_tests::a_block_invalidated_before_its_chunk_unloads_is_asked_again_after_it_reloads",
         |game, level| {
             let pos = [8, 64, 8];
             let lodestone = game

@@ -258,7 +258,7 @@ impl Hooks for HealthLayer {
 fn health_extraction_runs_only_in_the_vanilla_layer_body() {
     const CASE: &str = "SUNRISE_HEALTH_LAYER_FIXTURE";
     if run_fresh_cases(
-        "game::client_side::gui_layer_tests::health_extraction_runs_only_in_the_vanilla_layer_body",
+        "cut_layout::game::client_side::gui_layer_tests::health_extraction_runs_only_in_the_vanilla_layer_body",
         CASE,
         &["vanilla", "replace"],
     ) {
@@ -442,7 +442,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
 fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
     // The layer order is kept once per process.
     if run_fresh_cases(
-        "game::client_side::gui_layer_tests::mod_layers_draw_in_their_place_and_hide_like_vanilla_layers",
+        "cut_layout::game::client_side::gui_layer_tests::mod_layers_draw_in_their_place_and_hide_like_vanilla_layers",
         "SUNRISE_GUI_LAYER_FIXTURE",
         &["run"],
     ) {
@@ -572,7 +572,7 @@ fn failed_gui_layer_keeps_completed_paint_and_isolates_following_layers() {
     }
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::gui_layer_tests::failed_gui_layer_keeps_completed_paint_and_isolates_following_layers",
+        "cut_layout::game::client_side::gui_layer_tests::failed_gui_layer_keeps_completed_paint_and_isolates_following_layers",
         || {
             struct CheckedLayer;
             #[mod_api::__subscriptions]
@@ -756,7 +756,7 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
     use mod_api::__private::{HookPanicReport, take_hook_panics};
     use sunrise_client::hud::{Blend, rgba};
 
-    let test = "game::client_side::gui_layer_tests::a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal";
+    let test = "cut_layout::game::client_side::gui_layer_tests::a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal";
     sunrise_gameplay_common::game::in_own_process(test, || {
         struct Wrapper(&'static str, bool);
         #[mod_api::__subscriptions]
@@ -910,7 +910,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
     const HOTBAR: &str = "minecraft:hotbar";
     const CASE: &str = "SUNRISE_HOTBAR_ATTACK_INDICATOR_FIXTURE";
     if run_fresh_cases(
-        "game::client_side::gui_layer_tests::hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint",
+        "cut_layout::game::client_side::gui_layer_tests::hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint",
         CASE,
         &["stock", "replace", "delegate", "skip"],
     ) {
@@ -1331,8 +1331,7 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
     use sunrise_client::{chat::ChatSource, hud::rgba};
     use sunrise_game_data::text::{Style, Text};
 
-    let test =
-        "game::client_side::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk";
+    let test = "cut_layout::game::client_side::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk";
     sunrise_gameplay_common::game::in_own_process(test, || {
         const MOD_PAINT: u32 = 0xFF13_579B;
         static CANCEL_HUD: AtomicBool = AtomicBool::new(false);
@@ -1537,7 +1536,7 @@ fn f1_subtitles_paint_in_the_container_background_without_redispatch() {
     use sunrise_client::{hud::rgba, options_file::V, sound_engine::Notification};
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::gui_layer_tests::f1_subtitles_paint_in_the_container_background_without_redispatch",
+        "cut_layout::game::client_side::gui_layer_tests::f1_subtitles_paint_in_the_container_background_without_redispatch",
         || {
             const MARKER: u32 = 0xFFAE_2818;
             struct Observer;
@@ -1639,7 +1638,7 @@ fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
     use sunrise_client::{controller_notice::Notice, hud::rgba, hud_layout::abgr};
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::gui_layer_tests::options_controller_notice_paints_after_screen_post_despite_hud_cancel",
+        "cut_layout::game::client_side::gui_layer_tests::options_controller_notice_paints_after_screen_post_despite_hud_cancel",
         || {
             const MARKER: u32 = 0xFFAE_2818;
             struct CancelHud;
@@ -1694,7 +1693,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
     use sunrise_client::hud::Rect;
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::gui_layer_tests::panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_owner",
+        "cut_layout::game::client_side::gui_layer_tests::panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_owner",
         || {
             const OWNER: &str = "broken_hud_listener";
             struct Broken;
@@ -1838,7 +1837,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
     use sunrise_game_data::text::Text;
 
     const OWNER: &str = "broken_hud";
-    let test = "game::client_side::gui_layer_tests::a_panicking_hud_painter_shows_its_error_toast_under_f1";
+    let test = "cut_layout::game::client_side::gui_layer_tests::a_panicking_hud_painter_shows_its_error_toast_under_f1";
     sunrise_gameplay_common::game::in_own_process(test, || {
         struct BrokenHud;
         #[mod_api::__subscriptions]
@@ -2120,4 +2119,21 @@ fn render_gui_post_runs_after_hud_layers_respects_hiding_and_exposes_layer_bound
             assert_eq!(take(), ["screen_pre options", "screen_post options"]);
         });
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn hud_layer_bounds_rejects_dedicated_server_role() {
+    sunrise_gameplay_common::game::in_own_process(
+        "cut_layout::game::client_side::gui_layer_tests::hud_layer_bounds_rejects_dedicated_server_role",
+        || {
+            with_client_game(|game| {
+                game.common.options.execution_role = ExecutionRole::DedicatedServer;
+                assert_eq!(
+                    game.hud_layer_bounds("minecraft:effects"),
+                    Err(mod_api::LevelReadError::Unavailable)
+                );
+            });
+        },
+    );
 }

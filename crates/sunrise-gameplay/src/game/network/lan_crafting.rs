@@ -147,32 +147,17 @@ pub(super) fn machine_menu_kind(
     })
 }
 
-/// The vanilla menu engine's kind for a guest's menu over block entity `entity`, with the
-/// container's slots: a furnace's, a brewing stand's, a crafter's, or a content mod's menu type
-/// with its slots' rules. None for the others, whose clicks the hub runs.
+/// The machine's working slot storage for an edit, including any empty mod menu slots.
 pub(in crate::game) fn machine_menu(
     entity: &BlockEntity,
     mod_type: Option<&'static ModMenuType>,
 ) -> Option<(Kind, Vec<Option<ItemStack>>)> {
-    Some(match entity {
-        BlockEntity::Furnace(f) => {
-            let recipe = match f.kind.recipe_type() {
-                "minecraft:blasting" => "blasting",
-                "minecraft:smoking" => "smoking",
-                _ => "smelting",
-            };
-            (Kind::Furnace(recipe), f.items.to_vec())
-        }
-        BlockEntity::Brewing(b) => (Kind::Brewing, b.items.to_vec()),
-        BlockEntity::Crafter(c) => (Kind::CrafterBlock, c.items.to_vec()),
-        BlockEntity::Mod(m) => {
-            let t = mod_type?;
-            let mut items = m.items.clone();
-            items.resize(t.slots, None);
-            (Kind::Mod(t), items)
-        }
-        _ => return None,
-    })
+    let kind = machine_menu_kind(entity, mod_type)?;
+    let mut items = entity.slots().to_vec();
+    if let Kind::Mod(layout) = kind {
+        items.resize(layout.slots, None);
+    }
+    Some((kind, items))
 }
 
 /// `load_player` back.
@@ -2218,6 +2203,7 @@ impl crate::game::ServerGame<'_> {
     /// the containers behind them again (`native_menu_links`), before the
     /// hub sends the tick's slot changes, so a tab the player picked or a
     /// chest placed or broken shows in the same tick.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn lan_menu_links_tick(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::MenuLinks) {
             return;
@@ -2362,6 +2348,7 @@ impl crate::game::ServerGame<'_> {
     /// result each is shown follows its block entity's grid, which another
     /// player, a hopper or the mod may have changed, made again only when
     /// the grid changed.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn lan_mod_crafting_tick(&mut self) {
         let Some(count) = self.server.lan.as_ref().map(|host| host.hub.guests.len()) else {
             return;

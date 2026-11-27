@@ -93,7 +93,7 @@ mod nested_spawn_tests {
     #[ignore = "daily"]
     fn impact_handoff_balances_the_active_owner() {
         if !run_fresh_cases(
-            "game::server_side::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_active_owner",
+            "cut_layout::game::server_side::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_active_owner",
             CASE,
             &["active-owner"],
         ) {
@@ -105,7 +105,7 @@ mod nested_spawn_tests {
     #[ignore = "daily"]
     fn impact_handoff_balances_the_parked_owner() {
         if !run_fresh_cases(
-            "game::server_side::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_parked_owner",
+            "cut_layout::game::server_side::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_parked_owner",
             CASE,
             &["parked-owner"],
         ) {
@@ -117,7 +117,7 @@ mod nested_spawn_tests {
     #[ignore = "daily"]
     fn impact_exposure_retains_the_existing_spawn_buffer_for_the_next_pass() {
         if run_fresh_cases(
-            "game::server_side::native_projectiles::nested_spawn_tests::impact_exposure_retains_the_existing_spawn_buffer_for_the_next_pass",
+            "cut_layout::game::server_side::native_projectiles::nested_spawn_tests::impact_exposure_retains_the_existing_spawn_buffer_for_the_next_pass",
             CASE,
             &["spawn-buffer"],
         ) {

@@ -44,7 +44,7 @@ impl Hooks for Probe {
 #[ignore = "daily"]
 fn removal_exposes_default_and_honours_the_parts_answer() {
     if run_fresh_cases(
-        "game::native_hooks::remove_block_tests::removal_exposes_default_and_honours_the_parts_answer",
+        "cut_layout::game::native_hooks::remove_block_tests::removal_exposes_default_and_honours_the_parts_answer",
         "SUNRISE_REMOVE_BLOCK_CHILD",
         &["game"],
     ) {

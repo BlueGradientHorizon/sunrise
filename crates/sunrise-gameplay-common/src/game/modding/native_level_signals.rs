@@ -56,6 +56,22 @@ impl<'v, 'g, G: crate::game::SideGame<'g>> ReadLevel<'v, 'g, G> {
         }
     }
 
+    fn lid_openers(&self) -> &HashMap<(i32, i32, i32), i32> {
+        static EMPTY: std::sync::OnceLock<HashMap<(i32, i32, i32), i32>> =
+            std::sync::OnceLock::new();
+        if self.level.dimension() == self.game.native_level_key() {
+            self.game
+                .side_lid_openers()
+                .unwrap_or_else(|| EMPTY.get_or_init(HashMap::new))
+        } else {
+            <G::State as crate::game::side_ops::world::SideOps>::side_parked_lid_openers(
+                self.game.side_state(),
+                self.dim.id(),
+            )
+            .expect("resident parked level has its lid openers")
+        }
+    }
+
     fn shulker_is_closed(&self, pos: BlockPos) -> Option<bool> {
         let key = [pos.x, pos.y, pos.z];
         let shulkers = if self.level.dimension() == self.game.native_level_key() {
@@ -73,7 +89,13 @@ impl<'v, 'g, G: crate::game::SideGame<'g>> ReadLevel<'v, 'g, G> {
     }
 }
 
-super::native_tags::impl_tags!(ReadLevel<'_, 'g, G>, level, level.game.native_tag_items(); generics('g, G: crate::game::SideGame<'g>));
+super::native_tags::impl_tags!(
+    ReadLevel<'_, 'g, G>,
+    level,
+    level.game.native_tag_items(),
+    level.game.loaded_biome_keys();
+    generics('g, G: crate::game::SideGame<'g>)
+);
 
 /// The output side passed to Parts is opposite SignalGetter's input direction.
 /// Both the shared view and the write context apply the same output bound.
@@ -116,6 +138,7 @@ impl<'g, G: crate::game::SideGame<'g>> SignalAccess for ReadLevel<'_, 'g, G> {
     fn shulker_is_closed(&self, pos: BlockPos) -> Option<bool> {
         self.shulker_is_closed(pos)
     }
+    #[inline]
     fn published_collision_shape(
         &self,
         pos: BlockPos,
@@ -210,6 +233,7 @@ impl<'g, G: crate::game::SideGame<'g>> SignalAccess for ReadLevel<'_, 'g, G> {
         );
         connected
     }
+    #[inline]
     fn adjust_signal(
         &self,
         pos: BlockPos,
@@ -228,7 +252,7 @@ impl<'g, G: crate::game::SideGame<'g>> SignalAccess for ReadLevel<'_, 'g, G> {
         adjust_signal(direction, vanilla, |face, signal| {
             mod_api::dispatch_block_signal(
                 self,
-                self.game.dim.level(),
+                self.dimension(),
                 pos,
                 state,
                 face,
@@ -237,18 +261,13 @@ impl<'g, G: crate::game::SideGame<'g>> SignalAccess for ReadLevel<'_, 'g, G> {
             );
         })
     }
+    #[inline]
     fn block_entity_signal(&self, pos: BlockPos, state: BlockStateId, _: Direction) -> i32 {
-        static EMPTY: std::sync::OnceLock<HashMap<(i32, i32, i32), i32>> =
-            std::sync::OnceLock::new();
-        let lid_openers = self
-            .game
-            .side_lid_openers()
-            .unwrap_or_else(|| EMPTY.get_or_init(HashMap::new));
         block_entity_signal(
             self.world(),
             self.game.pack.assets.registry,
             self.game.items(),
-            lid_openers,
+            self.lid_openers(),
             pos,
             state,
         )
@@ -301,6 +320,7 @@ impl<'g, G: crate::game::SideGame<'g>> LevelHost for ReadLevel<'_, 'g, G> {
         })?;
         Some(mod_api::__private::item_capability_present(self, site))
     }
+    #[inline]
     fn container_size(&self, at: mod_api::BlockSide) -> Option<usize> {
         if at.level != self.level || !self.world().is_loaded_at(at.pos[0], at.pos[1], at.pos[2]) {
             return None;
@@ -414,6 +434,7 @@ impl<'g, G: crate::game::SideGame<'g>> LevelHost for ReadLevel<'_, 'g, G> {
         .try_into_api()
         .ok()
     }
+    #[inline]
     fn brightness(&self, layer: mod_api::LightLayer, pos: [i32; 3]) -> i32 {
         crate::game::native_world_read_common::world_brightness(self.world(), layer, pos)
     }

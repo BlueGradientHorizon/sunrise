@@ -25,7 +25,7 @@ mod tests {
     #[ignore = "daily"]
     fn item_numbers_follow_the_prepared_content_plan_for_api_and_scatter() {
         if fixture::run_fresh_cases(
-            "game::native_item_registry::tests::item_numbers_follow_the_prepared_content_plan_for_api_and_scatter",
+            "cut_layout::game::native_item_registry::tests::item_numbers_follow_the_prepared_content_plan_for_api_and_scatter",
             "SUNRISE_ITEM_NUMBERS_CHILD",
             &["valid"],
         ) {

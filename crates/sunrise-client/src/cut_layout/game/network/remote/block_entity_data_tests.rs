@@ -47,7 +47,7 @@ impl Hooks for TestMod {
 #[ignore = "daily"]
 fn block_entity_data_received_after_merge() {
     if run_fresh_cases(
-        "game::remote::block_entity_data_tests::block_entity_data_received_after_merge",
+        "cut_layout::game::remote::block_entity_data_tests::block_entity_data_received_after_merge",
         "SUNRISE_RECEIVED_CHILD",
         &["receive"],
     ) {

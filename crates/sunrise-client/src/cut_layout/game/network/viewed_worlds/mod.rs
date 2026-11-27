@@ -552,7 +552,7 @@ pub(crate) mod tests {
         const VIEWED: &str = "test:viewed_overworld";
         const CLEARED: &str = "test:cleared_overworld";
         sunrise_gameplay_common::game::in_own_process(
-            "game::viewed_worlds::tests::a_dry_view_stays_dry_after_shared_weather_changes_and_promotion",
+            "cut_layout::game::client_side::viewed_worlds::tests::a_dry_view_stays_dry_after_shared_weather_changes_and_promotion",
             || {
                 with_guests(|server| {
                     let mut host = server.server.lan.take().unwrap();

@@ -16,7 +16,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_mod_reads_and_sets_the_servers_distances() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::native_server_distances::tests::a_mod_reads_and_sets_the_servers_distances",
+            "cut_layout::game::server_side::native_server_distances::tests::a_mod_reads_and_sets_the_servers_distances",
             || {
                 let advertised = |game: &ServerGame<'_>| {
                     let config = &game.server.lan.as_ref().unwrap().hub.config;
@@ -109,7 +109,7 @@ mod tests {
     fn the_server_is_published_while_open_to_lan() {
         use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_server_distances::tests::the_server_is_published_while_open_to_lan",
+            "cut_layout::game::server_side::native_server_distances::tests::the_server_is_published_while_open_to_lan",
             "SUNRISE_TEST_SERVER_PUBLISHED_CASE",
             &["published"],
         ) {

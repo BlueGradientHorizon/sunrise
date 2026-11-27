@@ -128,7 +128,7 @@ const SHEARING: &[&str] = &[ability::SHEARS_HARVEST, ability::SHEARS_CARVE];
 #[ignore = "daily"]
 fn parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_abilities_tests::parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item",
+        "cut_layout::game::server_side::item_abilities_tests::parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item",
         parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item_isolated,
     );
 }
@@ -366,7 +366,7 @@ where
 #[ignore = "daily"]
 fn parts_answer_the_abilities_at_every_site() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_abilities_tests::parts_answer_the_abilities_at_every_site",
+        "cut_layout::game::server_side::item_abilities_tests::parts_answer_the_abilities_at_every_site",
         parts_answer_the_abilities_at_every_site_isolated,
     );
 }

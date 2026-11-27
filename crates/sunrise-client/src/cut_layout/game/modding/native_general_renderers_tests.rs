@@ -269,7 +269,7 @@ fn in_scene(
     check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Scene),
 ) {
     if super::native_entity_refs::tests::run_fresh_cases(
-        &format!("game::client_side::native_general_renderers_tests::{test}"),
+        &format!("cut_layout::game::client_side::native_general_renderers_tests::{test}"),
         "SUNRISE_GENERAL_RENDERERS_CHILD",
         &["native"],
     ) {
@@ -591,6 +591,7 @@ fn load_saved_row(
     fuel: &AttachmentKey<i32>,
 ) -> u32 {
     use mod_api::{Holder, Host};
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
     let uuid = [380, 39, 9, 57];
     let saved = Tag::Compound(
         [
@@ -633,6 +634,7 @@ fn spawn_row(
     fuel: &AttachmentKey<i32>,
 ) -> u32 {
     use mod_api::{EntitySpawn, Holder, Host, SpawnBody};
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
     server.storage_scope(|server, _| {
         let level = (server as &mut dyn Host)
             .level("minecraft:overworld")
@@ -662,7 +664,7 @@ fn integrated_scene(
 ) {
     const CASE: &str = "SUNRISE_GENERAL_RENDERER_TARGET";
     if super::native_entity_refs::tests::run_fresh_cases(
-        &format!("game::client_side::native_general_renderers_tests::{test}"),
+        &format!("cut_layout::game::client_side::native_general_renderers_tests::{test}"),
         CASE,
         &["game"],
     ) {
@@ -705,7 +707,7 @@ fn integrated_scene(
                     .as_ref()
                     .unwrap()
                     .call(move |server| {
-                        let [x, _, z] = server.side.lan.as_ref().unwrap().hub.guests[0].position;
+                        let [x, _, z] = server.server.lan.as_ref().unwrap().hub.guests[0].position;
                         // The headless fixture has no GPU to compile the section. Keep the row
                         // above build height, where the vanilla section gate does not apply.
                         let position = [

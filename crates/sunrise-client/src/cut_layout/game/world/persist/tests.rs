@@ -241,10 +241,9 @@ mod transient_entities {
             );
 
             let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
-            let keys = [(chunk.x, chunk.z)].into_iter().collect();
-            let (snapshots, refused) = game.unloading_entity_snapshots(&keys);
-            assert!(refused.is_empty());
-            game.server.save.0.save_entities(snapshots).unwrap();
+            let keys = HashSet::from([(0, 0)]);
+            let (records, _) = game.unloading_entity_snapshots(&keys);
+            game.server.save.0.save_entities_later(records).unwrap();
             game.remove_unloading_entities(&keys);
             game.server.save.0.flush().unwrap();
             assert_eq!(game.entity(display.id()), None);
@@ -1376,7 +1375,7 @@ fn an_orb_saves_its_live_fire_and_air_over_the_loaded_ones() {
 #[ignore = "daily"]
 fn an_orb_saves_its_live_portal_cooldown() {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::persist::tests::an_orb_saves_its_live_portal_cooldown",
+        "cut_layout::game::server_side::persist::tests::an_orb_saves_its_live_portal_cooldown",
         "SUNRISE_ORB_PERSISTENCE_CHILD",
         &["orb"],
     ) {

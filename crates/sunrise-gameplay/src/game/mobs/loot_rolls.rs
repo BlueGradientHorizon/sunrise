@@ -5,7 +5,7 @@ use crate::game::ServerGame;
 use mod_api::entity::health::HurtSource;
 use mod_api::{EntityRef, LivingRef};
 use sunrise_core::random::LegacyRandom;
-use sunrise_gameplay_common::game::creatures::death_source::death_hurt_source;
+use sunrise_gameplay_common::game::creatures::{death_source::death_hurt_source, to_loot};
 use sunrise_items::items::{ItemStack, Items};
 use sunrise_items::random_sequences::RandomSequences;
 use sunrise_sim::mobs::drops::{DeathRolls, roll_asked};
@@ -273,9 +273,24 @@ impl ServerGame<'_> {
                     )
                 })
                 .unwrap_or_else(|| sunrise_world::loot::LootEntity::new(&self.target_type(target))),
-            Target::Player => self.killer_loot_entity(None),
-            Target::Guest(conn) => self.killer_loot_entity(Some(conn)),
-            _ => sunrise_world::loot::LootEntity::new(&self.target_type(target)),
+            _ => {
+                let mut entity = sunrise_world::loot::LootEntity {
+                    kind: self.target_type(target),
+                    living: target.is_living(),
+                    ..Default::default()
+                };
+                if entity.living {
+                    entity.equipment = mod_api::EquipmentSlot::ALL
+                        .into_iter()
+                        .zip(sunrise_world::loot::EQUIPMENT_SLOTS)
+                        .filter_map(|(slot, name)| {
+                            let stack = self.equipment_stack_for(target, slot)?;
+                            Some((name.to_owned(), to_loot(&stack.project())))
+                        })
+                        .collect();
+                }
+                entity
+            }
         };
         if entity.nbt.is_none()
             && self

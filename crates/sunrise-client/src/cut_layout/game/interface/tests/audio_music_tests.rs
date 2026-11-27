@@ -19,7 +19,7 @@ use {
 #[ignore = "daily"]
 fn minecart_loops_gate_both_gains_on_live_interpolated_rails() {
     in_own_process(
-        "game::client_side::music::audio_music_tests::minecart_loops_gate_both_gains_on_live_interpolated_rails",
+        "cut_layout::game::client_side::music::audio_music_tests::minecart_loops_gate_both_gains_on_live_interpolated_rails",
         || {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
@@ -109,7 +109,7 @@ fn guardian_and_elder_events_admit_two_independent_loops_each() {
         static STARTS: std::cell::RefCell<Vec<(u64, [f64; 3])>> = const { std::cell::RefCell::new(Vec::new()) };
     }
     in_own_process(
-        "game::client_side::music::audio_music_tests::guardian_and_elder_events_admit_two_independent_loops_each",
+        "cut_layout::game::client_side::music::audio_music_tests::guardian_and_elder_events_admit_two_independent_loops_each",
         || {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
@@ -181,7 +181,7 @@ fn guardian_and_elder_events_admit_two_independent_loops_each() {
 #[ignore = "daily"]
 fn music_selection_and_gain_follow_the_camera_across_a_biome_boundary() {
     in_own_process(
-        "game::client_side::music::audio_music_tests::music_selection_and_gain_follow_the_camera_across_a_biome_boundary",
+        "cut_layout::game::client_side::music::audio_music_tests::music_selection_and_gain_follow_the_camera_across_a_biome_boundary",
         || {
             with_client_game(|game| {
                 game.client.title.0 = None;

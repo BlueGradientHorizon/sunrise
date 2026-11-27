@@ -85,13 +85,11 @@ impl ClientGame<'_> {
         let content = &self.common.mods.content_ids;
         let mut next = wanted.clone();
 
-        let mut waiting = Vec::new();
         for id in applied.symmetric_difference(&wanted) {
             if !content.contains(id) || self.common.mods.live_ids.contains(id) {
                 continue;
             }
             log::info!("Sunrise: mod {id} needs a restart to switch");
-            waiting.push(id.clone());
             if applied.contains(id) {
                 next.insert(id.clone());
             } else {
@@ -104,9 +102,6 @@ impl ClientGame<'_> {
             .reconcile_code_switches(&self.client.settings.mods.disabled);
         for id in host_waiting {
             log::info!("Sunrise: serving host mod {id} needs a restart to switch");
-            if !waiting.contains(&id) {
-                waiting.push(id);
-            }
         }
         let changed = applied
             .symmetric_difference(&next)

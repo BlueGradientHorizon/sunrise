@@ -12,7 +12,7 @@ use sunrise_sim::mobs::{Mob, illager, villager};
 /// (the content root freezes the process's block entity types).
 fn fresh(name: &str) -> bool {
     run_fresh_cases(
-        &format!("game::published_collision_mob_tests::{name}"),
+        &format!("cut_layout::game::published_collision_mob_tests::{name}"),
         "SUNRISE_PUBLISHED_COLLISION_MOB_CHILD",
         &["run"],
     )

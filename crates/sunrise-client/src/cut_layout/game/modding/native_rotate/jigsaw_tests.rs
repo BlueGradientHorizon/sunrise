@@ -414,7 +414,7 @@ fn position_sensitive_part_connects_at_built_height() {
     // The Part table and the published worldgen hooks are process-wide: another test's
     // install in the shared process would swap this connector's Part mid-assembly.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::native_rotate::jigsaw_tests::position_sensitive_part_connects_at_built_height",
+        "cut_layout::game::native_rotate::jigsaw_tests::position_sensitive_part_connects_at_built_height",
         "SUNRISE_JIGSAW_POSITION_SENSITIVE_CHILD",
         &["position-sensitive"],
     ) {
@@ -582,7 +582,7 @@ fn saved(pieces: &[PoolPiece]) -> Vec<u8> {
 #[ignore = "daily"]
 fn no_part_fixed_seed_layout_bytes_and_draws_stay_unchanged() {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::native_rotate::jigsaw_tests::no_part_fixed_seed_layout_bytes_and_draws_stay_unchanged",
+        "cut_layout::game::native_rotate::jigsaw_tests::no_part_fixed_seed_layout_bytes_and_draws_stay_unchanged",
         "SUNRISE_JIGSAW_FIXED_SEED_CHILD",
         &["fixed-seed"],
     ) {
@@ -698,7 +698,7 @@ fn no_part_fixed_seed_layout_bytes_and_draws_stay_unchanged() {
 fn placed_palette_keeps_connector_identity_and_named_start_requirement() {
     // As above: the Part table it installs is process-wide.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::native_rotate::jigsaw_tests::placed_palette_keeps_connector_identity_and_named_start_requirement",
+        "cut_layout::game::native_rotate::jigsaw_tests::placed_palette_keeps_connector_identity_and_named_start_requirement",
         "SUNRISE_JIGSAW_PLACED_PALETTE_CHILD",
         &["placed-palette"],
     ) {

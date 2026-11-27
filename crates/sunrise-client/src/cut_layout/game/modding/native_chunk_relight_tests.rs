@@ -221,7 +221,7 @@ fn resend_waits_for_the_relight_before_sending_to_an_interior_holder() {
     use sunrise_sim::lan::{Out, PlayerSender};
 
     if run_fresh_cases(
-        "game::native_chunk_relight_tests::resend_waits_for_the_relight_before_sending_to_an_interior_holder",
+        "cut_layout::game::native_chunk_relight_tests::resend_waits_for_the_relight_before_sending_to_an_interior_holder",
         "SUNRISE_CHUNK_RESEND_CHILD",
         &["game"],
     ) {
@@ -307,7 +307,7 @@ fn later_light_check_does_not_prevent_chunk_resend() {
     use sunrise_sim::lan::{Out, PlayerSender};
 
     if run_fresh_cases(
-        "game::native_chunk_relight_tests::later_light_check_does_not_prevent_chunk_resend",
+        "cut_layout::game::native_chunk_relight_tests::later_light_check_does_not_prevent_chunk_resend",
         "SUNRISE_CHUNK_RESEND_MARKER_CHILD",
         &["game"],
     ) {
@@ -423,7 +423,7 @@ fn resend_after_air_check_does_not_wait_for_later_column_relight() {
     use sunrise_sim::lan::{Out, PlayerSender};
 
     if run_fresh_cases(
-        "game::native_chunk_relight_tests::resend_after_air_check_does_not_wait_for_later_column_relight",
+        "cut_layout::game::native_chunk_relight_tests::resend_after_air_check_does_not_wait_for_later_column_relight",
         "SUNRISE_CHUNK_RESEND_LATER_RELIGHT_CHILD",
         &["game"],
     ) {

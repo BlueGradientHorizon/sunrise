@@ -1961,6 +1961,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         if let Some(worldgen) = context.worldgen {
             sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
         }
+        self.sync_native_settings_from_loop_context();
     }
 
     /// Apply the player's switches at the canonical native dispatch boundary.
@@ -2452,6 +2453,7 @@ impl ModsState {
     }
 }
 
+use crate::game::native_hooks::mod_settings::ModSettingsGameExt as _;
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::tables::WorldTablesExt as _;

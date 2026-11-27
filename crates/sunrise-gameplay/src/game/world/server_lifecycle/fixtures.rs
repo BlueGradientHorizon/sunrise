@@ -176,9 +176,23 @@ fn world_saved_panic_during_shutdown() {
     );
 }
 
+// The shell hands a dedicated server its profile services; a bare server game has none.
+fn with_dedicated_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+    with_game(|game| {
+        game.server.dedicated_services = Some(crate::game::dedicated::Services {
+            find_name: |_| None,
+            find_id: |_| None,
+            profile_keys: Vec::new,
+            verify_session: Arc::new(|_, _, _| Ok(None)),
+        });
+        test(game);
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn dedicated_port_bind_failure_emits_only_stopped_without_touching_world() {
+    use sunrise_java_properties::Properties;
     use sunrise_server_files::properties::{ServerProperties, SystemEntropy};
 
     struct Log(Arc<Mutex<Vec<&'static str>>>);
@@ -215,18 +229,16 @@ fn dedicated_port_bind_failure_emits_only_stopped_without_touching_world() {
     let port = occupied.local_addr().unwrap().port();
     let universe = tempfile::tempdir().unwrap();
     let world_dir = universe.path().join("untouched_world");
-    let properties = universe.path().join("server.properties");
-    std::fs::write(
-        &properties,
-        format!("online-mode=false\nserver-ip=127.0.0.1\nserver-port={port}\n"),
-    )
-    .unwrap();
-    let props = ServerProperties::from_file(&properties, &mut SystemEntropy::default()).unwrap();
+    let mut properties = Properties::default();
+    properties.put("online-mode", "false".into());
+    properties.put("server-ip", "127.0.0.1".into());
+    properties.put("server-port", port.to_string());
+    let props = ServerProperties::new(properties, &mut SystemEntropy::default()).unwrap();
     let log = Arc::new(Mutex::new(Vec::new()));
     with_mods(
         vec![ModEntry::new("log", Box::new(Log(log.clone())))].into(),
         || {
-            with_game(|game| {
+            with_dedicated_game(|game| {
                 game.options.execution_role = ExecutionRole::DedicatedServer;
                 let setup = crate::game::dedicated::Setup {
                     props,

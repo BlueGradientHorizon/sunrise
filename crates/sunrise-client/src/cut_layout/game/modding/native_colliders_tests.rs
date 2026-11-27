@@ -812,7 +812,7 @@ fn a_carried_body_stops_at_a_wall_and_the_collider_goes_on() {
 #[ignore = "daily"]
 fn a_collider_on_a_collider_passes_the_displacement_on() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_colliders_tests::a_collider_on_a_collider_passes_the_displacement_on",
+        "cut_layout::game::server_side::native_colliders_tests::a_collider_on_a_collider_passes_the_displacement_on",
         || {
             with_world(|game| {
                 let (c1, c1_ref) = stand_with_id(game, [8.0, 70.0, 8.0]);
@@ -1228,7 +1228,7 @@ fn a_client_collider_turning_before_the_tick_carries_the_local_player() {
     use sunrise_sim::motion::PlayerMotion;
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_colliders_tests::a_client_collider_turning_before_the_tick_carries_the_local_player",
+        "cut_layout::game::server_side::native_colliders_tests::a_client_collider_turning_before_the_tick_carries_the_local_player",
         || {
             const PLAYER: u32 = 42;
             const SOURCE: i32 = 80;
@@ -1357,7 +1357,7 @@ fn a_client_descending_collider_carries_the_local_player_without_sideways_drift(
     }
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_colliders_tests::a_client_descending_collider_carries_the_local_player_without_sideways_drift",
+        "cut_layout::game::server_side::native_colliders_tests::a_client_descending_collider_carries_the_local_player_without_sideways_drift",
         || {
             const PLAYER: u32 = 42;
             const SOURCE: i32 = 80;

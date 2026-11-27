@@ -226,7 +226,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn typed_cloud_retains_its_loaded_options_for_tracking_and_save() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::potions_server::tests::typed_cloud_retains_its_loaded_options_for_tracking_and_save",
+            "cut_layout::game::server_side::potions_server::tests::typed_cloud_retains_its_loaded_options_for_tracking_and_save",
             "SUNRISE_TEST_TYPED_CLOUD_CASE",
             &["cloud"],
         ) {
@@ -295,7 +295,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn owned_effect_ticks_read_live_effects_and_rules_and_subtract_exhaustion() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::potions_server::tests::owned_effect_ticks_read_live_effects_and_rules_and_subtract_exhaustion",
+            "cut_layout::game::server_side::potions_server::tests::owned_effect_ticks_read_live_effects_and_rules_and_subtract_exhaustion",
             "SUNRISE_OWNED_EFFECT_CHILD",
             &["effects"],
         ) {
@@ -497,7 +497,7 @@ pub(crate) mod tests {
     fn mod_tick_heals_and_feeds_player() {
         // Mod effects are frozen process-wide: another fixture may have registered first.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::potions_server::tests::mod_tick_heals_and_feeds_player",
+            "cut_layout::game::server_side::potions_server::tests::mod_tick_heals_and_feeds_player",
             "SUNRISE_POTION_EFFECT_CHILD",
             &["effect"],
         ) {
@@ -526,7 +526,7 @@ pub(crate) mod tests {
     fn mod_tick_magic_respects_player_hit_frames() {
         // Mod effects are frozen process-wide: another fixture may have registered first.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::potions_server::tests::mod_tick_magic_respects_player_hit_frames",
+            "cut_layout::game::server_side::potions_server::tests::mod_tick_magic_respects_player_hit_frames",
             "SUNRISE_POTION_EFFECT_CHILD",
             &["effect"],
         ) {
@@ -549,7 +549,7 @@ pub(crate) mod tests {
     fn mod_tick_kills_mob_through_death_and_drops() {
         // Mod effects are frozen process-wide: another fixture may have registered first.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::potions_server::tests::mod_tick_kills_mob_through_death_and_drops",
+            "cut_layout::game::server_side::potions_server::tests::mod_tick_kills_mob_through_death_and_drops",
             "SUNRISE_POTION_EFFECT_CHILD",
             &["effect"],
         ) {
@@ -595,7 +595,7 @@ pub(crate) mod tests {
     fn mod_tick_sees_prior_regeneration() {
         // Mod effects are frozen process-wide: another fixture may have registered first.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::potions_server::tests::mod_tick_sees_prior_regeneration",
+            "cut_layout::game::server_side::potions_server::tests::mod_tick_sees_prior_regeneration",
             "SUNRISE_POTION_EFFECT_CHILD",
             &["effect"],
         ) {
@@ -627,7 +627,7 @@ pub(crate) mod tests {
             atomic::{AtomicBool, Ordering},
         };
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::potions_server::tests::mob_effect_added_event_and_part_on_effect_added_contract",
+            "cut_layout::game::server_side::potions_server::tests::mob_effect_added_event_and_part_on_effect_added_contract",
             "SUNRISE_EFFECT_ADDED_CHILD",
             &["added"],
         ) {
@@ -2006,7 +2006,7 @@ pub(crate) mod declared_modifier_player_tests {
     #[ignore = "daily"]
     fn a_declared_modifier_follows_the_players_effect_in_its_attribute_map() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::potions_server::declared_modifier_player_tests::a_declared_modifier_follows_the_players_effect_in_its_attribute_map",
+            "cut_layout::game::server_side::potions_server::declared_modifier_player_tests::a_declared_modifier_follows_the_players_effect_in_its_attribute_map",
             "SUNRISE_DECLARED_MODIFIER_PLAYER_CHILD",
             &["lucky"],
         ) {

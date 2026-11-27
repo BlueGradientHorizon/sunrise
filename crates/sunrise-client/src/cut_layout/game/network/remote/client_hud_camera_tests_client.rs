@@ -35,7 +35,7 @@ fn a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat() 
     };
 
     in_own_process(
-        "game::client_side::remote_client::tests::client_hud_camera_tests::a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat",
+        "cut_layout::game::client_side::remote_client::tests::client_hud_camera_tests::a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat",
         || {
             with_client_game(|game| {
                 let (_reader, _writer) = super::connect_menu_test(game);

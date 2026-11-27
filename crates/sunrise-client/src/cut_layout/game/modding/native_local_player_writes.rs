@@ -73,7 +73,7 @@ mod tests {
     #[ignore = "daily"]
     fn client_tick_body_yaw_writes_feed_local_living_render_state() {
         if run_fresh_cases(
-            "game::native_local_player_writes::tests::client_tick_body_yaw_writes_feed_local_living_render_state",
+            "cut_layout::game::client_side::native_local_player_writes::tests::client_tick_body_yaw_writes_feed_local_living_render_state",
             "SUNRISE_CLIENT_BODY_YAW_CASE",
             &["frame"],
         ) {
@@ -265,7 +265,7 @@ mod tests {
         };
 
         if run_fresh_cases(
-            "game::native_local_player_writes::tests::frame_tick_rate_reads_the_displayed_levels_configured_rate",
+            "cut_layout::game::client_side::native_local_player_writes::tests::frame_tick_rate_reads_the_displayed_levels_configured_rate",
             "SUNRISE_CLIENT_TICK_RATE_CASE",
             &["level"],
         ) {

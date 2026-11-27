@@ -49,7 +49,7 @@ fn with_client(
     name: &str,
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Observer, BlockStateId),
 ) {
-    let selector = format!("game::remote::tests::predicted_block_notice_tests::{name}");
+    let selector = format!("cut_layout::game::remote::tests::predicted_block_notice_tests::{name}");
     if run_fresh_cases(
         &selector,
         "SUNRISE_PREDICTED_BLOCK_NOTICE_CHILD",

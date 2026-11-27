@@ -21,7 +21,7 @@ fn window_key(game: &mut ClientGame<'_>, input: WindowKeyInput<'_>) {
 #[ignore = "daily"]
 fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::inventory_release_post_distinguishes_quick_craft_from_swallowed_release",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::inventory_release_post_distinguishes_quick_craft_from_swallowed_release",
         "SUNRISE_SCREEN_QUICK_CRAFT_CHILD",
         &["inventory"],
     ) {
@@ -96,7 +96,7 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
 #[ignore = "daily"]
 fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::native_and_mounted_press_tab_and_preedit_use_the_receiving_screen",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::native_and_mounted_press_tab_and_preedit_use_the_receiving_screen",
         "SUNRISE_SCREEN_INPUT_ROUTING_CHILD",
         &["routing"],
     ) {
@@ -213,7 +213,7 @@ pub(crate) fn publish_frame(game: &mut sunrise_client_gameplay::game::ClientGame
 #[ignore = "daily"]
 fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::release_drag_and_wheel_cancellation_preserve_input_bookkeeping",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::release_drag_and_wheel_cancellation_preserve_input_bookkeeping",
         "SUNRISE_SCREEN_PHYSICAL_INPUT_CHILD",
         &["input"],
     ) {
@@ -759,7 +759,7 @@ fn context_menu_overlay_draw_order_disposal_and_action_reopen() {
     use sunrise_client_gameplay::game::client_side::books::BookScreen;
 
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_overlay_draw_order_disposal_and_action_reopen",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_overlay_draw_order_disposal_and_action_reopen",
         "SUNRISE_CONTEXT_MENU_LIFECYCLE_CHILD",
         &["lifecycle"],
     ) {
@@ -947,7 +947,7 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
     use winit::keyboard::NativeKeyCode;
 
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket",
         "SUNRISE_CONTEXT_MENU_ROUTING_CHILD",
         &["routing"],
     ) {
@@ -1193,7 +1193,7 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
     use sunrise_client::gamepad::Button as PadButton;
 
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_tracks_mouse_key_and_controller_press_ownership",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_tracks_mouse_key_and_controller_press_ownership",
         "SUNRISE_CONTEXT_MENU_OWNERSHIP_CHILD",
         &["ownership"],
     ) {
@@ -1452,7 +1452,7 @@ fn context_menu_and_pointer_grab_refuse_each_other_in_both_orders() {
     use mod_api::client::widgets::ContextMenuEntry;
 
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_and_pointer_grab_refuse_each_other_in_both_orders",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_and_pointer_grab_refuse_each_other_in_both_orders",
         "SUNRISE_CONTEXT_MENU_GRAB_CHILD",
         &["grab"],
     ) {

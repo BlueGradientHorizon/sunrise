@@ -393,7 +393,7 @@ pub(crate) mod off_level_tests {
     #[ignore = "daily"]
     fn underwater_dismount_uses_the_levels_current_mount_tag() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::mounts::off_level_tests::underwater_dismount_uses_the_levels_current_mount_tag",
+            "cut_layout::game::server_side::mounts::off_level_tests::underwater_dismount_uses_the_levels_current_mount_tag",
             || {
                 sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                     let tags = &game.items().entity_type_tags;

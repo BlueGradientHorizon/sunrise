@@ -174,7 +174,7 @@ pub fn told_since(game: &crate::game::ServerGame<'_>, before: usize) -> bool {
 
 pub fn with_command_guests(name: &str, body: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     sunrise_gameplay_common::game::in_own_process(
-        &format!("game::server_side::native_guest_turn_tests::{name}"),
+        &format!("cut_layout::game::server_side::native_guest_turn_tests::{name}"),
         || {
             with_guests(body);
         },

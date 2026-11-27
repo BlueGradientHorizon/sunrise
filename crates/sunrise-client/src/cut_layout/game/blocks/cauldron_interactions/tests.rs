@@ -442,7 +442,7 @@ pub(crate) fn bottles(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
 #[ignore = "daily"]
 fn cauldron_syrup_applies_once() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_syrup_applies_once",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_syrup_applies_once",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -509,7 +509,7 @@ fn cauldron_syrup_applies_once() {
 #[ignore = "daily"]
 fn cauldron_dye_tag_shadows_exact_handler_even_on_pass() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_dye_tag_shadows_exact_handler_even_on_pass",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_dye_tag_shadows_exact_handler_even_on_pass",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -545,7 +545,7 @@ fn cauldron_dye_tag_shadows_exact_handler_even_on_pass() {
 #[ignore = "daily"]
 fn cauldron_transfer_awards_two_statistics_once() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_transfer_awards_two_statistics_once",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_transfer_awards_two_statistics_once",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -576,7 +576,7 @@ fn cauldron_transfer_awards_two_statistics_once() {
 #[ignore = "daily"]
 fn cauldron_register_to_all_and_admission_errors() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_register_to_all_and_admission_errors",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_register_to_all_and_admission_errors",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -687,7 +687,7 @@ fn cauldron_register_to_all_and_admission_errors() {
 #[ignore = "daily"]
 fn cauldron_world_close_discards_callbacks_before_failed_preparation() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_world_close_discards_callbacks_before_failed_preparation",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_world_close_discards_callbacks_before_failed_preparation",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -751,7 +751,7 @@ fn cauldron_world_close_discards_callbacks_before_failed_preparation() {
 #[ignore = "daily"]
 fn cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -863,7 +863,7 @@ fn cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set
 #[ignore = "daily"]
 fn cauldron_decision_controls_swing_and_fallback() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_decision_controls_swing_and_fallback",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_decision_controls_swing_and_fallback",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -964,7 +964,7 @@ fn cauldron_decision_controls_swing_and_fallback() {
 #[ignore = "daily"]
 fn cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -1110,7 +1110,7 @@ fn cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items() {
 #[ignore = "daily"]
 fn cauldron_panicking_handler_disables_callback_and_reports_toast() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_panicking_handler_disables_callback_and_reports_toast",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_panicking_handler_disables_callback_and_reports_toast",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {
@@ -1494,7 +1494,7 @@ fn cauldron_displaced_handlers_drop_under_original_owner_and_order_edits() {
 #[ignore = "daily"]
 fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_packet_pass_resumes_item_use_once_without_client_prediction",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_packet_pass_resumes_item_use_once_without_client_prediction",
         "SUNRISE_CAULDRON_CASE",
         &[
             "pass",
@@ -1761,11 +1761,10 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
                 read_uses(client).is_empty(),
                 "held block use must not reach the peer"
             );
+            let _owner = hold_call();
             if case == "hold-drop" {
-                let _owner = hold_call();
                 client.drop_held(hold).unwrap();
             } else {
-                let _owner = hold_call();
                 assert!(client.release_held(hold).unwrap() > 0);
             }
         }
@@ -1973,7 +1972,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
 #[ignore = "daily"]
 fn cauldron_input_projection_failure_consumes_without_fallthrough() {
     if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_input_projection_failure_consumes_without_fallthrough",
+        "cut_layout::game::cauldron_interactions::tests::cauldron_input_projection_failure_consumes_without_fallthrough",
         "SUNRISE_CAULDRON_CASE",
         &["run"],
     ) {

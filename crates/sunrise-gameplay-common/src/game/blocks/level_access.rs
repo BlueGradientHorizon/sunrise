@@ -908,6 +908,7 @@ impl LevelAccess for GameLevel<'_> {
         }
     }
     #[allow(clippy::option_option)]
+    #[inline]
     fn before_state_for_placement(
         &self,
         ticks: &Ticks,

@@ -154,7 +154,7 @@ impl Hooks for PlacementReadMod {
 
 fn with_game(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     if run_fresh_cases(
-        &format!("game::server_side::native_placement_state_tests::{name}"),
+        &format!("cut_layout::game::server_side::native_placement_state_tests::{name}"),
         "SUNRISE_PLACEMENT_STATE_CHILD",
         &["run"],
     ) {

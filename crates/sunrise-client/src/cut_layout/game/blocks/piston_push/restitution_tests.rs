@@ -97,7 +97,7 @@ fn boats_over_glass<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
 #[ignore = "daily"]
 fn a_bounce_listener_can_remove_a_later_lid_target() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::restitution_tests::a_bounce_listener_can_remove_a_later_lid_target",
+        "cut_layout::game::piston_push::restitution_tests::a_bounce_listener_can_remove_a_later_lid_target",
         || {
             let part = PushBounce::default();
             let mods: mod_api::Mods = vec![
@@ -153,7 +153,7 @@ fn a_bounce_listener_can_remove_a_later_lid_target() {
 #[ignore = "daily"]
 fn a_downward_shulker_box_lid_bounces_only_the_locally_driven_boat() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::restitution_tests::a_downward_shulker_box_lid_bounces_only_the_locally_driven_boat",
+        "cut_layout::game::piston_push::restitution_tests::a_downward_shulker_box_lid_bounces_only_the_locally_driven_boat",
         || {
             let part = PushBounce::default();
             let mods: mod_api::Mods =
@@ -198,7 +198,7 @@ fn a_downward_shulker_box_lid_bounces_only_the_locally_driven_boat() {
 #[ignore = "daily"]
 fn a_shulker_box_lid_stops_a_driven_boat_at_another_boat() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::restitution_tests::a_shulker_box_lid_stops_a_driven_boat_at_another_boat",
+        "cut_layout::game::piston_push::restitution_tests::a_shulker_box_lid_stops_a_driven_boat_at_another_boat",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
@@ -252,7 +252,7 @@ fn a_shulker_box_lid_stops_a_driven_boat_at_another_boat() {
 #[ignore = "daily"]
 fn an_observing_boat_keeps_the_lid_push_through_its_last_lerp_step() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::piston_push::restitution_tests::an_observing_boat_keeps_the_lid_push_through_its_last_lerp_step",
+        "cut_layout::game::piston_push::restitution_tests::an_observing_boat_keeps_the_lid_push_through_its_last_lerp_step",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();

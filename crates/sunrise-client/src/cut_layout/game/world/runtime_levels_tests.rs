@@ -271,7 +271,7 @@ fn a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes()
     };
 
     if run_fresh_cases(
-        "game::runtime_levels_tests::a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes",
+        "cut_layout::game::server_side::runtime_levels_tests::a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes",
         "SUNRISE_RUNTIME_CHECKERBOARD_CHILD",
         &["admission"],
     ) {
@@ -749,8 +749,7 @@ fn a_handle_from_before_an_unload_never_names_the_reopened_level() {
     });
 }
 
-/// The idle close drops a runtime level from memory as any level, but it stays open: entering
-/// it opens it again with the same handle, and only `unload` closes it for good.
+/// Idle chunk eviction preserves the level and its handle without firing unload or load on re-entry.
 #[test]
 #[ignore = "daily"]
 fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
@@ -854,7 +853,7 @@ fn an_idle_close_with_outstanding_light_saves_the_column_unlit() {
 #[ignore = "daily"]
 fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::runtime_levels_tests::an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes",
+        "cut_layout::game::server_side::runtime_levels_tests::an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes",
         || {
             const ID: &str = "abandon:a";
             const POS: [i32; 3] = [1, -50, 1];
@@ -934,10 +933,7 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
     );
 }
 
-/// A chunk-unload listener that forces a chunk in an idle custom level while a
-/// built-in level drains, in the same server tick that would have closed it,
-/// keeps that level open with its new ticket: the close plan is made after the
-/// drains and rechecked before each close.
+/// A chunk-unload listener can reactivate a level before its turn in the idle eviction sweep.
 #[test]
 #[ignore = "daily"]
 fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
@@ -945,7 +941,7 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
     use sunrise_level::chunk::Chunk;
 
     if run_fresh_cases(
-        "cut_layout::game::runtime_levels_tests::a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open",
+        "cut_layout::game::server_side::runtime_levels_tests::a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open",
         "SUNRISE_RUNTIME_LEVEL_RESCUE_CHILD",
         &["rescue"],
     ) {
@@ -954,8 +950,10 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
     with_opener("rescue", "rescue:a", flat(), |game, seen| {
         game.native_level_opened(Dim::Overworld);
         game.enter_level(Dim::Nether).unwrap();
-        let chunk_data = Arc::new(Chunk::with_layout(0, 0, game.world.layout()));
-        game.world.chunks.insert((0, 0), chunk_data);
+        game.common.world.chunks.insert(
+            (0, 0),
+            Arc::new(Chunk::with_layout(0, 0, game.common.world.layout())),
+        );
         let nether = ChunkRef::new(game.level("minecraft:the_nether").unwrap(), [0, 0]);
         game.enter_level(Dim::Overworld).unwrap();
 
@@ -966,8 +964,10 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         // Record a forced ticket without unrelated generation. The distant column would
         // leave if a stale eviction plan swept the reactivated level anyway.
         game.server.streaming.paused = true;
-        let chunk_data = Arc::new(Chunk::with_layout(16, 0, game.world.layout()));
-        game.world.chunks.insert((16, 0), chunk_data);
+        game.common.world.chunks.insert(
+            (16, 0),
+            Arc::new(Chunk::with_layout(16, 0, game.common.world.layout())),
+        );
         let level = game.level("rescue:a").unwrap();
         let forced = ChunkRef::new(level, [0, 0]);
         let distant = ChunkRef::new(level, [16, 0]);
@@ -1012,7 +1012,7 @@ fn load_chunk_fails_where_a_mods_generator_panics() {
 
     // The mods' chunk generators are a process-wide table: a child process of its own.
     if run_fresh_cases(
-        "game::server_side::runtime_levels_tests::load_chunk_fails_where_a_mods_generator_panics",
+        "cut_layout::game::server_side::runtime_levels_tests::load_chunk_fails_where_a_mods_generator_panics",
         "SUNRISE_RUNTIME_LEVEL_FAILED_CHUNK_CHILD",
         &["failed_chunk"],
     ) {
@@ -1065,9 +1065,7 @@ fn load_chunk_fails_where_a_mods_generator_panics() {
     });
 }
 
-/// A chunk a mod loads (`LevelRef::load_chunk`, #4550) in an idle custom level in the tick its
-/// close is due keeps the level open, not ticking, with the chunk, while the `UNKNOWN` ticket
-/// lives; once the ticket expires, the idle level closes as before.
+/// A live `UNKNOWN` ticket prevents chunk eviction until expiry and leaves the level idle.
 #[test]
 #[ignore = "daily"]
 fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
@@ -1075,7 +1073,7 @@ fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
     use sunrise_level::chunk::Chunk;
 
     if run_fresh_cases(
-        "cut_layout::game::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
+        "cut_layout::game::server_side::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
         "SUNRISE_RUNTIME_LEVEL_LOADING_TICKET_CHILD",
         &["loading_ticket"],
     ) {
@@ -1093,8 +1091,10 @@ fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
         assert_eq!(level.load_chunk(host, [5, 5]), Ok(()));
 
         game.enter_level(dim).unwrap();
-        let chunk_data = Arc::new(Chunk::with_layout(16, 0, game.world.layout()));
-        game.world.chunks.insert((16, 0), chunk_data);
+        game.common.world.chunks.insert(
+            (16, 0),
+            Arc::new(Chunk::with_layout(16, 0, game.common.world.layout())),
+        );
         game.enter_level(Dim::Overworld).unwrap();
         let distant = ChunkRef::new(level, [16, 0]);
         game.tick_server(false).unwrap();

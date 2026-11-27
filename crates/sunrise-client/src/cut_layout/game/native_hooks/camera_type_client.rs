@@ -108,7 +108,7 @@ pub(crate) mod camera_type_tests {
     #[ignore = "daily"]
     fn shared_camera_pose_requests_apply_before_frame_consumers() {
         if sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
-            "game::client_side::native_hooks_client::camera_type::camera_type_tests::shared_camera_pose_requests_apply_before_frame_consumers",
+            "cut_layout::game::client_side::native_hooks_client::camera_type::camera_type_tests::shared_camera_pose_requests_apply_before_frame_consumers",
             "SUNRISE_CAMERA_SHARED_CHILD",
             &["shared"],
         ) {
@@ -164,7 +164,7 @@ pub(crate) mod camera_type_tests {
     #[ignore = "daily"]
     fn frame_camera_position_keeps_explicit_axes_when_realigning() {
         if run_fresh_cases(
-            "game::client_side::native_hooks_client::camera_type::camera_type_tests::frame_camera_position_keeps_explicit_axes_when_realigning",
+            "cut_layout::game::client_side::native_hooks_client::camera_type::camera_type_tests::frame_camera_position_keeps_explicit_axes_when_realigning",
             "SUNRISE_CAMERA_POSITION_CHILD",
             &["position"],
         ) {
@@ -229,7 +229,7 @@ pub(crate) mod camera_type_tests {
     fn a_pinned_camera_position_over_an_unsent_chunk_leaves_streaming_and_readiness_on_the_player()
     {
         if run_fresh_cases(
-            "game::client_side::native_hooks_client::camera_type::camera_type_tests::a_pinned_camera_position_over_an_unsent_chunk_leaves_streaming_and_readiness_on_the_player",
+            "cut_layout::game::client_side::native_hooks_client::camera_type::camera_type_tests::a_pinned_camera_position_over_an_unsent_chunk_leaves_streaming_and_readiness_on_the_player",
             "SUNRISE_CAMERA_PIN_CHILD",
             &["pin"],
         ) {
@@ -289,7 +289,7 @@ pub(crate) mod camera_type_tests {
     #[ignore = "daily"]
     fn a_failed_camera_listener_is_disabled_and_later_listeners_still_run() {
         if run_fresh_cases(
-            "game::client_side::native_hooks_client::camera_type::camera_type_tests::a_failed_camera_listener_is_disabled_and_later_listeners_still_run",
+            "cut_layout::game::client_side::native_hooks_client::camera_type::camera_type_tests::a_failed_camera_listener_is_disabled_and_later_listeners_still_run",
             "SUNRISE_CAMERA_ANGLE_FAILURE_CHILD",
             &["angles"],
         ) {

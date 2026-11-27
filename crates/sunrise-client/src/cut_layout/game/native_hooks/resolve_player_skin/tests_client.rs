@@ -24,7 +24,7 @@ fn skin_slot_name(game: &mut ClientGame<'_>, texture: &Identifier) -> String {
 #[ignore = "daily"]
 fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::resolve_player_skin::tests::live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla",
+        "cut_layout::game::client_side::native_hooks_client::resolve_player_skin::tests::live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla",
         "SUNRISE_SKIN_SELECTION_CHILD",
         &["live"],
     ) {

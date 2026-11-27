@@ -390,7 +390,7 @@ pub(crate) const FRESH_CASE: &str = "SUNRISE_BORROWED_PANIC_CASE";
 pub(crate) const BOTH_LEVELS: &[&str] = &["overworld", "nether"];
 
 pub(crate) fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim> {
-    let name = format!("game::creatures::borrowed_panic_tests::{test}");
+    let name = format!("cut_layout::game::creatures::borrowed_panic_tests::{test}");
     if run_fresh_cases(&name, FRESH_CASE, cases) {
         return None;
     }
@@ -496,6 +496,7 @@ pub(crate) fn fixture_mob(
         .unwrap()
         .clone();
     let mut mob = Mob::new(id, kind, Vec3::new(f64::from(id - 70), 80.0, 0.5), 0.0);
+    game.flush_unjoined_mob_parts(&mut mob);
     mob.no_ai = true;
     if output == Output::Push && id == 70 {
         mob.position.x = 1.2;

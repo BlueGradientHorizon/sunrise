@@ -10,7 +10,7 @@ fn registered_contents_and_rebuilt_tables_are_read_through_public_host() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
     };
     if run_fresh_cases(
-        "game::native_cauldron_contents::tests::registered_contents_and_rebuilt_tables_are_read_through_public_host",
+        "cut_layout::game::native_cauldron_contents::tests::registered_contents_and_rebuilt_tables_are_read_through_public_host",
         "SUNRISE_CAULDRON_READ_CHILD",
         &["registered"],
     ) {

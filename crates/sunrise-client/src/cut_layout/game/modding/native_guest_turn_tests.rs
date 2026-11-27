@@ -563,7 +563,7 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
     use sunrise_sim::lan::Out;
 
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::native_guest_turn_tests::velocity_writes_send_only_the_owning_player_the_replacement_motion",
+        "cut_layout::game::server_side::native_guest_turn_tests::velocity_writes_send_only_the_owning_player_the_replacement_motion",
         "SUNRISE_PLAYER_VELOCITY_CHILD",
         &["players"],
     ) {
@@ -1435,7 +1435,7 @@ fn tick_advancement_notice_precedes_recipe_reward() {
     use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 
     if run_fresh_cases(
-        "game::server_side::native_guest_turn_tests::tick_advancement_notice_precedes_recipe_reward",
+        "cut_layout::game::server_side::native_guest_turn_tests::tick_advancement_notice_precedes_recipe_reward",
         "SUNRISE_ADVANCEMENT_ORDER_CHILD",
         &["first", "reload"],
     ) {

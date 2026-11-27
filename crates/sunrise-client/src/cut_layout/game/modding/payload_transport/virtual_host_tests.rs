@@ -9,8 +9,7 @@ use std::time::Duration;
 #[cfg(test)]
 use std::time::Instant;
 
-const NAME: &str =
-    "game::payload_transport::virtual_host_tests::virtual_host_is_the_rewritten_handshake_host";
+const NAME: &str = "cut_layout::game::payload_transport::virtual_host_tests::virtual_host_is_the_rewritten_handshake_host";
 
 struct Rewrite(Arc<Mutex<Vec<Option<VirtualHost>>>>);
 #[mod_api::__subscriptions]

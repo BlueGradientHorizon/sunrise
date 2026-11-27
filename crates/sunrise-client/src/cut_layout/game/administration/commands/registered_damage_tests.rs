@@ -350,7 +350,7 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
     };
 
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::commands::world_cmds::registered_damage_tests::live_damage_and_blast_creaking_reactions_and_timed_player_credit",
+        "cut_layout::game::server_side::commands::world_cmds::registered_damage_tests::live_damage_and_blast_creaking_reactions_and_timed_player_credit",
         "SUNRISE_CREAKING_LIVE_DAMAGE_CHILD",
         &["live-damage"],
     ) {

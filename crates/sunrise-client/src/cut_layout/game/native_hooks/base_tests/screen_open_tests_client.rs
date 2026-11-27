@@ -271,7 +271,7 @@ fn cancelling_opening_keeps_the_current_screen() {
 fn client_gui_state_matches_screen_init_hook() {
     // Winit permits only one event loop per process, even after it is dropped.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::client_side::native_hooks_client::base::screen_open_tests::client_gui_state_matches_screen_init_hook",
+        "cut_layout::game::client_side::native_hooks_client::base::screen_open_tests::client_gui_state_matches_screen_init_hook",
         "SUNRISE_SCREEN_STATE_CHILD",
         &["window"],
     ) {

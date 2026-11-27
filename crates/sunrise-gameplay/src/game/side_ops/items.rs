@@ -70,6 +70,9 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_acting_player_ref(game: &Self::Game<'_>) -> Option<mod_api::PlayerRef> {
         game.server_acting_player_ref()
     }
+    fn side_destroy_progress_player_ref(game: &Self::Game<'_>) -> Option<mod_api::PlayerRef> {
+        game.native_acting_player()
+    }
     fn side_current_level_ref(game: &Self::Game<'_>) -> Option<mod_api::LevelRef> {
         game.server_current_level_ref()
     }

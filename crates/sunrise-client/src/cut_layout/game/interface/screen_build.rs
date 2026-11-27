@@ -410,7 +410,7 @@ pub(crate) mod tests {
         };
 
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::screen_build::tests::each_screen_region_is_where_vanilla_draws_it",
+            "cut_layout::game::client_side::screen_build::tests::each_screen_region_is_where_vanilla_draws_it",
             "SUNRISE_SCREEN_REGIONS_CHILD",
             &["regions"],
         ) {

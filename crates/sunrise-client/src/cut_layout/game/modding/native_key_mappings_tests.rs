@@ -55,7 +55,7 @@ fn heard() -> Vec<String> {
 #[ignore = "daily"]
 fn a_control_socket_key_counts_as_a_window_key() {
     if run_fresh_cases(
-        "game::client_side::native_key_mappings_tests::a_control_socket_key_counts_as_a_window_key",
+        "cut_layout::game::client_side::native_key_mappings_tests::a_control_socket_key_counts_as_a_window_key",
         "SUNRISE_MOD_KEYS_CHILD",
         &["game"],
     ) {
@@ -199,7 +199,7 @@ fn a_control_socket_key_counts_as_a_window_key() {
 #[ignore = "daily"]
 fn a_window_losing_focus_lets_go_of_a_mod_mapping() {
     if run_fresh_cases(
-        "game::client_side::native_key_mappings_tests::a_window_losing_focus_lets_go_of_a_mod_mapping",
+        "cut_layout::game::client_side::native_key_mappings_tests::a_window_losing_focus_lets_go_of_a_mod_mapping",
         "SUNRISE_MOD_KEYS_FOCUS_CHILD",
         &["game"],
     ) {
@@ -250,7 +250,7 @@ fn a_window_losing_focus_lets_go_of_a_mod_mapping() {
 #[ignore = "daily"]
 fn a_mod_rebinds_and_resets_its_own_mapping() {
     if run_fresh_cases(
-        "game::client_side::native_key_mappings_tests::a_mod_rebinds_and_resets_its_own_mapping",
+        "cut_layout::game::client_side::native_key_mappings_tests::a_mod_rebinds_and_resets_its_own_mapping",
         "SUNRISE_MOD_KEYS_REBIND_CHILD",
         &["game"],
     ) {

@@ -328,7 +328,7 @@ pub(crate) mod tests {
             sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
         };
 
-        const NAME: &str = "game::server_side::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
+        const NAME: &str = "cut_layout::game::server_side::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
         if run_fresh_cases(NAME, "SUNRISE_VIEW_GROUP_REOPEN", &["run"]) {
             return;
         }

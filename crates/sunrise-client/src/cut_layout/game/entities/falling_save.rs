@@ -58,7 +58,7 @@ mod tests {
     #[ignore = "daily"]
     fn terminal_falling_blocks_balance_residency() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::falling_save::tests::terminal_falling_blocks_balance_residency",
+            "cut_layout::game::server_side::falling_save::tests::terminal_falling_blocks_balance_residency",
             || {
                 for listening in [false, true] {
                     let observed = Arc::new(Observed::default());

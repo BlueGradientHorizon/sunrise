@@ -177,7 +177,7 @@ pub(crate) mod tests {
             sunrise_client_gameplay::game::client_side::integrated_client::Starting,
         };
         if run_fresh_cases(
-            "game::server_side::integrated::tests::a_quit_while_the_world_loads_waits_for_its_server",
+            "cut_layout::game::server_side::integrated::tests::a_quit_while_the_world_loads_waits_for_its_server",
             "SUNRISE_CLIENT_QUIT_STARTING_CHILD",
             &["starting"],
         ) {
@@ -341,7 +341,7 @@ pub(crate) mod tests {
         };
 
         if run_fresh_cases(
-            "game::server_side::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
+            "cut_layout::game::server_side::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
             "SUNRISE_INTEGRATED_DISCONNECT_SYNC_CHILD",
             &["disconnect"],
         ) {
@@ -458,7 +458,7 @@ pub(crate) mod tests {
         }
 
         sunrise_gameplay_common::game::in_own_process(
-            "cut_layout::game::world::integrated::tests::owner_distances_follow_the_server_tick",
+            "cut_layout::game::server_side::integrated::tests::owner_distances_follow_the_server_tick",
             || {
                 let seen = Arc::new(Mutex::new(Vec::new()));
                 let mods = vec![ModEntry::new("retune", Box::new(Retune(seen.clone())))];
@@ -901,8 +901,7 @@ pub(crate) mod tests {
             sunrise_gameplay_common::game::test_fixtures::run_fresh_cases,
         };
 
-        const NAME: &str =
-            "game::server_side::integrated::tests::integrated_tick_panic_saves_changed_world";
+        const NAME: &str = "cut_layout::game::server_side::integrated::tests::integrated_tick_panic_saves_changed_world";
         // The mod's block and block entity declarations freeze process-wide registries.
         if run_fresh_cases(NAME, "SUNRISE_CRASH_CHECKPOINT_CHILD", &["crash"]) {
             return;

@@ -38,7 +38,7 @@ pub(crate) mod tests {
         };
 
         if run_fresh_cases(
-            "game::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
+            "cut_layout::game::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
             "SUNRISE_TRANSACTION_PACKET_REFUSAL_CHILD",
             &["run"],
         ) {
@@ -86,7 +86,7 @@ pub(crate) mod tests {
         use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
         use sunrise_gameplay_common::game::api_values::TryIntoApi;
         if run_fresh_cases(
-            "game::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
+            "cut_layout::game::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
             "SUNRISE_CAULDRON_STAT_CHILD",
             &["run"],
         ) {
@@ -596,7 +596,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed() {
         let Some(root) = crate::game::native_entity_refs::tests::declared_part_root(
-            "game::transactions::tests::an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed",
+            "cut_layout::game::transactions::tests::an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed",
         ) else {
             return;
         };
@@ -792,15 +792,20 @@ pub(crate) mod tests {
 
         // An attachment map a write made inside an aborted transaction is gone with it.
         let chest_holder = mod_api::Holder::BlockEntity([0, 64, 0]);
+        let chest_key = sunrise_mod_runtime::attachments::AttachmentType {
+            namespace: "transaction_test",
+            name: "chest",
+            default: || 0u32,
+            codec: None,
+            copy_on_death: false,
+            sync_codec: None,
+        };
         // So is the unsaved mark it put on a clean chunk, through a committed child too.
         assert!(game.world.block_entities.attachments((0, 64, 0)).is_none());
         game.world.modified.clear();
         game.open_storage_transaction();
         game.open_storage_transaction();
-        assert!(
-            game.attachment_map_quiet(chest_holder, mod_api::AttachmentAccess::Existing)
-                .is_ok()
-        );
+        chest_key.set(&mut game, chest_holder, 31).unwrap();
         assert!(game.world.modified.contains(&(0, 0)));
         game.close_storage_transaction(true);
         assert!(game.world.block_entities.attachments((0, 64, 0)).is_some());
@@ -809,10 +814,7 @@ pub(crate) mod tests {
         assert!(!game.world.modified.contains(&(0, 0)), "clean again");
         // A committed one keeps it.
         game.open_storage_transaction();
-        assert!(
-            game.attachment_map_quiet(chest_holder, mod_api::AttachmentAccess::Existing)
-                .is_ok()
-        );
+        chest_key.set(&mut game, chest_holder, 31).unwrap();
         game.close_storage_transaction(true);
         assert!(game.world.modified.contains(&(0, 0)));
         game.world.block_entities.set_attachments((0, 64, 0), None);
@@ -951,6 +953,7 @@ pub(crate) mod tests {
             ("minecraft:donkey", chested),
         ];
         // An aborted write leaves a chested donkey's item list as long as it was.
+        let level = game.level("minecraft:overworld").unwrap();
         let id = game
             .level_summon(level, "minecraft:donkey", [8.5, 70.0, 8.5], {
                 let mut chested = sunrise_core::nbt::Compound::new();
@@ -1152,7 +1155,7 @@ pub(crate) mod mod_capability_tests {
             sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
         };
         let Some(root) = declared_part_root(
-            "game::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
+            "cut_layout::game::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
         ) else {
             return;
         };

@@ -135,7 +135,7 @@ fn disconnect_and_protocol_incarnation_change_drop_and_invalidate() {
 #[ignore = "daily"]
 fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() {
     if run_fresh_cases(
-        "game::client_side::native_net::packet_hold::tests::physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive",
+        "cut_layout::game::client_side::native_net::packet_hold::tests::physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive",
         "SUNRISE_PACKET_HOLD_CHILD",
         &["ordering"],
     ) {
@@ -225,7 +225,7 @@ fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() 
 #[ignore = "daily"]
 fn held_mod_packets_keep_real_writer_credit_until_drop() {
     if run_fresh_cases(
-        "game::client_side::native_net::packet_hold::tests::held_mod_packets_keep_real_writer_credit_until_drop",
+        "cut_layout::game::client_side::native_net::packet_hold::tests::held_mod_packets_keep_real_writer_credit_until_drop",
         "SUNRISE_PACKET_HOLD_PRESSURE_CHILD",
         &["pressure"],
     ) {
@@ -347,7 +347,7 @@ fn generation_change_after_a_drops_b_and_invalidates_the_hold() {
 #[ignore = "daily"]
 fn held_pressure_refuses_send_play_and_cross_passage_without_moving() {
     if run_fresh_cases(
-        "game::client_side::native_net::packet_hold::tests::held_pressure_refuses_send_play_and_cross_passage_without_moving",
+        "cut_layout::game::client_side::native_net::packet_hold::tests::held_pressure_refuses_send_play_and_cross_passage_without_moving",
         "SUNRISE_PACKET_HOLD_CROSS_CHILD",
         &["cross"],
     ) {

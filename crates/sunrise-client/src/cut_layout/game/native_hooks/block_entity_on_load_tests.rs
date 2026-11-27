@@ -87,7 +87,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_on_load_saved_data_placement_rewrite_and_reload() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_saved_data_placement_rewrite_and_reload";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_saved_data_placement_rewrite_and_reload";
         // Content startup freezes the engine type table, including ticker routing.
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_TICK_CHILD", &["game"]) {
             return;

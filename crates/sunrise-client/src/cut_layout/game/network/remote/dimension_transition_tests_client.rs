@@ -63,7 +63,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
     }
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::tests::dimension_transition_tests::a_failed_presentation_discards_its_draws_without_disabling_its_factory",
+        "cut_layout::game::client_side::remote_client::tests::dimension_transition_tests::a_failed_presentation_discards_its_draws_without_disabling_its_factory",
         || {
             mod_platform::testing::with_mods(
                 vec![mod_api::ModEntry::new(

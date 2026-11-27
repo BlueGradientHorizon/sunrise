@@ -19,7 +19,7 @@ pub(crate) mod tests {
 
     fn in_own_process(name: &str, case: &str) -> bool {
         !sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
-            &format!("cut_layout::game::server_travel::tests::{name}"),
+            &format!("cut_layout::game::server_side::server_travel::tests::{name}"),
             "SUNRISE_TEST_SERVER_PORTAL_CASE",
             &[case],
         )

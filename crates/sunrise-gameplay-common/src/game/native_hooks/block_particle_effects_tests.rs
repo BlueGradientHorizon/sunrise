@@ -108,7 +108,7 @@ impl Hooks for Register {
 
 pub fn fresh(name: &str) -> bool {
     run_fresh_cases(
-        &format!("game::client_side::native_hooks_client::block_particle_effects_tests::{name}"),
+        &format!("game::native_hooks::block_particle_effects_tests::{name}"),
         "SUNRISE_BLOCK_PARTICLE_EFFECT_CHILD",
         &["run"],
     )

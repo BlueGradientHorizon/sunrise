@@ -164,6 +164,7 @@ fn install_mod_resources(
 fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_on_refusal() {
     use mod_api::{DataPackFilesEvent, Registrar, RegistrationContext, ServerHost};
     use std::sync::atomic::AtomicUsize;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
     struct Listener(Arc<AtomicUsize>);
     impl ServerReloadListener for Listener {
         fn prepare(
@@ -234,7 +235,7 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                     game.items()
                         .block_in_tag("sunrise:class/fence", "minecraft:oak_fence")
                 );
-                assert_eq!(mod_api::Tags::block_in_tag(game, fence, class), Some(true));
+                assert_eq!(fence.is_in_tag(&*game, class), Some(true));
                 state.store(0, Ordering::SeqCst);
                 assert!(game.run_command("reload"));
                 assert_eq!(state.load(Ordering::SeqCst), 1);
@@ -276,8 +277,11 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                     game.items()
                         .block_in_tag("sunrise:class/fence", "minecraft:oak_fence")
                 );
-                assert_eq!(game.items().block_tag_order, old_order);
-                assert_eq!(game.items().block_tags, old_sets);
+                let selected = game
+                    .native_tag_items()
+                    .expect("selected world tag snapshot");
+                assert_eq!(selected.block_tag_order, old_order);
+                assert_eq!(selected.block_tags, old_sets);
                 let _ = std::fs::remove_dir_all(root);
             });
         },
@@ -290,7 +294,7 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
 #[ignore = "daily"]
 fn reload_command_runs_listeners_on_both_sides_of_function_library() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::server_reload::tests::reload_command_runs_listeners_on_both_sides_of_function_library",
+        "cut_layout::game::server_side::server_reload::tests::reload_command_runs_listeners_on_both_sides_of_function_library",
         || {
             use mod_api::{
                 Command, CommandArgumentError, CommandArgumentKind, CommandArgumentType,

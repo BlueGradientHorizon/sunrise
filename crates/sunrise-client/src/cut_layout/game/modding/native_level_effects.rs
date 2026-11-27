@@ -44,7 +44,7 @@ mod tests {
         const SPEED: f64 = 0.125;
         const COUNT: i32 = 3;
         if run_fresh_cases(
-            "game::server_side::native_level_effects::tests::particle_batch_is_atomic_and_follows_level_delivery_order",
+            "cut_layout::game::server_side::native_level_effects::tests::particle_batch_is_atomic_and_follows_level_delivery_order",
             CASE,
             &["server"],
         ) {

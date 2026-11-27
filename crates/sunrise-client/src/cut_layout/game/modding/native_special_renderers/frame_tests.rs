@@ -27,7 +27,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
     use sunrise_sim::entities::ItemEntity;
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::native_special_renderers::frame_tests::a_special_dropped_item_outlines_only_its_committed_world_vertices",
+        "cut_layout::game::client_side::native_special_renderers::frame_tests::a_special_dropped_item_outlines_only_its_committed_world_vertices",
         || {
             crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 const ID: u32 = 1_900_000_101;
@@ -223,7 +223,7 @@ const COUNT: u32 = 6;
 #[ignore = "daily"]
 fn a_special_renderer_is_never_asked_inside_a_lifted_pass() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::native_special_renderers::frame_tests::a_special_renderer_is_never_asked_inside_a_lifted_pass",
+        "cut_layout::game::client_side::native_special_renderers::frame_tests::a_special_renderer_is_never_asked_inside_a_lifted_pass",
         a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated,
     );
 }

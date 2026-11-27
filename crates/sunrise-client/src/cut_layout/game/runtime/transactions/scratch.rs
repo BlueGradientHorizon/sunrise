@@ -17,7 +17,7 @@ mod tests {
     #[ignore = "daily"]
     fn scratch_merges_explicit_default_components_without_overflow() {
         if run_fresh_cases(
-            "game::transactions::scratch::tests::scratch_merges_explicit_default_components_without_overflow",
+            "cut_layout::game::transactions::scratch::tests::scratch_merges_explicit_default_components_without_overflow",
             "SUNRISE_SCRATCH_COMPONENT_CHILD",
             &["run"],
         ) {

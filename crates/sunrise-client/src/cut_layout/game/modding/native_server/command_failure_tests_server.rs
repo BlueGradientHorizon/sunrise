@@ -16,7 +16,7 @@ fn tracked_executor_failure_survives_saved_depth_boundary() {
     };
 
     in_own_process(
-        "game::server_side::native_server_server::command_failure_tests::tracked_executor_failure_survives_saved_depth_boundary",
+        "cut_layout::game::server_side::native_server_server::command_failure_tests::tracked_executor_failure_survives_saved_depth_boundary",
         || {
             run_with_game_stack(|| {
                 with_failure_sources(|game| {

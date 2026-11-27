@@ -26,7 +26,7 @@ const CHILD: &str = "SUNRISE_SERVER_LIFECYCLE_CHILD";
 /// (`Game::admit_entity_save`), so in a shared runner another test's lifted pass drops the
 /// `saved` these tests expect.
 fn in_child(test: &str) -> bool {
-    let name = format!("game::server_side::server_lifecycle::tests::{test}");
+    let name = format!("cut_layout::game::server_side::server_lifecycle::tests::{test}");
     run_fresh_cases(&name, CHILD, &["stop"])
 }
 
@@ -973,7 +973,7 @@ fn shutdown_notifies_only_for_replaced_player_files() {
 
     const CASE: &str = "SUNRISE_SHUTDOWN_PLAYER_FILE_CASE";
     if run_fresh_cases(
-        "game::server_side::server_lifecycle::tests::shutdown_notifies_only_for_replaced_player_files",
+        "cut_layout::game::server_side::server_lifecycle::tests::shutdown_notifies_only_for_replaced_player_files",
         CASE,
         &["owner", "guest"],
     ) {

@@ -219,7 +219,7 @@ pub(crate) mod furnace_fuel_transfer_tests {
     #[ignore = "daily"]
     fn a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule() {
         if run_fresh_cases(
-            "game::server_side::machines::furnace_fuel_transfer_tests::a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule",
+            "cut_layout::game::server_side::machines::furnace_fuel_transfer_tests::a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule",
             "SUNRISE_FURNACE_HOPPER_CASE",
             &["side"],
         ) {
@@ -348,7 +348,7 @@ pub(crate) mod part_front_tests {
     #[ignore = "daily"]
     fn a_part_handing_a_crafters_output_back_into_its_grid_loses_none() {
         let Some(root) = declared_part_root(
-            "game::server_side::machines::part_front_tests::a_part_handing_a_crafters_output_back_into_its_grid_loses_none",
+            "cut_layout::game::server_side::machines::part_front_tests::a_part_handing_a_crafters_output_back_into_its_grid_loses_none",
         ) else {
             return;
         };
@@ -409,7 +409,7 @@ pub(crate) mod part_front_tests {
     #[ignore = "daily"]
     fn a_part_handing_a_droppers_item_back_into_it_loses_none() {
         let Some(root) = declared_part_root(
-            "game::server_side::machines::part_front_tests::a_part_handing_a_droppers_item_back_into_it_loses_none",
+            "cut_layout::game::server_side::machines::part_front_tests::a_part_handing_a_droppers_item_back_into_it_loses_none",
         ) else {
             return;
         };
@@ -467,7 +467,7 @@ pub(crate) mod part_front_tests {
     #[ignore = "daily"]
     fn a_dropper_and_a_crafter_put_into_a_mod_part_in_front_of_them() {
         let Some(root) = declared_part_root(
-            "game::server_side::machines::part_front_tests::a_dropper_and_a_crafter_put_into_a_mod_part_in_front_of_them",
+            "cut_layout::game::server_side::machines::part_front_tests::a_dropper_and_a_crafter_put_into_a_mod_part_in_front_of_them",
         ) else {
             return;
         };
@@ -1038,7 +1038,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn an_idle_hopper_sleeps_and_wakes_for_what_it_could_take() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::machines::tests::an_idle_hopper_sleeps_and_wakes_for_what_it_could_take",
+            "cut_layout::game::server_side::machines::tests::an_idle_hopper_sleeps_and_wakes_for_what_it_could_take",
             || {
                 let mut resources = None;
                 let mut game = server_game(&mut resources);

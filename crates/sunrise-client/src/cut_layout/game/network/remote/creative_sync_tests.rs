@@ -175,7 +175,7 @@ mod give_stack {
     #[ignore = "daily"]
     fn a_refused_give_changes_and_sends_nothing() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::remote::tests::creative_sync_tests::give_stack::a_refused_give_changes_and_sends_nothing",
+            "cut_layout::game::remote::tests::creative_sync_tests::give_stack::a_refused_give_changes_and_sends_nothing",
             || {
                 with_client_game(|game| {
                     let stone = api("minecraft:stone", 1, &[]);
@@ -256,7 +256,7 @@ mod give_stack {
     #[ignore = "daily"]
     fn a_give_keeps_components_and_sends_its_slots_at_once() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::remote::tests::creative_sync_tests::give_stack::a_give_keeps_components_and_sends_its_slots_at_once",
+            "cut_layout::game::remote::tests::creative_sync_tests::give_stack::a_give_keeps_components_and_sends_its_slots_at_once",
             || {
                 with_client_game(|game| {
                     let mut reader = logged_in(game);
@@ -399,7 +399,7 @@ mod give_stack {
     #[ignore = "daily"]
     fn a_give_stacks_in_inventory_order_and_returns_what_did_not_fit() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::remote::tests::creative_sync_tests::give_stack::a_give_stacks_in_inventory_order_and_returns_what_did_not_fit",
+            "cut_layout::game::remote::tests::creative_sync_tests::give_stack::a_give_stacks_in_inventory_order_and_returns_what_did_not_fit",
             || {
                 with_client_game(|game| {
                     let mut reader = logged_in(game);
@@ -503,7 +503,7 @@ mod destroy_carried {
     #[ignore = "daily"]
     fn a_refused_destroy_changes_and_sends_nothing() {
         in_own_process(
-            "game::remote::tests::creative_sync_tests::destroy_carried::a_refused_destroy_changes_and_sends_nothing",
+            "cut_layout::game::remote::tests::creative_sync_tests::destroy_carried::a_refused_destroy_changes_and_sends_nothing",
             || {
                 with_client_game(|game| {
                     let before_login = mod_api::__private::game::menu_ref(
@@ -573,7 +573,7 @@ mod destroy_carried {
     #[ignore = "daily"]
     fn the_creative_screen_destroys_without_a_packet() {
         in_own_process(
-            "game::remote::tests::creative_sync_tests::destroy_carried::the_creative_screen_destroys_without_a_packet",
+            "cut_layout::game::remote::tests::creative_sync_tests::destroy_carried::the_creative_screen_destroys_without_a_packet",
             || {
                 with_client_game(|game| {
                     let mut reader = logged_in(game);

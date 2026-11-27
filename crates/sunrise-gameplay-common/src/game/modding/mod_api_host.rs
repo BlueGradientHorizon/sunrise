@@ -374,9 +374,11 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
         }
         mod_api::LevelHost::block_entity(self.base, pos)
     }
+    #[inline]
     fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
         mod_api::LevelHost::attachment_read_scope(self.base)
     }
+    #[inline]
     fn block_entity_part_snapshot(
         &self,
         entity: mod_api::BlockEntityRef,
@@ -1001,6 +1003,7 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
     fn living_max_health(&self, party: mod_api::__private::LivingParty) -> Option<f32> {
         self.party_reads(party)?.living_max_health(party)
     }
+    #[inline]
     fn living_effect(
         &self,
         party: mod_api::__private::LivingParty,
@@ -1032,6 +1035,7 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
     ) -> Option<f64> {
         self.party_reads(party)?.living_attribute_value(party, id)
     }
+    #[inline]
     fn living_hand_item(
         &self,
         party: mod_api::__private::LivingParty,

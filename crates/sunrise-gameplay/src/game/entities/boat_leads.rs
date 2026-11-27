@@ -17,6 +17,7 @@ use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::GameGameExt3;
 use sunrise_gameplay_common::game::boats_common::Boat;
+use sunrise_gameplay_common::game::item_abilities::ability::SHEARS_HARVEST;
 use sunrise_sim::mobs::leash::{self, Holder, HolderState, Pending};
 
 /// `AbstractBoat`'s `getBbWidth` and `getBbHeight`.
@@ -544,7 +545,7 @@ impl ServerGame<'_> {
         }
         // Entity.shearOffAllLeashConnections: its own lead and every one
         // hanging on it.
-        if item.as_deref() == Some("minecraft:shears") {
+        if self.held_shears(SHEARS_HARVEST) {
             let held_mobs: Vec<u32> = self
                 .common
                 .mobs

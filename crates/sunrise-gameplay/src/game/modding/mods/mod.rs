@@ -265,6 +265,52 @@ pub mod tests {
     }
 
     #[test]
+    fn native_component_registration_names_submitting_and_earlier_mods_on_duplicate() {
+        struct Declares(&'static str);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Declares {
+            fn component_types(
+                &self,
+                _: &mod_api::RegistrationContext,
+                event: &mut mod_api::ComponentTypesEvent<'_>,
+            ) {
+                event.register(self.0.into());
+            }
+        }
+        let root = std::env::temp_dir().join(format!(
+            "sunrise-component-duplicate-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("registries.json"),
+            r#"{"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":0}}}}"#,
+        )
+        .unwrap();
+        let duplicate = mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("first", Box::new(Declares("shared:charge"))),
+                mod_api::ModEntry::new("second", Box::new(Declares("shared:charge"))),
+            ]
+            .into(),
+            || sunrise_gameplay_common::game::mods::register_components(&root),
+        );
+        let invalid = mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("broken", Box::new(Declares("bare")))].into(),
+            || sunrise_gameplay_common::game::mods::register_components(&root),
+        );
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            duplicate.unwrap_err().to_string(),
+            "mod second: duplicate native component shared:charge (already registered by mod first)"
+        );
+        assert_eq!(
+            invalid.unwrap_err().to_string(),
+            "mod broken: invalid native component name \"bare\""
+        );
+    }
+
+    #[test]
     fn panicking_native_declarations_publish_neither_prefixes_nor_diagnostics() {
         struct Declares {
             panics: bool,
@@ -631,9 +677,10 @@ pub mod tests {
         assert_eq!(load_err.mod_id, "runes");
         assert_eq!(load_err.stage, ServedContentStage::Read);
 
-        // A served package whose crafting_remainder names an owned-namespace item passes
-        // package-only Content::read (build/check), yet fatally fails load-time content_overlay
-        // if the serving host never declares that item.
+        // Remainders supplied by a host are validated after the packages are admitted.
+        std::fs::write(base.join("facts.json"), r#"{"states":[],"defaults":{}}"#).unwrap();
+        std::fs::write(base.join("gameplay-facts.json"), r#"{"states":[]}"#).unwrap();
+        std::fs::write(base.join("items.json"), r#"{"minecraft:mushroom_stew":{}}"#).unwrap();
         let runes_missing_remainder = make_content(
             "runes-missing-rem.smod",
             "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n",
@@ -655,12 +702,13 @@ pub mod tests {
         let err = content_overlay(&base, &missing_rem_state, &store)
             .err()
             .unwrap();
-        let load_err = err
-            .downcast_ref::<ServedContentLoadError>()
-            .expect("undeclared host crafting_remainder fails load fatally");
+        let load_err = err.downcast_ref::<ServedContentLoadError>().unwrap();
         assert_eq!(load_err.mod_id, "runes");
-        assert_eq!(load_err.stage, ServedContentStage::Read);
-        assert!(load_err.detail.contains("runes:host_bowl"), "{load_err}");
+        assert_eq!(load_err.stage, ServedContentStage::Admit);
+        assert_eq!(
+            load_err.detail,
+            r#"runes:stew: crafting_remainder "runes:host_bowl" is not an item"#
+        );
 
         // accept_mod error (unknown component) on a served content package is fatal.
         let runes_bad_component = make_content(
@@ -2980,22 +3028,9 @@ pub mod tests {
     #[test]
     fn a_root_without_mob_effects_does_not_freeze_the_registry() {
         use sunrise_level::brewing;
-        use sunrise_sim::mod_content::ContentMod;
         let _scope = sunrise_game_data::potions::isolate_mod_effects();
         let f = Fixture::new("no-effects");
-        std::fs::write(
-            f.0.join("sunrise-mod.toml"),
-            "id = 'plain'\nname = 'plain'\nversion = '1.0'\napi = '0.2'\ncapabilities = ['registries']\n",
-        )
-        .unwrap();
-        let package = sunrise_mod_package::Package::read(&f.0).unwrap();
-        let plain = ContentMod {
-            id: "plain".into(),
-            content: sunrise_mod_package::content::Content::read(&f.0, &package.manifest).unwrap(),
-            jars: Vec::new(),
-        };
-        register_mob_effects(&[plain], &[]);
-        // The list `potions::tests` registers, so it holds whichever test runs first.
+        register_mob_effects(&[plain_mod(&f, None)], &[]);
         assert!(brewing::register_mod_effects([brewing::ModEffect::new(
             "test:effect",
             0,

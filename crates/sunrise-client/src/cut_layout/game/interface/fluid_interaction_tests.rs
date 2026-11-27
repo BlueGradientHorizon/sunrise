@@ -46,7 +46,7 @@ impl Hooks for Gluey {
 #[ignore = "daily"]
 fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
     if run_fresh_cases(
-        "game::fluid_interaction_tests::a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it",
+        "cut_layout::game::fluid_interaction_tests::a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it",
         "SUNRISE_FLUID_INTERACTION_CHILD",
         &["valid"],
     ) {
@@ -271,7 +271,7 @@ impl Hooks for Quenchy {
 #[ignore = "daily"]
 fn a_native_handler_tests_and_acts_in_its_place_and_a_panicking_one_does_not_apply() {
     if run_fresh_cases(
-        "game::fluid_interaction_tests::a_native_handler_tests_and_acts_in_its_place_and_a_panicking_one_does_not_apply",
+        "cut_layout::game::fluid_interaction_tests::a_native_handler_tests_and_acts_in_its_place_and_a_panicking_one_does_not_apply",
         "SUNRISE_FLUID_HANDLER_CHILD",
         &["valid"],
     ) {

@@ -19,7 +19,7 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
 #[ignore = "daily"]
 fn chat_completion_reaches_mods_from_keyboard_and_mouse() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::chat::suggestion_completion_tests::chat_completion_reaches_mods_from_keyboard_and_mouse",
+        "cut_layout::game::client_side::chat::suggestion_completion_tests::chat_completion_reaches_mods_from_keyboard_and_mouse",
         chat_completion_reaches_mods_from_keyboard_and_mouse_isolated,
     );
 }

@@ -146,6 +146,10 @@ pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
                 Body::Player(p) => eye_fluid(p.is_eye_in_fluid(WATER), p.is_eye_in_fluid(LAVA)),
                 Body::Mob(m) => eye_fluid(m.fluids.eye_in_water, m.fluids.eye_in_lava),
+                Body::Other(Target::General(id)) => {
+                    let fluids = self.resident_entities.general.row(id)?.fluids;
+                    eye_fluid(fluids.eye_in_water, fluids.eye_in_lava)
+                }
                 Body::Other(_) => return None,
             },
         )

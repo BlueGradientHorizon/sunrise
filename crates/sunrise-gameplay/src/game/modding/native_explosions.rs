@@ -58,9 +58,9 @@ impl crate::game::ServerGame<'_> {
     /// above solid blocks, and everyone near hears and sees it. `source` is
     /// the exploding entity, already resolved; `settings` the damage type,
     /// calculator, particles and sound. Refused, with nothing done, on a
-    /// client's copy of the world, for a chunk that isn't loaded, a centre or
-    /// radius that isn't finite, or settings `native_blast_settings` refuses.
-    /// A blast inside `native_explosion_detonate` starts that hook again.
+    /// client's copy of the world, for a centre or radius that isn't finite,
+    /// or settings `native_blast_settings` refuses. A blast inside
+    /// `native_explosion_detonate` starts that hook again.
     pub fn native_explode(
         &mut self,
         source: Option<(u32, Target)>,
@@ -75,13 +75,6 @@ impl crate::game::ServerGame<'_> {
         }
         if !blast_ok(center, radius) {
             return Err(ExplodeError::InvalidBlast);
-        }
-        let chunk = (
-            (center[0].floor() as i32) >> 4,
-            (center[2].floor() as i32) >> 4,
-        );
-        if !self.common.world.chunks.contains_key(&chunk) {
-            return Err(ExplodeError::Unavailable);
         }
         let settings = self.native_blast_settings(settings)?;
         let id = source.map(|(id, _)| id);

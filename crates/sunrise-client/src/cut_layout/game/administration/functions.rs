@@ -15,7 +15,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn mob_entity_membership_follows_world_pack_reload() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::functions::tests::mob_entity_membership_follows_world_pack_reload",
+            "cut_layout::game::server_side::functions::tests::mob_entity_membership_follows_world_pack_reload",
             || {
                 sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                     let world = tempfile::tempdir().unwrap();
@@ -129,7 +129,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn functions_name_mod_commands_from_the_first_world_open() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::functions::tests::functions_name_mod_commands_from_the_first_world_open",
+            "cut_layout::game::server_side::functions::tests::functions_name_mod_commands_from_the_first_world_open",
             || {
                 use std::sync::{
                     Arc,

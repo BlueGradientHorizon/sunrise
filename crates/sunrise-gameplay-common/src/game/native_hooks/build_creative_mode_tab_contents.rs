@@ -201,6 +201,23 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
         self.side_creative_catalog().search_display(&lists).to_vec()
     }
 
+    /// Read the published order or preview the stock lists without firing callbacks.
+    fn stock_creative_lists(&self) -> Arc<[Arc<TabContents>]> {
+        if let Some(published) = &self.creative_contents.published {
+            return published.lists.clone();
+        }
+        self.side_creative_catalog().build(
+            Parameters {
+                features: self.enabled_feature_ids(),
+                operator: false,
+                holders: &self.side_creative_holders().unwrap_or_default(),
+                items: self.items(),
+            },
+            None,
+            |_, _, _| {},
+        )
+    }
+
     fn creative_stack_key(&self, stack: &ItemStack) -> Option<ItemStack> {
         self.native_lifecycle.epoch()?;
         // Use the very same prototypes as the generator during a reentrant read.

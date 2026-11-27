@@ -603,7 +603,7 @@ impl Hooks for PanickingHealListener {
 #[ignore = "daily"]
 fn a_foreign_heal_listener_is_quarantined_without_disabling_the_consume_callback() {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::consume_effect_dispatch_tests::a_foreign_heal_listener_is_quarantined_without_disabling_the_consume_callback",
+        "cut_layout::game::consume_effect_dispatch_tests::a_foreign_heal_listener_is_quarantined_without_disabling_the_consume_callback",
         "SUNRISE_CONSUME_HEAL_HOOKS_CHILD",
         &["foreign_heal"],
     ) {
@@ -703,7 +703,7 @@ impl Hooks for FeedbackMeal {
 #[ignore = "daily"]
 fn a_foreign_listener_panicking_under_a_feedback_command_does_not_disable_the_consume_callback() {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::consume_effect_dispatch_tests::a_foreign_listener_panicking_under_a_feedback_command_does_not_disable_the_consume_callback",
+        "cut_layout::game::consume_effect_dispatch_tests::a_foreign_listener_panicking_under_a_feedback_command_does_not_disable_the_consume_callback",
         "SUNRISE_CONSUME_FEEDBACK_CHILD",
         &["feedback"],
     ) {

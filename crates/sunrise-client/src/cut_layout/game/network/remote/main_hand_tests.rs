@@ -15,7 +15,7 @@ use {
 #[ignore = "daily"]
 fn a_client_receives_a_mannequins_main_hand() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::main_hand_tests::a_client_receives_a_mannequins_main_hand",
+        "cut_layout::game::remote::tests::main_hand_tests::a_client_receives_a_mannequins_main_hand",
         || {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();

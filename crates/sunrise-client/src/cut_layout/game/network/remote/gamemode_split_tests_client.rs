@@ -20,7 +20,7 @@ use sunrise_protocol::packets::play::Clientbound as C;
 
 pub(crate) fn run_resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::resolved_player_info_retains_identity_across_remove_and_readd_26_3",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::resolved_player_info_retains_identity_across_remove_and_readd_26_3",
         || {
             let witness = oracle_witness();
             assert_eq!(witness["version"].as_str(), Some("26.3"));
@@ -131,7 +131,7 @@ pub(crate) fn run_resolved_player_info_retains_identity_across_remove_and_readd_
 
 pub(crate) fn run_split_local_and_player_info_physics_matrix_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3",
         || {
             let witness = oracle_witness();
             assert_eq!(witness["version"].as_str(), Some("26.3"));

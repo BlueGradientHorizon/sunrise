@@ -243,7 +243,7 @@ fn kills(
     expected: (i32, &'static str, bool),
 ) {
     if run_fresh_cases(
-        &format!("game::server_side::native_explosions_tests::{name}"),
+        &format!("cut_layout::game::server_side::native_explosions_tests::{name}"),
         "SUNRISE_EXPLOSION_DEATH_CHILD",
         &["blast"],
     ) {
@@ -256,7 +256,7 @@ fn kills(
 #[ignore = "daily"]
 fn a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick() {
     if run_fresh_cases(
-        "game::server_side::native_explosions_tests::a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick",
+        "cut_layout::game::server_side::native_explosions_tests::a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick",
         "SUNRISE_MOB_CREDIT_EXPIRY_CHILD",
         &["expiry"],
     ) {

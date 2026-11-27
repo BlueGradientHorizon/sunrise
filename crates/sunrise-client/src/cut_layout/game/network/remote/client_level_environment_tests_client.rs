@@ -29,7 +29,7 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
         )
     };
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::tests::client_level_environment_tests::client_clouds_fog_and_precipitation_follow_the_joined_level",
+        "cut_layout::game::client_side::remote_client::tests::client_level_environment_tests::client_clouds_fog_and_precipitation_follow_the_joined_level",
         || {
             with_client_game(|game| {
                 let mut ty = with_height("overworld", 192.33);

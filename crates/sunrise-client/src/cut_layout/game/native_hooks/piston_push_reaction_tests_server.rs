@@ -17,7 +17,7 @@ use {
 #[test]
 #[ignore = "daily"]
 fn piston_push_reaction_position_state_opens_ticks_and_saves() {
-    const NAME: &str = "game::server_side::native_hooks_server::piston_push_reaction_tests::piston_push_reaction_position_state_opens_ticks_and_saves";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::piston_push_reaction_tests::piston_push_reaction_position_state_opens_ticks_and_saves";
     const FLAG: &str = "SUNRISE_PISTON_POSITION_CASE";
     if run_fresh_cases(
         NAME,

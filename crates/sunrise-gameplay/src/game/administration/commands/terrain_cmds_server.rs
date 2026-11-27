@@ -2,8 +2,7 @@ use super::{Arg, Context, R, Target, err, items::Owner};
 use crate::game::commands::terrain_cmds::holder;
 use crate::game::commands::terrain_cmds::num;
 use sunrise_command::CommandError;
-#[allow(unused_imports)]
-use sunrise_core::{position::ChunkPos, random::RandomSource};
+use sunrise_core::random::RandomSource;
 use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::scoreboard_cmd::Tracker;

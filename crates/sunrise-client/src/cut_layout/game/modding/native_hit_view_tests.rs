@@ -212,7 +212,7 @@ fn with_health(mut read: Read, health: f32) -> Read {
 fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_only() {
     const CASE: &str = "SUNRISE_TEST_HIT_VIEWS";
     if run_fresh_cases(
-        "game::server_side::native_hit_view_tests::a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_only",
+        "cut_layout::game::server_side::native_hit_view_tests::a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_only",
         CASE,
         &["hits", "guest"],
     ) {
@@ -526,12 +526,12 @@ fn the_acting_guest_is_read_with_its_holder() {
             for call in &calls {
                 assert_eq!(call.causing.as_ref().map(|read| read.id), Some(zombie));
             }
-            let mark = game
+            let saved = game
                 .as_guest(13, |g| {
                     mark.get_existing(g, Holder::Player(13), |value| value.copied())
                 })
                 .unwrap();
-            assert_eq!(mark, Ok(Some(4)));
+            assert_eq!(saved, Ok(Some(4)));
         });
     });
 }

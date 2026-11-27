@@ -655,7 +655,7 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
 #[test]
 #[ignore = "daily"]
 fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
-    const NAME: &str = "game::remote::tests::play_bundle_tests::standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof";
+    const NAME: &str = "cut_layout::game::remote::tests::play_bundle_tests::standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof";
     if run_fresh_cases(NAME, "SUNRISE_TRANSFER_COOKIE_CHILD", &["cookie"]) {
         return;
     }
@@ -747,7 +747,7 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
 #[test]
 #[ignore = "daily"]
 fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
-    const NAME: &str = "game::remote::tests::play_bundle_tests::a_second_admitted_standalone_transfer_keeps_the_first_opening";
+    const NAME: &str = "cut_layout::game::remote::tests::play_bundle_tests::a_second_admitted_standalone_transfer_keeps_the_first_opening";
     if run_fresh_cases(NAME, "SUNRISE_TRANSFER_FIRST_OPENING_CHILD", &["opening"]) {
         return;
     }

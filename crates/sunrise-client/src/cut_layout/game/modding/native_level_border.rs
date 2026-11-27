@@ -96,7 +96,7 @@ mod tests {
     #[ignore = "daily"]
     fn border_setters_notify_the_named_level() {
         if run_fresh_cases(
-            "game::native_level_border::tests::border_setters_notify_the_named_level",
+            "cut_layout::game::server_side::native_level_border::tests::border_setters_notify_the_named_level",
             "SUNRISE_BORDER_SETTERS_CHILD",
             &["level-routes"],
         ) {

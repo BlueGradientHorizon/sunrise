@@ -67,7 +67,7 @@ mod tests {
                 assert!(game.recipe_tables.server_properties.sets.as_ref().unwrap()
                     ["minecraft:furnace_input"].contains(&id));
                 assert!(
-                    !mod_api::prelude::RecipePropertiesHost::mod_recipe_property_contains(
+                    !sunrise_gameplay_common::game::tables::WorldTablesExt::mod_recipe_property_contains(
                         game,
                         "minecraft:furnace_input",
                         item

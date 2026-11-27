@@ -4,7 +4,9 @@
 //! negotiated peer that does not see the holder is sent nothing, and a message keeps its
 //! place among the player's held gameplay packets.
 #[cfg(test)]
-use super::transport_tests::{Route, peer, sync_packets_within, value_key, values_until};
+use super::transport_tests::{
+    Route, peer, set_level, sync_packets_within, value_key, values_until, wait_server_ticks,
+};
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
 #[cfg(test)]
@@ -17,7 +19,7 @@ use sunrise_protocol::{
     packets::play,
 };
 
-const NAME: &str = "game::server_side::attachment_sync::route_cases_tests::a_dedicated_server_sends_only_trackers_in_packet_order";
+const NAME: &str = "cut_layout::game::server_side::attachment_sync::route_cases_tests::a_dedicated_server_sends_only_trackers_in_packet_order";
 
 /// What a peer is sent, reduced to what this test orders: system chat text and the level's
 /// synced values, until it has seen `count` of them.

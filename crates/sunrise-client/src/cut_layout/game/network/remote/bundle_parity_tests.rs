@@ -176,7 +176,7 @@ pub(crate) use crate::game::client_side::remote_client::raw_ingress::bundle_pari
 #[test]
 #[ignore = "daily"]
 fn entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3() {
-    const NAME: &str = "game::remote::raw_ingress::bundle_parity_tests::entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3";
+    const NAME: &str = "cut_layout::game::client_side::remote_client::ingress_state::bundle_parity_tests::entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3";
     const FLAG: &str = "SUNRISE_BUNDLE_PARITY_ENTITY_DATA_CASE";
     const CASES: &[&str] = &[
         "before_login_metadata",

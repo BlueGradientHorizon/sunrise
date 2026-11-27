@@ -257,7 +257,7 @@ fn title_hook_requests_one_orderly_quit() {
     };
 
     if run_fresh_cases(
-        "game::native_hooks::base::screen_open_tests::title_hook_requests_one_orderly_quit",
+        "cut_layout::game::native_hooks::base::screen_open_tests::title_hook_requests_one_orderly_quit",
         "SUNRISE_CLIENT_QUIT_CHILD",
         &["title"],
     ) {
@@ -375,7 +375,7 @@ fn an_overlay_fires_init_post_after_it_opens() {
 #[ignore = "daily"]
 fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::native_hooks::base::screen_open_tests::mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens",
+        "cut_layout::game::native_hooks::base::screen_open_tests::mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens",
         "SUNRISE_MOD_SCREEN_OPEN_CHILD",
         &["window"],
     ) {

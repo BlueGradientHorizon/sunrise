@@ -34,7 +34,7 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
     };
     use sunrise_protocol::packets::play;
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::block_entity_client_tick_tests::a_clients_frames_tick_its_declared_copies_until_they_go",
+        "cut_layout::game::client_side::native_hooks_client::block_entity_client_tick_tests::a_clients_frames_tick_its_declared_copies_until_they_go",
         "SUNRISE_BLOCK_ENTITY_CLIENT_TICK_CHILD",
         &["game"],
     ) {

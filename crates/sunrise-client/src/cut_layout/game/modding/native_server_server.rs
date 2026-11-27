@@ -387,7 +387,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn command_refresh_rebuilds_the_typed_dispatcher_only_on_request() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::native_server_server::tests::command_refresh_rebuilds_the_typed_dispatcher_only_on_request",
+            "cut_layout::game::server_side::native_server_server::tests::command_refresh_rebuilds_the_typed_dispatcher_only_on_request",
             || {
                 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
                 struct ChangingCommands {
@@ -687,7 +687,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn native_commands_keep_function_block_and_cart_sources() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::native_server_server::tests::native_commands_keep_function_block_and_cart_sources",
+            "cut_layout::game::server_side::native_server_server::tests::native_commands_keep_function_block_and_cart_sources",
             || {
                 use mod_api::{CommandSource, PermissionLevel as Permission};
                 use sunrise_core::position::BlockPos;
@@ -803,7 +803,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn native_typed_commands_reach_listeners_after_parse_and_source_resolution() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::native_server_server::tests::native_typed_commands_reach_listeners_after_parse_and_source_resolution",
+            "cut_layout::game::server_side::native_server_server::tests::native_typed_commands_reach_listeners_after_parse_and_source_resolution",
             || {
                 use mod_api::{CommandArgumentValue as Value, CommandInvocation};
                 struct Commands(Arc<Mutex<Vec<(bool, CommandInvocation)>>>);

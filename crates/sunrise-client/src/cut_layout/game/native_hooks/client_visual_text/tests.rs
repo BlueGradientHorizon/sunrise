@@ -13,7 +13,7 @@ fn retain_visual(host: &dyn ClientHost, text: &Text) -> Vec<VisualTextCharacter>
 #[ignore = "daily"]
 fn visual_read_uses_live_translations_styles_and_bidi_outside_drawing() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::client_visual_text::tests::visual_read_uses_live_translations_styles_and_bidi_outside_drawing",
+        "cut_layout::game::native_hooks::client_visual_text::tests::visual_read_uses_live_translations_styles_and_bidi_outside_drawing",
         || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 check_visual_reads(game)

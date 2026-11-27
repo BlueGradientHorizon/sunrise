@@ -21,7 +21,7 @@ use {sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit
 #[ignore = "daily"]
 fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_hooks_server::placement_context_tests::player_and_dispenser_apply_only_the_context_seen_by_the_veto",
+        "cut_layout::game::server_side::native_hooks_server::placement_context_tests::player_and_dispenser_apply_only_the_context_seen_by_the_veto",
         || {
             use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
@@ -163,7 +163,7 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
 #[ignore = "daily"]
 fn state_for_placement_distinguishes_player_and_dispenser_sources() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_hooks_server::placement_context_tests::state_for_placement_distinguishes_player_and_dispenser_sources",
+        "cut_layout::game::server_side::native_hooks_server::placement_context_tests::state_for_placement_distinguishes_player_and_dispenser_sources",
         || {
             let spy = SourceSpy::default();
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new(

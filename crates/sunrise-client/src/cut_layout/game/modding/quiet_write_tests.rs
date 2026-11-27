@@ -145,7 +145,7 @@ pub(super) fn with_crate(test: impl FnOnce(&mut ServerGame<'_>, BlockEntityRef))
 #[ignore = "daily"]
 fn a_quiet_write_marks_the_chunk_and_waits_for_sync() {
     if run_fresh_cases(
-        "game::quiet_write_tests::a_quiet_write_marks_the_chunk_and_waits_for_sync",
+        "cut_layout::game::quiet_write_tests::a_quiet_write_marks_the_chunk_and_waits_for_sync",
         "SUNRISE_QUIET_WRITE_CHILD",
         &["quiet"],
     ) {

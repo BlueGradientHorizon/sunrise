@@ -27,7 +27,7 @@ pub(in crate::game) mod connected_advancement_save_tests {
         // Reload consults process-wide mod registration. Other fixtures may install
         // rejecting reload listeners, so run this vanilla server in its own process.
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::lan::connected_advancement_save_tests::save_commands_write_the_connected_nonowners_current_advancements",
+            "cut_layout::game::server_side::lan::connected_advancement_save_tests::save_commands_write_the_connected_nonowners_current_advancements",
             connected_advancement_save,
         );
     }

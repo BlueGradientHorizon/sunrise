@@ -514,7 +514,7 @@ impl mod_api::CommandArgumentType for QuestObject {
 #[ignore = "daily"]
 fn a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quotable_string() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_command_completion_tests::a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quotable_string",
+        "cut_layout::game::native_command_completion_tests::a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quotable_string",
         || {
             use sunrise_command::{Arg, Dispatcher, network};
             let arguments = CommandArguments::from([(

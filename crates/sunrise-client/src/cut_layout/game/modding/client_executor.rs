@@ -98,7 +98,7 @@ mod tests {
         }
 
         if run_fresh_cases(
-            "game::client_side::client_executor::tests::closing_window_during_pending_save_discards_pending_and_late_client_tasks",
+            "cut_layout::game::client_side::client_executor::tests::closing_window_during_pending_save_discards_pending_and_late_client_tasks",
             "SUNRISE_CLIENT_EXECUTOR_CLOSE_DURING_SAVE_CHILD",
             &["close"],
         ) {

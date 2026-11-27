@@ -144,6 +144,12 @@ pub trait SideOps: Sized {
     fn side_parked_border(&self, _dim: Dim) -> Option<&sunrise_level::worldborder::WorldBorder> {
         None
     }
+    fn side_parked_lid_openers(
+        &self,
+        _dimension: &str,
+    ) -> Option<&std::collections::HashMap<(i32, i32, i32), i32>> {
+        None
+    }
     fn side_constructing_dimension_facts(
         &self,
         _level: mod_api::LevelRef,

@@ -26,7 +26,12 @@ impl ServerGame<'_> {
         // plain level event (`levelEvent(null, ...)`), sent to the players
         // near `pos`; the vanilla client has no plain sound for 1023, 1028
         // and 1038 (they are only in `LevelEventHandler.globalLevelEvent`).
-        if !global {
+        if !self
+            .common
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
+        {
             self.server_level_event_at(id, pos, data);
             return;
         }
@@ -52,7 +57,12 @@ impl ServerGame<'_> {
         if global && self.server_level_event_canceled(id, pos, data, true) {
             return;
         }
-        if !global {
+        if !self
+            .common
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
+        {
             self.deliver_level_event(id, pos, data);
             return;
         }

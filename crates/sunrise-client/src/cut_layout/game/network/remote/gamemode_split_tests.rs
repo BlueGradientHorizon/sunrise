@@ -334,7 +334,7 @@ fn genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
 
 pub(crate) fn run_genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::genpvp_packet_sequence_matches_26_3_oracle_step_by_step",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::genpvp_packet_sequence_matches_26_3_oracle_step_by_step",
         || {
             let witness = oracle_witness();
             assert_eq!(witness["version"].as_str(), Some("26.3"));
@@ -387,7 +387,7 @@ fn change_game_mode_updates_only_local_mode_and_abilities_26_3() {
 
 pub(crate) fn run_change_game_mode_updates_only_local_mode_and_abilities_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::change_game_mode_updates_only_local_mode_and_abilities_26_3",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::change_game_mode_updates_only_local_mode_and_abilities_26_3",
         || {
             let witness = oracle_witness();
             assert_eq!(witness["version"].as_str(), Some("26.3"));
@@ -483,7 +483,7 @@ fn live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
 
 pub(crate) fn run_live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::live_player_info_updates_toggle_no_physics_while_local_spectator_26_3",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::live_player_info_updates_toggle_no_physics_while_local_spectator_26_3",
         || {
             let witness = oracle_witness();
             assert_eq!(witness["version"].as_str(), Some("26.3"));
@@ -543,7 +543,7 @@ fn login_and_respawn_set_previous_mode_and_fresh_abilities_26_3() {
 
 pub(crate) fn run_login_and_respawn_set_previous_mode_and_fresh_abilities_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::login_and_respawn_set_previous_mode_and_fresh_abilities_26_3",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::login_and_respawn_set_previous_mode_and_fresh_abilities_26_3",
         || {
             let witness = oracle_witness();
             assert_eq!(witness["version"].as_str(), Some("26.3"));
@@ -605,7 +605,7 @@ fn respawn_keep_data_spectator_info_clears_pending_y_26_3() {
 
 pub(crate) fn run_respawn_keep_data_spectator_info_clears_pending_y_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::respawn_keep_data_spectator_info_clears_pending_y_26_3",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::respawn_keep_data_spectator_info_clears_pending_y_26_3",
         || {
             let witness = oracle_witness();
             assert_eq!(witness["version"].as_str(), Some("26.3"));
@@ -653,7 +653,7 @@ fn retained_player_login_preserves_custom_ability_speeds_26_3() {
 
 pub(crate) fn run_retained_player_login_preserves_custom_ability_speeds_26_3() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::retained_player_login_preserves_custom_ability_speeds_26_3",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::retained_player_login_preserves_custom_ability_speeds_26_3",
         || {
             let witness = oracle_witness();
             assert_eq!(witness["version"].as_str(), Some("26.3"));
@@ -687,7 +687,7 @@ pub(crate) fn run_retained_player_login_preserves_custom_ability_speeds_26_3() {
 #[ignore = "daily"]
 fn player_info_hook_fires_after_motion_clear_and_for_tab_only_profiles() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::player_info_hook_fires_after_motion_clear_and_for_tab_only_profiles",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::player_info_hook_fires_after_motion_clear_and_for_tab_only_profiles",
         || {
             use mod_api::{ClientHost, ClientPlayerChangeGameTypeEvent, Hooks, ModEntry};
             use std::sync::{Arc, Mutex};
@@ -769,7 +769,7 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
 
 pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::split_mode_hud_rendering_reach_miss_inventory_and_input_rules",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::split_mode_hud_rendering_reach_miss_inventory_and_input_rules",
         || {
             use sunrise_client::fog::FogType;
             use sunrise_core::nbt::Tag;
@@ -1304,7 +1304,7 @@ fn hud_camera_mounts_match_26_3_oracle() {
 
 pub(crate) fn run_hud_camera_mounts_match_26_3_oracle() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::hud_camera_mounts_match_26_3_oracle",
+        "cut_layout::game::remote::abilities::gamemode_split_tests::hud_camera_mounts_match_26_3_oracle",
         || {
             let witness = oracle_witness();
             let rows = witness["scenarios"]["hud_camera_mounts"]

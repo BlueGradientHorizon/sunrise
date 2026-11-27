@@ -22,7 +22,7 @@ use sunrise_protocol::{
 };
 
 #[cfg(any())]
-const NAME: &str = "game::server_side::attachment_sync::transport_tests::attachment_sync_follows_the_negotiated_route";
+const NAME: &str = "cut_layout::game::server_side::attachment_sync::transport_tests::attachment_sync_follows_the_negotiated_route";
 
 pub(super) const VALUE_CODEC: AttachmentCodec<i32> = AttachmentCodec {
     encode: |n| Ok([("n".into(), Tag::Int(*n))].into()),

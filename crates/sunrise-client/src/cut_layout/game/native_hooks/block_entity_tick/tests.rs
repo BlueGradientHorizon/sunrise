@@ -96,7 +96,7 @@ pub(crate) fn enable_block_ticks(game: &mut sunrise_gameplay::game::ServerGame<'
 #[test]
 #[ignore = "daily"]
 fn retaking_the_view_checks_the_instance_and_state() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::retaking_the_view_checks_the_instance_and_state";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::retaking_the_view_checks_the_instance_and_state";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_RETAKE", &["run"]) {
         return;
     }
@@ -172,7 +172,7 @@ fn retaking_the_view_checks_the_instance_and_state() {
 #[test]
 #[ignore = "daily"]
 fn read_only_and_noop_loans_do_not_journal_or_dirty() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::read_only_and_noop_loans_do_not_journal_or_dirty";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::read_only_and_noop_loans_do_not_journal_or_dirty";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_NOOP", &["run"]) {
         return;
     }
@@ -199,7 +199,7 @@ fn read_only_and_noop_loans_do_not_journal_or_dirty() {
 #[test]
 #[ignore = "daily"]
 fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::a_scope_transaction_aborts_subject_and_dropped_item_edits_together";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::a_scope_transaction_aborts_subject_and_dropped_item_edits_together";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ABORT", &["run"]) {
         return;
     }
@@ -275,7 +275,7 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests_at,
     };
 
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::aborted_block_entity_edits_preserve_a_queued_client_update";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::aborted_block_entity_edits_preserve_a_queued_client_update";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_SYNC", &["run"]) {
         return;
     }
@@ -514,7 +514,7 @@ pub(crate) fn check_edit_then_replace(commit: bool, observer: Option<ModEntry>) 
 #[test]
 #[ignore = "daily"]
 fn edit_then_replace_commit_spills_only_the_remaining_contents() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::edit_then_replace_commit_spills_only_the_remaining_contents";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::edit_then_replace_commit_spills_only_the_remaining_contents";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_REMOVAL", &["run"]) {
         return;
     }
@@ -568,7 +568,7 @@ fn edit_then_replace_commit_spills_only_the_remaining_contents() {
 #[test]
 #[ignore = "daily"]
 fn edit_then_replace_abort_restores_the_original_contents() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::edit_then_replace_abort_restores_the_original_contents";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::edit_then_replace_abort_restores_the_original_contents";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_REMOVAL_ABORT", &["run"]) {
         return;
     }
@@ -578,7 +578,7 @@ fn edit_then_replace_abort_restores_the_original_contents() {
 #[test]
 #[ignore = "daily"]
 fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::reentrant_removal_does_not_spill_the_same_saved_pot_twice";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::reentrant_removal_does_not_spill_the_same_saved_pot_twice";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_REENTRANT_REMOVAL", &["run"]) {
         return;
     }
@@ -663,7 +663,7 @@ fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
 #[test]
 #[ignore = "daily"]
 fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::spill_join_keeps_the_replacement_furnace_and_its_contents";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::spill_join_keeps_the_replacement_furnace_and_its_contents";
     const CASE: &str = "SUNRISE_RESIDENT_VIEW_REPLACEMENT_FURNACE";
     if run_fresh_cases(NAME, CASE, &["stone", "furnace"]) {
         return;
@@ -811,7 +811,7 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
 #[test]
 #[ignore = "daily"]
 fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::strict_bulk_replacement_aborts_the_block_handle_and_inventory_together";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::strict_bulk_replacement_aborts_the_block_handle_and_inventory_together";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_STRICT_ABORT", &["run"]) {
         return;
     }
@@ -884,7 +884,7 @@ fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
 #[test]
 #[ignore = "daily"]
 fn strict_bulk_commit_publishes_whole_chunks_without_drops() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::strict_bulk_commit_publishes_whole_chunks_without_drops";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::strict_bulk_commit_publishes_whole_chunks_without_drops";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_STRICT_COMMIT", &["run"]) {
         return;
     }
@@ -933,7 +933,7 @@ fn strict_bulk_commit_publishes_whole_chunks_without_drops() {
 #[test]
 #[ignore = "daily"]
 fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::ordinary_replacement_between_strict_edits_uses_its_own_resident_row";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::ordinary_replacement_between_strict_edits_uses_its_own_resident_row";
     const CASE: &str = "SUNRISE_RESIDENT_STRICT_ORDER";
     if run_fresh_cases(NAME, CASE, &["ordinary_first", "strict_first"]) {
         return;
@@ -1167,7 +1167,7 @@ fn an_invalid_resident_block_entity_is_not_dispatched() {
         }
     }
 
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::an_invalid_resident_block_entity_is_not_dispatched";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::an_invalid_resident_block_entity_is_not_dispatched";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_INVALID_TICK", &["run"]) {
         return;
     }
@@ -1205,7 +1205,7 @@ fn an_invalid_resident_block_entity_is_not_dispatched() {
 #[test]
 #[ignore = "daily"]
 fn invalid_resident_ticker_warns_once_until_a_valid_tick() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::invalid_resident_ticker_warns_once_until_a_valid_tick";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::invalid_resident_ticker_warns_once_until_a_valid_tick";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_TICK_WARNING", &["run"]) {
         return;
     }
@@ -1259,7 +1259,7 @@ fn invalid_resident_ticker_warns_once_until_a_valid_tick() {
 #[test]
 #[ignore = "daily"]
 fn ticker_and_handle_setters_require_explicit_set_changed() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::ticker_and_handle_setters_require_explicit_set_changed";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::ticker_and_handle_setters_require_explicit_set_changed";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_TICK", &["run"]) {
         return;
     }
@@ -1323,7 +1323,7 @@ fn ticker_and_handle_setters_require_explicit_set_changed() {
 #[test]
 #[ignore = "daily"]
 fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::a_registered_type_without_a_tick_part_is_not_woken_or_changed";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::a_registered_type_without_a_tick_part_is_not_woken_or_changed";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_NO_TICK", &["run"]) {
         return;
     }
@@ -1344,7 +1344,7 @@ fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
 fn chunk_save_reloads_reordered_slotless_items() {
     use sunrise_sim::save;
 
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::chunk_save_reloads_reordered_slotless_items";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::chunk_save_reloads_reordered_slotless_items";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ITEMS_ORDER", &["run"]) {
         return;
     }
@@ -1420,7 +1420,7 @@ fn chunk_save_reloads_reordered_slotless_items() {
 #[test]
 #[ignore = "daily"]
 fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ITEMS_NBT", &["run"]) {
         return;
     }
@@ -1597,7 +1597,7 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
 #[test]
 #[ignore = "daily"]
 fn blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working";
     if run_fresh_cases(NAME, "SUNRISE_BLOCKLESS_SCOPE", &["run"]) {
         return;
     }
@@ -1626,7 +1626,7 @@ fn blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working(
 #[test]
 #[ignore = "daily"]
 fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transactions() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transactions";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tick_tests::items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transactions";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_ITEMS_CHANGED", &["run"]) {
         return;
     }

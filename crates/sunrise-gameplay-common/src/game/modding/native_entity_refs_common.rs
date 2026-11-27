@@ -952,6 +952,20 @@ pub trait NativeEntityRefsCommonGameExt7<'__sg>: crate::game::SideGame<'__sg> {
     /// (`Entity.DATA_CUSTOM_NAME`) and a player's profile name. API
     /// 386.
     fn entity_name(&self, entity: EntityRef) -> Option<String> {
+        if let Some(slot) = self.side_native_client_general_type_slot(entity) {
+            let name = match self.side_client_entity_custom_name(entity).flatten() {
+                Some(name) => sunrise_game_data::scoreboard::remove_click_events(&name).plain(),
+                None => {
+                    let kind = crate::game::general::general_type_catalog().key(slot);
+                    sunrise_game_data::text::Text::translate(
+                        &format!("entity.{}", kind.replace(':', ".")),
+                        &[],
+                    )
+                    .plain()
+                }
+            };
+            return Some(name);
+        }
         let t = self.native_entity_read_target(entity)?;
         if let Some(result) = self.side_level_player_name(entity) {
             if let Some(name) = result.ok()? {

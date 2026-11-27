@@ -5,15 +5,7 @@ pub(in crate::game) fn with_isolated_client(
     name: &str,
     body: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
-    let test = if name.contains("::") {
-        name.split_once("::")
-            .map_or(name, |(_, rest)| rest)
-            .to_owned()
-    } else {
-        let (_, module) = module_path!().split_once("::").unwrap();
-        format!("{module}::{name}")
-    };
-    sunrise_gameplay_common::game::in_own_process(&test, || with_client_game(body));
+    sunrise_gameplay_common::game::in_own_process(name, || with_client_game(body));
 }
 
 pub(in crate::game) fn registry_id(

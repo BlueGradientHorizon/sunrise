@@ -49,11 +49,11 @@ impl crate::game::ServerGame<'_> {
     /// tick failure or panic, save failure, and client disconnect).
     pub(in crate::game) fn server_lifecycle_world_closed(&mut self) {
         self.server.levels.0.clear();
-        self.clear_all_async_chunk_requests();
-        self.close_all_saved_chunk_readers();
-        self.close_all_detached_generators();
-        self.clear_composter_randoms();
-        self.finish_world_closed_common();
+        self.finish_world_closed_common(|game| {
+            game.clear_all_async_chunk_requests();
+            game.close_all_saved_chunk_readers();
+            game.close_all_detached_generators();
+        });
     }
 
     pub(in crate::game::server_side) fn drain_due_tasks(

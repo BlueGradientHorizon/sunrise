@@ -13,8 +13,8 @@ pub(crate) mod player_leave_tests {
     /// Each case runs in a fresh child process: the fixture loads the prepared resources into
     /// the process-wide tables (languages, POIs, cauldron interactions).
     pub(crate) const FLAG: &str = "SUNRISE_PLAYER_LEAVE_CHILD";
-    pub(crate) const SAVED: &str = "game::server_side::native_hooks_server::player_leave::player_leave_tests::what_a_listener_changes_on_a_leaving_player_is_saved";
-    pub(crate) const ASLEEP: &str = "game::native_hooks::player_leave::player_leave_tests::a_sleeping_player_wakes_before_logging_out";
+    pub(crate) const SAVED: &str = "cut_layout::game::server_side::native_hooks_server::player_leave::player_leave_tests::what_a_listener_changes_on_a_leaving_player_is_saved";
+    pub(crate) const ASLEEP: &str = "cut_layout::game::native_hooks::player_leave::player_leave_tests::a_sleeping_player_wakes_before_logging_out";
 
     pub(crate) const VALUE: AttachmentType<i32> = AttachmentType {
         namespace: "leave_test",

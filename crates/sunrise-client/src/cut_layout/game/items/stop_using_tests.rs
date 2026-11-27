@@ -66,7 +66,7 @@ fn eating(body: impl FnOnce(&mut ServerGame<'_>)) {
 #[ignore = "daily"]
 fn a_part_hears_each_stop_of_its_items_use_once() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::stop_using_tests::a_part_hears_each_stop_of_its_items_use_once",
+        "cut_layout::game::server_side::stop_using_tests::a_part_hears_each_stop_of_its_items_use_once",
         || {
             // A finished use: 0 ticks left, heard once the apple is eaten.
             eating(|game| {
@@ -117,7 +117,7 @@ fn a_replaced_finish_still_stops_the_use() {
     use sunrise_protocol::connection::Pipe;
     use sunrise_sim::motion::PlayerMotion;
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::stop_using_tests::a_replaced_finish_still_stops_the_use",
+        "cut_layout::game::server_side::stop_using_tests::a_replaced_finish_still_stops_the_use",
         || {
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new("apple", Box::new(Parts))].into();
             mod_platform::testing::with_mods(mods.clone(), || {

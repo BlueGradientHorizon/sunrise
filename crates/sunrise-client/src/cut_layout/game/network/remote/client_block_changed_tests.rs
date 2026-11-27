@@ -53,7 +53,7 @@ fn with_client(
     name: &str,
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, BlockStateId),
 ) {
-    let selector = format!("game::remote::tests::client_block_changed_tests::{name}");
+    let selector = format!("cut_layout::game::remote::tests::client_block_changed_tests::{name}");
     if run_fresh_cases(&selector, "SUNRISE_CLIENT_BLOCK_CHANGED_CHILD", &["map"]) {
         return;
     }

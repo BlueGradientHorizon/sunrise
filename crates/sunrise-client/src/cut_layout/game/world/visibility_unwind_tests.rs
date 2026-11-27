@@ -79,7 +79,7 @@ fn visibility_listener_unwind_does_not_block_an_outside_save() {
     // Save admission is process-wide, even when this game's visibility is settled.
     // Other fixtures may legitimately hold leases; isolate the real save proof.
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::visibility_unwind_tests::visibility_listener_unwind_does_not_block_an_outside_save",
+        "cut_layout::game::server_side::visibility_unwind_tests::visibility_listener_unwind_does_not_block_an_outside_save",
         visibility_unwind_save,
     );
 }

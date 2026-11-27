@@ -5,7 +5,11 @@ use mod_api::{
     LevelRef, Registrar, RegistrationContext, WorldEpoch,
 };
 use std::ops::ControlFlow;
+use sunrise_client_gameplay::game::client_side::{
+    native_client_session::tests::logged_client, remote_client::session_state::RemoteDimensionEntry,
+};
 use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
+
 struct SyncedRegistryMod;
 #[mod_api::__subscriptions]
 impl Hooks for SyncedRegistryMod {
@@ -42,7 +46,7 @@ fn assert_spell_ids(host: &dyn Host, level: LevelRef, expected: &[&str]) {
 #[ignore = "daily"]
 fn native_datapack_host_reads_enforce_level_session_and_generation() {
     if run_fresh_cases(
-        "game::server_side::server_reload::tests::datapack_publication_tests::datapack_host_read_tests::native_datapack_host_reads_enforce_level_session_and_generation",
+        "cut_layout::game::server_side::server_reload::tests::datapack_publication_tests::datapack_host_read_tests::native_datapack_host_reads_enforce_level_session_and_generation",
         "SUNRISE_DATAPACK_HOST_READ_CHILD",
         &["host-reads"],
     ) {
@@ -72,6 +76,10 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 )
                 .unwrap()
             };
+            // A Cell: the server and the client closure both read it while the visitor is live.
+            let visited_refusal = std::cell::Cell::new(false);
+            let mut unexpected_visit = |_: &DatapackEntry| visited_refusal.set(true);
+            let mut unexpected_id = |_: &str| -> ControlFlow<()> { panic!("unexpected entry ID") };
             with_game(|game| {
                 game.load_world(request(scratch.path())).unwrap();
                 game.mods.datapack_registries = Some(std::sync::Arc::new(
@@ -107,10 +115,6 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                     )
                     .unwrap();
                 assert_eq!(visits, 1);
-                let mut visited_refusal = false;
-                let mut unexpected_visit = |_: &DatapackEntry| visited_refusal = true;
-                let mut unexpected_id =
-                    |_: &str| -> ControlFlow<()> { panic!("unexpected entry ID") };
                 assert_eq!(
                     level.visit_datapack_entries(game, "missing:registry", &mut unexpected_id),
                     Err(E::UnknownRegistry)
@@ -198,11 +202,9 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 assert_eq!(reloaded_visits, 1);
             });
             sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
-                let mut visited_refusal = false;
-                let mut unexpected_visit = |_: &DatapackEntry| visited_refusal = true;
-                let mut unexpected_id =
-                    |_: &str| -> ControlFlow<()> { panic!("unexpected entry ID") };
-
+                client.mods.datapack_registries = Some(std::sync::Arc::new(
+                    mod_api::DatapackRegistrySet::from_candidate(candidate(9)),
+                ));
                 let declarations = mod_api::__private::datapack_registry_declarations();
                 let remote = mod_api::DatapackCandidate::build(
                     declarations,
@@ -224,11 +226,23 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 else {
                     panic!("snapshot required");
                 };
-                let (_reader, _writer) = crate::game::remote::tests::connect_menu_test(client);
-                crate::game::remote::tests::spawn_menu_test(client);
-                client.mods.datapack_registries = Some(std::sync::Arc::new(
-                    mod_api::DatapackRegistrySet::from_candidate(candidate(9)),
-                ));
+                let _server = logged_client(client);
+                client.enter_remote_dimension(
+                    &sunrise_protocol::packets::play::SpawnInfo {
+                        dimension_type: 0,
+                        dimension: "minecraft:overworld".into(),
+                        seed: 0,
+                        game_type: 1,
+                        previous_game_type: None,
+                        debug: false,
+                        flat: true,
+                        last_death: None,
+                        portal_cooldown: 0,
+                        sea_level: 63,
+                    },
+                    RemoteDimensionEntry::Login,
+                    sunrise_client_render::level_loading::Reason::Other,
+                );
                 let receiver = &mut client.client.remote.as_mut().unwrap().datapacks;
                 for chunk in sunrise_sim::datapack_net::chunks(&bytes).unwrap() {
                     receiver.accept_chunk(&chunk).unwrap();
@@ -271,7 +285,7 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                     ),
                     Err(E::UnknownRegistry)
                 );
-                assert!(!visited_refusal);
+                assert!(!visited_refusal.get());
             });
         },
     );

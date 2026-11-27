@@ -112,7 +112,7 @@ pub(crate) fn close(got: &[(f32, u32)], want: &[(f32, u32)]) {
 #[ignore = "daily"]
 fn a_part_decides_whether_the_hand_lowers_for_a_new_stack() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::hand_part_tests::a_part_decides_whether_the_hand_lowers_for_a_new_stack",
+        "cut_layout::game::client_side::hand_part_tests::a_part_decides_whether_the_hand_lowers_for_a_new_stack",
         || {
             with_stick_part(|game| {
                 let stick = |count| ItemStack::new("minecraft:stick", count);
@@ -170,7 +170,7 @@ fn a_part_decides_whether_the_hand_lowers_for_a_new_stack() {
 #[ignore = "daily"]
 fn a_part_decides_whether_a_changed_stick_restarts_the_break() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::hand_part_tests::a_part_decides_whether_a_changed_stick_restarts_the_break",
+        "cut_layout::game::client_side::hand_part_tests::a_part_decides_whether_a_changed_stick_restarts_the_break",
         || {
             with_stick_part(|game| {
                 game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
@@ -225,7 +225,7 @@ fn without_a_part_the_break_compares_item_and_components() {
 #[ignore = "daily"]
 fn remote_mining_component_update_restarts_unless_the_part_refuses() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::hand_part_tests::remote_mining_component_update_restarts_unless_the_part_refuses",
+        "cut_layout::game::client_side::hand_part_tests::remote_mining_component_update_restarts_unless_the_part_refuses",
         || {
             for keep in [false, true] {
                 with_stick_part(|game| {

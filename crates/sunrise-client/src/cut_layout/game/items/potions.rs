@@ -10,7 +10,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn typed_cloud_remote_metadata_keeps_valid_options_on_malformed_update() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::potions::tests::typed_cloud_remote_metadata_keeps_valid_options_on_malformed_update",
+            "cut_layout::game::client_side::potions::tests::typed_cloud_remote_metadata_keeps_valid_options_on_malformed_update",
             "SUNRISE_TEST_TYPED_CLOUD_CLIENT_CASE",
             &["cloud"],
         ) {

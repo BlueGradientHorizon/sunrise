@@ -408,6 +408,7 @@ mod tests {
         use sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest;
 
         with_game(|game| {
+            game.server.world_root = game.server.save.0.root.clone();
             let saved_board = open_lan(game);
             game.server
                 .lan
@@ -449,7 +450,7 @@ mod tests {
                 Ok(ControlFlow::Break(()))
             );
             assert_eq!(first_team, [red]);
-            assert_eq!(red.name(game).as_deref(), Some("red"));
+            assert_eq!(red.name(game), Some("red"));
             let mut unexpected_visits = 0;
             let mut count = |_: &str| {
                 unexpected_visits += 1;

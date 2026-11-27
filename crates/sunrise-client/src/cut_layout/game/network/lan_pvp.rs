@@ -321,7 +321,7 @@ mod tests {
     #[ignore = "daily"]
     fn pvp_mace_smash_keeps_the_players_breach_and_does_not_retaliate_on_a_bystander() {
         if run_fresh_cases(
-            "game::lan_pvp::tests::pvp_mace_smash_keeps_the_players_breach_and_does_not_retaliate_on_a_bystander",
+            "cut_layout::game::server_side::lan_pvp::tests::pvp_mace_smash_keeps_the_players_breach_and_does_not_retaliate_on_a_bystander",
             "SUNRISE_PVP_MACE_SMASH_CHILD",
             &["smash"],
         ) {
@@ -364,7 +364,7 @@ mod tests {
     #[ignore = "daily"]
     fn guest_thorns_answers_the_host_that_shot_the_arrow() {
         if run_fresh_cases(
-            "game::lan_pvp::tests::guest_thorns_answers_the_host_that_shot_the_arrow",
+            "cut_layout::game::server_side::lan_pvp::tests::guest_thorns_answers_the_host_that_shot_the_arrow",
             "SUNRISE_PVP_ARROW_THORNS_CHILD",
             &["arrow"],
         ) {

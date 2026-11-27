@@ -8,10 +8,8 @@ use sunrise_gameplay_common::game::{Screen, tables::GameItems as _};
 use sunrise_shaders::RenderLayer;
 use sunrise_world::registry::BlockStateId;
 
-const NAME: &str =
-    "game::pack_layer_frame_tests::layer_rules_move_states_between_the_packs_terrain_programs";
-const SHADOW_NAME: &str =
-    "game::pack_layer_frame_tests::layer_rules_move_states_between_the_packs_shadow_programs";
+const NAME: &str = "cut_layout::game::pack_layer_frame_tests::layer_rules_move_states_between_the_packs_terrain_programs";
+const SHADOW_NAME: &str = "cut_layout::game::pack_layer_frame_tests::layer_rules_move_states_between_the_packs_shadow_programs";
 const CASE: &str = "SUNRISE_PACK_LAYER_FRAME_CASE";
 
 const VERTEX: &str = "#version 120\nvoid main() {\n    gl_Position = ftransform();\n}\n";

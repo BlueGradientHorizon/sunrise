@@ -23,7 +23,7 @@ pub(crate) mod tests {
 
         const CASE: &str = "SUNRISE_DISPLAY_BOX_QUERY_CHILD";
         if run_fresh_cases(
-            "game::client_side::native_entity_refs_client::tests::client_box_queries_use_live_display_positions_and_section_order",
+            "cut_layout::game::client_side::native_entity_refs_client::tests::client_box_queries_use_live_display_positions_and_section_order",
             CASE,
             &["client"],
         ) {
@@ -195,7 +195,7 @@ pub(crate) mod tests {
 
         const CASE: &str = "SUNRISE_CLIENT_CROSSING_CHILD";
         if run_fresh_cases(
-            "game::client_side::native_entity_refs_client::tests::client_crossings_land_in_tick_order_and_before_hooks_read_them",
+            "cut_layout::game::client_side::native_entity_refs_client::tests::client_crossings_land_in_tick_order_and_before_hooks_read_them",
             CASE,
             &["order", "order_listened", "tracked_player", "rider"],
         ) {

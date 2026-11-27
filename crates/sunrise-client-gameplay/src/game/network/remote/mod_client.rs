@@ -1368,6 +1368,10 @@ impl crate::game::ClientGame<'_> {
         &mut self.client.audio.0
     }
 
+    pub fn test_play_audio_button_click(&mut self) {
+        self.play_audio_button_click();
+    }
+
     pub fn test_remote_pick_click(&mut self) {
         use sunrise_client::interaction_input::InteractionWorld as _;
         RemoteInputWorld(self).pick();

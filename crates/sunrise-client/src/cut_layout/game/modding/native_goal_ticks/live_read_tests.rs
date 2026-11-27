@@ -316,7 +316,7 @@ fn body_yaw_targets_live_living_owners_and_respects_overrides() {
         native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
     };
     if run_fresh_cases(
-        "game::server_side::native_goal_ticks::live_read_tests::body_yaw_targets_live_living_owners_and_respects_overrides",
+        "cut_layout::game::server_side::native_goal_ticks::live_read_tests::body_yaw_targets_live_living_owners_and_respects_overrides",
         "SUNRISE_SERVER_BODY_YAW_CASE",
         &["owners"],
     ) {
@@ -514,7 +514,7 @@ fn a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick() {
 
     // Loading resources replaces process-wide tables: the case runs in its own process.
     if run_fresh_cases(
-        "game::server_side::native_goal_ticks::live_read_tests::a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick",
+        "cut_layout::game::server_side::native_goal_ticks::live_read_tests::a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick",
         "SUNRISE_GOAL_LAST_HURT_MOB_CASE",
         &["lent"],
     ) {

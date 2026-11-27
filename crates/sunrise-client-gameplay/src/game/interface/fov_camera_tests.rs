@@ -65,33 +65,29 @@ fn with_spectator(kind: &str, test: impl FnOnce(&mut Game<'_>, &Calls)) {
     });
 }
 
-fn sync_spectated_movement_speed(game: &mut Game<'_>) {
-    let attribute = game
-        .motion
-        .attributes
-        .id("minecraft:movement_speed")
-        .unwrap()
-        .registry_id();
-    game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
-        id: 31,
-        values: vec![play::AttributeSnapshot {
-            attribute,
-            base: 0.1,
-            modifiers: vec![play::AttributeModifier {
-                id: "test:movement_bonus".into(),
-                amount: 0.1,
-                operation: 0,
-            }],
-        }],
-    }))
-    .unwrap();
-}
-
 #[test]
 #[ignore = "daily"]
 fn spectated_player_fov_uses_their_own_attributes_and_item_use() {
     with_spectator("minecraft:player", |game, calls| {
-        sync_spectated_movement_speed(game);
+        let attribute = game
+            .motion
+            .attributes
+            .id("minecraft:movement_speed")
+            .unwrap()
+            .registry_id();
+        game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+            id: 31,
+            values: vec![play::AttributeSnapshot {
+                attribute,
+                base: 0.1,
+                modifiers: vec![play::AttributeModifier {
+                    id: "test:movement_bonus".into(),
+                    amount: 0.1,
+                    operation: 0,
+                }],
+            }],
+        }))
+        .unwrap();
         let m = game
             .common
             .mob_index
@@ -134,7 +130,6 @@ fn spectated_player_fov_uses_their_own_attributes_and_item_use() {
 #[ignore = "daily"]
 fn at_effect_scale_zero_the_listener_still_sees_the_raw_modifier() {
     with_spectator("minecraft:player", |game, calls| {
-        sync_spectated_movement_speed(game);
         game.client
             .settings
             .file
@@ -185,8 +180,6 @@ fn the_world_angle_takes_valid_listener_values_and_ignores_the_rest() {
     mod_platform::testing::with_mods(mods, || {
         with_client_game(|game| {
             let setting = game.client.settings.fov;
-            game.client.view.old_fov_modifier = 1.0;
-            game.client.view.fov_modifier = 1.0;
             for (value, expected) in [
                 (None, setting),
                 (Some(15.0), 15.0),

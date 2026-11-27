@@ -25,7 +25,7 @@ impl crate::game::ClientGame<'_> {
         if cancel {
             return;
         }
-        let sounds = self.common.res.facts().get(state).sounds.clone();
+        let sounds = &self.common.res.facts().get(state).sounds;
         let at = Some(pos.map(|v| f64::from(v) + 0.5));
         let volume = (sounds.volume + 1.0) / 8.0;
         let pitch = sounds.pitch * 0.5;

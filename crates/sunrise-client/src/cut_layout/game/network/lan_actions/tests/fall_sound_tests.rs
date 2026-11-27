@@ -93,7 +93,7 @@ fn run(distance: f64, expected: usize) {
 #[ignore = "daily"]
 fn five_block_fall_sends_stone_once_except_guest() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::tick::fall_sound_tests::five_block_fall_sends_stone_once_except_guest",
+        "cut_layout::game::lan_actions::tick::fall_sound_tests::five_block_fall_sends_stone_once_except_guest",
         || {
             run(5.0, 1);
         },
@@ -103,7 +103,7 @@ fn five_block_fall_sends_stone_once_except_guest() {
 #[ignore = "daily"]
 fn three_block_fall_sends_no_stone_sound() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::tick::fall_sound_tests::three_block_fall_sends_no_stone_sound",
+        "cut_layout::game::lan_actions::tick::fall_sound_tests::three_block_fall_sends_no_stone_sound",
         || {
             run(3.0, 0);
         },

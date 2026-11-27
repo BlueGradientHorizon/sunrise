@@ -32,7 +32,17 @@ pub fn breed_pair_credited(
     }
     let parent = game.mobs.iter_mut().find(|m| m.id == base + 1).unwrap();
     parent.random = LegacyRandom::new(0);
-    parent.extra.age = 6000;
+    let live_baby = !matches!(
+        parent.species(),
+        Species::Turtle | Species::Frog | Species::Sniffer
+    );
+    if mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn) && live_baby {
+        // The listener sees the initiating parent before its deferred cooldown.
+        parent.extra.age = 0;
+        parent.extra.in_love = 600;
+    } else {
+        parent.extra.age = 6000;
+    }
     let partner = game.mobs.iter_mut().find(|m| m.id == base + 2).unwrap();
     partner.extra.in_love = 600;
     let child = game.breed(

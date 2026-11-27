@@ -137,7 +137,7 @@ fn command(line: &str, permission: u8) -> GuestCommand {
 #[ignore = "daily"]
 fn bounded_numbers_reach_the_client_and_refuse_out_of_range() {
     in_own_process(
-        "game::native_server::command_shape_tests::bounded_numbers_reach_the_client_and_refuse_out_of_range",
+        "cut_layout::game::native_server::command_shape_tests::bounded_numbers_reach_the_client_and_refuse_out_of_range",
         || {
             with_shaped_commands(|game, calls, rx| {
                 let tree = sent_tree(&rx);
@@ -209,7 +209,7 @@ fn bounded_numbers_reach_the_client_and_refuse_out_of_range() {
 #[ignore = "daily"]
 fn a_usage_merged_into_a_vanilla_command_keeps_its_usages() {
     in_own_process(
-        "game::native_server::command_shape_tests::a_usage_merged_into_a_vanilla_command_keeps_its_usages",
+        "cut_layout::game::native_server::command_shape_tests::a_usage_merged_into_a_vanilla_command_keeps_its_usages",
         || {
             with_shaped_commands(|game, calls, rx| {
                 // The client gets one `/time`, vanilla's usages first and the mod's after them.

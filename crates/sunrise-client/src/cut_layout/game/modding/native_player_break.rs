@@ -483,7 +483,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_listener_breaking_its_own_subject_is_not_called_again() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_player_break::tests::a_listener_breaking_its_own_subject_is_not_called_again",
+            "cut_layout::game::server_side::native_player_break::tests::a_listener_breaking_its_own_subject_is_not_called_again",
             "SUNRISE_REENTRANT_BREAK_CHILD",
             &["reentry"],
         ) {

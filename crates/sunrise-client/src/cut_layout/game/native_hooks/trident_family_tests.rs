@@ -148,7 +148,7 @@ pub(crate) fn step(game: &mut sunrise_gameplay::game::ServerGame<'_>, player: bo
 #[ignore = "daily"]
 fn player_thrown_trident_is_refused_by_powered_wither_and_closed_shulker() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::trident_family_tests::player_thrown_trident_is_refused_by_powered_wither_and_closed_shulker",
+        "cut_layout::game::native_hooks::trident_family_tests::player_thrown_trident_is_refused_by_powered_wither_and_closed_shulker",
         || {
             for kind in ["minecraft:wither", "minecraft:shulker"] {
                 fixture(|game, seen| {
@@ -180,7 +180,7 @@ fn player_thrown_trident_is_refused_by_powered_wither_and_closed_shulker() {
 #[ignore = "daily"]
 fn mob_thrown_trident_is_refused_by_powered_wither_and_closed_shulker() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::trident_family_tests::mob_thrown_trident_is_refused_by_powered_wither_and_closed_shulker",
+        "cut_layout::game::native_hooks::trident_family_tests::mob_thrown_trident_is_refused_by_powered_wither_and_closed_shulker",
         || {
             for kind in ["minecraft:wither", "minecraft:shulker"] {
                 fixture(|game, seen| {
@@ -209,7 +209,7 @@ fn mob_thrown_trident_is_refused_by_powered_wither_and_closed_shulker() {
 #[ignore = "daily"]
 fn accepted_player_and_mob_tridents_keep_type_entities_position_and_full_weapon() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::trident_family_tests::accepted_player_and_mob_tridents_keep_type_entities_position_and_full_weapon",
+        "cut_layout::game::native_hooks::trident_family_tests::accepted_player_and_mob_tridents_keep_type_entities_position_and_full_weapon",
         || {
             for player in [true, false] {
                 fixture(|game, seen| {
@@ -247,7 +247,7 @@ fn accepted_player_and_mob_tridents_keep_type_entities_position_and_full_weapon(
 #[ignore = "daily"]
 fn type_only_damage_trident_and_arrow_are_not_direct_abstract_arrows() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::trident_family_tests::type_only_damage_trident_and_arrow_are_not_direct_abstract_arrows",
+        "cut_layout::game::native_hooks::trident_family_tests::type_only_damage_trident_and_arrow_are_not_direct_abstract_arrows",
         || {
             for kind in ["minecraft:wither", "minecraft:shulker"] {
                 for source in ["minecraft:trident", "minecraft:arrow"] {
@@ -278,7 +278,7 @@ fn type_only_damage_trident_and_arrow_are_not_direct_abstract_arrows() {
 #[ignore = "daily"]
 fn actual_arrows_still_bounce_off_powered_wither_and_closed_shulker() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::trident_family_tests::actual_arrows_still_bounce_off_powered_wither_and_closed_shulker",
+        "cut_layout::game::native_hooks::trident_family_tests::actual_arrows_still_bounce_off_powered_wither_and_closed_shulker",
         || {
             for kind in ["minecraft:wither", "minecraft:shulker"] {
                 fixture(|game, seen| {
@@ -310,7 +310,7 @@ fn actual_arrows_still_bounce_off_powered_wither_and_closed_shulker() {
 #[ignore = "daily"]
 fn unlistened_projectile_factory_keeps_family_without_copying_weapon() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::trident_family_tests::unlistened_projectile_factory_keeps_family_without_copying_weapon",
+        "cut_layout::game::native_hooks::trident_family_tests::unlistened_projectile_factory_keeps_family_without_copying_weapon",
         || {
             mod_platform::testing::with_mods(Vec::<ModEntry>::new().into(), || {
                 with_game(|game| {
@@ -354,7 +354,7 @@ fn unlistened_projectile_factory_keeps_family_without_copying_weapon() {
 #[ignore = "daily"]
 fn explicit_damage_by_actual_arrow_family_is_refused_even_with_generic_type() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::trident_family_tests::explicit_damage_by_actual_arrow_family_is_refused_even_with_generic_type",
+        "cut_layout::game::native_hooks::trident_family_tests::explicit_damage_by_actual_arrow_family_is_refused_even_with_generic_type",
         || {
             for kind in ["minecraft:wither", "minecraft:shulker"] {
                 for trident in [true, false] {
@@ -387,7 +387,7 @@ fn explicit_damage_by_actual_arrow_family_is_refused_even_with_generic_type() {
 #[ignore = "daily"]
 fn explicit_damage_by_trident_retains_its_weapon_with_independent_causing_entity() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::trident_family_tests::explicit_damage_by_trident_retains_its_weapon_with_independent_causing_entity",
+        "cut_layout::game::native_hooks::trident_family_tests::explicit_damage_by_trident_retains_its_weapon_with_independent_causing_entity",
         || {
             fixture(|game, seen| {
                 victim(game, "minecraft:cow");

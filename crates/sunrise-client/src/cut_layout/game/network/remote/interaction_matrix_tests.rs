@@ -236,7 +236,7 @@ pub(crate) use crate::game::server_side::remote_server::interaction_event_tests:
 fn native_interaction_shared_matrix() {
     // Loading the fixture's block-entity type freezes the process-wide block entity type table.
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix",
+        "cut_layout::game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix",
         || {
             matrix(
                 vec![mod_api::ModEntry::new(

@@ -221,7 +221,7 @@ pub(crate) fn request(world: &Path) -> WorldRequest {
 #[ignore = "daily"]
 fn a_server_never_ticks_a_client_ticker() {
     if run_fresh_cases(
-        "game::native_hooks::block_entity_client_tick_tests::a_server_never_ticks_a_client_ticker",
+        "cut_layout::game::native_hooks::block_entity_client_tick_tests::a_server_never_ticks_a_client_ticker",
         "SUNRISE_BLOCK_ENTITY_CLIENT_TICK_SERVER_CHILD",
         &["game"],
     ) {

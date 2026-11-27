@@ -399,7 +399,7 @@ pub(crate) fn reloaded_trader(game: &sunrise_gameplay::game::ServerGame<'_>) -> 
 #[ignore = "daily"]
 fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::lan_trade_decisions_tests::a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob",
+        "cut_layout::game::server_side::lan_trade_decisions_tests::a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob",
         || {
             with_guests(|game| {
                 let save = tempfile::tempdir().unwrap();
@@ -499,7 +499,7 @@ impl Hooks for RemoveHero {
 #[cfg(any())]
 fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
     restock_after_hero_change(
-        "game::server_side::lan_trade_decisions_tests::a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them",
+        "cut_layout::game::server_side::lan_trade_decisions_tests::a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them",
         false,
     );
 }
@@ -510,7 +510,7 @@ fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
 #[cfg(any())]
 fn a_restock_uses_price_changes_made_in_pre() {
     restock_after_hero_change(
-        "game::server_side::lan_trade_decisions_tests::a_restock_uses_price_changes_made_in_pre",
+        "cut_layout::game::server_side::lan_trade_decisions_tests::a_restock_uses_price_changes_made_in_pre",
         true,
     );
 }
@@ -546,7 +546,7 @@ impl Hooks for EditInPost {
 #[ignore = "daily"]
 fn an_offer_edit_after_the_work_step_survives_the_restock() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::lan_trade_decisions_tests::an_offer_edit_after_the_work_step_survives_the_restock",
+        "cut_layout::game::server_side::lan_trade_decisions_tests::an_offer_edit_after_the_work_step_survives_the_restock",
         || {
             let mods: Mods = vec![ModEntry::new("edit-in-post", Box::new(EditInPost))].into();
             mod_platform::testing::with_mods(mods, || {
@@ -575,7 +575,7 @@ fn an_offer_edit_after_the_work_step_survives_the_restock() {
 #[ignore = "daily"]
 fn a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::lan_trade_decisions_tests::a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps",
+        "cut_layout::game::server_side::lan_trade_decisions_tests::a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps",
         || {
             with_guests(|game| {
                 open(game, 1);
@@ -606,7 +606,7 @@ fn a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps() {
 #[ignore = "daily"]
 fn an_unused_offer_stays_unchanged_when_the_villager_starts_work() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::lan_trade_decisions_tests::an_unused_offer_stays_unchanged_when_the_villager_starts_work",
+        "cut_layout::game::server_side::lan_trade_decisions_tests::an_unused_offer_stays_unchanged_when_the_villager_starts_work",
         || {
             with_guests(|game| {
                 let save = tempfile::tempdir().unwrap();
@@ -656,7 +656,7 @@ fn an_earlier_restock_does_not_skip_a_paused_mobs_first_action() {
     use sunrise_sim::mobs::Mob;
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::lan_trade_decisions_tests::an_earlier_restock_does_not_skip_a_paused_mobs_first_action",
+        "cut_layout::game::server_side::lan_trade_decisions_tests::an_earlier_restock_does_not_skip_a_paused_mobs_first_action",
         || {
             crate::entry::install_client_hooks();
             let breathed = Arc::new(AtomicBool::new(false));

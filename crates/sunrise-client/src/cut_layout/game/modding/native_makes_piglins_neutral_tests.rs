@@ -90,7 +90,7 @@ fn asked() -> Vec<(&'static str, u32)> {
 #[ignore = "daily"]
 fn a_part_decides_whether_a_worn_piece_counts_as_gold() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_makes_piglins_neutral_tests::a_part_decides_whether_a_worn_piece_counts_as_gold",
+        "cut_layout::game::native_makes_piglins_neutral_tests::a_part_decides_whether_a_worn_piece_counts_as_gold",
         a_part_decides_whether_a_worn_piece_counts_as_gold_isolated,
     );
 }
@@ -159,7 +159,7 @@ fn a_part_decides_whether_a_worn_piece_counts_as_gold_isolated() {
 #[ignore = "daily"]
 fn without_parts_the_piglin_safe_armor_tag_decides() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_makes_piglins_neutral_tests::without_parts_the_piglin_safe_armor_tag_decides",
+        "cut_layout::game::native_makes_piglins_neutral_tests::without_parts_the_piglin_safe_armor_tag_decides",
         without_parts_the_piglin_safe_armor_tag_decides_isolated,
     );
 }
@@ -217,7 +217,7 @@ fn targets_the_wearer(
 #[ignore = "daily"]
 fn a_calm_piglin_spares_a_wearer_the_part_answers_for() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_makes_piglins_neutral_tests::a_calm_piglin_spares_a_wearer_the_part_answers_for",
+        "cut_layout::game::native_makes_piglins_neutral_tests::a_calm_piglin_spares_a_wearer_the_part_answers_for",
         a_calm_piglin_spares_a_wearer_the_part_answers_for_isolated,
     );
 }
@@ -247,7 +247,7 @@ fn a_calm_piglin_spares_a_wearer_the_part_answers_for_isolated() {
 #[ignore = "daily"]
 fn without_parts_a_calm_piglin_targets_a_player_in_leather() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_makes_piglins_neutral_tests::without_parts_a_calm_piglin_targets_a_player_in_leather",
+        "cut_layout::game::native_makes_piglins_neutral_tests::without_parts_a_calm_piglin_targets_a_player_in_leather",
         without_parts_a_calm_piglin_targets_a_player_in_leather_isolated,
     );
 }

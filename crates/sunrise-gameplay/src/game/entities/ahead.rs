@@ -63,7 +63,7 @@ impl ItemTables<'_> {
         let before = item.velocity;
         let heights = item.push_by_fluid(self.world, &self.motion.fluids, self.context);
         item.water_entry(heights.0 > 0.0, item.ticks == 0, before, splash);
-        item.lava_fall(heights.1 > 0.0);
+        item.lava_fall(item.ticks > 0 && heights.1 > 0.0);
         let mut step = item.tick_move_before_block_effects(
             self.world,
             self.facts,

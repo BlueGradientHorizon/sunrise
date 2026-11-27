@@ -794,6 +794,10 @@ pub(crate) mod combat_query_tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
+            );
             game.mobs
                 .push(sunrise_sim::mobs::Mob::new(21, kind, Vec3::ZERO, 0.0));
             let zombie = mod_api::LivingRef::new(game.entity(21).unwrap());

@@ -878,10 +878,7 @@ impl crate::game::ServerGame<'_> {
     /// Stores a server player's `Abilities` and tells their client
     /// (`ServerPlayer.onUpdateAbilities`). They stay as written until the
     /// player's game mode changes (`GameType.updatePlayerAbilities`), and are
-    /// saved with the player. A speed that is not finite refuses the write
-    /// (vanilla's setters take any float). Returns false for a
-    /// stale or unavailable player, a displaced outer player, and a speed
-    /// that is not finite.
+    /// saved with the player. Both speeds are stored as supplied. False for stale, unavailable or displaced outer players.
     pub fn player_set_abilities(
         &mut self,
         player: PlayerRef,
@@ -917,7 +914,7 @@ impl crate::game::ServerGame<'_> {
     /// `Inventory.setSelectedSlot` for a server write: `slot` (0 to 8) becomes the hotbar slot the
     /// player holds and a guest's client is told (`SetHeldSlot`). A new slot ends a main-hand use,
     /// as `handleSetCarriedItem` does, without `player_switch_hotbar_slot_pre`, which is for the
-    /// player's own input. False for a slot past 8, a stale or dead player.
+    /// player's own input. False for a slot past 8 or an unavailable player.
     pub fn player_set_selected_slot(&mut self, player: PlayerRef, slot: usize) -> bool {
         if slot >= 9 {
             return false;

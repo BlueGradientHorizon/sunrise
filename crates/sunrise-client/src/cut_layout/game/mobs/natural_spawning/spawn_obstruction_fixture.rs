@@ -267,7 +267,7 @@ fn with_relay(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
 #[ignore = "daily"]
 fn spawn_entity_obstruction() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::natural_spawning::spawn_obstruction_fixture::spawn_entity_obstruction",
+        "cut_layout::game::server_side::natural_spawning::spawn_obstruction_fixture::spawn_entity_obstruction",
         || {
             with_relay(|game| {
                 let cases = include_str!(concat!(

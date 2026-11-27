@@ -14,7 +14,7 @@ use sunrise_sim::first_person_sim::Hand;
 #[ignore = "daily"]
 fn ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::gamemode_actions_tests::ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay",
+        "cut_layout::game::client_side::remote_client::gamemode_actions_tests::ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay",
         || {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
@@ -86,7 +86,7 @@ fn ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay(
 #[ignore = "daily"]
 fn out_of_range_entity_click_still_swings_without_attacking_or_resetting() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::gamemode_actions_tests::out_of_range_entity_click_still_swings_without_attacking_or_resetting",
+        "cut_layout::game::client_side::remote_client::gamemode_actions_tests::out_of_range_entity_click_still_swings_without_attacking_or_resetting",
         || {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
@@ -131,7 +131,7 @@ fn out_of_range_entity_click_still_swings_without_attacking_or_resetting() {
 #[ignore = "daily"]
 fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::gamemode_actions_tests::spectator_entity_use_sends_both_hands_without_feeding_or_swinging",
+        "cut_layout::game::client_side::remote_client::gamemode_actions_tests::spectator_entity_use_sends_both_hands_without_feeding_or_swinging",
         || {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
@@ -319,7 +319,7 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
 #[ignore = "daily"]
 fn mining_destroy_delay_reads_five_after_a_creative_attack_then_counts_down() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::gamemode_actions_tests::mining_destroy_delay_reads_five_after_a_creative_attack_then_counts_down",
+        "cut_layout::game::client_side::remote_client::gamemode_actions_tests::mining_destroy_delay_reads_five_after_a_creative_attack_then_counts_down",
         || {
             with_client_game(|game| {
                 let read = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {

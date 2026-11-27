@@ -22,7 +22,7 @@ use {
 #[ignore = "daily"]
 fn a_mount_chest_beyond_the_slot_range_ends_the_connection() {
     in_own_process(
-        "game::client_side::remote_client::tests::menu_packets_tests::a_mount_chest_beyond_the_slot_range_ends_the_connection",
+        "cut_layout::game::client_side::remote_client::tests::menu_packets_tests::a_mount_chest_beyond_the_slot_range_ends_the_connection",
         || {
             // `new SimpleContainer(getInventorySize(inventoryColumns))` is built
             // before the entity is looked at: a chest that cannot be built ends the
@@ -66,7 +66,7 @@ fn a_mount_chest_beyond_the_slot_range_ends_the_connection() {
 #[ignore = "daily"]
 fn rejected_menu_packets_retire_the_previous_client_menu() {
     in_own_process(
-        "game::client_side::remote_client::tests::menu_packets_tests::rejected_menu_packets_retire_the_previous_client_menu",
+        "cut_layout::game::client_side::remote_client::tests::menu_packets_tests::rejected_menu_packets_retire_the_previous_client_menu",
         || {
             with_client_game(|game| {
                 let (mut reader, _writer) = connect_menu_test(game);
@@ -100,7 +100,7 @@ fn rejected_menu_packets_retire_the_previous_client_menu() {
 #[ignore = "daily"]
 fn rejected_mounts_preserve_the_previous_client_menu_without_sending_close() {
     in_own_process(
-        "game::client_side::remote_client::tests::menu_packets_tests::rejected_mounts_preserve_the_previous_client_menu_without_sending_close",
+        "cut_layout::game::client_side::remote_client::tests::menu_packets_tests::rejected_mounts_preserve_the_previous_client_menu_without_sending_close",
         || {
             with_client_game(|game| {
                 let (mut reader, _writer) = connect_menu_test(game);
@@ -164,7 +164,7 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
     }
 
     in_own_process(
-        "game::client_side::remote_client::tests::menu_packets_tests::remote_mount_is_installed_before_screen_init_and_keeps_all_columns",
+        "cut_layout::game::client_side::remote_client::tests::menu_packets_tests::remote_mount_is_installed_before_screen_init_and_keeps_all_columns",
         || {
             let observed = Arc::new(Mutex::new(Vec::new()));
             let mods = vec![ModEntry::new(

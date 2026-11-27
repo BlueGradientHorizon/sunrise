@@ -261,6 +261,39 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn custom_spawners_do_not_run_on_client_side() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        struct ClientProbe(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for ClientProbe {
+            fn modify_custom_spawners(
+                &self,
+                _: &dyn mod_api::Host,
+                _: &mut mod_api::ModifyCustomSpawnersEvent<'_>,
+            ) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
+        let mods = vec![mod_api::ModEntry::new(
+            "client_spawner_probe",
+            Box::new(ClientProbe(calls.clone())),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_game(|game| {
+                game.common.options.execution_role =
+                    sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+                game.init_custom_spawners(Dim::Overworld);
+                game.tick_spawners();
+                game.tick_custom_spawners();
+                assert!(game.common.creatures.custom_spawners.is_empty());
+            });
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn custom_spawners_skip_debug_worlds_and_disabled_spawn_mobs_in_tick_spawners() {
         use sunrise_game_data::gamerules::Value as RuleValue;
 

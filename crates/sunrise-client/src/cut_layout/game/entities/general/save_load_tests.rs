@@ -250,7 +250,6 @@ fn bare_pack_feature_enables_host_query_and_general_spawn_on_first_open() {
 #[test]
 #[ignore = "daily"]
 fn feature_disabled_saved_branches_do_not_enter_summon_uuid_admission() {
-    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
     use sunrise_world::snbt_text::to_snbt;
 
     with_types(|game| {
@@ -260,14 +259,11 @@ fn feature_disabled_saved_branches_do_not_enter_summon_uuid_admission() {
             record_tag("mymod:robot", collision, b"", vec![]),
             None,
         );
-        assert!(matches!(
-            game.target_with_uuid(collision),
-            Some(Target::General(_))
-        ));
+        assert!(game.uuid_admission_refused(Some(collision)));
         let child = record_tag("mymod:robot", collision, b"", vec![]);
         let disabled = |uuid| record_tag("mymod:experimental", uuid, b"", vec![child.clone()]);
 
-        // A disabled root excludes its entire branch on disk load too.
+        // A disabled root excludes its entire branch on a disk load too.
         game.spawn_loaded_entity((0, 0), disabled([8, 0, 0, 1]), None);
         assert_eq!(game.resident_entities.general.rows.len(), 1);
 
@@ -288,7 +284,7 @@ fn feature_disabled_saved_branches_do_not_enter_summon_uuid_admission() {
                 Some(Target::General(id) | Target::Cart(id)) => id,
                 other => panic!("expected the eligible mount, got {other:?}"),
             };
-            assert!(!game.has_seated_passengers(id));
+            assert!(game.vehicle_passenger_ids(id).is_empty());
         }
         assert_eq!(
             game.resident_entities.general.rows.len(),

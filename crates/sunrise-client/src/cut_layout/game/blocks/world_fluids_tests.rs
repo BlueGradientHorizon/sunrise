@@ -85,7 +85,7 @@ fn a_second_pickup_of_one_source_in_a_transaction_gets_nothing() {
 fn a_tank_only_fluid_with_a_bucket_plays_its_fill_sound_at_the_commit() {
     // It replaces the process-wide fluid looks, which other tests read.
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::world_fluids_tests::a_tank_only_fluid_with_a_bucket_plays_its_fill_sound_at_the_commit",
+        "cut_layout::game::server_side::world_fluids_tests::a_tank_only_fluid_with_a_bucket_plays_its_fill_sound_at_the_commit",
         || {
             with_level(|game, level| {
                 sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan(game);

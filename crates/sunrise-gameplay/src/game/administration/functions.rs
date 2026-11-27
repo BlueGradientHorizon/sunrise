@@ -581,13 +581,13 @@ impl crate::game::ServerGame<'_> {
                     entry.tags.push(id.to_owned());
                 }
             }
-            if let Some(biomes) = &self.common.world_biomes {
-                entry.ids = biomes
-                    .registry_order()
-                    .into_iter()
-                    .map(str::to_owned)
-                    .collect();
-            }
+            entry.ids = tables
+                .biomes
+                .table
+                .registry_order()
+                .into_iter()
+                .map(str::to_owned)
+                .collect();
             entry.ids.sort();
             entry.tags = tables
                 .pack_tags

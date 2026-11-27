@@ -12,7 +12,7 @@ use {
 #[ignore = "daily"]
 fn explosion_validates_impulse_and_result_without_suppressing_effects() {
     with_isolated_client(
-        "sunrise_client::game::client_side::remote_client::tests::client_explosion_tests::explosion_validates_impulse_and_result_without_suppressing_effects",
+        "cut_layout::game::client_side::remote_client::tests::client_explosion_tests::explosion_validates_impulse_and_result_without_suppressing_effects",
         |game| {
             let _reader = logged_in(game);
             game.client.streaming.insert_remote(

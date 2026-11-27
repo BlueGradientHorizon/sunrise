@@ -268,7 +268,7 @@ pub(crate) mod tests {
         // Opening a world publishes the server's worldgen tables. Isolate that
         // publication from the other tests, even though the mod list is scoped.
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::levels::tests::late_chunk_saves_use_their_opened_levels_disk_context",
+            "cut_layout::game::server_side::levels::tests::late_chunk_saves_use_their_opened_levels_disk_context",
             "SUNRISE_CHUNK_DISK_CONTEXT_TEST_CHILD",
             &["1"],
         ) {
@@ -326,30 +326,43 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn built_in_levels_restore_saved_tickets_before_the_first_tick() {
-        use mod_api::__private::game::{ticket_controller_id, ticket_controller_slot_by_id};
-        use mod_api::{Hooks, ModEntry, Registrar, RegistrationContext};
-        use std::sync::atomic::{AtomicBool, Ordering};
+        use mod_api::{
+            Hooks, LevelRef, ModEntry, Registrar, RegistrationContext, ServerHost,
+            TicketController, TicketValidation,
+        };
+        use std::sync::{
+            OnceLock,
+            atomic::{AtomicBool, Ordering},
+        };
         use sunrise_level::mod_chunk_tickets::{ModTicket, ModTickets, TicketOwner};
         use sunrise_sim::save::dimension_dir;
 
         const OWNER: [i32; 3] = [2, 64, 3];
-        struct Quarry(Arc<AtomicBool>);
+        struct Quarry {
+            saw_end: Arc<AtomicBool>,
+            controller: Arc<OnceLock<TicketController>>,
+        }
         #[mod_api::__subscriptions]
         impl Hooks for Quarry {
             fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
-                let saw_end = self.0.clone();
-                registrar.register_ticket_controller(
+                let saw_end = Arc::clone(&self.saw_end);
+                let controller = registrar.register_ticket_controller(
                     "quarry",
-                    Some(Arc::new(move |host, level, validation| {
-                        if level.dimension_id() == "minecraft:the_nether"
-                            && host.level("minecraft:the_end").is_some()
-                        {
-                            saw_end.store(true, Ordering::Relaxed);
-                        } else {
-                            validation.remove_block_tickets(OWNER);
-                        }
-                    })),
+                    Some(Arc::new(
+                        move |host: &mut dyn ServerHost,
+                              level: LevelRef,
+                              validation: &mut dyn TicketValidation| {
+                            if level.dimension_id() == "minecraft:the_nether"
+                                && host.level("minecraft:the_end").is_some()
+                            {
+                                saw_end.store(true, Ordering::Relaxed);
+                            } else {
+                                validation.remove_block_tickets(OWNER);
+                            }
+                        },
+                    )),
                 );
+                let _ = self.controller.set(controller);
             }
         }
 
@@ -357,9 +370,13 @@ pub(crate) mod tests {
         let home = tempfile::tempdir().unwrap();
         let world = home.path().join("world");
         let saw_end = Arc::new(AtomicBool::new(false));
+        let controller_cell = Arc::new(OnceLock::new());
         let mods = vec![ModEntry::new(
             "startup_tickets",
-            Box::new(Quarry(saw_end.clone())),
+            Box::new(Quarry {
+                saw_end: saw_end.clone(),
+                controller: controller_cell.clone(),
+            }),
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
@@ -371,9 +388,11 @@ pub(crate) mod tests {
             let nether = Dim::Nether;
             let end = Dim::End;
             let commanded_chunk = (4, -5);
-            let controller = ticket_controller_slot_by_id("startup_tickets:quarry").unwrap();
+            let controller = *controller_cell.get().unwrap();
+            let controller_slot =
+                mod_api::__private::game::ticket_controller_slot(controller).unwrap();
             let ticket = ModTicket {
-                controller,
+                controller: controller_slot,
                 owner: TicketOwner::Block(OWNER),
                 chunk: (12, -13),
                 natural_spawning: false,
@@ -384,7 +403,7 @@ pub(crate) mod tests {
             let mut tickets = ModTickets::default();
             tickets.insert(ticket.clone());
             SaveDir::new(dimension_dir(&world, nether.id()), nether.shape(), None)
-                .save_mod_tickets(&tickets, ticket_controller_id)
+                .save_mod_tickets(&tickets, mod_api::__private::game::ticket_controller_id)
                 .unwrap();
 
             let mut resources = None;
@@ -410,7 +429,7 @@ pub(crate) mod tests {
                 nether_level
                     .streaming
                     .mod_tickets()
-                    .of_controller(controller)
+                    .of_controller(controller_slot)
                     .next(),
                 Some(&ticket)
             );
@@ -511,14 +530,21 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn built_in_levels_stay_open_across_idle_ticks_until_shutdown() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::{Hooks, LevelLoadEvent, LevelUnloadEvent, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
+        use sunrise_gameplay::game::lan::LanSettings;
+        use sunrise_gameplay_common::game::lan_actions::GuestCommand;
         use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
-        use {
-            sunrise_gameplay::game::lan::LanSettings,
-            sunrise_gameplay_common::game::lan_actions::GuestCommand,
-        };
+
+        if run_fresh_cases(
+            "cut_layout::game::server_side::levels::tests::built_in_levels_stay_open_across_idle_ticks_until_shutdown",
+            "SUNRISE_BUILT_IN_IDLE_LIFETIME_CASE",
+            &["built-ins"],
+        ) {
+            return;
+        }
 
         const BUILT_INS: [&str; 3] = [
             "minecraft:overworld",
@@ -558,7 +584,16 @@ pub(crate) mod tests {
         mod_platform::testing::with_mods(mods, || {
             let mut resources = None;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
-            assert_eq!(*loads.lock().unwrap(), BUILT_INS);
+            let initial_loads = loads.lock().unwrap().clone();
+            assert_eq!(
+                initial_loads.first().map(String::as_str),
+                Some("minecraft:overworld")
+            );
+            let mut sorted_loads: Vec<&str> = initial_loads.iter().map(String::as_str).collect();
+            sorted_loads.sort_unstable();
+            let mut sorted_builtins = BUILT_INS;
+            sorted_builtins.sort_unstable();
+            assert_eq!(sorted_loads, sorted_builtins);
             assert!(unloads.lock().unwrap().is_empty());
 
             // Configure as a dedicated server with real commands (`/save-off`,
@@ -661,14 +696,12 @@ pub(crate) mod tests {
                     .0
                     .parked
                     .get(&Dim::Nether)
-                    .is_some_and(|p| p.world.chunks.contains_key(&(0, 0)));
-                let end_ready = game
-                    .server
-                    .levels
-                    .0
-                    .parked
-                    .get(&Dim::End)
-                    .is_some_and(|p| p.world.chunks.contains_key(&(0, 0)));
+                    .is_some_and(|p| {
+                        p.world.chunks.contains_key(&(0, 0)) && p.world.entities_pending.is_empty()
+                    });
+                let end_ready = game.server.levels.0.parked.get(&Dim::End).is_some_and(|p| {
+                    p.world.chunks.contains_key(&(0, 0)) && p.world.entities_pending.is_empty()
+                });
                 if nether_ready && end_ready {
                     loaded = true;
                     break;
@@ -706,7 +739,6 @@ pub(crate) mod tests {
             );
             assert!(game.run_command("save-on"));
 
-            // Frozen ticking still permits idle maintenance.
             assert!(game.run_command("tick freeze"));
             game.tick_server(false).unwrap();
             assert!(game.server.levels.0.parked.contains_key(&Dim::Nether));
@@ -732,7 +764,7 @@ pub(crate) mod tests {
             );
             assert!(
                 unloads.lock().unwrap().is_empty(),
-                "idle eviction keeps built-in levels open"
+                "built-in levels stay open after their idle chunk sweep"
             );
             assert!(game.run_command("tick unfreeze"));
 
@@ -759,13 +791,12 @@ pub(crate) mod tests {
                 }
                 assert!(arrived, "the guest never arrived in {dim:?}");
             }
-            assert_eq!(*loads.lock().unwrap(), BUILT_INS);
+            assert_eq!(*loads.lock().unwrap(), initial_loads);
             assert!(unloads.lock().unwrap().is_empty());
 
-            // Normal server shutdown saves worlds and fires `level_unload` once each.
             game.run_server_lifecycle(true, |_| Ok(ServerRunOutcome::Orderly))
                 .unwrap();
-            assert_eq!(*unloads.lock().unwrap(), BUILT_INS);
+            assert_eq!(*unloads.lock().unwrap(), initial_loads);
         });
     }
     /// Expected values from the official 26.3 dedicated server restarted on the

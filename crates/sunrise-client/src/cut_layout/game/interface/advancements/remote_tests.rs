@@ -43,7 +43,7 @@ fn position(game: &sunrise_client_gameplay::game::ClientGame<'_>, a: &Advancemen
 #[ignore = "daily"]
 fn remote_tree_rejects_unresolved_nodes_and_retains_removed_progress() {
     in_own_process(
-        "game::client_side::advancements_screen::remote_tests::remote_tree_rejects_unresolved_nodes_and_retains_removed_progress",
+        "cut_layout::game::client_side::advancements_screen::remote_tests::remote_tree_rejects_unresolved_nodes_and_retains_removed_progress",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
@@ -140,7 +140,7 @@ fn remote_tree_rejects_unresolved_nodes_and_retains_removed_progress() {
 #[ignore = "daily"]
 fn opening_reports_the_first_tab_twice_and_preserves_offscreen_selection() {
     in_own_process(
-        "game::client_side::advancements_screen::remote_tests::opening_reports_the_first_tab_twice_and_preserves_offscreen_selection",
+        "cut_layout::game::client_side::advancements_screen::remote_tests::opening_reports_the_first_tab_twice_and_preserves_offscreen_selection",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
@@ -219,7 +219,7 @@ fn opening_reports_the_first_tab_twice_and_preserves_offscreen_selection() {
 #[ignore = "daily"]
 fn remote_tab_updates_restore_pan_and_clear_hover_on_progress_only() {
     in_own_process(
-        "game::client_side::advancements_screen::remote_tests::remote_tab_updates_restore_pan_and_clear_hover_on_progress_only",
+        "cut_layout::game::client_side::advancements_screen::remote_tests::remote_tab_updates_restore_pan_and_clear_hover_on_progress_only",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
@@ -295,7 +295,7 @@ fn remote_tab_updates_restore_pan_and_clear_hover_on_progress_only() {
 #[ignore = "daily"]
 fn repeated_remote_ids_keep_insertion_edges_and_take_packet_order_positions() {
     in_own_process(
-        "game::client_side::advancements_screen::remote_tests::repeated_remote_ids_keep_insertion_edges_and_take_packet_order_positions",
+        "cut_layout::game::client_side::advancements_screen::remote_tests::repeated_remote_ids_keep_insertion_edges_and_take_packet_order_positions",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
@@ -355,7 +355,7 @@ fn repeated_remote_ids_keep_insertion_edges_and_take_packet_order_positions() {
 #[ignore = "daily"]
 fn remote_widget_keeps_progress_requirements_until_new_progress() {
     in_own_process(
-        "game::client_side::advancements_screen::remote_tests::remote_widget_keeps_progress_requirements_until_new_progress",
+        "cut_layout::game::client_side::advancements_screen::remote_tests::remote_widget_keeps_progress_requirements_until_new_progress",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
@@ -420,7 +420,7 @@ fn remote_widget_keeps_progress_requirements_until_new_progress() {
 #[ignore = "daily"]
 fn extreme_remote_positions_use_java_widget_coordinates_and_bounds() {
     in_own_process(
-        "game::client_side::advancements_screen::remote_tests::extreme_remote_positions_use_java_widget_coordinates_and_bounds",
+        "cut_layout::game::client_side::advancements_screen::remote_tests::extreme_remote_positions_use_java_widget_coordinates_and_bounds",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();

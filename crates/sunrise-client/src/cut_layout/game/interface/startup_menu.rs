@@ -103,7 +103,7 @@ pub(crate) mod tests {
         }
         // `set_root` replaces the process's language: keep it in a child process.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::startup_menu::tests::startup_menu_creation_carries_installed_mod_rules",
+            "cut_layout::game::client_side::startup_menu::tests::startup_menu_creation_carries_installed_mod_rules",
             "SUNRISE_STARTUP_MOD_RULES_CASE",
             &["rules"],
         ) {
@@ -237,7 +237,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn resource_pack_drops_import_from_startup_and_game_options() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::startup_menu::tests::resource_pack_drops_import_from_startup_and_game_options",
+            "cut_layout::game::client_side::startup_menu::tests::resource_pack_drops_import_from_startup_and_game_options",
             "SUNRISE_RESOURCE_PACK_DROP_CHILD",
             &["import"],
         ) {
@@ -372,7 +372,7 @@ pub(crate) mod tests {
         const REPLACEMENT: &str = "file/replacement";
         const ASSET: &str = "assets/fixture/texts/replacement.txt";
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::startup_menu::tests::startup_pack_recovery_only_clears_the_failed_selection_revision",
+            "cut_layout::game::client_side::startup_menu::tests::startup_pack_recovery_only_clears_the_failed_selection_revision",
             CASE,
             &["current", "superseded"],
         ) {
@@ -482,7 +482,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn startup_client_pack_recovery_preserves_pending_world_pack_edits() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::startup_menu::tests::startup_client_pack_recovery_preserves_pending_world_pack_edits",
+            "cut_layout::game::client_side::startup_menu::tests::startup_client_pack_recovery_preserves_pending_world_pack_edits",
             "SUNRISE_STARTUP_PACK_RECOVERY_WORLD_EDITOR_CASE",
             &["data-packs"],
         ) {
@@ -566,7 +566,7 @@ pub(crate) mod tests {
     fn menu_is_usable_while_the_core_worker_is_blocked() {
         // Publishing the empty root's language must not replace another game's language.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::client_side::startup_menu::tests::menu_is_usable_while_the_core_worker_is_blocked",
+            "cut_layout::game::client_side::startup_menu::tests::menu_is_usable_while_the_core_worker_is_blocked",
             "SUNRISE_STARTUP_BLOCKED_WORKER_CASE",
             &["blocked"],
         ) {

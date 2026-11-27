@@ -707,7 +707,7 @@ fn ordinary_end_exit_with_configured_respawn_keeps_player_tick_count() {
 #[ignore = "daily"]
 fn credits_world_spawn_fallback_resets_player_tick_count() {
     if run_fresh_cases(
-        "game::server_travel::changed_dimension_tests::credits_world_spawn_fallback_resets_player_tick_count",
+        "cut_layout::game::server_side::server_travel::changed_dimension_tests::credits_world_spawn_fallback_resets_player_tick_count",
         "SUNRISE_CREDITS_BODY_YAW_CHILD",
         &["credits"],
     ) {
@@ -937,6 +937,10 @@ fn death_respawn_starts_a_new_player_tick_count() {
             .update_guest(CONN, |guest| guest.dead = true);
         game.guest_respawn(CONN);
         assert_eq!(entity.tick_count(game), Some(0));
+        assert_eq!(
+            game.as_guest(CONN, |game| entity.body_yaw(game)),
+            Some(Some(0.0))
+        );
     });
 }
 

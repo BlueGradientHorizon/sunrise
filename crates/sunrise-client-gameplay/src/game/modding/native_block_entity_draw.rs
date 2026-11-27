@@ -2832,6 +2832,29 @@ pub mod tests {
 
     #[cfg(test)]
     #[test]
+    fn an_overfull_draw_keeps_earlier_entity_vertices_and_offsets() {
+        use sunrise_client::gfx::EntityQuadCapacity;
+
+        let capacity =
+            EntityQuadCapacity::from_max_buffer_size(EntityQuadCapacity::VERTEX_QUAD_BYTES * 2);
+        let mut draw = BlockEntityDraw::posed(
+            0.0,
+            0,
+            0,
+            [0; 3],
+            Mat4::IDENTITY,
+            diffuse_lights(false),
+            [marker(1.0); 8].to_vec(),
+        )
+        .with_quad_budget(capacity, 1);
+        draw.vertices.extend([marker(2.0); 4]);
+        let out = draw.into_vertices();
+        assert_eq!(out.len(), 8);
+        assert!(out.iter().all(|vertex| vertex.pos[0] == 1.0));
+    }
+
+    #[cfg(test)]
+    #[test]
     fn prepared_faces_transform_and_preserve_tint_and_emission() {
         use crate::game::client_side::minecarts_client::{PreparedModelFace, emit_model_faces};
         let mut quad = bake_flat_face(
@@ -4986,6 +5009,51 @@ pub mod tests {
         // Drawn without keeping: forgotten.
         kept.forget(pos);
         assert!(kept.get(pos, KEY, entity.revision(), 3).is_none());
+    }
+
+    #[cfg(test)]
+    #[test]
+    fn a_crowded_first_frame_does_not_keep_its_prefix() {
+        use sunrise_client::gfx::EntityQuadCapacity;
+        let pos = [10, 64, 20];
+        let level = LevelLight {
+            origin: DVec3::from_array(pos.map(f64::from)),
+            light_at: &|_| 0,
+        };
+        let mut kept = KeptGeometry::default();
+        let revision = machine();
+        let submits = std::cell::Cell::new(0);
+        let mut frame = |quads: u64| {
+            let capacity = EntityQuadCapacity::from_max_buffer_size(
+                EntityQuadCapacity::VERTEX_QUAD_BYTES * quads,
+            );
+            let mut draw = draw().with_quad_budget(capacity, 0);
+            kept.render(
+                pos,
+                KEY,
+                revision,
+                &mut draw,
+                Vec3::ZERO,
+                &level,
+                None,
+                &mut Vec::new(),
+                || DEFAULT_BOUNDS,
+                |_, _| true,
+                |draw| {
+                    submits.set(submits.get() + 1);
+                    for _ in 0..2 {
+                        draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                    }
+                    draw.keep();
+                },
+            );
+            draw.vertices.len() / 4
+        };
+        assert_eq!(frame(1), 1, "the crowded frame draws what fits");
+        assert_eq!(frame(8), 2, "an uncrowded one draws all of it");
+        assert_eq!(submits.get(), 2, "the prefix was extracted again, not kept");
+        assert_eq!(frame(1), 1);
+        assert_eq!(submits.get(), 2, "the complete extraction is kept");
     }
 
     #[cfg(test)]

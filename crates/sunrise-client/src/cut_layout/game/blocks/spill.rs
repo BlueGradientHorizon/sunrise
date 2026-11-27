@@ -311,7 +311,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn removal_effects_are_uncapped_and_refusals_are_local() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::spill::tests::removal_effects_are_uncapped_and_refusals_are_local",
+            "cut_layout::game::server_side::spill::tests::removal_effects_are_uncapped_and_refusals_are_local",
             "SUNRISE_REMOVAL_EFFECTS_CHILD",
             &["removal"],
         ) {
@@ -786,7 +786,7 @@ pub(crate) mod tests {
         use sunrise_level::chunk::Chunk;
         use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
         let Some(root) = crate::game::native_entity_refs::tests::declared_part_root(
-            "game::server_side::spill::tests::a_block_entity_removing_itself_in_its_tick_runs_resident_removal",
+            "cut_layout::game::server_side::spill::tests::a_block_entity_removing_itself_in_its_tick_runs_resident_removal",
         ) else {
             return;
         };

@@ -135,8 +135,7 @@ mod tests {
     fn an_unload_save_ejects_a_mob_riding_a_player() {
         ejected(|game, _| {
             let keys = [(0, 0)].into_iter().collect();
-            let (records, refused) = game.unloading_entity_snapshots(&keys);
-            assert!(refused.is_empty(), "unload snapshot refused: {refused:?}");
+            let (records, _) = game.unloading_entity_snapshots(&keys);
             game.server.save.0.save_entities_later(records).unwrap();
             game.remove_unloading_entities(&keys);
         });

@@ -6,7 +6,7 @@ use sunrise_gameplay_common::game::{
 fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
     use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     if !run_fresh_cases(
-        "game::stateful_block_entity_tests::stateful_creation_uses_actual_state_and_preserves_existing_entity",
+        "cut_layout::game::stateful_block_entity_tests::stateful_creation_uses_actual_state_and_preserves_existing_entity",
         "SUNRISE_STATEFUL_CREATION_GAME_CHILD",
         &["valid"],
     ) {
@@ -19,7 +19,7 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
 fn strict_edit_retires_the_staged_placement_entity_after_its_notification() {
     use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     if !run_fresh_cases(
-        "game::stateful_block_entity_tests::strict_edit_retires_the_staged_placement_entity_after_its_notification",
+        "cut_layout::game::stateful_block_entity_tests::strict_edit_retires_the_staged_placement_entity_after_its_notification",
         "SUNRISE_STATEFUL_STRICT_REPLAY_CHILD",
         &["strict"],
     ) {
@@ -309,7 +309,7 @@ fn admitted_minecraft_and_custom_blocks_share_stateful_tables_capabilities_and_m
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
     if run_fresh_cases(
-        "game::stateful_block_entity_tests::admitted_minecraft_and_custom_blocks_share_stateful_tables_capabilities_and_menu",
+        "cut_layout::game::stateful_block_entity_tests::admitted_minecraft_and_custom_blocks_share_stateful_tables_capabilities_and_menu",
         "SUNRISE_MINECRAFT_BLOCK_TABLES_CHILD",
         &["valid"],
     ) {

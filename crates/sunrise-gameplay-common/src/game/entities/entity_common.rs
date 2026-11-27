@@ -201,53 +201,6 @@ impl crate::game::CommonGame<'_> {
         painting_coexists(p, &self.paintings, &self.item_frames)
     }
 
-    /// `HangingEntityItem.useOn` check: true once a surviving painting variant fits.
-    pub fn painting_fits(&self, hit: &Hit, stack: &ItemStack) -> bool {
-        if &*stack.item != "minecraft:painting" {
-            return false;
-        }
-        let Some(facing) = painting_facing(hit.face) else {
-            return false;
-        };
-        let pos = [
-            hit.pos[0] + hit.face[0],
-            hit.pos[1],
-            hit.pos[2] + hit.face[2],
-        ];
-        let mut candidate = Painting {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 0,
-            pos,
-            facing,
-            variant: Arc::from(""),
-            asset: None,
-            width: 1,
-            height: 1,
-            check_interval: 0,
-            ticks: 0,
-        };
-        let mut any = false;
-        for id in &self.painting_variants.placeable {
-            let Some(v) = self.painting_variants.get(id) else {
-                continue;
-            };
-            (candidate.width, candidate.height) = (v.width, v.height);
-            if self.painting_survives(&candidate) {
-                any = true;
-                break;
-            }
-        }
-        if !any {
-            return false;
-        }
-        if let Some(v) = self.painting_variants.of_stack(stack).cloned() {
-            (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
-            return self.painting_survives(&candidate);
-        }
-        true
-    }
-
     /// `LivingEntity.dismountVehicle` from a removed vehicle whose position was at `vehicle_y`.
     pub fn dismount_removed_vehicle(&mut self, vehicle_y: f64) {
         self.riding = None;
@@ -334,6 +287,58 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// `HangingEntityItem.useOn` check: true once a surviving painting variant fits.
+    fn painting_fits(&self, hit: &Hit, stack: &ItemStack) -> bool {
+        if &*stack.item != "minecraft:painting" {
+            return false;
+        }
+        let Some(facing) = painting_facing(hit.face) else {
+            return false;
+        };
+        let pos = [
+            hit.pos[0] + hit.face[0],
+            hit.pos[1],
+            hit.pos[2] + hit.face[2],
+        ];
+        let mut candidate = Painting {
+            attachment_lifetime: Default::default(),
+            join: Default::default(),
+            id: 0,
+            pos,
+            facing,
+            variant: Arc::from(""),
+            asset: None,
+            width: 1,
+            height: 1,
+            check_interval: 0,
+            ticks: 0,
+        };
+        // Not world_paintings!: its trait import is unused where SideGame is a supertrait.
+        let paintings = match crate::game::Side::world_tables(self.side_state()) {
+            Some(t) => &t.painting_variants,
+            None => &self.painting_variants,
+        };
+        let mut any = false;
+        for id in &paintings.placeable {
+            let Some(v) = paintings.get(id) else {
+                continue;
+            };
+            (candidate.width, candidate.height) = (v.width, v.height);
+            if self.painting_survives(&candidate) {
+                any = true;
+                break;
+            }
+        }
+        if !any {
+            return false;
+        }
+        if let Some(v) = paintings.of_stack(stack).cloned() {
+            (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
+            return self.painting_survives(&candidate);
+        }
+        true
+    }
+
     /// Play an entity-bound sound following the acting player on the active side.
     fn play_player_bound_sound(
         &mut self,

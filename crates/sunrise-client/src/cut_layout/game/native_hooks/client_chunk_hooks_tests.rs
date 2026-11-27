@@ -180,7 +180,7 @@ fn unloaded(chunk: [i32; 2]) -> Vec<(&'static str, String, [i32; 2])> {
 #[test]
 #[ignore = "daily"]
 fn a_client_tells_a_chunk_packet_and_its_forget_once() {
-    const NAME: &str = "game::native_hooks::client_chunk_hooks_tests::a_client_tells_a_chunk_packet_and_its_forget_once";
+    const NAME: &str = "cut_layout::game::native_hooks::client_chunk_hooks_tests::a_client_tells_a_chunk_packet_and_its_forget_once";
     if run_fresh_cases(NAME, "SUNRISE_CLIENT_CHUNK_PACKET", &["game"]) {
         return;
     }
@@ -229,7 +229,7 @@ fn cache_packets_hide_replace_and_resize_slots() {
         Clientbound as C, Distance, ForgetLevelChunk, SetChunkCacheCenter,
     };
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::client_chunk_hooks_tests::cache_packets_hide_replace_and_resize_slots",
+        "cut_layout::game::native_hooks::client_chunk_hooks_tests::cache_packets_hide_replace_and_resize_slots",
         || {
             with_client(|game| {
                 let radius = |distance| C::SetChunkCacheRadius(Distance { distance });

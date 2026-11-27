@@ -71,7 +71,7 @@ impl crate::game::ClientGame<'_> {
             &pack,
             &client_pack,
             &gui,
-            Some(self.client_res().block_entity_render()),
+            self.try_block_entity_render(),
         );
         // The atlas listener applies before the model manager. Both use the same
         // prepared atlas/model bundle, but each publishes only its own store.

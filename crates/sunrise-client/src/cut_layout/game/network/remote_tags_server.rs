@@ -28,7 +28,7 @@ pub(crate) mod tests {
 
         const FIXTURE: &str = "SUNRISE_TAG_RELOAD_FIXTURE";
         if run_fresh_cases(
-            "game::server_side::remote_tags_server::tests::reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients",
+            "cut_layout::game::server_side::remote_tags_server::tests::reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients",
             FIXTURE,
             &["tags", "packed-damage"],
         ) {

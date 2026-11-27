@@ -16,7 +16,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
     };
 
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::commands_server::world_cmds::registered_damage_tests::live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown",
+        "cut_layout::game::server_side::commands_server::world_cmds::registered_damage_tests::live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown",
         "SUNRISE_WARDEN_LIVE_DAMAGE_CHILD",
         &["live-damage"],
     ) {

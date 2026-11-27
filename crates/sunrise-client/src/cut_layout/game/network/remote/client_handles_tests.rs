@@ -183,7 +183,7 @@ fn client_handles_reach_a_custom_level() {
 #[test]
 #[ignore = "daily"]
 fn client_handle_reads_answer_from_the_clients_copy() {
-    use mod_api::{EntityRef, EquipmentSlot, GlobalPos};
+    use mod_api::{EntityReadError, EntityRef, EquipmentSlot, GlobalPos};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
@@ -398,6 +398,28 @@ fn client_handle_reads_answer_from_the_clients_copy() {
         let untracked = EntityRef::new(me.epoch(), 99);
         assert_eq!(untracked.position(game), None);
         assert_eq!(untracked.velocity(game), None);
+
+        // The spawn tracks an item before its item-stack metadata supplies a body.
+        game.spawn_entity(32, "minecraft:item", [10.0, 64.0, 12.0], [0.0; 3]);
+        let pending = game.entity(32).unwrap();
+        assert_eq!(
+            pending.visit_parts(game, &mut |_| panic!("visited without a projected body")),
+            Err(EntityReadError::Unavailable)
+        );
+        assert_eq!(
+            pending.visit_passengers(game, &mut |_| panic!("visited an empty seat list")),
+            Ok(ControlFlow::Continue(()))
+        );
+        assert_eq!(
+            untracked.visit_parts(game, &mut |_| panic!("visited an untracked entity")),
+            Err(EntityReadError::Stale)
+        );
+        game.client.remote.as_mut().unwrap().reconfiguring = Some(0);
+        assert_eq!(
+            other.visit_parts(game, &mut |_| panic!("visited with no live client world")),
+            Err(EntityReadError::Unavailable)
+        );
+        game.client.remote.as_mut().unwrap().reconfiguring = None;
 
         // A replaced level retires the handles.
         let mut other_level = spawn.clone();

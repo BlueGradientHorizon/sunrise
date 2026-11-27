@@ -687,7 +687,7 @@ fn with_detached_credit<R>(
 #[ignore = "daily"]
 fn callable_knockback_respects_the_hook_and_resistance_without_dealing_damage() {
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::native_knockback_tests::callable_knockback_respects_the_hook_and_resistance_without_dealing_damage",
+        "cut_layout::game::server_side::native_knockback_tests::callable_knockback_respects_the_hook_and_resistance_without_dealing_damage",
         "SUNRISE_CALLABLE_KNOCKBACK_CHILD",
         &["mob"],
     ) {
@@ -738,7 +738,7 @@ fn callable_knockback_respects_the_hook_and_resistance_without_dealing_damage() 
 #[ignore = "daily"]
 fn callable_knockback_reads_resistance_written_this_tick() {
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::native_knockback_tests::callable_knockback_reads_resistance_written_this_tick",
+        "cut_layout::game::server_side::native_knockback_tests::callable_knockback_reads_resistance_written_this_tick",
         "SUNRISE_CALLABLE_KNOCKBACK_GEAR_CHILD",
         &["geared"],
     ) {
@@ -875,7 +875,7 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
 #[cfg(any())]
 fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred() {
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::native_knockback_tests::remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred",
+        "cut_layout::game::server_side::native_knockback_tests::remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred",
         "SUNRISE_KNOCKBACK_EXPIRY_CHILD",
         &["expiry"],
     ) {

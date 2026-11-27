@@ -15,7 +15,7 @@ use sunrise_sim::{mobs::Who, motion::PlayerMotion};
 #[ignore = "daily"]
 fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_hooks_server::death_source_tests::guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player",
+        "cut_layout::game::server_side::native_hooks_server::death_source_tests::guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player",
         || {
             observed(false, false, |game, seen| {
                 game.player = None;
@@ -78,7 +78,7 @@ pub(crate) fn player(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 #[ignore = "daily"]
 fn zombie_ai_melee_armor_hurt_retains_the_real_source() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_hooks_server::death_source_tests::zombie_ai_melee_armor_hurt_retains_the_real_source",
+        "cut_layout::game::server_side::native_hooks_server::death_source_tests::zombie_ai_melee_armor_hurt_retains_the_real_source",
         || {
             observed(false, false, |game, seen| {
                 player(game);

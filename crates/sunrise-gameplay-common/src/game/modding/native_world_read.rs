@@ -1,6 +1,5 @@
 //! Read-only block, tag and fluid queries for native mods.
 
-use mod_api::BlockKey;
 use mod_api::{FluidKey, FluidState, LevelRef, LightLayer};
 use sunrise_core::geometry::Direction;
 pub use sunrise_items::items::Items;
@@ -132,13 +131,6 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>> FluidHeightWorld
 }
 
 pub trait NativeWorldReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-    /// Whether the resolved block is in the world's merged block tag, on a client the tag its
-    /// server sent. Unknown tags return false; unavailable tags or owning-thread block mappings
-    /// return None.
-    fn block_in_tag(&self, block: BlockKey, tag: mod_api::TagKey<BlockKey>) -> Option<bool> {
-        super::native_tags::block_in_tag(self.native_tag_items(), block, tag)
-    }
-
     /// The fluid's shape at `pos` (`FluidState.getShape`), block-local: none for no fluid, else
     /// the floor to `FluidState.getHeight`, a full block under the same fluid and the fluid's
     /// own height otherwise. None as for `level_block_state`; an unloaded block above is no
@@ -228,7 +220,5 @@ pub fn block_face_direction(face: mod_api::BlockFace) -> sunrise_core::geometry:
         _ => unreachable!("BlockFace: unhandled variant"),
     }
 }
-
-use crate::game::tables::WorldTablesExt as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

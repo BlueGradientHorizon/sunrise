@@ -15,7 +15,7 @@ mod warning_tests {
     #[ignore = "daily"]
     fn warning_disconnect_label_follows_server_ownership() {
         in_own_process(
-            "game::client_side::dialogs::warning_tests::warning_disconnect_label_follows_server_ownership",
+            "cut_layout::game::client_side::dialogs::warning_tests::warning_disconnect_label_follows_server_ownership",
             || {
                 with_client_game(|game| {
                     let (client, _server) = Pipe::pair();

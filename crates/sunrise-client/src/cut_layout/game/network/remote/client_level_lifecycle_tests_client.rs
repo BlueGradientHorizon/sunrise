@@ -36,7 +36,7 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
     use sunrise_sim::datapack_net;
 
     if run_fresh_cases(
-        "game::client_side::remote_client::tests::client_level_lifecycle_tests::client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit",
+        "cut_layout::game::client_side::remote_client::tests::client_level_lifecycle_tests::client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit",
         "SUNRISE_CLIENT_LEVEL_LIFECYCLE_CASE",
         &["reconfiguration"],
     ) {

@@ -400,6 +400,58 @@ mod tests {
     }
 
     #[test]
+    fn minecraft_and_sunrise_non_builtin_atlases_are_accepted_while_builtin_atlases_are_refused() {
+        let heart = fixture_png(2, 2, 123);
+        let def = r#"{"sources":[{"type":"single","resource":"icons_mod:icons/heart","sprite":"icons_mod:heart"}]}"#;
+        let staged = stage_texture_atlases(
+            root(&[
+                ("assets/minecraft/atlases/custom_icons.json", def.into()),
+                ("assets/sunrise/atlases/custom_icons.json", def.into()),
+                ("assets/minecraft/atlases/beds.json", def.into()),
+                ("assets/minecraft/atlases/blocks.json", def.into()),
+                ("assets/minecraft/atlases/gui.json", def.into()),
+                ("assets/icons_mod/textures/icons/heart.png", heart.clone()),
+            ]),
+            &[
+                answered("mod_a", "minecraft:custom_icons", "minecraft:custom_icons"),
+                answered("mod_b", "sunrise:custom_icons", "sunrise:custom_icons"),
+                answered("mod_c", "minecraft:beds", "minecraft:beds"),
+                answered("mod_d", "minecraft:blocks", "minecraft:blocks"),
+                answered("mod_e", "minecraft:gui", "minecraft:gui"),
+                answered("mod_f", "mod_f:alias_blocks", "minecraft:blocks"),
+            ],
+        );
+        let source = staged.source();
+        assert_eq!(
+            source
+                .read("assets/minecraft/textures/gui/atlases/custom_icons/icons_mod/heart.png")
+                .unwrap(),
+            heart
+        );
+        assert_eq!(
+            source
+                .read("assets/sunrise/textures/gui/atlases/custom_icons/icons_mod/heart.png")
+                .unwrap(),
+            heart
+        );
+        assert_eq!(
+            source
+                .read("assets/minecraft/textures/gui/atlases/beds/icons_mod/heart.png")
+                .unwrap(),
+            heart,
+            "minecraft:beds is not in vanilla 26.3 AtlasManager.KNOWN_ATLASES"
+        );
+        assert!(
+            !source.contains("assets/minecraft/textures/gui/atlases/blocks/icons_mod/heart.png")
+        );
+        assert!(!source.contains("assets/minecraft/textures/gui/atlases/gui/icons_mod/heart.png"));
+        assert!(
+            !source.contains("assets/mod_f/textures/gui/atlases/alias_blocks/icons_mod/heart.png"),
+            "a fresh alias reusing a built-in definition is refused"
+        );
+    }
+
+    #[test]
     fn duplicate_definition_across_distinct_atlas_names_keeps_first() {
         let heart = fixture_png(2, 2, 180);
         let def = r#"{"sources":[{"type":"single","resource":"shared_mod:heart","sprite":"shared_mod:heart"}]}"#;
@@ -1086,6 +1138,56 @@ mod tests {
                 "poisoned listener must not run on a second dispatch"
             );
             assert_eq!(calls_c.load(Ordering::Relaxed), 2);
+        });
+    }
+
+    struct EmissiveMod(&'static str, &'static str);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for EmissiveMod {
+        fn emissive(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::EmissiveEvent<'_>,
+        ) {
+            event.register(EmissiveSpriteRegistration::new(
+                Identifier::parse(self.0).unwrap(),
+                Identifier::parse(self.1).unwrap(),
+            ));
+        }
+    }
+
+    #[test]
+    fn collect_emissive_sprites_gathers_typed_registrations_with_mod_attribution() {
+        let mods: mod_api::Mods = vec![
+            mod_api::ModEntry::new(
+                "alpha",
+                Box::new(EmissiveMod("minecraft:block/stone", "alpha:glow/stone")),
+            ),
+            mod_api::ModEntry::new(
+                "beta",
+                Box::new(EmissiveMod("beta:block/lamp", "beta:block/lamp_e")),
+            ),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let collected = collect_emissive_sprites();
+            assert_eq!(collected.len(), 2);
+            assert_eq!(collected[0].mod_id, "alpha");
+            assert_eq!(
+                collected[0].answer,
+                EmissiveSpriteRegistration::new(
+                    Identifier::parse("minecraft:block/stone").unwrap(),
+                    Identifier::parse("alpha:glow/stone").unwrap(),
+                )
+            );
+            assert_eq!(collected[1].mod_id, "beta");
+            assert_eq!(
+                collected[1].answer,
+                EmissiveSpriteRegistration::new(
+                    Identifier::parse("beta:block/lamp").unwrap(),
+                    Identifier::parse("beta:block/lamp_e").unwrap(),
+                )
+            );
         });
     }
 }

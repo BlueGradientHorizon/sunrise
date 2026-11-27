@@ -84,17 +84,6 @@ pub enum SpawnSite {
     Raw,
 }
 
-/// What a spawn site does with a mob after `finalize_spawn` was heard.
-#[derive(Debug, PartialEq)]
-pub enum Finalized {
-    /// Finalized as vanilla does; the site goes on to the class's follow-ups.
-    Done,
-    /// A mod skipped finalization: the mob spawns uninitialised.
-    Skipped,
-    /// A mod stopped the spawn: the mob is not added.
-    Cancelled,
-}
-
 pub mod death_source;
 pub mod death_weapon;
 #[allow(unused_imports)]
@@ -211,8 +200,7 @@ impl<T> Drop for RemainingActions<'_, T> {
 #[derive(Default)]
 pub struct Creatures {
     pub projectiles: sunrise_sim::join_seq::JoinList<Projectile, false>,
-    /// What a family's Pre and Post are told from, kept between ticks
-    /// (game/modding/native_ticks.rs).
+    /// Reusable kind-name buffer for `native_other_tick_alone`.
     pub tick_hooks: super::native_ticks::TickBuffers,
     /// The guests (by connection) whose `ServerPlayer.tick` a mod's Pre canceled this tick:
     /// every part of it skips them (game/network/lan_actions/tick.rs).
@@ -241,7 +229,7 @@ pub struct Creatures {
     pub(in crate::game) stab_memory: (i64, sunrise_level::fast_hash::FxHashMap<u32, usize>),
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
     pub shoulder_time: std::collections::HashMap<[i32; 4], i64>,
-    /// Each level's custom spawners, built when its first tick asks (game/mobs/custom_spawners.rs).
+    /// Each level's custom spawners, built when the level opens and dropped on unload.
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::__private::CustomSpawners>,
     /// True while `ask_level_sound` is running `play_level_sound_at_*` listeners so sounds emitted
     /// from inside a listener are not re-dispatched to level-sound hooks.
@@ -355,9 +343,7 @@ pub enum OrbOrder {
 }
 
 impl crate::game::CommonGame<'_> {
-    /// A sulfur cube's attribute map (`LivingEntity.attributes`), from its
-    /// type's defaults, before its first tick adopts the body's archetype
-    /// modifiers. A map already there (commands, armor) is kept.
+    /// Initializes sulfur cubes' missing attribute maps from defaults and saved attributes before applying body modifiers.
     pub fn init_sulfur_attribute_maps(&mut self) {
         for m in &mut self.mobs {
             if m.species() == sunrise_sim::mobs::Species::SulfurCube {

@@ -642,7 +642,7 @@ impl crate::game::ClientGame<'_> {
             &pack,
             &client_pack,
             &gui,
-            Some(self.client_res().block_entity_render()),
+            self.try_block_entity_render(),
         );
         self.client.native_shaders.pick_hdr.get_mut().forget();
         // Keep the working GPU resources, and hand its window surface over.
@@ -679,8 +679,8 @@ impl crate::game::ClientGame<'_> {
                         .unwrap_or_default(),
                     self.client.settings.texture_atlas_settings(),
                 )
-                .and_then(|(renderer, clouds)| {
-                    clouds?;
+                .and_then(|(renderer, required)| {
+                    required?;
                     Ok(Box::new(renderer))
                 })
             })
@@ -726,8 +726,8 @@ impl crate::game::ClientGame<'_> {
                 .armor_stand_assets
                 .0
                 .apply_resources(armor_stand_assets);
-            game.client.entity_models = entity_models;
             game.client.armor_stand_assets.0.extensions = item_extensions;
+            game.client.entity_models = entity_models;
             game.side_clear_random_tick_sections();
             game.portal_sections.clear();
             game.options.resources = root.clone();
@@ -738,6 +738,11 @@ impl crate::game::ClientGame<'_> {
             game.build_level_environments();
             game.client.standalone_geometry = standalone_geometry;
             game.client.instance_groups.borrow_mut().clear();
+            game.client.prepared_items.borrow_mut().clear();
+            if let Some(renderer) = &game.client.renderer.0 {
+                renderer.clear_mod_meshes();
+                renderer.clear_mod_uniforms();
+            }
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
             game.client.skin_slots.forget();
@@ -845,7 +850,7 @@ impl crate::game::ClientGame<'_> {
 /// `apply_staged_pack` does the GPU half and the swap): the overlay
 /// root, the models and sprites, the menu bundle, the pack's tables and its
 /// CPU mip chains.
-#[cfg(feature = "client")]
+#[cfg(all(feature = "client", any(test, feature = "test-support")))]
 pub fn stage_pack(
     vanilla_root: &Path,
     selected: &[String],
@@ -986,6 +991,7 @@ fn stage_pack_with_emissive(
                 crate::game::client_side::armor_stands_client::ArmorStandAssets::load(
                     &source, None,
                 );
+            let entity_models = super::EntityModels::load(Some(&entity_models_doc));
             let frame_models = crate::game::client_side::frames_client::bake_frames(
                 client_pack.render.model_library.as_deref().ok(),
             );
@@ -1001,7 +1007,7 @@ fn stage_pack_with_emissive(
                 block_entity_shapes,
                 waypoint_styles,
                 armor_stand_assets,
-                entity_models: super::EntityModels::load(Some(&entity_models_doc)),
+                entity_models,
                 frame_models,
                 sounds,
                 language,
@@ -1039,8 +1045,8 @@ pub struct StagedPack {
     /// The root's sound events and current language.
     pub sounds: sunrise_level::sound_events::SoundRegistry,
     pub language: lang::Language,
-    entity_models: super::EntityModels,
-    settings: Option<sunrise_world::native_load_context::SettingsCapture>,
+    pub(in crate::game) entity_models: super::EntityModels,
+    pub(in crate::game) settings: Option<sunrise_world::native_load_context::SettingsCapture>,
 }
 
 /// A pack reload's stages, indexed by `progress`: the overlay draws how far

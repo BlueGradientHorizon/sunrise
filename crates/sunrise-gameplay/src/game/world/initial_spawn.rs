@@ -105,11 +105,8 @@ impl ServerGame<'_> {
     }
     /// MinecraftServer.setInitialSpawn: the first chunk of the spiral with a
     /// valid respawn column gives the world spawn, else the origin chunk's
-    /// centre at the spawn height. None while a chunk to test is loading.
-    pub(in crate::game::server_side) fn find_world_spawn(
-        &mut self,
-        wait: bool,
-    ) -> Result<Option<[i32; 3]>> {
+    /// centre at the spawn height. With `wait`, every tested column is loaded to FULL.
+    fn find_world_spawn(&mut self, wait: bool) -> Result<Option<[i32; 3]>> {
         if !self.server.spawn_hook_fired {
             self.server.spawn_hook_fired = true;
             let mut position = self.common.level.world_spawn.unwrap_or([0, 0, 0]);

@@ -39,7 +39,7 @@ use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::
     #[ignore = "daily"]
     fn an_unconvertible_boss_bar_keeps_vanilla_draws_without_dispatch() {
         if run_fresh_cases(
-            "game::client_side::native_hooks_client::customize_boss_event_progress::customize_boss_event_progress_tests::an_unconvertible_boss_bar_keeps_vanilla_draws_without_dispatch",
+            "game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::an_unconvertible_boss_bar_keeps_vanilla_draws_without_dispatch",
             "SUNRISE_BOSS_BAR_CONVERSION_CHILD",
             &["malformed-profile"],
         ) {

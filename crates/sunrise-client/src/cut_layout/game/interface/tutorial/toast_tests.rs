@@ -9,7 +9,7 @@ use {
 #[ignore = "daily"]
 fn tutorial_toast_bolds_only_the_rebound_key() {
     in_own_process(
-        "game::client_side::tutorial::toast_tests::tutorial_toast_bolds_only_the_rebound_key",
+        "cut_layout::game::client_side::tutorial::toast_tests::tutorial_toast_bolds_only_the_rebound_key",
         || {
             with_client_game(|game| {
                 game.client
@@ -48,7 +48,7 @@ fn tutorial_toast_bolds_only_the_rebound_key() {
 #[ignore = "daily"]
 fn social_toast_is_dismissed_only_by_the_multiplayer_key() {
     in_own_process(
-        "game::client_side::tutorial::toast_tests::social_toast_is_dismissed_only_by_the_multiplayer_key",
+        "cut_layout::game::client_side::tutorial::toast_tests::social_toast_is_dismissed_only_by_the_multiplayer_key",
         || {
             with_client_game(|game| {
                 let enqueue = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {

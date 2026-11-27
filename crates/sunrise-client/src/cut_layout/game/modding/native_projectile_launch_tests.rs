@@ -11,7 +11,7 @@ use sunrise_sim::mobs::Mob;
 fn owner_launch_sets_owner_before_insertion_and_uses_projectile_random() {
     // Opt in only in a fresh child; never mutate the parallel parent's environment.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::native_projectile_launch_tests::owner_launch_sets_owner_before_insertion_and_uses_projectile_random",
+        "cut_layout::game::server_side::native_projectile_launch_tests::owner_launch_sets_owner_before_insertion_and_uses_projectile_random",
         "SUNRISE_TEST_SEEDS",
         &["1"],
     ) {
@@ -120,7 +120,7 @@ fn owner_launch_sets_owner_before_insertion_and_uses_projectile_random() {
 fn owner_launch_reports_explicit_guest_to_join_listeners() {
     // Opt in only in a fresh child; never mutate the parallel parent process's environment.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::server_side::native_projectile_launch_tests::owner_launch_reports_explicit_guest_to_join_listeners",
+        "cut_layout::game::server_side::native_projectile_launch_tests::owner_launch_reports_explicit_guest_to_join_listeners",
         "SUNRISE_TEST_SEEDS",
         &["1"],
     ) {

@@ -47,7 +47,7 @@ fn canceled_creative_drop_keeps_throttle_budget_for_next_take() {
     }
 
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::tests::container_drop_tests::canceled_creative_drop_keeps_throttle_budget_for_next_take",
+        "cut_layout::game::client_side::remote_client::tests::container_drop_tests::canceled_creative_drop_keeps_throttle_budget_for_next_take",
         || {
             let seen = Arc::new(AtomicUsize::new(0));
             with_mods(
@@ -104,7 +104,7 @@ fn canceled_creative_drop_keeps_throttle_budget_for_next_take() {
 #[ignore = "daily"]
 fn creative_drop_guards_charge_only_sent_drops() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::tests::container_drop_tests::creative_drop_guards_charge_only_sent_drops",
+        "cut_layout::game::client_side::remote_client::tests::container_drop_tests::creative_drop_guards_charge_only_sent_drops",
         || {
             with_client_game(|game| {
                 let (mut reader, _writer) = connect_play_test(game, |_, server| {
@@ -258,7 +258,7 @@ fn creative_drop_guards_charge_only_sent_drops() {
 #[ignore = "daily"]
 fn creative_screen_throws_wait_for_loaded_player_tick() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::tests::container_drop_tests::creative_screen_throws_wait_for_loaded_player_tick",
+        "cut_layout::game::client_side::remote_client::tests::container_drop_tests::creative_screen_throws_wait_for_loaded_player_tick",
         || {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
@@ -317,7 +317,7 @@ fn creative_screen_throws_wait_for_loaded_player_tick() {
 #[ignore = "daily"]
 fn playing_menu_throw_uses_only_container_click_and_server_drops_once() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::tests::container_drop_tests::playing_menu_throw_uses_only_container_click_and_server_drops_once",
+        "cut_layout::game::client_side::remote_client::tests::container_drop_tests::playing_menu_throw_uses_only_container_click_and_server_drops_once",
         || {
             let mut outgoing = Vec::new();
             let mut sync = SyncData::empty();

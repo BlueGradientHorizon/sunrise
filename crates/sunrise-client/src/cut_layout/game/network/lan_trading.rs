@@ -232,7 +232,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_merchant_edit_reaches_the_guest_trading_with_it() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::lan_trading::tests::a_merchant_edit_reaches_the_guest_trading_with_it",
+            "cut_layout::game::server_side::lan_trading::tests::a_merchant_edit_reaches_the_guest_trading_with_it",
             "SUNRISE_MERCHANT_EDIT_CHILD",
             &["game"],
         ) {

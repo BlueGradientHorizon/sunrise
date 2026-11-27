@@ -345,7 +345,7 @@ pub(crate) mod tests {
         };
 
         // The real-game resource fixture also initializes process-wide engine tables.
-        const TEST: &str = "game::native_hooks::register_preset_editors::tests::failed_preset_editor_paint_leaves_stock_frame_and_post";
+        const TEST: &str = "cut_layout::game::native_hooks::register_preset_editors::tests::failed_preset_editor_paint_leaves_stock_frame_and_post";
         in_own_process(TEST, || {
             let mods = vec![
                 ModEntry::new("editor_paint_failure", Box::new(PaintFailure)),
@@ -440,7 +440,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn preset_editor_test_mod_draws_and_edits_through_real_client_hooks() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::register_preset_editors::tests::preset_editor_test_mod_draws_and_edits_through_real_client_hooks",
+            "cut_layout::game::native_hooks::register_preset_editors::tests::preset_editor_test_mod_draws_and_edits_through_real_client_hooks",
             exercise_preset_editor,
         );
     }

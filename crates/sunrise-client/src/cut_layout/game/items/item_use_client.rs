@@ -14,7 +14,7 @@ pub(crate) mod tests {
         };
 
         if run_fresh_cases(
-            "game::client_side::item_use_client::tests::default_first_person_arm_obeys_its_own_sleeve_option",
+            "cut_layout::game::client_side::item_use_client::tests::default_first_person_arm_obeys_its_own_sleeve_option",
             "SUNRISE_HAND_SLEEVE_CASE",
             &["left-hidden"],
         ) {
@@ -69,7 +69,7 @@ pub(crate) mod tests {
         };
 
         if run_fresh_cases(
-            "game::client_side::item_use_client::tests::render_hand_submits_both_skinned_arms_in_draw_order",
+            "cut_layout::game::client_side::item_use_client::tests::render_hand_submits_both_skinned_arms_in_draw_order",
             "SUNRISE_HAND_ARM_CASE",
             &["wide", "slim"],
         ) {

@@ -966,10 +966,7 @@ mod tests {
         use sunrise_sim::mod_packet_builders::encode_play_packet;
 
         if run_fresh_cases(
-            concat!(
-                module_path!(),
-                "::use_item_non_finite_angles_preserve_previous_axis_and_wrap_finite_ones"
-            ),
+            "game::server_side::lan_actions_server::interaction::tests::use_item_non_finite_angles_preserve_previous_axis_and_wrap_finite_ones",
             "SUNRISE_USE_ITEM_ROTATION_CHILD",
             &["rotation"],
         ) {

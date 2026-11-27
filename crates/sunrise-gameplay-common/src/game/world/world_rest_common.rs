@@ -206,8 +206,8 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
         let client_mobs = presentation.mob_tables(resource_root, &mob_types)?;
         Ok((mob_types, mob_data, client_mobs))
     };
-    let load_transformers = || -> Result<_> {
-        let _step = startup::step("rest.transformers_models");
+    let load_player_models = || -> Result<_> {
+        let _step = startup::step("rest.player_models");
         Ok(presentation.play_models(root))
     };
     // The errors cross threads as text.
@@ -220,7 +220,7 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
         items,
         behaviours,
         mobs,
-        transformers,
+        player_models,
         providers,
         nether_environment,
         end_environment,
@@ -230,7 +230,7 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
             let items = named_scope(scope, "items", || text(load_items()));
             let behaviours = named_scope(scope, "behaviours", || text(load_behaviours()));
             let mobs = named_scope(scope, "mobs", || text(load_mobs()));
-            let transformers = named_scope(scope, "transformers", || text(load_transformers()));
+            let player_models = named_scope(scope, "player_models", || text(load_player_models()));
             let providers = named_scope(scope, "providers", || {
                 startup::time("rest.providers", || Providers::load(root))
             });
@@ -260,7 +260,7 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
                 items.join().unwrap(),
                 behaviours.join().unwrap(),
                 mobs.join().unwrap(),
-                transformers.join().unwrap(),
+                player_models.join().unwrap(),
                 providers.join().unwrap(),
                 nether_environment.join().unwrap(),
                 end_environment.join().unwrap(),
@@ -272,7 +272,7 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
             text(load_items()),
             text(load_behaviours()),
             text(load_mobs()),
-            text(load_transformers()),
+            text(load_player_models()),
             Providers::load(root),
             startup::time("rest.nether_environment", || {
                 text(Environment::load_dimension(
@@ -292,7 +292,7 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
     // World staging checks conditions after the selected packs have supplied their winners.
     let (items, recipes, stations) = items?;
     let (mob_types, mob_data, client_mobs) = mobs?;
-    let models = transformers?;
+    let models = player_models?;
     let nether_environment = nether_environment?;
     let end_environment = end_environment?;
     let prepared_tests = sunrise_sim::lan::data::PackRegistryDefinitions::load_prepared_game_tests(

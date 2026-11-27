@@ -7,14 +7,29 @@ use sunrise_core::position::BlockPos;
 use sunrise_core::random::{LegacyRandom, RandomSource, position_seed};
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_structure_values::{
-    TemplateBlock, TemplateSnapshot, engine_mirror, engine_rotation, template_id,
+    engine_mirror, engine_rotation, template_id,
 };
+use sunrise_world::registry::BlockStateId;
 use sunrise_world::worldgen::structure::{Mirror, Rotation, StateTransforms, StructureTemplate};
 
 use mod_api::{
-    LevelRef, StructureMirror, StructureRotation, StructureTemplateBlockView,
+    Compound, LevelRef, StructureMirror, StructureRotation, StructureTemplateBlockView,
     StructureTemplateError,
 };
+
+/// Game-owned placement result; numeric states never escape to mods.
+#[derive(Debug, PartialEq)]
+struct TemplateSnapshot<'a> {
+    size: [i32; 3],
+    blocks: Vec<TemplateBlock<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
+struct TemplateBlock<'a> {
+    pos: [i32; 3],
+    state: BlockStateId,
+    nbt: Option<&'a Compound>,
+}
 
 // Native mods use this; nothing in Sunrise does.
 impl crate::game::ServerGame<'_> {

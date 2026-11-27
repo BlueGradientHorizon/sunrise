@@ -51,7 +51,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn frame_interpolation_matches_draw_and_holds_while_paused_or_frozen() {
-        let name = "game::native_hooks::render_frame_pre::tests::frame_interpolation_matches_draw_and_holds_while_paused_or_frozen";
+        let name = "cut_layout::game::native_hooks::render_frame_pre::tests::frame_interpolation_matches_draw_and_holds_while_paused_or_frozen";
         if run_fresh_cases(name, "SUNRISE_FRAME_PARTIAL_CHILD", &["frames"]) {
             return;
         }

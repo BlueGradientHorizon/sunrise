@@ -78,7 +78,7 @@ pub(crate) fn fall(
 #[ignore = "daily"]
 fn fall_distance_handle_reads_the_guests_fall_and_landing() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::guest_body::tests::fall_reset::fall_distance_handle_reads_the_guests_fall_and_landing",
+        "cut_layout::game::lan_actions::guest_body::tests::fall_reset::fall_distance_handle_reads_the_guests_fall_and_landing",
         || {
             let mut resources = None;
             let scratch = tempfile::tempdir().unwrap();
@@ -103,7 +103,7 @@ fn fall_distance_handle_reads_the_guests_fall_and_landing() {
 #[ignore = "daily"]
 fn a_guest_move_that_goes_up_ends_its_fall() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::guest_body::tests::fall_reset::a_guest_move_that_goes_up_ends_its_fall",
+        "cut_layout::game::lan_actions::guest_body::tests::fall_reset::a_guest_move_that_goes_up_ends_its_fall",
         || {
             let mut resources = None;
             let scratch = tempfile::tempdir().unwrap();
@@ -161,7 +161,7 @@ fn a_guest_move_that_goes_up_ends_its_fall() {
 #[ignore = "daily"]
 fn entering_water_ends_a_tracked_fall_before_the_next_move() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::guest_body::tests::fall_reset::entering_water_ends_a_tracked_fall_before_the_next_move",
+        "cut_layout::game::lan_actions::guest_body::tests::fall_reset::entering_water_ends_a_tracked_fall_before_the_next_move",
         || {
             let mut resources = None;
             let scratch = tempfile::tempdir().unwrap();
@@ -229,7 +229,7 @@ pub(crate) fn lethal_landing(totem: bool) {
 #[ignore = "daily"]
 fn a_lethal_landing_records_death_and_drops_before_the_next_move() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::guest_body::tests::fall_reset::a_lethal_landing_records_death_and_drops_before_the_next_move",
+        "cut_layout::game::lan_actions::guest_body::tests::fall_reset::a_lethal_landing_records_death_and_drops_before_the_next_move",
         || {
             lethal_landing(false);
         },
@@ -240,7 +240,7 @@ fn a_lethal_landing_records_death_and_drops_before_the_next_move() {
 #[ignore = "daily"]
 fn a_totem_saves_the_guest_before_its_tracked_fall_ends() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::guest_body::tests::fall_reset::a_totem_saves_the_guest_before_its_tracked_fall_ends",
+        "cut_layout::game::lan_actions::guest_body::tests::fall_reset::a_totem_saves_the_guest_before_its_tracked_fall_ends",
         || {
             lethal_landing(true);
         },
@@ -253,7 +253,7 @@ fn a_totem_saves_the_guest_before_its_tracked_fall_ends() {
 #[ignore = "daily"]
 fn a_mods_protector_from_outside_the_hands_saves_the_guest() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::guest_body::tests::fall_reset::a_mods_protector_from_outside_the_hands_saves_the_guest",
+        "cut_layout::game::lan_actions::guest_body::tests::fall_reset::a_mods_protector_from_outside_the_hands_saves_the_guest",
         || {
             /// A worn totem, lent once per ask; counts the asks.
             struct Charm(std::sync::Arc<std::sync::Mutex<u32>>);
@@ -308,7 +308,7 @@ fn a_mods_protector_from_outside_the_hands_saves_the_guest() {
 #[ignore = "daily"]
 fn lethal_landing_consumes_one_item_with_death_protection_from_the_selected_slot() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::guest_body::tests::fall_reset::lethal_landing_consumes_one_item_with_death_protection_from_the_selected_slot",
+        "cut_layout::game::lan_actions::guest_body::tests::fall_reset::lethal_landing_consumes_one_item_with_death_protection_from_the_selected_slot",
         || {
             let mut resources = None;
             let scratch = tempfile::tempdir().unwrap();

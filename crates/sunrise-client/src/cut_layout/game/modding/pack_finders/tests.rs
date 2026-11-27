@@ -241,7 +241,7 @@ fn live_pack_rediscovery_can_read_a_registered_client_setting() {
     };
 
     if run_fresh_cases(
-        "game::pack_discovery::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
+        "cut_layout::game::pack_discovery::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
         "SUNRISE_PACK_DISCOVERY_CHILD",
         &["client"],
     ) {

@@ -667,6 +667,11 @@ impl Levels {
         self.runtime.clear();
     }
 
+    #[cfg(feature = "test-support")]
+    pub fn reset_active_closed_for_test(&mut self) {
+        self.active_closed = false;
+    }
+
     pub(in crate::game::server_side) fn abort_parked_generation(&mut self) {
         for level in self.parked.values_mut() {
             level.streaming.abort_generation();
@@ -697,6 +702,13 @@ impl Levels {
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
             .map(|(_, level)| &level.block_ticks)
+    }
+
+    pub(in crate::game) fn parked_lid_openers_of(
+        &self,
+        dimension: &str,
+    ) -> Option<&HashMap<(i32, i32, i32), i32>> {
+        self.parked_of(dimension).map(|level| &level.lid_openers)
     }
 
     /// The world of the level not in place whose dimension is `dimension`, to
@@ -989,13 +1001,26 @@ impl crate::game::ServerGame<'_> {
             Some((generate, seed)) => (Some(generate), seed),
             None => (None, self.common.level.seed),
         };
-        let fallback_overrides = sunrise_world::worldgen::overrides::WorldgenOverrides::default();
-        let overrides = self
-            .server
-            .world_tables
-            .0
+        let biomes = self
+            .common
+            .world_biomes
             .as_ref()
-            .map_or(&fallback_overrides, |tables| &tables.biomes.overrides);
+            .unwrap_or_else(|| self.common.res.biomes());
+        let overrides = match &self.server.world_tables.0 {
+            Some(tables) => tables.biomes.overrides.clone(),
+            None => {
+                let base_conditions = self.common.worldgen_base_conditions()?;
+                let mut enabled: Vec<_> = self.server.fns.0.enabled_packs_highest_first().collect();
+                enabled.reverse();
+                let conditions =
+                    sunrise_gameplay_common::game::load_conditions::worldgen_load_conditions(
+                        &base_conditions,
+                        &self.common.options.resources,
+                        &enabled,
+                    );
+                super::world_loading::worldgen_overrides_of(&self.server.fns.0.data, &conditions)?.0
+            }
+        };
         let (streaming, save, locator, generator_type) = super::world_loading::make_streaming(
             &self.common.res,
             &self.common.pack,
@@ -1006,12 +1031,8 @@ impl crate::game::ServerGame<'_> {
             self.server.level_shapes.get(dim.id()),
             seed,
             &self.common.level,
-            self.common
-                .world_biomes
-                .as_ref()
-                .unwrap_or_else(|| self.common.res.biomes())
-                .clone(),
-            overrides,
+            biomes.clone(),
+            &overrides,
             generate,
             self.server.save.0.chunk_reports().clone(),
             self.server.save.0.save_failure_reporter().clone(),
@@ -1261,10 +1282,6 @@ impl crate::game::ServerGame<'_> {
         swap(&mut self.common.ominous_spawners, &mut p.ominous_spawners);
         swap(&mut self.common.tnts, &mut p.tnts);
         swap(&mut self.server.hoppers, &mut p.hoppers);
-        swap(
-            &mut self.server.chunk_spawn_enemies,
-            &mut p.chunk_spawn_enemies,
-        );
         swap(&mut self.common.mobs, &mut p.mobs);
         swap(&mut self.server.knot_ids, &mut p.knot_ids);
         swap(&mut self.server.broken_knots, &mut p.broken_knots);
@@ -1284,6 +1301,10 @@ impl crate::game::ServerGame<'_> {
         self.server.raiding.0.swap_level(&mut p.raiding);
         self.server.sculk.swap_level(&mut p.sculk);
         self.server.creaking.swap_level(&mut p.creaking);
+        swap(
+            &mut self.server.chunk_spawn_enemies,
+            &mut p.chunk_spawn_enemies,
+        );
         swap(&mut self.server.spawn_scratch, &mut p.spawn_scratch);
         swap(&mut self.common.border, &mut p.border);
     }
@@ -1572,12 +1593,11 @@ impl crate::game::ServerGame<'_> {
             let _span = sunrise_level::spans::guard("mods_server_tick_start");
             self.native_lifecycle_server_tick_start(running);
         }
-        let observe_level = running.is_some()
-            && (self.server.serving.is_some() || self.common.options.dedicated.is_some());
         if running == Some(true) {
-            self.load_scoreboard();
             span("tick_functions", || self.tick_functions());
         }
+        let observe_level = running.is_some()
+            && (self.server.serving.is_some() || self.common.options.dedicated.is_some());
         let dimensions = self.level_creation_order().to_vec();
         let mut order = std::mem::take(&mut self.server.levels.0.tick_order);
         self.select_tick_levels(&mut order);
@@ -1670,7 +1690,7 @@ impl crate::game::ServerGame<'_> {
                             self.tick_lan(true);
                             Ok(())
                         } else if k == 0 {
-                            self.tick_server_first()
+                            self.tick_server_first(running.unwrap_or(false))
                         } else {
                             let running = running.unwrap_or_else(|| self.common.clock.world_runs());
                             if running {
@@ -1717,7 +1737,10 @@ impl crate::game::ServerGame<'_> {
                     }
                 }
                 if moved && k + 1 < n {
-                    self.enter_level(dim)?;
+                    result = self.enter_level(dim);
+                    if result.is_err() {
+                        break;
+                    }
                 }
             }
         }
@@ -1732,6 +1755,9 @@ impl crate::game::ServerGame<'_> {
         // Levels held only by loading tickets: stream them without running the world tick.
         if result.is_ok() {
             result = self.run_view_passes(&order, running == Some(true));
+        }
+        if result.is_ok() {
+            self.update_parked_light(&order);
         }
         if let Some(&first) = order.first()
             && self.common.dim != first
@@ -1919,6 +1945,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub fn levels_to_tick(&self) -> Vec<Dim> {
         let mut dims = Vec::new();
         self.select_tick_levels(&mut dims);
@@ -2173,11 +2200,11 @@ impl crate::game::ServerGame<'_> {
             world.water_tickets.clear();
         }
         self.common.creatures.custom_spawners.remove(&dim);
+        self.common.attachment_indexes.remove(&dim);
+        self.common.passages.retire_level(dim.key());
         self.clear_async_chunk_requests_for_dim(dim);
         self.close_saved_chunk_readers_for_dim(dim);
         self.close_detached_generators_for_dim(dim);
-        self.common.attachment_indexes.remove(&dim);
-        self.common.passages.retire_level(dim.key());
     }
 
     /// Every level still open closes with the server, however it ends
@@ -2400,7 +2427,7 @@ impl crate::game::ServerGame<'_> {
 
 impl crate::game::ServerGame<'_> {
     /// `Game::tick` as a server runs it for its first level: no window lead, which only the window's `Game` has.
-    pub(in crate::game) fn tick_server_first(&mut self) -> Result<()> {
+    fn tick_server_first(&mut self, running: bool) -> Result<()> {
         if !self.common.is_logical_server() {
             return Err("client-role game cannot tick a server level".into());
         }
@@ -2409,7 +2436,7 @@ impl crate::game::ServerGame<'_> {
         }
         self.abort_open_transactions();
         self.common.update_interaction_ranges();
-        self.tick_first_level()
+        self.tick_first_level(running)
     }
 
     /// `ServerLevel.tick`: advance the world border, then the natural weather cycle.
@@ -2418,19 +2445,14 @@ impl crate::game::ServerGame<'_> {
         self.tick_level_weather(dim);
     }
 
-    /// A server's tick of its first level: the clock, functions, autosave and weather it owns, then the level.
-    pub(in crate::game) fn tick_first_level(&mut self) -> Result<()> {
+    /// A server's tick of its first active level, with the shared clock and autosave.
+    pub(in crate::game) fn tick_first_level(&mut self, running: bool) -> Result<()> {
         if !self.common.is_logical_server() {
             return Err("client-role game cannot tick a server level".into());
         }
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
         self.common.ticks += 1;
-        // `/tick freeze` stops the world but not the player.
-        let running = match self.server.level_pass.running {
-            Some(running) => running,
-            None => self.common.clock.world_runs(),
-        };
         span("mods_inventory_ticks", || self.native_inventory_ticks());
         if running {
             self.tick_level_environment(self.common.dim);

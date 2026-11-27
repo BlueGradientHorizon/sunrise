@@ -80,6 +80,11 @@ pub trait ItemsSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     #[inline(always)]
+    fn side_destroy_progress_player_ref(&self) -> Option<mod_api::PlayerRef> {
+        <Self::State as SideOps>::side_destroy_progress_player_ref(self)
+    }
+
+    #[inline(always)]
     fn side_current_level_ref(&self) -> Option<mod_api::LevelRef> {
         <Self::State as SideOps>::side_current_level_ref(self)
     }
@@ -118,5 +123,6 @@ pub trait SideOps: Sized {
     fn side_in_rain(game: &mut Self::Game<'_>, at: Vec3, top: f64) -> bool;
     fn side_projectile_player_uuid(game: &mut Self::Game<'_>) -> Option<u128>;
     fn side_acting_player_ref(game: &Self::Game<'_>) -> Option<mod_api::PlayerRef>;
+    fn side_destroy_progress_player_ref(game: &Self::Game<'_>) -> Option<mod_api::PlayerRef>;
     fn side_current_level_ref(game: &Self::Game<'_>) -> Option<mod_api::LevelRef>;
 }

@@ -10,8 +10,6 @@ pub(crate) mod tests {
 
     use sunrise_gameplay::game::server_side::entity_sizes::tests::entity_data;
 
-    use sunrise_gameplay::game::server_side::entity_sizes::tests::in_fresh_process;
-
     use sunrise_gameplay::game::server_side::entity_sizes::tests::with_loopback_client;
 
     use mod_api::Pose;
@@ -23,7 +21,11 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn client_copies_of_other_kinds_ask_and_take_the_answer() {
         use sunrise_protocol::entity_data::{Value, serializer};
-        if in_fresh_process("client_copies_of_other_kinds_ask_and_take_the_answer") {
+        if sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
+            "cut_layout::game::client_side::entity_sizes_client::tests::client_copies_of_other_kinds_ask_and_take_the_answer",
+            "SUNRISE_TEST_CLIENT_COPY_SIZE",
+            &["client_copies_of_other_kinds_ask_and_take_the_answer"],
+        ) {
             return;
         }
         with_loopback_client(|game, seen| {

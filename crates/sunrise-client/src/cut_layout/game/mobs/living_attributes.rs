@@ -746,7 +746,7 @@ pub(crate) mod tests {
     fn a_mods_item_modifiers_reach_the_wearer() {
         // The stack hooks are a process-wide table: install them in a child of its own.
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::living_attributes::tests::a_mods_item_modifiers_reach_the_wearer",
+            "cut_layout::game::server_side::living_attributes::tests::a_mods_item_modifiers_reach_the_wearer",
             "SUNRISE_ITEM_MODIFIERS_WEARER_CHILD",
             &["plated"],
         ) {

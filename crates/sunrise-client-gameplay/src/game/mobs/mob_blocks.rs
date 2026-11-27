@@ -4,6 +4,7 @@
 use crate::game::{ClientGame, stock_layer_mask::StockLayerMask};
 use mod_api::{Hand, StockLayer};
 use sunrise_client::{mesher::Vertex, mobs::render, particles::ELDER_GUARDIAN_LIFETIME};
+use sunrise_gameplay_common::game::item_abilities::{ItemAbilitiesGameExt1 as _, ability};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Mob, Species};
 
@@ -608,7 +609,13 @@ impl ClientGame<'_> {
                 fishing_cast_item(
                     mob.id,
                     active.map(|hook| hook.owner),
-                    mob.extra.main_hand_id() == Some("minecraft:fishing_rod"),
+                    mob.extra.main_hand_stack().is_some_and(|s| {
+                        self.stack_can_perform(
+                            s,
+                            ability::FISHING_ROD_CAST,
+                            &*s.item == "minecraft:fishing_rod",
+                        )
+                    }),
                     off_hand,
                 )
             };

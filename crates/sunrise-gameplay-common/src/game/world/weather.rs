@@ -108,23 +108,30 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
             .filter(|_| dimension == self.dim)
         {
             Some(own) => own,
-            None => match dimension {
-                Dim::Overworld => self.res.environment(),
-                Dim::Extra(_) => sunrise_level::environment::Environment::for_level(
-                    dimension.id(),
-                    self.res.environment(),
-                ),
-                Dim::Nether => self.res.nether_environment(),
-                Dim::End => self.res.end_environment(),
-            },
+            None => {
+                let base = match dimension {
+                    Dim::Overworld | Dim::Extra(_) => self.res.environment(),
+                    Dim::Nether => self.res.nether_environment(),
+                    Dim::End => self.res.end_environment(),
+                };
+                sunrise_level::environment::Environment::for_level(dimension.id(), base)
+            }
         };
-        let (rain, thunder) = if world.shape.can_have_weather(dimension == Dim::End) {
-            self.world.weather.levels(1.0)
-        } else {
-            (0.0, 0.0)
+        let (rain, thunder) = crate::game::mod_api_host_common::weather_for_level(
+            world.shape,
+            dimension == Dim::End,
+            self.world.weather.levels(1.0),
+        );
+        let clock = |name: &str| {
+            if dimension == self.dim
+                && let Some(time) = self.side_state().side_remote_named_clock_time(name)
+            {
+                time
+            } else {
+                self.command_clock_time(name)
+            }
         };
-        let day_time = self.command_clock_time(&self.level_clock_name(dimension));
-        sunrise_level::environment::sky_darken(environment, day_time, rain, thunder)
+        sunrise_level::environment::sky_darken_with_clock(environment, rain, thunder, &clock)
     }
 
     fn sky_darken(&self) -> i32 {

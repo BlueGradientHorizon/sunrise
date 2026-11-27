@@ -69,7 +69,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn default_and_patched_equippables_follow_the_servers_entity_tags() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::remote::tables::tests::default_and_patched_equippables_follow_the_servers_entity_tags",
+            "cut_layout::game::remote::tables::tests::default_and_patched_equippables_follow_the_servers_entity_tags",
             || {
                 let mut resources = None;
                 let mut game = client(&mut resources);

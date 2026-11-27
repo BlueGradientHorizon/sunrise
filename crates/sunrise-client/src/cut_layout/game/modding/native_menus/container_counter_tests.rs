@@ -48,7 +48,7 @@ fn open(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> i32 {
 #[ignore = "daily"]
 fn the_container_counter_is_the_last_window_and_advances_as_an_open_does() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_menus::container_counter_tests::the_container_counter_is_the_last_window_and_advances_as_an_open_does",
+        "cut_layout::game::server_side::native_menus::container_counter_tests::the_container_counter_is_the_last_window_and_advances_as_an_open_does",
         || {
             with_game(|game| {
                 let rx = watched_guest(game);
@@ -108,7 +108,7 @@ fn the_container_counter_is_the_last_window_and_advances_as_an_open_does() {
 #[ignore = "daily"]
 fn a_menu_closes_at_the_call_inside_its_players_own_turn() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_menus::container_counter_tests::a_menu_closes_at_the_call_inside_its_players_own_turn",
+        "cut_layout::game::server_side::native_menus::container_counter_tests::a_menu_closes_at_the_call_inside_its_players_own_turn",
         || {
             with_game(|game| {
                 let rx = watched_guest(game);

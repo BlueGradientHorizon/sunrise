@@ -55,7 +55,7 @@ impl Hooks for Probe {
 #[ignore = "daily"]
 fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity",
+        "cut_layout::game::server_side::item_contact_tests::the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity",
         the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity_isolated,
     );
 }
@@ -237,7 +237,7 @@ fn client_item(
 #[ignore = "daily"]
 fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::item_restitution_uses_the_legacy_contact_on_both_simulating_sides",
+        "cut_layout::game::server_side::item_contact_tests::item_restitution_uses_the_legacy_contact_on_both_simulating_sides",
         || {
             use {
                 crate::game::server_side::native_entity_refs::tests::with_client_game,
@@ -418,7 +418,7 @@ fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
         sunrise_gameplay_common::game::minecarts::Minecart,
     };
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives",
+        "cut_layout::game::server_side::item_contact_tests::tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives",
         || {
             let part = BounceProbe::default();
             let mods: mod_api::Mods =
@@ -527,7 +527,7 @@ fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
 #[ignore = "daily"]
 fn item_support_survives_idle_then_clears_on_an_airborne_move() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::item_support_survives_idle_then_clears_on_an_airborne_move",
+        "cut_layout::game::server_side::item_contact_tests::item_support_survives_idle_then_clears_on_an_airborne_move",
         || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                 let air = game.res.facts().air;
@@ -654,7 +654,7 @@ impl Hooks for StepProbe {
 #[ignore = "daily"]
 fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
+        "cut_layout::game::server_side::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
         || {
             use sunrise_sim::motion::{MotionWorld, PlayerMotion};
             use {
@@ -909,7 +909,7 @@ impl Hooks for StepWrites {
 #[ignore = "daily"]
 fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::step_on_hurts_the_stepping_body_and_guards_its_block_writes",
+        "cut_layout::game::server_side::item_contact_tests::step_on_hurts_the_stepping_body_and_guards_its_block_writes",
         || {
             use {
                 crate::game::server_side::native_entity_refs::tests::with_client_game,
@@ -1101,7 +1101,7 @@ impl Hooks for LivingFloor {
 #[ignore = "daily"]
 fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::step_on_can_hurt_only_living_bodies_on_the_same_block",
+        "cut_layout::game::server_side::item_contact_tests::step_on_can_hurt_only_living_bodies_on_the_same_block",
         || {
             let part = LivingFloor::default();
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -1247,7 +1247,7 @@ impl<const ORDER: u8> Hooks for StepAnswer<ORDER> {
 #[ignore = "daily"]
 fn step_on_refuses_only_the_invalid_part_outputs() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::step_on_refuses_only_the_invalid_part_outputs",
+        "cut_layout::game::server_side::item_contact_tests::step_on_refuses_only_the_invalid_part_outputs",
         || {
             let mods: mod_api::Mods = vec![
                 mod_api::ModEntry::new("a_before", Box::new(StepAnswer::<ACCEPT_BEFORE>(None))),
@@ -1352,7 +1352,7 @@ fn with_heated_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_
 #[ignore = "daily"]
 fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::contact_hurt_uses_the_world_damage_type_tags_and_death_message",
+        "cut_layout::game::server_side::item_contact_tests::contact_hurt_uses_the_world_damage_type_tags_and_death_message",
         || {
             use sunrise_gameplay::game::native_entity_refs::tests::fixture_root;
             with_heated_game(|game| {
@@ -1431,7 +1431,7 @@ fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
 #[ignore = "daily"]
 fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag",
+        "cut_layout::game::server_side::item_contact_tests::contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag",
         || {
             use sunrise_gameplay::game::native_entity_refs::tests::fixture_root;
             use sunrise_sim::motion::{MotionWorld, PlayerMotion};
@@ -1552,7 +1552,7 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
 #[ignore = "daily"]
 fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::item_contact_tests::contact_hurt_uses_the_orbs_level_fall_immunity_tag",
+        "cut_layout::game::server_side::item_contact_tests::contact_hurt_uses_the_orbs_level_fall_immunity_tag",
         || {
             use sunrise_items::items::EntityTypeTags;
             use sunrise_sim::{entities::ExperienceOrb, join_seq::JoinSeq};

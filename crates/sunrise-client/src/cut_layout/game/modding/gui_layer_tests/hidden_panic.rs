@@ -13,7 +13,7 @@ use {
 #[ignore = "daily"]
 fn a_panicking_hidden_status_replacement_leaves_other_rows() {
     if run_fresh_cases(
-        "game::client_side::gui_layer_tests::hidden_panic::a_panicking_hidden_status_replacement_leaves_other_rows",
+        "cut_layout::game::client_side::gui_layer_tests::hidden_panic::a_panicking_hidden_status_replacement_leaves_other_rows",
         "SUNRISE_HIDDEN_STATUS_PANIC_FIXTURE",
         &["run"],
     ) {
@@ -101,7 +101,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
         {
             let batch = game.hud([640, 480]);
             assert_eq!(take().as_slice(), expected);
-            assert!(!batch.vertices.iter().any(|v| v.color == FAILED));
+            assert_eq!(batch.vertices.iter().any(|v| v.color == FAILED), frame == 0);
             assert!(batch.vertices.iter().any(|v| v.color == SIBLING));
             assert_eq!(
                 game.client.chat_ui.room.bottom(),

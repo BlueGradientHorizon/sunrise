@@ -381,13 +381,17 @@ impl crate::game::ServerGame<'_> {
         tasks: Receiver<OwnerRequest>,
         opening: Opening,
     ) -> Result<(Pipe, String)> {
-        // The mods' server configs, read before the server starts.
         if let Ok(dir) = std::env::current_dir() {
+            let (cache, warnings) =
+                sunrise_server_files::user_cache::UserCache::load(dir.join("usercache.json"));
+            for warning in warnings {
+                log::warn!("{warning}");
+            }
+            self.server.user_cache = Some(cache);
             self.native_configs_server_start(&dir.join("saves").join(&launch.folder), false);
         }
         let prepared = self.prepare_early_game_rules(opening.world?)?;
         self.native_server_about_to_start(false);
-        self.native_server_starting(false);
         self.native_lifecycle_open_started();
         // `load_world`, with the world `serve` started preparing.
         startup::time("server.wait_rest", || self.common.join_world_rest())?;
@@ -462,6 +466,9 @@ impl crate::game::ServerGame<'_> {
             force_game_mode: false,
         };
         startup::time("server.lan_host", || self.lan_host(settings, net, config))?;
+        self.server.settings.render_distance =
+            sunrise_sim::lan::hub::effective_view_distance(view_distance);
+        self.server.streaming.radius = self.server.settings.render_distance;
         let commands = self.common.allow_commands();
         let pipe = {
             let host = self

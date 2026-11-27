@@ -12,7 +12,7 @@ use sunrise_level::containers::ModContainer;
 #[test]
 #[ignore = "daily"]
 fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
-    const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tests::replacement_and_item_stack_journals_close_in_their_own_dimensions";
+    const NAME: &str = "cut_layout::game::server_side::native_hooks_server::block_entity_tick::tests::replacement_and_item_stack_journals_close_in_their_own_dimensions";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_DIMENSION_JOURNALS", &["run"]) {
         return;
     }

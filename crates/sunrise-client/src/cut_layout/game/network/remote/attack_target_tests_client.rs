@@ -32,7 +32,7 @@ impl mod_api::Hooks for Crits {
 fn the_attacking_client_asks_critical_hit_once_per_attack_on_a_living_target() {
     // The resource loader sets process-wide tables (the cauldron interactions): own process.
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::attack_target_tests::the_attacking_client_asks_critical_hit_once_per_attack_on_a_living_target",
+        "cut_layout::game::client_side::remote_client::attack_target_tests::the_attacking_client_asks_critical_hit_once_per_attack_on_a_living_target",
         client_critical_hit_isolated,
     );
 }

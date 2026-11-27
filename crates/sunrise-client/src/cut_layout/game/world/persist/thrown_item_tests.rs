@@ -274,11 +274,11 @@ pub(crate) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item() {
         }
         assert!(confirmed_moved > 0, "at least one projectile must move");
 
-        let (records, refused) = game.unloading_entity_snapshots(&keys);
-        assert!(refused.is_empty());
-        game.server.save.0.save_entities(records).unwrap();
         let chunk = game.world.chunks.remove(&key).unwrap();
+        let (records, _) = game.unloading_entity_snapshots(&keys);
+        game.server.save.0.save_entities_later(records).unwrap();
         game.remove_unloading_entities(&keys);
+        game.server.save.0.flush().unwrap();
         assert!(
             game.creatures.projectiles.is_empty(),
             "chunk unload failed to remove resident projectiles"

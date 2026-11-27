@@ -89,7 +89,7 @@ impl Hooks for Lookup {
 #[ignore = "daily"]
 fn a_parked_levels_uuid_lookup_finds_its_entity_until_removed_or_unloaded() {
     if run_fresh_cases(
-        "game::server_side::native_entity_refs::level_uuid_tests::a_parked_levels_uuid_lookup_finds_its_entity_until_removed_or_unloaded",
+        "cut_layout::game::server_side::native_entity_refs::level_uuid_tests::a_parked_levels_uuid_lookup_finds_its_entity_until_removed_or_unloaded",
         "SUNRISE_TEST_LEVEL_UUID_CASE",
         &["lookup"],
     ) {

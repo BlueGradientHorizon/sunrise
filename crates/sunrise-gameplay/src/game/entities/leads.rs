@@ -5,6 +5,7 @@
 use super::commands_common::Target;
 use mod_api::LootDrops;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::item_abilities::ability::SHEARS_HARVEST;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay_common::leash_knot::{
     Knot, held_by_acting_player, resolve_pending_leash, write_mob_leash_tag,
@@ -715,7 +716,7 @@ impl crate::game::ServerGame<'_> {
                 return Some(LeashInteraction::WithoutItem);
             }
         }
-        if item == "minecraft:shears" {
+        if self.held_shears(SHEARS_HARVEST) {
             let mut dropped = false;
             if self.common.mobs[index].extra.leash.is_some() {
                 self.break_leash_used(id, true);
@@ -791,7 +792,7 @@ impl crate::game::ServerGame<'_> {
         let held_item = self.common.held().map(|s| s.item.to_string());
         let sneaking = self.server_acting_sneak();
         // Shears snip every lead on the knot.
-        if knot_hit && held_item.as_deref() == Some("minecraft:shears") {
+        if knot_hit && self.held_shears(SHEARS_HARVEST) {
             for i in existing {
                 let id = self.common.mobs[i].id;
                 self.break_leash_used(id, true);

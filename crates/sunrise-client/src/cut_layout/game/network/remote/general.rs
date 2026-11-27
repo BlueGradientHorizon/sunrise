@@ -31,7 +31,7 @@ pub(crate) mod tests {
         use sunrise_gameplay_common::game::test_fixtures::collect_entity_visit;
 
         if run_fresh_cases(
-            "game::remote::general::tests::riding_reads_follow_the_server_passenger_lists",
+            "cut_layout::game::remote::general::tests::riding_reads_follow_the_server_passenger_lists",
             "SUNRISE_CLIENT_RIDING_TEST_CHILD",
             &["riding"],
         ) {

@@ -122,7 +122,7 @@ pub(crate) mod tests {
         };
 
         if run_fresh_cases(
-            "game::server_side::lan_actions_server::tests::block_parts_pick_and_use_on_the_server_and_for_a_guest",
+            "cut_layout::game::server_side::lan_actions_server::tests::block_parts_pick_and_use_on_the_server_and_for_a_guest",
             "SUNRISE_PICK_PARTS_CHILD",
             &["players"],
         ) {

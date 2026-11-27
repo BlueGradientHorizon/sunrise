@@ -98,7 +98,7 @@ mod tests {
     #[ignore = "daily"]
     fn required_decline_closes_the_wire_but_reports_locally_and_saves() {
         in_own_process(
-            "game::client_side::server_packs::tests::required_decline_closes_the_wire_but_reports_locally_and_saves",
+            "cut_layout::game::client_side::server_packs::tests::required_decline_closes_the_wire_but_reports_locally_and_saves",
             || {
                 with_pack_prompt(true, |game, peer, file| {
                     let original_bytes = std::fs::read(file).unwrap();
@@ -171,7 +171,7 @@ mod tests {
     #[ignore = "daily"]
     fn optional_decline_replies_on_the_live_wire_and_saves_disabled_policy() {
         in_own_process(
-            "game::client_side::server_packs::tests::optional_decline_replies_on_the_live_wire_and_saves_disabled_policy",
+            "cut_layout::game::client_side::server_packs::tests::optional_decline_replies_on_the_live_wire_and_saves_disabled_policy",
             || {
                 with_pack_prompt(false, |game, peer, file| {
                     let (mut shown, hidden) = servers::load_all(file);
@@ -204,7 +204,7 @@ mod tests {
     #[ignore = "daily"]
     fn an_allowed_pack_is_accepted_before_finish_configuration() {
         in_own_process(
-            "game::server_packs::tests::an_allowed_pack_is_accepted_before_finish_configuration",
+            "cut_layout::game::client_side::server_packs::tests::an_allowed_pack_is_accepted_before_finish_configuration",
             || {
                 use sunrise_protocol::packets::{configuration as cfg, login};
                 const ADDRESS: &str = "pack-order.invalid";
@@ -271,7 +271,7 @@ mod tests {
     #[ignore = "daily"]
     fn an_audio_panic_toast_survives_its_mods_hud_veto_but_not_f1() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::client_side::server_packs::tests::an_audio_panic_toast_survives_its_mods_hud_veto_but_not_f1",
+            "cut_layout::game::client_side::server_packs::tests::an_audio_panic_toast_survives_its_mods_hud_veto_but_not_f1",
             || {
                 use mod_api::{
                     AudioStream, ClientHost, Flow, Hooks, ModEntry, RenderGuiPreEvent, SoundSource,
@@ -415,7 +415,7 @@ mod tests {
     #[cfg(any())]
     fn closing_save_reports_reach_the_title_in_the_owning_window() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::client_side::server_packs::tests::closing_save_reports_reach_the_title_in_the_owning_window",
+            "cut_layout::game::client_side::server_packs::tests::closing_save_reports_reach_the_title_in_the_owning_window",
             || {
                 use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
                 use {
@@ -503,7 +503,7 @@ mod tests {
     #[cfg(any())]
     fn scheduled_task_error_toasts_are_admitted_by_the_owning_client() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::client_side::server_packs::tests::scheduled_task_error_toasts_are_admitted_by_the_owning_client",
+            "cut_layout::game::client_side::server_packs::tests::scheduled_task_error_toasts_are_admitted_by_the_owning_client",
             || {
                 use mod_api::{
                     ClientHost, Flow, Hooks, ModEntry, ServerHost, ToastAddEvent, ToastKind,
@@ -710,7 +710,7 @@ mod tests {
     #[ignore = "daily"]
     fn hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::client_side::server_packs::tests::hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add",
+            "cut_layout::game::client_side::server_packs::tests::hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add",
             || {
                 use mod_api::{
                     ClientHost, ClientTickPreEvent, Flow, Hooks, ModEntry, RenderGuiPreEvent,

@@ -530,7 +530,7 @@ fn player_construction_precedes_disk_load_and_clone() {
     const PLAYER: Holder = Holder::Player(12);
     const FLAG: &str = "SUNRISE_PLAYER_CONSTRUCTION_CASE";
     if run_fresh_cases(
-        "game::entity_initialization::tests::player_construction_precedes_disk_load_and_clone",
+        "cut_layout::game::server_side::entity_initialization::tests::player_construction_precedes_disk_load_and_clone",
         FLAG,
         &["death", "credits"],
     ) {

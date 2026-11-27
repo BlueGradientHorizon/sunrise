@@ -49,7 +49,7 @@ mod tests {
     #[ignore = "daily"]
     fn demo_packets_open_the_parentless_intro_and_narrate_only_exact_hints() {
         in_own_process(
-            "game::client_side::demo_intro::tests::demo_packets_open_the_parentless_intro_and_narrate_only_exact_hints",
+            "cut_layout::game::client_side::demo_intro::tests::demo_packets_open_the_parentless_intro_and_narrate_only_exact_hints",
             || {
                 let veto = Arc::new(AtomicBool::new(false));
                 let mods = vec![ModEntry::new(

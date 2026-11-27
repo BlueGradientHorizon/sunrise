@@ -106,7 +106,7 @@ fn assert_progress(progress: &AdvancementProgress, obtained: [bool; 3], groups: 
 #[ignore = "daily"]
 fn progress_events_capture_each_players_full_mutation_state() {
     if run_fresh_cases(
-        "game::server_side::advancements::progress_tests::progress_events_capture_each_players_full_mutation_state",
+        "cut_layout::game::server_side::advancements::progress_tests::progress_events_capture_each_players_full_mutation_state",
         "SUNRISE_PROGRESS_SNAPSHOT_CHILD",
         &[
             "acting",

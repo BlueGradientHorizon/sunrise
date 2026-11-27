@@ -511,12 +511,21 @@ impl crate::game::ServerGame<'_> {
         None
     }
 
-    /// `PersistentEntitySectionManager.addEntityUuid`: another resident object
-    /// already holds `uuid`, so this one is refused level residency.
+    #[cfg(not(feature = "test-support"))]
     pub(in crate::game::server_side) fn uuid_admission_refused(
         &self,
         uuid: Option<[i32; 4]>,
     ) -> bool {
+        self.resident_uuid_conflicts(uuid)
+    }
+
+    #[cfg(feature = "test-support")]
+    pub fn uuid_admission_refused(&self, uuid: Option<[i32; 4]>) -> bool {
+        self.resident_uuid_conflicts(uuid)
+    }
+
+    /// `PersistentEntitySectionManager.addEntityUuid` refuses a UUID held by another resident object.
+    fn resident_uuid_conflicts(&self, uuid: Option<[i32; 4]>) -> bool {
         uuid.is_some_and(|uuid| {
             self.target_with_uuid(uuid)
                 .is_some_and(|target| target != crate::game::commands::Target::Player)
@@ -637,10 +646,13 @@ impl crate::game::ServerGame<'_> {
         if resident {
             self.bind_saved_entity_attachments(id, &mut m.attachment_lifetime);
             self.common.mobs.push(m);
+            let join = self.common.mobs.last().unwrap().join;
+            self.flush_resident_mob_parts(id, join);
             if restore_target {
                 self.native_restore_loaded_target(id, anger_uuid);
             }
         } else {
+            self.flush_unjoined_mob_parts(&mut m);
             self.common.persist.off_level.insert(id, OffLevel::Mob(m));
         }
         id

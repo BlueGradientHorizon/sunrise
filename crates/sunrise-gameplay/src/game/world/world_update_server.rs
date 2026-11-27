@@ -24,7 +24,6 @@ impl crate::game::ServerGame<'_> {
         let areas = self.server.streaming.extra.len();
         self.update_world_server(dim);
         self.server.streaming.hold_unknown_tickets();
-        let first = self.common.world.loaded_chunks.len();
         let mut plan = sunrise_level::spans::time("streaming_plan", || {
             let mut step = self
                 .server
@@ -43,7 +42,6 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         });
-        self.ask_loaded_light_emission(first);
         if wait {
             // Do not replace stored entities while their load is pending.
             plan.retain_unloading_columns(|key| !self.common.world.entities_pending.contains(key));
@@ -104,6 +102,7 @@ impl crate::game::ServerGame<'_> {
         });
         self.server.streaming.extra.truncate(areas);
         sunrise_level::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
+        self.ask_loaded_light_emission(0);
         sunrise_level::spans::time("mods_chunks_changed", || {
             self.native_chunks_loaded();
             self.native_chunks_unloaded(&unloaded);

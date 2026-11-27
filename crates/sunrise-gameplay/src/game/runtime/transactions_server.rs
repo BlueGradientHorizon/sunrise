@@ -1833,8 +1833,7 @@ impl crate::game::ServerGame<'_> {
         match after {
             After::BlockEntityRemoved(effects) => self.apply_removed_block_entity_effects(effects),
             After::DispenseEvent(id, (x, y, z), data) => {
-                crate::game::dispense_fixture::record(|| format!("L {id} {x},{y},{z} {data}"));
-                self.server_level_event_at(id, [x, y, z], data);
+                self.server_level_event_at(id, [x, y, z], data)
             }
             After::Payload(payload) => payload.publish(),
             After::Packet(..) => {

@@ -4,15 +4,7 @@ use {
 };
 
 pub(in crate::game) fn isolated(name: &str, body: impl FnOnce()) {
-    let test = if name.contains("::") {
-        name.split_once("::")
-            .map_or(name, |(_, rest)| rest)
-            .to_owned()
-    } else {
-        let (_, module) = module_path!().split_once("::").unwrap();
-        format!("{module}::{name}")
-    };
-    sunrise_gameplay_common::game::in_own_process(&test, body);
+    sunrise_gameplay_common::game::in_own_process(name, body);
 }
 
 pub(in crate::game) fn deliver(

@@ -15,7 +15,7 @@ use {
 fn a_discarded_trident_does_not_apply_its_captured_impact() {
     const CASE: &str = "SUNRISE_TRIDENT_DISCARD_CASE";
     if run_fresh_cases(
-        "game::client_side::trident_client::impact_tests::a_discarded_trident_does_not_apply_its_captured_impact",
+        "cut_layout::game::client_side::trident_client::impact_tests::a_discarded_trident_does_not_apply_its_captured_impact",
         CASE,
         &["block", "entity"],
     ) {
@@ -101,7 +101,7 @@ fn a_discarded_trident_does_not_apply_its_captured_impact() {
 fn a_refused_trident_contact_keeps_the_contact_and_finishes_the_tick() {
     const CASE: &str = "SUNRISE_TRIDENT_REFUSAL_CASE";
     if run_fresh_cases(
-        "game::client_side::trident_client::impact_tests::a_refused_trident_contact_keeps_the_contact_and_finishes_the_tick",
+        "cut_layout::game::client_side::trident_client::impact_tests::a_refused_trident_contact_keeps_the_contact_and_finishes_the_tick",
         CASE,
         &["cancel", "clear"],
     ) {

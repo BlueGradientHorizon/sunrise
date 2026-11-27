@@ -180,6 +180,69 @@ pub(in crate::game) fn reset_local(game: &mut crate::game::ServerGame<'_>) {
             guest.menu = None;
         });
 }
+#[cfg(test)]
+type SelectLocalFurnace = Box<dyn FnOnce(&mut crate::game::ServerGame<'_>)>;
+
+#[cfg(test)]
+fn with_local_furnace(
+    pos: (i32, i32, i32),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, SelectLocalFurnace),
+) {
+    use sunrise_sim::lan::menu::Slots;
+
+    with_local(|game| {
+        let game_mode = if game.common.creative { 1 } else { 0 };
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
+        let inventory_menu = hub.guests[0].menu_before_replacement();
+        let carried = hub.guests.update(0, |guest| {
+            guest.game_mode = game_mode;
+            // The local inventory and furnace share one cursor, so leave nothing to park.
+            guest.carried.take()
+        });
+        hub.open_menu_window(
+            12,
+            "minecraft:furnace",
+            sunrise_protocol::text::translatable("container.furnace", &[]),
+            Some(pos),
+            Slots::Block(pos),
+            vec![None; 3],
+            None,
+        )
+        .expect("local furnace window");
+        let furnace_menu = hub.guests[0].menu_before_replacement();
+        hub.guests.update(0, |guest| {
+            inventory_menu(guest);
+            guest.carried = carried;
+        });
+        test(
+            game,
+            Box::new(move |game| {
+                game.common.container = Some(pos);
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, furnace_menu);
+            }),
+        );
+    });
+}
+#[cfg(test)]
+fn clear_local_furnace(game: &mut crate::game::ServerGame<'_>) {
+    game.common.container = None;
+    game.server
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .guests
+        .update(0, |guest| {
+            let menu = guest.menu.take().expect("selected local furnace");
+            guest.carried = guest.close_menu_cursor(menu.window);
+        });
+}
 pub fn count(stack: &Option<ItemStack>) -> u32 {
     stack.as_ref().map_or(0, |s| s.count)
 }
@@ -216,7 +279,8 @@ pub(in crate::game) fn local_menu_ops(
     let carried = game.common.carried.clone();
     let game_mode = if game.common.creative { 1 } else { 0 };
     let container_pos = game.common.container;
-    game.server
+    let container = game
+        .server
         .lan
         .as_mut()
         .unwrap()
@@ -225,23 +289,11 @@ pub(in crate::game) fn local_menu_ops(
         .update(0, |guest| {
             let len = guest.inventory.len().min(inv.len());
             guest.inventory[..len].clone_from_slice(&inv[..len]);
-            guest.carried = carried;
             guest.game_mode = game_mode;
-            if container_pos.is_none() {
-                guest.menu = None;
-            }
+            guest.carried = carried;
+            assert_eq!(guest.menu.as_ref().and_then(|menu| menu.pos), container_pos);
+            guest.menu.as_ref().map_or(0, |menu| menu.window)
         });
-    let container = match container_pos {
-        Some(pos) => {
-            game.open_block_menu(12, pos);
-            game.server.lan.as_ref().unwrap().hub.guests[0]
-                .menu
-                .as_ref()
-                .unwrap()
-                .window
-        }
-        None => 0,
-    };
     for &(slot, button, input) in ops {
         let input = match input {
             Input::Pickup => sunrise_sim::lan::menu::input::PICKUP,
@@ -2509,7 +2561,7 @@ pub mod item_part_tests {
     fn item_part_override_contract_supports_decline_edits_and_output_slots() {
         use sunrise_level::containers::{BlockEntity, Furnace, FurnaceKind};
         with_part_only_mod(|| {
-            with_local(|game| {
+            with_local_furnace((1, 64, 1), |game, select_furnace| {
                 // A declining part passes its edits to the next part and then to plain pickup.
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -2573,13 +2625,6 @@ pub mod item_part_tests {
                     (0, 0),
                     std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
-                let furnace_state = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:furnace")
-                    .unwrap();
-                game.world.set(pos.0, pos.1, pos.2, furnace_state).unwrap();
                 let furnace = Furnace {
                     kind: FurnaceKind::Furnace,
                     items: [None, None, Some(ItemStack::new("minecraft:flint", 4))],
@@ -2593,7 +2638,7 @@ pub mod item_part_tests {
                 game.world
                     .block_entities
                     .insert(pos, BlockEntity::Furnace(furnace));
-                game.container = Some(pos);
+                select_furnace(game);
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
@@ -2791,7 +2836,7 @@ pub mod item_part_tests {
                 assert!(local_menu_ops(game, &[(Some(302), 0, Input::Pickup)]));
                 assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
                 assert_eq!(game.orbs.iter().map(|o| o.points()).sum::<u32>(), 7);
-                game.container = None;
+                clear_local_furnace(game);
             });
         });
 
@@ -3060,7 +3105,7 @@ pub mod item_part_tests {
         //    directly editing a Furnace output slot, or taking from the slot are
         //    ALL refused for Hooks::item_stacked_on_other.
         with_mod(|| {
-            with_local(|game| {
+            with_local_furnace((2, 64, 2), |game, select_furnace| {
                 let pos = (2, 64, 2);
                 game.world.chunks.insert(
                     (0, 0),
@@ -3079,7 +3124,7 @@ pub mod item_part_tests {
                         recipes_used: std::collections::HashMap::new(),
                     }),
                 );
-                game.container = Some(pos);
+                select_furnace(game);
                 game.carried = Some(ItemStack::new("minecraft:stone", 1));
                 for bad in [
                     Script {
@@ -3111,7 +3156,7 @@ pub mod item_part_tests {
                         "global listener output-slot write/take must remain refused"
                     );
                 }
-                game.container = None;
+                clear_local_furnace(game);
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 4));
                 game.carried = Some(ItemStack::new("minecraft:stone", 1));
                 script(Script {

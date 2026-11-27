@@ -17,7 +17,7 @@ pub(crate) mod tests {
             record_key, run_fresh_cases, with_game_at,
         };
         if run_fresh_cases(
-            "game::server_side::machines::native_fluids::tests::a_mods_cauldron_fills_and_drains_by_its_levels_and_a_refusal_names_both_sides",
+            "cut_layout::game::server_side::machines::native_fluids::tests::a_mods_cauldron_fills_and_drains_by_its_levels_and_a_refusal_names_both_sides",
             "SUNRISE_CAULDRON_CONTENT_CHILD",
             &["valid"],
         ) {
@@ -277,7 +277,7 @@ pub(crate) mod tests {
         use super::super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
         use sunrise_gameplay::game::machines::native_fluids::read_tanks;
         if run_fresh_cases(
-            "game::server_side::machines::native_fluids::tests::a_scoped_tank_can_refuse_a_fluid",
+            "cut_layout::game::server_side::machines::native_fluids::tests::a_scoped_tank_can_refuse_a_fluid",
             "SUNRISE_SCOPED_FLUID_CHILD",
             &["valid"],
         ) {

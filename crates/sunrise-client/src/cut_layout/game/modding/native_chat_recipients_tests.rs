@@ -432,7 +432,7 @@ fn dispatcher_say_uses_player_chat_for_the_source_too() {
 #[test]
 #[ignore = "daily"]
 fn listener_commands_do_not_count_as_command_block_successes() {
-    let name = "game::server_side::native_chat_recipients_tests::listener_commands_do_not_count_as_command_block_successes";
+    let name = "cut_layout::game::server_side::native_chat_recipients_tests::listener_commands_do_not_count_as_command_block_successes";
     sunrise_gameplay_common::game::in_own_process(name, || {
         let results = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![mod_api::ModEntry::new(
@@ -523,7 +523,7 @@ fn nested_say_passes_through_the_same_recipient_checks() {
 #[ignore = "daily"]
 fn panicking_chat_filter_is_reported_without_losing_other_vetoes() {
     if run_fresh_cases(
-        "game::server_side::native_chat_recipients_tests::panicking_chat_filter_is_reported_without_losing_other_vetoes",
+        "cut_layout::game::server_side::native_chat_recipients_tests::panicking_chat_filter_is_reported_without_losing_other_vetoes",
         "SUNRISE_CHAT_FILTER_PANIC_CASE",
         &["panic"],
     ) {

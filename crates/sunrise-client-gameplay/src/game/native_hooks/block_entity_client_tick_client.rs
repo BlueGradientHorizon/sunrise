@@ -176,9 +176,9 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    /// `BlockState.getTicker` with the client level, for every block state: spawners, trial
+    /// `BlockState.getTicker` with the client level, for every vanilla block state: spawners, trial
     /// spawners, vaults, beacons, the animated block entities, lit campfires and non-dry potent
-    /// sulfur. Mod blocks opt in once per block for all of their states.
+    /// sulfur. Mod block entities select from their separate type-and-state table.
     pub(in crate::game) fn client_ticking_states(&self) -> Vec<Ticking> {
         let registry = self.common.pack.assets.registry;
         (0..registry.len())

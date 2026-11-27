@@ -47,7 +47,7 @@ fn apply_packets(
 fn datapack_game_reload_delivers_only_successful_generations_and_disconnects_refused_guests() {
     // Both peers use process-wide snapshots; another fixture must not replace either one.
     if run_fresh_cases(
-        "game::server_side::server_reload::tests::datapack_publication_tests::datapack_game_delivery_tests::datapack_game_reload_delivers_only_successful_generations_and_disconnects_refused_guests",
+        "cut_layout::game::server_side::server_reload::tests::datapack_publication_tests::datapack_game_delivery_tests::datapack_game_reload_delivers_only_successful_generations_and_disconnects_refused_guests",
         "SUNRISE_DATAPACK_RELOAD_DELIVERY_CHILD",
         &["delivery"],
     ) {

@@ -93,7 +93,7 @@ fn sound_id(game: &sunrise_gameplay::game::ServerGame<'_>, name: &str) -> i32 {
 #[ignore = "daily"]
 fn seed_draws_and_seeded_sounds_take_the_level_sound_seed_stream_in_call_order() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_sound_seed_tests::seed_draws_and_seeded_sounds_take_the_level_sound_seed_stream_in_call_order",
+        "cut_layout::game::native_sound_seed_tests::seed_draws_and_seeded_sounds_take_the_level_sound_seed_stream_in_call_order",
         || {
             with_guests(|game| {
                 let Fixture {
@@ -213,7 +213,7 @@ fn seed_draws_and_seeded_sounds_take_the_level_sound_seed_stream_in_call_order()
 #[ignore = "daily"]
 fn seed_draws_happen_at_the_call_inside_transactions_and_held_sounds_draw_at_commit() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_sound_seed_tests::seed_draws_happen_at_the_call_inside_transactions_and_held_sounds_draw_at_commit",
+        "cut_layout::game::native_sound_seed_tests::seed_draws_happen_at_the_call_inside_transactions_and_held_sounds_draw_at_commit",
         || {
             with_guests(|game| {
                 let Fixture {

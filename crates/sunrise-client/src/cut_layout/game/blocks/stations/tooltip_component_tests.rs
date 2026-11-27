@@ -108,7 +108,7 @@ const TOOLTIP_CHILD: &str = "SUNRISE_TOOLTIP_COMPONENT_CASE";
 
 fn run_tooltip_cases(test: &str, cases: &[&str]) -> bool {
     run_fresh_cases(
-        &format!("game::client_side::stations::tooltip::component_tests::{test}"),
+        &format!("cut_layout::game::client_side::stations::tooltip::component_tests::{test}"),
         TOOLTIP_CHILD,
         cases,
     )

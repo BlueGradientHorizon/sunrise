@@ -19,7 +19,7 @@ pub(in crate::game) mod tests {
 
         const CHILD: &str = "SUNRISE_DECLARED_BE_GAME_CHILD";
         if run_fresh_cases(
-            "game::native_hooks::tests::declared_types_create_tick_and_reload_through_game",
+            "cut_layout::game::native_hooks::tests::declared_types_create_tick_and_reload_through_game",
             CHILD,
             &["valid", "unknown_block", "unknown_type", "block_not_type"],
         ) {
@@ -339,7 +339,7 @@ pub(in crate::game) mod tests {
         // This fixture adds blocks that are absent from the shared vanilla
         // game's frozen process-wide block definitions.
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_hooks::tests::mod_sign_constructor_prioritizes_templates_over_suffixes",
+            "cut_layout::game::native_hooks::tests::mod_sign_constructor_prioritizes_templates_over_suffixes",
             "SUNRISE_SIGN_CONSTRUCTOR_CHILD",
             &["signs"],
         ) {
@@ -624,7 +624,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn no_stack_is_hovered_without_a_window() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::native_hooks::tests::no_stack_is_hovered_without_a_window",
+            "cut_layout::game::native_hooks::tests::no_stack_is_hovered_without_a_window",
             || {
                 use {
                     crate::game::Audio, crate::game::Settings, crate::game::load_resources,
@@ -684,7 +684,7 @@ pub(in crate::game) mod tests {
 
         const CHILD: &str = "SUNRISE_STOCK_STORAGE_CHILD";
         if run_fresh_cases(
-            "game::native_hooks::tests::declared_stock_storage_honors_shapes_and_rates",
+            "cut_layout::game::native_hooks::tests::declared_stock_storage_honors_shapes_and_rates",
             CHILD,
             &["run"],
         ) {

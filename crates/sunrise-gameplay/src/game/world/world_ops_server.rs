@@ -91,7 +91,19 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn server_tick(&mut self) -> Result<()> {
-        self.tick_server_first()
+        if !self.common.is_logical_server() {
+            return Err("client-role game cannot tick a server level".into());
+        }
+        if self.server.hold_server {
+            return Ok(());
+        }
+        self.abort_open_transactions();
+        self.common.update_interaction_ranges();
+        let running = self.common.clock.world_runs();
+        if running {
+            sunrise_level::spans::time("tick_functions", || self.tick_functions());
+        }
+        self.tick_first_level(running)
     }
 
     pub(in crate::game) fn server_drop_stack_from_eyes(

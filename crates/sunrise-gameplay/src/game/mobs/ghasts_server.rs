@@ -1,4 +1,5 @@
 use crate::game::ServerGame;
+use sunrise_gameplay_common::game::item_abilities::ability;
 use sunrise_sim::mobs::happy_ghast;
 
 impl ServerGame<'_> {
@@ -32,7 +33,7 @@ impl ServerGame<'_> {
             return true;
         }
         // Equippable.canBeSheared: shears take the harness off again.
-        if item == "minecraft:shears"
+        if self.held_shears(ability::SHEARS_REMOVE_ARMOR)
             && harnessed
             && !sneaking
             && let Some(harness) = self.common.mobs[index].take_body_equipment()

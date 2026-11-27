@@ -38,8 +38,7 @@ impl ServerGame<'_> {
             }
         }
         if keys.is_empty() {
-            self.spawn_loaded_entities();
-            Ok(Some(self.common.world.chunks.keys().copied().collect()))
+            Ok(Some(self.prepare_entity_save().into_iter().collect()))
         } else {
             Ok(None)
         }
@@ -65,10 +64,15 @@ impl ServerGame<'_> {
         if keys.is_empty() {
             self.prune_entity_memory();
             self.save_raids();
-            self.server
+            if let Err(error) = self
+                .server
                 .save
                 .0
-                .save_attachments(&self.common.world.attachments)?;
+                .save_attachments(&self.common.world.attachments)
+                && !error.is::<sunrise_mod_runtime::attachments::AttachmentEncodeError>()
+            {
+                return Err(error);
+            }
             self.save_chunk_tickets()?;
             self.save_entity_metadata()?;
             self.save_game_metadata()?;
@@ -257,6 +261,7 @@ impl ServerGame<'_> {
                     };
                     *flush = None;
                     result?;
+                    self.entity_save_complete()?;
                     Ok(true)
                 }
             }

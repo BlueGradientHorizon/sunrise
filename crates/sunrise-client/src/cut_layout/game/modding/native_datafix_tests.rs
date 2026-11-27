@@ -73,7 +73,7 @@ impl Hooks for Upgrade {
 fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
     const CHILD: &str = "SUNRISE_NATIVE_DATAFIX_CHILD";
     if run_fresh_cases(
-        "game::native_datafix_tests::a_mods_host_upgrades_old_data_and_refuses_by_name",
+        "cut_layout::game::native_datafix_tests::a_mods_host_upgrades_old_data_and_refuses_by_name",
         CHILD,
         &["client", "server"],
     ) {

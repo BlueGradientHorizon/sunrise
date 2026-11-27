@@ -5,7 +5,7 @@ use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 #[ignore = "daily"]
 fn forgetting_and_closing_remote_columns_clear_their_data() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::remote_columns_tests::forgetting_and_closing_remote_columns_clear_their_data",
+        "cut_layout::game::remote::tests::remote_columns_tests::forgetting_and_closing_remote_columns_clear_their_data",
         || {
             with_client_game(|game| {
                 for x in 0..2 {
@@ -44,7 +44,7 @@ fn forgetting_and_closing_remote_columns_clear_their_data() {
 #[ignore = "daily"]
 fn every_free_route_returns_the_columns_it_freed_once() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::remote_columns_tests::every_free_route_returns_the_columns_it_freed_once",
+        "cut_layout::game::remote::tests::remote_columns_tests::every_free_route_returns_the_columns_it_freed_once",
         || {
             with_client_game(|game| {
                 for x in [0, 1] {

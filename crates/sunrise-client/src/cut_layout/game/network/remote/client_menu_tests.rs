@@ -237,7 +237,7 @@ fn retained_effects_rebind_on_reconfiguration_and_refusals_do_not_block_clicks()
 #[ignore = "daily"]
 fn client_menu_kind_names_the_server_menu_type() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::remote::tests::client_menu_tests::client_menu_kind_names_the_server_menu_type",
+        "cut_layout::game::remote::tests::client_menu_tests::client_menu_kind_names_the_server_menu_type",
         || {
             use crate::game::server_side::native_entity_refs::tests::with_client_game;
             use sunrise_core::nbt::Tag;

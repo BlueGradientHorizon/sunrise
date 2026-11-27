@@ -1259,7 +1259,7 @@ mod tests {
         use sunrise_sim::lan::entity::{Entities, Tracker};
 
         if run_fresh_cases(
-            "game::lan_entities::tests::a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw",
+            "game::server_side::lan_entities::tests::a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw",
             "SUNRISE_STAND_PAIR_TEST",
             &["pair"],
         ) {
@@ -1335,7 +1335,7 @@ mod tests {
         use sunrise_sim::lan::entity::{Entities, Tracker};
 
         if run_fresh_cases(
-            "game::lan_entities::tests::stand_rotation_commands_update_the_head_for_an_already_paired_viewer",
+            "game::server_side::lan_entities::tests::stand_rotation_commands_update_the_head_for_an_already_paired_viewer",
             "SUNRISE_STAND_COMMAND_YAW_TEST",
             &["rotate", "teleport", "teleport_without_rotation"],
         ) {

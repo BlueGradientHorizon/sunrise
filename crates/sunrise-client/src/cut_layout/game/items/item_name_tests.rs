@@ -8,9 +8,9 @@ use {
     sunrise_gameplay::game::native_entity_refs::tests::with_game,
 };
 
-const NAME: &str = "game::item_name_tests::a_part_names_its_stacks_everywhere_the_game_names_them";
-const RENAME_BOX: &str =
-    "game::item_name_tests::a_client_anvil_click_fills_the_rename_box_with_the_parts_name";
+const NAME: &str =
+    "cut_layout::game::item_name_tests::a_part_names_its_stacks_everywhere_the_game_names_them";
+const RENAME_BOX: &str = "cut_layout::game::item_name_tests::a_client_anvil_click_fills_the_rename_box_with_the_parts_name";
 const KEY: &str = "item.test.bundle_of_notes";
 
 /// A paper's Part: a stack of more than one is named by `KEY`, one is left to the default.

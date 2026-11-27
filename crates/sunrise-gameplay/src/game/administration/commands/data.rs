@@ -1046,12 +1046,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-/// `sunrise:finalize` off `tag` and off the riders under its `Passengers`:
-/// only worldgen leaves it, for a structure mob the game finishes when its
-/// chunk loads (`Game::load_mob`), never for a player to ask for. Taken off the
-/// compounds a player's NBT arrives in: `/summon`'s argument, `/data`'s and the
-/// `minecraft:entity_data` component's (`Game::apply_entity_nbt`), and
-/// `native_summon`, which takes `/summon`'s argument.
+/// Reserve worldgen's `sunrise:finalize` by stripping it from NBT trees supplied by `/summon`, `LevelRef::summon`, `/data` and `minecraft:entity_data`.
 pub(in crate::game::server_side) fn strip_finalize_tree(tag: &mut Tag) {
     let Tag::Compound(c) = tag else { return };
     c.remove(&"sunrise:finalize".into());

@@ -790,7 +790,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
 #[ignore = "daily"]
 fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
     if run_fresh_cases(
-        "game::server_side::native_menus::owned_slots_tests::closing_discards_owned_slots_unless_the_listener_returns_their_contents",
+        "cut_layout::game::server_side::native_menus::owned_slots_tests::closing_discards_owned_slots_unless_the_listener_returns_their_contents",
         "SUNRISE_OWNED_MENU_CLOSE_CASE",
         &["close"],
     ) {
@@ -2303,9 +2303,8 @@ impl MenuPart for ProcessingPart {
                     1,
                 )
                 .unwrap();
-                // The write settles with the click's own transaction.
                 let inserted = host
-                    .current_transaction(|host, tx| {
+                    .transaction(|host, tx| {
                         ItemPlace::MenuSlot { menu, slot: 0 }.insert(
                             host,
                             tx,
@@ -2314,7 +2313,7 @@ impl MenuPart for ProcessingPart {
                         )
                     })
                     .expect("click transaction");
-                assert_eq!(inserted, Ok(1));
+                assert_eq!(inserted, 1);
                 Flow::Cancel
             }
         }

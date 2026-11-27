@@ -26,7 +26,7 @@ use {
 #[ignore = "daily"]
 fn same_mob_guest_attack_survives_movement_panic() {
     if run_fresh_cases(
-        "game::server_side::creatures_server::retained_limits_tests::same_mob_guest_attack_survives_movement_panic",
+        "cut_layout::game::server_side::creatures_server::retained_limits_tests::same_mob_guest_attack_survives_movement_panic",
         "SUNRISE_SAME_MOB_GUEST_ATTACK_CASE",
         &["movement-panic"],
     ) {

@@ -380,7 +380,7 @@ fn attack_by_id_reports_the_pick_the_click_was_taken_with() {
 #[ignore = "daily"]
 fn attack_by_id_reports_a_click_no_tick_took() {
     if run_fresh_cases(
-        "game::client_side::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took",
+        "cut_layout::game::client_side::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took",
         "SUNRISE_AGENT_ATTACK_CLICK_NOT_TAKEN_CHILD",
         &["switcher"],
     ) {
@@ -414,7 +414,7 @@ fn attack_by_id_reports_a_click_no_tick_took() {
 #[ignore = "daily"]
 fn attack_by_id_stop_retires_only_its_queued_click() {
     if run_fresh_cases(
-        "game::client_side::agent::face_pick_tests::attack_by_id_stop_retires_only_its_queued_click",
+        "cut_layout::game::client_side::agent::face_pick_tests::attack_by_id_stop_retires_only_its_queued_click",
         "SUNRISE_AGENT_ATTACK_STOP_CHILD",
         &["stop"],
     ) {
@@ -440,7 +440,7 @@ fn attack_by_id_stop_retires_only_its_queued_click() {
 #[ignore = "daily"]
 fn attack_by_id_expiry_retires_only_its_queued_click() {
     if run_fresh_cases(
-        "game::client_side::agent::face_pick_tests::attack_by_id_expiry_retires_only_its_queued_click",
+        "cut_layout::game::client_side::agent::face_pick_tests::attack_by_id_expiry_retires_only_its_queued_click",
         "SUNRISE_AGENT_ATTACK_EXPIRY_CHILD",
         &["expiry"],
     ) {

@@ -5,7 +5,7 @@ use crate::game::server_side::native_projectiles::impact_probe::{Action, with_pr
 #[ignore = "daily"]
 fn rocket_impact_listener_can_save_the_advanced_rocket() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::fireworks_server::impact::tests::rocket_impact_listener_can_save_the_advanced_rocket",
+        "cut_layout::game::server_side::fireworks_server::impact::tests::rocket_impact_listener_can_save_the_advanced_rocket",
         || {
             with_probe(Action::SaveOnImpact, true, |game, observed| {
                 let stone = game

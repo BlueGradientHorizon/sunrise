@@ -1743,13 +1743,11 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
                 .is_some_and(|generation| self.is_placement_entity(pos, generation));
         self.journal_remove_block_entity(pos);
         if placement {
+            self.world.block_names.remove(&pos);
+            self.world.forget_block_entity_source(pos);
             self.side_tx_invalidate_placement_hopper(pos);
         }
         let common = self.common_mut();
-        if placement {
-            common.world.block_names.remove(&pos);
-            common.world.forget_block_entity_source(pos);
-        }
         let Some(level) = entities::open_in(&mut common.transactions, common.dim) else {
             return;
         };

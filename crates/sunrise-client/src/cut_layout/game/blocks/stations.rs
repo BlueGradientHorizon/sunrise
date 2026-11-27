@@ -163,7 +163,7 @@ pub(crate) mod tests {
         };
 
         if run_fresh_cases(
-            "game::client_side::stations::tests::tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip",
+            "cut_layout::game::client_side::stations::tests::tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip",
             "SUNRISE_TOOLTIP_PART_CHILD",
             &["tooltip"],
         ) {
@@ -289,7 +289,7 @@ pub(crate) mod tests {
         };
 
         if run_fresh_cases(
-            "game::client_side::stations::tests::item_tooltip_invalid_edit_keeps_other_listeners_lines",
+            "cut_layout::game::client_side::stations::tests::item_tooltip_invalid_edit_keeps_other_listeners_lines",
             "SUNRISE_ITEM_TOOLTIP_INVALID_EDIT_CHILD",
             &["malformed"],
         ) {

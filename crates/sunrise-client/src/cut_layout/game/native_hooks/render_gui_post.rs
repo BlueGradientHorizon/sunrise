@@ -11,7 +11,7 @@ mod tests {
         use mod_api::{ClientHost, Hooks, ModEntry, RenderGuiPostEvent};
         use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 
-        const NAME: &str = "game::native_hooks::render_gui_post::tests::panicking_hud_draw_discards_quads_and_reservations_before_next_listener";
+        const NAME: &str = "cut_layout::game::native_hooks::render_gui_post::tests::panicking_hud_draw_discards_quads_and_reservations_before_next_listener";
         if run_fresh_cases(NAME, "SUNRISE_GUI_POST_PANIC", &["run"]) {
             return;
         }

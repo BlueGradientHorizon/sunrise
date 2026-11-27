@@ -3,7 +3,7 @@ use sunrise_client_gameplay::game::native_hooks::enchantments::EnchantmentsGameE
 #[ignore = "daily"]
 fn enchantment_registry_returns_records_and_unknown_cost() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::enchantment_and_lang_tests::enchantment_registry_returns_records_and_unknown_cost",
+        "cut_layout::game::native_hooks::enchantment_and_lang_tests::enchantment_registry_returns_records_and_unknown_cost",
         || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                 let all = game.enchantments();
@@ -38,7 +38,7 @@ fn enchantment_registry_returns_records_and_unknown_cost() {
 #[ignore = "daily"]
 fn a_servers_synced_enchantment_reaches_the_registry_reads() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::enchantment_and_lang_tests::a_servers_synced_enchantment_reaches_the_registry_reads",
+        "cut_layout::game::native_hooks::enchantment_and_lang_tests::a_servers_synced_enchantment_reaches_the_registry_reads",
         || {
             sunrise_client_gameplay::game::client_side::native_entity_refs::tests::with_client_game(
                 |game| {
@@ -121,7 +121,7 @@ fn a_trait_mod_measures_text_through_its_draw_context() {
 #[ignore = "daily"]
 fn a_server_host_reads_enchantment_definitions() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::native_hooks::enchantment_and_lang_tests::a_server_host_reads_enchantment_definitions",
+        "cut_layout::game::native_hooks::enchantment_and_lang_tests::a_server_host_reads_enchantment_definitions",
         || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());

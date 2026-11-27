@@ -31,7 +31,7 @@ impl Hooks for Parts {
 #[ignore = "daily"]
 fn a_part_names_the_selected_stick_while_its_name_shows() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::highlight_tip_tests::a_part_names_the_selected_stick_while_its_name_shows",
+        "cut_layout::game::client_side::highlight_tip_tests::a_part_names_the_selected_stick_while_its_name_shows",
         || {
             let mods: mod_api::Mods =
                 vec![mod_api::ModEntry::new("charge", Box::new(Parts))].into();

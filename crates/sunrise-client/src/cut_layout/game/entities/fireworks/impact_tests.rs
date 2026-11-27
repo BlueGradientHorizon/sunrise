@@ -138,7 +138,7 @@ fn rocket_impact_rechecks_subscriptions_per_impact_moment() {
     use sunrise_sim::motion::PlayerMotion;
 
     if run_fresh_cases(
-        "cut_layout::game::entities::fireworks::impact::tests::rocket_impact_rechecks_subscriptions_per_impact_moment",
+        "cut_layout::game::fireworks::impact::tests::rocket_impact_rechecks_subscriptions_per_impact_moment",
         "SUNRISE_ROCKET_IMPACT_SUBSCRIPTION_CASE",
         &["disable"],
     ) {

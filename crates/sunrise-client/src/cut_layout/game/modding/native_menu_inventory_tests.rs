@@ -389,7 +389,7 @@ mod owner {
         use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 
         if run_fresh_cases(
-            "game::server_side::native_menu_inventory_tests::owner::a_non_owner_guest_in_another_level_keeps_their_stack_through_an_abort",
+            "cut_layout::game::server_side::native_menu_inventory_tests::owner::a_non_owner_guest_in_another_level_keeps_their_stack_through_an_abort",
             "SUNRISE_CROSS_LEVEL_INVENTORY_CASE",
             &["overflow"],
         ) {

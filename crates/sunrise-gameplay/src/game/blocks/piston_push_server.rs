@@ -1096,6 +1096,9 @@ impl crate::game::ServerGame<'_> {
             }
             return self.resolve_push_target(selected);
         }
+        if let EntityHandle::General(i) = handle {
+            return self.finish_general_move(selected, target, i, (wanted, moved));
+        }
         // Stands retain support, but do not use nonliving restitution.
         if matches!(handle, EntityHandle::ArmorStand(_)) {
             return Some(target);
@@ -1176,7 +1179,7 @@ impl crate::game::ServerGame<'_> {
                 sunrise_gameplay_common::game::armor_stands_common::TYPE_ID
             }
             EntityHandle::Mob(_) | EntityHandle::General(_) => {
-                return Some(MoveWho::Entity(handle));
+                unreachable!("a mob or a general row finished its move above")
             }
         };
         let response = with_entity!(self, handle, entity => {
@@ -1212,6 +1215,64 @@ impl crate::game::ServerGame<'_> {
         if hit {
             self.resident_entities.general.rows[i].fall_distance = 0.0;
         }
+    }
+
+    fn finish_general_move(
+        &mut self,
+        selected: PushTarget,
+        target: MoveWho,
+        i: usize,
+        (wanted, moved): (Vec3, Vec3),
+    ) -> Option<MoveWho> {
+        let row = &self.common.resident_entities.general.rows[i];
+        if row.no_physics {
+            return Some(target);
+        }
+        let (id, feet, velocity, fall) = (row.id, row.position, row.velocity, row.fall_distance);
+        let gravity = row.get_gravity();
+        let ground = sunrise_world::ground_support::GroundState::from_ground_flag(row.on_ground);
+        let kind =
+            sunrise_gameplay_common::game::general::general_type_catalog().key(row.type_slot);
+        let differs = sunrise_world::entity_move::different;
+        let collided =
+            wanted.y != moved.y || differs(wanted.x, moved.x) || differs(wanted.z, moved.z);
+        let velocity = if collided {
+            let response = {
+                let side = game_side!(self);
+                let motion = self.common.body_motion(&side);
+                let effect = motion.legacy_contact(feet, &ground);
+                motion.restitute(
+                    (id, kind),
+                    sunrise_sim::motion::BodyMove {
+                        wanted,
+                        moved,
+                        effect,
+                    },
+                    gravity,
+                    0.98_f32,
+                    velocity,
+                    fall,
+                )
+            };
+            self.server_finish_body_restitution((id, kind), feet, response)
+        } else {
+            velocity
+        };
+        let MoveWho::Entity(handle) = self.resolve_push_target(selected)? else {
+            return None;
+        };
+        let EntityHandle::General(i) = handle else {
+            return None;
+        };
+        let mut velocity = velocity;
+        {
+            let side = game_side!(self);
+            self.common
+                .body_motion(&side)
+                .apply_block_speed(feet, &mut velocity);
+        }
+        self.common.resident_entities.general.rows[i].velocity = velocity;
+        Some(MoveWho::Entity(handle))
     }
 
     /// Server arm of [`Game::side_move_local_player`]: `Entity.move(mover, …)`

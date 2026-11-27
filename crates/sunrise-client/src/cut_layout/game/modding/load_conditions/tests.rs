@@ -143,7 +143,7 @@ fn malformed_known_recipe_stops_dedicated_world_startup() {
 #[ignore = "daily"]
 fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes() {
     if run_fresh_cases(
-        "game::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes",
+        "cut_layout::game::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes",
         "SUNRISE_LOAD_CONDITIONS_RELOAD_CHILD",
         &["reload"],
     ) {
@@ -643,9 +643,7 @@ fn load_condition_panic_disables_only_that_handler_across_generations() {
     );
 }
 
-/// `neoforge:registered` reads the candidate's registries: the built-in entries the prepared root
-/// exports and what this load's packs add, so a new pack entry counts on its first load and one
-/// a pack dropped stops counting, whatever an earlier load put in the game's registries.
+/// Only decoded holders (not file names or the previous load's IDs) count.
 #[test]
 fn registered_reads_the_candidate_packs_not_the_last_load() {
     use mod_api::{
@@ -940,7 +938,7 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
 
     // World opening installs part/entity/particle registries and the LAN sync cache.
     if run_fresh_cases(
-        "game::load_conditions::tests::first_open_conditions_see_static_tags_and_admitted_biomes",
+        "cut_layout::game::load_conditions::tests::first_open_conditions_see_static_tags_and_admitted_biomes",
         "SUNRISE_BIOME_ADMISSION_CHILD",
         &["world"],
     ) {
@@ -1114,6 +1112,260 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
                 .is_none()
         );
     });
+}
+
+#[test]
+fn worldgen_load_conditions_binds_static_layer_tags_and_vanilla_features() {
+    use sunrise_assets::resource_source::ResourceSource;
+    use sunrise_level::datapack::{DataPack, worldgen_overrides};
+
+    let scratch = tempfile::tempdir().unwrap();
+    let resources = scratch.path().join("resources");
+    std::fs::create_dir_all(resources.join("data/minecraft/tags/block")).unwrap();
+    std::fs::write(
+        resources.join("registries.json"),
+        json!({
+            "minecraft:block": {
+                "entries": {
+                    "minecraft:stone": {"protocol_id": 0},
+                    "minecraft:dirt": {"protocol_id": 1}
+                }
+            }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        resources.join("data/minecraft/tags/block/base_rock.json"),
+        json!({"values": ["minecraft:stone"]}).to_string(),
+    )
+    .unwrap();
+
+    let pack_dir = scratch.path().join("pack");
+    std::fs::create_dir_all(pack_dir.join("data/demo/tags/block")).unwrap();
+    std::fs::create_dir_all(pack_dir.join("data/demo/worldgen/feature")).unwrap();
+    std::fs::write(
+        pack_dir.join("data/demo/tags/block/pack_soil.json"),
+        json!({"values": ["minecraft:dirt"]}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        pack_dir.join("data/demo/worldgen/feature/needs_soil.json"),
+        json!({
+            "neoforge:conditions": [{
+                "type": "neoforge:not",
+                "value": {
+                    "type": "neoforge:tag_empty",
+                    "registry": "minecraft:block",
+                    "tag": "demo:pack_soil"
+                }
+            }],
+            "type": "minecraft:no_op",
+            "config": {}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        pack_dir.join("data/demo/worldgen/feature/when_absent_empty.json"),
+        json!({
+            "neoforge:conditions": [{
+                "type": "neoforge:tag_empty",
+                "registry": "minecraft:block",
+                "tag": "demo:nonexistent"
+            }],
+            "type": "minecraft:no_op",
+            "config": {}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        pack_dir.join("data/demo/worldgen/feature/fails_non_empty.json"),
+        json!({
+            "neoforge:conditions": [{
+                "type": "neoforge:tag_empty",
+                "registry": "minecraft:block",
+                "tag": "minecraft:base_rock"
+            }],
+            "type": "minecraft:no_op",
+            "config": {}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        pack_dir.join("data/demo/worldgen/feature/vanilla_flag.json"),
+        json!({
+            "neoforge:conditions": [{
+                "type": "neoforge:feature_flags_enabled",
+                "flags": ["minecraft:vanilla"]
+            }],
+            "type": "minecraft:no_op",
+            "config": {}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        pack_dir.join("data/demo/worldgen/feature/experimental_flag.json"),
+        json!({
+            "neoforge:conditions": [{
+                "type": "neoforge:feature_flags_enabled",
+                "flags": ["minecraft:trade_rebalance"]
+            }],
+            "type": "minecraft:no_op",
+            "config": {}
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let pack = DataPack::from_source("file/demo".into(), ResourceSource::directory(pack_dir));
+    let conditions = sunrise_gameplay_common::game::load_conditions::worldgen_load_conditions(
+        &sunrise_world::conditions::LoadConditions::vanilla(),
+        &resources,
+        &[&pack],
+    );
+    let (overrides, _) = worldgen_overrides(
+        &sunrise_level::datapack::DataPacks::new(&[&pack]),
+        &conditions,
+    );
+    let features: Vec<&str> = overrides.entries("features").map(|(id, _)| id).collect();
+    assert!(features.contains(&"demo:needs_soil"), "{features:?}");
+    assert!(features.contains(&"demo:when_absent_empty"), "{features:?}");
+    assert!(!features.contains(&"demo:fails_non_empty"), "{features:?}");
+    assert!(features.contains(&"demo:vanilla_flag"), "{features:?}");
+    assert!(
+        !features.contains(&"demo:experimental_flag"),
+        "{features:?}"
+    );
+}
+
+#[test]
+fn slot_source_and_extended_registry_tag_empty_conditions() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    let dir = root.join("data/boiler/slot_source");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("when_damage_tag_present.json"),
+        json!({
+            "neoforge:conditions": [{
+                "type": "neoforge:not",
+                "value": {
+                    "type": "neoforge:tag_empty",
+                    "registry": "minecraft:damage_type",
+                    "tag": "minecraft:bypasses_armor"
+                }
+            }],
+            "type": "minecraft:slot_range",
+            "slots": "container.*"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("when_biome_tag_present.json"),
+        json!({
+            "neoforge:conditions": [{
+                "type": "neoforge:not",
+                "value": {
+                    "type": "neoforge:tag_empty",
+                    "registry": "minecraft:worldgen/biome",
+                    "tag": "minecraft:is_forest"
+                }
+            }],
+            "type": "minecraft:slot_range",
+            "slots": "container.*"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("when_mod_absent.json"),
+        json!({
+            "neoforge:conditions": [{
+                "type": "neoforge:mod_loaded",
+                "modid": "absent"
+            }],
+            "type": "minecraft:slot_range",
+            "slots": "container.*"
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let conditions = sunrise_world::conditions::LoadConditions::vanilla().with_tags([
+        ("minecraft:damage_type", ["minecraft:bypasses_armor"]),
+        ("minecraft:worldgen/biome", ["minecraft:is_forest"]),
+    ]);
+    let overlay = sunrise_world::loot::PackOverlay {
+        conditions: &conditions,
+        ..sunrise_world::loot::PackOverlay::default()
+    };
+    std::fs::write(root.join("items.json"), "{}").unwrap();
+    let defaults = sunrise_world::item_defaults::read(root).unwrap();
+    let loot = sunrise_world::loot::LootData::load(root, &overlay, &defaults).unwrap();
+    assert!(
+        loot.slot_sources()
+            .contains_key("boiler:when_damage_tag_present")
+    );
+    assert!(
+        loot.slot_sources()
+            .contains_key("boiler:when_biome_tag_present")
+    );
+    assert!(!loot.slot_sources().contains_key("boiler:when_mod_absent"));
+}
+
+#[test]
+fn trade_files_with_unknown_load_condition_report_errors() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    let trade_dir = root.join("data/boiler/villager_trade");
+    let set_dir = root.join("data/boiler/trade_set");
+    std::fs::create_dir_all(&trade_dir).unwrap();
+    std::fs::create_dir_all(&set_dir).unwrap();
+    std::fs::write(
+        trade_dir.join("bad_trade.json"),
+        json!({
+            "neoforge:conditions": [{"type": "unknown:bogus_trade"}],
+            "wants": {"id": "minecraft:emerald", "count": 1},
+            "gives": {"id": "minecraft:stone", "count": 1}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        set_dir.join("bad_set.json"),
+        json!({
+            "neoforge:conditions": [{"type": "unknown:bogus_set"}],
+            "trades": "#boiler:empty"
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let conditions = sunrise_world::conditions::LoadConditions::new(["chemlib"]);
+    let overlay = sunrise_world::loot::PackOverlay {
+        conditions: &conditions,
+        ..sunrise_world::loot::PackOverlay::default()
+    };
+    let loaded = sunrise_sim::merchant::Trades::load(root, &overlay).unwrap();
+    assert!(!loaded.trades.contains_key("boiler:bad_trade"));
+    assert!(!loaded.sets.contains_key("boiler:bad_set"));
+    let err = conditions
+        .check_errors()
+        .expect_err("unknown condition in trade files must be reported");
+    assert!(
+        err.contains("data/boiler/villager_trade/bad_trade.json")
+            && err.contains("unknown:bogus_trade"),
+        "expected trade file path and unknown condition id, got: {err}"
+    );
+    assert!(
+        err.contains("data/boiler/trade_set/bad_set.json") && err.contains("unknown:bogus_set"),
+        "expected trade_set file path and unknown condition id, got: {err}"
+    );
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

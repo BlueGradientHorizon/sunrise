@@ -232,7 +232,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
     };
 
     if run_fresh_cases(
-        "game::remote::placement_prediction_tests::placement_and_prediction_choose_from_their_local_item_providers",
+        "cut_layout::game::remote::placement_prediction_tests::placement_and_prediction_choose_from_their_local_item_providers",
         "SUNRISE_PLACEMENT_STORAGE_CHILD",
         &["run"],
     ) {

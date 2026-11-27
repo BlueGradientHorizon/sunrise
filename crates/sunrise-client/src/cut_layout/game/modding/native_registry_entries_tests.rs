@@ -95,7 +95,7 @@ fn check_rejected_sync_tags<'g, G: sunrise_gameplay_common::game::SideGame<'g> +
 fn generic_entries_follow_real_server_tables_and_atomic_reload() {
     // The lazy wire cache is process-wide; another world must not replace this world's snapshot.
     if run_fresh_cases(
-        "game::native_registry_entries_tests::generic_entries_follow_real_server_tables_and_atomic_reload",
+        "cut_layout::game::native_registry_entries_tests::generic_entries_follow_real_server_tables_and_atomic_reload",
         "SUNRISE_REGISTRY_ENTRIES_RELOAD_CHILD",
         &["reload"],
     ) {

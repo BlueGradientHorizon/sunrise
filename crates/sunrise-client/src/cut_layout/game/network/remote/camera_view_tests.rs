@@ -560,7 +560,7 @@ fn a_canceled_tick_counts_no_effect_down() {
     });
 }
 
-pub(crate) const FRAME_NAME: &str = "game::client_side::remote_client::camera_view_tests::the_frame_reads_the_eye_light_in_first_and_third_person";
+pub(crate) const FRAME_NAME: &str = "cut_layout::game::client_side::remote_client::camera_view_tests::the_frame_reads_the_eye_light_in_first_and_third_person";
 pub(crate) const FRAME_CASE: &str = "SUNRISE_CAMERA_VIEW_FRAME_CASE";
 
 /// What a game's frame gives the pack: its camera, its `eyePosition` and the view's light.

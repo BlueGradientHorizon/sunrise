@@ -116,10 +116,14 @@ pub(crate) fn pump_until(game: &mut sunrise_gameplay::game::ServerGame<'_>, resi
 #[ignore = "daily"]
 fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-    use sunrise_level::{chunk::Chunk, containers::ModBlockEntity};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::{
+        chunk::Chunk,
+        containers::{ModBlockEntity, ModBlockEntityFields},
+    };
     use sunrise_protocol::connection::Pipe;
     if run_fresh_cases(
-        "game::native_hooks::on_chunk_unloaded_tests::a_client_tells_a_forgotten_column_but_not_its_level_going",
+        "cut_layout::game::native_hooks::on_chunk_unloaded_tests::a_client_tells_a_forgotten_column_but_not_its_level_going",
         "SUNRISE_ON_CHUNK_UNLOADED_CLIENT_CHILD",
         &["game"],
     ) {
@@ -142,7 +146,14 @@ fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
                 .insert_remote(&mut common.world, Chunk::empty(x, z));
         }
         for [x, y, z] in POTS.into_iter().chain([other]) {
-            let pot = ModBlockEntity::new(POT.into(), Default::default());
+            let pot = ModBlockEntity::new(
+                POT.into(),
+                ModBlockEntityFields {
+                    nbt: Compound::from([("unload_witness".into(), Tag::Int(x))]),
+                    items: vec![Some(ItemStack::new("unload_probe:unregistered", 5))],
+                    ..Default::default()
+                },
+            );
             game.world
                 .block_entities
                 .insert((x, y, z), BlockEntity::Mod(Box::new(pot)));

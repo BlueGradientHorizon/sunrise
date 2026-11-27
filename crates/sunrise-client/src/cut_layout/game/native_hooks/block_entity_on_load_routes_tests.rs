@@ -272,7 +272,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_on_load_reentrant_replacement_is_bounded() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_reentrant_replacement_is_bounded";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_reentrant_replacement_is_bounded";
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_REENTRANT", &["run"]) {
             return;
         }
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_on_load_shared_type_replacement_has_fresh_handle() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_shared_type_replacement_has_fresh_handle";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_shared_type_replacement_has_fresh_handle";
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_SHARED_TYPE", &["run"]) {
             return;
         }
@@ -348,7 +348,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn saved_payload_notices_distinguish_loads_from_attachment_and_api_edits() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::saved_payload_notices_distinguish_loads_from_attachment_and_api_edits";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_routes_tests::tests::saved_payload_notices_distinguish_loads_from_attachment_and_api_edits";
         if run_fresh_cases(NAME, "SUNRISE_LOAD_PAYLOAD", &["run"]) {
             return;
         }
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_on_load_command_placement() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_command_placement";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_command_placement";
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_COMMAND", &["run"]) {
             return;
         }
@@ -431,7 +431,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_on_load_dispenser_placement() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_dispenser_placement";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_dispenser_placement";
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_DISPENSER", &["run"]) {
             return;
         }
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_on_load_falling_block_placement() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_falling_block_placement";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_falling_block_placement";
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_FALLING", &["run"]) {
             return;
         }
@@ -490,7 +490,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_on_load_stale_queued_identity_is_skipped() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_stale_queued_identity_is_skipped";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_stale_queued_identity_is_skipped";
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_STALE", &["run"]) {
             return;
         }
@@ -518,7 +518,7 @@ mod tests {
             packets::play::{LevelChunkWithLight, SpawnInfo},
             registry::Builtin,
         };
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_real_client_chunk_receive";
+        const NAME: &str = "cut_layout::game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_real_client_chunk_receive";
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_CLIENT", &["run"]) {
             return;
         }

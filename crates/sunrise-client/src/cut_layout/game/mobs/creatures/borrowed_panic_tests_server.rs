@@ -363,9 +363,15 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
                 "first callback entry"
             );
             if let Some(payload) = &unwind {
+                let posts = std::mem::take(&mut *probe.posts.lock().unwrap());
                 assert!(
-                    probe.posts.lock().unwrap().is_empty(),
-                    "aborted tick fired Post"
+                    !posts.contains(&72),
+                    "aborted tick fired Post for the panicking mob"
+                );
+                assert_eq!(
+                    posts,
+                    [71],
+                    "earlier completed mob fired its per-entity Post before the panic"
                 );
                 let token = payload
                     .downcast_ref::<PanicToken>()
@@ -507,8 +513,9 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
                     );
                 }
                 game.tick_creature_entities().unwrap();
-                assert!(
-                    !probe.posts.lock().unwrap().is_empty(),
+                assert_eq!(
+                    probe.posts.lock().unwrap().as_slice(),
+                    ids,
                     "real post listener never ran on retry"
                 );
                 table.end_tick().unwrap();

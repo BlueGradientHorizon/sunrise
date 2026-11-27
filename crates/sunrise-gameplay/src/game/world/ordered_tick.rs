@@ -234,7 +234,9 @@ impl crate::game::ServerGame<'_> {
                         continue;
                     };
                     let at = self.common.tnts[i].position;
-                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
+                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32)
+                        && self.entity_position_accessible([at.x, at.y, at.z])
+                    {
                         let t = &self.common.tnts[i];
                         let area = t.bounds().expand_towards(t.velocity);
                         obstacles
@@ -258,7 +260,9 @@ impl crate::game::ServerGame<'_> {
                         continue;
                     };
                     let at = self.common.falling[i].position;
-                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
+                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32)
+                        && self.entity_position_accessible([at.x, at.y, at.z])
+                    {
                         events = true;
                         let f = &self.common.falling[i];
                         let area = f.bounds().expand_towards(f.velocity);
@@ -290,7 +294,9 @@ impl crate::game::ServerGame<'_> {
                         continue;
                     };
                     let at = self.common.orbs[i].position;
-                    if !entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
+                    if !entity_ticking(at.x.floor() as i32, at.z.floor() as i32)
+                        || !self.entity_position_accessible([at.x, at.y, at.z])
+                    {
                         continue;
                     }
                     // ExperienceOrb.tick runs scanForMerges before it moves.

@@ -32,7 +32,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
     };
     const MENU: &str = "hopper_fixture:menu";
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::client_side::native_hooks_client::screen_position_tests::a_hopper_layout_mod_menu_opens_its_screen_from_block_packets",
+        "cut_layout::game::client_side::native_hooks_client::screen_position_tests::a_hopper_layout_mod_menu_opens_its_screen_from_block_packets",
         "SUNRISE_HOPPER_LAYOUT_CHILD",
         &["block"],
     ) {
@@ -185,7 +185,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
 fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
     // Content registries are process-global.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::client_side::native_hooks_client::screen_position_tests::a_mod_blocks_custom_menu_gets_its_registered_screen",
+        "cut_layout::game::client_side::native_hooks_client::screen_position_tests::a_mod_blocks_custom_menu_gets_its_registered_screen",
         "SUNRISE_SCREEN_POSITION_CRATE_CHILD",
         &["crate"],
     ) {
@@ -366,7 +366,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
 fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
     // Content registries are process-global.
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::client_side::native_hooks_client::screen_position_tests::custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls",
+        "cut_layout::game::client_side::native_hooks_client::screen_position_tests::custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls",
         "SUNRISE_SCREEN_POSITION_HOPPER_CHILD",
         &["hoppers"],
     ) {
@@ -685,7 +685,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
 #[ignore = "daily"]
 fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary() {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::client_side::native_hooks_client::screen_position_tests::stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary",
+        "cut_layout::game::client_side::native_hooks_client::screen_position_tests::stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary",
         "SUNRISE_SCREEN_POSITION_DATA_SYNC_CHILD",
         &["sync"],
     ) {

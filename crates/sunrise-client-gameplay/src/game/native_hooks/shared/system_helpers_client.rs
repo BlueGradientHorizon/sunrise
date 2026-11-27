@@ -1,8 +1,5 @@
 use super::*;
 
-/// Helpers for native mods, kept as stable as the hook points.
-// Native mods use these; nothing in Sunrise does.
-#[allow(dead_code)]
 impl crate::game::ClientGame<'_> {
     /// Shows these recipes in the panel instead of its items, as many as
     /// fit a page, under `title` and a back button, with a row of `tabs`

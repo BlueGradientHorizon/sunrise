@@ -490,7 +490,7 @@ mod tests {
         };
         const FLAG: &str = "SUNRISE_DEATH_CLONE_CASE";
         if run_fresh_cases(
-            "game::server_side::original_player::tests::death_clone_retains_original_and_expires_after_dispatch",
+            "cut_layout::game::server_side::original_player::tests::death_clone_retains_original_and_expires_after_dispatch",
             FLAG,
             &["drop", "keep"],
         ) {
@@ -507,7 +507,7 @@ mod tests {
             run_fresh_cases, run_with_game_stack,
         };
         if run_fresh_cases(
-            "game::server_side::original_player::tests::end_return_clone_retains_end_state_and_expires_after_dispatch",
+            "cut_layout::game::server_side::original_player::tests::end_return_clone_retains_end_state_and_expires_after_dispatch",
             "SUNRISE_END_CLONE_CASE",
             &["end"],
         ) {

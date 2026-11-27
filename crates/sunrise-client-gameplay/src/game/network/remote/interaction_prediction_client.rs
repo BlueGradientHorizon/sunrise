@@ -97,7 +97,7 @@ impl crate::game::ClientGame<'_> {
             // HangingEntityItem.useOn on a client level: SUCCESS once
             // `Painting.create` finds a surviving variant, before the
             // server spawns it.
-            self.common.painting_fits(hit, stack)
+            self.painting_fits(hit, stack)
         } else {
             false
         }

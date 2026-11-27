@@ -678,8 +678,8 @@ impl crate::game::ServerGame<'_> {
                                 bound,
                             );
                         }
-                    } else {
-                        self.server_system_message(incoming);
+                    } else if let Some(capture) = self.server.chat_capture.as_mut() {
+                        capture.push(incoming);
                     }
                 }
                 Ok(count)

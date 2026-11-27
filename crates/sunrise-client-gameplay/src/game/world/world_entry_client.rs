@@ -91,7 +91,10 @@ impl crate::game::ClientGame<'_> {
                         title.finish_preparing();
                         title.failed(format!(
                             "{}: {e}",
-                            sunrise_game_data::lang::get("createWorld.preparing")
+                            sunrise_game_data::lang::get_or(
+                                "createWorld.preparing",
+                                "Preparing for world creation..."
+                            )
                         ));
                     }
                 }

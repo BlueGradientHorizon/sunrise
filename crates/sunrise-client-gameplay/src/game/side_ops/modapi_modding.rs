@@ -433,7 +433,20 @@ impl SideOps for crate::game::client_side::ClientState {
         at: BlockSide,
         entity_removed: bool,
     ) -> Option<BlockCapabilitySite> {
-        None
+        use sunrise_gameplay_common::game::machine_containers::Containers;
+        use sunrise_gameplay_common::game::tables::GameItems as _;
+
+        (level.dimension() == Self::side_native_level_key(game)).then_some(())?;
+        let [x, y, z] = at.pos;
+        Containers {
+            world,
+            behaviours: game.common.res.behaviours(),
+            items: game.items(),
+            registry: game.common.pack.assets.registry,
+            brewing: None,
+            mobs: &game.common.mobs,
+        }
+        .capability_site(at, world.block(x, y, z), entity_removed)
     }
     fn side_signal_capability_site(
         game: &Self::Game<'_>,

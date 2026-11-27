@@ -32,7 +32,7 @@ pub(crate) fn aim_trident_at_wall(
 fn an_already_discarded_trident_is_not_ticked_before_sweep() {
     const CASE: &str = "SUNRISE_TRIDENT_DISCARD_BEFORE_TICK_CASE";
     if run_fresh_cases(
-        "game::server_side::trident::impact_tests::an_already_discarded_trident_is_not_ticked_before_sweep",
+        "cut_layout::game::server_side::trident::impact_tests::an_already_discarded_trident_is_not_ticked_before_sweep",
         CASE,
         &["committed", "journaled"],
     ) {

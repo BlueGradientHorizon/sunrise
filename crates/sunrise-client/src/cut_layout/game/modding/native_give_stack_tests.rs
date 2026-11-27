@@ -23,7 +23,7 @@ fn api_item(game: &sunrise_gameplay::game::ServerGame<'_>, snbt: &str) -> Option
 #[ignore = "daily"]
 fn an_snbt_item_goes_through_the_api_unchanged() {
     if run_fresh_cases(
-        "game::native_give_stack_tests::an_snbt_item_goes_through_the_api_unchanged",
+        "cut_layout::game::native_give_stack_tests::an_snbt_item_goes_through_the_api_unchanged",
         "SUNRISE_NATIVE_GIVE_STACK_CHILD",
         &["roundtrip"],
     ) {
@@ -54,7 +54,7 @@ fn an_snbt_item_goes_through_the_api_unchanged() {
 #[ignore = "daily"]
 fn item_from_snbt_refuses_what_is_not_one_item_compound() {
     if run_fresh_cases(
-        "game::native_give_stack_tests::item_from_snbt_refuses_what_is_not_one_item_compound",
+        "cut_layout::game::native_give_stack_tests::item_from_snbt_refuses_what_is_not_one_item_compound",
         "SUNRISE_NATIVE_GIVE_STACK_CHILD",
         &["snbt"],
     ) {
@@ -150,7 +150,7 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
 #[ignore = "daily"]
 fn item_from_snbt_keeps_custom_data_larger_than_the_binary_quota() {
     if run_fresh_cases(
-        "game::native_give_stack_tests::item_from_snbt_keeps_custom_data_larger_than_the_binary_quota",
+        "cut_layout::game::native_give_stack_tests::item_from_snbt_keeps_custom_data_larger_than_the_binary_quota",
         "SUNRISE_NATIVE_GIVE_STACK_CHILD",
         &["long-text"],
     ) {
@@ -181,7 +181,7 @@ fn item_from_snbt_keeps_custom_data_larger_than_the_binary_quota() {
 #[ignore = "daily"]
 fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
     if run_fresh_cases(
-        "game::native_give_stack_tests::a_given_stack_fills_the_inventory_then_drops_for_its_player",
+        "cut_layout::game::native_give_stack_tests::a_given_stack_fills_the_inventory_then_drops_for_its_player",
         "SUNRISE_NATIVE_GIVE_STACK_CHILD",
         &["give"],
     ) {
@@ -245,7 +245,7 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
 #[ignore = "daily"]
 fn a_dead_player_is_given_nothing() {
     if run_fresh_cases(
-        "game::native_give_stack_tests::a_dead_player_is_given_nothing",
+        "cut_layout::game::native_give_stack_tests::a_dead_player_is_given_nothing",
         "SUNRISE_NATIVE_GIVE_STACK_CHILD",
         &["dead"],
     ) {
@@ -278,7 +278,7 @@ fn a_dead_player_is_given_nothing() {
 #[ignore = "daily"]
 fn item_json_roundtrips_plain_component_and_empty_stacks() {
     if run_fresh_cases(
-        "game::native_give_stack_tests::item_json_roundtrips_plain_component_and_empty_stacks",
+        "cut_layout::game::native_give_stack_tests::item_json_roundtrips_plain_component_and_empty_stacks",
         "SUNRISE_NATIVE_GIVE_STACK_CHILD",
         &["json-roundtrip"],
     ) {
@@ -363,7 +363,7 @@ fn item_json_roundtrips_plain_component_and_empty_stacks() {
 #[ignore = "daily"]
 fn item_json_decode_errors_name_the_failing_field() {
     if run_fresh_cases(
-        "game::native_give_stack_tests::item_json_decode_errors_name_the_failing_field",
+        "cut_layout::game::native_give_stack_tests::item_json_decode_errors_name_the_failing_field",
         "SUNRISE_NATIVE_GIVE_STACK_CHILD",
         &["json-errors"],
     ) {

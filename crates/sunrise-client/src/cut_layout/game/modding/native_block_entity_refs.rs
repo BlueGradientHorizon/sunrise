@@ -33,7 +33,7 @@ pub(crate) mod tests {
     fn player_opens_provider_and_refuses_non_provider() {
         use mod_api::*;
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_block_entity_refs::tests::player_opens_provider_and_refuses_non_provider",
+            "cut_layout::game::server_side::native_block_entity_refs::tests::player_opens_provider_and_refuses_non_provider",
             "SUNRISE_BE_MENU_CASE",
             &[
                 "provider",
@@ -445,7 +445,7 @@ pub(crate) mod tests {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
         use mod_api::BlockUpdateFlags;
         if run_fresh_cases(
-            "game::server_side::native_block_entity_refs::tests::writes_merge_data_name_and_roll_back_with_a_transaction",
+            "cut_layout::game::server_side::native_block_entity_refs::tests::writes_merge_data_name_and_roll_back_with_a_transaction",
             "SUNRISE_VANILLA_BE_REGISTRY_CHILD",
             &["vanilla"],
         ) {

@@ -249,7 +249,7 @@ fn admin_log(f: impl FnOnce()) -> Vec<String> {
 #[ignore = "daily"]
 fn feedback_tells_the_other_operators_and_the_log_under_their_rules() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_success_broadcast_tests::feedback_tells_the_other_operators_and_the_log_under_their_rules",
+        "cut_layout::game::server_side::native_success_broadcast_tests::feedback_tells_the_other_operators_and_the_log_under_their_rules",
         || {
             with_operators(|game, receivers| {
                 chats(game, receivers);
@@ -361,7 +361,7 @@ fn feedback_tells_the_other_operators_and_the_log_under_their_rules() {
 #[ignore = "daily"]
 fn a_tracking_command_block_is_logged_while_feedback_is_off() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_success_broadcast_tests::a_tracking_command_block_is_logged_while_feedback_is_off",
+        "cut_layout::game::server_side::native_success_broadcast_tests::a_tracking_command_block_is_logged_while_feedback_is_off",
         || {
             use sunrise_core::position::BlockPos;
             use sunrise_level::{chunk::block_entity::BlockEntity, command_block::CommandBlock};
@@ -479,7 +479,7 @@ fn admin_lines(
 #[ignore = "daily"]
 fn an_entity_in_another_level_names_the_admin_line() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_success_broadcast_tests::an_entity_in_another_level_names_the_admin_line",
+        "cut_layout::game::server_side::native_success_broadcast_tests::an_entity_in_another_level_names_the_admin_line",
         || {
             with_operators(|game, receivers| {
                 assert!(game.native_run_command(
@@ -521,7 +521,7 @@ fn an_entity_in_another_level_names_the_admin_line() {
 #[ignore = "daily"]
 fn console_output_is_logged_and_broadcast_once() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::server_side::native_success_broadcast_tests::console_output_is_logged_and_broadcast_once",
+        "cut_layout::game::server_side::native_success_broadcast_tests::console_output_is_logged_and_broadcast_once",
         || {
             use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
             with_operators(|game, receivers| {

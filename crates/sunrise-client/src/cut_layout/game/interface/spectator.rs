@@ -18,7 +18,7 @@ mod tests {
     #[ignore = "daily"]
     fn an_unlisted_player_is_a_teleport_target_only_on_their_team_page() {
         in_own_process(
-            "game::client_side::spectator::tests::an_unlisted_player_is_a_teleport_target_only_on_their_team_page",
+            "cut_layout::game::client_side::spectator::tests::an_unlisted_player_is_a_teleport_target_only_on_their_team_page",
             || {
                 with_client_game(|game| {
                     let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);

@@ -134,7 +134,7 @@ impl RandomSource for HostileRng {
 #[ignore = "daily"]
 fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
     if run_fresh_cases(
-        "game::native_datapack_values_tests::datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload",
+        "cut_layout::game::native_datapack_values_tests::datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload",
         "SUNRISE_DATAPACK_VANILLA_VALUES_CHILD",
         &["all"],
     ) {

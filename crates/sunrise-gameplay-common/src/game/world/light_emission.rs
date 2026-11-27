@@ -36,7 +36,15 @@ pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
         for i in 0..self.world.loaded_chunks.len() {
             let (x, z, _) = self.world.loaded_chunks[i];
-            self.ask_chunk_light_emission((x, z));
+            let key = (x, z);
+            if self
+                .world
+                .chunks
+                .get(&key)
+                .is_some_and(|chunk| chunk.dynamic_pending)
+            {
+                self.ask_chunk_light_emission(key);
+            }
         }
     }
 

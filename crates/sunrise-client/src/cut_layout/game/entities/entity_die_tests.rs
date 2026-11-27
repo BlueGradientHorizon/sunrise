@@ -4,6 +4,7 @@ use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_game_data::who::EventSource;
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
 use sunrise_gameplay_common::game::execution_role;
 use sunrise_gameplay_common::game::{Options, Progress};
 use sunrise_level::{chunk::Chunk, containers::BlockEntity};

@@ -65,10 +65,7 @@ fn a_cast_bobber_is_found_by_selectors_and_entities_in() {
 #[ignore = "daily"]
 fn a_bobber_is_a_candidate_of_its_casters_level_only() {
     in_own_process(
-        concat!(
-            module_path!(),
-            "::a_bobber_is_a_candidate_of_its_casters_level_only"
-        ),
+        "cut_layout::game::server_side::fishing::fishing_find_tests::a_bobber_is_a_candidate_of_its_casters_level_only",
         || {
             mod_platform::testing::with_mods(Default::default(), || {
                 with_guests(|game| {

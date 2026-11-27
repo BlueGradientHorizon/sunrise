@@ -307,7 +307,7 @@ pub(crate) mod tests {
         use mod_api::{Hooks, ModEntry, Mods, PlayerContainerCloseEvent, PlayerContainerOpenEvent};
         use std::sync::Mutex;
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_menus::tests::container_hooks_follow_actual_open_boundaries_without_a_tick",
+            "cut_layout::game::server_side::native_menus::tests::container_hooks_follow_actual_open_boundaries_without_a_tick",
             "SUNRISE_CONTAINER_BOUNDARY_CASE",
             &["same_tick", "replace", "mount", "guest"],
         ) {
@@ -897,7 +897,10 @@ pub(crate) mod tests {
                 before,
                 "nothing was changed"
             );
-            // Client refusal is enforced at compile time (`ClientGame` is not a `ServerHost`).
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            let host: &mut dyn ServerHost = game;
+            assert_eq!(menu.set_items(host, one), Err(MenuItemsRefusal::Client));
         });
     }
     #[test]
@@ -1245,7 +1248,7 @@ pub(crate) mod tests {
         use std::sync::Mutex;
         const CASE: &str = "SUNRISE_MOD_MENU_REPLACE_CHILD";
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_menus::tests::a_mod_menu_opened_in_place_sends_no_close_and_still_closes_the_old_menu",
+            "cut_layout::game::server_side::native_menus::tests::a_mod_menu_opened_in_place_sends_no_close_and_still_closes_the_old_menu",
             CASE,
             &["close_first", "in_place"],
         ) {
@@ -1398,7 +1401,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn mod_menu_backend_payload_and_refusals() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::server_side::native_menus::tests::mod_menu_backend_payload_and_refusals",
+            "cut_layout::game::server_side::native_menus::tests::mod_menu_backend_payload_and_refusals",
             "SUNRISE_MOD_MENU_BACKEND_CHILD",
             &["backend"],
         ) {

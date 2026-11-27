@@ -175,7 +175,7 @@ fn entity_tick_count_moves_through_teleport_bodies_but_respawn_starts_at_zero() 
 #[ignore = "daily"]
 fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::lan_actions::guest_body::tests::guest_equipment_changes_powder_snow_support_on_the_same_move",
+        "cut_layout::game::lan_actions::guest_body::tests::guest_equipment_changes_powder_snow_support_on_the_same_move",
         || {
             use sunrise_core::position::BlockPos;
             use sunrise_gameplay::game::native_entity_refs::tests::with_game;
@@ -379,7 +379,7 @@ pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
 
 pub(crate) fn assert_isolated_breathing_tick(name: &str, meddle: bool, air: i32, damage: i32) {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        &format!("game::lan_actions::guest_body::tests::{name}"),
+        &format!("cut_layout::game::lan_actions::guest_body::tests::{name}"),
         "SUNRISE_GUEST_BREATHING_CHILD",
         &["guest"],
     ) {

@@ -56,7 +56,7 @@ impl Hooks for Gradients {
 #[ignore = "daily"]
 fn a_mods_gradients_draw_top_to_bottom_in_the_clip_and_pose_and_empty_ones_draw_nothing() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::gui_gradient_tests::a_mods_gradients_draw_top_to_bottom_in_the_clip_and_pose_and_empty_ones_draw_nothing",
+        "cut_layout::game::gui_gradient_tests::a_mods_gradients_draw_top_to_bottom_in_the_clip_and_pose_and_empty_ones_draw_nothing",
         || {
             let text = Text::from(serde_json::json!({
                 "text": "x", "hover_event": { "action": "show_text", "value": "hi" }

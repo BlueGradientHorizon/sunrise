@@ -8,7 +8,6 @@ pub struct State {
     pub client: sync::Client,
     pub servers: HashMap<u32, Server>,
     pub view: Option<View>,
-    pub deadline: Option<std::time::Instant>,
 }
 // no wire: source ordinals actually published to this connection.
 pub struct Server {

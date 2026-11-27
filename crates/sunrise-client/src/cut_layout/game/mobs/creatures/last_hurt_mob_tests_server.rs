@@ -29,7 +29,7 @@ use {
 fn last_hurt_mob_follows_the_attacking_entity() {
     const CASE: &str = "SUNRISE_LAST_HURT_MOB_CASE";
     if run_fresh_cases(
-        "game::server_side::creatures_server::last_hurt_mob_tests::last_hurt_mob_follows_the_attacking_entity",
+        "cut_layout::game::server_side::creatures_server::last_hurt_mob_tests::last_hurt_mob_follows_the_attacking_entity",
         CASE,
         &[
             "arrow",

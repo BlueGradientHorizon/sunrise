@@ -101,7 +101,7 @@ mod tests {
 
         const CHILD: &str = "SUNRISE_ITEM_BLOCK_MOD_CHILD";
         if run_fresh_cases(
-            "game::native_block_states::tests::item_block_maps_a_mod_items_back_to_its_block",
+            "cut_layout::game::native_block_states::tests::item_block_maps_a_mod_items_back_to_its_block",
             CHILD,
             &["game"],
         ) {
@@ -335,7 +335,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_mod_fluid_file_states_its_temperature_density_and_viscosity() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_block_states::tests::a_mod_fluid_file_states_its_temperature_density_and_viscosity",
+            "cut_layout::game::native_block_states::tests::a_mod_fluid_file_states_its_temperature_density_and_viscosity",
             "SUNRISE_FLUID_MEASURES_CHILD",
             &["loaded"],
         ) {
@@ -1074,7 +1074,7 @@ mod crafting_remainder_tests {
     #[ignore = "daily"]
     fn crafting_remainder_part_override_and_default() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_block_states::crafting_remainder_tests::crafting_remainder_part_override_and_default",
+            "cut_layout::game::native_block_states::crafting_remainder_tests::crafting_remainder_part_override_and_default",
             "SUNRISE_FURNACE_CRAFTING_REMAINDER_CASE",
             &["override"],
         ) {

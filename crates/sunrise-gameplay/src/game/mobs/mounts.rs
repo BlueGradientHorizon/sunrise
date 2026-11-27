@@ -187,6 +187,14 @@ impl ServerGame<'_> {
         if self.feed_mount(index, item) {
             return true;
         }
+        let wears_body = held.as_ref().is_some_and(|stack| {
+            sunrise_sim::mobs::equip::equippable_in_slot(
+                self.items(),
+                stack,
+                "body",
+                sunrise_sim::mobs::species::vanilla_id(species),
+            )
+        });
         let m = &mut self.common.mobs[index];
         if m.is_baby() {
             return false;
@@ -201,11 +209,7 @@ impl ServerGame<'_> {
                 Species::CamelHusk => "minecraft:entity.camel_husk.saddle",
                 _ => "minecraft:entity.horse.saddle",
             })
-        } else if item.ends_with("_horse_armor")
-            && species == Species::Horse
-            && tamed
-            && m.extra.body_id().is_none()
-        {
+        } else if wears_body && tamed && m.extra.body_id().is_none() {
             m.extra
                 .set_body_stack(held.map(|s| ItemStack { count: 1, ..s }));
             Some("minecraft:entity.horse.armor")

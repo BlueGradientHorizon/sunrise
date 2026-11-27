@@ -14,7 +14,7 @@ mod tests {
             sunrise_gameplay_common::game::in_own_process,
         };
         in_own_process(
-            "game::client_side::lan_particles_client::tests::received_block_particles_follow_the_provider_matrix",
+            "cut_layout::game::client_side::lan_particles_client::tests::received_block_particles_follow_the_provider_matrix",
             || {
                 with_client_game(|game| {
                     let _server = logged_client(game);

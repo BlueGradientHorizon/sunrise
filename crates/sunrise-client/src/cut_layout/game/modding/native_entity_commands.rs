@@ -18,7 +18,7 @@ mod tests {
         body: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
         sunrise_gameplay_common::game::in_own_process(
-            &format!("game::server_side::native_entity_commands::tests::{name}"),
+            &format!("cut_layout::game::server_side::native_entity_commands::tests::{name}"),
             || {
                 with_guests(body);
             },

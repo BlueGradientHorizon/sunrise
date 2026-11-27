@@ -30,13 +30,14 @@ impl ClientGame<'_> {
         // it checks as the player's; `getblock` and `container` read what this
         // client has of it.
         if self.client.remote.is_some() && matches!(words.first(), Some(&("setblock" | "fill"))) {
-            self.side_send_chat_command(&format!("/{}", words.join(" ")));
+            let command = words.join(" ");
+            if self.chat_abilities().allows(&format!("/{command}")) {
+                let _ = self.send_server_command(&command);
+            }
             return Ok(Some(json!({ "ok": true, "sent": true })));
         }
         self.block_command_local(words)
     }
 }
-
-use sunrise_gameplay_common::game::side_ops::ui::UiSideGameExt as _;
 
 use sunrise_gameplay_common::game::blockctl::BlockctlGameExt1 as _;

@@ -118,7 +118,12 @@ impl crate::game::ClientGame<'_> {
         };
         let result = (|| -> Result<bool> {
             match &mut save.stage {
-                Stage::Quit => Ok(true),
+                Stage::Quit => {
+                    if save.quit && !self.client.saved_for_exit {
+                        self.client_logging_out();
+                    }
+                    Ok(true)
+                }
                 Stage::Server => {
                     let server = self
                         .client
@@ -128,12 +133,11 @@ impl crate::game::ClientGame<'_> {
                     if !server.stopped() {
                         return Ok(false);
                     }
-                    // Drop/join only after completion; leave_server's teardown
-                    // can then run without blocking on the server's writes.
+                    // Logout already ran before the integrated server was asked to stop.
                     if save.quit {
                         self.client.integrated.take().unwrap().stop()?;
                     } else {
-                        self.leave_server(None)?;
+                        self.finish_leave_server(None)?;
                     }
                     Ok(true)
                 }

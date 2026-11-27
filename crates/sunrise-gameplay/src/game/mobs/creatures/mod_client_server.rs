@@ -1,4 +1,5 @@
 use crate::game::ServerGame;
+use sunrise_gameplay_common::game::item_abilities::{ItemAbilitiesGameExt1 as _, ability};
 use sunrise_sim::mobs::{Species, Who};
 
 impl ServerGame<'_> {
@@ -6,8 +7,9 @@ impl ServerGame<'_> {
     /// (`brushOffScute`) and loses 16 durability.
     pub(in crate::game) fn interact_armadillo(&mut self, index: usize, item: &str) -> bool {
         let m = &self.common.mobs[index];
-        if item != "minecraft:brush"
-            || m.species() != Species::Armadillo
+        if !self.common.held().is_some_and(|s| {
+            self.stack_can_perform(s, ability::BRUSH_BRUSH, item == "minecraft:brush")
+        }) || m.species() != Species::Armadillo
             || !m.alive()
             || m.is_baby()
         {

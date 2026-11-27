@@ -22,16 +22,8 @@ pub(crate) fn with_delayed_chat(
     test: &str,
     check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
-    let full = if test.contains("::") {
-        test.split_once("::")
-            .map_or(test, |(_, rest)| rest)
-            .to_owned()
-    } else {
-        let (_, module) = module_path!().split_once("::").unwrap();
-        format!("{module}::{test}")
-    };
     // The game fixture registers keys and particle providers; keep them in the child.
-    in_own_process(&full, || {
+    in_own_process(test, || {
         with_client_game(|game| {
             game.init_remote_for_replay().unwrap();
             game.client.remote.as_mut().unwrap().has_logical_player = true;
@@ -146,7 +138,7 @@ pub(crate) fn deliver_signed(
 #[ignore = "daily"]
 fn disguised_chat_has_a_system_tag_but_is_player_chat() {
     with_delayed_chat(
-        "disguised_chat_has_a_system_tag_but_is_player_chat",
+        "cut_layout::game::remote::chat_audit_tests::disguised_chat_has_a_system_tag_but_is_player_chat",
         |game| {
             game.client
                 .settings
@@ -234,7 +226,7 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
 #[ignore = "daily"]
 fn delete_chat_removes_a_queued_fully_filtered_message_without_ack() {
     with_delayed_chat(
-        "delete_chat_removes_a_queued_fully_filtered_message_without_ack",
+        "cut_layout::game::remote::chat_audit_tests::delete_chat_removes_a_queued_fully_filtered_message_without_ack",
         |game| {
             let key = RsaPrivateKey::generate(2048).unwrap();
             add_signed_sender(game, &key, ALICE);
@@ -263,7 +255,7 @@ fn delete_chat_removes_a_queued_fully_filtered_message_without_ack() {
 #[ignore = "daily"]
 fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
     with_delayed_chat(
-        "delayed_chat_uses_only_show_secure_chat_from_receipt",
+        "cut_layout::game::remote::chat_audit_tests::delayed_chat_uses_only_show_secure_chat_from_receipt",
         |game| {
             add_sender(game, ALICE);
             game.client

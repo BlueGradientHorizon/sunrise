@@ -352,7 +352,7 @@ pub(crate) mod tests {
         use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 
         if run_fresh_cases(
-            "game::server_side::native_lifecycle::tests::a_scheduled_transaction_refusal_rolls_back_without_disabling_later_tasks",
+            "cut_layout::game::server_side::native_lifecycle::tests::a_scheduled_transaction_refusal_rolls_back_without_disabling_later_tasks",
             "SUNRISE_SCHEDULED_TRANSACTION_REFUSAL_CHILD",
             &["refused"],
         ) {
@@ -430,7 +430,7 @@ pub(crate) mod tests {
         use sunrise_sim::{join_seq::residency::table::EntityLookup, mobs::Mob};
 
         if run_fresh_cases(
-            "game::server_side::native_lifecycle::tests::panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close",
+            "cut_layout::game::server_side::native_lifecycle::tests::panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close",
             "SUNRISE_SCHEDULED_TASK_DROP_CHILD",
             &["dispose"],
         ) {

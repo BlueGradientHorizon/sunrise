@@ -21,7 +21,7 @@ use {
 #[ignore = "daily"]
 fn riptide_ground_release_keeps_launch_velocity() {
     sunrise_gameplay_common::game::in_own_process(
-        "game::client_side::remote_client::riptide_tests::riptide_ground_release_keeps_launch_velocity",
+        "cut_layout::game::client_side::remote_client::riptide_tests::riptide_ground_release_keeps_launch_velocity",
         || {
             with_guests(|server| {
                 server.install_live_features();

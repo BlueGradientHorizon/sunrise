@@ -457,7 +457,7 @@ impl Fixture {
 #[ignore = "daily"]
 fn serving_game_drives_configuration_tasks() {
     const NAME: &str =
-        "game::payload_transport::task_tests::serving_game_drives_configuration_tasks";
+        "cut_layout::game::payload_transport::task_tests::serving_game_drives_configuration_tasks";
     super::tests::require_resources();
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
         NAME,
@@ -661,7 +661,7 @@ fn serving_game_drives_configuration_tasks() {
 fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
     use mod_api::RegisterConfigurationTasksEvent;
     use sunrise_protocol::packets::{Empty, configuration as cfg, play};
-    const NAME: &str = "game::payload_transport::task_tests::a_panicking_registration_does_not_fail_the_peer_or_leave_its_task";
+    const NAME: &str = "cut_layout::game::payload_transport::task_tests::a_panicking_registration_does_not_fail_the_peer_or_leave_its_task";
     super::tests::require_resources();
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
         NAME,
@@ -834,7 +834,7 @@ fn peer_completion_rejects_other_connections() {
     };
     super::tests::require_resources();
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::payload_transport::task_tests::peer_completion_rejects_other_connections",
+        "cut_layout::game::payload_transport::task_tests::peer_completion_rejects_other_connections",
         "SUNRISE_TASK_PEER_CHILD",
         &["cross_peer"],
     ) {
@@ -938,7 +938,7 @@ fn retained_configuration_host_send_refuses_play_while_session_is_registered() {
     };
     super::tests::require_resources();
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
-        "game::payload_transport::task_tests::retained_configuration_host_send_refuses_play_while_session_is_registered",
+        "cut_layout::game::payload_transport::task_tests::retained_configuration_host_send_refuses_play_while_session_is_registered",
         "SUNRISE_TASK_RETAINED_CONNECTION_CHILD",
         &["play"],
     ) {

@@ -31,7 +31,7 @@ use {
 fn integrated_enchant_updates_the_clients_selected_slot() {
     const CASE: &str = "SUNRISE_TEST_INTEGRATED_ENCHANT_TARGET";
     if run_fresh_cases(
-        "game::client_side::commands_client::enchant_tests::integrated_enchant_updates_the_clients_selected_slot",
+        "cut_layout::game::client_side::commands_client::enchant_tests::integrated_enchant_updates_the_clients_selected_slot",
         CASE,
         &["NearPlayer", "@s", "@a[name=NearPlayer]", "console"],
     ) {

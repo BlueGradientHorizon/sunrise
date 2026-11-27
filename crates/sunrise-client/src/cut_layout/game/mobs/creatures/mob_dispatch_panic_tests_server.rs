@@ -27,7 +27,7 @@ use {
 fn mob_despawn_listener_panic_preserves_owned_rows_and_lent_random() {
     const CHILD: &str = "SUNRISE_MOB_DESPAWN_PANIC_CHILD";
     if run_fresh_cases(
-        "game::server_side::creatures_server::mob_dispatch_panic_tests::mob_despawn_listener_panic_preserves_owned_rows_and_lent_random",
+        "cut_layout::game::server_side::creatures_server::mob_dispatch_panic_tests::mob_despawn_listener_panic_preserves_owned_rows_and_lent_random",
         CHILD,
         &[
             "first-overworld",

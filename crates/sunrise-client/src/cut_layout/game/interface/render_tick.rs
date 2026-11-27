@@ -18,7 +18,7 @@ pub(crate) mod tests {
         };
 
         in_own_process(
-            "game::client_side::render_tick::tests::equipment_camera_overlays_emit_in_vanilla_slot_order",
+            "cut_layout::game::client_side::render_tick::tests::equipment_camera_overlays_emit_in_vanilla_slot_order",
             || {
                 with_client_game(|game| {
                     game.player = Some(

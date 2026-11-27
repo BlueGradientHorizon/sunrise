@@ -25,7 +25,7 @@ mod tests {
     #[ignore = "daily"]
     fn weather_parameters_are_shared_and_strengths_are_local() {
         sunrise_gameplay_common::game::in_own_process(
-            "game::server_side::native_level_weather::tests::weather_parameters_are_shared_and_strengths_are_local",
+            "cut_layout::game::server_side::native_level_weather::tests::weather_parameters_are_shared_and_strengths_are_local",
             || {
                 with_game(|game| {
                     game.server.world_root = game.options.game_dir.clone().unwrap();
@@ -123,7 +123,7 @@ mod tests {
     #[ignore = "daily"]
     fn local_difficulty_reaches_the_game() {
         if run_fresh_cases(
-            "game::server_side::native_level_weather::tests::local_difficulty_reaches_the_game",
+            "cut_layout::game::server_side::native_level_weather::tests::local_difficulty_reaches_the_game",
             "SUNRISE_LOCAL_DIFFICULTY_CHILD",
             &["local-difficulty"],
         ) {

@@ -92,7 +92,7 @@ pub(crate) use crate::game::client_side::remote_client::raw_ingress::post_effect
 #[test]
 #[ignore = "daily"]
 fn post_effects_before_login_disconnects_with_packet_error_26_3() {
-    const NAME: &str = "game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3";
+    const NAME: &str = "cut_layout::game::client_side::remote_client::ingress_state::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3";
     const FLAG: &str = "SUNRISE_POST_EFFECTS_BEFORE_LOGIN_CASE";
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
         NAME,

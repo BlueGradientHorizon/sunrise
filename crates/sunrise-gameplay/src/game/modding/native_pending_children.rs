@@ -454,7 +454,7 @@ impl MobSplitChildList for SplitChildList<'_> {
 /// Whether a final child satisfies every object invariant: a registered kind allowed by
 /// `constraint`, the action's dimension, a finite spawnable position and yaw, baby state the
 /// species supports and a size the species allows.
-pub fn valid_child(
+fn valid_child(
     resources: &super::Resources,
     dimension: super::Dim,
     constraint: ChildConstraint,
