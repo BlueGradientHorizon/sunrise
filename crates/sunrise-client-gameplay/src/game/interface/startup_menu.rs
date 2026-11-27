@@ -699,14 +699,6 @@ impl Loading {
                         &additional,
                     );
                 }
-                Event::DownloadPack(i) => {
-                    let dir = packs::packs_dir();
-                    if let Some(screen) = &mut self.menu.options.pack_screen
-                        && let Some(browser) = &mut screen.browser
-                    {
-                        browser.download(i, &dir, sunrise_core::VANILLA_VERSION);
-                    }
-                }
                 Event::DataPacks(ids) => {
                     let resources = self.vanilla_root.clone();
                     if let Some(title) = &mut self.menu.title {

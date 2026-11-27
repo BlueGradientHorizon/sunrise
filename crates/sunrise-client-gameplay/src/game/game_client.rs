@@ -2322,7 +2322,7 @@ impl crate::game::ClientGame<'_> {
                 self.draw_preset_editor(&mut batch);
             }
             // ScreenEvent.Render.Post over the title's own screens: a mod draws
-            // over them here (a pack browser over Create New World, say), and the
+            // over them here (a banner over Create New World, say), and the
             // toasts still come after, as over any screen.
             self.publish_screen_regions(&batch, None);
             self.draw_title_screen_with_post_hook(&mut batch);

@@ -1,4 +1,3 @@
-packBrowser:false
 pregen:false
 dynamicLights:false
 uiSoundReserve:false

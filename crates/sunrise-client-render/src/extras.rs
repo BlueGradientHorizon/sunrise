@@ -1,6 +1,6 @@
 //! Sunrise's optional extras (dynamic lights, inventory tools, chat, sound and
-//! menu options, the resource pack browser, `/pregen`): their
-//! settings, kept in `sunrise-extras.txt` next to `options.txt` so that file
+//! menu options, `/pregen`): their settings, kept in `sunrise-extras.txt`
+//! next to `options.txt` so that file
 //! stays exactly vanilla's, and the logic behind them. Every extra is off by
 //! default unless its own doc says otherwise; see `docs/extras.md`. Sunrise's own switches outside the Gameplay page
 //! (No AI, Agent Control) are kept here too.
@@ -46,10 +46,6 @@ impl Corner {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Extras {
-    /// The Select Resource Packs screen's Add button, which browses
-    /// Modrinth. Off by default: it is Sunrise's own and the screen is
-    /// otherwise vanilla's (tools/test_pack_screen_parity.py).
-    pub pack_browser: bool,
     /// Make /pregen available in single-player and hosted LAN worlds.
     pub pregen: bool,
     /// Held, dropped and burning light sources light their surroundings (`dynamic_light`).
@@ -112,7 +108,6 @@ pub struct Extras {
 impl Default for Extras {
     fn default() -> Self {
         Self {
-            pack_browser: false,
             pregen: false,
             dynamic_lights: false,
             ui_sound_reserve: false,
@@ -163,7 +158,6 @@ impl Extras {
                 _ => d,
             };
             match key.trim() {
-                "packBrowser" => e.pack_browser = flag(e.pack_browser),
                 "pregen" => e.pregen = flag(e.pregen),
                 "dynamicLights" => e.dynamic_lights = flag(e.dynamic_lights),
                 "uiSoundReserve" => e.ui_sound_reserve = flag(e.ui_sound_reserve),
@@ -225,7 +219,6 @@ impl Extras {
         let mut push = |key: &str, value: &dyn std::fmt::Display| {
             text.push_str(&format!("{key}:{value}\n"));
         };
-        push("packBrowser", &bool_text(self.pack_browser));
         push("pregen", &bool_text(self.pregen));
         push("dynamicLights", &bool_text(self.dynamic_lights));
         push("uiSoundReserve", &bool_text(self.ui_sound_reserve));
@@ -366,8 +359,6 @@ pub enum Item {
     /// On the AI Agent page, next to Agent Control: the F3 recording shortcuts.
     ReproKeys,
     WheelCyclesSettings,
-    /// The Select Resource Packs screen's Add button (Modrinth).
-    PackBrowser,
     Pregen,
     /// Chat options.
     Chat(crate::chat_options::Opt),
@@ -405,7 +396,6 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
         Ok(MusicPage),
         Err("sunrise.extras.header.menus"),
         Ok(WheelCyclesSettings),
-        Ok(PackBrowser),
     ]);
     rows
 }
@@ -429,7 +419,6 @@ impl Item {
             Item::ChatAnimation => "sunrise.extras.chat_animation",
             Item::ChatIndicator => "sunrise.extras.chat_indicator",
             Item::WheelCyclesSettings => "sunrise.extras.wheel_cycles_settings",
-            Item::PackBrowser => "sunrise.extras.pack_browser",
             Item::Pregen => "sunrise.extras.pregen",
             Item::Chat(o) => o.caption_key(),
         }
@@ -453,7 +442,6 @@ impl Item {
             Item::ChatAnimation => "sunrise.extras.chat_animation.tooltip",
             Item::ChatIndicator => "sunrise.extras.chat_indicator.tooltip",
             Item::WheelCyclesSettings => "sunrise.extras.wheel_cycles_list_settings.tooltip",
-            Item::PackBrowser => "sunrise.extras.pack_browser.tooltip",
             Item::Pregen => "sunrise.extras.pregen.tooltip",
             Item::Chat(o) => o.description_key(),
         }
@@ -486,7 +474,6 @@ impl Item {
             Item::AgentControl => "Agent Control",
             Item::ReproKeys => "Recording shortcuts",
             Item::WheelCyclesSettings => "Scroll wheel changes settings",
-            Item::PackBrowser => "Resource pack browser",
             Item::Pregen => "Chunk pregeneration",
             Item::Chat(o) => o.caption(),
         }
@@ -501,7 +488,7 @@ impl Item {
             Chat(_) => return None,
             DynamicLights | OwnNameTag | HideBlockParticles | MouseTweaks | Sort
             | ChatAnimation | ChatIndicator | NoAi | AgentControl | ReproKeys
-            | WheelCyclesSettings | MusicPage | PackBrowser | Pregen | ShaderPackKey => {
+            | WheelCyclesSettings | MusicPage | Pregen | ShaderPackKey => {
                 return None;
             }
         })
@@ -559,9 +546,6 @@ impl Item {
             Item::WheelCyclesSettings => {
                 "The scroll wheel over a button in the settings changes its value, as in vanilla. Off, the wheel only scrolls the list."
             }
-            Item::PackBrowser => {
-                "Select Resource Packs gets an Add button that searches Modrinth and installs a pack into your packs folder. Off, the game never contacts Modrinth."
-            }
         }
     }
     /// The frame-time cost the main switch of an extra shows.
@@ -576,8 +560,7 @@ impl Item {
             | Item::HideBlockParticles
             | Item::MouseTweaks
             | Item::Sort
-            | Item::WheelCyclesSettings
-            | Item::PackBrowser => Some(Cost::None),
+            | Item::WheelCyclesSettings => Some(Cost::None),
             _ => None,
         }
     }
@@ -598,7 +581,6 @@ impl Item {
             Item::AgentControl => e.agent_control,
             Item::ReproKeys => e.repro_keys,
             Item::WheelCyclesSettings => e.wheel_cycles_settings,
-            Item::PackBrowser => e.pack_browser,
             Item::Pregen => e.pregen,
             Item::Chat(o) => o.switch(&e.chat),
             _ => return None,
@@ -632,7 +614,6 @@ impl Item {
             Item::AgentControl => e.agent_control = !e.agent_control,
             Item::ReproKeys => e.repro_keys = !e.repro_keys,
             Item::WheelCyclesSettings => e.wheel_cycles_settings = !e.wheel_cycles_settings,
-            Item::PackBrowser => e.pack_browser = !e.pack_browser,
             Item::Pregen => e.pregen = !e.pregen,
             Item::Chat(o) => o.cycle(&mut e.chat),
             Item::SortKey | Item::ShaderPackKey => {}
@@ -655,7 +636,6 @@ mod tests {
 
     fn all_set() -> Extras {
         Extras {
-            pack_browser: true,
             pregen: true,
             music_off: vec!["a".into(), "b".into()],
             own_name_tag: true,
