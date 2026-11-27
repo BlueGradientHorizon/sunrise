@@ -104,13 +104,6 @@ scales it by 10%, a right click puts it back in its corner at 100%, and the butt
 background and its opacity, put every widget back in its corner at 100% (Reset), or close the editor (Esc too). The layout is saved when it closes.
 Code: `crates/sunrise-client-gameplay/src/game/interface/hud_editor.rs`.
 
-## Enchantment glint colour (`glintColour`, default off)
-
-The glint's shimmer in a solid colour: each sample's brightest channel over the colour, so the pattern, speed
-and strength stay vanilla's (`entity.wgsl` `tinted_glint` for items in the world, held and worn armour,
-`hud.wgsl` for items in the GUI). The colour rides in uniforms (`colored_count.z`, the HUD's `end_portal[2].yzw`),
-so it costs nothing. Resource packs' core shaders and OptiFine CIT glints keep their own colours.
-
 ## Chat (each default off)
 
 | Option | Key | What it does |

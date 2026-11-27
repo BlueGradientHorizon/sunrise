@@ -2251,7 +2251,6 @@ impl crate::game::ClientGame<'_> {
         self.input_hud_begin();
         self.client.subtitles.deferred.set(false);
         let mut batch = HudBatch::new(size, self.client.settings.gui_scale_inputs());
-        batch.glint_colour = self.pvp_glint_texel();
         // GlobalSettingsUniform's GameTime, for a resource pack's text shader.
         batch.game_time = ((self.common.world.game_time.rem_euclid(24000)) as f32
             + self.common.clock.fraction() as f32)

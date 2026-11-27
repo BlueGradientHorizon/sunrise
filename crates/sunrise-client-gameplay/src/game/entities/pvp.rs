@@ -196,13 +196,9 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn pvp_hides_particle(&self, ty: ParticleType) -> bool {
         self.client.settings.extras.pvp.combat.hides_particle(ty)
     }
-    /// The block outline, hurt overlay and glint colours the renderer draws with.
+    /// The block outline and hurt overlay colours the renderer draws with.
     pub(in crate::game::client_side) fn pvp_render_frame(&self) -> Frame {
         self.client.settings.extras.pvp.frame()
-    }
-    /// The enchantment glint's colour texel, 0 for vanilla's.
-    pub(in crate::game::client_side) fn pvp_glint_texel(&self) -> u32 {
-        self.client.settings.extras.pvp.tweaks.glint_texel()
     }
     /// The chat's options: Ctrl+F search, copy on click, and the rest (`ChatOptions::qol`).
     pub(in crate::game::client_side) fn pvp_chat(&self) -> ChatOptions {

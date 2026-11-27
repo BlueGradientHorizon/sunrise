@@ -439,15 +439,12 @@ pub struct Frame {
     pub outline: Option<(u32, f32)>,
     /// The hurt overlay texel ([`Hit::texel`]), 0 for vanilla's.
     pub hurt_texel: u32,
-    /// The glint's colour ([`Tweaks::glint_texel`]), 0 for vanilla's.
-    pub glint: u32,
 }
 impl Pvp {
     pub fn frame(&self) -> Frame {
         Frame {
             outline: self.outline.stroke(),
             hurt_texel: self.hit.texel(),
-            glint: self.tweaks.glint_texel(),
         }
     }
 }
@@ -588,23 +585,6 @@ fn corner_label(c: Corner) -> String {
     )
 }
 
-/// Smaller changes to what vanilla shows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Tweaks {
-    /// The enchantment glint's colour; `None` is vanilla's purple.
-    pub glint: Option<Colour>,
-}
-impl Tweaks {
-    /// `colour` as the glint shaders read it: `0` for vanilla's, else `0xFF` alpha over RGB in
-    /// little-endian bytes (`unpack4x8unorm`'s order).
-    pub fn glint_texel(&self) -> u32 {
-        self.glint.map_or(0, |c| {
-            let [_, r, g, b] = c.argb().to_be_bytes();
-            u32::from_le_bytes([r, g, b, 255])
-        })
-    }
-}
-
 /// Chat options.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ChatOptions {
@@ -660,7 +640,6 @@ pub struct Pvp {
     pub outline: Outline,
     pub hit: Hit,
     pub hud: Hud,
-    pub tweaks: Tweaks,
     pub chat: ChatOptions,
     /// Where each HUD widget sits and its size.
     pub layout: crate::pvp_hud::Layout,
@@ -677,7 +656,6 @@ impl Default for Pvp {
             outline: Outline::default(),
             hit: Hit::default(),
             hud: Hud::default(),
-            tweaks: Tweaks::default(),
             chat: ChatOptions::default(),
             layout: crate::pvp_hud::Layout::default(),
             editor_key: "key.keyboard.unknown".into(),
@@ -700,7 +678,6 @@ impl Pvp {
     pub fn parse_line(&mut self, key: &str, value: &str) -> bool {
         let c = &mut self.crosshair;
         let (o, h, u) = (&mut self.outline, &mut self.hit, &mut self.hud);
-        let t = &mut self.tweaks;
         match key {
             "crosshair" => c.custom = flag(value, c.custom),
             "crosshairShape" => c.shape = Shape::parse(value).unwrap_or(c.shape),
@@ -770,12 +747,6 @@ impl Pvp {
             "hudReachCorner" => u.reach_corner = Corner::parse(value, u.reach_corner),
             "hudSpeed" => u.speed = flag(value, u.speed),
             "hudSpeedCorner" => u.speed_corner = Corner::parse(value, u.speed_corner),
-            "glintColour" => {
-                t.glint = match value {
-                    "off" => None,
-                    v => Colour::parse(v).or(t.glint),
-                }
-            }
             "chatTimestamps" => self.chat.timestamps = flag(value, self.chat.timestamps),
             "chatCompact" => self.chat.compact = flag(value, self.chat.compact),
             "chatCopy" => self.chat.copy = flag(value, self.chat.copy),
@@ -875,8 +846,6 @@ impl Pvp {
         );
         self.layout.serialize(out);
         let _ = writeln!(out, "hudEditorKey:{}", self.editor_key);
-        let t = &self.tweaks;
-        let _ = write!(out, "glintColour:{}\n", t.glint.map_or("off", Colour::name),);
         let c = &self.chat;
         let _ = write!(
             out,
@@ -981,8 +950,6 @@ opts! {
     HudShadow, "hud_shadow", "Text shadow", "A shadow under the widgets' text, as vanilla's HUD text has.";
     HudEditorKey, "hud_editor_key", "HUD editor key",
         "Opens the HUD editor from the game. Click, then press a key; Escape unbinds it.";
-    GlintColour, "glint_colour", "Enchantment glint colour",
-        "The colour of the shimmer on enchanted items and armour. Off is vanilla's purple.";
     ChatTimestamps, "chat_timestamps", "Timestamps", "The time each message came in, before it.";
     ChatCompact, "chat_compact", "Compact chat",
         "A message repeated in a row shows once, with how many times it came: (x3).";
@@ -1066,8 +1033,6 @@ pub fn rows() -> Vec<Result<Opt, &'static str>> {
         ]
         .map(Ok),
     );
-    rows.push(Err("sunrise.pvp.header.items"));
-    rows.push(Ok(GlintColour));
     rows.push(Err("sunrise.pvp.header.chat"));
     rows.extend([ChatTimestamps, ChatCompact, ChatCopy, ChatSearch].map(Ok));
     rows.push(Err("sunrise.pvp.header.combat"));
@@ -1092,7 +1057,6 @@ impl Opt {
             HudClockCorner => Some(HudClock),
             HudReachCorner => Some(HudReach),
             HudSpeedCorner => Some(HudSpeed),
-            GlintColour => None,
             ChatTimestamps | ChatCompact | ChatCopy | ChatSearch => None,
             CombatFeel | CombatIndicator | CombatSounds => None,
             HudPingCorner => Some(HudPing),
@@ -1176,10 +1140,6 @@ impl Opt {
             Opt::HudOpacity => format!("{}%", p.hud.opacity),
             Opt::HudTextColour => p.hud.text.label(),
             Opt::HudEditorKey => crate::keybinds::display_name(&p.editor_key).plain(),
-            Opt::GlintColour => match p.tweaks.glint {
-                Some(colour) => colour.label(),
-                None => crate::lang::get_or("Off", "Off"),
-            },
             Opt::CombatFeel => match p.combat.legacy {
                 true => crate::lang::get_or("sunrise.pvp.combat_feel.legacy", "Legacy (1.8.9)"),
                 false => crate::lang::get_or("sunrise.pvp.combat_feel.modern", "Modern"),
@@ -1191,7 +1151,6 @@ impl Opt {
     pub fn cycle(self, p: &mut Pvp, back: bool) {
         let c = &mut p.crosshair;
         let (o, h, u) = (&mut p.outline, &mut p.hit, &mut p.hud);
-        let t = &mut p.tweaks;
         let corner = |c: Corner| step(&Corner::ALL, c, back);
         // Off, then every solid colour.
         let solid_or_off = |v: Option<Colour>| {
@@ -1261,7 +1220,6 @@ impl Opt {
             Opt::HudReachCorner => u.reach_corner = corner(u.reach_corner),
             Opt::HudSpeed => u.speed = !u.speed,
             Opt::HudSpeedCorner => u.speed_corner = corner(u.speed_corner),
-            Opt::GlintColour => t.glint = solid_or_off(t.glint),
             Opt::ChatTimestamps => p.chat.timestamps = !p.chat.timestamps,
             Opt::ChatCompact => p.chat.compact = !p.chat.compact,
             Opt::ChatCopy => p.chat.copy = !p.chat.copy,
@@ -1406,8 +1364,6 @@ mod tests {
         assert_eq!(p.crosshair.shape, Shape::T);
         assert_eq!(p.crosshair.size, 8);
         assert_eq!(p.crosshair.hover, Some(Colour::Inverted));
-        let t = p.tweaks;
-        assert_eq!(t.glint, Some(Colour::White));
         let c = p.chat;
         assert!(c.timestamps && c.compact && c.copy && c.search);
         let mut text = String::new();
@@ -1427,15 +1383,6 @@ mod tests {
         assert!(p.parse_line("crosshairSize", "99") && p.crosshair.size == SIZES.1);
         assert!(p.parse_line("crosshairColour", "plaid") && p.crosshair.colour == Colour::White);
         assert!(!p.parse_line("fullbright", "true"));
-    }
-
-    #[test]
-    fn the_glint_colour_reaches_the_shaders_as_rgb_bytes() {
-        let mut t = Tweaks::default();
-        assert_eq!(t.glint_texel(), 0, "vanilla's glint");
-        t.glint = Some(Colour::Red);
-        // unpack4x8unorm reads the low byte first: r = 1, g = 0, b = 0, a = 1.
-        assert_eq!(t.glint_texel().to_le_bytes(), [255, 0, 0, 255]);
     }
 
     #[test]

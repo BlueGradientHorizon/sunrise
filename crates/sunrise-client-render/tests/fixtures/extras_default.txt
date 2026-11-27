@@ -70,7 +70,6 @@ hudOpacity:47
 hudTextColour:white
 hudShadow:true
 hudEditorKey:key.keyboard.unknown
-glintColour:off
 chatTimestamps:false
 chatCompact:false
 chatCopy:false
