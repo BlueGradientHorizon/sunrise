@@ -214,6 +214,15 @@ the full list.
     `iris.features.required`. A flag matches in any case, and the macro takes the name as `FEATURES` writes it
     (`ssbo` listed gives `IRIS_FEATURE_SSBO`, not `IRIS_FEATURE_ssbo`). A flag Sunrise lacks, and a flag the pack
     doesn't list, stay undefined. A required flag Sunrise lacks keeps its note, and the pack still loads, as before.
+  - A supported flag Sunrise can't keep on every draw it may take loads without a note but gets no macro:
+    `BLOCK_EMISSION_ATTRIBUTE` (`UNANSWERED` in `macros.rs`). Terrain drawn from its vertex attributes alone (when
+    neither the arena's pages nor the normal stream fit the pack's vertex stage) has no source block, so
+    `at_midBlock.w` is `0` there and a pack's emission branch would lose every block's light. Keeping the flag
+    unanswered is the smaller correct choice: the vertex data on that path carries no emitted light to supply.
+  - With `FADE_VARIABLE` answered, `mc_chunkFade` is given on every gbuffers draw, as spec 5.1 line 626 says: the
+    section's fade on terrain, `-1.0` on every other draw (sky, celestial bodies, entities and block entities with
+    their particles, translucent and shadow draws, clouds, weather, lines, the hand, mods' pipelines;
+    `post::off_terrain_fade`). A program that declares the name keeps its own declaration.
   - `shaders.properties` is read twice, in one fixed order: first with the standard macros, the renderer's and the
     pack's options and no feature macro (any answer a reused macro set still holds is dropped), which settles the two
     lists; then the answers are defined and the file is read again, and that second read is the one the game uses. A list that only a feature macro reaches is not read.
@@ -264,7 +273,9 @@ the full list.
   `options::tests::a_repeat_the_second_read_cannot_see_is_still_noted`,
   `options::tests::the_settled_lists_keep_their_place_in_the_file`,
   `options::tests::an_undef_in_shaders_properties_hides_the_answer_from_conditionals_only`,
-  `options::tests::a_reused_macro_set_carries_no_answer_to_the_next_pack`, `post::tests::sunrises_test_pack_loads`, and
+  `options::tests::a_reused_macro_set_carries_no_answer_to_the_next_pack`,
+  `options::tests::block_emission_is_supported_but_not_answered`,
+  `post::tests::non_terrain_programs_read_the_fade_as_minus_one`, `post::tests::sunrises_test_pack_loads`, and
   in `tests/it`
   `reversed_culling_feature::requested_reversed_culling_loads_and_packs_take_the_path_it_guards` and
   `terrain_fade::fade_feature_negotiation_ignores_case_and_defines_the_written_macro` (`sunrise-shaders`);

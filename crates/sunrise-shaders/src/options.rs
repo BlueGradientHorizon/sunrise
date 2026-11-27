@@ -951,6 +951,24 @@ mod tests {
         assert!(composite_uniforms(&plain, &properties, &macros).is_empty());
     }
 
+    /// A flag Sunrise can't keep on every draw ([`crate::macros`]' `UNANSWERED`,
+    /// `BLOCK_EMISSION_ATTRIBUTE`) loads without a note when required, and gets no answer, listed
+    /// either way; the others the pack lists still do.
+    #[test]
+    fn block_emission_is_supported_but_not_answered() {
+        let text = "iris.features.optional = BLOCK_EMISSION_ATTRIBUTE SSBO\n\
+                    iris.features.required = block_emission_attribute\n\
+                    #ifdef IRIS_FEATURE_BLOCK_EMISSION_ATTRIBUTE\nemission = 1\n#endif\n";
+        let pack = feature_pack(text, &[("seen_emission", "BLOCK_EMISSION_ATTRIBUTE")]);
+        let mut macros = crate::Macros::standard();
+        let (properties, notes) = read_properties(&pack, &mut macros);
+        assert!(notes.is_empty(), "{notes:?}");
+        assert!(!macros.is_defined("IRIS_FEATURE_BLOCK_EMISSION_ATTRIBUTE"));
+        assert_eq!(macros.get("IRIS_FEATURE_SSBO"), Some("1"));
+        assert_eq!(properties.get("emission"), None);
+        assert!(composite_uniforms(&pack, &properties, &macros).is_empty());
+    }
+
     #[test]
     fn declared_defaults_remain_selectable_and_apply() {
         for (source, selected) in [

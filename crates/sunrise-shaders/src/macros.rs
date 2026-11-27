@@ -7,13 +7,15 @@ pub(crate) use sunrise_glsl::macros::lex;
 /// The feature flags of `iris.features.*` (spec 3.2) Sunrise has. A pack that requires one of
 /// them loads; one it lacks is noted. For each of them the pack lists, in either list, its
 /// programs and property files see `IRIS_FEATURE_<NAME>` (spec 1.5.1, 3.2; decision D-7 and
-/// OQ-2 in docs/cleanroom/): `Macros::define_features`. `BLOCK_EMISSION_ATTRIBUTE`: terrain's
-/// `at_midBlock.w` is the light its block gives. `SEPARATE_HARDWARE_SAMPLERS` (ShaderDoc,
+/// OQ-2 in docs/cleanroom/): `Macros::define_features`, all but [`UNANSWERED`].
+/// `BLOCK_EMISSION_ATTRIBUTE`: terrain's `at_midBlock.w` is the light its block gives, where the
+/// draw reaches the quad's source block. `SEPARATE_HARDWARE_SAMPLERS` (ShaderDoc,
 /// "Separate Hardware Shadow Samplers"): `shadowtex0`/`shadowtex1` stay plain depth samplers when
 /// hardware filtering is on, `shadowtex0HW`/`shadowtex1HW` compare; Sunrise picks a comparison
 /// sampler by the declared type (`sampler2DShadow`), so they always are. `HIGHER_SHADOWCOLOR`:
-/// `shadowcolor2` to `shadowcolor7` beside the first two. `FADE_VARIABLE`: terrain vertex
-/// programs can read the section's visibility transition as `mc_chunkFade`.
+/// `shadowcolor2` to `shadowcolor7` beside the first two. `FADE_VARIABLE`: gbuffers programs read
+/// `mc_chunkFade`, terrain's the section's visibility transition and every other draw's `-1.0`
+/// (spec 5.1, `post::off_terrain_fade`).
 const FEATURES: [&str; 9] = [
     "BLOCK_EMISSION_ATTRIBUTE",
     "COMPUTE_SHADERS",
@@ -25,6 +27,14 @@ const FEATURES: [&str; 9] = [
     "SEPARATE_HARDWARE_SAMPLERS",
     "SSBO",
 ];
+
+/// The flags of [`FEATURES`] a pack requiring them loads with, but that get no
+/// `IRIS_FEATURE_<NAME>`: Sunrise can't keep their promise on every draw it may take.
+/// `BLOCK_EMISSION_ATTRIBUTE`: terrain drawn from its attributes alone
+/// (`TerrainDraws::Attributes`, when neither the arena's pages nor the normal stream fit the
+/// pack's vertex stage) has no source block, and `at_midBlock.w` is `0` there, so a pack's
+/// emission branch would lose every block's light on that path.
+const UNANSWERED: [&str; 1] = ["BLOCK_EMISSION_ATTRIBUTE"];
 
 /// The one of [`FEATURES`] `name` is, in any case.
 fn feature(name: &str) -> Option<&'static str> {
@@ -270,10 +280,11 @@ impl Macros {
     /// Defines `IRIS_FEATURE_<NAME>` as `1` for each of [`FEATURES`] that `properties` lists in
     /// `iris.features.optional` (spec 3.2) or `iris.features.required` (decision D-7), a name
     /// matching in any case and the macro taking the name as `FEATURES` writes it. A flag
-    /// Sunrise lacks stays undefined. Whether any was defined.
+    /// Sunrise lacks, and one of [`UNANSWERED`], stays undefined. Whether any was defined.
     pub fn define_features(&mut self, properties: &crate::Properties) -> bool {
         let mut defined = false;
-        for name in listed_features(properties) {
+        let answered = listed_features(properties).filter(|f| !UNANSWERED.contains(f));
+        for name in answered {
             self.define(format!("{FEATURE_MACRO}{name}"), "1");
             defined = true;
         }
