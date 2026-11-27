@@ -2400,12 +2400,8 @@ where
         self.noise_column(x, z, &mut visit);
         let (height, state) = top?;
         // A superflat surface is its top layer, with its one biome.
-        if self.flat.is_some() {
-            let biome = self
-                .source
-                .possible_biomes()
-                .into_iter()
-                .find_map(|name| self.data.biome_id(name))?;
+        if let Some(flat) = &self.flat {
+            let biome = flat.biome?;
             return Some(SurfaceSample {
                 height,
                 state,
