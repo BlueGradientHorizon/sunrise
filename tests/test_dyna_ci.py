@@ -11,7 +11,7 @@ import tempfile
 import time
 import unittest
 
-from tests.os_support import POSIX_BASH, needs_runner_shell
+from tests.os_support import POSIX_BASH, needs_command, needs_gnu_timeout, needs_runner_shell, needs_symlinks
 from tests.test_ci_concurrency import expression_value
 from tools.ci import vendored_yaml
 
@@ -151,6 +151,7 @@ class DynaRoutingTests(unittest.TestCase):
                 self.assertEqual(result.strip(), f"self_hosted={str(expected).lower()}")
 
     @unittest.skipIf(os.name == "nt", "the script installs dependencies on Dyna's Ubuntu runner")
+    @needs_command("sha256sum")
     def test_cached_dependencies_export_persistent_paths(self):
         script = ROOT / "tools/ci/dyna_ci_deps.sh"
         with tempfile.TemporaryDirectory() as directory:
@@ -172,6 +173,8 @@ class DynaRoutingTests(unittest.TestCase):
             self.assertIn(str(cargo_home / "bin"), pathfile.read_text())
 
     @unittest.skipUnless(POSIX_BASH and os.name != "nt", "needs the runner's bash")
+    @needs_gnu_timeout
+    @needs_command("sha256sum")
     def test_baked_packages_skip_the_download_and_a_partial_image_falls_back(self):
         script = ROOT / "tools/ci/dyna_ci_deps.sh"
         for missing, extraction_error in ((False, False), (True, False), (True, True)):
@@ -230,11 +233,12 @@ class DynaRoutingTests(unittest.TestCase):
             stubs.mkdir()
             (stubs / "apt-get").write_text(
                 '#!/usr/bin/env bash\n'
-                f'n=$(cat "{root}/count" 2>/dev/null || echo 0); echo $((n + 1)) > "{root}/count"\n'
-                f'if [ "$n" -lt {failures} ]; then echo "E: File has unexpected size (mirror sync)" >&2; exit 100; fi\n')
-            (stubs / "dpkg-deb").write_text("#!/usr/bin/env bash\n")
+                f'n=$(cat "{root.as_posix()}/count" 2>/dev/null || echo 0); echo $((n + 1)) > "{root.as_posix()}/count"\n'
+                f'if [ "$n" -lt {failures} ]; then echo "E: File has unexpected size (mirror sync)" >&2; exit 100; fi\n',
+                encoding="utf-8", newline="\n")
+            (stubs / "dpkg-deb").write_text("#!/usr/bin/env bash\n", encoding="utf-8", newline="\n")
             # No baked packages: the rootless download fallback is what these cases exercise.
-            (stubs / "dpkg-query").write_text("#!/usr/bin/env bash\nexit 1\n")
+            (stubs / "dpkg-query").write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8", newline="\n")
             for stub in stubs.iterdir():
                 stub.chmod(0o755)
             home = root / "home"
@@ -248,7 +252,9 @@ class DynaRoutingTests(unittest.TestCase):
             count = int((root / "count").read_text()) if (root / "count").exists() else 0
             return result, count
 
-    @unittest.skipUnless(POSIX_BASH and os.name != "nt", "needs the runner's bash")
+    @needs_runner_shell
+    @needs_gnu_timeout
+    @needs_command("sha256sum")
     def test_apt_is_retried_a_bounded_number_of_times_and_then_succeeds(self):
         # The first command (update) fails twice, then both commands pass: 2 failures + 2 successes.
         result, count = self.run_deps_with_stub_apt(failures=2)
@@ -256,7 +262,9 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertEqual(count, 4)
         self.assertEqual(result.stderr.count("retrying in"), 2)
 
-    @unittest.skipUnless(POSIX_BASH and os.name != "nt", "needs the runner's bash")
+    @needs_runner_shell
+    @needs_gnu_timeout
+    @needs_command("sha256sum")
     def test_apt_that_keeps_failing_fails_with_the_real_error_after_the_last_try(self):
         result, count = self.run_deps_with_stub_apt(failures=99)
         self.assertEqual(result.returncode, 100)
@@ -890,6 +898,7 @@ class ParityWorkflowTests(unittest.TestCase):
                          ([], ["loot_a"], False, scope))
         self.assertEqual(merged["shares"], {"reported": 1, "expected": 3})
 
+    @needs_symlinks
     def test_vanilla_derived_scratch_is_deleted_when_the_job_ends(self):
         self.initialise()
         build = self.root
