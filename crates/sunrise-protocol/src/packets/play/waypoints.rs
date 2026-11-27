@@ -57,9 +57,7 @@ impl Codec<TrackedWaypoint> for TrackedWaypoint {
         } else {
             WaypointId::Name(r.string(32767)?)
         };
-        let style = Ident::read(r)?;
-        let style = sunrise_core::identifier::Identifier::parse(&style)
-            .map_err(|_| Error::new(format!("waypoint style {style:?}")))?;
+        let style = Ident::read_identifier(r)?;
         // ByteBufCodecs.RGB_COLOR: three bytes, read back as an opaque ARGB colour.
         let color = if r.bool()? {
             let [red, green, blue] = [r.u8()?, r.u8()?, r.u8()?].map(i32::from);
