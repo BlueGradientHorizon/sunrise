@@ -1041,7 +1041,7 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         for template in ["content", "native"] {
             let project = workspace.path().join(template);
-            let mut args = code_args(&project, template).to_vec();
+            let mut args = template_args(&project, template);
             args.extend(["--name".into(), name.into()]);
             new(&args, &offline).unwrap();
             assert_eq!(Package::read(&project).unwrap().manifest.name, name);
