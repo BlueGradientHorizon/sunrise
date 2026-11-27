@@ -36,7 +36,7 @@ mod quiet_write_tests;
 #[cfg(any(test, not(feature = "client")))]
 #[path = "../server_startup_settings.rs"]
 mod server_startup_settings;
-#[cfg(feature = "client")]
+#[cfg(any(test, feature = "client"))]
 use crate::settings::Settings;
 #[cfg(feature = "client")]
 use sunrise_client_gameplay::game::client_side::activity;
@@ -865,7 +865,12 @@ pub(crate) use server_side::{
 #[doc(hidden)]
 pub mod transactions;
 
+#[cfg(all(test, feature = "client"))]
 #[path = "game/runtime/resource_load.rs"]
+#[doc(hidden)]
+pub mod resource_load;
+#[cfg(all(test, not(feature = "client")))]
+#[path = "game/runtime/resource_load_server_tests.rs"]
 #[doc(hidden)]
 pub mod resource_load;
 
@@ -1008,6 +1013,7 @@ pub mod equip_answers;
 #[doc(hidden)]
 pub mod chat_common;
 
+#[cfg(all(test, feature = "client"))]
 #[doc(hidden)]
 pub mod host;
 
@@ -1031,6 +1037,7 @@ pub mod fireworks;
 #[doc(hidden)]
 pub mod closest_space;
 
+#[cfg(all(test, feature = "client"))]
 #[path = "game/client_side.rs"]
 #[doc(hidden)]
 pub mod client_side;

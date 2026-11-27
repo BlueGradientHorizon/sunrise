@@ -42,6 +42,7 @@ pub fn fresh_case_command(name: &str, flag: &str, case: &str) -> std::process::C
     command
 }
 
+// hidden: only the engine's test platform installs these fixture callbacks.
 #[doc(hidden)]
 #[path = "testing/engine_platform.rs"]
 pub mod engine_platform;
