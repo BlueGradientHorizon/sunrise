@@ -72,7 +72,7 @@ impl ClientGame<'_> {
     /// install from Browse Mods): those with only assets and data apply now,
     /// through the resource reload and then the
     /// server's data reload (`mods_reloaded`); those that add blocks, items or
-    /// worldgen wait for a restart, and the Mods page says so.
+    /// worldgen wait for a restart.
     pub(in crate::game::client_side) fn switch_mods(&mut self) {
         let Some(applied) = self.common.mods.applied.clone() else {
             return;

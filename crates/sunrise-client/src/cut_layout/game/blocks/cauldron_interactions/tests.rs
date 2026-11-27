@@ -358,6 +358,17 @@ pub(crate) fn setup_common<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
     item: &str,
     count: u32,
 ) {
+    setup_common_with(game, block, level, item, count, |_| {});
+}
+
+fn setup_common_with<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &mut G,
+    block: &str,
+    level: Option<&str>,
+    item: &str,
+    count: u32,
+    before_event_reset: impl FnOnce(&mut G),
+) {
     game.world.chunks.insert(
         (0, 0),
         Arc::new({
@@ -384,6 +395,7 @@ pub(crate) fn setup_common<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
     game.hand = Hand::Main;
     game.inventory.fill(None);
     game.inventory[0] = Some(ItemStack::new(item, count));
+    before_event_reset(game);
     sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
         .with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
@@ -1703,7 +1715,9 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         assert!(read_uses(client).is_empty());
         client.client.remote.as_mut().unwrap().joined = true;
         client.set_local_mode(sunrise_command::args::GameMode::Survival);
-        setup_common(client, "minecraft:cauldron", None, item, 1);
+        setup_common_with(client, "minecraft:cauldron", None, item, 1, |client| {
+            client.client.audio.0.capture = Some(Vec::new());
+        });
         let aim = (35.0, -12.0);
         (client.yaw, client.pitch) = aim;
         if sneaking {

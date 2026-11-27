@@ -416,13 +416,13 @@ impl crate::game::ClientGame<'_> {
                     } else {
                         format!("minecraft:{name}")
                     };
-                    self.client.audio.0.play(&id, Some(at), volume, pitch);
+                    self.play_audio(&id, Some(at), volume, pitch);
                 }
                 MobEvent::SoundId(name, at, volume, pitch) => {
-                    self.client.audio.0.play(&name, Some(at), volume, pitch);
+                    self.play_audio(&name, Some(at), volume, pitch);
                 }
                 MobEvent::ProfessionWorkSound(name, at, volume, pitch) => {
-                    self.client.audio.0.play(&name, Some(at), volume, pitch);
+                    self.play_audio(&name, Some(at), volume, pitch);
                 }
                 MobEvent::LocalSound(name, at, volume, pitch) => {
                     let id = if name.contains(':') {
@@ -430,10 +430,7 @@ impl crate::game::ClientGame<'_> {
                     } else {
                         format!("minecraft:{name}")
                     };
-                    self.client
-                        .audio
-                        .0
-                        .play_unshared(&id, Some(at), volume, pitch);
+                    self.play_audio_unshared(&id, Some(at), volume, pitch);
                 }
                 MobEvent::LandingDust {
                     state,

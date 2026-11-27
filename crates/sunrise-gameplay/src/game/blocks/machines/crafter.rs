@@ -103,7 +103,7 @@ impl crate::game::ServerGame<'_> {
             .map(|(name, result)| (name.to_owned(), result))
             .filter(|(_, result)| result.count > 0);
         let Some((recipe, mut result)) = found else {
-            self.server_level_event_at(1050, [key.0, key.1, key.2], 0);
+            self.dispenser_event(1050, key, 0);
             return Ok(());
         };
         let Some(facing) = self
@@ -233,8 +233,8 @@ impl crate::game::ServerGame<'_> {
                 adv::conditions(&c["player"], &ctx, w) && recipe_matches(&c["recipes"], &id)
             });
         }
-        self.server_level_event_at(1049, [pos.0, pos.1, pos.2], 0);
-        self.server_level_event_at(2010, [pos.0, pos.1, pos.2], facing as i32);
+        self.dispenser_event(1049, pos, 0);
+        self.dispenser_event(2010, pos, facing as i32);
     }
     /// The two insert loops of `dispenseItem`: one item at a time when the
     /// container holds fewer than the stack (`Container.getMaxStackSize`) or is

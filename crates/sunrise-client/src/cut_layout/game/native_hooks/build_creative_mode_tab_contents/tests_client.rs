@@ -184,8 +184,8 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
                 install_dedicated_holders(game, 2);
                 let creative = Creative::from_json(&catalog).unwrap();
-                assert!(!creative.has_contents());
                 game.test_set_creative_catalog(creative.catalog().clone());
+                assert!(game.creative_contents.published.is_none());
                 dedicated = Some(check(
                     game,
                     LogicalSide::Server,

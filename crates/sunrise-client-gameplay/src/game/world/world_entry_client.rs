@@ -53,7 +53,7 @@ impl crate::game::ClientGame<'_> {
         let Some(title) = self.client.title.0.as_ref() else {
             return Ok(());
         };
-        if !title.preparing() || self.common.rest_loader.is_some() {
+        if !title.preparing() {
             return Ok(());
         }
         if !std::mem::replace(&mut self.client.creation_read_started, true) {
@@ -61,6 +61,7 @@ impl crate::game::ClientGame<'_> {
         }
         self.client.creation_read_started = false;
         let (dir, packs) = title.creation_packs().unwrap_or_default();
+        self.common.join_world_rest()?;
         use sunrise_gameplay_common::game::integrated_link::CreationPackRead;
         let outcome = self
             .common

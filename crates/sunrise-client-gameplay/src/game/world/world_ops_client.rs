@@ -155,8 +155,6 @@ impl crate::game::ClientGame<'_> {
             self.common.dim.id(),
             &self.dimension_type().id,
         );
-        let loot_storage = self.common.score.storage.snapshot();
-        let loot_clocks = self.common.loot_clock_ticks();
         let side = client_game_side!(self, self.client_game_side_meta());
 
         let mut scratch_gateways = Default::default();
@@ -189,6 +187,7 @@ impl crate::game::ClientGame<'_> {
             .iter()
             .any(|feature| feature == "minecraft:redstone_experiments");
         let other_entities = entity::entity_lists_of!(self.common, without_carts);
+        let loot_clocks = self.common.loot_clock_ticks();
 
         let mut level = GameLevel {
             cake_probe: false,
@@ -235,7 +234,7 @@ impl crate::game::ClientGame<'_> {
             items,
             recipes,
             loot: None,
-            loot_storage,
+            loot_storage: self.common.score.storage.snapshot(),
             loot_clocks,
             registry: self.common.pack.assets.registry,
             block_registries: &self.common.pack.block_registries,

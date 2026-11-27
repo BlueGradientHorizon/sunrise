@@ -26,7 +26,7 @@ impl ClientGame<'_> {
             renderer.clear_mod_meshes();
             renderer.clear_mod_uniforms();
         }
-        self.finish_world_closed_common(|_| {});
+        self.finish_world_closed_common(|_| {}, |_| {});
     }
 }
 

@@ -2483,8 +2483,8 @@ impl crate::game::ServerGame<'_> {
             self.common.dim.id(),
             &self.dimension_type().id,
         );
-        let loot_clocks = self.common.loot_clock_ticks();
         let other_entities = entity::entity_lists_of!(self.common, without_carts);
+        let loot_clocks = self.common.loot_clock_ticks();
         let mut level = GameLevel {
             cake_probe: false,
             cake_requested: std::cell::Cell::new(false),

@@ -4,7 +4,11 @@ use mod_api::{Authority, LifecycleContext, ServerTickPhase, TickId, WorldEpoch};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub trait NativeLifecycleCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-    fn finish_world_closed_common(&mut self, close_server_chunk_state: impl FnOnce(&mut Self)) {
+    fn finish_world_closed_common(
+        &mut self,
+        close_server_chunk_state: impl FnOnce(&mut Self),
+        clear_composter_randoms: impl FnOnce(&mut Self),
+    ) {
         self.world.water_tickets.clear();
         self.native_lifecycle.retire();
         self.creatures.custom_spawners.clear();
@@ -13,7 +17,7 @@ pub trait NativeLifecycleCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         close_server_chunk_state(self);
         self.resident_entities.table.get_mut().reset();
         crate::game::cauldron_interactions::clear();
-        self.clear_composter_randoms();
+        clear_composter_randoms(self);
         self.clear_world_parts();
     }
 
@@ -203,4 +207,3 @@ impl NativeLifecycle {
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::tables::WorldTablesExt as _;
-use crate::game::transactions::TransactionsGameExt as _;

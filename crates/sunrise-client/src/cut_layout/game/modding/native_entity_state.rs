@@ -540,22 +540,11 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn secondary_use_reads_reachable_client_handles_and_keeps_server_flags() {
-        use std::sync::Arc;
         use sunrise_core::geometry::Vec3;
-        use sunrise_level::chunk::Chunk;
         use sunrise_protocol::connection::Pipe;
         use winit::keyboard::KeyCode;
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            for z in -2..=2 {
-                for x in -2..=2 {
-                    if !game.world.chunks.contains_key(&(x, z)) {
-                        let mut chunk = Chunk::empty(x, z);
-                        chunk.lit = true;
-                        game.world.chunks.insert((x, z), Arc::new(chunk));
-                    }
-                }
-            }
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "SneakReadTest").unwrap();
             // The joined client's state; the local-player and entity constructors must both

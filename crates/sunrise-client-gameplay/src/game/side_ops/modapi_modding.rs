@@ -433,20 +433,13 @@ impl SideOps for crate::game::client_side::ClientState {
         at: BlockSide,
         entity_removed: bool,
     ) -> Option<BlockCapabilitySite> {
-        use sunrise_gameplay_common::game::machine_containers::Containers;
-        use sunrise_gameplay_common::game::tables::GameItems as _;
-
         (level.dimension() == Self::side_native_level_key(game)).then_some(())?;
         let [x, y, z] = at.pos;
-        Containers {
-            world,
-            behaviours: game.common.res.behaviours(),
-            items: game.items(),
-            registry: game.common.pack.assets.registry,
-            brewing: None,
-            mobs: &game.common.mobs,
-        }
-        .capability_site(at, world.block(x, y, z), entity_removed)
+        game.client_level_containers(world).capability_site(
+            at,
+            world.block(x, y, z),
+            entity_removed,
+        )
     }
     fn side_signal_capability_site(
         game: &Self::Game<'_>,
@@ -456,19 +449,19 @@ impl SideOps for crate::game::client_side::ClientState {
     }
     fn side_signal_container_size(
         game: &Self::Game<'_>,
-        _world: &World,
+        world: &World,
         at: BlockSide,
     ) -> Option<usize> {
-        game.client_signal_container_size(at)
+        game.client_signal_container_size(world, at)
     }
     fn side_signal_lend_container_stack(
         game: &Self::Game<'_>,
-        _world: &World,
+        world: &World,
         at: BlockSide,
         slot: usize,
         read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
     ) {
-        game.client_signal_lend_container_stack(at, slot, read)
+        game.client_signal_lend_container_stack(world, at, slot, read)
     }
     fn side_tick_uses_server_sections(game: &Self::Game<'_>) -> bool {
         game.client_tick_uses_server_sections()

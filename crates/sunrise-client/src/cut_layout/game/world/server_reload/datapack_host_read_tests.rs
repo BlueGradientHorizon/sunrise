@@ -56,32 +56,33 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
     mod_platform::testing::with_mods(
         vec![ModEntry::new("registry_test", Box::new(SyncedRegistryMod))].into(),
         || {
-            let candidate = |power: i64| {
-                mod_api::DatapackCandidate::build(
-                    mod_api::__private::datapack_registry_declarations(),
-                    &[
-                        (
-                            "data/registry_test/registry_test/spell/fire.json".into(),
-                            vec![(
-                                "pack".to_owned(),
-                                format!(r#"{{"power":{power}}}"#).into_bytes(),
-                            )],
-                        ),
-                        (
-                            "data/addon/registry_test/spell/ice.json".into(),
-                            vec![("pack".to_owned(), br#"{"power":3}"#.to_vec())],
-                        ),
-                    ],
-                    &mut mod_api::__private::NoVanillaValueDecoder,
-                )
-                .unwrap()
-            };
             // A Cell: the server and the client closure both read it while the visitor is live.
             let visited_refusal = std::cell::Cell::new(false);
             let mut unexpected_visit = |_: &DatapackEntry| visited_refusal.set(true);
             let mut unexpected_id = |_: &str| -> ControlFlow<()> { panic!("unexpected entry ID") };
+            let mut server_registries = None;
             with_game(|game| {
                 game.load_world(request(scratch.path())).unwrap();
+                let candidate = |power: i64| {
+                    mod_api::DatapackCandidate::build(
+                        mod_api::__private::datapack_registry_declarations(),
+                        &[
+                            (
+                                "data/registry_test/registry_test/spell/fire.json".into(),
+                                vec![(
+                                    "pack".to_owned(),
+                                    format!(r#"{{"power":{power}}}"#).into_bytes(),
+                                )],
+                            ),
+                            (
+                                "data/addon/registry_test/spell/ice.json".into(),
+                                vec![("pack".to_owned(), br#"{"power":3}"#.to_vec())],
+                            ),
+                        ],
+                        &mut mod_api::__private::NoVanillaValueDecoder,
+                    )
+                    .unwrap()
+                };
                 game.mods.datapack_registries = Some(std::sync::Arc::new(
                     mod_api::DatapackRegistrySet::from_candidate(candidate(7)),
                 ));
@@ -200,11 +201,10 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                     )
                     .unwrap();
                 assert_eq!(reloaded_visits, 1);
+                server_registries.clone_from(&game.mods.datapack_registries);
             });
             sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
-                client.mods.datapack_registries = Some(std::sync::Arc::new(
-                    mod_api::DatapackRegistrySet::from_candidate(candidate(9)),
-                ));
+                client.mods.datapack_registries = server_registries;
                 let declarations = mod_api::__private::datapack_registry_declarations();
                 let remote = mod_api::DatapackCandidate::build(
                     declarations,

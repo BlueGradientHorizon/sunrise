@@ -1693,7 +1693,7 @@ impl ServerGame<'_> {
             }
         }
         let Some(slot) = slot else {
-            self.server_level_event_at(1001, [key.0, key.1, key.2], 0);
+            self.dispenser_event(1001, key, 0);
             if !dropper {
                 self.post_block_game_event(
                     "minecraft:block_activate",

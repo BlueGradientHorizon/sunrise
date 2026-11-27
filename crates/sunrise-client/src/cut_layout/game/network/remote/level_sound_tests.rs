@@ -1,8 +1,13 @@
+use crate::game::remote::movement_input_tests::local_rotation_tests::sent_packets;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{Flow, HostSide, SoundPlay, SoundSource};
 use std::sync::{Arc, Mutex};
-use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
+use std::time::Duration;
+use sunrise_client_gameplay::game::client_side::native_client_session::tests::{
+    finish_login, logged_client,
+};
 use sunrise_gameplay_common::game::remote::{C, PlayerMotion, Vec3, play};
+use sunrise_protocol::connection::Connection;
 
 #[derive(Default)]
 pub(crate) struct Log {
@@ -62,7 +67,12 @@ fn packets_ask_client_level_before_playback_not_ui() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_client_game(|game| {
-            let _server = logged_client(game);
+            let mut server = Connection::local(logged_client(game));
+            server
+                .reader
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            finish_login(game, &mut server);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 4.0)).unwrap());
             let inputs = Arc::new(LoadInputs::new(
                 Default::default(),
@@ -161,6 +171,11 @@ fn packets_ask_client_level_before_playback_not_ui() {
             assert_eq!(
                 log.played.last().unwrap().identifier,
                 "minecraft:ui.button.click"
+            );
+            assert_eq!(
+                sent_packets(game, &mut server),
+                0,
+                "client playback is never broadcast"
             );
         });
     });

@@ -4271,15 +4271,13 @@ impl crate::game::ServerGame<'_> {
             }
             None => {}
         }
-        if let Some((id, silent)) = shear {
-            self.server_play_bound_sound(
-                "minecraft:entity.sheep.shear",
-                SoundSource::Players.index(),
-                feet,
-                1.0,
-                1.0,
+        if let Some((id, silent)) = shear
+            && !silent
+        {
+            self.play_bound_sound(
+                LevelSound::new("minecraft:entity.sheep.shear", feet, 1.0, 1.0)
+                    .in_source(SoundSource::Neutral),
                 id,
-                silent,
                 None,
             );
         }
@@ -6449,6 +6447,7 @@ impl crate::game::ServerGame<'_> {
                     }
                     water_splashes.append(&mut p.water_splashes);
                     if let Some((hurt_at, is_lava)) = p.take_bullet_hurt() {
+                        swept.insert(p.id);
                         let silent = self.entity_silent(p.id);
                         let ctx = sunrise_level::sculk::Context {
                             owner: p.owner,
@@ -6546,7 +6545,6 @@ impl crate::game::ServerGame<'_> {
                     section_from,
                     keep_flags[i],
                 );
-            hear = self.native_hears_impacts();
             if let Some(back) = hand_back.as_deref_mut()
                 && let Some((id, kind)) = back.told.take()
             {

@@ -75,11 +75,17 @@ fn game<'a>(
     game.block_ticks
         .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
         .unwrap();
-    assert!(run_command(
-        &mut game,
-        &mut server,
-        "fill 0 99 0 15 99 15 stone"
-    ));
+    let stone = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
+        .unwrap();
+    for x in 0..=15 {
+        for z in 0..=15 {
+            game.world.set(x, 99, z, stone).unwrap();
+        }
+    }
     (game, server)
 }
 

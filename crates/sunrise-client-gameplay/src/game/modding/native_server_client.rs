@@ -11,11 +11,13 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::commands_common::{
     CommandsCommonGameExt1 as _, format_syntax_failure_context,
 };
+use sunrise_gameplay_common::game::machine_containers::Containers;
 use sunrise_gameplay_common::game::native_server::{
     ClientCommandOutcome, PlayerRead,
     argument_kinds::{custom_value, nbt_value, parsed_type, positional_value},
 };
 use sunrise_items::items::ItemStack;
+use sunrise_level::world::World;
 use sunrise_sim::lan::abilities::PlayerAbilities;
 
 pub(in crate::game) struct RegisteredClientExecutor {
@@ -243,19 +245,42 @@ impl crate::game::ClientGame<'_> {
         None
     }
 
+    #[inline(always)]
+    pub(in crate::game) fn client_level_containers<'w>(
+        &'w self,
+        world: &'w World,
+    ) -> Containers<'w> {
+        Containers {
+            world,
+            behaviours: self.common.res.behaviours(),
+            items: self.items(),
+            registry: self.common.pack.assets.registry,
+            brewing: None,
+            mobs: &self.common.mobs,
+        }
+    }
+
     pub(in crate::game) fn client_signal_container_size(
         &self,
-        _at: mod_api::BlockSide,
+        world: &World,
+        at: mod_api::BlockSide,
     ) -> Option<usize> {
-        None
+        (at.level.dimension() == self.native_level_key()).then_some(())?;
+        self.client_level_containers(world).capability_size(at)
     }
 
     pub(in crate::game) fn client_signal_lend_container_stack(
         &self,
-        _at: mod_api::BlockSide,
-        _slot: usize,
-        _read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
+        world: &World,
+        at: mod_api::BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
     ) {
+        if at.level.dimension() != self.native_level_key() {
+            return;
+        }
+        self.client_level_containers(world)
+            .lend_capability_stack(at, slot, read);
     }
 
     pub(in crate::game) fn client_level_block_face_sturdy(
