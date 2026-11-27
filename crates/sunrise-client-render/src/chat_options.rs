@@ -80,16 +80,6 @@ opts! {
     ChatSearch, "chat_search", "Chat search",
         "Ctrl+F in the open chat: what you type shows only the messages holding it. Enter or Ctrl+F again stops.";
 }
-pub fn rows() -> Vec<Result<Opt, &'static str>> {
-    use Opt::*;
-    vec![
-        Err("sunrise.pvp.header.chat"),
-        Ok(ChatTimestamps),
-        Ok(ChatCompact),
-        Ok(ChatCopy),
-        Ok(ChatSearch),
-    ]
-}
 impl Opt {
     pub fn switch(self, p: &ChatOptions) -> bool {
         match self {
@@ -125,7 +115,7 @@ mod tests {
         }
         assert_eq!(back, d);
         let mut p = ChatOptions::default();
-        for opt in rows().into_iter().flatten() {
+        for opt in Opt::ALL {
             opt.cycle(&mut p);
         }
         let c = p;
@@ -138,7 +128,7 @@ mod tests {
             read.parse_line(k, v);
         });
         assert_eq!(read, p);
-        assert!(!p.parse_line("fullbright", "true"));
+        assert!(!p.parse_line("noSuchChatKey", "true"));
     }
 
     #[test]
@@ -151,9 +141,6 @@ mod tests {
                 Some(opt.description()),
                 "{opt:?}"
             );
-        }
-        for header in rows().into_iter().filter_map(Result::err) {
-            assert!(en.get(header).is_some(), "{header}");
         }
     }
 }
