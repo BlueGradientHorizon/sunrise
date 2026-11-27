@@ -573,8 +573,6 @@ pub struct Renderer {
     pub(crate) screenshot_halvings: u32,
     /// Brightness option (lightmap gamma), 0..1.
     pub gamma: f32,
-    /// Optional full-light lightmap (Sunrise Extras).
-    pub fullbright: bool,
     /// The Improved transparency option (`GameRenderer.useImprovedTransparency`).
     pub improved_transparency: bool,
     /// Its passes and targets, made when first drawn with.

@@ -281,7 +281,6 @@ fn fixture(window: Arc<Window>) -> Result<(), Box<dyn std::error::Error>> {
         return bench(&mut renderer, out);
     }
     renderer.resize(320, 180);
-    renderer.fullbright = true;
     // (keys count sections from the bottom of the world, y -64: 10 is y 96 to 112)
     // white at z 12, which the player's camera at z 0.5 faces; green at z 28 behind it
     let both = [[0, 1, 2, 3], [3, 2, 1, 0]];
@@ -911,7 +910,12 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         bob: glam::Mat4::IDENTITY,
         view_transform: glam::Mat4::IDENTITY,
         spin: glam::Mat4::IDENTITY,
-        sky: client::environment::Sky::default(),
+        // Full ambient light keeps the light texture white, so the flat colours the fixture
+        // counts are the vertices' own.
+        sky: client::environment::Sky {
+            ambient_light_color: [1.0; 3],
+            ..Default::default()
+        },
         shadow_scene_revision: (0, 0),
         shadow_cache: false,
         distance: 128.0,

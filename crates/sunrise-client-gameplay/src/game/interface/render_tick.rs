@@ -719,7 +719,6 @@ impl crate::game::ClientGame<'_> {
     /// flicker whenever the game is not paused, frozen or not, while `TextureManager.tick`
     /// needs the level running normally. `SUNRISE_STILL` keeps both with the world.
     pub(in crate::game::client_side) fn tick_frame_visuals(&mut self, running: bool) {
-        self.hold_fullbright();
         if running || !self.common.clock.still() {
             self.client.fog.tick_flicker();
         }
@@ -1315,9 +1314,9 @@ pub(in crate::game::client_side) fn tick_client_weather_effects(
 /// The packs' expression uniforms on core shaders (`shader_modifiers`, wiki "Shaders").
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
-    /// Whether an installed pack core shader reads expression uniforms this frame. Fullbright
-    /// excludes the lightmap only, and a frame where no world runs the text
-    /// ([`Self::world_runs`]). The frame's expression context is made only when needed.
+    /// Whether an installed pack core shader reads expression uniforms this frame. A frame
+    /// where no world runs excludes the text ([`Self::world_runs`]). The frame's expression
+    /// context is made only when needed.
     pub(in crate::game::client_side) fn reads_pack_expressions(&mut self) -> bool {
         let world = self.world_runs();
         (self.client.renderer.0.as_mut()).is_some_and(|r| r.reads_pack_expressions(world))
@@ -1342,8 +1341,8 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Evaluate the installed pack pipelines' expression uniforms from `frame`, skipping the
-    /// lightmap under fullbright, and the text's where no world runs
-    /// ([`Self::world_runs`]). Values are uploaded when each pipeline prepares its draw.
+    /// text's where no world runs ([`Self::world_runs`]). Values are uploaded when each
+    /// pipeline prepares its draw.
     pub(in crate::game::client_side) fn evaluate_pack_expressions(
         &mut self,
         frame: Option<&sunrise_level::environment::Frame>,
