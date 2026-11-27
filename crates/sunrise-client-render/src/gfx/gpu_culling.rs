@@ -843,6 +843,7 @@ impl Records {
         self.fading = 0;
     }
     /// The sections with a record.
+    #[cfg(any(test, debug_assertions))]
     pub fn live(&self) -> usize {
         let free: u32 = self.free.iter().map(|word| word.count_ones()).sum();
         self.records.len() - free as usize
@@ -857,6 +858,7 @@ impl Records {
         self.records.get(id as usize).filter(|r| r.page().is_some())
     }
     /// The live sections on each page; its length is the page count.
+    #[cfg(any(test, debug_assertions))]
     pub fn page_sections(&self) -> &[u32] {
         &self.page_sections
     }
