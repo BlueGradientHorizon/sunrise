@@ -13,7 +13,8 @@ pub trait Hooks {
     /// This is the place for a mod to join its own threads and flush what it keeps: the
     /// server thread waits for each listener to return before it finishes shutting down.
     /// The world's session is already retired here, whether or not the final save
-    /// succeeded, so nothing here can read or write the world; use `server_stopping` for that.
+    /// succeeded, so nothing here can read or write the world; on an orderly stop `server_stopping`
+    /// is the place for that, and it is not fired after a failed tick or a panic.
     /// The world's Server configs are still loaded; `config_unloading`
     /// follows this event.
     /// Failed opens save only worlds already adopted by the server (the
