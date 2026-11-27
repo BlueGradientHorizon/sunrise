@@ -1,16 +1,55 @@
-#![cfg(test)]
-use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::Maps;
-
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
+    use mod_api::{Identifier, TextureAtlasRegistration};
 
-    use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::maps;
+    /// Registers the fixture atlases only on the first reload.
+    struct Maps(std::sync::Arc<std::sync::Mutex<(u32, Vec<Option<mod_api::AtlasRegion>>)>>);
+    fn maps() -> TextureAtlasRegistration {
+        registration("maps_mod:maps", "maps_mod:maps")
+    }
+    /// An atlas whose name holds `presets`, which the menu's own picture folder also has.
+    fn presets() -> TextureAtlasRegistration {
+        registration("maps_mod:presets", "maps_mod:presets")
+    }
+    fn player(atlas: &TextureAtlasRegistration) -> Identifier {
+        atlas.sprite_name(&Identifier::parse("maps_mod:player").unwrap())
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Maps {
+        fn register_texture_atlases(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterTextureAtlasesEvent<'_>,
+        ) {
+            let mut kept = self.0.lock().unwrap();
+            kept.0 += 1;
+            if kept.0 == 2 {
+                event.register(maps());
+                event.register(presets());
+            }
+        }
 
-    use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::player;
+        fn texture_atlas_stitched(
+            &self,
+            host: &mut dyn mod_api::ClientHost,
+            event: &mut mod_api::TextureAtlasStitchedEvent,
+        ) {
+            if event.atlas == mod_api::TextureAtlas::Gui {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .1
+                    .push(host.gui_sprite(&player(&maps())));
+            }
+        }
+    }
 
-    use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::presets;
-
-    use super::*;
+    fn registration(atlas: &str, definition: &str) -> TextureAtlasRegistration {
+        TextureAtlasRegistration {
+            atlas: Identifier::parse(atlas).unwrap(),
+            definition: Identifier::parse(definition).unwrap(),
+        }
+    }
 
     fn fixture_png(width: u32, height: u32, channel: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -80,13 +119,14 @@ pub(crate) mod tests {
                     assert_eq!(game.client.chat_ui.options.resource_error, None);
                 };
                 reload(game);
-                let player = player(&maps());
+                let map_sprite = player(&maps());
+                let preset_sprite = player(&presets());
                 assert_eq!(
-                    game.gui_sprite_pixels(&player.to_string()),
+                    game.gui_sprite_pixels(&map_sprite.to_string()),
                     Some([8.0, 8.0])
                 );
                 assert_eq!(
-                    game.gui_sprite_pixels(&sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::player(&presets()).to_string()),
+                    game.gui_sprite_pixels(&preset_sprite.to_string()),
                     Some([8.0, 8.0]),
                     "a sprite under an atlas named presets is stitched too"
                 );
@@ -106,11 +146,8 @@ pub(crate) mod tests {
                     Some(None),
                     "looked up in the new atlas"
                 );
-                assert_eq!(game.gui_sprite_pixels(&player.to_string()), None);
-                assert_eq!(
-                    game.gui_sprite_pixels(&sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::player(&presets()).to_string()),
-                    None
-                );
+                assert_eq!(game.gui_sprite_pixels(&map_sprite.to_string()), None);
+                assert_eq!(game.gui_sprite_pixels(&preset_sprite.to_string()), None);
             });
         });
     }

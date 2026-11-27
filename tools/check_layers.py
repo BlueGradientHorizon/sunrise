@@ -10,7 +10,8 @@ optional (behind a feature), for the layer and the portable check alike. The che
 - a normal, build or optional dependency on a layer its crate's layer may not use that `allowed` doesn't list,
   and that isn't an optional dependency listed in `optional`;
 - an `optional` entry whose dependency is no longer optional;
-- with --base, an `allowed` or `optional` entry the branch added from a crate that already had a layer on the base;
+- with --base, an `allowed` or `optional` entry the branch added from a crate that already had a layer on the base,
+  except for an approved transfer of an existing exception;
 - a shipped crate depending on a tool;
 - a portable crate depending on a crate of the repository that isn't portable, or on a `forbidden` library;
 - a `portable.pending` crate doing the same beyond the crates its entry lists, listed as portable too, or (with
@@ -153,8 +154,8 @@ def transferred_exception(edge, key, graph, optional, config, base):
     if dependency not in graph.get(crate, ()):
         return False
     previous = f"sunrise-client -> {dependency}"
-    baseline = base.get("allowed", ()) if key == "allowed" else optional_rows(base)
-    if previous not in baseline:
+    baseline = base.get("allowed", ())
+    if previous not in baseline and (key != "optional" or previous not in optional_rows(base)):
         return False
     if dependency == "sunrise-telemetry":
         return True

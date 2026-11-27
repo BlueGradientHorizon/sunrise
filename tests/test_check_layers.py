@@ -103,6 +103,26 @@ class CheckLayersTests(unittest.TestCase):
         copied = dict(config, allowed=config["allowed"] + [source])
         self.assertIn("added to 'allowed'", check_layers.check(copied, graph, base, {dest})[0][0])
 
+    def test_a_moved_client_exception_may_become_optional(self):
+        old, new = "sunrise-client", "sunrise-client-gameplay"
+        for dep in ("sunrise-optifine", "sunrise-theme"):
+            with self.subTest(dep=dep):
+                source, dest = f"{old} -> {dep}", f"{new} -> {dep}"
+                layers = dict(CONFIG["crates"], **{old: "engine", new: "engine", dep: "platform"})
+                base = dict(CONFIG, crates=layers, allowed=[source])
+                config = dict(CONFIG, crates=layers, optional=[{"edge": dest, "reason": "client-only"}])
+                graph = {old: set(), new: {dep}}
+                self.assertEqual(check_layers.check(config, graph, base, {dest}), ([], []))
+                self.assertIn("added to 'optional'", check_layers.check(
+                    config, graph, dict(base, allowed=[]), {dest})[0][0])
+                self.assertTrue(any("no longer optional" in problem for problem in
+                                    check_layers.check(config, graph, base)[0]))
+                for still_has_dependency, still_has_exception in ((True, False), (False, True)):
+                    current = dict(config, allowed=[source] if still_has_exception else [])
+                    graph[old] = {dep} if still_has_dependency else set()
+                    problems, _ = check_layers.check(current, graph, base, {dest})
+                    self.assertTrue(any("added to 'optional'" in problem for problem in problems))
+
     def test_a_portable_gameplay_generator_edge_must_be_build_only(self):
         owner, generator = "sunrise-gameplay-common", "sunrise-mod-api-gen"
         config = dict(CONFIG, crates={owner: "engine", generator: "engine"},

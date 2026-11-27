@@ -2318,6 +2318,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn forwarder_routes_compile_without_recursing_on_either_side() {
         let area = Area {
             stem: "fixture".into(),

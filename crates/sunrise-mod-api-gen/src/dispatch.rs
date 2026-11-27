@@ -3703,6 +3703,7 @@ fn main() {{
     }
 
     #[test]
+    #[ignore = "daily"]
     fn one_borrowed_game_adapter_compiles_for_both_concrete_callers() {
         let hook = Hook {
             receiver: Receiver::Read,

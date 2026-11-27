@@ -33,8 +33,6 @@ sunrise-world = { path = "../sunrise-world" }
 sunrise-sim = { path = "../sunrise-sim" }
 sunrise-level = { path = "../sunrise-level" }
 
-mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"], optional = true }
-
 [dev-dependencies]
 tempfile = "3"
 sunrise-java-properties = { path = "../sunrise-java-properties" }
@@ -59,4 +57,4 @@ sunrise-mod-api-gen = { path = "../sunrise-mod-api-gen" }
 [features]
 parity-fixtures = []
 state-digest = []
-test-support = ["sunrise-gameplay-common/test-support", "sunrise-gameplay-common/test-owner-requests", "dep:mod_platform", "sunrise-game-data/test-language-publication", "sunrise-game-data/test-effect-registry", "sunrise-mod-runtime/test-work-count", "sunrise-threads/test-allocation-count", "sunrise-threads/test-game-dir", "mod_api/testing", "sunrise-items/test-support", "sunrise-world/test-support", "sunrise-sim/test-dry-side", "sunrise-sim/test-menu-validity", "sunrise-sim/test-mob-kind", "sunrise-sim/test-payload-probe", "sunrise-sim/test-publication-scope", "sunrise-sim/test-residency-observer", "sunrise-sim/test-still-clock", "sunrise-sim/test-support", "sunrise-level/test-support"]
+test-support = ["sunrise-gameplay-common/test-support", "sunrise-gameplay-common/test-owner-requests", "sunrise-game-data/test-language-publication", "sunrise-game-data/test-effect-registry", "sunrise-mod-runtime/test-work-count", "sunrise-threads/test-allocation-count", "sunrise-threads/test-game-dir", "mod_api/testing", "sunrise-items/test-support", "sunrise-world/test-support", "sunrise-sim/test-dry-side", "sunrise-sim/test-menu-validity", "sunrise-sim/test-mob-kind", "sunrise-sim/test-payload-probe", "sunrise-sim/test-publication-scope", "sunrise-sim/test-residency-observer", "sunrise-sim/test-still-clock", "sunrise-sim/test-support", "sunrise-level/test-support"]

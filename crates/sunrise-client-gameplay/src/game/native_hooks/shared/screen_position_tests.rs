@@ -104,8 +104,8 @@ pub fn with_listener(test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Seen))
         Box::new(Listener(seen.clone())),
     )]
     .into();
-    mod_platform::testing::with_mods(mods.clone(), || {
-        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+    mod_api::testing::engine_platform::with_mods(mods.clone(), || {
+        mod_api::testing::engine_platform::install_parts_fixture(&mods).unwrap();
         crate::game::native_entity_refs::tests::with_client_game(|game| test(game, &seen));
     });
 }

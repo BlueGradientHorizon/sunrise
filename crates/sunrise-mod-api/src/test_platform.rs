@@ -2,6 +2,7 @@ use super::{
     install_packages, install_parts, install_registration_data, profiler, with_registration_open,
 };
 use mod_vocab::__private::platform::{Platform, PlatformRefusal, install_platform};
+use mod_vocab::testing::engine_platform::{self, EngineTestPlatform};
 
 /// Keep the test process initializer linked when this crate is an rlib.
 pub fn keep() {
@@ -36,6 +37,11 @@ extern "C" fn enter() {
 pub fn install() {
     static INSTALLED: std::sync::Once = std::sync::Once::new();
     INSTALLED.call_once(|| {
+        engine_platform::install(EngineTestPlatform {
+            register_game_keys: super::part_tests::register_game_keys,
+            install_parts_fixture: super::part_tests::install_parts_fixture,
+            with_mods: |mods, run| crate::testing::with_mods(mods, run),
+        });
         let result = install_platform(Platform {
             install_packages,
             install_registration_data,

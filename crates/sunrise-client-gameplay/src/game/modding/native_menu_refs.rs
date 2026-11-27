@@ -422,8 +422,8 @@ pub mod tests {
             opening: opening.clone(),
         };
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(panel))].into();
-        mod_platform::testing::with_mods(mods.clone(), || {
-            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        mod_api::testing::engine_platform::with_mods(mods.clone(), || {
+            mod_api::testing::engine_platform::install_parts_fixture(&mods).unwrap();
             sunrise_level::containers::with_mod_menu_types(
                 [(
                     PANEL.into(),

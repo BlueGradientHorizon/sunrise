@@ -1,11 +1,10 @@
-#![cfg(test)]
-#[cfg(test)]
-#[cfg(any())]
+#![cfg(all(test, feature = "client"))]
 pub(crate) mod tests {
+    use crate::game::client_side::remote_tags::tests::login;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{Hooks, Identifier, ModEntry, TagMembers};
     use std::sync::Arc;
-    use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
+    use sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads;
     use sunrise_gameplay_common::game::tables::GameItems;
     use sunrise_gameplay_common::game::tables::WorldTablesExt;
     use sunrise_protocol::packets::play::Clientbound as C;

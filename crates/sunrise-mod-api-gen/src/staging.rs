@@ -164,6 +164,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn three_game_domains_stage_and_patch_their_own_functions() {
         use crate::source::{GameDomain, SourceLayout};
         use crate::{functions, patch};

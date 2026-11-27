@@ -151,7 +151,7 @@ impl Hooks for Listener {
 pub fn with_mod(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("stacked", Box::new(Listener))].into();
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-    mod_platform::testing::with_mods(mods, test);
+    mod_api::testing::engine_platform::with_mods(mods, test);
 }
 
 /// A local game with a player, stone 3 on the cursor and nothing in slot 9 (the first slot of

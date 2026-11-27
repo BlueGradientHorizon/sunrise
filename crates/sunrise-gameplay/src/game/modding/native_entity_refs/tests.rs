@@ -207,7 +207,7 @@ pub fn with_game_role_and_facts(
 
     sunrise_gameplay_common::game::test_fixtures::prepare_game_boot(
         &root,
-        mod_platform::__private::part_tests::register_game_keys,
+        mod_api::testing::engine_platform::register_game_keys,
     );
     let saves = tempfile::tempdir().unwrap();
     let settings = SimSettings::default();

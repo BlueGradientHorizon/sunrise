@@ -9,6 +9,7 @@ fn put(root: &Path, relative: &str, source: &str) {
 }
 
 #[test]
+#[ignore = "daily"]
 fn nominal_packages_compile_and_dispatch_without_a_peer_edge() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();

@@ -53,7 +53,7 @@ capabilities = ["registries"]
         .unwrap();
         (scratch, root)
     });
-    mod_platform::testing::with_mods(Arc::from([]), || {
+    mod_api::testing::engine_platform::with_mods(Arc::from([]), || {
         fixture::with_game_role(root.clone(), role, |game| {
             game.world
                 .chunks

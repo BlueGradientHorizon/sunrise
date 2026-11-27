@@ -136,15 +136,13 @@
       "sunrise-threads",
       "sunrise-deflate",
       "sunrise-java-properties",
-      "sunrise-gameplay-common",
       "sunrise-server-files",
       "sunrise-border",
       "sunrise-perf-format",
       "sunrise-level",
       "sunrise-sim",
       "sunrise-system",
-      "sunrise-bench",
-      "sunrise-gameplay"
+      "sunrise-bench"
     ],
     "pending": {
       "_doc": "Engine crates that still take a non-portable crate, until the types they need move down. Entries only go away."
@@ -169,7 +167,6 @@
     }
   ],
   "allowed": [
-    "sunrise-client-lib -> sunrise-dualsense",
     "sunrise-client-lib -> sunrise-mcp",
     "sunrise-client-lib -> sunrise-optifine",
     "sunrise-client-lib -> sunrise-shaders",
