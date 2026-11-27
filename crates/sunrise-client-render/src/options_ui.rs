@@ -1587,8 +1587,6 @@ pub(crate) enum Act {
     Key(&'static str),
     ResetKey(&'static str),
     ResetKeys,
-    /// PvP & HUD's PvP preset (`pvp::apply_preset`).
-    PvpPreset,
     /// PvP & HUD's Edit HUD button.
     HudEditor,
     /// A native mod's key (mod, key) waits for a key; a button of its page.
@@ -2087,7 +2085,6 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
         Act::Cycle(opt) => Some(opt.tooltip_key(s)),
         Act::Push(Page::Language) => Some("options.language.tooltip".into()),
         Act::Push(Page::Accessibility) => Some("options.accessibility.tooltip".into()),
-        Act::PvpPreset => Some("sunrise.pvp.preset.tooltip".into()),
         Act::HudEditor => Some("sunrise.pvp.editor.tooltip".into()),
         // A toggle, choice or colour shows its tooltip as a range's slider does.
         Act::NativeSetting(i, j) => s
@@ -2688,12 +2685,10 @@ impl OptionsUi {
                         widget
                     }
                 };
-                // PvP & HUD opens with its preset (Sunrise Settings has the way there).
-                let preset = button(0.0, 0.0, 150.0, tr("sunrise.pvp.preset"), Act::PvpPreset);
                 // The editor moves what the game shows: only from a world.
                 let edit = button(0.0, 0.0, 150.0, tr("sunrise.pvp.editor"), Act::HudEditor);
                 let edit = if self.in_world { edit } else { inactive(edit) };
-                let mut rows = vec![Row::Buttons(preset, Some(edit))];
+                let mut rows = vec![Row::Buttons(edit, None)];
                 let mut section = Vec::new();
                 let flush = |rows: &mut Vec<Row>, section: &mut Vec<crate::extras::Item>| {
                     let mut half = None;
@@ -3466,10 +3461,6 @@ impl OptionsUi {
                                 setting.value.click();
                                 events.push(Event::NativeSetting(*i, *j));
                             }
-                        }
-                        Act::PvpPreset => {
-                            crate::pvp::apply_preset(s);
-                            events.push(Event::Changed);
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
                         Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
@@ -4566,10 +4557,6 @@ impl OptionsUi {
                                 setting.value.click();
                                 events.push(Event::NativeSetting(i, j));
                             }
-                        }
-                        Act::PvpPreset => {
-                            crate::pvp::apply_preset(s);
-                            events.push(Event::Changed);
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
                         Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
@@ -8050,7 +8037,6 @@ mod tests {
                         Act::Cycle(Opt::GraphicsBackend) => "graphics-api".to_owned(),
                         Act::Cycle(opt) => format!("{opt:?}"),
                         Act::Extra(e) => format!("extra:{e:?}"),
-                        Act::PvpPreset => "pvp-preset".to_owned(),
                         Act::Push(to) => {
                             ways_in
                                 .entry(format!("{to:?}"))

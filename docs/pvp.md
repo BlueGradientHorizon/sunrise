@@ -165,11 +165,3 @@ knockback, no damage); hurt sounds and crit particles stay. `pvp::Combat`.
 It is only the look: the client sends a server exactly what Modern sends (same attacks, same timing, no
 block-hit packets), so vanilla servers and their anticheats see nothing new. Code: `first_person.rs`
 (`legacy_item_pose`), the hand in `game.rs`.
-
-## PvP preset
-
-The **PvP preset** button (first on the PvP & HUD page) turns on, in one click: the custom
-crosshair, the armour and effects widgets, vanilla's Toggle Sprint and Toggle Sneak (Controls), lower fire (40% unless
-already set), and the official FPS counter and keystrokes (with CPS) native mods when they are installed
-(`pvp::PRESET_MODS`). It only turns things on and keeps each option's own settings, so any of them can be turned
-back off by hand. Code: `pvp::apply_preset`.
