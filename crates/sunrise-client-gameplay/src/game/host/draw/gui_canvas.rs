@@ -1406,7 +1406,7 @@ mod tests {
             let game = &*game;
             GameGuiCanvas::draw_root(
                 &mut batch,
-                &game.gui.atlas,
+                &game.client.gui.atlas,
                 Some(game),
                 None,
                 true,
@@ -1440,7 +1440,7 @@ mod tests {
             let blends = batch.blends.clone();
             GameGuiCanvas::draw_root(
                 &mut batch,
-                &game.gui.atlas,
+                &game.client.gui.atlas,
                 Some(game),
                 None,
                 true,
@@ -1487,7 +1487,7 @@ mod tests {
             let mut batch = HudBatch::scratch([320, 240]);
             GameGuiCanvas::draw_root(
                 &mut batch,
-                &game.gui.atlas,
+                &game.client.gui.atlas,
                 Some(game),
                 None,
                 true,
