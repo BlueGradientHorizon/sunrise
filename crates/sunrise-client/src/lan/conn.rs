@@ -2222,7 +2222,7 @@ fn wait_alive<T>(
     c: &mut ConfigIo<'_>,
     transport: &Transport,
     negotiation: &mut sunrise_protocol::payload_negotiation::Negotiation,
-    mut answer: impl FnMut(Result<cfg::Serverbound, String>) -> Option<Result<T, String>>,
+    answer: impl FnMut(Result<cfg::Serverbound, String>) -> Option<Result<T, String>>,
 ) -> Result<T, String> {
     if let Some(sender) = c.sender.clone() {
         return std::thread::scope(|scope| {
