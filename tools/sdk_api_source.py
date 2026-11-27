@@ -550,8 +550,7 @@ def starter_mod(folder: Path) -> None:
     """The native template as `cargo sunrise-mod new` writes it, with a path to the API source."""
 
     def fill(text: str) -> str:
-        # A native mod's manifest carries no SDK metadata block (cargo-sunrise-mod's `new`).
-        return text.replace("{id}", "starter").replace("{name}", "Starter").replace("{metadata}", "")
+        return text.replace("{id}", "starter").replace("{name}", "Starter")
 
     manifest, count = re.subn(r"^sunrise-mod-api = .*$", f'sunrise-mod-api = {{ path = "{MOD_PATH}/crates/{API}" }}',
                               fill((TEMPLATE / "api.toml").read_text()), flags=re.MULTILINE)
