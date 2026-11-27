@@ -248,7 +248,11 @@ class WorkflowTests(unittest.TestCase):
                 self.assertGreater(steps.index(checkout), 0)
                 self.assertEqual(checkout["with"]["ref"], "${{ needs.changes.outputs.pr_merge }}")
                 self.assertNotIn("outputs.pr_sha", self.job(name))
-                self.assertNotIn("permissions", jobs[name])
+                # verify-static reads the live pull request body for the launcher mirror check: read scopes only.
+                if name == "verify-static":
+                    self.assertEqual(jobs[name]["permissions"], {"contents": "read", "pull-requests": "read"})
+                else:
+                    self.assertNotIn("permissions", jobs[name])
         status = jobs["pr-status"]
         self.assertEqual(status["permissions"], {"statuses": "write"})
         self.assertEqual(status["if"], "always() && github.event_name == 'workflow_dispatch' && inputs.pr != '' && "
