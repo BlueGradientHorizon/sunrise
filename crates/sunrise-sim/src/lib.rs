@@ -7,6 +7,8 @@ mod rule_replacements;
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) mod test_fixtures;
 #[cfg(test)]
+mod test_game_dir;
+#[cfg(test)]
 mod test_log;
 
 pub use sunrise_assets::resource_source;
@@ -180,6 +182,9 @@ pub mod portal_sections;
 pub mod pose;
 pub mod powder_snow;
 pub mod pregen;
+#[cfg(test)]
+#[path = "../../sunrise-core/src/prepared_test_root.rs"]
+pub(crate) mod prepared_test_root;
 pub mod projectiles;
 pub mod raid;
 pub mod random_tick_sections;
