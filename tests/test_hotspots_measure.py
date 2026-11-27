@@ -173,9 +173,13 @@ class MeasureTest(unittest.TestCase):
         r.pull(1, r.commit("pr-1", {"y.txt": "p1\n"}, base="main"))
         r.merge("main", "pr-1", "Merge pull request #1 from o/pr-1")
         git, raw = self.run_measure()
-        body = measure.report(git, raw, min_rollup=99, min_prs=1,
-                              watched=[("src/list.rs", "#1", landing, "src/list.rs"),
-                                       ("src/gone.rs", "#2", gone, "src/gone.rs")])
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "list.toml").write_text(
+                f'path = "src/list.rs"\nsplit = "#1"\nlanding = "{landing}"\n')
+            Path(directory, "gone.toml").write_text(
+                f'path = "src/gone.rs"\nsplit = "#2"\nlanding = "{gone}"\n')
+            body = measure.report(git, raw, min_rollup=99, min_prs=1,
+                                  watched=measure.watched_rows(Path(directory)))
         self.assertIn("### Watched splits", body)
         self.assertIn("`src/list.rs`: 4 lines (+1 since the split in #1)", body)
         self.assertIn("`src/gone.rs`: gone at", body)
