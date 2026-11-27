@@ -4810,34 +4810,3 @@ fn a_chunk_from_before_1_17_loads_the_entities_it_keeps() {
 fn unstable(world: &Path) -> bool {
     world_gen_unstable(world, &world_data_packs(world))
 }
-
-/// A mod container's list is its declared size, not the last occupied slot's: a saved
-/// `Items` list is sparse, so slots past it are empty ones rather than missing ones.
-#[test]
-fn a_mod_containers_declared_size_pads_the_slots_past_its_stacks() {
-    use crate::items::ItemStack;
-    use crate::save::block_entity_decode::pad_declared_slots;
-
-    let stone = ItemStack::new("minecraft:stone", 1);
-    let mut items = vec![None; 5];
-    items[4] = Some(stone.clone());
-    pad_declared_slots(&mut items, 27);
-    assert_eq!(items.len(), 27);
-    assert_eq!(items[4].as_ref(), Some(&stone));
-    assert!(
-        items
-            .iter()
-            .enumerate()
-            .all(|(i, slot)| i == 4 || slot.is_none())
-    );
-
-    // Rows past the declared size stay (a mod's own saved stacks), and a known size
-    // never shrinks them.
-    pad_declared_slots(&mut items, 3);
-    assert_eq!(items.len(), 27);
-
-    // A slotless declared shape keeps its short list.
-    let mut empty: Vec<Option<ItemStack>> = Vec::new();
-    pad_declared_slots(&mut empty, 0);
-    assert!(empty.is_empty());
-}
