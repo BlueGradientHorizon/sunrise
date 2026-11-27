@@ -6,12 +6,15 @@
     python3 tools/pr_ready.py --host macmini        # builds and harnesses on a fleet machine (~/fleet/rbuild)
     python3 tools/pr_ready.py --harnesses           # also run the affected vanilla harnesses here
     python3 tools/pr_ready.py --quick               # never run the vanilla harnesses
+    python3 tools/pr_ready.py --full                # the whole workspace's tests, not only the touched crates'
     python3 tools/pr_ready.py --serial-python       # the Python tests in one process, as CI runs them
 
 From the files the branch changes since its merge base with --base (committed or not) it decides what to run:
 rustfmt, and clippy with warnings denied exactly as CI's verify job runs it (the whole workspace with the game's code
-mods, plus the server build when sunrise-client is affected); the tests of the touched crates, with the features
-CI's workspace-wide run gives them; crates/sunrise-theme/tokens.css against sunrise-theme; Cargo.lock changing
+mods, plus the server build when sunrise-client is affected); the tests of the touched crates and every workspace
+crate that depends on them, with the features CI's workspace-wide run gives them (it never falls back to --workspace
+silently: a Rust path no crate owns is refused and named, and --full runs the whole workspace on purpose; a change to
+the workspace's shared configuration selects it too), and which crates it chose and why; crates/sunrise-theme/tokens.css against sunrise-theme; Cargo.lock changing
 only with a Cargo.toml; the Python tests (always, as in CI; here one test file per worker, tools/parallel_unittest.py,
 with the same outcome in a fraction of the time, and --serial-python runs them in one process as CI does) and the
 public-tree check; the mod API surface report, when the branch changes what it exports (sunrise-stage and the crates
@@ -78,6 +81,9 @@ mkdir -p "$state/parity-runner" "$state/parity-target"
 ln -sfn "$state/parity-runner" .local/parity-runner && ln -sfn "$state/parity-target" .local/parity-target""",
 }
 ROOT_RUST = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml"}
+# Standalone workspaces under crates/ that the root Cargo.toml excludes: the main workspace never builds them
+# (the registry has its own steps below; the telemetry server is tested by its own workflow).
+SEPARATE_WORKSPACES = ("crates/sunrise-mod-registry/", "crates/sunrise-telemetry-server/")
 
 
 # Build-script inputs outside the crates: catalog-only edits still need to build and test their consumers.
@@ -98,8 +104,17 @@ SURFACE_NOTES = "crates/sunrise-mod-vocab/changes/"
 SURFACE_FILES = ("Cargo.toml", "tools/ci/surface_report.py", "tools/ci/surface.toml",
                  "tools/ci/surface-schema-3-reset.json")
 SURFACE_TOOL = "sunrise-stage"
-GAME_FILE = "crates/sunrise-client/src/game.rs"
-GAME_FOLDER = "crates/sunrise-client/src/game/"
+GAME_FILES = (
+    "crates/sunrise-client/src/game.rs",
+    "crates/sunrise-gameplay-common/src/game.rs",
+)
+GAME_FOLDERS = (
+    "crates/sunrise-client/src/game/",
+    "crates/sunrise-client/src/cut_layout/game/",
+    "crates/sunrise-gameplay-common/src/game/",
+    "crates/sunrise-gameplay/src/game/",
+    "crates/sunrise-client-gameplay/src/game/",
+)
 LOOP_MARK = "sunrise_loop"
 
 def is_doc(path):
@@ -108,12 +123,13 @@ def is_doc(path):
 
 def workspace_rust(path):
     """Whether a change to path is built by the main Cargo workspace."""
-    return not is_doc(path) and (path.startswith(("crates/", "xtask/", ".cargo/", *MOD_API_INPUTS))
-                                 or path in ROOT_RUST)
+    return not is_doc(path) and not path.startswith(SEPARATE_WORKSPACES) and (
+        path.startswith(("crates/", "xtask/", ".cargo/", *MOD_API_INPUTS)) or path in ROOT_RUST)
 
 
 def touched_crates(paths, packages):
-    """Workspace packages to test for these paths ({name: directory}), or None for the whole workspace."""
+    """The workspace packages these paths directly belong to ({name: directory}), not their dependents, or None for
+    the whole workspace."""
     if any(path in ROOT_RUST or path.startswith(".cargo/") for path in paths):
         return None
     crates = set()
@@ -121,13 +137,17 @@ def touched_crates(paths, packages):
         if is_doc(path):
             continue
         if path.startswith(MOD_API_INPUTS):
-            crates.update({"sunrise-client", "sunrise-client-render", "sunrise-mod-api-gen"})
+            crates.update({
+                "sunrise-client", "sunrise-client-render", "sunrise-mod-api-gen",
+                "sunrise-gameplay-common", "sunrise-gameplay", "sunrise-client-gameplay",
+            })
             continue
         if "sunrise-client-lib" in packages and path.startswith("crates/sunrise-client/"):
             relative = path.removeprefix("crates/sunrise-client/")
             gameplay = relative in {"Cargo.toml", "build.rs", "windows-segment-heap.manifest",
-                                    "src/lib.rs", "src/main.rs", "src/entry.rs", "src/game.rs"} \
-                or relative.startswith(("src/game/", "tests/it/"))
+                                    "src/lib.rs", "src/main.rs", "src/entry.rs", "src/game.rs",
+                                    "src/game_facade.rs", "src/test_game_dir.rs"} \
+                or relative.startswith(("src/game/", "src/cut_layout/", "tests/it/"))
             crates.add("sunrise-client" if gameplay else "sunrise-client-lib")
             continue
         owners = [name for name, directory in packages.items() if path.startswith(directory.rstrip("/") + "/")]
@@ -174,7 +194,9 @@ def suggested_label(paths, exporter_paths=frozenset()):
 # CI runs parity only in the daily on main's head.
 PARITY_SCOPE = re.compile(
     r"^(tools/test_[a-z0-9_]+_parity\.py|tools/(parity[a-z_]*|lab)\.py|tools/parity_hosts\.json|mods/sunrise/src/test/"
-    r"|crates/[^/]+/examples/|crates/sunrise-client/src/game/[a-z_]*(fixture|harness)\.rs"
+    r"|crates/[^/]+/examples/"
+    r"|crates/(?:sunrise-client/src/(?:cut_layout/)?game|sunrise-gameplay-common/src/game"
+    r"|sunrise-gameplay/src/game|sunrise-client-gameplay/src/game)/(?:.*/)?[a-z_]*(fixture|harness)\.rs"
     r"|\.github/workflows/parity[a-z-]*\.yml)")
 
 
@@ -264,6 +286,51 @@ def dependent_crates(crates, dependencies):
         selected.update(consumers)
 
 
+def crate_selection_reasons(touched, dependencies):
+    """Why each crate dependent_crates selects is in the set: {crate: reason}, in a fixed order. The touched crates
+    come first, sorted, with the reason "touched"; then each dependent in the breadth-first wave that first reaches
+    it (sorted within a wave), with "depends on <the previous wave's crates it uses, sorted>"."""
+    reasons = {name: "touched" for name in sorted(touched)}
+    wave = sorted(reasons)
+    while wave:
+        found = {name: sorted(used.intersection(wave)) for name, used in sorted(dependencies.items())
+                 if name not in reasons and used.intersection(wave)}
+        reasons.update({name: "depends on " + ", ".join(via) for name, via in found.items()})
+        wave = list(found)
+    return reasons
+
+
+def format_test_scope(touched, dependencies, whole=None):
+    """One line saying what the tests cover and why, or None when no Rust is tested. `whole` is why the whole
+    workspace runs ("--full", "root config: Cargo.toml"); otherwise `touched` are the directly touched crates."""
+    if whole:
+        return f"workspace ({whole})"
+    if not touched:
+        return None
+    return ", ".join(f"{name} ({reason})" for name, reason in crate_selection_reasons(touched, dependencies).items())
+
+
+def select_crates(args, changed, crates_of):
+    """(touched, whole): the crates the changed files directly touch (see touched_crates), or None for the whole
+    workspace, with why it is the whole workspace ("--full", "root config: ...") or None.
+
+    A workspace Rust path no crate owns raises ValueError, naming every one: skipping its tests would pass a change
+    nothing checked, and a silent --workspace would hide a crate that is missing from Cargo.toml or from here. The
+    check also covers a branch that changes the root configuration, so a typo there is caught unless --full is given.
+    """
+    if getattr(args, "full", False):
+        return None, "--full"
+    rust = [path for path in changed if workspace_rust(path)]
+    root = sorted(path for path in rust if path in ROOT_RUST or path.startswith(".cargo/"))
+    unmapped = sorted(path for path in rust if path not in root and not touched_crates({path}, crates_of))
+    if unmapped:
+        raise ValueError(f"no workspace crate owns {', '.join(unmapped)}: map the crate in Cargo.toml and "
+                         "tools/pr_ready.py, or re-run with --full to run the full workspace suite")
+    if root:
+        return None, "root config: " + ", ".join(root)
+    return (touched_crates(changed, crates_of) if rust else []), None
+
+
 def surface_crates(dependencies):
     """sunrise-stage and every workspace crate it depends on, directly or not: dependent_crates the other way."""
     selected = {SURFACE_TOOL}
@@ -305,7 +372,7 @@ def surface_touched(changed, crates_of, dependencies, merge_base):
     ):
         return True
     games = sorted(path for path in changed
-                   if path.endswith(".rs") and (path == GAME_FILE or path.startswith(GAME_FOLDER)))
+                   if path.endswith(".rs") and (path in GAME_FILES or path.startswith(GAME_FOLDERS)))
     return bool(games) and holds_loop(games, merge_base)
 
 
@@ -428,7 +495,8 @@ def mod_features(crates):
 
 # What sunrise-client's full content-root tests load (mod_content_tests.rs). They take minutes on prepared data, so
 # they are #[ignore]d and run here only when one of these changes.
-CONTENT_ROOT = ("crates/sunrise-client/src/mod_content", "crates/sunrise-client-render/src/assets.rs", "crates/sunrise-items/",
+CONTENT_ROOT = ("crates/sunrise-sim/src/mod_content", "crates/sunrise-client/src/mod_content",
+                "crates/sunrise-client-render/src/assets.rs", "crates/sunrise-items/",
                 "crates/sunrise-mod-package/", "crates/sunrise-assets/")
 CONTENT_ROOT_TESTS = "cargo test --locked -p sunrise-client-lib --lib mod_content::tests:: -- --ignored"
 
@@ -444,19 +512,17 @@ def plan(args, base, changed, crates_of, libraries, dependencies, merge_base=Non
     main already had is not this branch's addition (see docs/port-ledger.md).
     """
     merge_base = merge_base or base
-    rust = any(workspace_rust(path) for path in changed)
     # The Python tests also hold ROADMAP.md to roadmap/roadmap.toml (tests/test_roadmap.py).
-    crates = touched_crates(changed, crates_of) if rust else []
-    # An unrecognised Rust path must not silently skip validation.
-    if rust and crates == []:
-        crates = None
+    touched, _ = select_crates(args, changed, crates_of)
+    rust = touched is None or bool(touched)
+    # Tests, doc tests, the holder actor and clippy cover the touched crates and everything that depends on them.
+    crates = dependent_crates(touched, dependencies)
     selection = "--workspace" if crates is None else " ".join(f"-p {shlex.quote(c)}" for c in crates)
     # CI's own clippy commands: a crate checked alone gets other features than in CI's workspace-wide run, and an
     # unused import behind a feature passed here and failed in CI (#1895). Warm, the workspace run costs about what
     # the touched crates and their dependents did (14-32 s against 14-17 s on the Mac mini, 2026-10-26).
-    clippy_crates = dependent_crates(crates, dependencies)
     clippy = CI_CLIPPY
-    if clippy_crates is None or "sunrise-client" in clippy_crates:
+    if crates is None or "sunrise-client" in crates:
         clippy = f'status=0\n{CI_CLIPPY} || status=$?\n{CI_CLIPPY_SERVER} || status=$?\nexit "$status"'
     test_skip = None if crates is None or crates else "no crate touched"
     doc_crates = sorted(libraries if crates is None else libraries.intersection(crates))
@@ -487,6 +553,8 @@ def plan(args, base, changed, crates_of, libraries, dependencies, merge_base=Non
         Step("Export lists", "python3 tools/hotspots/check_lists.py", where="here"),
         # tools/hotspots/check_stand_ins.py: test stand-ins keep up with the hooks and traits they mirror.
         Step("Test stand-ins", "python3 tools/hotspots/check_stand_ins.py", where="here"),
+        # tools/ci/check_gameplay_layers.py: manifest dependency boundary across the three gameplay crates.
+        Step("Gameplay layers", "python3 tools/ci/check_gameplay_layers.py", where="here"),
         # Always, as in CI: some read the crates, the roadmap or the workflows. One file per worker here, with
         # unittest's own summary (#5043); CI and --serial-python run them in one process.
         Step("Python tests", "python3 -m unittest discover -s tests" if getattr(args, "serial_python", False)
@@ -497,7 +565,7 @@ def plan(args, base, changed, crates_of, libraries, dependencies, merge_base=Non
         Step("holder actor", HOLDER_ACTOR,
              skip=None if crates is None or "sunrise-mod-package" in crates
              else "holder tests untouched"),
-        Step("tests" + (": workspace" if crates is None else f": {', '.join(crates)}" if crates else ""),
+        Step("tests" + (": workspace" if crates is None else f": {short_list(crates)}" if crates else ""),
              f"cargo test --locked {selection}{mod_features(crates)} --tests",
              skip=test_skip, summary=tests_passed),
         Step("doc tests", f"cargo test --locked {doc_selection} --doc",
@@ -761,11 +829,12 @@ def revision_state():
             git("diff", "HEAD", "--binary") + repr(metadata))
 
 
-def block(args, base, merge_base, changed, counts, steps, label, elapsed, revision, changed_during_run=False):
+def block(args, base, merge_base, changed, counts, steps, label, elapsed, revision, changed_during_run=False,
+          test_scope=None):
     where = socket.gethostname().split(".")[0] if args.host == "local" else args.host
     head, status, _ = revision
     dirty = bool(status)
-    flags = "".join(f" --{flag}" for flag in ("quick", "harnesses") if getattr(args, flag)) + \
+    flags = "".join(f" --{flag}" for flag in ("quick", "harnesses", "full") if getattr(args, flag, False)) + \
         (" --serial-python" if getattr(args, "serial_python", False) else "") + \
         ("" if args.host == "local" else f" --host {args.host}") + ("" if base == "origin/main" else f" --base {base}")
     added, removed = (sum(count[i] for count in counts.values()) for i in (0, 1))
@@ -776,6 +845,8 @@ def block(args, base, merge_base, changed, counts, steps, label, elapsed, revisi
              f"{duration(elapsed)})", "", "| Check | Result |", "| --- | --- |",
              f"| Scope | {'⚠️' if warnings else '✅'} {len(changed)} files, +{added} −{removed}"
              + "".join(f"; {warning}" for warning in warnings) + " |"]
+    if test_scope:
+        lines.append(f"| Test scope | {test_scope} |")
     for step in steps:
         took = f" ({duration(step.seconds)})" if step.seconds else ""
         detail = f" {step.detail}" if step.detail else ""
@@ -806,6 +877,8 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="show every check's output")
     parser.add_argument("--serial-python", action="store_true",
                         help="run the Python tests in one process, as CI does, instead of one test file per worker")
+    parser.add_argument("--full", action="store_true",
+                        help="run the full workspace tests instead of only the touched crates and their dependents")
     parser.add_argument('--datafix', action='store_true', help='opt in to datafix parity downloads in a private SUNRISE_DATAFIX_ROOT')
     args = parser.parse_args()
     if args.host != "local" and not RBUILD.exists():
@@ -817,9 +890,17 @@ def main():
         parser.error(f"no merge base with {args.base} (git fetch?)")
     merge_base = git("merge-base", "HEAD", args.base).strip()
     counts = line_counts(merge_base, changed)
-    crates_of, libraries, dependencies = packages() if any(workspace_rust(p) for p in changed) else ({}, set(), {})
-    steps = plan(args, args.base, changed, crates_of, libraries, dependencies, merge_base=merge_base)
+    crates_of, libraries, dependencies = packages() if args.full or any(workspace_rust(p) for p in changed) \
+        else ({}, set(), {})
+    try:
+        steps = plan(args, args.base, changed, crates_of, libraries, dependencies, merge_base=merge_base)
+    except ValueError as error:
+        sys.exit(f"pr_ready: {error}")
     print(f"pr_ready: {len(changed)} files changed since {args.base}; checks on {args.host}", file=sys.stderr, flush=True)
+    touched, whole = select_crates(args, changed, crates_of)
+    test_scope = format_test_scope(touched, dependencies, whole)
+    if test_scope:
+        print(f"pr_ready: test scope: {test_scope}", file=sys.stderr, flush=True)
 
     lock = steps[0]
     problem = lock_problem(changed)
@@ -833,7 +914,7 @@ def main():
 
     label = suggested_label(changed, release_train.exporters())
     print(block(args, args.base, merge_base, sorted(changed), counts, steps, label,
-                time.monotonic() - started, revision, revision_state() != revision))
+                time.monotonic() - started, revision, revision_state() != revision, test_scope))
     return 1 if any(step.status == "fail" for step in steps) else 0
 
 
