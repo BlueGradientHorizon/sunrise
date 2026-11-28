@@ -3,7 +3,9 @@
 #[cfg(test)]
 mod tests {
 
-    use super::super::native_entity_refs::tests::{with_client_game, with_game};
+    #[cfg(feature = "client")]
+    use super::super::native_entity_refs::tests::with_client_game;
+    use super::super::native_entity_refs::tests::with_game;
     use mod_api::{
         EntityConstructingEvent, EntityJoinLevelEvent, EntityRef, EntitySpawn, FinalizeSpawnEvent,
         Flow, Holder, Host, HostSide, LevelRef, ServerHost, SpawnBody, SpawnFlags, SpawnLimits,
@@ -122,6 +124,7 @@ mod tests {
                 "a level not in place"
             );
         });
+        #[cfg(feature = "client")]
         with_client_game(|game| {
             let epoch = game.native_lifecycle.epoch().unwrap();
             let level = LevelRef::new(epoch, game.dim.key());
