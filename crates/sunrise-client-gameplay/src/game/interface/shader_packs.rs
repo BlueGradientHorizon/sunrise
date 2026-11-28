@@ -577,24 +577,6 @@ impl PackIds {
 }
 
 impl crate::game::ClientGame<'_> {
-    /// The pack the settings pick: its name, its path, whether the game can't run it, and the
-    /// path `native_shaders.picked` holds for it (empty for none).
-    fn shader_pack_pick(&self) -> (String, std::path::PathBuf, bool, String) {
-        let selected = picked_pack(&self.client.settings).to_owned();
-        let dir = Self::shader_packs_dir();
-        let path = dir.join(&selected);
-        let unsupported = sunrise_client::shader_pack_list::unsupported(&dir, &selected);
-        let file = path.file_name().unwrap_or_default().to_string_lossy();
-        let picked = if selected.is_empty()
-            || unsupported
-            || active_pack(&file, &self.client.settings.mods).is_empty()
-        {
-            String::new()
-        } else {
-            path.to_string_lossy().into_owned()
-        };
-        (selected, path, unsupported, picked)
-    }
     /// Drops the running or building pack when the pick changed to `picked`.
     fn apply_shader_pack_pick(&mut self, picked: &str) {
         if self.client.native_shaders.picked != picked {
@@ -606,13 +588,13 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    /// A title screen frame, which loads no pack: shaders turned off still drop the pack now,
-    /// and the cancelled builds that have ended are joined, as `shader_pack_inputs` does in a
-    /// world, so neither keeps its GPU objects until a world draws.
+    /// A title screen frame, which loads no pack and resolves no pack path: shaders turned off in
+    /// the settings still drop the pack now, and the cancelled builds that have ended are joined,
+    /// as `shader_pack_inputs` does in a world, so neither keeps its GPU objects until a world
+    /// draws.
     pub(in crate::game::client_side) fn shader_pack_title_frame(&mut self) {
-        let (.., picked) = self.shader_pack_pick();
-        if picked.is_empty() {
-            self.apply_shader_pack_pick(&picked);
+        if picked_pack(&self.client.settings).is_empty() {
+            self.apply_shader_pack_pick("");
         }
         if let Some(renderer) = &self.client.renderer.0 {
             renderer.reap_pack_builds();
@@ -660,10 +642,22 @@ impl crate::game::ClientGame<'_> {
         // Its `layer.*` rules (4.2), none without a pack: in the frame after it loads or drops, as
         // the flags above, so one meshing of every section takes them all.
         self.sync_pack_layers();
-        let (selected, path, unsupported, picked) = self.shader_pack_pick();
+        let selected = picked_pack(&self.client.settings).to_owned();
+        let dir = Self::shader_packs_dir();
+        let path = dir.join(&selected);
+        let unsupported = sunrise_client::shader_pack_list::unsupported(&dir, &selected);
         if unsupported {
             self.shader_pack_unsupported(&selected);
         }
+        let file = path.file_name().unwrap_or_default().to_string_lossy();
+        let picked = if selected.is_empty()
+            || unsupported
+            || active_pack(&file, &self.client.settings.mods).is_empty()
+        {
+            String::new()
+        } else {
+            path.to_string_lossy().into_owned()
+        };
         self.apply_shader_pack_pick(&picked);
         let dimension = match self.common.dim {
             Dim::Overworld | Dim::Extra(_) => 0,

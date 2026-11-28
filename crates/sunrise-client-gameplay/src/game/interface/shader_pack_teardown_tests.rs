@@ -17,9 +17,10 @@ const FRAGMENT: &str =
 /// (`PackBuildWatch`, 60 s), as a build that never ends would hold it.
 const ENDS_WITHIN: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// `off`: shaders turned off after the build ended but before its pack was polled: the pack goes
-/// that frame, not with the renderer. `off-held`: turned off while the build still runs: its pack
-/// goes the first frame after it ends. `title` and `title-held`: the same on title screen frames,
+/// `drop`: the renderer's drop, as at exit, waits for the build still running. `off`: shaders
+/// turned off after the build ended but before its pack was polled: the pack goes that frame, not
+/// with the renderer. `off-held`: turned off while the build still runs: its pack goes the first
+/// frame after it ends. `title` and `title-held`: the same on title screen frames,
 /// which load no pack. `swap`: setting a renderer in place of the one the build started on
 /// (`set_renderer`) doesn't wait for it, and the new one waits for it as it drops. `lost`: neither
 /// graphics device recovery nor the renderer made after it waits for the lost device's build.
@@ -29,7 +30,15 @@ fn a_packs_build_ends_with_its_renderer() {
     if run_fresh_cases(
         NAME,
         CASE,
-        &["off", "off-held", "title", "title-held", "swap", "lost"],
+        &[
+            "drop",
+            "off",
+            "off-held",
+            "title",
+            "title-held",
+            "swap",
+            "lost",
+        ],
     ) {
         return;
     }
@@ -101,6 +110,14 @@ fn a_packs_build_ends_with_its_renderer() {
                     frame(game);
                 }
                 assert_eq!(watch.joined(), 1);
+            }
+            "drop" => {
+                drop(game.client.renderer.0.take());
+                assert_eq!(
+                    (watch.running(), watch.joined()),
+                    (0, 1),
+                    "a pack build outlived the renderer"
+                );
             }
             "swap" => {
                 let window = game.client.renderer.0.as_ref().unwrap().window().clone();
