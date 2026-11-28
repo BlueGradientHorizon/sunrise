@@ -75,6 +75,7 @@ READERS = {
     "sunrise-gameplay": [
         "crates/sunrise-core/src/prepared_test_root.rs", "crates/sunrise-mod-vocab/src/hooks", "tests/fixtures",
     ],
+    # Its prepared-data dailies include the shared prepared-root boundary.
     "sunrise-client-gameplay": [
         "crates/sunrise-core/src/prepared_test_root.rs", "crates/sunrise-mod-vocab/src/hooks",
     ],
