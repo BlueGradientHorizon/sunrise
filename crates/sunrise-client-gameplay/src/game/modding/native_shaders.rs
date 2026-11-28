@@ -47,9 +47,6 @@ pub(in crate::game) struct NativeShaders {
     pub noted: String,
     /// The pick's `sunrise.hdr` request as last read (`ClientGame::picked_pack_shape`).
     pub pick_hdr: std::cell::RefCell<super::shader_packs::PickHdr>,
-    /// Tests: what the last load of the pick logged about its `shaders.properties`.
-    #[cfg(test)]
-    pub loaded_log: Vec<String>,
     /// The Iris compatibility switch the pack in the renderer (running or building) was loaded
     /// with, and whether it ran with the identity macros; `None` before a load.
     pub identity_build: Option<(IrisCompat, bool)>,
