@@ -46,8 +46,8 @@ pub(in crate::game::client_side) fn read_shader_options(
     let lang = sunrise_shaders::Lang::load(&pack, language);
     let chosen = chosen_shader_options(name);
     let pack = pack.with_chosen(chosen.clone());
-    let text = pack.read_text("shaders.properties").unwrap_or_default();
-    let properties = Properties::parse(&text, &sunrise_shaders::properties_macros(&pack, macros));
+    // As the load reads it, with the feature macros the pack asks for.
+    let (properties, _) = sunrise_shaders::read_properties(&pack, &mut macros.clone());
     let screens = sunrise_shaders::Screens::parse(&properties, &options);
     Some(ShaderOptions::new(
         name.to_owned(),
@@ -154,6 +154,27 @@ pub(in crate::game) fn startup_pack_shape(
         super::native_shaders::linear_frame_switch(),
         pick_hdr,
     )
+}
+
+/// A pack's id files as the load reads them, each with `macros` as `read_properties` left them
+/// (the feature answers among them): `block.properties` (ids and `layer.*` rules, 4.1, 4.2), and
+/// `entity.properties` and `item.properties` (`NamedIds::read`).
+struct IdFiles {
+    blocks: BlockIds,
+    layers: BlockLayers,
+    named: NamedIds,
+}
+
+fn read_id_files(pack: &Pack, macros: &Macros) -> IdFiles {
+    let block_properties = Properties::parse(
+        &pack.read_text("block.properties").unwrap_or_default(),
+        macros,
+    );
+    IdFiles {
+        blocks: BlockIds::parse(&block_properties),
+        layers: BlockLayers::parse(&block_properties),
+        named: NamedIds::read(pack, macros),
+    }
 }
 
 /// The `sunrise.hdr` request of pack `name` at `path` as the frame is picked for it: its
@@ -776,10 +797,11 @@ impl crate::game::ClientGame<'_> {
                         let names: Vec<&str> =
                             biomes.list.iter().map(|b| b.name.as_str()).collect();
                         post.custom.set_biomes(&names);
-                        let text = pack.read_text("block.properties").unwrap_or_default();
-                        let block_properties = Properties::parse(&text, &macros);
-                        let ids = BlockIds::parse(&block_properties);
-                        let layers = BlockLayers::parse(&block_properties);
+                        let IdFiles {
+                            blocks: ids,
+                            layers,
+                            named,
+                        } = read_id_files(&pack, &macros);
                         for note in ids.notes.iter().chain(&layers.notes) {
                             log::warn!("shader pack {name}: block.properties: {note}");
                         }
@@ -790,7 +812,7 @@ impl crate::game::ClientGame<'_> {
                         );
                         self.client.pack_ids = Some(PackIds {
                             block_items,
-                            named: NamedIds::read(&pack, &macros),
+                            named,
                             // OQ-21: on unless the pack turns it off.
                             old_hand_light: properties
                                 .get("oldHandLight")
@@ -1516,7 +1538,8 @@ pub(in crate::game) mod rendered_item_tests {
 #[cfg(test)]
 pub(in crate::game) mod native_pack_tests {
     use super::{
-        PickHdr, active_pack, loaded_properties, pack_shape, reconcile_pack_hdr, startup_pack_shape,
+        PickHdr, active_pack, loaded_properties, pack_shape, read_id_files, reconcile_pack_hdr,
+        startup_pack_shape,
     };
     use sunrise_mod_package::mod_list::{Installed, ModList, NativePage};
     use sunrise_shaders::Tonemap;
@@ -1623,6 +1646,103 @@ pub(in crate::game) mod native_pack_tests {
         std::fs::write(asks.join("shaders/shaders.properties"), "x=1\n").unwrap();
         assert_eq!(shape(&asks, true), (true, Some(Tonemap::Pack)));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// The pick's HDR read before the frame is made and the Shader Options page read
+    /// `shaders.properties` as the load does: what a flag the pack lists guards (spec 3.2,
+    /// decision D-7) is read; what an unlisted flag guards is not.
+    #[test]
+    fn the_hdr_read_and_the_options_page_see_the_features_the_pack_lists() {
+        let root = std::env::temp_dir().join(format!("sunrise-hdr-feature-{}", std::process::id()));
+        let guarded = "#ifdef IRIS_FEATURE_SSBO\nsunrise.hdr = true\nsliders = LEVEL\n#endif\n";
+        let lists = hdr_pack(
+            &root,
+            "lists",
+            &format!("iris.features.optional = SSBO\n{guarded}"),
+        );
+        let unlisted = hdr_pack(&root, "unlisted", guarded);
+        for path in [&lists, &unlisted] {
+            std::fs::write(
+                path.join("shaders/options.glsl"),
+                "#define LEVEL 2 // [1 2]\n",
+            )
+            .unwrap();
+        }
+        let mut settings = hdr_settings();
+        let mut state = PickHdr::default();
+        assert_eq!(
+            shape_of(&mut settings, &mut state, &lists, true),
+            (true, Some(Tonemap::Pack))
+        );
+        assert_eq!(
+            shape_of(&mut settings, &mut state, &unlisted, true),
+            (false, None)
+        );
+        let sliders = |path: &std::path::Path| {
+            let name = path.to_string_lossy();
+            let options =
+                super::read_shader_options(&name, "en_us", &sunrise_shaders::Macros::standard());
+            options
+                .unwrap()
+                .screens
+                .sliders
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sliders(&lists), ["LEVEL"]);
+        assert!(sliders(&unlisted).is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// The load's id files see the answers `read_properties` gives: a mapping guarded by a flag
+    /// the pack lists resolves, one guarded by a flag it doesn't list doesn't, in
+    /// `block.properties`, `entity.properties` and `item.properties` alike.
+    #[test]
+    fn the_loads_id_files_see_the_features_the_pack_lists() {
+        use sunrise_shaders::{Macros, Pack};
+        let root = std::env::temp_dir().join(format!("sunrise-id-features-{}", std::process::id()));
+        let path = hdr_pack(&root, "ids", "iris.features.optional = SSBO\n");
+        let guarded = |kind: &str, listed: &str, unlisted: &str| {
+            format!(
+                "#ifdef IRIS_FEATURE_SSBO\n{kind}.10 = {listed}\n#endif\n\
+                 #ifdef IRIS_FEATURE_CUSTOM_IMAGES\n{kind}.11 = {unlisted}\n#endif\n"
+            )
+        };
+        for (file, text) in [
+            (
+                "block",
+                guarded("block", "minecraft:stone", "minecraft:dirt"),
+            ),
+            (
+                "entity",
+                guarded("entity", "minecraft:pig", "minecraft:cow"),
+            ),
+            (
+                "item",
+                guarded("item", "minecraft:stick", "minecraft:apple"),
+            ),
+        ] {
+            std::fs::write(path.join(format!("shaders/{file}.properties")), text).unwrap();
+        }
+        let pack = Pack::open(&path).unwrap();
+        let mut macros = Macros::standard();
+        macros.define_renderer(4);
+        sunrise_shaders::read_properties(&pack, &mut macros);
+        let ids = read_id_files(&pack, &macros);
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(ids.blocks.id("minecraft:stone", |_| None), Some(10));
+        assert_eq!(ids.blocks.id("minecraft:dirt", |_| None), None);
+        let entities = &ids.named.entities;
+        assert_eq!(
+            (entities.get("minecraft:pig"), entities.get("minecraft:cow")),
+            (Some(&10), None)
+        );
+        let items = &ids.named.items;
+        assert_eq!(
+            (items.get("minecraft:stick"), items.get("minecraft:apple")),
+            (Some(&10), None)
+        );
+        assert!(ids.named.item_file);
     }
 
     /// The kept request is read again when the pick changes and at each boundary that can

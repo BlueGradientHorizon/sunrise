@@ -850,6 +850,41 @@ pub struct GameInputs {
     pub hdr: Option<crate::Tonemap>,
 }
 
+/// `inputs` with `mc_chunkFade` (spec 5.1) at `-1.0` on every draw that isn't terrain: sky,
+/// celestial bodies, entities and block entities (with their particles, translucent and shadow
+/// draws), clouds, weather, lines, the hand, entities read vertex by vertex and mods' pipelines.
+/// Terrain's own inputs give the section's fade, and a terrain draw without it stays an error.
+/// A draw that gives its own value keeps it, and a program that declares the name keeps its
+/// declaration (`implicit_inputs`).
+fn off_terrain_fade(inputs: &GameInputs) -> GameInputs {
+    let mut out = inputs.clone();
+    let fade = |i: &mut GbuffersInputs| {
+        if !i.attributes.iter().any(|(n, _)| n == "mc_chunkFade") {
+            i.attributes
+                .push(("mc_chunkFade".to_owned(), "-1.0".to_owned()));
+        }
+    };
+    let draws = [
+        &mut out.sky,
+        &mut out.celestial,
+        &mut out.entities,
+        &mut out.clouds,
+        &mut out.weather,
+        &mut out.lines,
+        &mut out.hand,
+    ];
+    for i in draws.into_iter().flatten() {
+        fade(i);
+    }
+    if let Some(g) = &mut out.entity_geometry {
+        fade(&mut g.inputs);
+    }
+    for request in &mut out.mod_programs {
+        fade(&mut request.inputs);
+    }
+    out
+}
+
 /// Loads the post-processing programs of `folder` and, for the geometry `inputs` describes, the
 /// gbuffers programs it draws with.
 /// The buffer object with its file read, when it has one: the documented
@@ -880,6 +915,7 @@ pub fn load_post(
     macros: &Macros,
     inputs: &GameInputs,
 ) -> Post {
+    let inputs = &off_terrain_fade(inputs);
     let limits = inputs.interface_limits;
     let mut post = Post {
         folder: folder.to_owned(),
@@ -2045,13 +2081,7 @@ fn scale(properties: &Properties, program: &str, group: Group) -> [f32; 3] {
 
 /// Whether the pack names the `HIGHER_SHADOWCOLOR` feature, required or optional, in any case.
 fn higher_shadowcolor(properties: &Properties) -> bool {
-    ["iris.features.required", "iris.features.optional"]
-        .iter()
-        .filter_map(|k| properties.get(k))
-        .any(|v| {
-            v.split_whitespace()
-                .any(|w| w.eq_ignore_ascii_case("HIGHER_SHADOWCOLOR"))
-        })
+    crate::macros::listed_features(properties).any(|f| f == "HIGHER_SHADOWCOLOR")
 }
 
 /// `flip.<program>.<buffer>=<bool>` keys of one program.
@@ -3035,6 +3065,91 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
             "{:?}",
             post.notes
         );
+    }
+
+    /// With `FADE_VARIABLE` answered, a pack's entity, block, hand and sky programs that read
+    /// `mc_chunkFade` without declaring it translate: off terrain it is `-1.0` (spec 5.1). One
+    /// that declares the name keeps its own declaration.
+    #[test]
+    fn non_terrain_programs_read_the_fade_as_minus_one() {
+        let vsh = "#version 130\nout float fade;\nvoid main() {\n\
+                   gl_Position = gl_Vertex;\n\
+                   #ifdef IRIS_FEATURE_FADE_VARIABLE\nfade = mc_chunkFade;\n#else\nfade = 0.5;\n#endif\n}\n";
+        let fsh = "#version 130\nin float fade;\nvoid main() { gl_FragData[0] = vec4(fade); }\n";
+        let declared = "#version 130\nuniform float mc_chunkFade;\nout float fade;\n\
+                        void main() { gl_Position = gl_Vertex; fade = mc_chunkFade; }\n";
+        let pack = Pack::from_zip_bytes(
+            "fade.zip",
+            zip(&[
+                (
+                    "shaders/shaders.properties",
+                    "iris.features.optional = FADE_VARIABLE\n",
+                ),
+                ("shaders/gbuffers_entities.vsh", vsh),
+                ("shaders/gbuffers_entities.fsh", fsh),
+                ("shaders/gbuffers_hand.vsh", vsh),
+                ("shaders/gbuffers_hand.fsh", fsh),
+                ("shaders/gbuffers_skybasic.vsh", vsh),
+                ("shaders/gbuffers_skybasic.fsh", fsh),
+                ("shaders/gbuffers_block.vsh", declared),
+                ("shaders/gbuffers_block.fsh", fsh),
+            ]),
+        )
+        .unwrap();
+        let mut macros = Macros::standard();
+        let (properties, _) = crate::read_properties(&pack, &mut macros);
+        assert!(macros.is_defined("IRIS_FEATURE_FADE_VARIABLE"));
+        let game = crate::GbuffersInputs {
+            declarations: "layout(location = 0) in vec3 hz_v_pos;".into(),
+            body: "    hz_Vertex = vec4(hz_v_pos, 1.0);\n    hz_Color = vec4(1.0);\n".into(),
+            ..Default::default()
+        };
+        let inputs = GameInputs {
+            entities: Some(game.clone()),
+            hand: Some(game.clone()),
+            sky: Some(game),
+            ..Default::default()
+        };
+        let post = load_post(&pack, "", &properties, &macros, &inputs);
+        // The vertex stage holds the `-1.0` it reads.
+        let minus_one = |p: &Option<PostProgram>| {
+            let program = p.as_ref().and_then(|p| p.program.as_ref());
+            program.is_some_and(|program| {
+                (program.vertex.entry_points.iter()).any(|e| {
+                    e.function.expressions.iter().any(|(_, x)| {
+                        matches!(x, naga::Expression::Literal(naga::Literal::F32(v)) if *v == -1.0)
+                    })
+                }) || (program.vertex.global_expressions.iter()).any(|(_, x)| {
+                    matches!(x, naga::Expression::Literal(naga::Literal::F32(v)) if *v == -1.0)
+                }) || program.vertex.functions.iter().any(|(_, f)| {
+                    f.expressions.iter().any(|(_, x)| {
+                        matches!(x, naga::Expression::Literal(naga::Literal::F32(v)) if *v == -1.0)
+                    })
+                })
+            })
+        };
+        let read: Vec<(&str, bool)> = [
+            ("entities", &post.entities),
+            ("hand", &post.hand),
+            ("sky", &post.sky),
+        ]
+        .into_iter()
+        .map(|(name, p)| (name, minus_one(p)))
+        .collect();
+        assert_eq!(
+            read,
+            [("entities", true), ("hand", true), ("sky", true)],
+            "{:?}",
+            post.notes
+        );
+        let block = post.block.as_ref().and_then(|p| p.program.as_ref());
+        let own = block.is_some_and(|p| {
+            p.interface
+                .uniforms
+                .iter()
+                .any(|u| u.name == "mc_chunkFade")
+        });
+        assert!(own, "{:?}", post.notes);
     }
 
     /// The shadow pass runs when a program reads a shadow buffer or `shadow.enabled` says so;
@@ -4104,8 +4219,10 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
     fn sunrises_test_pack_loads() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/packs/post-test");
         let pack = Pack::open(&dir).unwrap();
-        let macros = Macros::standard();
-        let properties = Properties::parse(&pack.read_text("shaders.properties").unwrap(), &macros);
+        // As the game reads it: `read_properties`, then the programs with the macros it leaves.
+        let mut macros = Macros::standard();
+        let (properties, notes) = crate::read_properties(&pack, &mut macros);
+        assert!(notes.is_empty(), "{notes:?}");
         let post = load_post(
             &pack,
             &dimension_folder(&pack, 0),

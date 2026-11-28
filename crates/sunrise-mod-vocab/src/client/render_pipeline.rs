@@ -708,8 +708,10 @@ pub struct PackBinding {
     /// Optional pass slot override; defaults to [`PipelineGeometryClass::default_slot`].
     pub slot: Option<PackPassSlot>,
     /// Preprocessor defines exposed while compiling the active shader pack when this pipeline
-    /// is active: `(name, optional_value)`. `name` must be a valid GLSL identifier (not
-    /// `GL_`-prefixed) and `value`, when present, must be a non-empty single-line token.
+    /// is active: `(name, optional_value)`. `name` must be a valid GLSL identifier, neither
+    /// `GL_`-prefixed nor `IRIS_FEATURE_`-prefixed (those answer the feature flags a pack lists,
+    /// and only the engine defines them), and `value`, when present, must be a non-empty
+    /// single-line token.
     /// Toggling active defines triggers at most one shader-pack reload.
     pub defines: Vec<(String, Option<String>)>,
     /// Optional depth target for non-shadow slots. See [`PackDepthTarget`] for attachment
@@ -743,17 +745,18 @@ impl PackBinding {
         self
     }
 
-    /// Declare a preprocessor define `#define NAME` (no value) while this pipeline is active.
-    /// A `GL_` name, and the names only Sunrise's HDR extension defines (`SUNRISE_HDR`,
-    /// `SUNRISE_HDR_TONEMAP_PACK`: set when the game serves it to the pack), are refused at
-    /// registration ([`Self::validate_syntax`]).
+    /// Declare a preprocessor define `#define NAME` (no value) for the active shader pack while
+    /// this pipeline is active. `NAME` follows [`PackBinding::defines`]: an `IRIS_FEATURE_*`
+    /// name, a `GL_` name, and the names only Sunrise's HDR extension defines (`SUNRISE_HDR`,
+    /// `SUNRISE_HDR_TONEMAP_PACK`: set when the game serves it to the pack) are refused at
+    /// registration ([`PackBinding::validate_syntax`]).
     pub fn define(mut self, name: impl Into<String>) -> Self {
         self.defines.push((name.into(), None));
         self
     }
 
-    /// Declare a preprocessor define `#define NAME VALUE` while this pipeline is active. The
-    /// names [`Self::define`] refuses are refused here too.
+    /// Declare a preprocessor define `#define NAME VALUE` for the active shader pack while this
+    /// pipeline is active, with the same name rules as [`PackBinding::define`].
     pub fn define_value(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.defines.push((name.into(), Some(value.into())));
         self
@@ -784,7 +787,8 @@ impl PackBinding {
     }
 
     /// Validate GLSL identifier syntax and single-line define token rules on all declared
-    /// entries. Called by the engine during pipeline registration freeze.
+    /// entries, and refuse the define names the engine owns (`GL_`, `IRIS_FEATURE_`). Called by
+    /// the engine during pipeline registration freeze.
     pub fn validate_syntax(&self) -> Result<(), String> {
         for program in &self.programs {
             if !is_valid_pack_program_name(program) {
@@ -803,6 +807,12 @@ impl PackBinding {
                 return Err(format!(
                     "reserved pack define name {name:?}: only the game defines it, when it serves \
                      Sunrise's HDR to the pack"
+                ));
+            }
+            if name.starts_with("IRIS_FEATURE_") {
+                return Err(format!(
+                    "invalid pack define name {name:?}: IRIS_FEATURE_ names answer the feature \
+                     flags a pack lists, and only the engine defines them"
                 ));
             }
             if let Some(val) = value
@@ -4815,6 +4825,8 @@ mod tests {
             "has space",
             "SUNRISE_HDR",
             "SUNRISE_HDR_TONEMAP_PACK",
+            "IRIS_FEATURE_SSBO",
+            "IRIS_FEATURE_",
         ] {
             assert!(
                 PackBinding::new()
@@ -4824,8 +4836,13 @@ mod tests {
                 "expected invalid define name {bad_define:?} to fail"
             );
         }
-        // Sunrise's HDR names with a value too; a longer name that starts with one is the mod's.
-        for reserved in ["SUNRISE_HDR", "SUNRISE_HDR_TONEMAP_PACK"] {
+        // Engine-owned names with a value too; a longer name that starts with an HDR one is the
+        // mod's.
+        for reserved in [
+            "SUNRISE_HDR",
+            "SUNRISE_HDR_TONEMAP_PACK",
+            "IRIS_FEATURE_SSBO",
+        ] {
             assert!(
                 PackBinding::new()
                     .define_value(reserved, "1")

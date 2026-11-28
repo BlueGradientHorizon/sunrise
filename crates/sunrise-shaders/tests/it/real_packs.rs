@@ -14,6 +14,75 @@ use sunrise_shaders::{
 
 use crate::arrays_too_large::RADV;
 
+/// `shaders.properties` and the macros the game reads `pack`'s programs and id files with: the
+/// standard set, the renderer's (at Mipmap Levels 4, and with `subgroups` those of a device with
+/// subgroup operations), then the features the pack lists, which those may reach
+/// (`read_properties`). Returns the macros, the properties and the feature notes.
+fn game_read(pack: &Pack, subgroups: bool) -> (Macros, Properties, Vec<String>) {
+    let mut macros = Macros::standard();
+    macros.define_renderer(4);
+    if subgroups {
+        macros.define_subgroups();
+    }
+    let (properties, notes) = sunrise_shaders::read_properties(pack, &mut macros);
+    (macros, properties, notes)
+}
+
+/// The probe's read defines the subgroup macros before the pack's flag lists are settled, as
+/// the game's renderer does: a list behind `MC_GL_KHR_shader_subgroup_basic` is answered, for
+/// `shaders.properties` and the programs, only on a device with subgroup operations.
+#[test]
+fn the_probes_read_settles_lists_behind_the_subgroup_macros() {
+    let dir = std::env::temp_dir().join(format!("sunrise-probe-subgroups-{}", std::process::id()));
+    let shaders = dir.join("shaders");
+    std::fs::create_dir_all(&shaders).unwrap();
+    for (file, text) in [
+        (
+            "shaders.properties",
+            "#ifdef MC_GL_KHR_shader_subgroup_basic\niris.features.optional = SSBO\n#endif\n\
+             #ifdef IRIS_FEATURE_SSBO\nguarded = 1\n#endif\n",
+        ),
+        (
+            "composite.vsh",
+            "#version 330\nvoid main() { gl_Position = vec4(0.0); }\n",
+        ),
+        (
+            "composite.fsh",
+            "#version 330\nout vec4 c;\n#ifdef IRIS_FEATURE_SSBO\nuniform float seen_ssbo;\n\
+             #else\nconst float seen_ssbo = 0.0;\n#endif\nvoid main() { c = vec4(seen_ssbo); }\n",
+        ),
+    ] {
+        std::fs::write(shaders.join(file), text).unwrap();
+    }
+    let pack = Pack::open(&dir).unwrap();
+    let seen = |subgroups: bool| {
+        let (macros, properties, _) = game_read(&pack, subgroups);
+        let post = load_post(
+            &pack,
+            "",
+            &properties,
+            &macros,
+            &sunrise_shaders::GameInputs::default(),
+        );
+        let program = post.programs[0]
+            .program
+            .as_ref()
+            .expect("composite translates");
+        (
+            properties.get("guarded").is_some(),
+            program
+                .interface
+                .uniforms
+                .iter()
+                .any(|u| u.name == "seen_ssbo"),
+        )
+    };
+    let (with, without) = (seen(true), seen(false));
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(with, (true, true));
+    assert_eq!(without, (false, false));
+}
+
 #[test]
 #[ignore = "needs SUNRISE_TEST_SHADER_PACKS"]
 fn real_packs_read() {
@@ -31,16 +100,21 @@ fn real_packs_read() {
             let mut skipped = std::collections::BTreeSet::new();
             let start = Instant::now();
             let pack = Pack::open(&f.path).unwrap();
-            // The macros the game reads the pack's programs with: the standard set, the renderer's
-            // (at Mipmap Levels 4), then the features the pack turns on.
-            let mut macros = Macros::standard();
-            macros.define_renderer(4);
-            let (shaders, feature_notes) = sunrise_shaders::read_properties(&pack, &mut macros);
-            let ids: Vec<Properties> = ["block", "item", "entity", "dimension"]
-                .iter()
-                .filter_map(|n| pack.read_text(&format!("{n}.properties")))
-                .map(|t| Properties::parse(&t, &macros))
-                .collect();
+            let subgroups = std::env::var_os("SUBGROUPS").is_some();
+            let (macros, shaders, feature_notes) = game_read(&pack, subgroups);
+            // Each as the game reads it: the id files with the macros `read_properties` left
+            // (`read_id_files`), `dimension.properties` with none (`dimension_folder_named`).
+            let none = Macros::default();
+            let ids: Vec<Properties> = [
+                ("block", &macros),
+                ("item", &macros),
+                ("entity", &macros),
+                ("dimension", &none),
+            ]
+            .iter()
+            .filter_map(|(n, m)| Some((pack.read_text(&format!("{n}.properties"))?, *m)))
+            .map(|(t, m)| Properties::parse(&t, m))
+            .collect();
             let lang = Lang::load(&pack, "en_us");
             let elapsed = start.elapsed();
             println!(
@@ -174,8 +248,14 @@ fn real_packs_read() {
                     attributes: vec![("mc_Entity".into(), "vec4(-1.0)".into())],
                     ..Default::default()
                 };
+                // The game's terrain draws give `mc_chunkFade` too (`pack_atlas`'s terrain
+                // attributes); its other draws don't.
+                let mut chunks = terrain.clone();
+                chunks
+                    .attributes
+                    .push(("mc_chunkFade".into(), "1.0".into()));
                 let inputs = sunrise_shaders::GameInputs {
-                terrain: Some(terrain.clone()),
+                terrain: Some(chunks.clone()),
                 sky: Some(terrain.clone()),
                 celestial: Some(terrain.clone()),
                 entities: Some(terrain.clone()),
@@ -189,14 +269,14 @@ fn real_packs_read() {
                     ..terrain.clone()
                 }),
                 // As the game's (`pack_atlas::game_terrain`): solid, then cutout terrain.
-                terrain_parts: Some([terrain.clone(), terrain.clone()]),
+                terrain_parts: Some([chunks.clone(), chunks.clone()]),
                 // And both in one pass.
                 terrain_one_pass: Some(sunrise_shaders::GbuffersInputs {
                     parts: Some(sunrise_shaders::Parts {
                         solid: "hz_v_pos.x > 0.0".into(),
                         cutout_alpha_test: None,
                     }),
-                    ..terrain.clone()
+                    ..chunks.clone()
                 }),
                 terrain_geometry: Some(sunrise_shaders::GeometryInputs {
                     inputs: sunrise_shaders::GbuffersInputs {
@@ -204,7 +284,7 @@ fn real_packs_read() {
                             "layout(set = 3, binding = 1) readonly buffer HzVertices {{ uint hz_vertices[]; }};\n{}",
                             terrain.declarations
                         ),
-                        ..terrain.clone()
+                        ..chunks.clone()
                     },
                     pull: "        hz_v_pos = uintBitsToFloat(uvec3(hz_vertices[hz_vertex_index * 6u], \
                            hz_vertices[hz_vertex_index * 6u + 1u], hz_vertices[hz_vertex_index * 6u + 2u]));\n"
@@ -228,10 +308,6 @@ fn real_packs_read() {
                 mod_programs: Vec::new(),
                 hdr: None,
             };
-                let mut macros = macros.clone();
-                if std::env::var_os("SUBGROUPS").is_some() {
-                    macros.define_subgroups();
-                }
                 for note in &feature_notes {
                     println!("    {note}");
                 }

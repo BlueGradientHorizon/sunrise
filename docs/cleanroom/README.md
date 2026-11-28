@@ -78,7 +78,8 @@ needed, the spec team records the observation (what was seen, with which pack an
 ## Orchestrator decisions (2026-10-24)
 
 - The implementation team **may read the Khronos GLSL and OpenGL specifications** directly. They are public language standards, not any loader.
-- **OQ-2: Sunrise does not define another loader's identity macros** (`IS_IRIS`, `IRIS_VERSION`, `IRIS_FEATURE_*`, or OptiFine's version macro if one names OptiFine itself). Sunrise is not that loader, and pretending to be it is how the complaint started. Packs that branch on those macros get their non-Iris path. The format's documented `MC_*` macros are defined.
+- **OQ-2: Sunrise does not define another loader's identity macros** (`IS_IRIS`, `IRIS_VERSION`, or OptiFine's version macro if one names OptiFine itself). Sunrise is not that loader, and pretending to be it is how the complaint started. Packs that branch on those macros get their non-Iris path. The format's documented `MC_*` macros are defined.
+  - *Rewritten 2026-11-26 ([#6054](https://github.com/sunrise-org/sunrise/issues/6054), PR A):* `IRIS_FEATURE_<flag>` is no longer in this list. A feature macro answers what a pack asks for, as spec 3.2 describes ("define `IRIS_FEATURE_<flag>`" for each supported flag of `iris.features.optional`, spec lines 167 and 373); it names a feature, not a loader. Sunrise defines it for every flag the pack lists that it supports, in either list, for the programs and the property files ([decisions.md](decisions.md), D-7). The identity macros above are unchanged.
 - The old Rust spike is no longer in this folder. It was moved out of every agent's reach, to a private archive outside every repository.
 - The implementation starts only after the removal PR (shaders-remove-1) has merged, in a fresh worktree of that main.
 

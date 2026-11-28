@@ -211,6 +211,92 @@ the full list.
 - **Tests:** `pack_post::tests::a_sampler_of_another_class_than_its_image_refuses_the_program`
   (`sunrise-render-shaderpack`).
 
+## D-7: which feature flags get `IRIS_FEATURE_<flag>`, and which reads see it
+
+- **Open point:** spec rev 1, 3.2, lines 372-373: `iris.features.optional` asks to "enable those supported and define
+  `IRIS_FEATURE_<flag>` for each"; `iris.features.required` asks to refuse the pack when one is unsupported "and enable
+  them", without naming a macro. 1.5.1, line 167 lists `IRIS_FEATURE_<flag>` ("an optional feature flag … is
+  supported"). The spec doesn't say whether a required flag gets the macro, which case the macro's name takes when the
+  pack writes the flag in another one, or which reads of the pack see it: `shaders.properties` holds the flag lists
+  and may itself test the macros. Until 2026-11-26 OQ-2 in the [README](README.md) kept every `IRIS_FEATURE_*` undefined;
+  it was rewritten on [#6054](https://github.com/sunrise-org/sunrise/issues/6054).
+- **Decision:**
+  - `IRIS_FEATURE_<NAME>` is defined, as `1`, for each flag Sunrise supports (`FEATURES` in
+    `crates/sunrise-shaders/src/macros.rs`) that the pack lists in `iris.features.optional` or in
+    `iris.features.required`. A flag matches in any case, and the macro takes the name as `FEATURES` writes it
+    (`ssbo` listed gives `IRIS_FEATURE_SSBO`, not `IRIS_FEATURE_ssbo`). A flag Sunrise lacks, and a flag the pack
+    doesn't list, stay undefined. A required flag Sunrise lacks keeps its note, and the pack still loads, as before.
+  - A supported flag Sunrise can't keep on every draw it may take loads without a note but gets no macro:
+    `BLOCK_EMISSION_ATTRIBUTE` (`UNANSWERED` in `macros.rs`). Terrain drawn from its vertex attributes alone (when
+    neither the arena's pages nor the normal stream fit the pack's vertex stage) has no source block, so
+    `at_midBlock.w` is `0` there and a pack's emission branch would lose every block's light. Keeping the flag
+    unanswered is the smaller correct choice: the vertex data on that path carries no emitted light to supply.
+  - With `FADE_VARIABLE` answered, `mc_chunkFade` is given on every gbuffers draw, as spec 5.1 line 626 says: the
+    section's fade on terrain, `-1.0` on every other draw (sky, celestial bodies, entities and block entities with
+    their particles, translucent and shadow draws, clouds, weather, lines, the hand, mods' pipelines;
+    `post::off_terrain_fade`). A program that declares the name keeps its own declaration.
+  - `shaders.properties` is read twice, in one fixed order: first with the standard macros, the renderer's and the
+    pack's options and no feature macro (any answer a reused macro set still holds is dropped), which settles the two
+    lists; then the answers are defined and the file is read again, and that second read is the one the game uses. A list that only a feature macro reaches is not read.
+    The programs and `block.properties`, `entity.properties` and `item.properties` see the answers. A pack that lists
+    no supported flag is read once, with the macros it had before, but for one exception that holds for every pack:
+    a line declaring an `IRIS_FEATURE_*` name (`#define IRIS_FEATURE_SSBO 1 // [0 1]`, `//#define
+    IRIS_FEATURE_SSBO`) is no longer one of its options (below).
+  - A mod's pack binding may not define an `IRIS_FEATURE_*` name: registration refuses it with a diagnostic, as it
+    refuses `GL_` names (`PackBinding::validate_syntax`). Before this change such a define was accepted and reached
+    the pack; with the read above dropping every `IRIS_FEATURE_*` before it settles the answers, it would be lost
+    without a word, so registration names it instead. This is a compatibility change for mods
+    (`crates/sunrise-mod-vocab/changes/shader-pack-iris-feature-defines-6054.md`).
+  - What is decided by the lists after the read (the eight shadow colour buffers of `HIGHER_SHADOWCOLOR`) takes the
+    lists of the first read, the ones the answers came from, even where the second read would hide or change them.
+    They keep their place in the file's order among the other entries.
+  - `IRIS_FEATURE_*` names are Sunrise's answers alone: a pack's line declaring such a name is not an option. It is
+    not listed among the pack's options, not defined for its property files, doesn't count as on in
+    `program.<name>.enabled`, and a saved choice never rewrites it (a commented-out `//#define` stays commented out).
+  - The pack's own uncommented directives are read as written. In a program, a `#define` or `#undef` of such a name
+    applies, as any directive does, to the rest of that stage's preprocessed source: the lines after it, the files
+    included after it and the including file after their `#include` line. `shaders.properties` is read line by line,
+    with no `#include`, by each of the two reads: there a `#define` or `#undef` applies from its line to the end of
+    the file, to the conditionals (`#if`, `#ifdef`, `#elif`) and to the macros that read expands in the lines after
+    it (custom `uniform.*` / `variable.*` lines, and `size.buffer.*` / `image.*` values). So a `#define` lets the
+    first read reach a list behind it, and an `#undef` hides Sunrise's answer from those later lines, not from the
+    programs nor from the id files. The values the load expands again with its own macros (`size.buffer.*`,
+    `image.*`, `program.<name>.enabled`) are expanded with the answers, as with every other macro of the load, so an
+    `#undef` earlier in the file doesn't hide the answer there.
+  - A flag list set twice is noted as the lists were settled: the note that a later list "counts" comes from the first
+    read for the two flag-list keys, and from the second read for every other key.
+  - The same read serves every place that reads a pack's `shaders.properties`: the load, the HDR read made before
+    the frame, and the Shader Options page.
+  - No setting turns it off: it is the format's answer to what the pack asks.
+- **Reason:** a required flag is one the pack needs, so it is at least as much a request as an optional one, and a
+  pack that tests the macro after requiring the flag means the feature it required. The pack's spelling of a flag is
+  matched in any case already (the notes), and the macro needs one spelling for every program to agree on. Reading the
+  lists before any answer exists makes the answer independent of the answer itself, so a list guarded by a feature
+  macro has one result.
+- **Tests:** `options::tests::listed_features_sunrise_has_are_defined_for_properties_programs_and_id_files`,
+  `options::tests::a_pack_that_lists_no_feature_sunrise_has_gets_none`,
+  `options::tests::flag_lists_are_settled_before_the_answers_are_defined`,
+  `options::tests::properties_are_read_with_the_options_then_define_the_features`,
+  `options::tests::the_settled_lists_decide_the_shadow_colour_buffers`,
+  `options::tests::a_packs_option_named_as_a_feature_answer_changes_no_answer`,
+  `options::tests::a_saved_choice_never_rewrites_a_feature_answer`,
+  `options::tests::a_packs_own_directive_in_shaders_properties_applies_from_its_line`,
+  `options::tests::a_repeated_flag_list_is_noted_as_the_lists_were_settled`,
+  `options::tests::a_repeat_the_second_read_cannot_see_is_still_noted`,
+  `options::tests::the_settled_lists_keep_their_place_in_the_file`,
+  `options::tests::an_undef_in_shaders_properties_hides_the_answer_from_conditionals_only`,
+  `options::tests::a_reused_macro_set_carries_no_answer_to_the_next_pack`,
+  `options::tests::block_emission_is_supported_but_not_answered`,
+  `post::tests::non_terrain_programs_read_the_fade_as_minus_one`, `post::tests::sunrises_test_pack_loads`, and
+  in `tests/it`
+  `reversed_culling_feature::requested_reversed_culling_loads_and_packs_take_the_path_it_guards` and
+  `terrain_fade::fade_feature_negotiation_ignores_case_and_defines_the_written_macro` (`sunrise-shaders`);
+  `game::client_side::shader_packs::native_pack_tests::the_hdr_read_and_the_options_page_see_the_features_the_pack_lists`,
+  `game::client_side::shader_packs::native_pack_tests::the_loads_id_files_see_the_features_the_pack_lists`; the refusal by
+  `client::render_pipeline::tests::pack_binding_syntax_rejects_bad_identifiers_and_multiline_defines`
+  (`sunrise-mod-vocab`)
+  (`sunrise-client-gameplay`); `profiles_behind_answered_feature_flags_are_dumped` (`sunrise-render-shaderpack`, `spirv_dump`).
+
 ## D-10: what `indirect.<pass>` names, and what a key or counts that can't run do
 
 - **Open point:** spec rev 1, 3.2, line 398 gives `indirect.<pass>` = `<ssbo index> <byte offset>`, "read the compute
