@@ -9,16 +9,21 @@ use sunrise_client::camera::CameraFluid;
 use sunrise_client::gfx::pack_uniforms::{PackInputs, PlayerStatus, ViewEntity};
 use sunrise_client::shader_options::ShaderOptions;
 use sunrise_game_data::text::Text;
+use sunrise_items::items::{BlockTagFlags, EntityTypeTags, Items};
 use sunrise_mod_package::mod_list::ModList;
 use sunrise_shaders::{
-    BlockIds, BlockLayers, Macros, Pack, Properties, Tonemap, dimension_folder_named, load_post,
+    BlockIds, BlockLayers, Macros, Pack, Properties, TagMembers, Tonemap, dimension_folder_named,
+    load_post,
 };
+use sunrise_world::loot::{ItemTagNames, LootTags};
 
 use super::native_shaders::{fingerprint, outcome, refused, remember};
 use super::{Dim, Screen};
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::sync::Arc;
 use sunrise_client_render::graphics::IrisCompat;
 use sunrise_client_render::render_geometry::EntitySpan;
 
@@ -321,6 +326,10 @@ struct IdFiles {
     blocks: BlockIds,
     layers: BlockLayers,
     named: NamedIds,
+    /// The rules of `item.properties` and of `entity.properties`, which `PackIds::resolve`
+    /// resolves against the world's tags.
+    item_rules: BlockIds,
+    entity_rules: BlockIds,
 }
 
 fn read_id_files(pack: &Pack, macros: &Macros) -> IdFiles {
@@ -328,10 +337,13 @@ fn read_id_files(pack: &Pack, macros: &Macros) -> IdFiles {
         &pack.read_text("block.properties").unwrap_or_default(),
         macros,
     );
+    let (named, item_rules, entity_rules) = NamedIds::read(pack, macros);
     IdFiles {
         blocks: BlockIds::parse(&block_properties),
         layers: BlockLayers::parse(&block_properties),
-        named: NamedIds::read(pack, macros),
+        named,
+        item_rules,
+        entity_rules,
     }
 }
 
@@ -683,6 +695,17 @@ pub struct PackIds {
     /// `entity.properties` and `item.properties`.
     pub(in crate::game) named: NamedIds,
     pub(in crate::game) blocks: BlockIds,
+    /// `item.properties` and `entity.properties` as read, for `resolve`: kept after it only
+    /// while they name a tag, the only case a later `resolve` reads them again.
+    item_rules: Option<BlockIds>,
+    entity_rules: Option<BlockIds>,
+    /// The world's tags the ids were resolved against (`resolve`), when a rule names a tag
+    /// (`%tag`, 4.1): `sync_pack_ids` resolves them again once the world's tags are replaced.
+    tags: Option<WorldTags>,
+    /// `blocks`' rules by the block name they reach through the world's tags
+    /// (`BlockIds::by_name`), for `blockEntityId`; none while `blocks` names no tag, whose ids
+    /// `BlockIds::id` finds by name.
+    block_rules: Option<HashMap<String, Vec<usize>>>,
     /// `block.properties`' `layer.*` rules (4.2), as the terrain meshes them.
     pub(in crate::game::client_side) layers: super::pack_layers::PackLayers,
     /// `terrain_state_ids` of the loaded pack: two ids per block state, the model's then the
@@ -702,6 +725,88 @@ pub struct PackIds {
     pub(in crate::game) old_lighting: bool,
     /// `separateAo`: `true` passes AO factor in vertex alpha and keeps pure tint in RGB.
     pub(in crate::game) separate_ao: bool,
+}
+
+/// The world's block, item and entity type tables the client reads, as `sync_pack_layers`
+/// reads them: the tags its server sent, else the remote's tags, else the game's own.
+macro_rules! client_items {
+    ($game:expr) => {
+        $game
+            .common
+            .server_items
+            .as_deref()
+            .or_else(|| $game.client.remote.as_ref()?.tags.as_ref())
+            .unwrap_or_else(|| $game.common.res.items())
+    };
+}
+
+/// The tags a pack's `%tag` entries read (D-9), by tag name.
+struct PackTags<'a> {
+    blocks: Cow<'a, TagMembers>,
+    items: Cow<'a, TagMembers>,
+    entities: Cow<'a, TagMembers>,
+}
+
+impl PackTags<'_> {
+    /// No tags: what a pack whose entries name none reads.
+    fn none() -> Self {
+        Self {
+            blocks: Cow::Owned(TagMembers::new()),
+            items: Cow::Owned(TagMembers::new()),
+            entities: Cow::Owned(TagMembers::new()),
+        }
+    }
+}
+
+/// Which binding of the world's tags a pack's ids were resolved against. Connected to a server
+/// (the window of a single-player world included), the tags it sent: `install_server_items`
+/// makes a new `server_items` for each tags packet. Otherwise the world's tables, each from
+/// one binding: every path that replaces the block tags rebuilds `block_tag_flags`
+/// (`Items::rebuild_block_tag_flags`), the item tags bind `ItemTagNames` again
+/// (`Items::set_tags`), and the entity type tags are a new `EntityTypeTags`
+/// (`Items::set_entity_type_tags`). Held, so no address is reused.
+enum WorldTags {
+    Sent(Arc<Items>),
+    Tables {
+        blocks: Arc<BlockTagFlags>,
+        items: Option<ItemTagNames>,
+        entities: Arc<EntityTypeTags>,
+    },
+}
+
+impl WorldTags {
+    fn tables(items: &Items) -> Self {
+        Self::Tables {
+            blocks: items.block_tag_flags.clone(),
+            items: items.item_tag_names().cloned(),
+            entities: items.entity_type_tags.clone(),
+        }
+    }
+
+    /// Whether these are still the tags of a world whose server sent `sent` (`None`: not
+    /// connected) and whose tables are `items`.
+    fn hold(&self, sent: Option<&Arc<Items>>, items: &Items) -> bool {
+        match (self, sent) {
+            (Self::Sent(held), Some(now)) => Arc::ptr_eq(held, now),
+            (
+                Self::Tables {
+                    blocks,
+                    items: names,
+                    entities,
+                },
+                None,
+            ) => {
+                Arc::ptr_eq(blocks, &items.block_tag_flags)
+                    && Arc::ptr_eq(entities, &items.entity_type_tags)
+                    && match (names, items.item_tag_names()) {
+                        (Some(held), Some(now)) => held.same_generation(now),
+                        (None, None) => true,
+                        _ => false,
+                    }
+            }
+            _ => false,
+        }
+    }
 }
 
 /// The ids `entity.properties` and `item.properties` give names (4.1), and what a name each
@@ -725,27 +830,31 @@ pub struct NamedIds {
 impl NamedIds {
     /// Reads the pack's `entity.properties` and `item.properties` with `macros`. Whether the
     /// pack has a file decides its default, even when the file can't be read (a zipped file past
-    /// the size cap): such a file gives no ids.
-    pub(in crate::game) fn read(pack: &Pack, macros: &Macros) -> Self {
+    /// the size cap): such a file gives no ids. The ids are the files' entries by name, with no
+    /// tag; with them, the files' rules, items' then entities', which `PackIds::resolve` resolves
+    /// against the world's tags (`%tag`, 4.1).
+    pub(in crate::game) fn read(pack: &Pack, macros: &Macros) -> (Self, BlockIds, BlockIds) {
         let read = |kind: &str| {
             let path = format!("{kind}.properties");
             let text = pack.read_text(&path);
             // A successful read proves the file is there; only a failed one needs the lookup.
             let present = text.is_some() || pack.exists(&path);
-            let ids = text.map_or_else(HashMap::new, |text| {
-                BlockIds::parse_kind(&Properties::parse(&text, macros), kind).plain()
-            });
-            (ids, present)
+            let rules = BlockIds::parse_kind(
+                &Properties::parse(text.as_deref().unwrap_or_default(), macros),
+                kind,
+            );
+            (rules, present)
         };
-        let (entities, entity_file) = read("entity");
-        let (items, item_file) = read("item");
-        Self {
-            entities,
+        let (entity_rules, entity_file) = read("entity");
+        let (item_rules, item_file) = read("item");
+        let named = Self {
+            entities: entity_rules.plain(&TagMembers::new()),
             missing_entity: if entity_file { 65535 } else { 0 },
-            items,
+            items: item_rules.plain(&TagMembers::new()),
             item_file,
             missing_item: if item_file { -1 } else { 0 },
-        }
+        };
+        (named, item_rules, entity_rules)
     }
 
     /// The `entityId` of entity type `name` (5.3).
@@ -758,6 +867,42 @@ impl NamedIds {
 }
 
 impl PackIds {
+    /// Whether an entry names a tag: only then do the ids follow the world's tags.
+    fn names_tags(&self) -> bool {
+        let names = |rules: &Option<BlockIds>| rules.as_ref().is_some_and(BlockIds::names_tags);
+        self.blocks.names_tags() || names(&self.item_rules) || names(&self.entity_rules)
+    }
+
+    /// Resolves the ids against `tags` (a `%tag` entry gives its members the id, 4.1), taken
+    /// from the binding `bound`: the terrain's table, the block items', the items' and the
+    /// entities', and the block entities' from their next draw on.
+    fn resolve(
+        &mut self,
+        registry: &sunrise_world::registry::BlockRegistry,
+        facts: &sunrise_items::blocks::BlockFacts,
+        tags: &PackTags<'_>,
+        bound: WorldTags,
+    ) {
+        self.terrain_states = terrain_state_ids(registry, &self.blocks, &tags.blocks);
+        self.block_items = block_item_ids(facts, registry, &self.blocks, &tags.blocks);
+        self.block_rules = self.blocks.names_tags().then(|| {
+            (self.blocks.by_name(&tags.blocks).into_iter())
+                .map(|(name, rules)| (name.to_owned(), rules))
+                .collect()
+        });
+        if let Some(rules) = &self.item_rules {
+            self.named.items = rules.plain(&tags.items);
+        }
+        if let Some(rules) = &self.entity_rules {
+            self.named.entities = rules.plain(&tags.entities);
+        }
+        self.block_states.get_mut().clear();
+        self.tags = self.names_tags().then_some(bound);
+        // Rules naming no tag give the same ids every time: nothing reads them again.
+        self.item_rules = self.item_rules.take().filter(BlockIds::names_tags);
+        self.entity_rules = self.entity_rules.take().filter(BlockIds::names_tags);
+    }
+
     /// The pack's `block.properties` id for the block state at registry index `state`, the
     /// model id the terrain carries; `None` when the file gives it none or the index is past
     /// the registry.
@@ -771,6 +916,45 @@ impl PackIds {
 
 #[cfg(any(test, feature = "test-support"))]
 impl PackIds {
+    /// A pack's ids from its `block.properties`, `item.properties` and `entity.properties`
+    /// texts, resolved against `game`'s world as the loader resolves them.
+    pub fn of_files(
+        game: &crate::game::ClientGame<'_>,
+        block: &str,
+        item: &str,
+        entity: &str,
+    ) -> Self {
+        let parse = |text: &str, kind: &str| {
+            BlockIds::parse_kind(&Properties::parse(text, &Macros::standard()), kind)
+        };
+        let mut ids = Self {
+            blocks: parse(block, "block"),
+            item_rules: Some(parse(item, "item")),
+            entity_rules: Some(parse(entity, "entity")),
+            named: NamedIds {
+                item_file: true,
+                missing_item: -1,
+                missing_entity: 65535,
+                ..Default::default()
+            },
+            missing_block: 65535,
+            ..Default::default()
+        };
+        let (tags, bound) = pack_tags(
+            game.client.remote.as_ref(),
+            game.common.server_items.as_ref(),
+            client_items!(game),
+            ids.names_tags(),
+        );
+        ids.resolve(
+            game.common.pack.assets.registry,
+            game.common.res.facts(),
+            &tags,
+            bound,
+        );
+        ids
+    }
+
     pub fn with_entity_ids<'a>(ids: impl IntoIterator<Item = (&'a str, i32)>) -> Self {
         Self {
             named: NamedIds {
@@ -785,7 +969,80 @@ impl PackIds {
     }
 }
 
+/// The tags a pack's `%tag` entries read now (D-9), and which binding they are; none unless
+/// `wanted` (a pack whose entries name no tag reads none). Connected to a server (`remote`,
+/// whose tags packets made `sent`), the tags it sent; otherwise the world's tables, `items`.
+/// Those packets are also `sent`'s tables.
+fn pack_tags<'a>(
+    remote: Option<&'a crate::game::client_side::remote_client::Remote>,
+    sent: Option<&Arc<Items>>,
+    items: &'a Items,
+    wanted: bool,
+) -> (PackTags<'a>, WorldTags) {
+    if let (Some(remote), Some(sent)) = (remote, sent) {
+        let bound = WorldTags::Sent(sent.clone());
+        if !wanted {
+            return (PackTags::none(), bound);
+        }
+        let names = |registry: &str| -> TagMembers {
+            let Some(ids) = remote.builtin.get(registry) else {
+                return TagMembers::new();
+            };
+            let tags = remote.registries.tags.get(registry).into_iter().flatten();
+            tags.map(|(tag, members)| {
+                let members = members.iter().filter_map(|&id| ids.name(id));
+                (tag.clone(), members.map(str::to_owned).collect())
+            })
+            .collect()
+        };
+        let tags = PackTags {
+            blocks: Cow::Owned(names("minecraft:block")),
+            items: Cow::Owned(names("minecraft:item")),
+            entities: Cow::Owned(names(EntityTypeTags::REGISTRY)),
+        };
+        return (tags, bound);
+    }
+    let bound = WorldTags::tables(items);
+    if !wanted {
+        return (PackTags::none(), bound);
+    }
+    let tags = PackTags {
+        blocks: Cow::Borrowed(&items.block_tags),
+        items: Cow::Borrowed(&items.item_tags),
+        entities: Cow::Borrowed(&**items.entity_type_tags.members()),
+    };
+    (tags, bound)
+}
+
 impl crate::game::ClientGame<'_> {
+    /// Resolves the loaded pack's ids again when the world's tags its `%tag` entries (4.1) were
+    /// resolved against were replaced (a server's tags, `/reload`, another world), and hands
+    /// the renderer the terrain's. Nothing for a pack whose entries name no tag.
+    pub fn sync_pack_ids(&mut self) {
+        let Some(held) = (self.client.pack_ids.as_ref()).and_then(|ids| ids.tags.as_ref()) else {
+            return;
+        };
+        let sent = (self.client.remote.as_ref()).and(self.common.server_items.as_ref());
+        if held.hold(sent, client_items!(self)) {
+            return;
+        }
+        let (tags, bound) = pack_tags(
+            self.client.remote.as_ref(),
+            self.common.server_items.as_ref(),
+            client_items!(self),
+            true,
+        );
+        let Some(ids) = self.client.pack_ids.as_mut() else {
+            return;
+        };
+        let registry = self.common.pack.assets.registry;
+        ids.resolve(registry, self.common.res.facts(), &tags, bound);
+        drop(tags);
+        if let Some(renderer) = &mut self.client.renderer.0 {
+            renderer.set_pack_block_ids(ids.terrain_states.clone());
+        }
+    }
+
     /// Loads the pack for the current dimension when it changed, and returns this frame's
     /// inputs to the pack's uniforms.
     pub(in crate::game::client_side) fn shader_pack_inputs(
@@ -828,6 +1085,8 @@ impl crate::game::ClientGame<'_> {
         // Its `layer.*` rules (4.2), none without a pack: in the frame after it loads or drops, as
         // the flags above, so one meshing of every section takes them all.
         self.sync_pack_layers();
+        // Its ids, before this frame's held items and entities read them.
+        self.sync_pack_ids();
         let selected = picked_pack(&self.client.settings).to_owned();
         let dir = Self::shader_packs_dir();
         let path = dir.join(&selected);
@@ -1026,18 +1285,16 @@ impl crate::game::ClientGame<'_> {
                             blocks: ids,
                             layers,
                             named,
+                            item_rules: items,
+                            entity_rules: entities,
                         } = read_id_files(&pack, &macros);
                         for note in ids.notes.iter().chain(&layers.notes) {
                             log::warn!("shader pack {name}: block.properties: {note}");
                         }
-                        let block_items = block_item_ids(
-                            self.common.res.facts(),
-                            self.common.pack.assets.registry,
-                            &ids,
-                        );
-                        self.client.pack_ids = Some(PackIds {
-                            block_items,
+                        let mut pack_ids = PackIds {
+                            block_items: HashMap::new(),
                             named,
+                            item_rules: Some(items),
                             // OQ-21: on unless the pack turns it off.
                             old_hand_light: properties
                                 .get("oldHandLight")
@@ -1051,17 +1308,31 @@ impl crate::game::ClientGame<'_> {
                                 .get("oldLighting")
                                 .is_some_and(|v| v.trim() == "true"),
                             separate_ao,
+                            entity_rules: Some(entities),
+                            tags: None,
+                            block_rules: None,
                             missing_block: if ids.is_empty() { 0 } else { 65535 },
-                            blocks: ids.clone(),
+                            blocks: ids,
                             layers: super::pack_layers::PackLayers::new(name, layers),
                             terrain_states: Vec::new(),
                             block_states: RefCell::default(),
-                        });
+                        };
                         let started_ids = std::time::Instant::now();
-                        let table = terrain_state_ids(self.common.pack.assets.registry, &ids);
-                        if let Some(pack_ids) = &mut self.client.pack_ids {
-                            pack_ids.terrain_states.clone_from(&table);
-                        }
+                        let (tags, bound) = pack_tags(
+                            self.client.remote.as_ref(),
+                            self.common.server_items.as_ref(),
+                            client_items!(self),
+                            pack_ids.names_tags(),
+                        );
+                        pack_ids.resolve(
+                            self.common.pack.assets.registry,
+                            self.common.res.facts(),
+                            &tags,
+                            bound,
+                        );
+                        drop(tags);
+                        let table = pack_ids.terrain_states.clone();
+                        self.client.pack_ids = Some(pack_ids);
                         log::info!(
                             "shader pack {name}: mc_Entity for {} of {} block states in {} ms",
                             table.chunks(2).filter(|p| p[0] != -1).count(),
@@ -1404,7 +1675,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// `currentRenderedItemId` of a held `item`, [`rendered_item_id`]'s; 0 without a pack.
-    pub(in crate::game::client_side) fn rendered_item_id(&self, item: &str) -> i32 {
+    pub fn rendered_item_id(&self, item: &str) -> i32 {
         self.client.pack_ids.as_ref().map_or(0, |ids| {
             rendered_item_id(
                 ids.block_items.get(item).copied(),
@@ -1467,7 +1738,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    pub(in crate::game) fn entity_part_span(
+    pub fn entity_part_span(
         &self,
         start: usize,
         name: &str,
@@ -1488,7 +1759,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Starts a span for the block entity of block state `state`.
-    pub(in crate::game::client_side) fn mark_block_entity(&self, start: usize, state: u32) {
+    pub fn mark_block_entity(&self, start: usize, state: u32) {
         let Some(ids) = &self.client.pack_ids else {
             if native_spans() {
                 self.push_span(start, "BLOCK_ENTITIES", state as i32);
@@ -1504,8 +1775,14 @@ impl crate::game::ClientGame<'_> {
                 registry
                     .state(sunrise_world::registry::BlockStateId(state))
                     .and_then(|s| {
-                        ids.blocks
-                            .id(&s.name, |k| s.properties.get(k).map(String::as_str))
+                        let properties = |k: &str| s.properties.get(k).map(String::as_str);
+                        match &ids.block_rules {
+                            Some(by_name) => {
+                                let rules = by_name.get(&s.name)?;
+                                ids.blocks.pick(rules.iter().copied(), properties)
+                            }
+                            None => ids.blocks.id(&s.name, properties, |_| false),
+                        }
                     })
                     .unwrap_or(ids.missing_block)
             });
@@ -1608,13 +1885,15 @@ pub(in crate::game::client_side) fn rendered_item_id(
 }
 
 /// The block items' `currentRenderedItemId`: for each block's default state, the item it gives
-/// (`StateFacts::item`) takes the state's id in `ids`, or 0. A block named as its item wins over
-/// another block giving that item.
+/// (`StateFacts::item`) takes the state's id in `ids` (its block's tags in `tags`), or 0. A block
+/// named as its item wins over another block giving that item.
 pub(in crate::game::client_side) fn block_item_ids(
     facts: &sunrise_items::blocks::BlockFacts,
     registry: &sunrise_world::registry::BlockRegistry,
     ids: &BlockIds,
+    tags: &TagMembers,
 ) -> HashMap<String, i32> {
+    let by_name = ids.by_name(tags);
     let mut out = HashMap::new();
     for (i, state) in facts.states.iter().enumerate() {
         let id = sunrise_world::registry::BlockStateId(i as u32);
@@ -1623,7 +1902,7 @@ pub(in crate::game::client_side) fn block_item_ids(
         }
         let value = registry
             .state(id)
-            .and_then(|s| ids.id(&s.name, |k| s.properties.get(k).map(String::as_str)))
+            .and_then(|s| state_id(ids, &by_name, s))
             .unwrap_or(0);
         if state.item == state.name {
             out.insert(state.item.to_string(), value);
@@ -1650,21 +1929,34 @@ pub(in crate::game::client_side) fn name_id(name: &str) -> i32 {
     hash as i32
 }
 
+/// The id `ids` give `state`, with `by_name` (`BlockIds::by_name`) the rules reaching each block.
+fn state_id(
+    ids: &BlockIds,
+    by_name: &HashMap<&str, Vec<usize>>,
+    state: &sunrise_world::chunk::BlockState,
+) -> Option<i32> {
+    let rules = by_name.get(state.name.as_str())?;
+    ids.pick(rules.iter().copied(), |k| {
+        state.properties.get(k).map(String::as_str)
+    })
+}
+
 /// Model/fluid material ids by the original state, independent of sprite sharing and
-/// multipart model selection. Waterlogged model faces retain their model id; emitted
-/// fluid faces use the fluid's state (the source state itself for liquid blocks).
+/// multipart model selection, a `%tag` rule reaching the blocks `tags` lists under it.
+/// Waterlogged model faces retain their model id; emitted fluid faces use the fluid's state
+/// (the source state itself for liquid blocks).
 pub(in crate::game::client_side) fn terrain_state_ids(
     registry: &sunrise_world::registry::BlockRegistry,
     ids: &BlockIds,
+    tags: &TagMembers,
 ) -> Vec<i32> {
     use sunrise_world::{
         fluid::{FluidKind, FluidState},
         registry::BlockStateId,
     };
-    let material = |state: &sunrise_world::chunk::BlockState| {
-        ids.id(&state.name, |k| state.properties.get(k).map(String::as_str))
-            .unwrap_or(-1)
-    };
+    let by_name = ids.by_name(tags);
+    let material =
+        |state: &sunrise_world::chunk::BlockState| state_id(ids, &by_name, state).unwrap_or(-1);
     (0..registry.len())
         .flat_map(|i| {
             let Some(state) = registry.state(BlockStateId(i as u32)) else {
@@ -1713,18 +2005,21 @@ pub(in crate::game) mod terrain_source_tests {
             "block.31=fixture:signal:lit=false\nblock.47=fixture:signal:lit=true\nblock.59=minecraft:water:level=0\nblock.61=minecraft:water:level=1\nblock.73=minecraft:lava\n",
         );
         assert_eq!(
-            terrain_state_ids(&registry, &ids),
+            terrain_state_ids(&registry, &ids, &TagMembers::new()),
             [-1, -1, 31, -1, 47, 59, 59, 59, 61, 61, 73, 73]
         );
         let changed = parse("block.211=fixture:signal:lit=true\nblock.223=minecraft:water\n");
         assert_eq!(
-            terrain_state_ids(&registry, &changed),
+            terrain_state_ids(&registry, &changed, &TagMembers::new()),
             [-1, -1, -1, -1, 211, 223, 223, 223, 223, 223, -1, -1]
         );
-        assert_eq!(terrain_state_ids(&registry, &BlockIds::default()), [-1; 12]);
+        assert_eq!(
+            terrain_state_ids(&registry, &BlockIds::default(), &TagMembers::new()),
+            [-1; 12]
+        );
 
         let pack = |ids: &BlockIds| PackIds {
-            terrain_states: terrain_state_ids(&registry, ids),
+            terrain_states: terrain_state_ids(&registry, ids, &TagMembers::new()),
             ..Default::default()
         };
         let signal = pack(&ids);
@@ -1739,6 +2034,220 @@ pub(in crate::game) mod terrain_source_tests {
         assert_eq!(signal.block_state_id(usize::MAX), None);
         assert_eq!(pack(&BlockIds::default()).block_state_id(1), None);
         assert_eq!(PackIds::default().block_state_id(1), None);
+    }
+
+    /// The fixture of `terrain_source_cpu_state_filters_fluid_owners_and_pack_reload`: air, a
+    /// signal unlit and lit (waterlogged), water at levels 0 and 1, lava.
+    fn signal_registry() -> sunrise_world::registry::BlockRegistry {
+        let rows = serde_json::json!({"defaults":{"minecraft:air":0,"fixture:signal":1,"minecraft:water":3,"minecraft:lava":5},"states":[
+            ["",true,false,"","minecraft:air"],
+            ["",false,false,"",{"id":"fixture:signal","properties":{"lit":"false","waterlogged":"false"}}],
+            ["",false,true,"",{"id":"fixture:signal","properties":{"lit":"true","waterlogged":"true"}}],
+            ["",false,true,"",{"id":"minecraft:water","properties":{"level":"0"}}],
+            ["",false,true,"",{"id":"minecraft:water","properties":{"level":"1"}}],
+            ["",false,true,"",{"id":"minecraft:lava","properties":{"level":"0"}}]
+        ]});
+        sunrise_world::registry::BlockRegistry::from_facts_json(rows.to_string().as_bytes())
+            .unwrap()
+    }
+
+    fn tags(rows: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
+        rows.iter()
+            .map(|(tag, members)| {
+                let members = members.iter().map(|m| (*m).to_owned()).collect();
+                ((*tag).to_owned(), members)
+            })
+            .collect()
+    }
+
+    /// The issue's case on the terrain: `block.<id>=%<tag>` gives the tag's members the id, the
+    /// model's and, through a tag naming the fluid, the fluid's; a rule naming the block wins.
+    #[test]
+    fn terrain_ids_reach_a_tags_members() {
+        let registry = signal_registry();
+        let ids = BlockIds::parse(&Properties::parse(
+            "block.42=%fixture:signals\nblock.43=fixture:signal:lit=true\nblock.59=%water\n",
+            &Macros::standard(),
+        ));
+        let members = |rows: &[(&str, &[&str])]| -> TagMembers {
+            tags(rows)
+                .into_iter()
+                .map(|(tag, m)| (tag, m.into_iter().collect()))
+                .collect()
+        };
+        let world = members(&[
+            ("fixture:signals", &["fixture:signal"]),
+            ("minecraft:water", &["minecraft:water"]),
+        ]);
+        assert_eq!(
+            terrain_state_ids(&registry, &ids, &world),
+            [-1, -1, 42, -1, 43, 59, 59, 59, 59, 59, -1, -1]
+        );
+        // Without those tags only the named state has an id.
+        assert_eq!(
+            terrain_state_ids(&registry, &ids, &TagMembers::new()),
+            [-1, -1, -1, -1, 43, -1, -1, -1, -1, -1, -1, -1]
+        );
+    }
+
+    /// `PackIds::resolve` reads the world's block, item and entity type tags, and the tags it
+    /// read hold until one of them is bound again; a pack whose entries name no tag keeps none.
+    #[test]
+    fn pack_ids_follow_the_worlds_tags() {
+        use sunrise_items::items::TagRegistry;
+        let registry = signal_registry();
+        let facts = sunrise_items::blocks::BlockFacts {
+            states: Vec::new(),
+            air: sunrise_world::registry::BlockStateId(0),
+            woods: HashMap::new(),
+            sign_texts: HashMap::new(),
+        };
+        let parse = |text: &str, kind: &str| {
+            BlockIds::parse_kind(&Properties::parse(text, &Macros::standard()), kind)
+        };
+        let mut pack = PackIds {
+            blocks: parse("block.42=%fixture:signals\n", "block"),
+            item_rules: Some(parse(
+                "item.10=%minecraft:swords\nitem.11=minecraft:iron_sword\n",
+                "item",
+            )),
+            entity_rules: Some(parse("entity.20=%skeletons\n", "entity")),
+            ..Default::default()
+        };
+        let mut items = Items::empty();
+        items.set_tags(
+            TagRegistry::Block,
+            tags(&[("fixture:signals", &["fixture:signal"])]),
+        );
+        items.set_tags(
+            TagRegistry::Item,
+            tags(&[(
+                "minecraft:swords",
+                &["minecraft:iron_sword", "minecraft:golden_sword"],
+            )]),
+        );
+        items.set_tags(
+            TagRegistry::EntityType,
+            tags(&[("minecraft:skeletons", &["minecraft:skeleton"])]),
+        );
+        pack.block_states.get_mut().insert(1, 99);
+        let resolve = |pack: &mut PackIds, items: &Items| {
+            let (tags, bound) = pack_tags(None, None, items, pack.names_tags());
+            pack.resolve(&registry, &facts, &tags, bound);
+        };
+        resolve(&mut pack, &items);
+        assert_eq!(
+            pack.terrain_states,
+            [-1, -1, 42, -1, 42, -1, -1, -1, -1, -1, -1, -1]
+        );
+        assert_eq!(
+            pack.named.items,
+            HashMap::from([
+                ("minecraft:iron_sword".to_owned(), 11),
+                ("minecraft:golden_sword".to_owned(), 10),
+            ])
+        );
+        assert_eq!(
+            pack.named.entities,
+            HashMap::from([("minecraft:skeleton".to_owned(), 20)])
+        );
+        assert!(
+            pack.block_states.get_mut().is_empty(),
+            "drawn ids forgotten"
+        );
+        let held = pack.tags.as_ref().expect("its entries name tags");
+        assert!(held.hold(None, &items));
+        assert!(
+            held.hold(None, &items.clone()),
+            "a copy holds the same tags"
+        );
+
+        // Each kind bound again, even to the same members, is other tags.
+        let mut blocks = items.clone();
+        blocks.set_tags(
+            TagRegistry::Block,
+            tags(&[("fixture:signals", &["fixture:signal"])]),
+        );
+        let mut swords = items.clone();
+        swords.set_tags(
+            TagRegistry::Item,
+            tags(&[("minecraft:swords", &["minecraft:iron_sword"])]),
+        );
+        let mut skeletons = items.clone();
+        skeletons.set_tags(
+            TagRegistry::EntityType,
+            tags(&[("minecraft:skeletons", &["minecraft:stray"])]),
+        );
+        for (name, other) in [
+            ("block", &blocks),
+            ("item", &swords),
+            ("entity", &skeletons),
+        ] {
+            assert!(!held.hold(None, other), "{name} tags bound again");
+        }
+
+        // Resolved against the new tags: the stray is a skeleton now, the golden sword no
+        // sword, and the signals keep their id.
+        let mut changed = skeletons.clone();
+        changed.set_tags(
+            TagRegistry::Item,
+            tags(&[("minecraft:swords", &["minecraft:iron_sword"])]),
+        );
+        resolve(&mut pack, &changed);
+        assert_eq!(
+            pack.named.items,
+            HashMap::from([("minecraft:iron_sword".to_owned(), 11)])
+        );
+        assert_eq!(
+            pack.named.entities,
+            HashMap::from([("minecraft:stray".to_owned(), 20)])
+        );
+        assert!(pack.tags.as_ref().unwrap().hold(None, &changed));
+
+        // Entries naming no tag: nothing to follow.
+        let mut named = PackIds {
+            item_rules: Some(parse("item.11=minecraft:iron_sword\n", "item")),
+            ..Default::default()
+        };
+        resolve(&mut named, &items);
+        assert!(named.tags.is_none());
+        assert_eq!(
+            named.named.items,
+            HashMap::from([("minecraft:iron_sword".to_owned(), 11)])
+        );
+        // Nothing is kept for a later resolve: the rules are dropped, and no index is built.
+        assert!(named.item_rules.is_none() && named.entity_rules.is_none());
+        assert!(named.block_rules.is_none());
+
+        // A pack whose item entries alone name a tag keeps those, and drops its entity
+        // entries, which give the same ids every time.
+        let mut items_only = PackIds {
+            blocks: parse("block.42=fixture:signal\n", "block"),
+            item_rules: Some(parse("item.10=%minecraft:swords\n", "item")),
+            entity_rules: Some(parse("entity.21=minecraft:stray\n", "entity")),
+            ..Default::default()
+        };
+        resolve(&mut items_only, &items);
+        assert!(items_only.tags.is_some());
+        assert!(items_only.item_rules.is_some() && items_only.entity_rules.is_none());
+        assert!(
+            items_only.block_rules.is_none(),
+            "its block entries name no tag"
+        );
+        assert_eq!(
+            items_only.named.entities,
+            HashMap::from([("minecraft:stray".to_owned(), 21)])
+        );
+        resolve(&mut items_only, &changed);
+        assert_eq!(
+            items_only.named.entities,
+            HashMap::from([("minecraft:stray".to_owned(), 21)]),
+            "the dropped entries' ids stay"
+        );
+        assert_eq!(
+            items_only.named.items,
+            HashMap::from([("minecraft:iron_sword".to_owned(), 10)])
+        );
     }
 
     #[test]
@@ -2757,7 +3266,7 @@ pub(in crate::game) mod named_id_tests {
         for (path, text) in files {
             std::fs::write(root.join("shaders").join(path), text).unwrap();
         }
-        NamedIds::read(&Pack::open(&root).unwrap(), &Macros::standard())
+        NamedIds::read(&Pack::open(&root).unwrap(), &Macros::standard()).0
     }
 
     /// 5.3: an entity `entity.properties` lacks reads 65535, and 0 when the pack has no
@@ -2823,6 +3332,7 @@ pub(in crate::game) mod named_id_tests {
                 &Pack::from_zip_bytes("P.zip", bytes).unwrap(),
                 &Macros::standard(),
             )
+            .0
         };
         let entity = oversized("entity.properties");
         assert_eq!(entity.entity_id("minecraft:zombie"), 65535);

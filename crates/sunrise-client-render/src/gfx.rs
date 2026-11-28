@@ -1062,6 +1062,9 @@ pub(crate) struct PackLoading {
     draws: PackDraws,
     /// Sunrise's HDR as served to it (`Post::hdr`).
     served: Option<sunrise_shaders::Tonemap>,
+    /// Block ids given while it builds (`Renderer::set_pack_block_ids`), which it runs with in
+    /// place of those it was built with.
+    block_ids: Option<Vec<i32>>,
 }
 
 /// A running `shaders/` pack's block ids (`Renderer::pack_block_ids`).
