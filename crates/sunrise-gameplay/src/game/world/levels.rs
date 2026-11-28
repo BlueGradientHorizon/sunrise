@@ -1553,6 +1553,13 @@ impl crate::game::ServerGame<'_> {
     }
 
     fn tick_server_body(&mut self, paused: bool) -> Result<()> {
+        #[cfg(feature = "net-trace")]
+        if let Some(host) = self.server.lan.as_ref() {
+            host.hub
+                .lan
+                .shared
+                .set_capture_tick(self.common.world.game_time);
+        }
         // A panic something caught left a game that carried on: its record ends with the tick.
         self.server.interrupted_turns.clear();
         // `tickRateManager.tick()` once per server tick, before any level
@@ -2467,6 +2474,13 @@ impl crate::game::ServerGame<'_> {
         if running {
             self.tick_level_environment(self.common.dim);
             self.common.world.game_time += 1;
+            #[cfg(feature = "net-trace")]
+            if let Some(host) = self.server.lan.as_ref() {
+                host.hub
+                    .lan
+                    .shared
+                    .set_capture_tick(self.common.world.game_time);
+            }
         } else if self.common.clock.still() {
             // Under `SUNRISE_STILL` a frozen world's rain and thunder sit at their levels, as a
             // shader pack's smoothed values do, so `/weather rain` shows full rain without

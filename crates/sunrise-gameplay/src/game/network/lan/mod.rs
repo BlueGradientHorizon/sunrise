@@ -387,6 +387,8 @@ impl crate::game::ServerGame<'_> {
         );
         self.lan_update_tag_sources(&mut encoder);
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
+        #[cfg(feature = "net-trace")]
+        lan.shared.set_capture_tick(self.common.world.game_time);
         let mut hub = Hub::new(lan, sync, encoder, config, self.common.loop_context.clone());
         hub.allow_commands = self.allow_commands();
         hub.dispatch_move_effects = true;
