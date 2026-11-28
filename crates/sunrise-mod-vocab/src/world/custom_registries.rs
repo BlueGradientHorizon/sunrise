@@ -8,7 +8,7 @@
 //! readable lock-free through [`HostRegistries::registry`].
 use crate::Identifier;
 use std::{
-    any::Any,
+    any::{Any, TypeId, type_name},
     cmp::Ordering,
     collections::HashMap,
     fmt,
@@ -372,16 +372,51 @@ impl<T: Send + Sync + 'static> RegistryDirectory for FrozenCustomRegistryDir<T> 
     }
 }
 
-/// Typed freezer callback captured at [`Registrar::declare_registry`](crate::Registrar::declare_registry)
-/// so startup freeze constructs a real `Arc<dyn RegistryDirectory>` without unsafe code.
-// no wire: startup-only function pointer.
-pub type CustomRegistryFreezer = fn(
-    u32,
-    Identifier,
-    bool,
-    Option<u32>,
-    Vec<(Identifier, Box<dyn Any + Send + Sync>)>,
-) -> Arc<dyn RegistryDirectory>;
+/// Sealed type identity and matching freezer captured together at
+/// [`Registrar::declare_registry`](crate::Registrar::declare_registry), so a registry's
+/// registered [`TypeId`] and freeze-time downcast type cannot disagree.
+// no wire: startup-only typed freezer token.
+// exhaustive: opaque token constructed only via `CustomRegistryFreezer::of::<T>()`.
+pub struct CustomRegistryFreezer {
+    type_id: TypeId,
+    type_name: &'static str,
+    freeze: fn(
+        u32,
+        Identifier,
+        bool,
+        Option<u32>,
+        Vec<(Identifier, Box<dyn Any + Send + Sync>)>,
+    ) -> Arc<dyn RegistryDirectory>,
+}
+
+impl CustomRegistryFreezer {
+    pub(crate) fn of<T: Send + Sync + 'static>() -> Self {
+        Self {
+            type_id: TypeId::of::<T>(),
+            type_name: type_name::<T>(),
+            freeze: freeze_typed::<T>,
+        }
+    }
+
+    pub fn type_id(&self) -> TypeId {
+        self.type_id
+    }
+
+    pub fn type_name(&self) -> &'static str {
+        self.type_name
+    }
+
+    pub fn freeze(
+        &self,
+        slot: u32,
+        id: Identifier,
+        sync: bool,
+        default_entry_slot: Option<u32>,
+        entries: Vec<(Identifier, Box<dyn Any + Send + Sync>)>,
+    ) -> Arc<dyn RegistryDirectory> {
+        (self.freeze)(slot, id, sync, default_entry_slot, entries)
+    }
+}
 
 pub(crate) fn freeze_typed<T: Send + Sync + 'static>(
     slot: u32,

@@ -1,13 +1,13 @@
 //! Startup authoring, validation, and freeze for mod-declared static custom registries.
 use super::*;
 use crate::Identifier;
-use std::any::{Any, TypeId};
+use std::any::Any;
 
 pub(crate) struct PendingCustomRegistry {
     pub(crate) id: Identifier,
     pub(crate) owner_mod: &'static str,
     pub(crate) options: crate::RegistryOptions,
-    pub(crate) freeze: mod_vocab::__private::CustomRegistryFreezer,
+    pub(crate) freezer: mod_vocab::__private::CustomRegistryFreezer,
     pub(crate) entries: Vec<(Identifier, Box<dyn Any + Send + Sync>)>,
     pub(crate) entry_owners: HashMap<String, &'static str>,
 }
@@ -16,19 +16,9 @@ impl CustomRegistriesRegistrar for PartRegistrar {
     fn declare_custom_registry_erased(
         &mut self,
         id: &'static str,
-        type_id: TypeId,
-        type_name: &'static str,
         options: crate::RegistryOptions,
-        freeze: Box<dyn Any + Send + Sync>,
+        freezer: mod_vocab::__private::CustomRegistryFreezer,
     ) {
-        let Ok(freeze) = freeze.downcast::<mod_vocab::__private::CustomRegistryFreezer>() else {
-            self.refused.push(format!(
-                "mod {} passed an invalid custom registry freezer for {id:?}",
-                self.mod_id
-            ));
-            return;
-        };
-        let freeze = *freeze;
         let Some(parsed) = Identifier::parse_namespaced(id) else {
             self.refused.push(format!(
                 "mod {} declared custom registry {id:?}, which is not a valid namespaced identifier",
@@ -92,7 +82,7 @@ impl CustomRegistriesRegistrar for PartRegistrar {
             TypeIdentityKind::CustomRegistry,
             &canonical,
             self.mod_id,
-            TypeIdentity::typed(type_id, type_name),
+            TypeIdentity::typed(freezer.type_id(), freezer.type_name()),
         ) {
             self.refused.push(error);
             return;
@@ -101,7 +91,7 @@ impl CustomRegistriesRegistrar for PartRegistrar {
             id: parsed,
             owner_mod: self.mod_id,
             options,
-            freeze,
+            freezer,
             entries: Vec::new(),
             entry_owners: HashMap::new(),
         });
@@ -110,7 +100,6 @@ impl CustomRegistriesRegistrar for PartRegistrar {
     fn register_custom_entry_erased(
         &mut self,
         registry_id: &'static str,
-        type_id: TypeId,
         type_name: &'static str,
         entry_id: &str,
         value: Box<dyn Any + Send + Sync>,
@@ -119,7 +108,7 @@ impl CustomRegistriesRegistrar for PartRegistrar {
         let Some(registry_slot) = self
             .custom_registries
             .iter()
-            .position(|registry| registry.id.to_string() == registry_id)
+            .position(|registry| registry.id.as_str() == registry_id)
         else {
             self.refused.push(format!(
                 "mod {} registered entry {entry_id:?} into undeclared custom registry {registry_id:?}",
@@ -127,11 +116,12 @@ impl CustomRegistriesRegistrar for PartRegistrar {
             ));
             return invalid;
         };
+        let actual_type_id = (*value).type_id();
         if let Err(error) = self.type_identities.claim(
             TypeIdentityKind::CustomRegistry,
             registry_id,
             self.mod_id,
-            TypeIdentity::typed(type_id, type_name),
+            TypeIdentity::typed(actual_type_id, type_name),
         ) {
             self.refused.push(error);
             return invalid;
@@ -189,7 +179,7 @@ impl PartRegistrar {
         &mut self,
     ) -> mod_vocab::__private::FrozenCustomRegistries {
         for registry in &self.custom_registries {
-            let registry_key = registry.id.to_string();
+            let registry_key = registry.id.as_str();
             if let Some(datapack) = self
                 .datapack_registries
                 .iter()
@@ -236,10 +226,10 @@ impl PartRegistrar {
                         registry
                             .entries
                             .iter()
-                            .position(|(entry_id, _)| entry_id.to_string() == key)
+                            .position(|(entry_id, _)| entry_id.as_str() == key)
                     })
                     .map(|index| index as u32);
-                (registry.freeze)(
+                registry.freezer.freeze(
                     slot as u32,
                     registry.id,
                     registry.options.is_synced(),
@@ -757,5 +747,39 @@ mod tests {
         });
         t1.join().unwrap();
         t2.join().unwrap();
+    }
+
+    #[test]
+    fn mismatched_erased_entry_returns_registration_error_without_freeze_panic() {
+        struct SpoofedErasedMod;
+        #[crate::__subscriptions]
+        impl Hooks for SpoofedErasedMod {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                r.register_custom_entry_erased(
+                    GASES.id(),
+                    std::any::type_name::<Gas>(),
+                    "spoof:helium",
+                    Box::new(FakeGas { density: 1 }),
+                );
+            }
+        }
+        let err = install(&[
+            ModEntry::new(
+                "chemlib",
+                Box::new(ChemLib {
+                    sync: false,
+                    with_default: false,
+                    register_default: false,
+                    oxygen: Arc::new(OnceLock::new()),
+                }),
+            ),
+            ModEntry::new("spoof", Box::new(SpoofedErasedMod)),
+        ])
+        .unwrap_err();
+        assert!(
+            err.iter()
+                .any(|m| m.contains("chemlib:gas") && m.contains("chemlib") && m.contains("spoof")),
+            "expected named type mismatch refusal without freeze panic, got {err:?}"
+        );
     }
 }

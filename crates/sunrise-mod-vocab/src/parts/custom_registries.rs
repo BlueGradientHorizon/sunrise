@@ -2,30 +2,29 @@
 use super::*;
 use crate::world::custom_registries::{
     CustomRegistry, CustomRegistryFreezer, EntryKey, RegistryDirectory, RegistryKey,
-    RegistryOptions, freeze_typed,
+    RegistryOptions,
 };
-use std::any::TypeId;
 
 /// Object-safe low-level registrar trait for static custom registries.
 /// Mods call [`Registrar::declare_registry`] and [`Registrar::register_entry`] instead.
 // hidden: typed helpers live on `dyn Registrar`; this object-safe layer is internal plumbing.
 #[doc(hidden)]
 pub trait CustomRegistriesRegistrar {
-    /// Declare a static custom registry with its type identity and boxed typed freezer.
+    /// Declare a static custom registry with its inseparable type identity and freezer.
     fn declare_custom_registry_erased(
         &mut self,
         id: &'static str,
-        type_id: TypeId,
-        type_name: &'static str,
         options: RegistryOptions,
-        freeze: Box<dyn Any + Send + Sync>,
+        freezer: CustomRegistryFreezer,
     );
 
     /// Register one boxed entry into a declared static custom registry.
+    ///
+    /// Type identity is read from the boxed value itself (`(*value).type_id()`), never from
+    /// a separate caller-supplied `TypeId`.
     fn register_custom_entry_erased(
         &mut self,
         registry_id: &'static str,
-        type_id: TypeId,
         type_name: &'static str,
         entry_id: &str,
         value: Box<dyn Any + Send + Sync>,
@@ -44,13 +43,7 @@ impl dyn Registrar + '_ {
         key: RegistryKey<T>,
         options: RegistryOptions,
     ) {
-        self.declare_custom_registry_erased(
-            key.id(),
-            TypeId::of::<T>(),
-            type_name::<T>(),
-            options,
-            Box::new(freeze_typed::<T> as CustomRegistryFreezer),
-        );
+        self.declare_custom_registry_erased(key.id(), options, CustomRegistryFreezer::of::<T>());
     }
 
     /// Register a typed entry into a previously declared static custom registry
@@ -66,13 +59,8 @@ impl dyn Registrar + '_ {
         id: &str,
         value: T,
     ) -> EntryKey<T> {
-        let (registry_slot, entry_slot) = self.register_custom_entry_erased(
-            key.id(),
-            TypeId::of::<T>(),
-            type_name::<T>(),
-            id,
-            Box::new(value),
-        );
+        let (registry_slot, entry_slot) =
+            self.register_custom_entry_erased(key.id(), type_name::<T>(), id, Box::new(value));
         EntryKey::new(registry_slot, entry_slot)
     }
 }

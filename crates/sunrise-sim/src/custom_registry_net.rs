@@ -10,10 +10,11 @@
 //!   for synced static registries.
 //! - Local `sync(false)` registries never cross the wire (`RegistryManager.takeSnapshot:216-218`).
 //! - On the client:
-//!   - A server-sent registry absent on the client (or declared `sync(false)`) is ignored when
-//!     its entry list is empty (`RegistryManager.applySnapshot:144-146`) and disconnects naming
-//!     the registry when non-empty (`RegistryManager.applySnapshot:147-149`,
-//!     `ClientPayloadHandler.java:114-118`).
+//!   - A server-sent registry absent on the client is ignored when its entry list is empty
+//!     (`RegistryManager.applySnapshot:144-146`) and disconnects naming the registry when
+//!     non-empty (`RegistryManager.applySnapshot:147-149`, `ClientPayloadHandler.java:114-118`).
+//!   - A same-name client registry applies the server's IDs and order regardless of its local
+//!     `sync` flag (`RegistryManager.applySnapshot:130-145, 165ff`).
 //!   - Any server-sent entry ID missing from the client's registry disconnects naming the
 //!     registry and the unknown entry IDs (`RegistryManager.applySnapshot:176-179`,
 //!     `ClientPayloadHandler.java:104-110`).
@@ -33,8 +34,16 @@ pub const CHANNEL: &str = "sunrise:custom_registries";
 
 const MAGIC: &[u8; 4] = b"CRS1";
 const HEADER: usize = 12;
-const CHUNK_DATA: usize = 512 << 10;
+// Vanilla's ClientboundCustomPayloadPacket.MAX_PAYLOAD_SIZE includes our fragment header.
+const CHUNK_DATA: usize = sunrise_protocol::packets::custom_payload::CLIENTBOUND_LIMIT - HEADER;
 const MAX_SNAPSHOT_BYTES: usize = mod_api::MAX_SNAPSHOT_BYTES;
+
+fn snapshot_too_large() -> String {
+    format!(
+        "Custom registry snapshot exceeds the {}-byte transport limit.",
+        MAX_SNAPSHOT_BYTES
+    )
+}
 
 /// One `sync(true)` static custom registry's ordered entry IDs on the wire (index = `raw_id`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -82,7 +91,7 @@ impl Snapshot {
             }
         }
         if out.len() > MAX_SNAPSHOT_BYTES {
-            return Err("Custom registry snapshot exceeds the 64 MiB transport limit.".into());
+            return Err(snapshot_too_large());
         }
         Ok(out)
     }
@@ -143,7 +152,7 @@ fn read_str(cursor: &mut &[u8]) -> Result<String, String> {
 /// Split an encoded snapshot into bounded configuration payload fragments.
 pub fn chunks(bytes: &[u8]) -> Result<impl Iterator<Item = Vec<u8>> + '_, String> {
     if bytes.is_empty() || bytes.len() > MAX_SNAPSHOT_BYTES {
-        return Err("Custom registry snapshot exceeds the 64 MiB transport limit.".into());
+        return Err(snapshot_too_large());
     }
     let total = bytes.len() as u32;
     Ok(bytes.chunks(CHUNK_DATA).enumerate().map(move |(i, part)| {
@@ -325,7 +334,7 @@ pub fn validate_snapshot(
     for server_reg in &snapshot.registries {
         let local = local_registries
             .iter()
-            .find(|dir| dir.id() == server_reg.registry_id && dir.sync());
+            .find(|dir| dir.id() == server_reg.registry_id);
         let Some(local) = local else {
             // RegistryManager.applySnapshot (lines 144-149): an empty server registry absent
             // on the client is ignored; a non-empty one disconnects naming the registry.
@@ -430,7 +439,7 @@ impl Receiver {
         let total = u32::from_le_bytes(packet[4..8].try_into().unwrap()) as usize;
         let offset = u32::from_le_bytes(packet[8..12].try_into().unwrap()) as usize;
         if total == 0 || total > MAX_SNAPSHOT_BYTES {
-            return Err("Custom registry snapshot exceeds the 64 MiB transport limit.".into());
+            return Err(snapshot_too_large());
         }
         if offset >= total || packet.len() - HEADER != CHUNK_DATA.min(total - offset) {
             return Err(bad());
@@ -558,14 +567,36 @@ mod tests {
             "got {err}"
         );
 
-        // Client declared sync(false) for server's non-empty synced registry -> disconnects.
+        // Client registry marked sync(false) with the same name and entries joins and adopts
+        // the server's IDs and order (NeoForge RegistryManager.applySnapshot checks presence only).
         let local_unsynced = vec![FakeDir::arc(
             "chemlib:gas",
             false,
             &["chemlib:oxygen", "boiler:steam"],
         )];
-        let err = validate_snapshot(&snapshot, &local_unsynced).unwrap_err();
-        assert!(err.contains("chemlib:gas"), "got {err}");
+        let synced_unsynced = validate_snapshot(&snapshot, &local_unsynced).unwrap();
+        assert_eq!(
+            synced_unsynced
+                .entry_id("chemlib:gas", 0)
+                .unwrap()
+                .to_string(),
+            "boiler:steam"
+        );
+        assert_eq!(
+            synced_unsynced
+                .entry_id("chemlib:gas", 1)
+                .unwrap()
+                .to_string(),
+            "chemlib:oxygen"
+        );
+
+        // Same sync(false) client registry missing one server entry is refused as missing.
+        let local_unsynced_missing = vec![FakeDir::arc("chemlib:gas", false, &["chemlib:oxygen"])];
+        let err = validate_snapshot(&snapshot, &local_unsynced_missing).unwrap_err();
+        assert!(
+            err.contains("chemlib:gas") && err.contains("boiler:steam"),
+            "got {err}"
+        );
     }
 
     #[test]
