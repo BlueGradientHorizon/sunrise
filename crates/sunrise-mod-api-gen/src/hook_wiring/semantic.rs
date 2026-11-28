@@ -15,7 +15,12 @@ struct Implementation {
     item: syn::ItemImpl,
 }
 
-pub(super) fn check(root: &Path, routing: &Routing, build: &Build) -> Result<(), String> {
+pub(super) fn check(
+    root: &Path,
+    routing: &Routing,
+    sources: &mut Sources<'_>,
+    build: &Build,
+) -> Result<(), String> {
     if !routing.hooks.is_empty() {
         let canonical = Catalog::load(root).map_err(|error| error.to_string())?;
         for (name, route) in &routing.hooks {
@@ -34,7 +39,6 @@ pub(super) fn check(root: &Path, routing: &Routing, build: &Build) -> Result<(),
         }
     }
     let areas = crate::host::load(root)?;
-    let mut sources = Sources::new(root);
     let mut plans = Vec::new();
     for package in GameplayPackage::ALL {
         let library = package.domain().key;
@@ -47,7 +51,7 @@ pub(super) fn check(root: &Path, routing: &Routing, build: &Build) -> Result<(),
         .iter()
         .flat_map(|(_, calls)| calls.iter().map(|call| call.method.as_str()))
         .collect::<HashSet<_>>();
-    let impls = implementations(&mut sources, &names)?;
+    let impls = implementations(sources, &names)?;
     for (package, calls) in plans {
         let library = package.domain().key;
         for call in calls {

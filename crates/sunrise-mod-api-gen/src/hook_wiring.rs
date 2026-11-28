@@ -30,10 +30,14 @@ pub fn check_gameplay_hook_wiring(root: &Path, target_cfgs: &[String]) -> Result
 }
 
 fn check_split(root: &Path, build: Build) -> Result<(), String> {
-    let routing = crate::gameplay::Routing::load(root)?;
-    let catalog = routing.catalog(root)?;
-    check_with_builds(root, &catalog.hooks, build.clone())?;
-    semantic::check(root, &routing, &build)
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("{}: {error}", root.display()))?;
+    let routing = crate::gameplay::Routing::load(&root)?;
+    let catalog = routing.catalog(&root)?;
+    let mut sources = Sources::new(&root);
+    check_hooks(&mut sources, &catalog.hooks, &build)?;
+    semantic::check(&root, &routing, &mut sources, &build)
 }
 
 #[cfg(test)]
@@ -50,10 +54,14 @@ fn check_with_builds(root: &Path, hooks: &[Hook], initial: Build) -> Result<(), 
         .canonicalize()
         .map_err(|error| format!("{}: {error}", root.display()))?;
     let mut sources = Sources::new(&root);
+    check_hooks(&mut sources, hooks, &initial)
+}
+
+fn check_hooks(sources: &mut Sources<'_>, hooks: &[Hook], initial: &Build) -> Result<(), String> {
     let errors: Vec<_> = hooks
         .iter()
         .filter_map(|hook| {
-            check_builds(&mut sources, hook, &initial)
+            check_builds(sources, hook, initial)
                 .err()
                 .map(|error| format!("{} ({}): {error}", hook.name, hook.target))
         })
@@ -1575,6 +1583,103 @@ mod tests {
         assert!(
             build.split().is_none(),
             "unreached #[cfg(feature = ...)] items must not trigger a build split"
+        );
+    }
+
+    #[test]
+    fn check_hook_wiring_validates_split_targets_and_semantic_callees_together() {
+        let root = tempfile::tempdir().unwrap();
+        let put = |relative: &str, source: &str| {
+            let path = root.path().join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, source).unwrap();
+        };
+        put(
+            "crates/sunrise-mod-vocab/src/host/fixture.rs",
+            "pub trait FixtureHost { fn ping(&self) -> u32; }\n",
+        );
+        put(
+            "crates/sunrise-mod-vocab/src/hooks/fixture.rs",
+            r#"
+pub trait Hooks {
+    /// Server hook.
+    #[hook(side = "server", contract = "listen", dispatch = "flat", receiver = "read", host = "read")]
+    fn ping();
+}
+"#,
+        );
+        for dir in ["parts", "exports"] {
+            std::fs::create_dir_all(root.path().join("crates/sunrise-mod-vocab/src").join(dir))
+                .unwrap();
+        }
+        put("crates/sunrise-mod-api-gen/source-layout", "split\n");
+        put(
+            crate::gameplay::ROUTING,
+            r#"
+[host.server]
+"FixtureHost::ping" = { kind = "local", owner = "crate::game::ServerGame", borrow = "shared" }
+
+[host.client]
+"FixtureHost::ping" = { kind = "local", owner = "crate::game::ClientGame", borrow = "shared" }
+"#,
+        );
+        put(
+            "crates/sunrise-gameplay-common/Cargo.toml",
+            "[package]\nname = \"sunrise-gameplay-common\"\nversion = \"0.1.0\"\n",
+        );
+        put("crates/sunrise-gameplay-common/src/lib.rs", "");
+        put(
+            "crates/sunrise-gameplay/Cargo.toml",
+            "[package]\nname = \"sunrise-gameplay\"\nversion = \"0.1.0\"\n[dependencies]\nsunrise-gameplay-common = { path = \"../sunrise-gameplay-common\" }\n",
+        );
+        let server_source = r#"
+pub mod game {
+    pub mod host {}
+    pub struct ServerGame<'a>(&'a ());
+    impl ServerGame<'_> {
+        pub fn ping(&self) -> u32 { 1 }
+    }
+    mod native_hooks {
+        pub mod fixture {
+            use super::super::ServerGame;
+            impl ServerGame<'_> {
+                pub fn native_ping(&self) { self.fire_ping(); }
+            }
+        }
+    }
+}
+"#;
+        put("crates/sunrise-gameplay/src/lib.rs", server_source);
+        put(
+            "crates/sunrise-client-gameplay/Cargo.toml",
+            "[package]\nname = \"sunrise-client-gameplay\"\nversion = \"0.1.0\"\n[dependencies]\nsunrise-gameplay-common = { path = \"../sunrise-gameplay-common\" }\n",
+        );
+        put(
+            "crates/sunrise-client-gameplay/src/lib.rs",
+            r#"
+pub mod game {
+    pub mod host {}
+    pub struct ClientGame<'a>(&'a ());
+    impl ClientGame<'_> {
+        pub fn ping(&self) -> u32 { 2 }
+    }
+}
+"#,
+        );
+        let targets = [
+            "unix\ntarget_family=\"unix\"\ntarget_os=\"linux\"".into(),
+            "windows\ntarget_family=\"windows\"\ntarget_os=\"windows\"".into(),
+        ];
+        check_hook_wiring(root.path(), &targets).unwrap();
+
+        put(
+            "crates/sunrise-gameplay/src/lib.rs",
+            &server_source.replace("pub fn ping(&self) -> u32 { 1 }", ""),
+        );
+        let error = check_hook_wiring(root.path(), &targets).unwrap_err();
+        assert!(
+            error.contains("ServerGame::ping: no matching inherent definition"),
+            "{error}"
         );
     }
 }
