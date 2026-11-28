@@ -15,10 +15,11 @@ pub enum Compression {
     Lz4 = 4,
 }
 
-/// The region file versions `RegionFileVersion.register` puts in its table, in
-/// registration order: the names server.properties' `region-file-compression`
-/// takes, and the ones an invalid value is told to use.
-pub const REGION_FILE_NAMES: [&str; 4] = ["gzip", "deflate", "none", "lz4"];
+/// The region file versions `RegionFileVersion.register` puts in
+/// `VERSIONS_BY_NAME`, in registration order: `VERSION_GZIP` is registered
+/// with a null option name, so `region-file-compression` (`RegionFileVersion.configure`)
+/// accepts only these three names, and an invalid value is told to use one of them.
+pub const REGION_FILE_NAMES: [&str; 3] = ["deflate", "none", "lz4"];
 
 /// `RegionFileVersion.selected`, which starts at `DEFAULT` (VERSION_DEFLATE).
 static SELECTED: AtomicU8 = AtomicU8::new(Compression::Zlib as u8);
@@ -29,7 +30,7 @@ impl Compression {
         REGION_FILE_NAMES
             .iter()
             .position(|known| *known == name)
-            .map(|i| [Self::Gzip, Self::Zlib, Self::None, Self::Lz4][i])
+            .map(|i| [Self::Zlib, Self::None, Self::Lz4][i])
     }
 
     /// `RegionFileVersion.configure`: what `region-file-compression` names
@@ -821,7 +822,6 @@ mod tests {
             "VERSION_DEFLATE is DEFAULT"
         );
         for (name, want) in [
-            ("gzip", Compression::Gzip),
             ("deflate", Compression::Zlib),
             ("none", Compression::None),
             ("lz4", Compression::Lz4),
@@ -829,7 +829,8 @@ mod tests {
             assert!(Compression::configure(name), "{name}");
             assert_eq!(Compression::selected(), want, "{name}");
         }
-        // Vanilla logs the value and keeps the version it had.
+        // Vanilla logs the value and keeps the version it had; gzip is not selectable.
+        assert!(!Compression::configure("gzip"));
         assert!(!Compression::configure("zstd"));
         assert!(!Compression::configure("LZ4"), "the names are exact");
         assert_eq!(Compression::selected(), Compression::Lz4);

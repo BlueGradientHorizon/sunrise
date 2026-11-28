@@ -1084,7 +1084,7 @@ fn a_chunk_is_written_with_the_selected_region_version() {
     });
     let records = [((3, 4), Record::Tag(Arc::clone(&tag)))];
     let refs: Vec<_> = records.iter().map(|(k, r)| (*k, r)).collect();
-    for name in ["none", "lz4", "gzip", "deflate"] {
+    for name in ["none", "lz4", "deflate"] {
         assert!(Compression::configure(name), "{name}");
         let written = compress_records(&refs, 99)
             .pop()
