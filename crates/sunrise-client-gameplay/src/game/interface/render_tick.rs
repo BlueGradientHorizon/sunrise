@@ -249,10 +249,7 @@ impl crate::game::ClientGame<'_> {
                 .map(|effect| (effect.duration, effect.duration == -1))
         });
         let darkness = fog_effects
-            .map(|e| {
-                e.darkness_blend
-                    .map(|(previous, current)| previous + (current - previous) * partial)
-            })
+            .map(|e| e.darkness_at(partial))
             .unwrap_or_else(|| self.darkness_fog());
         let fire_resistance = fog_effects.map_or_else(
             || self.common.potions.effects.get("fire_resistance").is_some(),

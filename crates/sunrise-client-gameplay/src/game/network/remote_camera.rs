@@ -63,6 +63,13 @@ pub(in crate::game) struct CameraFogEffects {
 }
 
 impl CameraFogEffects {
+    /// The Darkness blend at `partial`: vanilla interpolates the instance's
+    /// previous and current factors; a detached camera's are equal.
+    pub(in crate::game::client_side) fn darkness_at(&self, partial: f32) -> Option<f32> {
+        self.darkness_blend
+            .map(|(previous, current)| previous + (current - previous) * partial)
+    }
+
     pub(in crate::game::client_side) fn from_effects(
         effects: &PlayerEffects,
         darkness_blend: (f32, f32),
@@ -1719,5 +1726,113 @@ mod tests {
         assert_eq!(camera_after_packet(Some(9), 5, 5, false), None);
         assert_eq!(camera_after_packet(Some(9), 5, 12, false), Some(9));
         assert_eq!(camera_after_packet(None, 5, 12, false), None);
+    }
+}
+
+#[cfg(test)]
+mod fog_blend_tests {
+    use super::CameraFogEffects;
+    use crate::game::client_side::native_client_session::tests::logged_client;
+    use crate::game::native_entity_refs::tests::with_client_game;
+
+    /// `MobEffectInstance.BlendState`: a watched entity removed with Darkness in
+    /// flight keeps vanilla 26.3's settled factor at every partial tick, not an
+    /// interpolation between two stale endpoints.
+    #[test]
+    #[ignore = "daily"]
+    fn a_removed_cameras_darkness_factor_stays_where_vanilla_left_it() {
+        with_client_game(|game| {
+            let _server = logged_client(game);
+            add_entity(game, 31, "minecraft:cow");
+            game.remote_set_camera(31);
+            let mob = game.mobs.iter_mut().find(|m| m.id == 31).unwrap();
+            mob.extra
+                .client_effects
+                .list
+                .push(sunrise_level::effects::EffectInstance::new(
+                    "darkness", 200, 0,
+                ));
+            mob.extra.darkness_blend = (0.25, 0.75);
+            let before =
+                CameraFogEffects::from_effects(&mob.extra.client_effects, mob.extra.darkness_blend);
+            assert_eq!(before.darkness_at(0.0), Some(0.25));
+            assert_eq!(before.darkness_at(0.5), Some(0.5));
+            game.handle_packet(
+                sunrise_protocol::packets::play::Clientbound::RemoveEntities(
+                    sunrise_protocol::packets::play::RemoveEntities { ids: vec![31] },
+                ),
+            )
+            .unwrap();
+            let detached = game
+                .client
+                .remote
+                .as_ref()
+                .unwrap()
+                .detached_camera
+                .as_ref()
+                .expect("the removed camera is retained");
+            let fog = detached.fog_effects;
+            for partial in [0.0, 0.25, 0.5, 1.0] {
+                assert_eq!(fog.darkness_at(partial), Some(0.75), "partial {partial}");
+            }
+            // The live snapshot before removal shows the interpolation the
+            // detached one no longer follows.
+            assert_eq!(before.darkness_at(1.0), Some(0.75));
+        });
+    }
+
+    /// `GameRenderer.nightVisionScale` through the shader pack's local read: the
+    /// exact 26.3 flicker value at 200 ticks and a 0.25 partial tick, and `-1`
+    /// (infinite) is not `-2` (still flickering).
+    #[test]
+    #[ignore = "daily"]
+    fn the_shader_packs_night_vision_value_matches_vanilla_flicker() {
+        with_client_game(|game| {
+            let _server = logged_client(game);
+            game.common
+                .potions
+                .effects
+                .list
+                .push(sunrise_level::effects::EffectInstance::new(
+                    "night_vision",
+                    200,
+                    0,
+                ));
+            let value = game.night_vision_intensity(0.25);
+            // 0.7 + sin((200 - 0.25) * PI * 0.2) * 0.3 in f32.
+            assert_eq!(value.to_bits(), f32::from_bits(1_059_532_405).to_bits());
+            game.common.potions.effects.list[0].duration = -1;
+            assert_eq!(game.night_vision_intensity(0.25), 1.0);
+            game.common.potions.effects.list[0].duration = -2;
+            let negative = game.night_vision_intensity(0.25);
+            assert_ne!(negative, 1.0, "-2 is not infinite");
+            assert_eq!(negative.to_bits(), f32::from_bits(1_053_733_188).to_bits());
+        });
+    }
+
+    fn add_entity(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str) {
+        use sunrise_protocol::packets::play::{self, Clientbound as C};
+        let kind = game
+            .client
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:entity_type")
+            .unwrap()
+            .id(kind)
+            .unwrap();
+        game.handle_packet(C::AddEntity(play::AddEntity {
+            id,
+            uuid: id as u128,
+            kind,
+            position: [10.0, 64.0, 12.0],
+            velocity: [0.0; 3],
+            pitch: 0,
+            yaw: 0,
+            head_yaw: 0,
+            data: 0,
+        }))
+        .unwrap();
     }
 }
