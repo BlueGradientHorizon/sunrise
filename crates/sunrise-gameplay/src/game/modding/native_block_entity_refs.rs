@@ -1609,7 +1609,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_remove_effects_follow_nested_transaction_level() {
-        crate::game::in_own_process(
+        sunrise_gameplay_common::game::in_own_process(
             "game::server_side::native_block_entity_refs::tests::block_entity_remove_effects_follow_nested_transaction_level",
             || {
                 use super::super::Dim;
