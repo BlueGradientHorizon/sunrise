@@ -1,7 +1,9 @@
 //! A shader pack's build never outlives the renderer it was started on, and never keeps its pack
 //! once nobody wants it (#6721): through the game's own pack load (`shader_pack_inputs`), with
 //! the build held by the renderer's test gate (`PackBuildWatch`) so each case decides when it
-//! can end. Each case runs in a process of its own (one event loop, its own resources).
+//! can end. A replacement renderer takes over the pending builds and the final drop joins the ones on
+//! a live device; a build on a lost device may outlive its renderer. Each case runs in a process of
+//! its own (one event loop, its own resources).
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 
