@@ -340,9 +340,10 @@ fn a_refused_gamma_module_keeps_the_pack_group() {
     );
 }
 
-/// Through the real `Renderer`: a frame's shader pack selection builds the mod pipelines' pack
-/// state, turning the pack off drops it and turning it on again builds it again. A child
-/// process of the test binary (a window and its event loop), with throwaway homes.
+/// Through the real `Renderer`: loading a shader pack builds the mod pipelines' pack state,
+/// installing the pack publishes it before the first frame, and turning the pack off drops it at
+/// once; turning it on again builds it again. A child process of the test binary (a window and
+/// its event loop), with throwaway homes.
 #[test]
 #[ignore = "daily"]
 fn a_renderer_builds_mod_pipeline_pack_state_only_with_a_pack() {

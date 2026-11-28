@@ -1288,8 +1288,8 @@ mod tests {
                 "program.composite.enabled = A_GLSL\nprogram.composite1.enabled = B_GLSL\n\
                  program.composite2.enabled = C_GLSL\nprogram.composite3.enabled = AO\n\
                  program.composite4.enabled = DEFAULTED\n\
-                 #if defined A_GLSL || defined B_GLSL || defined C_GLSL\nsun = guards\n#endif\n\
-                 #ifdef AO\nvignette = ao\n#endif\n",
+                 #if defined A_GLSL || defined B_GLSL || defined C_GLSL\nsun = false\n#endif\n\
+                 #ifdef AO\nvignette = false\n#endif\n",
             ),
             ("shaders/final.vsh", VSH),
             ("shaders/final.fsh", FSH),
@@ -1314,7 +1314,7 @@ mod tests {
         let mut macros = crate::Macros::standard();
         let (properties, _) = read_properties(&pack, &mut macros);
         assert_eq!(properties.get("sun"), None);
-        assert_eq!(properties.get("vignette"), Some("ao"));
+        assert_eq!(properties.get("vignette"), Some("false"));
         let post = crate::load_post(&pack, "", &properties, &macros, &Default::default());
         let loaded: Vec<&str> = post.programs.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(
