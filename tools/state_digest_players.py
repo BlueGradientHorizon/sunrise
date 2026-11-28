@@ -162,13 +162,15 @@ def wait_loaded(server, dim, at):
 
 
 def by_dimension(digest):
-    """digest.txt cut into one text per dimension (a level's lines can start on a different step run to run)."""
+    """Group level headers and their player detail rows by dimension."""
     parts, current = {}, None
-    for line in digest.read_text().splitlines(keepends=True):
-        if line.startswith('tick='):
-            current = line.split()[1].removeprefix('dim=')
-        if current is not None:
-            parts.setdefault(current, []).append(line)
+    with digest.open() as lines:
+        for line in lines:
+            if line.startswith('tick='):
+                current = line.split()[1].removeprefix('dim=')
+                parts.setdefault(current, []).append(line)
+            elif current is not None and line.startswith('  p\t'):
+                parts[current].append(line)
     return parts
 
 
