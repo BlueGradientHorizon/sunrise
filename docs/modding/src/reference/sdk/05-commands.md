@@ -55,8 +55,8 @@ non-zero with the error on failure.
 `build --timings` reports the path of the retained Cargo HTML report on stderr after a successful Cargo
 build. The report measures Cargo units, not a separate linker interval; direct compiler routes say that
 no Cargo ran. `build --verbose` (or `-v`) mirrors compiler stderr live while keeping the build log and
-failure diagnostics. A pinned SDK tool that predates live stderr still keeps the build log. Both options
-are refused for content-only mods. `build` does not pass arbitrary arguments to Cargo.
+failure diagnostics. Both options are refused for content-only mods. `build` does not pass arbitrary
+arguments to Cargo.
 
 In `build`, `run` and project `check`, repeat `--with <path>` for local mod projects or `.smod` files.
 Optional libraries must be supplied with `--with`. For required dependencies not supplied locally, the tool

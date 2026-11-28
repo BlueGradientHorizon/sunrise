@@ -262,7 +262,8 @@ pub fn source_digest(bundle: &Bundle) -> Option<String> {
 /// An error ends with its first `error` lines and the last lines: a failed build script's output
 /// alone could push the line naming its crate out of the last ones.
 pub fn run(cmd: Command, what: &str) -> Result<(), String> {
-    run_checked(cmd, what, None, None, CompilerStderr::LogOnly)
+    let (result, _) = run_checked(cmd, what, None, None, CompilerStderr::LogOnly)?;
+    result
 }
 
 /// Runs a direct compiler command. With `sources`, renders its JSON diagnostics for the author
@@ -273,26 +274,40 @@ fn run_compiler(
     sources: Option<&present::Sources>,
     stderr: CompilerStderr,
 ) -> Result<(), String> {
-    run_checked(cmd, what, None, sources, stderr)
+    let (result, _) = run_checked(cmd, what, None, sources, stderr)?;
+    result
+}
+
+/// Runs Cargo with `--message-format=json`, streaming its stdout once into `messages` and
+/// parsing `Outputs` live (mirroring `compiler-message` records to stderr when `Mirror` is set).
+pub(crate) fn run_cargo_messages(
+    cmd: Command,
+    what: &str,
+    messages: fs::File,
+    compiler_stderr: CompilerStderr,
+) -> Result<(Result<(), String>, registry_runtime::Outputs), String> {
+    let (result, outputs) = run_checked(cmd, what, Some(messages), None, compiler_stderr)?;
+    Ok((result, outputs.expect("cargo messages stream")))
 }
 
 fn run_checked(
     mut cmd: Command,
     what: &str,
-    stdout_file: Option<fs::File>,
+    cargo_messages: Option<fs::File>,
     sources: Option<&present::Sources>,
     compiler_stderr: CompilerStderr,
-) -> Result<(), String> {
+) -> Result<(Result<(), String>, Option<registry_runtime::Outputs>), String> {
     let mut log = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(log_path())
         .map_err(|e| e.to_string())?;
     let _ = writeln!(log, "$ {cmd:?}");
-    cmd.stdout(match stdout_file {
-        Some(file) => file,
-        None => log.try_clone().map_err(|e| e.to_string())?,
-    });
+    if cargo_messages.is_some() {
+        cmd.stdout(Stdio::piped());
+    } else {
+        cmd.stdout(log.try_clone().map_err(|e| e.to_string())?);
+    }
     // Keep the child in the CLI's group on Unix so the caller can stop the whole build.
     let started = std::time::Instant::now();
     let mut child = cmd
@@ -304,55 +319,81 @@ fn run_checked(
     let mut blocked = false;
     // Noted as the output arrives: later lines can push the linker's note out of `tail`.
     let mut libraries = false;
-    let mut stderr = BufReader::new(child.stderr.take().expect("piped"));
-    let mut bytes = Vec::new();
-    let stderr_result = loop {
-        bytes.clear();
-        match stderr.read_until(b'\n', &mut bytes) {
-            Ok(0) => break Ok(()),
-            Ok(_) => (),
-            Err(error) => break Err(format!("Could not read {what}'s stderr: {error}")),
-        }
-        // Strip LF or CRLF as `lines` does, leaving Cargo's interior carriage returns for
-        // `log_text`. A compiler or linker can print non-UTF-8 bytes; keep reading after them.
-        let line = if let Some(line) = bytes.strip_suffix(b"\n") {
-            line.strip_suffix(b"\r").unwrap_or(line)
-        } else {
-            &bytes
+    let (stderr_result, outputs_result) = std::thread::scope(|scope| {
+        let stdout_thread = cargo_messages.map(|file| {
+            let stdout = child.stdout.take().expect("piped");
+            scope.spawn(move || {
+                let mut writer = std::io::BufWriter::new(file);
+                registry_runtime::Outputs::stream(BufReader::new(stdout), &mut writer, |rendered| {
+                    if compiler_stderr == CompilerStderr::Mirror {
+                        let mut err = std::io::stderr().lock();
+                        let _ = write!(err, "{rendered}");
+                        if !rendered.ends_with('\n') {
+                            let _ = writeln!(err);
+                        }
+                        let _ = err.flush();
+                    }
+                })
+            })
+        });
+        let mut stderr = BufReader::new(child.stderr.take().expect("piped"));
+        let mut bytes = Vec::new();
+        let stderr_result = loop {
+            bytes.clear();
+            match stderr.read_until(b'\n', &mut bytes) {
+                Ok(0) => break Ok(()),
+                Ok(_) => (),
+                Err(error) => break Err(format!("Could not read {what}'s stderr: {error}")),
+            }
+            // Strip LF or CRLF as `lines` does, leaving Cargo's interior carriage returns for
+            // `log_text`. A compiler or linker can print non-UTF-8 bytes; keep reading after them.
+            let line = if let Some(line) = bytes.strip_suffix(b"\n") {
+                line.strip_suffix(b"\r").unwrap_or(line)
+            } else {
+                &bytes
+            };
+            let text = String::from_utf8_lossy(line);
+            // A diagnostic is one line of JSON: its rendered text goes on as lines, each as the
+            // compiler printed it (for the log and the matchers) and as shown to the author.
+            let lines = match sources.zip(present::Diagnostic::parse(&text)) {
+                Some((sources, diagnostic)) => sources
+                    .lines(&diagnostic)
+                    .into_iter()
+                    .map(|(raw, shown)| (raw.to_owned(), shown))
+                    .collect(),
+                None => vec![(text.to_string(), text.into_owned())],
+            };
+            for (raw, shown) in lines {
+                if let Some(kept) = log_text(&raw) {
+                    let _ = writeln!(log, "{kept}");
+                }
+                if compiler_stderr == CompilerStderr::Mirror {
+                    let mut err = std::io::stderr().lock();
+                    let _ = writeln!(err, "{shown}");
+                }
+                blocked |= rust::blocked_by_app_control(&raw);
+                libraries |= rust::missing_system_libraries(&raw);
+                if shown.starts_with("error") && errors.len() < 4 {
+                    errors.push(shown.clone());
+                }
+                if tail.len() == 12 {
+                    tail.pop_front();
+                }
+                tail.push_back(shown);
+            }
         };
-        let text = String::from_utf8_lossy(line);
-        // A diagnostic is one line of JSON: its rendered text goes on as lines, each as the
-        // compiler printed it (for the log and the matchers) and as shown to the author.
-        let lines = match sources.zip(present::Diagnostic::parse(&text)) {
-            Some((sources, diagnostic)) => sources
-                .lines(&diagnostic)
-                .into_iter()
-                .map(|(raw, shown)| (raw.to_owned(), shown))
-                .collect(),
-            None => vec![(text.to_string(), text.into_owned())],
-        };
-        for (raw, shown) in lines {
-            if let Some(kept) = log_text(&raw) {
-                let _ = writeln!(log, "{kept}");
-            }
-            if compiler_stderr == CompilerStderr::Mirror {
-                let _ = writeln!(std::io::stderr(), "{shown}");
-            }
-            blocked |= rust::blocked_by_app_control(&raw);
-            libraries |= rust::missing_system_libraries(&raw);
-            if shown.starts_with("error") && errors.len() < 4 {
-                errors.push(shown.clone());
-            }
-            if tail.len() == 12 {
-                tail.pop_front();
-            }
-            tail.push_back(shown);
-        }
-    };
-    // Close the pipe before waiting even if a read failed.
-    drop(stderr);
+        // Close the pipe before waiting even if a read failed.
+        drop(stderr);
+        let outputs_result = stdout_thread.map(|handle| {
+            handle
+                .join()
+                .unwrap_or_else(|_| Err(format!("Could not read {what}'s stdout")))
+        });
+        (stderr_result, outputs_result)
+    });
     let status = child.wait();
     stderr_result?;
+    let outputs = outputs_result.transpose()?;
     let status = status.map_err(|e| e.to_string())?;
     let took = started.elapsed();
     if status.success() {
@@ -374,12 +415,12 @@ fn run_checked(
                 &[("step", what), ("ms", &took.as_millis().to_string())],
             )
         );
-        return Ok(());
+        return Ok((Ok(()), outputs));
     }
     let tail: Vec<String> = tail.into();
     let error =
         diagnostics::with_internals_hint(failure(what, &status.to_string(), &errors, &tail));
-    Err(advised(error, blocked, libraries))
+    Ok((Err(advised(error, blocked, libraries)), outputs))
 }
 
 /// `error` led by what to do when Windows' Smart App Control refused one of the build's

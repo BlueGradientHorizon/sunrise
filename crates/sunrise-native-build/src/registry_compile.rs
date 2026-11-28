@@ -555,18 +555,16 @@ pub(super) fn stage_and_cargo(
     let wrapper = compiler_plan(rust, game, bindings);
     wrapper.configure(&mut command, &out.join("rustc-plan.json"), options.adapter)?;
     let messages = out.join("cargo-messages.jsonl");
-    let result = super::run_checked(
+    let (result, outputs) = super::run_cargo_messages(
         command,
         if check_only {
             tr("Checking native mod libraries")
         } else {
             tr("Compiling registry mod libraries")
         },
-        Some(fs::File::create(&messages).map_err(|e| e.to_string())?),
-        None,
+        fs::File::create(&messages).map_err(|e| e.to_string())?,
         options.diagnostics.stderr,
-    );
-    let outputs = super::registry_runtime::Outputs::read(&messages)?;
+    )?;
     if let Some(patch) = &patch {
         patch.log()?;
     }

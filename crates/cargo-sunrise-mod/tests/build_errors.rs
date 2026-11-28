@@ -137,16 +137,29 @@ fn a_failed_registry_build_names_the_authors_file_and_a_good_one_still_builds() 
     assert!(!stderr.contains("report saved to "), "{stderr}");
     assert!(Mod::build_log(&built).contains("report saved to "));
 
-    let warm = project.build(&["--verbose", "--timings"], str::to_owned);
+    let warm = project.build(&["--verbose", "--timings"], |source| {
+        format!("{source}\nfn registry_diagnostics_probe() {{}}\n")
+    });
     assert!(warm.status.success(), "{warm:?}");
     let stderr = String::from_utf8_lossy(&warm.stderr);
-    assert!(stderr.contains("report saved to "), "{stderr}");
+    let warning_at = stderr
+        .find("function `registry_diagnostics_probe`")
+        .unwrap_or_else(|| panic!("no live compiler warning on stderr:\n{stderr}"));
+    let timings_line = format!("Cargo timings: {}", report.display());
+    let timings_at = stderr
+        .find(&timings_line)
+        .unwrap_or_else(|| panic!("no timings line on stderr:\n{stderr}"));
     assert!(
-        stderr.contains(&format!("Cargo timings: {}", report.display())),
-        "{stderr}"
+        warning_at < timings_at,
+        "compiler warning was not mirrored before build completion:\n{stderr}"
     );
-    assert!(Mod::build_log(&warm).contains("report saved to "));
-    assert!(!String::from_utf8_lossy(&warm.stdout).contains("Cargo timings:"));
+    assert!(stderr.contains("report saved to "), "{stderr}");
+    let warm_log = Mod::build_log(&warm);
+    assert!(warm_log.contains("function `registry_diagnostics_probe`"));
+    assert!(warm_log.contains("report saved to "));
+    let warm_stdout = String::from_utf8_lossy(&warm.stdout);
+    assert!(!warm_stdout.contains("registry_diagnostics_probe"));
+    assert!(!warm_stdout.contains("Cargo timings:"));
     let output = project.project.join("target/sunrise-mod/greeter.smod");
     assert_eq!(
         sunrise_mod_package::Package::read(&output)

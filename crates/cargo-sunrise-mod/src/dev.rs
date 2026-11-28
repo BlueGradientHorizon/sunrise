@@ -228,6 +228,13 @@ impl NativeSdk {
             }
         }
         if needs_tool {
+            if diagnostics.stderr == sunrise_native_build::CompilerStderr::Mirror {
+                return Err(format!(
+                    "SDK build {} compiles this mod's lower-crate copies with its own pinned tool, \
+                     which cannot show compiler output while it runs; use a newer SDK build or drop --verbose.",
+                    self.index.build.commit
+                ));
+            }
             let (_temporary, tool) =
                 sdk_fetch::fetch_tool(&self.base, &self.index, &self.rust.target, &self.dir)?;
             events.run_tool(&tool, plan, diagnostics)
