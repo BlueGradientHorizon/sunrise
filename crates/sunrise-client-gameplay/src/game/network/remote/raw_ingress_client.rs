@@ -347,9 +347,13 @@ impl crate::game::ClientGame<'_> {
             Event::Joined {
                 registries,
                 datapacks,
+                custom_registries,
                 name,
                 uuid,
             } => {
+                if let Some(remote) = &mut self.client.remote {
+                    remote.custom_registries = custom_registries;
+                }
                 if let Err(error) = self.set_registries(registries) {
                     return self.refuse_remote_input(error);
                 }
@@ -428,6 +432,7 @@ impl crate::game::ClientGame<'_> {
                 // The new server announces its own features again.
                 if let Some(remote) = &mut self.client.remote {
                     remote.datapacks = Default::default();
+                    remote.custom_registries = Default::default();
                     remote.datapack_vanilla_values = None;
                     remote.has_logical_player = false;
                     remote.viewed.clear();
@@ -463,7 +468,11 @@ impl crate::game::ClientGame<'_> {
             Event::Reconfigured {
                 registries,
                 datapacks,
+                custom_registries,
             } => {
+                if let Some(r) = self.client.remote.as_mut() {
+                    r.custom_registries = custom_registries;
+                }
                 if let Err(error) = self.set_registries(registries) {
                     return self.refuse_remote_input(error);
                 }
