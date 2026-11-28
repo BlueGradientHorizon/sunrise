@@ -347,7 +347,7 @@ pub fn hydrate_common_hit(
     if !entity_keys_match {
         return Ok(None);
     }
-    publish_entity_type_defaults(&cached.resources.core.motion.attributes);
+    publish_entity_type_defaults(cached.resources.core.motion.attributes());
     let registry = api_values::resolve_cached_block_definitions(cached.pack.assets.registry)?;
     api_values::resolve_item_keys(cached.resources.items())?;
     if !skip_lang {
