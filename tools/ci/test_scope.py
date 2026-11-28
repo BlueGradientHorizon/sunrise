@@ -49,6 +49,8 @@ MOD_API_GEN = [
 READERS = {
     "cargo-sunrise-mod": [
         "Cargo.lock", "crates/sunrise-attestation/tests/fixtures", "crates/sunrise-mod-api",
+        # The cold-discovery test copies the generator's inputs into a scratch tree.
+        "crates/sunrise-mod-api-gen/internals.txt", "crates/sunrise-mod-api-gen/source-layout",
         "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
         # The page checks read the package crate's screenshot fixtures.
         "crates/sunrise-mod-package/tests/fixtures",
@@ -109,6 +111,8 @@ READERS = {
         "crates/sunrise-mod-surface/tests/fixtures/occultism-0.9.0-alpha.1/uses.json",
         "crates/sunrise-mod-vocab/changes",
         "crates/sunrise-mod-vocab/extension-tags",
+        # The generator's build test lays out the vocabulary-state file in a scratch tree.
+        "tools/layering",
     ],
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
     # content_keys' source guard searches these crates' sources for the files that define declaration types.
