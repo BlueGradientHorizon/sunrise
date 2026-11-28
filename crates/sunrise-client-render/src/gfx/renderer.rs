@@ -563,18 +563,16 @@ impl Drop for Renderer {
     /// or discard a frame on a lost device and keeps that frame acquired, and destroying the
     /// swapchain under an acquired frame panics (while a panic unwinds, an abort).
     ///
-    /// Otherwise a shader pack still building (the one loading, cancelled here, and any cancelled
-    /// before) is waited for first: its thread holds the device and may be inside the driver's
-    /// compiler, which must not still run once the device goes or the process exits (#6721). The
-    /// wait is for the programs being compiled then (`RetiredPackBuilds`). A lost device's
-    /// builds are not waited for: recovery hands them to the next renderer
-    /// (`take_pack_builds`), which waits for them when it drops.
+    /// A shader pack still building (the one loading, cancelled here, and any cancelled before)
+    /// is waited for first: its thread holds the device and may be inside the driver's compiler,
+    /// which must not still run once the device goes or the process exits (#6721). The wait is for
+    /// the programs being compiled then (`RetiredPackBuilds`). Builds on a lost device are not
+    /// waited for: dropping a lost renderer, as graphics device recovery does, never waits on its
+    /// driver.
     fn drop(&mut self) {
         self.pack_loading = None;
+        self.retired_pack_builds.join_all();
         if !self.device_lost() {
-            #[cfg(feature = "test-support")]
-            self.retired_pack_builds.watch.release();
-            self.retired_pack_builds.join_all();
             return;
         }
         std::mem::forget(self.surface.take());

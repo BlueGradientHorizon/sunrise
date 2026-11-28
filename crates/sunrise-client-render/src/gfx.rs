@@ -1043,7 +1043,7 @@ mod pack_builds;
 #[cfg(feature = "test-support")]
 pub use pack_builds::PackBuildWatch;
 pub use pack_builds::PackBuilds;
-pub(crate) use pack_builds::{PackBuild, RetiredPackBuilds};
+pub(crate) use pack_builds::{BuildOrigin, PackBuild, Retired, RetiredPackBuilds};
 
 /// A `shaders/` pack building on its own thread (`Renderer::load_shader_pack`): the dimension it
 /// is for, the thread (a panic in it contained), and what the game named it with and when.
@@ -1056,8 +1056,9 @@ pub(crate) struct PackLoading {
     cancel: Arc<std::sync::atomic::AtomicBool>,
     /// `None` once `poll_shader_pack` joined it.
     thread: Option<PackBuild>,
-    /// Where the thread goes when this drops before it was joined.
+    /// Where the thread goes when this drops before it was joined, and where it runs.
     retired: RetiredPackBuilds,
+    origin: BuildOrigin,
     label: String,
     started: std::time::Instant,
     /// What its terrain and shadow programs will draw from the game's sections, as the built
@@ -1073,7 +1074,10 @@ impl Drop for PackLoading {
         self.cancel
             .store(true, std::sync::atomic::Ordering::Relaxed);
         if let Some(thread) = self.thread.take() {
-            self.retired.retire(thread);
+            self.retired.retire(Retired {
+                thread,
+                origin: self.origin.clone(),
+            });
         }
     }
 }

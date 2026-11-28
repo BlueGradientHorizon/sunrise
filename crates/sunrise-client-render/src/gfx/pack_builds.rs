@@ -16,74 +16,106 @@ pub(crate) type PackBuild = std::thread::JoinHandle<
     >,
 >;
 
+/// Where a pack build runs: its device's lost flag (`Renderer::device_lost`), and in tests the
+/// watch of the renderer that started it.
+#[derive(Clone)]
+pub(crate) struct BuildOrigin {
+    pub(crate) device_lost: Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(feature = "test-support")]
+    pub(crate) watch: PackBuildWatch,
+}
+
+impl BuildOrigin {
+    fn lost(&self) -> bool {
+        self.device_lost.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// A build nobody takes the pack of any more, with where it runs.
+pub(crate) struct Retired {
+    pub(crate) thread: PackBuild,
+    pub(crate) origin: BuildOrigin,
+}
+
 /// Pack builds cancelled before anyone took their pack (`PackLoading` dropped). One that has
 /// already ended is joined when it is retired, so its pack and the GPU objects in it go at once;
-/// the others are joined as they end (`reap`, every `poll_shader_pack`), and all of them before
-/// the renderer drops (`join_all`). A cancelled build stops at its next program: the wait is for
-/// the programs the driver was compiling then, at most one per compile thread
-/// (`pack_post::compile`).
+/// the others are joined as they end (`reap`, every `poll_shader_pack`, title frames included),
+/// and before the renderer drops (`join_all`), except those whose device is lost: a compile in a
+/// lost device's driver may never return, so they are left to end on their own. A cancelled
+/// build stops at its next program: the wait is for the programs the driver was compiling then,
+/// at most one per compile thread (`pack_post::compile`).
 #[derive(Clone, Default)]
 pub(crate) struct RetiredPackBuilds {
-    builds: Arc<Mutex<Vec<PackBuild>>>,
+    builds: Arc<Mutex<Vec<Retired>>>,
     #[cfg(feature = "test-support")]
     pub(crate) watch: PackBuildWatch,
 }
 
 impl RetiredPackBuilds {
-    pub(crate) fn retire(&self, thread: PackBuild) {
-        if thread.is_finished() {
-            self.join(thread);
+    pub(crate) fn retire(&self, build: Retired) {
+        if build.thread.is_finished() {
+            self.join(build);
         } else {
-            self.lock().push(thread);
+            self.lock().push(build);
         }
     }
     /// Joins the builds that ended; the others are kept.
     pub(crate) fn reap(&self) {
-        let ended: Vec<PackBuild> = {
+        let ended: Vec<Retired> = {
             let mut builds = self.lock();
             if builds.is_empty() {
                 return;
             }
-            let (ended, running) = builds.drain(..).partition(|t| t.is_finished());
+            let (ended, running) = builds.drain(..).partition(|b| b.thread.is_finished());
             *builds = running;
             ended
         };
-        for thread in ended {
-            self.join(thread);
+        for build in ended {
+            self.join(build);
         }
     }
-    /// Waits for every build to end.
+    /// Waits for every build to end, but those whose device is lost, which are let go.
     pub(crate) fn join_all(&self) {
-        for thread in self.take() {
-            self.join(thread);
+        for build in self.take() {
+            if !build.origin.lost() {
+                // Tests: a held build goes on once something waits for it.
+                #[cfg(feature = "test-support")]
+                build.origin.watch.release();
+                self.join(build);
+            }
         }
     }
     /// Every build, for another renderer to keep (`Renderer::take_pack_builds`).
-    pub(crate) fn take(&self) -> Vec<PackBuild> {
+    pub(crate) fn take(&self) -> Vec<Retired> {
         std::mem::take(&mut *self.lock())
     }
-    fn join(&self, thread: PackBuild) {
+    fn join(&self, build: Retired) {
         // A cancelled build's pack, refusal or panic: nobody wants it any more.
-        let _ = thread.join();
+        let _ = build.thread.join();
         #[cfg(feature = "test-support")]
         self.watch
             .0
             .joined
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
-    pub(crate) fn lock(&self) -> MutexGuard<'_, Vec<PackBuild>> {
+    pub(crate) fn lock(&self) -> MutexGuard<'_, Vec<Retired>> {
         self.builds.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+    #[cfg(test)]
+    pub(crate) fn builds_for_test(&self) -> &Mutex<Vec<Retired>> {
+        &self.builds
     }
 }
 
 /// The pack builds a renderer hands to the one replacing it (`Renderer::take_pack_builds`,
-/// `Renderer::adopt_pack_builds`), so that neither a renderer swap nor graphics device recovery
-/// waits for them, and the replacement joins them before it drops.
-pub struct PackBuilds(pub(crate) Vec<PackBuild>);
+/// `Renderer::adopt_pack_builds`), so that a renderer swap doesn't wait for them; each keeps its
+/// own device's lost flag.
+pub struct PackBuilds(pub(crate) Vec<Retired>);
 
 /// Tests: a renderer's pack builds as they run and end (`Renderer::pack_build_watch`), and a gate
-/// that holds every build it starts before its first program, until released (`release`, or the
-/// renderer's drop), so a test decides when a build can end.
+/// that holds every build it starts before its first program, until released (`release`, or a
+/// renderer about to wait for one of them, `RetiredPackBuilds::join_all`), so a test decides when
+/// a build can end.
 #[cfg(feature = "test-support")]
 #[derive(Clone, Default)]
 pub struct PackBuildWatch(Arc<WatchState>);

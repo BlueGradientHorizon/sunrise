@@ -341,6 +341,7 @@ impl Renderer {
                     cancel,
                     thread: Some(thread),
                     retired: self.retired_pack_builds.clone(),
+                    origin: self.pack_build_origin(),
                     label,
                     started,
                     draws: draws_sections,
@@ -455,6 +456,19 @@ impl Renderer {
             .and_then(|l| l.thread.as_ref())
             .is_some_and(|t| !t.is_finished())
     }
+    /// What this renderer's pack builds run on (`BuildOrigin`).
+    fn pack_build_origin(&self) -> BuildOrigin {
+        BuildOrigin {
+            device_lost: self.device_lost.clone(),
+            #[cfg(feature = "test-support")]
+            watch: self.retired_pack_builds.watch.clone(),
+        }
+    }
+    /// Joins the cancelled pack builds that have ended, as every `poll_shader_pack` does: for the
+    /// frames that don't poll (the title screen's).
+    pub fn reap_pack_builds(&self) {
+        self.retired_pack_builds.reap();
+    }
     /// Tests: this renderer's pack builds as they run and end, and the gate that holds them
     /// (`PackBuildWatch`); it keeps counting once the renderer is gone.
     #[cfg(feature = "test-support")]
@@ -474,16 +488,16 @@ impl Renderer {
     }
     /// The pack builds still running, for the renderer that replaces this one
     /// (`adopt_pack_builds`): the one loading is cancelled first. This renderer then drops
-    /// without waiting for any (graphics device recovery must not wait on the driver).
+    /// without waiting for any (a renderer swap must not wait on the driver).
     pub fn take_pack_builds(&mut self) -> PackBuilds {
         self.pack_loading = None;
         PackBuilds(self.retired_pack_builds.take())
     }
     /// Keeps the pack builds another renderer handed over (`take_pack_builds`): joined as they
-    /// end, and all of them before this renderer drops.
+    /// end, and before this renderer drops unless their own device is lost.
     pub fn adopt_pack_builds(&mut self, builds: PackBuilds) {
-        for thread in builds.0 {
-            self.retired_pack_builds.retire(thread);
+        for build in builds.0 {
+            self.retired_pack_builds.retire(build);
         }
     }
     /// Drops the running shader pack.

@@ -19,14 +19,18 @@ const ENDS_WITHIN: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// `off`: shaders turned off after the build ended but before its pack was polled: the pack goes
 /// that frame, not with the renderer. `off-held`: turned off while the build still runs: its pack
-/// goes the first frame after it ends. `swap`: setting a renderer in place of the one the build
-/// started on (`set_renderer`) doesn't wait for it, and the new one waits for it as it drops.
-/// `lost`: graphics device recovery doesn't wait for the lost renderer's build, and the renderer
-/// made after it waits for it as it drops.
+/// goes the first frame after it ends. `title` and `title-held`: the same on title screen frames,
+/// which load no pack. `swap`: setting a renderer in place of the one the build started on
+/// (`set_renderer`) doesn't wait for it, and the new one waits for it as it drops. `lost`: neither
+/// graphics device recovery nor the renderer made after it waits for the lost device's build.
 #[test]
 #[ignore = "daily"]
 fn a_packs_build_ends_with_its_renderer() {
-    if run_fresh_cases(NAME, CASE, &["off", "off-held", "swap", "lost"]) {
+    if run_fresh_cases(
+        NAME,
+        CASE,
+        &["off", "off-held", "title", "title-held", "swap", "lost"],
+    ) {
         return;
     }
     let case = std::env::var(CASE).unwrap();
@@ -57,27 +61,46 @@ fn a_packs_build_ends_with_its_renderer() {
         let renderer = game.client.renderer.0.as_ref().unwrap();
         assert!(renderer.shader_pack_building(), "the pack still builds");
         assert_eq!((watch.running(), watch.joined()), (1, 0));
-        match case.as_str() {
-            "off" => {
-                watch.release();
-                wait_until_ended(&watch);
-                // Off before the next poll would have taken the built pack.
-                game.client.settings.sunrise.shader_pack = String::new();
+        let off = |game: &mut crate::game::ClientGame<'_>| {
+            game.client.settings.sunrise.shader_pack = String::new();
+        };
+        // A world frame, or a title screen frame (which loads no pack) for the `title` cases.
+        let title = case.starts_with("title");
+        let frame = |game: &mut crate::game::ClientGame<'_>| {
+            if title {
+                if game.client.title.0.is_none() {
+                    game.client.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
+                }
+                game.render_with(|_, _| Ok(false)).unwrap();
+            } else {
                 game.shader_pack_inputs(camera, camera, 0.0, &sky);
-                assert_eq!(watch.joined(), 1, "the built pack is kept with shaders off");
             }
-            "off-held" => {
-                game.client.settings.sunrise.shader_pack = String::new();
-                game.shader_pack_inputs(camera, camera, 0.0, &sky);
+        };
+        match case.as_str() {
+            // Off before the next poll would have taken the built pack: it goes that frame.
+            "off" | "title" => {
+                watch.release();
+                wait_until_built(game);
+                off(game);
+                frame(game);
+                assert_eq!(watch.joined(), 1, "the built pack is kept with shaders off");
+                assert!(game.client.pack_ids.is_none());
+            }
+            // Off while it builds: it goes the first frame after it ends.
+            "off-held" | "title-held" => {
+                off(game);
+                frame(game);
                 assert_eq!((watch.running(), watch.joined()), (1, 0));
                 watch.release();
-                wait_until_ended(&watch);
-                game.shader_pack_inputs(camera, camera, 0.0, &sky);
-                assert_eq!(
-                    watch.joined(),
-                    1,
-                    "the ended build is kept with shaders off"
-                );
+                let deadline = std::time::Instant::now() + ENDS_WITHIN;
+                while watch.joined() == 0 {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "the ended build is kept with shaders off"
+                    );
+                    frame(game);
+                }
+                assert_eq!(watch.joined(), 1);
             }
             "swap" => {
                 let window = game.client.renderer.0.as_ref().unwrap().window().clone();
@@ -86,17 +109,11 @@ fn a_packs_build_ends_with_its_renderer() {
                 game.set_renderer(next);
                 // The swap went on with the build still held: nothing waited for it.
                 assert_eq!((watch.running(), watch.joined()), (1, 0));
-                watch.release();
                 drop(game.client.renderer.0.take());
                 assert_eq!(
-                    watch.running(),
-                    0,
-                    "the old renderer's build outlived the next one"
-                );
-                assert_eq!(
-                    next_watch.joined(),
-                    1,
-                    "the next renderer did not wait for it"
+                    (watch.running(), next_watch.joined()),
+                    (0, 1),
+                    "the next renderer did not wait for the build it took"
                 );
             }
             "lost" => {
@@ -108,15 +125,22 @@ fn a_packs_build_ends_with_its_renderer() {
                 assert_eq!((watch.running(), watch.joined()), (1, 0));
                 let renderer = game.client.renderer.0.take().unwrap();
                 let next = renderer.pack_build_watch();
-                assert_eq!(next.joined(), 0);
-                watch.release();
                 drop(renderer);
+                // Nor did the next renderer's drop: a build on a lost device is let go.
                 assert_eq!(
-                    watch.running(),
-                    0,
-                    "the lost renderer's build outlived the next one"
+                    (watch.running(), next.joined()),
+                    (1, 0),
+                    "a lost device's build was waited for"
                 );
-                assert_eq!(next.joined(), 1, "the next renderer did not wait for it");
+                watch.release();
+                let deadline = std::time::Instant::now() + ENDS_WITHIN;
+                while watch.running() > 0 {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "the released build did not end"
+                    );
+                    std::thread::yield_now();
+                }
             }
             other => panic!("unknown case {other}"),
         }
@@ -124,10 +148,17 @@ fn a_packs_build_ends_with_its_renderer() {
     });
 }
 
-/// Waits for every build of `watch` to end, failing after `ENDS_WITHIN`.
-fn wait_until_ended(watch: &sunrise_client_render::gfx::PackBuildWatch) {
+/// Waits for the loading build's thread to end, failing after `ENDS_WITHIN`.
+fn wait_until_built(game: &crate::game::ClientGame<'_>) {
     let deadline = std::time::Instant::now() + ENDS_WITHIN;
-    while watch.running() > 0 {
+    while game
+        .client
+        .renderer
+        .0
+        .as_ref()
+        .unwrap()
+        .shader_pack_building()
+    {
         assert!(
             std::time::Instant::now() < deadline,
             "the released build did not end"

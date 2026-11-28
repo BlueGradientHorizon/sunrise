@@ -3805,9 +3805,6 @@ impl crate::game::ClientGame<'_> {
         }
         let (screenshot, screenshot_result) = (old.screenshot.take(), old.screenshot_result.take());
         let display = old.display_reading();
-        // Its pack builds may be stuck in the lost device's driver: the next renderer keeps
-        // them, and recovery doesn't wait for them.
-        let pack_builds = old.take_pack_builds();
         self.client.mod_gpu = None;
         drop(old);
         let device = pollster::block_on(sunrise_client::gfx::Opened::for_window(
@@ -3853,7 +3850,6 @@ impl crate::game::ClientGame<'_> {
         )?;
         clouds?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
-        renderer.adopt_pack_builds(pack_builds);
         self.adopt_renderer(Box::new(renderer));
         log::info!("Sunrise: graphics device recovered; rebuilding world meshes");
         Ok(())
@@ -4579,6 +4575,7 @@ impl crate::game::ClientGame<'_> {
         // The pack is chosen before entity geometry, so a pack that starts this frame
         // keeps block-entity models in the CPU stream instead of dropping them.
         let mut pack_inputs = if title {
+            self.shader_pack_title_frame();
             Default::default()
         } else {
             self.shader_pack_inputs(camera, eye.map_or(camera, |e| e.0), alpha as f32, &sky)
