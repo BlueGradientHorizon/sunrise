@@ -435,17 +435,13 @@ fn a_saved_sparse_mod_container_pads_to_its_declared_size() {
         // Save that decoded container again: the raw row is still there.
         let entities: std::collections::HashMap<_, _> =
             loaded.block_entities.iter().cloned().collect();
-        let mut again = sunrise_sim::save::chunks_with_block_entities(
+        let again = sunrise_sim::save::chunks_with_block_entities(
             game.world.chunks.values(),
             &entities,
             &game.world.block_names,
         );
-        let two = sunrise_sim::save::encode(
-            &mut again[0],
-            registry,
-            game.res.biomes(),
-            &Default::default(),
-        );
+        let two =
+            sunrise_sim::save::encode(&again[0], registry, game.res.biomes(), &Default::default());
         let twice = sunrise_sim::save::decode(&two, registry, game.res.biomes()).unwrap();
         let (_, entity) = twice
             .block_entities
