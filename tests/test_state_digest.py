@@ -95,6 +95,20 @@ class PlayerCompareTests(unittest.TestCase):
             self.assertIn('== minecraft:the_nether', output.getvalue())
             self.assertIn('== player_summary\ndifferent (ignored)', output.getvalue())
 
+    def test_interleaved_dimensions_keep_their_player_details(self):
+        with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(io.StringIO()) as output:
+            a, b = (Path(temp) / side for side in ('left', 'right'))
+            nether = line(42, dim='minecraft:the_nether')
+            for out in (a, b):
+                out.mkdir()
+                (out / 'players.txt').write_text('same')
+            (a / 'digest.txt').write_text(line(42) + '  p\tid=2\tname=Alice\tmotion=1111\n' + nether
+                                         + '  p\tid=2\tname=Alice\tmotion=2222\n')
+            (b / 'digest.txt').write_text(nether + '  p\tid=2\tname=Alice\tmotion=2222\n'
+                                         + line(42, players='changed') + '  p\tid=2\tname=Alice\tmotion=3333\n')
+            self.assertEqual(state_digest_players.compare(a, b), 1)
+            self.assertIn('  player id=2 name=Alice motion: 1111 vs 3333', output.getvalue())
+
     def test_frozen_only_runs_cannot_pass(self):
         with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(io.StringIO()):
             out = Path(temp)

@@ -20,19 +20,48 @@ IGNORABLE_GROUPS = tuple(group for group in GROUPS if group not in ('tick', 'dim
 def parse(lines):
     """The running ticks' fields, and how many frozen ticks moved the level random."""
     running, frozen_moves, last_random = [], 0, None
+    current = None
     for line in lines:
+        if line.startswith('  p\t') and current is not None:
+            values = dict(part.split('=', 1) for part in line.rstrip('\r\n').split('\t')[1:] if '=' in part)
+            if 'id' in values and 'name' in values:
+                entity_id = values.pop('id')
+                name = values.pop('name')
+                current.setdefault('player_detail', {})[entity_id] = (name, values)
         if not line.startswith('tick='):
             continue
+        current = None
         payload, separator, walk_error = line.rstrip().partition(' walk_error=')
         fields = dict(part.split('=', 1) for part in payload.split())
         if separator:
             fields['walk_error'] = walk_error
         if fields['run'] == '1':
             running.append(fields)
+            current = fields
         elif last_random is not None and fields['level_random'] != last_random:
             frozen_moves += 1
         last_random = fields['level_random']
     return running, frozen_moves
+
+
+def player_differences(a, b):
+    left, right = a.get('player_detail'), b.get('player_detail')
+    if left is None or right is None:
+        return
+    for entity_id in dict.fromkeys((*left, *right)):
+        if entity_id not in left or entity_id not in right:
+            present = left if entity_id in left else right
+            side = 'left' if present is left else 'right'
+            yield f'  player id={entity_id} name={present[entity_id][0]} only in {side} run'
+            continue
+        name, a_values = left[entity_id]
+        other_name, b_values = right[entity_id]
+        identity = f'id={entity_id} name={name}' if name == other_name else f'id={entity_id} name={name} vs {other_name}'
+        for label in dict.fromkeys((*a_values, *b_values)):
+            before = a_values.get(label, '<absent>')
+            after = b_values.get(label, '<absent>')
+            if before != after:
+                yield f'  player {identity} {label}: {before} vs {after}'
 
 
 def compare(a_lines, b_lines, ignore_groups=()):
@@ -80,6 +109,8 @@ def compare(a_lines, b_lines, ignore_groups=()):
             report.append(f'{group:21} {label} on {len(diff)} steps, first step {t + 1} '
                           f'(tick {a[t]["tick"]} vs {b[t]["tick"]}): '
                           f'{a[t].get(group, "<missing>")} vs {b[t].get(group, "<missing>")}')
+            if group == 'players':
+                report.extend(player_differences(a[t], b[t]))
         else:
             label = 'identical'
             if invalid_walks and group in walk_groups:
