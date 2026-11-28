@@ -1,16 +1,22 @@
-//! `RetiredPackBuilds` (#6721): a pack build dropped before it ended is kept until it ends, and
-//! the renderer's drop waits for it.
+//! `RetiredPackBuilds` (#6721): a pack build dropped before it ended is kept until it ends, one
+//! that already ended goes at once, and the renderer's drop waits for every one. Each wait here
+//! has a deadline, so a build joined too early fails its test instead of hanging it.
 use super::{PackBuild, RetiredPackBuilds, pack_post};
 use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
-/// A build that ends when `release` sends (or is dropped), refused with `reason`.
-fn build(reason: &'static str) -> (PackBuild, mpsc::Sender<()>) {
+/// How long a test waits for something that must happen: far longer than a thread takes to
+/// start and end on any machine CI runs.
+const DEADLINE: Duration = Duration::from_secs(30);
+
+/// A build that ends when `release` sends (or is dropped).
+fn build() -> (PackBuild, mpsc::Sender<()>) {
     let (release, wait) = mpsc::channel::<()>();
     let thread = std::thread::spawn(move || {
         let _ = wait.recv();
         Ok((
             Err(pack_post::Refused {
-                reason: reason.into(),
+                reason: "test build".into(),
                 notes: Vec::new(),
             }),
             Vec::new(),
@@ -23,20 +29,42 @@ fn count(retired: &RetiredPackBuilds) -> usize {
     retired.lock().len()
 }
 
+/// Waits for `ended` to hold, failing after `DEADLINE`.
+fn wait_for(what: &str, ended: impl Fn() -> bool) {
+    let deadline = Instant::now() + DEADLINE;
+    while !ended() {
+        assert!(Instant::now() < deadline, "{what}");
+        std::thread::yield_now();
+    }
+}
+
+/// Runs `work` on a thread of its own and returns once it is done, failing after `DEADLINE`
+/// (the thread is left blocked then, and released when the test's senders drop).
+fn within_deadline(what: &str, work: impl FnOnce() + Send + 'static) {
+    let (done, finished) = mpsc::channel();
+    std::thread::spawn(move || {
+        work();
+        let _ = done.send(());
+    });
+    assert!(finished.recv_timeout(DEADLINE).is_ok(), "{what}");
+}
+
 #[test]
 fn reap_keeps_running_builds_and_joins_ended_ones() {
     let retired = RetiredPackBuilds::default();
-    let (running, keep) = build("running");
-    let (ended, release) = build("ended");
+    let (running, keep) = build();
+    let (ended, release) = build();
     retired.retire(running);
     retired.retire(ended);
-    retired.reap();
+    let reaping = retired.clone();
+    within_deadline("reap waited for a running build", move || reaping.reap());
     assert_eq!(count(&retired), 2, "neither build has ended");
     release.send(()).unwrap();
-    while !retired.lock().iter().any(|t| t.is_finished()) {
-        std::thread::yield_now();
-    }
-    retired.reap();
+    wait_for("the released build did not end", || {
+        retired.lock().iter().any(|t| t.is_finished())
+    });
+    let reaping = retired.clone();
+    within_deadline("reap waited for a running build", move || reaping.reap());
     assert_eq!(count(&retired), 1, "only the ended build is joined");
     drop(keep);
     retired.join_all();
@@ -44,26 +72,40 @@ fn reap_keeps_running_builds_and_joins_ended_ones() {
 }
 
 #[test]
+fn a_build_that_already_ended_is_joined_as_it_is_retired() {
+    let retired = RetiredPackBuilds::default();
+    let (ended, release) = build();
+    release.send(()).unwrap();
+    wait_for("the released build did not end", || ended.is_finished());
+    retired.retire(ended);
+    assert_eq!(count(&retired), 0, "an ended build keeps its pack");
+}
+
+#[test]
 fn join_all_waits_for_every_build() {
     let retired = RetiredPackBuilds::default();
-    let (first, first_release) = build("first");
-    let (second, second_release) = build("second");
+    let (first, first_release) = build();
+    let (second, second_release) = build();
     retired.retire(first);
     retired.retire(second);
-    let ended = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let waiter = {
-        let (retired, ended) = (retired.clone(), ended.clone());
-        std::thread::spawn(move || {
-            retired.join_all();
-            ended.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        })
-    };
     first_release.send(()).unwrap();
-    // `join_all` is still waiting for the second build.
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    assert_eq!(ended.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let (done, finished) = mpsc::channel();
+    let joining = retired.clone();
+    let waiter = std::thread::spawn(move || {
+        joining.join_all();
+        let _ = done.send(());
+    });
+    // `join_all` took the builds: it runs.
+    wait_for("join_all did not start", || count(&retired) == 0);
+    // And waits for the second, still held: it must not return until that ends.
+    assert!(
+        finished.recv_timeout(Duration::from_millis(200)).is_err(),
+        "join_all returned before every build ended"
+    );
     second_release.send(()).unwrap();
+    assert!(
+        finished.recv_timeout(DEADLINE).is_ok(),
+        "join_all did not return once every build ended"
+    );
     waiter.join().unwrap();
-    assert_eq!(ended.load(std::sync::atomic::Ordering::SeqCst), 1);
-    assert_eq!(count(&retired), 0);
 }

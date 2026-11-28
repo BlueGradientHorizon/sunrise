@@ -1,6 +1,6 @@
 //! A pack's `separateAo` reaches the terrain as the game loads the pack: the pack's ids
 //! (`PackIds::separate_ao`) when it loads, and the meshing settings (`Streaming::separate_ao`)
-//! the frame after, and the renderer waits for the pack's build as it drops; and its
+//! the frame after, and the renderer waits for the pack's build as it drops (#6721); and its
 //! `entity.properties` alone decides the id of an entity it lacks. Each case runs in a process of
 //! its own (one event loop, its own resources).
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
@@ -34,6 +34,10 @@ fn a_packs_separate_ao_reaches_the_terrain() {
     }
     with_client_game(|game| {
         let _event_loop = frame_scene(game);
+        // #6721: the pack's build is held before its first program until the renderer drops,
+        // so the case ends with it still building, whatever the driver's speed.
+        let watch = game.client.renderer.0.as_ref().unwrap().pack_build_watch();
+        watch.hold();
         game.client.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
         let sky = sunrise_level::environment::Sky::default();
         let camera = glam::DVec3::new(0.5, 65.5, 0.5);
@@ -46,23 +50,14 @@ fn a_packs_separate_ao_reaches_the_terrain() {
         assert!(ids.separate_ao);
         game.shader_pack_inputs(camera, camera, 0.0, &sky);
         assert!(game.client.streaming.separate_ao);
-        // #6721: the pack's pipelines are still building on their own thread when the case
-        // ends; the renderer waits for that thread as it drops, so no build still runs in the
-        // driver's compiler once the device is gone or the process exits.
-        let renderer = game
-            .client
-            .renderer
-            .0
-            .take()
-            .expect("the scene has a renderer");
+        // The renderer waits for the build as it drops, so none still runs in the driver's
+        // compiler once the device is gone or the process exits.
+        let renderer = game.client.renderer.0.take().unwrap();
         assert!(renderer.shader_pack_building(), "the pack still builds");
-        let builds = renderer.pack_build_watch();
+        assert_eq!((watch.running(), watch.joined()), (1, 0));
         drop(renderer);
-        assert_eq!(
-            builds.strong_count(),
-            0,
-            "a pack build outlived the renderer"
-        );
+        assert_eq!((watch.running(), watch.joined()), (0, 1));
+        assert!(!watch.timed_out());
     });
 }
 

@@ -216,8 +216,6 @@ impl Renderer {
         label: String,
         started: std::time::Instant,
     ) {
-        // Builds cancelled earlier that have ended since: their threads go here.
-        self.retired_pack_builds.reap();
         let device = self.device.clone();
         let queue = self.queue.clone();
         let adapter = self.adapter.clone();
@@ -318,13 +316,19 @@ impl Renderer {
             (post, block_ids)
         };
         #[cfg(feature = "test-support")]
-        let token = self.pack_build_token.clone();
+        let (watch, running) = {
+            let watch = self.retired_pack_builds.watch.clone();
+            let running = watch.started();
+            (watch, running)
+        };
         // A pack is not the game's code: a panic building it turns the pack off (#3525).
         let thread = std::thread::Builder::new()
             .name("Shader pack".into())
             .spawn(move || {
                 #[cfg(feature = "test-support")]
-                let _token = token;
+                let _running = running;
+                #[cfg(feature = "test-support")]
+                watch.wait_gate();
                 crate::crash::contain(build)
             });
         match thread {
@@ -378,6 +382,9 @@ impl Renderer {
         std::time::Instant,
         std::result::Result<Option<(Vec<String>, Vec<String>)>, pack_post::Refused>,
     )> {
+        // Builds cancelled earlier that have ended since: their packs go now, also while no
+        // pack is wanted.
+        self.retired_pack_builds.reap();
         if !self.pack_loading.as_ref()?.thread.as_ref()?.is_finished() {
             return None;
         }
@@ -448,11 +455,36 @@ impl Renderer {
             .and_then(|l| l.thread.as_ref())
             .is_some_and(|t| !t.is_finished())
     }
-    /// Tests: counts the shader pack build threads still running, also once the renderer is
-    /// gone: `strong_count` is their number, plus one while the renderer lives.
+    /// Tests: this renderer's pack builds as they run and end, and the gate that holds them
+    /// (`PackBuildWatch`); it keeps counting once the renderer is gone.
     #[cfg(feature = "test-support")]
-    pub fn pack_build_watch(&self) -> std::sync::Weak<()> {
-        Arc::downgrade(&self.pack_build_token)
+    pub fn pack_build_watch(&self) -> PackBuildWatch {
+        self.retired_pack_builds.watch.clone()
+    }
+    /// Tests: the window this renderer draws to.
+    #[cfg(feature = "test-support")]
+    pub fn window(&self) -> &Arc<Window> {
+        &self.window
+    }
+    /// Tests: the device reads as lost from now on, as after the backend reports it.
+    #[cfg(feature = "test-support")]
+    pub fn lose_device(&self) {
+        self.device_lost
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    /// The pack builds still running, for the renderer that replaces this one
+    /// (`adopt_pack_builds`): the one loading is cancelled first. This renderer then drops
+    /// without waiting for any (graphics device recovery must not wait on the driver).
+    pub fn take_pack_builds(&mut self) -> PackBuilds {
+        self.pack_loading = None;
+        PackBuilds(self.retired_pack_builds.take())
+    }
+    /// Keeps the pack builds another renderer handed over (`take_pack_builds`): joined as they
+    /// end, and all of them before this renderer drops.
+    pub fn adopt_pack_builds(&mut self, builds: PackBuilds) {
+        for thread in builds.0 {
+            self.retired_pack_builds.retire(thread);
+        }
     }
     /// Drops the running shader pack.
     pub fn drop_shader_packs(&mut self) {

@@ -2555,8 +2555,6 @@ impl Renderer {
             tone_curve_ran: false,
             #[cfg(feature = "test-support")]
             pack_loads: 0,
-            #[cfg(feature = "test-support")]
-            pack_build_token: Arc::default(),
             pack_entity_rest: Vec::new(),
             cloud_bindings,
             pack_weather: None,

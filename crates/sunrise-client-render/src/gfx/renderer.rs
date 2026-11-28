@@ -434,9 +434,6 @@ pub struct Renderer {
     /// Tests: how many shader pack builds `load_shader_pack` started.
     #[cfg(feature = "test-support")]
     pub(crate) pack_loads: u64,
-    /// Tests: held by every shader pack build thread while it runs (`pack_build_watch`).
-    #[cfg(feature = "test-support")]
-    pub(crate) pack_build_token: Arc<()>,
     /// The entity vertices Sunrise draws itself while a shader pack draws the others.
     pub(crate) pack_entity_rest: Vec<Vertex>,
     /// Set 1 of the cloud pipeline, for a shader pack's `gbuffers_clouds`.
@@ -566,13 +563,18 @@ impl Drop for Renderer {
     /// or discard a frame on a lost device and keeps that frame acquired, and destroying the
     /// swapchain under an acquired frame panics (while a panic unwinds, an abort).
     ///
-    /// A shader pack still building (the one loading, and any cancelled before it ended) is
-    /// waited for first: its thread holds the device and may be inside the driver's compiler,
-    /// which must not still run once the device goes or the process exits (#6721).
+    /// Otherwise a shader pack still building (the one loading, cancelled here, and any cancelled
+    /// before) is waited for first: its thread holds the device and may be inside the driver's
+    /// compiler, which must not still run once the device goes or the process exits (#6721). The
+    /// wait is for the programs being compiled then (`RetiredPackBuilds`). A lost device's
+    /// builds are not waited for: recovery hands them to the next renderer
+    /// (`take_pack_builds`), which waits for them when it drops.
     fn drop(&mut self) {
         self.pack_loading = None;
-        self.retired_pack_builds.join_all();
         if !self.device_lost() {
+            #[cfg(feature = "test-support")]
+            self.retired_pack_builds.watch.release();
+            self.retired_pack_builds.join_all();
             return;
         }
         std::mem::forget(self.surface.take());
