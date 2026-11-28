@@ -221,7 +221,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
 
-        let extra = groups::level(self, &mut shared);
+        let extra = groups::level(self, &mut shared, detail.then_some(&mut details));
         let mut block_entities = hasher();
         let tickers = self.common.world.block_entities.ticker_slots();
         let mut be_count = 0u64;
