@@ -295,7 +295,7 @@ impl Renderer {
         let served = pack.hdr;
         #[cfg(feature = "test-support")]
         {
-            self.pack_loads += 1;
+            self.test_hooks.pack_loads += 1;
         }
         let clouds = self.cloud_bindings.clone();
         let mod_runtime = crate::mod_pipelines::pack_runtime_specs();
@@ -494,30 +494,6 @@ impl Renderer {
         self.pack_loading = None;
         self.pack_changed();
         true
-    }
-    /// Tests: how many shader pack builds `load_shader_pack` started.
-    #[cfg(feature = "test-support")]
-    pub fn shader_pack_loads(&self) -> u64 {
-        self.pack_loads
-    }
-    /// Tests: whether the last real frame ran Sunrise's tone curve.
-    #[cfg(feature = "test-support")]
-    pub fn tone_curve_ran(&self) -> bool {
-        self.tone_curve_ran
-    }
-    /// Tests: every scaled world target fails from now on, as one out of video memory does, so
-    /// the world draws at the window's size without a shader pack's passes.
-    #[cfg(feature = "test-support")]
-    pub fn fail_scaled_targets(&mut self, fail: bool) {
-        self.world_post.fail_targets = fail;
-    }
-    /// Tests: whether a pack `load_shader_pack` started is still building (`poll_shader_pack`
-    /// has nothing to run yet).
-    #[cfg(feature = "test-support")]
-    pub fn shader_pack_building(&self) -> bool {
-        self.pack_loading
-            .as_ref()
-            .is_some_and(|l| !l.thread.is_finished())
     }
     /// Drops the running shader pack.
     pub fn drop_shader_packs(&mut self) {

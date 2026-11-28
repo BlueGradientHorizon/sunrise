@@ -1238,7 +1238,7 @@ impl crate::game::ClientGame<'_> {
                             &mut self.client.native_shaders.pick_hdr.borrow_mut(),
                         );
                         #[cfg(test)]
-                        self.client.native_shaders.loaded_log.clone_from(&log);
+                        renderer.test_hooks.loaded_log.clone_from(&log);
                         for line in log {
                             log::warn!("shader pack {name}: {line}");
                         }
