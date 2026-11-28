@@ -34,7 +34,7 @@ pub(super) fn pack(
 
 /// The game's frames up to the loader, as `render_with_hooks` runs them: the frame follows the
 /// pick, then the loader runs.
-pub(super) fn loader_frame(game: &mut crate::game::ClientGame<'_>) {
+fn loader_frame(game: &mut crate::game::ClientGame<'_>) {
     let sky = sunrise_level::environment::Sky::default();
     let camera = glam::DVec3::new(0.5, 65.5, 0.5);
     game.follow_frame();
