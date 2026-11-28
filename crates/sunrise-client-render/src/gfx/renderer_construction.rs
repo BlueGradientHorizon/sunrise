@@ -2544,6 +2544,7 @@ impl Renderer {
             hdr_driver,
             pack_post: None,
             pack_loading: None,
+            retired_pack_builds: Default::default(),
             pack_generation: 0,
             pass_timing: false,
             pass_detail: false,
@@ -2554,6 +2555,8 @@ impl Renderer {
             tone_curve_ran: false,
             #[cfg(feature = "test-support")]
             pack_loads: 0,
+            #[cfg(feature = "test-support")]
+            pack_build_token: Arc::default(),
             pack_entity_rest: Vec::new(),
             cloud_bindings,
             pack_weather: None,

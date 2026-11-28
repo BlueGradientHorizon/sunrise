@@ -216,6 +216,8 @@ impl Renderer {
         label: String,
         started: std::time::Instant,
     ) {
+        // Builds cancelled earlier that have ended since: their threads go here.
+        self.retired_pack_builds.reap();
         let device = self.device.clone();
         let queue = self.queue.clone();
         let adapter = self.adapter.clone();
@@ -315,10 +317,16 @@ impl Renderer {
             // The ids come back with it, for `install_shader_pack`.
             (post, block_ids)
         };
+        #[cfg(feature = "test-support")]
+        let token = self.pack_build_token.clone();
         // A pack is not the game's code: a panic building it turns the pack off (#3525).
         let thread = std::thread::Builder::new()
             .name("Shader pack".into())
-            .spawn(move || crate::crash::contain(build));
+            .spawn(move || {
+                #[cfg(feature = "test-support")]
+                let _token = token;
+                crate::crash::contain(build)
+            });
         match thread {
             Ok(thread) => {
                 // The last pack doesn't draw this dimension meanwhile.
@@ -326,10 +334,11 @@ impl Renderer {
                 self.pack_post = None;
                 self.pack_loading = Some(PackLoading {
                     dimension,
-                    thread,
+                    cancel,
+                    thread: Some(thread),
+                    retired: self.retired_pack_builds.clone(),
                     label,
                     started,
-                    _cancel: CancelOnDrop(cancel),
                     draws: draws_sections,
                     served,
                 });
@@ -369,11 +378,12 @@ impl Renderer {
         std::time::Instant,
         std::result::Result<Option<(Vec<String>, Vec<String>)>, pack_post::Refused>,
     )> {
-        if !self.pack_loading.as_ref()?.thread.is_finished() {
+        if !self.pack_loading.as_ref()?.thread.as_ref()?.is_finished() {
             return None;
         }
-        let loading = self.pack_loading.take()?;
-        let (built, block_ids) = match loading.thread.join() {
+        let mut loading = self.pack_loading.take()?;
+        let thread = loading.thread.take()?;
+        let (built, block_ids) = match thread.join() {
             Ok(Ok(built)) => built,
             // A pack that doesn't run keeps no ids.
             Ok(Err(panic)) => (
@@ -393,7 +403,8 @@ impl Renderer {
         };
         self.pack_served = loading.served;
         let report = self.install_shader_pack(loading.dimension, built.map(Some), block_ids);
-        Some((loading.dimension, loading.label, loading.started, report))
+        let label = std::mem::take(&mut loading.label);
+        Some((loading.dimension, label, loading.started, report))
     }
     /// Drops the pack still building for another served answer of Sunrise's HDR than `served`
     /// (`Post::hdr`): whatever it ends in, success or refusal, is for a load nobody wants any
@@ -434,7 +445,14 @@ impl Renderer {
     pub fn shader_pack_building(&self) -> bool {
         self.pack_loading
             .as_ref()
-            .is_some_and(|l| !l.thread.is_finished())
+            .and_then(|l| l.thread.as_ref())
+            .is_some_and(|t| !t.is_finished())
+    }
+    /// Tests: counts the shader pack build threads still running, also once the renderer is
+    /// gone: `strong_count` is their number, plus one while the renderer lives.
+    #[cfg(feature = "test-support")]
+    pub fn pack_build_watch(&self) -> std::sync::Weak<()> {
+        Arc::downgrade(&self.pack_build_token)
     }
     /// Drops the running shader pack.
     pub fn drop_shader_packs(&mut self) {

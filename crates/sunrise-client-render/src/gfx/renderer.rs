@@ -414,6 +414,8 @@ pub struct Renderer {
     pub(crate) pack_post: Option<(i32, Option<pack_post::PackPost>)>,
     /// A `shaders/` pack whose pipelines build on a thread of their own (`load_shader_pack`).
     pub(crate) pack_loading: Option<PackLoading>,
+    /// Pack builds dropped before they ended, joined before the renderer goes.
+    pub(crate) retired_pack_builds: super::RetiredPackBuilds,
     /// Counts shader packs loaded, switched or turned off (`ShaderPackState::generation`).
     pub(crate) pack_generation: u32,
     /// Time the shader pack's passes on the GPU (F3, or a capture made with `--gpu`).
@@ -432,6 +434,9 @@ pub struct Renderer {
     /// Tests: how many shader pack builds `load_shader_pack` started.
     #[cfg(feature = "test-support")]
     pub(crate) pack_loads: u64,
+    /// Tests: held by every shader pack build thread while it runs (`pack_build_watch`).
+    #[cfg(feature = "test-support")]
+    pub(crate) pack_build_token: Arc<()>,
     /// The entity vertices Sunrise draws itself while a shader pack draws the others.
     pub(crate) pack_entity_rest: Vec<Vertex>,
     /// Set 1 of the cloud pipeline, for a shader pack's `gbuffers_clouds`.
@@ -560,7 +565,13 @@ impl Drop for Renderer {
     /// Once the device is lost, the window's surfaces are left alive: wgpu refuses to present
     /// or discard a frame on a lost device and keeps that frame acquired, and destroying the
     /// swapchain under an acquired frame panics (while a panic unwinds, an abort).
+    ///
+    /// A shader pack still building (the one loading, and any cancelled before it ended) is
+    /// waited for first: its thread holds the device and may be inside the driver's compiler,
+    /// which must not still run once the device goes or the process exits (#6721).
     fn drop(&mut self) {
+        self.pack_loading = None;
+        self.retired_pack_builds.join_all();
         if !self.device_lost() {
             return;
         }

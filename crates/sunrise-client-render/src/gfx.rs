@@ -1036,24 +1036,34 @@ mod sprite_upload_tests;
 #[cfg(test)]
 mod shadow_tests;
 
+#[cfg(test)]
+mod pack_build_retire_tests;
+
+/// The thread a `shaders/` pack builds on (`Renderer::load_shader_pack`): the built pack (or why
+/// it can't run) and its block ids, or the panic that stopped it.
+pub(crate) type PackBuild = std::thread::JoinHandle<
+    std::result::Result<
+        (
+            std::result::Result<pack_post::PackPost, pack_post::Refused>,
+            Vec<i32>,
+        ),
+        String,
+    >,
+>;
+
 /// A `shaders/` pack building on its own thread (`Renderer::load_shader_pack`): the dimension it
 /// is for, the thread (a panic in it contained), and what the game named it with and when.
 /// Dropping it (another pack, none, or another dimension) cancels the build: the thread stops at
-/// the next program instead of compiling the rest for nothing.
+/// the next program instead of compiling the rest for nothing, and goes to the renderer's
+/// [`RetiredPackBuilds`] until it ends, so it never outlives the renderer.
 pub(crate) struct PackLoading {
     dimension: i32,
-    /// Held to be dropped with it: that cancels the build.
-    _cancel: CancelOnDrop,
-    #[allow(clippy::type_complexity)]
-    thread: std::thread::JoinHandle<
-        std::result::Result<
-            (
-                std::result::Result<pack_post::PackPost, pack_post::Refused>,
-                Vec<i32>,
-            ),
-            String,
-        >,
-    >,
+    /// Set when it drops: `PackPost::new` checks it per program.
+    cancel: Arc<std::sync::atomic::AtomicBool>,
+    /// `None` once `poll_shader_pack` joined it.
+    thread: Option<PackBuild>,
+    /// Where the thread goes when this drops before it was joined.
+    retired: RetiredPackBuilds,
     label: String,
     started: std::time::Instant,
     /// What its terrain and shadow programs will draw from the game's sections, as the built
@@ -1062,6 +1072,54 @@ pub(crate) struct PackLoading {
     draws: PackDraws,
     /// Sunrise's HDR as served to it (`Post::hdr`).
     served: Option<sunrise_shaders::Tonemap>,
+}
+
+impl Drop for PackLoading {
+    fn drop(&mut self) {
+        self.cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            self.retired.retire(thread);
+        }
+    }
+}
+
+/// Pack builds cancelled before they ended (`PackLoading` dropped): each still holds the device
+/// while the driver finishes the programs it was compiling. The renderer joins the ended ones when
+/// it starts another build, and every one before it drops, so no build still runs in the driver
+/// once the renderer (and, at exit, the process) is gone.
+#[derive(Clone, Default)]
+pub(crate) struct RetiredPackBuilds(Arc<std::sync::Mutex<Vec<PackBuild>>>);
+
+impl RetiredPackBuilds {
+    fn retire(&self, thread: PackBuild) {
+        self.lock().push(thread);
+    }
+    /// Joins the builds that ended; the others are kept.
+    pub(crate) fn reap(&self) {
+        let ended: Vec<PackBuild> = {
+            let mut builds = self.lock();
+            let (ended, running) = builds.drain(..).partition(|t| t.is_finished());
+            *builds = running;
+            ended
+        };
+        for thread in ended {
+            // A cancelled build's pack, refusal or panic: nobody wants it any more.
+            let _ = thread.join();
+        }
+    }
+    /// Waits for every build to end. A cancelled build stops at its next program.
+    pub(crate) fn join_all(&self) {
+        let builds = std::mem::take(&mut *self.lock());
+        for thread in builds {
+            let _ = thread.join();
+        }
+    }
+    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<PackBuild>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 }
 
 /// A running `shaders/` pack's block ids (`Renderer::pack_block_ids`).
@@ -1096,14 +1154,5 @@ impl PackLoading {
             shadow,
             sections: atlas && (programs || post.water.is_some()) || shadow,
         }
-    }
-}
-
-/// Sets its flag when dropped: `PackLoading`'s cancel, which `PackPost::new` checks per program.
-struct CancelOnDrop(std::sync::Arc<std::sync::atomic::AtomicBool>);
-
-impl Drop for CancelOnDrop {
-    fn drop(&mut self) {
-        self.0.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
