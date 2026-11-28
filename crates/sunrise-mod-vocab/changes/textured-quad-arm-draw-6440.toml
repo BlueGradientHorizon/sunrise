@@ -1,3 +1,0 @@
-ids = ["method:BlockEntityDrawContext::textured_quad"]
-why = """BlockEntityDrawContext::textured_quad returns false, appending nothing, in a first-person arm draw (render_arm) as it already did in a first-person hand draw (render_hand) (#6440). The arm's draw joins the first-person hand's vertices, which Sunrise's hand pass and a shader pack's gbuffers_hand draw from the shared atlas, so its textured quads showed the atlas instead of their texture. The arm's other draws (quad, cube, block, item) are unchanged."""
-migrate = """A render_arm listener that drew textured_quad gets false and nothing drawn: draw the texture from a block entity or mob draw instead."""
