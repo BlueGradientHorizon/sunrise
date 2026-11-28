@@ -62,8 +62,14 @@ fn a_packs_build_ends_with_its_renderer() {
         let sky = sunrise_level::environment::Sky::default();
         let camera = glam::DVec3::new(0.5, 65.5, 0.5);
         // The first frame turns the resource packs' material maps on and reloads them; the
-        // next starts the pack's build, held before its first program.
-        for _ in 0..2 {
+        // next starts the pack's identity scan (Iris compatibility on Auto), and the first frame
+        // that finds it landed starts the pack's build, held before its first program.
+        let deadline = std::time::Instant::now() + ENDS_WITHIN;
+        while watch.running() == 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the pack's build did not start"
+            );
             game.shader_pack_inputs(camera, camera, 0.0, &sky);
         }
         assert!(game.client.pack_ids.is_some(), "the pack loads");

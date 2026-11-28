@@ -1,20 +1,11 @@
 //! The threads `shaders/` packs build on (`Renderer::load_shader_pack`), once nobody waits for
 //! their pack: each holds the device while the driver finishes the programs it was compiling, so
 //! it is joined before the renderer drops, and handed on when another renderer takes over.
-use super::pack_post;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-/// The thread a `shaders/` pack builds on: the built pack (or why it can't run) and its block
-/// ids, or the panic that stopped it.
-pub(crate) type PackBuild = std::thread::JoinHandle<
-    std::result::Result<
-        (
-            std::result::Result<pack_post::PackPost, pack_post::Refused>,
-            Vec<i32>,
-        ),
-        String,
-    >,
->;
+/// The thread a `shaders/` pack builds on: what it builds (`PackBuilt`), or the panic that
+/// stopped it.
+pub(crate) type PackBuild = std::thread::JoinHandle<std::result::Result<super::PackBuilt, String>>;
 
 /// Where a pack build runs: its device's lost flag (`Renderer::device_lost`), and in tests the
 /// watch of the renderer that started it.

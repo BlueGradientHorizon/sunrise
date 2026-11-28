@@ -35,6 +35,7 @@ fn thread() -> (PackBuild, mpsc::Sender<()>) {
                 notes: Vec::new(),
             }),
             Vec::new(),
+            None,
         ))
     });
     (thread, release)
