@@ -15,10 +15,12 @@ white, and a pass written for SDR alone breaks it, mostly without any test faili
 | HDR on, otherwise | `Rgba16Unorm`, or 8-bit | the picture clipped at 1, with HDR's marks in alpha |
 
 On the float frame Sunrise's own light reaches several times paper white, the sun the most, and a served pack may
-write any value half float holds. It's stored in vanilla's gamma (the 2.2 power), as the other frames are: Sunrise
-encodes the pack's linear light so, and holds the encoded value, after the 2.2 power, at half float's largest, 65504.
-`FrameRequest`'s `linear_blend` is to store linear light instead (nothing asks for it outside tests yet), so a pass
-doesn't hard-code the gamma.
+write any value half float holds. It's stored in vanilla's gamma (the 2.2 power), as the other frames are. A served
+pack's `final` writes linear light, and the translated fragment's first output is encoded after the pack's `main`
+(`LINEAR_ENCODE` in `sunrise-shaders`; a pack without a `final` goes through the copy pass, which encodes the same
+way): a negative or NaN channel is 0, then the 2.2 power, held at half float's largest, 65504, so a pass doesn't
+hard-code the gamma and the pack never does.
+`FrameRequest`'s `linear_blend` is to store linear light instead (nothing asks for it outside tests yet).
 
 ## Where a pass goes
 
