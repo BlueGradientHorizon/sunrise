@@ -731,7 +731,7 @@ pub mod tests {
         use sunrise_core::geometry::Vec3;
         with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO));
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
             test(game, player);
@@ -920,7 +920,7 @@ pub mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap());
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)));
             for z in [8, 12] {
                 game.world.set(0, 63, z, stone).unwrap();
             }

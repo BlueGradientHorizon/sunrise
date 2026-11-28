@@ -66,7 +66,7 @@ impl crate::game::ServerGame<'_> {
                     Some(self.common.pack.assets.registry),
                 )
                 .ok_or_else(stale)?;
-                sunrise_sim::mobs::armor::prepare(&new, &self.common.motion.attributes);
+                sunrise_sim::mobs::armor::prepare(&new, self.common.motion.attributes());
                 self.resolve_loaded_profession(&mut new);
                 entity_nbt::read_mob_variants(&mut new, &tag, self.world_variants());
                 let unresolved = self

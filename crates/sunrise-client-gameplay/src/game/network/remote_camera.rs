@@ -597,14 +597,14 @@ impl ClientGame<'_> {
         let max_health = self
             .common
             .motion
-            .attributes
+            .attributes()
             .id("minecraft:max_health")
             .and_then(|attr| self.remote_attribute(mob_id, attr))
             .map_or(m.attrs.max_health, |v| v as f32);
         let armor = self
             .common
             .motion
-            .attributes
+            .attributes()
             .id("minecraft:armor")
             .and_then(|attr| self.remote_attribute(mob_id, attr))
             .map_or(finalize::value(m, Attr::Armor) as i32, |v| v.floor() as i32);
@@ -808,7 +808,7 @@ impl ClientGame<'_> {
         let movement_speed = self
             .common
             .motion
-            .attributes
+            .attributes()
             .id("minecraft:movement_speed")
             .and_then(|attr| self.remote_attribute(m.id as i32, attr))
             .unwrap_or(if m.attrs.speed > 0.0 {
@@ -1560,7 +1560,7 @@ impl ClientGame<'_> {
     }
 
     fn remote_entity_living_values(&self, id: i32) -> (f32, f64) {
-        let catalog = &self.common.motion.attributes;
+        let catalog = self.common.motion.attributes();
         let value = |name: &str, default: f64| {
             catalog
                 .id(name)
@@ -1575,7 +1575,7 @@ impl ClientGame<'_> {
 
     /// Returns synced or type-default scale and camera distance through LivingEntity.sanitizeScale.
     pub(in crate::game::client_side) fn living_camera_values(&self, m: &Mob) -> (f32, f64) {
-        let catalog = &self.common.motion.attributes;
+        let catalog = self.common.motion.attributes();
         let value = |name: &str, default: f64| {
             catalog
                 .id(name)

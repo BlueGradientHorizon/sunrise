@@ -1,6 +1,48 @@
 use super::*;
 
 #[test]
+fn prepared_health_load_validates_float_schema() {
+    let root = tempfile::tempdir().unwrap();
+    let types = ["minecraft:fall", "minecraft:stalagmite", "minecraft:starve"].map(|id| {
+        serde_json::json!({
+            "id": id,
+            "message_id": "test",
+            "exhaustion": "00000000",
+            "scaling": "never",
+            "effects": "hurt",
+            "death_message_type": "default",
+        })
+    });
+    fs::write(
+        root.path().join("damage-catalog.json"),
+        serde_json::json!({
+            "data_version": sunrise_core::version::DATA_VERSION,
+            "types": types,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let schema = root.path().join("player-float-ids.json");
+    for (absorption, message) in [
+        (7, "duplicate synchronized field ID 7"),
+        (255, "reserved synchronized field ID 255"),
+    ] {
+        fs::write(
+            &schema,
+            format!(r#"{{"health":7,"absorption":{absorption}}}"#),
+        )
+        .unwrap();
+        let error = HealthResources::load(root.path())
+            .err()
+            .unwrap()
+            .to_string();
+        assert_eq!(error, format!("{}: {message}", schema.display()));
+    }
+    fs::write(&schema, r#"{"health":7,"absorption":254}"#).unwrap();
+    assert!(HealthResources::load(root.path()).is_ok());
+}
+
+#[test]
 #[ignore = "daily"]
 fn datapack_damage_new_world_drops_a_removed_resource_root_definition() {
     use sunrise_world::loot::PackOverlay;
@@ -115,7 +157,7 @@ fn datapack_damage_uses_custom_identity_armor_fire_and_reloaded_tags() {
         .unwrap();
     let id = open.damage.id("demo:heated_air").unwrap();
     let player = || {
-        let mut p = PlayerMotion::new(&resources, sunrise_core::geometry::Vec3::ZERO).unwrap();
+        let mut p = PlayerMotion::new(&resources, sunrise_core::geometry::Vec3::ZERO);
         p.entity_id = 9701;
         let key = p.attributes.key("minecraft:armor").unwrap();
         let armor = p.attributes.get_instance(Some(key)).unwrap().unwrap();
