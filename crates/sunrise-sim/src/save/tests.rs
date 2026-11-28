@@ -1059,9 +1059,9 @@ fn work_shared_out_is_all_done_in_order_when_no_helper_can_start() {
 }
 
 /// `RegionFile.getVersion` writes a chunk with the version
-/// `region-file-compression` selected: `compress_records` asks
-/// `Compression::selected()` for every record it encodes, so a server told
-/// to write lz4, gzip or uncompressed regions does
+/// `region-file-compression` selected: `compress_records` snapshots
+/// `Compression::selected()` once per batch (`compression_pool.rs:243`), so a
+/// server told to write lz4 or uncompressed regions does
 /// (`RegionFileVersion.configure`).
 #[test]
 #[ignore = "daily"]
@@ -1100,8 +1100,6 @@ fn a_chunk_is_written_with_the_selected_region_version() {
         // The bytes are that codec's, and read back as the chunk.
         assert_eq!(written.nbt(Limits::default()).unwrap(), *tag);
     }
-    // Leave the default behind for the rest of this process's tests.
-    assert!(Compression::configure("deflate"));
 }
 
 #[test]
