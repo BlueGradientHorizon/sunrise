@@ -82,3 +82,22 @@ fn a_lifted_menu_stays_open_until_the_owner_is_written() {
     owner.restore(None);
     assert!(!owner.is_open(), "an undo ends the lift too");
 }
+
+#[test]
+fn reads_keep_a_lift_and_the_next_write_ends_it() {
+    let mut owner = MenuOwner::<Option<u32>>::default();
+    *owner = Some(7);
+    let stamp = owner.stamp();
+    assert_eq!(owner.lift_if(|_| true), Some(7));
+    // Shared reads (what a mod's `slot_holds` does) leave the lift standing.
+    assert!(owner.is_none());
+    assert!(owner.as_ref().is_none());
+    assert!(owner.is_open());
+    // Putting it back is an ordinary write: the menu is open through the value, the
+    // lift is over, and the stamp moved on.
+    *owner = Some(7);
+    assert!(owner.is_open());
+    assert_ne!(owner.stamp(), stamp);
+    let _ = owner.take();
+    assert!(!owner.is_open(), "the earlier lift ended at the put-back");
+}
