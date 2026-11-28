@@ -390,7 +390,11 @@ impl Group {
     }
 }
 
-pub(super) fn level(game: &ServerGame<'_>, shared: &mut EntityGroups) -> String {
+pub(super) fn level(
+    game: &ServerGame<'_>,
+    shared: &mut EntityGroups,
+    details: Option<&mut String>,
+) -> String {
     let mut out = String::new();
     let items = game.common.res.items();
     hangings(game, shared, items).append(&mut out, "hangings");
@@ -399,7 +403,7 @@ pub(super) fn level(game: &ServerGame<'_>, shared: &mut EntityGroups) -> String 
     end_entities(game, shared, items, &mut out);
     server_projectiles(game, items, &mut out);
     seats(game).append(&mut out, "seats");
-    players(game, items).append(&mut out, "players");
+    players(game, items, details).append(&mut out, "players");
     memory::level(game, shared, items, &mut out);
     memory::server(game, items, &mut out);
     out.pop();
@@ -1294,81 +1298,164 @@ fn level_guests<'a>(
         .filter(move |g| g.placed && g.dimension == dim)
 }
 
-fn players(game: &ServerGame<'_>, items: &Items) -> Group {
+struct PlayerRow<'a> {
+    hash: &'a mut DefaultHasher,
+    detail: Option<&'a mut String>,
+}
+
+impl<'a> PlayerRow<'a> {
+    fn new(
+        hash: &'a mut DefaultHasher,
+        mut detail: Option<&'a mut String>,
+        id: u32,
+        name: &str,
+    ) -> Self {
+        if let Some(out) = &mut detail {
+            write!(out, "  p\tid={id}\tname={}", name.escape_debug()).unwrap();
+        }
+        Self { hash, detail }
+    }
+
+    fn finish(self) {
+        if let Some(detail) = self.detail {
+            detail.push('\n');
+        }
+    }
+
+    fn component(&mut self, label: &str, hash: impl Fn(&mut DefaultHasher)) {
+        hash(self.hash);
+        if let Some(detail) = &mut self.detail {
+            let mut part = DefaultHasher::new();
+            hash(&mut part);
+            write!(detail, "\t{label}={:016x}", part.finish()).unwrap();
+        }
+    }
+
+    fn value(&mut self, label: &str, value: impl Hash + std::fmt::Debug) {
+        value.hash(self.hash);
+        if let Some(detail) = &mut self.detail {
+            write!(detail, "\t{label}={value:?}").unwrap();
+        }
+    }
+
+    fn statistics(&mut self, values: &sunrise_gameplay_common::stats::StatValues) {
+        self.component("statistics", |h| values.hash(h));
+        if let Some(detail) = &mut self.detail {
+            for (category, stats) in values {
+                for (name, value) in stats.iter().filter(|&(_, &value)| value != 0) {
+                    write!(
+                        detail,
+                        "\tstat:{}/{}={value}",
+                        category.escape_debug(),
+                        name.escape_debug()
+                    )
+                    .unwrap();
+                }
+            }
+        }
+    }
+}
+
+fn players(game: &ServerGame<'_>, items: &Items, mut details: Option<&mut String>) -> Group {
     let mut group = Group::default();
     let c = &game.common;
     if let Some(p) = c.player.as_ref().filter(|_| local_player_here(game)) {
         let id = p.entity_id as u32;
-        let h = group.row(id, JoinSeq::UNJOINED);
-        vec3(h, p.position);
-        game.saved_player_uuid().hash(h);
+        let mut row = PlayerRow::new(
+            group.row(id, JoinSeq::UNJOINED),
+            details.as_deref_mut(),
+            id,
+            "local",
+        );
+        row.value(
+            "position",
+            (
+                p.position.x.to_bits(),
+                p.position.y.to_bits(),
+                p.position.z.to_bits(),
+            ),
+        );
+        row.value("uuid", game.saved_player_uuid());
         let food = &p.health.food;
-        (
-            rotation([c.yaw, c.pitch]),
-            p.health.health().to_bits(),
-            p.health.absorption().to_bits(),
-            food.food,
-            food.saturation.to_bits(),
-            c.experience.level,
-            c.experience.progress.to_bits(),
-            c.experience.total,
-            c.selected,
-            c.mode_id(),
-            c.riding,
-        )
-            .hash(h);
-        Some(motion_values(p)).hash(h);
+        row.value("rotation", rotation([c.yaw, c.pitch]));
+        row.value(
+            "vitals",
+            (
+                p.health.health().to_bits(),
+                p.health.absorption().to_bits(),
+                food.food,
+                food.saturation.to_bits(),
+            ),
+        );
+        row.value(
+            "experience",
+            (
+                c.experience.level,
+                c.experience.progress.to_bits(),
+                c.experience.total,
+            ),
+        );
+        row.value("selected_and_mode", (c.selected, c.mode_id()));
+        row.value("vehicle", c.riding);
+        row.value("motion", Some(motion_values(p)));
         player_items(
-            h,
+            &mut row,
             (&c.inventory, &c.armor, c.offhand.as_ref(), &c.equipment),
             items,
         );
-        bodies::slots(h, game.server.ender_items.iter(), items);
-        bodies::slots(h, c.craft_grid.iter(), items);
-        stack(h, c.carried.as_ref(), items);
-        (
-            c.player_score,
-            c.level.xp_seed,
-            c.sleeping,
-            c.sleep_timer,
-            c.spawn.map(|v| vec_bits([v.x, v.y, v.z])),
-            c.using,
-            c.use_duration,
-            c.use_delay,
-            game.server.attack_ticks,
-            game.server.shield_cooldown,
-            game.server.xp_delay,
-        )
-            .hash(h);
-        respawn(h, game.server.respawn_config.as_ref());
-        cooldowns(h, &c.cooldowns);
-        c.stats.values.hash(h);
-        player_body(h, p);
-        effects(h, &c.potions.effects);
-        entity_values(
-            game,
-            h,
-            id,
-            Some(Target::Player),
-            Shared {
-                fire: Some(p.fire_ticks),
-                air: Some(p.air),
-                active_portal: Some(c.portal_player),
-                invulnerable_time: Some(p.health.invulnerable_time),
-                ticks_frozen: Some(p.ticks_frozen),
-                size: p.size_answer,
-                ground: Some(p.ground.on_ground),
-                collisions: player_collisions(p),
-                ..Shared::default()
-            },
+        row.component("ender_chest", |h| {
+            bodies::slots(h, game.server.ender_items.iter(), items)
+        });
+        row.component("craft_grid", |h| {
+            bodies::slots(h, c.craft_grid.iter(), items)
+        });
+        row.component("carried", |h| stack(h, c.carried.as_ref(), items));
+        row.value("score_seed", (c.player_score, c.level.xp_seed));
+        row.value("sleep", (c.sleeping, c.sleep_timer));
+        row.value("spawn", c.spawn.map(|v| vec_bits([v.x, v.y, v.z])));
+        row.value("item_use", (c.using, c.use_duration, c.use_delay));
+        row.value(
+            "attack_shield_xp_delay",
+            (
+                game.server.attack_ticks,
+                game.server.shield_cooldown,
+                game.server.xp_delay,
+            ),
         );
+        row.component("respawn", |h| {
+            respawn(h, game.server.respawn_config.as_ref())
+        });
+        row.component("cooldowns", |h| cooldowns(h, &c.cooldowns));
+        row.statistics(&c.stats.values);
+        row.component("body", |h| player_body(h, p));
+        effects(&mut row, &c.potions.effects);
+        row.component("shared", |h| {
+            entity_values(
+                game,
+                h,
+                id,
+                Some(Target::Player),
+                Shared {
+                    fire: Some(p.fire_ticks),
+                    air: Some(p.air),
+                    active_portal: Some(c.portal_player),
+                    invulnerable_time: Some(p.health.invulnerable_time),
+                    ticks_frozen: Some(p.ticks_frozen),
+                    size: p.size_answer,
+                    ground: Some(p.ground.on_ground),
+                    collisions: player_collisions(p),
+                    ..Shared::default()
+                },
+            )
+        });
+        row.finish();
     }
     let mut guests: Vec<_> = level_guests(game).collect();
     guests.sort_unstable_by_key(|p| p.entity_id);
     for p in guests {
         let id = p.entity_id as u32;
         let h = group.row(id, JoinSeq::UNJOINED);
-        hash_guest(game, h, p, items);
+        hash_guest(game, h, p, items, details.as_deref_mut());
     }
     group
 }
@@ -1378,31 +1465,34 @@ fn hash_guest(
     h: &mut DefaultHasher,
     p: &sunrise_sim::lan::guest::Guest,
     items: &Items,
+    detail: Option<&mut String>,
 ) {
     let id = p.entity_id as u32;
-    p.uuid.hash(h);
-    (
-        vec_bits(p.position),
-        rotation([p.yaw, p.pitch]),
-        p.health.to_bits(),
-        p.motion
-            .as_deref()
-            .map(|m| m.health.absorption().to_bits())
-            .or_else(|| p.saved_absorption.map(f32::to_bits)),
-        p.food,
-        p.saturation.to_bits(),
-        p.xp_level,
-        p.xp_progress.to_bits(),
-        p.xp_total,
-        p.selected,
-        p.game_mode,
-        p.vehicle,
-    )
-        .hash(h);
-    p.motion
-        .as_deref()
-        .map(motion_values)
-        .or_else(|| {
+    let mut row = PlayerRow::new(h, detail, id, &p.name);
+    row.value("uuid", p.uuid);
+    row.value("position", vec_bits(p.position));
+    row.value("rotation", rotation([p.yaw, p.pitch]));
+    row.value(
+        "vitals",
+        (
+            p.health.to_bits(),
+            p.motion
+                .as_deref()
+                .map(|m| m.health.absorption().to_bits())
+                .or_else(|| p.saved_absorption.map(f32::to_bits)),
+            p.food,
+            p.saturation.to_bits(),
+        ),
+    );
+    row.value(
+        "experience",
+        (p.xp_level, p.xp_progress.to_bits(), p.xp_total),
+    );
+    row.value("selected_and_mode", (p.selected, p.game_mode));
+    row.value("vehicle", p.vehicle);
+    row.value(
+        "motion",
+        p.motion.as_deref().map(motion_values).or_else(|| {
             p.loaded_body.map(|b| {
                 (
                     vec_bits(b.velocity),
@@ -1411,100 +1501,110 @@ fn hash_guest(
                     b.food_tick_timer,
                 )
             })
-        })
-        .hash(h);
+        }),
+    );
     player_items(
-        h,
+        &mut row,
         (&p.inventory, &p.armor, p.offhand.as_ref(), &p.equipment),
         items,
     );
-    bodies::slots(h, p.ender_items.iter(), items);
-    bodies::slots(h, p.craft_grid.iter(), items);
-    stack(h, p.carried.as_ref(), items);
-    stack(h, p.craft_result.as_ref(), items);
-    (
-        p.score,
-        p.xp_seed,
-        p.sleeping,
-        p.bed,
-        p.sleep_timer,
-        p.spawn.map(vec_bits),
-        p.sneaking,
-        p.sprinting,
-        p.fall_flying,
-        p.pose().id(),
-        p.dead,
-    )
-        .hash(h);
-    p.respawn_elsewhere
-        .as_ref()
-        .map(|(dim, at, yaw, pitch, forced)| (dim, at, rotation([*yaw, *pitch]), forced))
-        .hash(h);
+    row.component("ender_chest", |h| {
+        bodies::slots(h, p.ender_items.iter(), items)
+    });
+    row.component("craft_grid", |h| {
+        bodies::slots(h, p.craft_grid.iter(), items)
+    });
+    row.component("carried", |h| stack(h, p.carried.as_ref(), items));
+    row.component("craft_result", |h| stack(h, p.craft_result.as_ref(), items));
+    row.value("score_seed", (p.score, p.xp_seed));
+    row.value("sleep", (p.sleeping, p.bed, p.sleep_timer));
+    row.value("spawn", p.spawn.map(vec_bits));
+    row.value(
+        "movement_flags",
+        (
+            p.sneaking,
+            p.sprinting,
+            p.fall_flying,
+            p.pose().id(),
+            p.dead,
+        ),
+    );
+    row.value(
+        "respawn",
+        p.respawn_elsewhere
+            .as_ref()
+            .map(|(dim, at, yaw, pitch, forced)| (dim, at, rotation([*yaw, *pitch]), forced)),
+    );
     let a = p.abilities;
-    (
-        a.invulnerable,
-        a.flying,
-        a.may_fly,
-        a.instabuild,
-        a.may_build,
-        rotation([a.flying_speed, a.walking_speed]),
-    )
-        .hash(h);
-    effects(h, &p.effects);
+    row.value(
+        "abilities",
+        (
+            a.invulnerable,
+            a.flying,
+            a.may_fly,
+            a.instabuild,
+            a.may_build,
+            rotation([a.flying_speed, a.walking_speed]),
+        ),
+    );
+    effects(&mut row, &p.effects);
     let motion = p.motion.as_deref();
-    if let Some(body) = motion {
-        player_body(h, body);
-    } else {
-        optional_tag(h, p.carried_attributes.as_ref());
-        p.loaded_body
-            .map(|b| (b.ticks_frozen, b.invulnerable, b.invulnerable_time))
-            .hash(h);
-    }
+    row.component("body", |h| {
+        if let Some(body) = motion {
+            player_body(h, body);
+        } else {
+            optional_tag(h, p.carried_attributes.as_ref());
+            p.loaded_body
+                .map(|b| (b.ticks_frozen, b.invulnerable, b.invulnerable_time))
+                .hash(h);
+        }
+    });
     let play = game
         .server
         .lan
         .as_ref()
         .and_then(|host| host.play.get(&p.conn));
-    play.is_some().hash(h);
+    row.value("guest_play", play.is_some());
     if let Some(play) = play {
-        (
-            play.using,
-            play.use_duration,
-            play.use_delay,
-            play.attack_ticks,
-            play.shield_cooldown,
-            play.xp_delay,
-            play.digging,
-            play.dig_start,
-            play.destroy_pos,
-            play.delayed,
-        )
-            .hash(h);
-        cooldowns(h, &play.cooldowns);
-        play.stats.values.hash(h);
-        bodies::slots(h, play.craft_grid.iter(), items);
+        row.value("item_use", (play.using, play.use_duration, play.use_delay));
+        row.value(
+            "attack_shield_xp_delay",
+            (play.attack_ticks, play.shield_cooldown, play.xp_delay),
+        );
+        row.value(
+            "digging",
+            (play.digging, play.dig_start, play.destroy_pos, play.delayed),
+        );
+        row.component("cooldowns", |h| cooldowns(h, &play.cooldowns));
+        row.statistics(&play.stats.values);
+        row.component("guest_play_craft_grid", |h| {
+            bodies::slots(h, play.craft_grid.iter(), items)
+        });
     }
-    entity_values(
-        game,
-        h,
-        id,
-        Some(Target::Guest(p.conn)),
-        Shared {
-            fire: motion
-                .map(|m| m.fire_ticks)
-                .or_else(|| p.loaded_body.map(|b| b.fire_ticks)),
-            air: motion
-                .map(|m| m.air)
-                .or_else(|| p.loaded_body.map(|b| b.air)),
-            active_portal: Some(play.map_or_else(PortalState::default, |play| play.portal)),
-            invulnerable_time: motion.map(|m| m.health.invulnerable_time),
-            ticks_frozen: motion.map(|m| m.ticks_frozen),
-            size: motion.and_then(|m| m.size_answer),
-            ground: Some(p.on_ground),
-            collisions: motion.map_or([None; 4], player_collisions),
-            ..Shared::default()
-        },
-    );
+    row.component("shared", |h| {
+        entity_values(
+            game,
+            h,
+            id,
+            Some(Target::Guest(p.conn)),
+            Shared {
+                fire: motion
+                    .map(|m| m.fire_ticks)
+                    .or_else(|| p.loaded_body.map(|b| b.fire_ticks)),
+                air: motion
+                    .map(|m| m.air)
+                    .or_else(|| p.loaded_body.map(|b| b.air)),
+                active_portal: Some(play.map_or_else(PortalState::default, |play| play.portal)),
+                invulnerable_time: motion.map(|m| m.health.invulnerable_time),
+                ticks_frozen: motion.map(|m| m.ticks_frozen),
+                size: motion.and_then(|m| m.size_answer),
+                ground: Some(p.on_ground),
+                collisions: motion.map_or([None; 4], player_collisions),
+                ..Shared::default()
+            },
+        )
+    });
+    row.finish();
 }
 
 fn respawn(
@@ -1570,22 +1670,37 @@ type PlayerItems<'a> = (
 );
 
 fn player_items(
-    h: &mut DefaultHasher,
+    row: &mut PlayerRow<'_>,
     (inventory, armor, offhand, extra): PlayerItems<'_>,
     items: &Items,
 ) {
-    inventory.len().hash(h);
-    for slot in inventory.iter().chain(armor).chain(extra.iter()) {
-        stack(h, slot.as_ref(), items);
-    }
-    stack(h, offhand, items);
+    row.component("inventory", |h| {
+        inventory.len().hash(h);
+        for slot in inventory {
+            stack(h, slot.as_ref(), items);
+        }
+    });
+    row.component("armor", |h| {
+        for slot in armor {
+            stack(h, slot.as_ref(), items);
+        }
+    });
+    row.component("equipment", |h| {
+        for slot in extra.iter() {
+            stack(h, slot.as_ref(), items);
+        }
+    });
+    row.component("offhand", |h| stack(h, offhand, items));
 }
 
-fn effects(h: &mut DefaultHasher, effects: &PlayerEffects) {
-    (effects.tick_count, effects.list.len()).hash(h);
-    for active in &effects.list {
-        effect(h, active);
-    }
+fn effects(row: &mut PlayerRow<'_>, effects: &PlayerEffects) {
+    row.value("effects_tick", effects.tick_count);
+    row.component("effects", |h| {
+        effects.list.len().hash(h);
+        for active in &effects.list {
+            effect(h, active);
+        }
+    });
 }
 
 fn effect(h: &mut DefaultHasher, active: &EffectInstance) {
@@ -1610,6 +1725,41 @@ fn effect(h: &mut DefaultHasher, active: &EffectInstance) {
 #[cfg(test)]
 mod tests {
     use super::{super::hasher, *};
+
+    #[test]
+    fn player_detail_preserves_hash_writes_and_lists_nonzero_stats() {
+        let values = sunrise_gameplay_common::stats::StatValues::from([(
+            "minecraft:custom".into(),
+            std::collections::BTreeMap::from([
+                ("minecraft:play_time".into(), 29),
+                ("minecraft:deaths".into(), 0),
+                ("minecraft:walk_one_cm".into(), 17),
+            ]),
+        )]);
+        let expected = {
+            let mut h = hasher();
+            (2u32, 4u32, 20i32, -1i32).hash(&mut h);
+            values.hash(&mut h);
+            h.finish()
+        };
+        let digest = |detail| {
+            let mut h = hasher();
+            let mut row = PlayerRow {
+                hash: &mut h,
+                detail,
+            };
+            row.value("first", 2u32);
+            row.value("rest", (4u32, 20i32, -1i32));
+            row.statistics(&values);
+            h.finish()
+        };
+        let mut detail = String::new();
+        assert_eq!(digest(None), expected);
+        assert_eq!(digest(Some(&mut detail)), expected);
+        assert!(detail.ends_with(
+            "\tstat:minecraft:custom/minecraft:play_time=29\tstat:minecraft:custom/minecraft:walk_one_cm=17"
+        ));
+    }
 
     #[test]
     fn seat_digest_preserves_boarding_order_but_ignores_edge_enumeration() {

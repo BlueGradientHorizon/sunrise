@@ -357,7 +357,7 @@ fn player_transit(game: &ServerGame<'_>, items: &Items) -> Group {
         )
             .hash(h);
         optional_tag(h, guest.saved.as_ref());
-        hash_guest(game, h, guest, items);
+        hash_guest(game, h, guest, items, None);
     }
     let displaced = &game.server.lan_displaced_players.0;
     displaced.len().hash(&mut group.hash);

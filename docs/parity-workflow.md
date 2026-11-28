@@ -211,7 +211,9 @@ Retained vehicles and passengers, saved entity memory, and portal state have the
 Groups prefixed with `server_` sample owners shared by the levels once, on the last level pass of each server tick.
 Their value is `-` on earlier level passes.
 `digest-sync U E S` on the dedicated console runs `sync_randoms` with `SUNRISE_TEST_SEEDS=1`.
-`SUNRISE_STATE_DIGEST_DETAIL=1` adds a raw line per typed entity and block entity.
+`SUNRISE_STATE_DIGEST_DETAIL=1` adds a raw line per typed entity, block entity and player. Player lines
+contain labelled values or component hashes and list non-zero statistics in key order. With details from both
+runs, the comparators print player component differences at the first tick where the `players` group differs.
 
 - `tools/state_digest_scene.py BINARY RESOURCES TEMPLATE OUT` runs a fixed dedicated-server scene and writes
   `OUT/digest.txt`. It freezes the server and steps a fixed number of ticks. `--generate` makes the forceloaded
