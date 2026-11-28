@@ -710,8 +710,9 @@ pub struct PackBinding {
     /// Preprocessor defines exposed while compiling the active shader pack when this pipeline
     /// is active: `(name, optional_value)`. `name` must be a valid GLSL identifier, neither
     /// `GL_`-prefixed nor `IRIS_FEATURE_`-prefixed (those answer the feature flags a pack lists,
-    /// and only the engine defines them), and `value`, when present, must be a non-empty
-    /// single-line token.
+    /// and only the engine defines them), nor `IS_IRIS` or `IRIS_VERSION` (the engine defines
+    /// those for a pack whose Iris compatibility is on), and `value`, when present, must be a
+    /// non-empty single-line token.
     /// Toggling active defines triggers at most one shader-pack reload.
     pub defines: Vec<(String, Option<String>)>,
     /// Optional depth target for non-shadow slots. See [`PackDepthTarget`] for attachment
@@ -787,8 +788,8 @@ impl PackBinding {
     }
 
     /// Validate GLSL identifier syntax and single-line define token rules on all declared
-    /// entries, and refuse the define names the engine owns (`GL_`, `IRIS_FEATURE_`). Called by
-    /// the engine during pipeline registration freeze.
+    /// entries, and refuse the define names the engine owns (`GL_`, `IRIS_FEATURE_`, `IS_IRIS`,
+    /// `IRIS_VERSION`). Called by the engine during pipeline registration freeze.
     pub fn validate_syntax(&self) -> Result<(), String> {
         for program in &self.programs {
             if !is_valid_pack_program_name(program) {
@@ -813,6 +814,12 @@ impl PackBinding {
                 return Err(format!(
                     "invalid pack define name {name:?}: IRIS_FEATURE_ names answer the feature \
                      flags a pack lists, and only the engine defines them"
+                ));
+            }
+            if name == "IS_IRIS" || name == "IRIS_VERSION" {
+                return Err(format!(
+                    "invalid pack define name {name:?}: the engine defines it for a pack whose \
+                     Iris compatibility is on"
                 ));
             }
             if let Some(val) = value
@@ -4827,6 +4834,8 @@ mod tests {
             "SUNRISE_HDR_TONEMAP_PACK",
             "IRIS_FEATURE_SSBO",
             "IRIS_FEATURE_",
+            "IS_IRIS",
+            "IRIS_VERSION",
         ] {
             assert!(
                 PackBinding::new()
@@ -4842,6 +4851,8 @@ mod tests {
             "SUNRISE_HDR",
             "SUNRISE_HDR_TONEMAP_PACK",
             "IRIS_FEATURE_SSBO",
+            "IS_IRIS",
+            "IRIS_VERSION",
         ] {
             assert!(
                 PackBinding::new()
@@ -4851,12 +4862,10 @@ mod tests {
                 "{reserved}"
             );
         }
-        assert_eq!(
-            PackBinding::new()
-                .define("SUNRISE_HDR_MOD")
-                .validate_syntax(),
-            Ok(())
-        );
+        // A longer name of the mod's own stays its.
+        for own in ["SUNRISE_HDR_MOD", "IS_IRIS_LIKE", "MY_IRIS_VERSION"] {
+            assert_eq!(PackBinding::new().define(own).validate_syntax(), Ok(()));
+        }
         for bad_val in [
             "",
             "   ",

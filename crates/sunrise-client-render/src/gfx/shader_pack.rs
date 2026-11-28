@@ -362,6 +362,23 @@ impl Renderer {
             }
         }
     }
+    /// Whether the pack `load_shader_pack` builds is built, waiting for `poll_shader_pack`.
+    pub fn shader_pack_built(&self) -> bool {
+        self.pack_loading
+            .as_ref()
+            .is_some_and(|l| l.thread.is_finished())
+    }
+    /// `poll_shader_pack`, unless the pack in the renderer is `stale`: loaded, or still
+    /// building, from inputs the game no longer wants (another Iris compatibility). Then it is
+    /// dropped first (`drop_shader_packs`), so a build already done is never installed, and
+    /// nothing comes back.
+    pub fn poll_shader_pack_unless(&mut self, stale: bool) -> Option<PackPoll> {
+        if stale {
+            self.drop_shader_packs();
+            return None;
+        }
+        self.poll_shader_pack()
+    }
     /// `load_shader_pack` found no thread to build its pack on: the pack is refused for
     /// `dimension`, as one that fails to build is (`install_shader_pack`), so it is not tried
     /// again every frame and its atlases go.
@@ -382,15 +399,7 @@ impl Renderer {
     /// The pack `load_shader_pack` builds, once its thread is done: it runs from now on, as
     /// `set_shader_pack` would run it. Its dimension, label, start and what `set_shader_pack`
     /// returns.
-    #[allow(clippy::type_complexity)]
-    pub fn poll_shader_pack(
-        &mut self,
-    ) -> Option<(
-        i32,
-        String,
-        std::time::Instant,
-        std::result::Result<Option<(Vec<String>, Vec<String>)>, pack_post::Refused>,
-    )> {
+    pub fn poll_shader_pack(&mut self) -> Option<PackPoll> {
         if !self.pack_loading.as_ref()?.thread.is_finished() {
             return None;
         }
@@ -655,6 +664,15 @@ impl Renderer {
         }
     }
 }
+
+/// A built pack as `Renderer::poll_shader_pack` gives it: its dimension, label, start, and what
+/// `set_shader_pack` returns.
+pub type PackPoll = (
+    i32,
+    String,
+    std::time::Instant,
+    std::result::Result<Option<(Vec<String>, Vec<String>)>, pack_post::Refused>,
+);
 
 /// The section origins' vertex attribute (`section_instance`).
 const INSTANCE_ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![5=>Float32x4];
