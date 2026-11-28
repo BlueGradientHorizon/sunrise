@@ -398,14 +398,17 @@ impl CustomRegistryFreezer {
         }
     }
 
+    /// Identity of the value type accepted by this registry's freezer.
     pub fn type_id(&self) -> TypeId {
         self.type_id
     }
 
+    /// Diagnostic name of the value type accepted by this registry's freezer.
     pub fn type_name(&self) -> &'static str {
         self.type_name
     }
 
+    /// Freeze the entries already checked against this registry's value type at registration.
     pub fn freeze(
         &self,
         slot: u32,
