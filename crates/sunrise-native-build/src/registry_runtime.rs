@@ -297,7 +297,6 @@ mod tests {
     fn stream_mirrors_compiler_messages_before_eof_and_preserves_raw_jsonl() {
         use std::io::Read;
         use std::sync::mpsc;
-        use std::time::Duration;
 
         struct GatedReader {
             first: Vec<u8>,
@@ -315,7 +314,7 @@ mod tests {
                     }
                     1 => {
                         self.ack
-                            .recv_timeout(Duration::from_secs(2))
+                            .try_recv()
                             .expect("compiler-message must be mirrored before stream EOF");
                         self.stage = 2;
                         &self.second
