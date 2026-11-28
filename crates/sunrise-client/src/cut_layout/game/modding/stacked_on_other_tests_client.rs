@@ -366,8 +366,7 @@ pub(crate) mod item_part_tests {
                 let mut body = sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
-                )
-                .unwrap();
+                );
                 body.entity_id = 7;
                 game.player = Some(body);
                 game.creative = false;
@@ -437,8 +436,7 @@ pub(crate) mod item_part_tests {
         let mut body = sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
-        )
-        .unwrap();
+        );
         body.entity_id = 7;
         game.player = Some(body);
         game.creative = false;
