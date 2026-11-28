@@ -128,6 +128,8 @@ READERS = {
     "sunrise-release-sign": [
         "tests/install_ps1_signature.ps1", "tools/ci/sign_native_build.sh", "tools/ci/sign_release.sh",
     ],
+    # The HDR extension's fixture pack, read and translated as the game loads it.
+    "sunrise-shaders": ["tools/fixtures/shaderpacks/hdr_extension"],
     "sunrise-server": [
         "crates/sunrise-theme/fonts", "crates/sunrise-theme/icons", "docs/api/server-reference.md",
     ],
