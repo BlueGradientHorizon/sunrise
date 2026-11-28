@@ -661,7 +661,7 @@ pub fn generate_test_hooks(root: &Path, out_dir: &Path) -> Result<Vec<PathBuf>, 
     } else {
         Catalog::load_tracked(root, &mut inputs)?
     };
-    dispatch_fixtures::generate_tracked(root, out_dir, &catalog, &mut inputs)?;
+    dispatch_fixtures::generate(root, out_dir, &catalog, &mut inputs)?;
     let code = hooks_source(&catalog)?;
     syn::parse_file(&code).map_err(|e| format!("generated Rust: {e}"))?;
     fs::write(out_dir.join("mod_api_generated.rs"), code).map_err(|e| e.to_string())?;

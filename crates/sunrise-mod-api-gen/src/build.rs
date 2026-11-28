@@ -130,7 +130,7 @@ fn generate_with_vocab(
 /// Generate the mod API's Part registration modules, returning watched source paths quietly.
 pub fn generate_api_parts(root: &Path, out_dir: &Path) -> Result<Vec<PathBuf>, String> {
     let mut inputs = Inputs::default();
-    let source = super::parts::registration_source_tracked(root, &mut inputs)?;
+    let source = super::parts::registration_source(root, &mut inputs)?;
     write_if_changed(out_dir.join("parts_registration_modules.rs"), source)
         .map_err(|e| e.to_string())?;
     Ok(inputs.into_paths())
@@ -407,6 +407,16 @@ fn export_module_move_invalidates_tracked_inputs_without_tracking_unrelated_file
         root_exports.contains(&dir_root.to_string_lossy().into_owned()),
         "{root_exports}"
     );
+
+    // Adding the flat twin beside the directory root without removing it is refused on a clean run.
+    fs::write(&file_root, "pub struct QueryRow;\n").unwrap();
+    let err = generate(&root, &out, Target::Vocab).unwrap_err();
+    assert!(
+        err.contains(&file_root.to_string_lossy().into_owned())
+            && err.contains(&dir_root.to_string_lossy().into_owned()),
+        "expected ambiguity refusal naming both candidates, got: {err}"
+    );
+    fs::remove_file(&file_root).unwrap();
 
     // Move back x/mod.rs -> x.rs.
     fs::rename(&dir_root, &file_root).unwrap();

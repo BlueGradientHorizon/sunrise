@@ -53,7 +53,7 @@ pub(crate) fn sources_tracked(
     if fragments.has_parts {
         let exports = match parts_trait_exports {
             Some(code) => std::borrow::Cow::Borrowed(code),
-            None => std::borrow::Cow::Owned(super::parts::trait_exports_tracked(root, inputs)?),
+            None => std::borrow::Cow::Owned(super::parts::trait_exports(root, inputs)?),
         };
         out.get_mut("root").unwrap().push_str(&exports);
     }
@@ -134,8 +134,7 @@ mod tests {
         )
         .unwrap();
         fs::write(api.join("exports/parts.rs"), "mod parts;").unwrap();
-        for expected in [api.join("parts/mod.rs"), api.join("parts.rs")] {
-            fs::write(&expected, "").unwrap();
+        let assert_selected = |expected: &Path| {
             let generated = sources(&root).unwrap();
             let file = syn::parse_file(&generated["mod_api_exports_root.rs"]).unwrap();
             let Item::Mod(module) = &file.items[0] else {
@@ -151,7 +150,21 @@ mod tests {
                 panic!("module path is not a string")
             };
             assert_eq!(Path::new(&value.value()), expected);
-        }
+        };
+        let nested = api.join("parts/mod.rs");
+        let flat = api.join("parts.rs");
+        fs::write(&nested, "").unwrap();
+        assert_selected(&nested);
+        // Adding the flat twin beside the directory root without removing it is refused.
+        fs::write(&flat, "").unwrap();
+        let err = sources(&root).unwrap_err();
+        assert!(
+            err.contains(&flat.to_string_lossy().into_owned())
+                && err.contains(&nested.to_string_lossy().into_owned()),
+            "expected error naming both candidates, got: {err}"
+        );
+        fs::remove_file(&nested).unwrap();
+        assert_selected(&flat);
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -175,7 +175,7 @@ pub(crate) fn source(root: &Path) -> Result<String, String> {
 }
 
 /// Discover concrete authoring modules independently from the vocabulary's area traits.
-pub(crate) fn registration_source_tracked(
+pub(crate) fn registration_source(
     root: &Path,
     inputs: &mut crate::Inputs,
 ) -> Result<String, String> {
@@ -223,16 +223,8 @@ pub(crate) fn registration_source_tracked(
     Ok(modules)
 }
 
-#[cfg(test)]
-pub(crate) fn registration_source(root: &Path) -> Result<String, String> {
-    registration_source_tracked(root, &mut crate::Inputs::default())
-}
-
 /// Export just the discovered area traits; runtime-only Parts remain private.
-pub(crate) fn trait_exports_tracked(
-    root: &Path,
-    inputs: &mut crate::Inputs,
-) -> Result<String, String> {
+pub(crate) fn trait_exports(root: &Path, inputs: &mut crate::Inputs) -> Result<String, String> {
     let dir = root.join(DIRECTORY);
     let mut unions = [Vec::new(), Vec::new()];
     for kind in inputs.module_files(&dir)? {
@@ -251,11 +243,6 @@ pub(crate) fn trait_exports_tracked(
         }
     }
     Ok(format_trait_exports(&unions))
-}
-
-#[cfg(test)]
-pub(crate) fn trait_exports(root: &Path) -> Result<String, String> {
-    trait_exports_tracked(root, &mut crate::Inputs::default())
 }
 
 #[cfg(test)]
@@ -308,7 +295,11 @@ mod tests {
         fs::write(&wrapper, shared).unwrap();
         let compile_and_run = || {
             fs::write(root.join("generated.rs"), source(&root).unwrap()).unwrap();
-            fs::write(root.join("exported.rs"), trait_exports(&root).unwrap()).unwrap();
+            fs::write(
+                root.join("exported.rs"),
+                trait_exports(&root, &mut crate::Inputs::default()).unwrap(),
+            )
+            .unwrap();
             let binary = root.join(format!("union-test{}", std::env::consts::EXE_SUFFIX));
             let output = std::process::Command::new("rustc")
                 .args(["--edition=2024", "--test"])
@@ -405,7 +396,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            !registration_source(&root)
+            !registration_source(&root, &mut crate::Inputs::default())
                 .unwrap()
                 .contains("super::sample::tests")
         );
@@ -414,7 +405,7 @@ mod tests {
             "pub fn fixture() {}\n",
         )
         .unwrap();
-        let generated = registration_source(&root).unwrap();
+        let generated = registration_source(&root, &mut crate::Inputs::default()).unwrap();
         syn::parse_file(&generated).unwrap();
         assert!(generated.contains("pub use super::sample::tests::*;"));
         fs::remove_dir_all(root).unwrap();

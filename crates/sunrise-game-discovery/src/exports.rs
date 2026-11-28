@@ -112,13 +112,21 @@ fn collect(
             if scope != "root" {
                 return Err("out-of-line export modules belong at the API root".into());
             }
-            let path = root
+            let flat = root
                 .join("crates/sunrise-mod-vocab/src")
                 .join(format!("{}.rs", module.ident));
-            let path = if path.is_file() {
-                path
-            } else {
-                path.with_extension("").join("mod.rs")
+            let nested = flat.with_extension("").join("mod.rs");
+            let path = match (flat.is_file(), nested.is_file()) {
+                (true, true) => {
+                    return Err(format!(
+                        "ambiguous export module `{}`: both {} and {} exist",
+                        module.ident,
+                        flat.display(),
+                        nested.display()
+                    ));
+                }
+                (true, false) => flat,
+                (false, _) => nested,
             };
             module_paths.push(path.clone());
             let path = path.to_string_lossy();

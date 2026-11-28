@@ -118,12 +118,7 @@ fn push(
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) fn generate(root: &Path, out: &Path, catalog: &Catalog) -> Result<(), String> {
-    generate_tracked(root, out, catalog, &mut crate::Inputs::default())
-}
-
-pub(crate) fn generate_tracked(
+pub(crate) fn generate(
     root: &Path,
     out: &Path,
     catalog: &Catalog,
@@ -197,7 +192,12 @@ mod tests {
     use super::*;
 
     fn generate_fixture(root: &Path) -> Result<(), String> {
-        generate(root, root, &Catalog::load(root)?)
+        generate(
+            root,
+            root,
+            &Catalog::load(root)?,
+            &mut crate::Inputs::default(),
+        )
     }
 
     #[test]
