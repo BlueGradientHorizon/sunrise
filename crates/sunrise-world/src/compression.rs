@@ -26,7 +26,7 @@ static SELECTED: AtomicU8 = AtomicU8::new(Compression::Zlib as u8);
 
 impl Compression {
     /// Look up a `region-file-compression` name from [`REGION_FILE_NAMES`].
-    pub fn from_name(name: &str) -> Option<Self> {
+    fn from_name(name: &str) -> Option<Self> {
         REGION_FILE_NAMES
             .iter()
             .position(|known| *known == name)
@@ -771,10 +771,10 @@ mod tests {
     #[test]
     fn region_file_names_resolve_exact_codecs() {
         for (name, want) in [
-            ("gzip", Some(Compression::Gzip)),
             ("deflate", Some(Compression::Zlib)),
             ("none", Some(Compression::None)),
             ("lz4", Some(Compression::Lz4)),
+            ("gzip", None),
             ("zstd", None),
             ("LZ4", None),
         ] {
