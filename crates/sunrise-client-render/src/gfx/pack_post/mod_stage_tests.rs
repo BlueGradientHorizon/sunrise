@@ -226,6 +226,7 @@ fn render_stage_quads(inside_pack: bool, quads: &[Vertex]) -> [[u8; 3]; 3] {
         None,
     ));
     if inside_pack {
+        primitives.pipelines.select_pack(&gpu.device, None);
         primitives.prepare_pack_pass(&gpu.device, post.formats[0], post.rgb & 1 != 0, false);
     }
 
@@ -472,6 +473,7 @@ fn pack_boundaries_fire_in_order_and_draw_pack_custom_depth_tests_mod_pipelines(
         &atlas_view,
         None,
     ));
+    primitives.pipelines.select_pack(&gpu.device, None);
     primitives.prepare_pack_pass(&gpu.device, post.formats[0], post.rgb & 1 != 0, false);
 
     let hud = HudBatch::scratch(SIZE);
@@ -708,6 +710,7 @@ fn pack_composite_inverts_mod_glsl_quad_drawn_once_after_opaque_blocks() {
         &atlas_view,
         None,
     ));
+    primitives.pipelines.select_pack(&gpu.device, None);
     primitives.prepare_pack_pass(&gpu.device, post.formats[0], post.rgb & 1 != 0, false);
 
     let hud = HudBatch::scratch(SIZE);

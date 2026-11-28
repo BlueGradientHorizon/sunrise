@@ -1036,6 +1036,14 @@ mod sprite_upload_tests;
 #[cfg(test)]
 mod shadow_tests;
 
+/// What a pack's thread builds (`Renderer::load_shader_pack`): the pack or why it is refused,
+/// its block ids, and the mod pipelines' state for its targets.
+type PackBuilt = (
+    std::result::Result<pack_post::PackPost, pack_post::Refused>,
+    Vec<i32>,
+    Option<mod_pipelines::BuiltPackState>,
+);
+
 /// A `shaders/` pack building on its own thread (`Renderer::load_shader_pack`): the dimension it
 /// is for, the thread (a panic in it contained), and what the game named it with and when.
 /// Dropping it (another pack, none, or another dimension) cancels the build: the thread stops at
@@ -1044,16 +1052,7 @@ pub(crate) struct PackLoading {
     dimension: i32,
     /// Held to be dropped with it: that cancels the build.
     _cancel: CancelOnDrop,
-    #[allow(clippy::type_complexity)]
-    thread: std::thread::JoinHandle<
-        std::result::Result<
-            (
-                std::result::Result<pack_post::PackPost, pack_post::Refused>,
-                Vec<i32>,
-            ),
-            String,
-        >,
-    >,
+    thread: std::thread::JoinHandle<std::result::Result<PackBuilt, String>>,
     label: String,
     started: std::time::Instant,
     /// What its terrain and shadow programs will draw from the game's sections, as the built
