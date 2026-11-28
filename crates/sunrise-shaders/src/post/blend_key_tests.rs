@@ -93,50 +93,58 @@ fn final_reads_its_program_blend_and_drops_buffer_lines() {
     );
 }
 
-/// D-13: a `blend.<program>` value that is not four valid factor names (three, five, lower-case,
-/// an unknown name, four known ones beside an unknown, nothing) counts as no key, not as `off` and not as a partial blend; in a
-/// composite program that leaves blending off. Four valid names still blend.
+/// The values that are not four valid factor names (three, five, lower-case, an unknown name,
+/// four known ones beside an unknown, nothing), then `off` and four valid names.
+const VALUES: [&str; 8] = [
+    "ONE ONE ONE",
+    "ONE ONE ONE ONE ONE",
+    "one one one one",
+    "ONE ONE ONE FOO",
+    "SRC_ALPHA FOO ONE ZERO ONE",
+    "",
+    "off",
+    "ONE_MINUS_DST_ALPHA DST_ALPHA SRC_COLOR ONE_MINUS_SRC_COLOR",
+];
+
+/// D-13: a value that is not four valid factor names counts as no key, not as `off` and not as a
+/// partial blend. As `blend.<program>.<buffer>` (kept by `shadowcomp`) such a line is dropped,
+/// where `off` is kept as no blend; as `blend.<program>` of a composite program it leaves
+/// blending off. Four valid names still blend.
 #[test]
 fn a_value_that_is_not_four_factors_counts_as_no_key() {
-    let values = [
-        ("composite", "ONE ONE ONE"),
-        ("composite1", "ONE ONE ONE ONE ONE"),
-        ("composite2", "one one one one"),
-        ("composite3", "ONE ONE ONE FOO"),
-        ("composite7", "SRC_ALPHA FOO ONE ZERO ONE"),
-        ("composite4", ""),
-        ("composite5", "off"),
-        (
-            "composite6",
-            "ONE_MINUS_DST_ALPHA DST_ALPHA SRC_COLOR ONE_MINUS_SRC_COLOR",
-        ),
-    ];
-    let text: String = values
-        .iter()
+    let four = [OneMinusDstAlpha, DstAlpha, SrcColor, OneMinusSrcColor];
+    // Per-buffer lines: one colortex each, `colortex0`..`colortex7`.
+    let text: String = (VALUES.iter().enumerate())
+        .map(|(i, value)| format!("blend.shadowcomp.colortex{i} = {value}\n"))
+        .collect();
+    let post = load(
+        &[
+            ("shaders/shadowcomp.vsh", VSH),
+            ("shaders/shadowcomp.fsh", TWO),
+        ],
+        &format!("shadow.enabled = true\n{text}"),
+    );
+    let lines: Vec<&[(u32, Option<Blend>)]> = (post.shadow_comp.iter())
+        .map(|p| &p.buffer_blends[..])
+        .collect();
+    assert_eq!(
+        lines,
+        [&[(6, None), (7, Some(four))][..]],
+        "{:?}",
+        post.notes
+    );
+    // Program keys: `composite`, `composite1`..`composite7`.
+    let names: Vec<String> = (0..VALUES.len())
+        .map(|i| match i {
+            0 => "composite".to_owned(),
+            i => format!("composite{i}"),
+        })
+        .collect();
+    let text: String = (names.iter().zip(VALUES))
         .map(|(name, value)| format!("blend.{name} = {value}\n"))
         .collect();
-    let properties = Properties::parse(&text, &Macros::default());
-    let keys: Vec<Option<Option<Blend>>> = values
-        .iter()
-        .map(|(name, _)| blend(&properties, name))
-        .collect();
-    let four = [OneMinusDstAlpha, DstAlpha, SrcColor, OneMinusSrcColor];
-    assert_eq!(
-        keys,
-        [
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(None),
-            Some(Some(four))
-        ]
-    );
-    let files: Vec<(String, &str)> = values
-        .iter()
-        .flat_map(|(name, _)| {
+    let files: Vec<(String, &str)> = (names.iter())
+        .flat_map(|name| {
             [
                 (format!("shaders/{name}.vsh"), VSH),
                 (format!("shaders/{name}.fsh"), ONE),
@@ -145,23 +153,10 @@ fn a_value_that_is_not_four_factors_counts_as_no_key() {
         .collect();
     let files: Vec<(&str, &str)> = files.iter().map(|(n, t)| (n.as_str(), *t)).collect();
     let post = load(&files, &text);
-    let blends: Vec<(&str, Option<Blend>)> = post
-        .programs
-        .iter()
-        .map(|p| (p.name.as_str(), p.blend))
-        .collect();
+    let blends: Vec<Option<Blend>> = post.programs.iter().map(|p| p.blend).collect();
     assert_eq!(
         blends,
-        [
-            ("composite", None),
-            ("composite1", None),
-            ("composite2", None),
-            ("composite3", None),
-            ("composite4", None),
-            ("composite5", None),
-            ("composite6", Some(four)),
-            ("composite7", None),
-        ],
+        [None, None, None, None, None, None, None, Some(four)],
         "{:?}",
         post.notes
     );

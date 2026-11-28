@@ -1,8 +1,8 @@
-//! The colour targets `build_pass` gives composite-style programs for their `blend.*` keys, as
-//! `docs/cleanroom/decisions.md` D-13 records them: `shadowcomp`'s per-buffer lines, `final`
-//! never blending, and only `BLENDABLE` formats blending. The keys themselves are pinned in
-//! `sunrise-shaders`' `post::blend_key_tests`. The pipelines are recorded, not made
-//! (`Resources::jobs`), so each test reads the targets the pass would be made with.
+//! What composite-style programs draw for their `blend.*` keys, as `docs/cleanroom/decisions.md`
+//! D-13 records them: `shadowcomp`'s per-buffer lines, `final` never blending, and only
+//! `BLENDABLE` formats blending. The keys themselves are pinned in `sunrise-shaders`'
+//! `post::blend_key_tests`. Each test builds the pass with `build_pass`, draws it once over
+//! buffers cleared to a known texel, and reads each buffer's first texel back.
 
 use sunrise_shaders::{BUFFERS, Group};
 use wgpu::TextureFormat as T;
@@ -36,21 +36,31 @@ fn program(files: &[(&str, &str)], properties: &str, name: &str) -> sunrise_shad
         .unwrap_or_else(|| panic!("{name} loads: {:?}", post.notes))
 }
 
-/// The colour targets of the one render pipeline `build_pass` records for `p`, its buffers in
-/// `formats` and the screen in `Rgba8Unorm`, a format that blends.
-fn recorded_targets(
+/// Builds `p` with its buffers in `formats` and the screen in `Rgba8Unorm` (a format that
+/// blends), draws it once into one attachment per output location, each of `attachments`'
+/// format and cleared to its colour first, and returns the first texel of each, as bytes.
+fn draw(
     p: sunrise_shaders::PostProgram,
     formats: &[wgpu::TextureFormat; BUFFERS],
-) -> Option<Vec<Option<wgpu::ColorTargetState>>> {
+    attachments: &[(wgpu::TextureFormat, wgpu::Color)],
+) -> Option<Vec<Vec<u8>>> {
     let _gpu = crate::test_gpu::lock();
     let adapter = crate::test_gpu::adapter()?;
-    // A pass's pipeline layout has six bind group slots.
+    // A pass's pipeline layout has six bind group slots. No optional feature is asked for, so
+    // `Rgba32Float` doesn't blend on this device (wgpu needs `FLOAT32_BLENDABLE` for it).
     let desc = wgpu::DeviceDescriptor {
         required_limits: adapter.limits(),
         ..Default::default()
     };
-    let (device, _queue) = crate::test_gpu::optional_device_with(&adapter, &desc)?;
+    let (device, queue) = crate::test_gpu::optional_device_with(&adapter, &desc)?;
     eprintln!("adapter: {:?}", adapter.get_info().name);
+    assert!(
+        !(T::Rgba32Float
+            .guaranteed_format_features(device.features())
+            .flags)
+            .contains(wgpu::TextureFormatFeatureFlags::BLENDABLE),
+        "the fixture needs a device where Rgba32Float doesn't blend"
+    );
     let buffers = crate::pack_images::Buffers::new(
         &device,
         Default::default(),
@@ -72,7 +82,7 @@ fn recorded_targets(
         released: std::cell::Cell::new(("", 0)),
         stand_ins: &stand_ins,
         shadow_linear: 0,
-        jobs: Some(std::cell::RefCell::new(Vec::new())),
+        jobs: None,
         mod_depth_targets: &[],
         mod_uniforms: &[],
         display_uniforms: false,
@@ -84,7 +94,7 @@ fn recorded_targets(
     };
     let draws = crate::pack_draw::DrawUniforms::new(&device);
     let mut notes = Vec::new();
-    build_pass(
+    let pass = build_pass(
         &device,
         p,
         formats,
@@ -99,69 +109,157 @@ fn recorded_targets(
         false,
     )
     .unwrap_or_else(|| panic!("the pass builds: {notes:?}"));
-    let jobs = pack.jobs.as_ref().unwrap().take();
-    let targets: Vec<_> = jobs
-        .iter()
-        .filter_map(|j| match j {
-            Job::Render(_, job) => Some(job.targets.clone()),
-            Job::Compute(..) => None,
+    const WIDTH: u32 = 64;
+    let textures: Vec<wgpu::Texture> = (attachments.iter())
+        .map(|&(format, _)| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: WIDTH,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            })
         })
         .collect();
-    assert_eq!(targets.len(), 1, "one render pipeline");
-    targets.into_iter().next()
+    let views: Vec<wgpu::TextureView> = (textures.iter())
+        .map(|t| t.create_view(&Default::default()))
+        .collect();
+    let head = [WIDTH as f32, 1.0, 1.0 / WIDTH as f32, 1.0];
+    queue.write_buffer(&pass.ubo, 0, bytemuck::cast_slice(&head));
+    let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &pass.layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: pass.ubo.as_entire_binding(),
+        }],
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    let clear: Vec<_> = (views.iter().zip(attachments))
+        .map(|(view, &(_, before))| {
+            attach(
+                view,
+                wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(before),
+                    store: wgpu::StoreOp::Store,
+                },
+            )
+        })
+        .collect();
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        color_attachments: &clear,
+        ..Default::default()
+    });
+    {
+        // Loaded, as `PackPost::render` attaches a buffer a composite pass writes.
+        let load: Vec<_> = (views.iter())
+            .map(|view| {
+                attach(
+                    view,
+                    wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                )
+            })
+            .collect();
+        let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &load,
+            ..Default::default()
+        });
+        rp.set_pipeline(pass.render());
+        rp.set_bind_group(0, &group, &[]);
+        rp.draw(0..6, 0..1);
+    }
+    let reads: Vec<(wgpu::Buffer, u32)> = (textures.iter())
+        .map(|texture| {
+            let texel = texture.format().block_copy_size(None).unwrap();
+            let read = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: u64::from(texel * WIDTH),
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            encoder.copy_texture_to_buffer(
+                texture.as_image_copy(),
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &read,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(texel * WIDTH),
+                        rows_per_image: None,
+                    },
+                },
+                texture.size(),
+            );
+            (read, texel)
+        })
+        .collect();
+    queue.submit([encoder.finish()]);
+    for (read, _) in &reads {
+        read.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+    }
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    Some(
+        reads
+            .iter()
+            .map(|(read, texel)| {
+                read.slice(..).get_mapped_range().unwrap()[..*texel as usize].to_vec()
+            })
+            .collect(),
+    )
 }
 
-/// The blend of each target, in location order.
-fn blends(targets: &[Option<wgpu::ColorTargetState>]) -> Vec<Option<wgpu::BlendState>> {
-    targets.iter().map(|t| t.as_ref().unwrap().blend).collect()
+fn color(r: f64, g: f64, b: f64, a: f64) -> wgpu::Color {
+    wgpu::Color { r, g, b, a }
 }
 
-fn add(
-    src: wgpu::BlendFactor,
-    dst: wgpu::BlendFactor,
-    src_alpha: wgpu::BlendFactor,
-    dst_alpha: wgpu::BlendFactor,
-) -> Option<wgpu::BlendState> {
-    let component = |src_factor, dst_factor| wgpu::BlendComponent {
-        src_factor,
-        dst_factor,
-        operation: wgpu::BlendOperation::Add,
-    };
-    Some(wgpu::BlendState {
-        color: component(src, dst),
-        alpha: component(src_alpha, dst_alpha),
-    })
+fn floats(bytes: &[u8]) -> Vec<f32> {
+    bytemuck::pod_collect_to_vec(bytes)
 }
 
-/// D-13: `blend.shadowcomp.colortex0` blends shadowcolor0, the program's first output;
-/// `blend.shadowcomp` is not read and `blend.shadowcomp.shadowcolor1` names no buffer, so
-/// shadowcolor1 is written without blending.
+/// D-13: `blend.shadowcomp.colortex0` blends shadowcolor0, the buffer of index 0, whichever
+/// output location writes it: here location 1 (`DRAWBUFFERS:10`). `blend.shadowcomp` is not
+/// read and `blend.shadowcomp.shadowcolor1` names no buffer, so shadowcolor1, at location 0, is
+/// written as the program wrote it.
 #[test]
 #[ignore = "daily"]
 fn shadowcomp_blends_the_shadow_buffer_its_colortex_line_numbers() {
-    use wgpu::BlendFactor as F;
     let p = program(
         &[
             ("shadowcomp.vsh", VSH),
             (
                 "shadowcomp.fsh",
-                "#version 120\nvoid main() {\n\
-                 gl_FragData[0] = vec4(0.75);\ngl_FragData[1] = vec4(0.875);\n}\n",
+                "#version 120\n/* DRAWBUFFERS:10 */\nvoid main() {\n\
+                 gl_FragData[0] = vec4(1.0, 0.0, 1.0, 0.0);\n\
+                 gl_FragData[1] = vec4(0.0, 0.0, 1.0, 1.0);\n}\n",
             ),
         ],
-        "blend.shadowcomp = ONE ONE ONE ONE\n\
-         blend.shadowcomp.colortex0 = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ZERO\n\
-         blend.shadowcomp.shadowcolor1 = ONE ZERO ONE ZERO\n",
+        "blend.shadowcomp = ZERO ONE ZERO ONE\n\
+         blend.shadowcomp.colortex0 = ONE ONE ONE ONE\n\
+         blend.shadowcomp.shadowcolor1 = ZERO ZERO ZERO ZERO\n",
         "shadowcomp",
     );
-    assert_eq!((p.group, &p.buffers[..]), (Group::ShadowComp, &[0, 1][..]));
-    let Some(targets) = recorded_targets(p, &[T::Rgba8Unorm; BUFFERS]) else {
+    assert_eq!((p.group, &p.buffers[..]), (Group::ShadowComp, &[1, 0][..]));
+    let Some(texels) = draw(
+        p,
+        &[T::Rgba8Unorm; BUFFERS],
+        &[
+            (T::Rgba8Unorm, color(0.0, 1.0, 0.0, 1.0)),
+            (T::Rgba8Unorm, color(1.0, 0.0, 0.0, 0.0)),
+        ],
+    ) else {
         return;
     };
-    assert_eq!(
-        blends(&targets),
-        [add(F::SrcAlpha, F::OneMinusSrcAlpha, F::One, F::Zero), None]
-    );
+    // shadowcolor1 as written; shadowcolor0 the sum of the two, ONE ONE ONE ONE.
+    assert_eq!(texels, [vec![255, 0, 255, 0], vec![255, 0, 255, 255]]);
 }
 
 /// D-13: `final` writes the screen without blending, though the loader keeps `blend.final`'s
@@ -174,48 +272,64 @@ fn final_writes_the_screen_without_blending() {
             ("final.vsh", VSH),
             (
                 "final.fsh",
-                "#version 120\nvoid main() { gl_FragData[0] = vec4(0.5); }\n",
+                "#version 120\nvoid main() { gl_FragData[0] = vec4(1.0, 0.0, 1.0, 0.0); }\n",
             ),
         ],
-        "blend.final = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ZERO\n",
+        "blend.final = ONE ONE ONE ONE\n",
         "final",
     );
     assert!(p.group == Group::Final && p.blend.is_some());
-    let Some(targets) = recorded_targets(p, &[T::Rgba8Unorm; BUFFERS]) else {
+    let Some(texels) = draw(
+        p,
+        &[T::Rgba8Unorm; BUFFERS],
+        &[(T::Rgba8Unorm, color(0.0, 1.0, 0.0, 1.0))],
+    ) else {
         return;
     };
-    assert_eq!(targets.len(), 1);
-    assert_eq!(targets[0].as_ref().unwrap().format, T::Rgba8Unorm);
-    assert_eq!(blends(&targets), [None]);
+    // As written; blended, ONE ONE ONE ONE would read 255 in every channel.
+    assert_eq!(texels, [vec![255, 0, 255, 0]]);
 }
 
-/// D-13: factors apply only to an output whose buffer format wgpu reports as `BLENDABLE`. An
-/// `R32Uint` buffer (integer formats never blend in wgpu) is written without blending, both
-/// under `blend.<program>` (composite) and under a per-buffer line (shadowcomp), while the
-/// `Rgba8Unorm` buffer beside it blends.
+/// D-13: factors apply only to an output whose buffer format wgpu reports as `BLENDABLE`.
+/// `R32Uint` (an integer format) and `Rgba32Float` (a float format, on a device without
+/// `FLOAT32_BLENDABLE`) are written without blending, under `blend.<program>` (composite) and
+/// under a per-buffer line (shadowcomp), while the `Rgba8Unorm` buffer beside them blends.
 #[test]
 #[ignore = "daily"]
 fn only_blendable_formats_blend() {
-    use wgpu::BlendFactor as F;
-    let two = "#version 120\n/* DRAWBUFFERS:34 */\nvoid main() {\n\
-               gl_FragData[0] = vec4(0.25);\ngl_FragData[1] = vec4(0.5);\n}\n";
     let composite = program(
-        &[("composite.vsh", VSH), ("composite.fsh", two)],
-        "blend.composite = ONE ONE ZERO ONE\n",
+        &[
+            ("composite.vsh", VSH),
+            (
+                "composite.fsh",
+                "#version 120\n/* DRAWBUFFERS:345 */\nvoid main() {\n\
+                 gl_FragData[0] = vec4(1.0);\n\
+                 gl_FragData[1] = vec4(1.0, 0.0, 1.0, 0.0);\n\
+                 gl_FragData[2] = vec4(0.25, 0.5, 0.75, 1.0);\n}\n",
+            ),
+        ],
+        "blend.composite = ONE ONE ONE ONE\n",
         "composite",
     );
-    assert_eq!(&composite.buffers[..], &[3, 4]);
+    assert_eq!(&composite.buffers[..], &[3, 4, 5]);
     let mut formats = [T::Rgba8Unorm; BUFFERS];
     formats[3] = T::R32Uint;
-    let Some(targets) = recorded_targets(composite, &formats) else {
+    formats[5] = T::Rgba32Float;
+    let Some(texels) = draw(
+        composite,
+        &formats,
+        &[
+            (T::R32Uint, color(7.0, 0.0, 0.0, 0.0)),
+            (T::Rgba8Unorm, color(0.0, 1.0, 0.0, 1.0)),
+            (T::Rgba32Float, color(0.5, 0.5, 0.5, 0.5)),
+        ],
+    ) else {
         return;
     };
-    let target = |l: usize| targets[l].as_ref().unwrap().format;
-    assert_eq!((target(0), target(1)), (T::R32Uint, T::Rgba8Unorm));
-    assert_eq!(
-        blends(&targets),
-        [None, add(F::One, F::One, F::Zero, F::One)]
-    );
+    // The integer buffer holds the float's bits (`packed::bitcast_outputs`), 1.0 = 0x3f800000.
+    assert_eq!(texels[0], 0x3f80_0000u32.to_le_bytes());
+    assert_eq!(texels[1], [255, 255, 255, 255]);
+    assert_eq!(floats(&texels[2]), [0.25, 0.5, 0.75, 1.0]);
 
     let shadowcomp = program(
         &[
@@ -223,20 +337,26 @@ fn only_blendable_formats_blend() {
             (
                 "shadowcomp.fsh",
                 "#version 120\nvoid main() {\n\
-                 gl_FragData[0] = vec4(0.75);\ngl_FragData[1] = vec4(0.875);\n}\n",
+                 gl_FragData[0] = vec4(0.25, 0.5, 0.75, 1.0);\n\
+                 gl_FragData[1] = vec4(1.0, 0.0, 1.0, 0.0);\n}\n",
             ),
         ],
-        "blend.shadowcomp.colortex0 = DST_COLOR ZERO ZERO ONE\n\
-         blend.shadowcomp.colortex1 = DST_COLOR ZERO ZERO ONE\n",
+        "blend.shadowcomp.colortex0 = ONE ONE ONE ONE\n\
+         blend.shadowcomp.colortex1 = ONE ONE ONE ONE\n",
         "shadowcomp",
     );
     let mut formats = [T::Rgba8Unorm; BUFFERS];
-    formats[0] = T::R32Uint;
-    let Some(targets) = recorded_targets(shadowcomp, &formats) else {
+    formats[0] = T::Rgba32Float;
+    let Some(texels) = draw(
+        shadowcomp,
+        &formats,
+        &[
+            (T::Rgba32Float, color(0.5, 0.5, 0.5, 0.5)),
+            (T::Rgba8Unorm, color(0.0, 1.0, 0.0, 1.0)),
+        ],
+    ) else {
         return;
     };
-    assert_eq!(
-        blends(&targets),
-        [None, add(F::Dst, F::Zero, F::Zero, F::One)]
-    );
+    assert_eq!(floats(&texels[0]), [0.25, 0.5, 0.75, 1.0]);
+    assert_eq!(texels[1], [255, 255, 255, 255]);
 }
