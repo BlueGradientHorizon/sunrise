@@ -25,6 +25,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "client"))]
 #[path = "render_arm_tests.rs"]
 mod tests;
