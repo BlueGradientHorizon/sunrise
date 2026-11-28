@@ -257,10 +257,10 @@ pub(crate) mod tests {
         }
         with_game(|game| {
             fixture_resident_column(&mut game.world, (0, 0));
-            game.player = Some(
-                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(AT[0], AT[1], AT[2]))
-                    .unwrap(),
-            );
+            game.player = Some(sunrise_sim::motion::PlayerMotion::new(
+                game.motion,
+                Vec3::new(AT[0], AT[1], AT[2]),
+            ));
             bind_local_player(game, 77, 0x6772);
             load_pig_on(game, 77);
             let tag = game.command_target_nbt(Target::Player).unwrap();

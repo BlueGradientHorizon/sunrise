@@ -821,9 +821,10 @@ pub(crate) mod tests {
         mod_platform::testing::with_mods(Default::default(), || {
             with_client_game(|game| {
                 let _server = logged_client(game);
-                game.player = Some(
-                    PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO).unwrap(),
-                );
+                game.player = Some(PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                ));
                 let kind = game
                     .client
                     .remote

@@ -1570,10 +1570,10 @@ pub(in crate::game) mod pickup_xp_tests {
         let mut out = (None, 0, 0);
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
-                game.player = Some(
-                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 70.0, 0.5))
-                        .unwrap(),
-                );
+                game.player = Some(sunrise_sim::motion::PlayerMotion::new(
+                    game.motion,
+                    Vec3::new(0.5, 70.0, 0.5),
+                ));
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 game.server.xp_delay = 0;
                 game.experience = Default::default();

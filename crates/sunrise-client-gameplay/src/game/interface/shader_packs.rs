@@ -2751,8 +2751,11 @@ pub(in crate::game) mod native_pack_tests {
         sunrise_shaders::read_properties(&pack, &mut macros);
         let ids = read_id_files(&pack, &macros);
         std::fs::remove_dir_all(root).unwrap();
-        assert_eq!(ids.blocks.id("minecraft:stone", |_| None), Some(10));
-        assert_eq!(ids.blocks.id("minecraft:dirt", |_| None), None);
+        assert_eq!(
+            ids.blocks.id("minecraft:stone", |_| None, |_| false),
+            Some(10)
+        );
+        assert_eq!(ids.blocks.id("minecraft:dirt", |_| None, |_| false), None);
         let entities = &ids.named.entities;
         assert_eq!(
             (entities.get("minecraft:pig"), entities.get("minecraft:cow")),

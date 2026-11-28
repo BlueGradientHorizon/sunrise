@@ -173,7 +173,17 @@ fn a_served_answer_change_drops_the_stale_build_and_loads_once() {
             game.client.settings.sunrise.shader_pack,
             path.to_str().unwrap()
         );
-        assert_ne!(outcome(&path), Some(false), "not remembered as refused");
+        assert_ne!(
+            outcome(
+                &path,
+                game.client
+                    .settings
+                    .sunrise
+                    .iris_compat_of(path.to_str().unwrap())
+            ),
+            Some(false),
+            "not remembered as refused"
+        );
         // Later frames leave it running, with no other build.
         for _ in 0..5 {
             loader_frame(game);
@@ -234,7 +244,17 @@ fn an_unserved_build_is_still_taken_across_a_dimension_change() {
             .pack_loads;
         game.common.dim = super::Dim::Nether;
         loader_frame(game);
-        assert_eq!(outcome(&path), Some(false), "the refusal is remembered");
+        assert_eq!(
+            outcome(
+                &path,
+                game.client
+                    .settings
+                    .sunrise
+                    .iris_compat_of(path.to_str().unwrap())
+            ),
+            Some(false),
+            "the refusal is remembered"
+        );
         assert!(
             game.client.settings.sunrise.shader_pack.is_empty(),
             "the pick is turned off"

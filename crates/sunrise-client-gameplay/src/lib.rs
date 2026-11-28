@@ -24,9 +24,6 @@ pub mod mob_light;
 pub mod motion_ids;
 pub mod occlusion_culling;
 pub mod particle_culling;
-#[cfg(test)]
-#[path = "../../sunrise-core/src/prepared_test_root.rs"]
-pub(crate) mod prepared_test_root;
 pub mod profile_lines;
 pub mod remote;
 pub mod screen_info;

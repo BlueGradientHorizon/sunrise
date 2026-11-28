@@ -285,10 +285,10 @@ mod tests {
     fn the_host_player_touches_an_item_and_an_orb_through_the_game_pickup() {
         with_game(|game| {
             fixture_resident_column(&mut game.world, (0, 0));
-            game.player = Some(
-                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
-                    .unwrap(),
-            );
+            game.player = Some(sunrise_sim::motion::PlayerMotion::new(
+                game.motion,
+                Vec3::new(3.0, 64.0, 5.0),
+            ));
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.player(123).unwrap();
             let held = |game: &crate::game::ServerGame<'_>| {
@@ -383,10 +383,10 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 fixture_resident_column(&mut game.world, (0, 0));
-                game.player = Some(
-                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
-                        .unwrap(),
-                );
+                game.player = Some(sunrise_sim::motion::PlayerMotion::new(
+                    game.motion,
+                    Vec3::new(3.0, 64.0, 5.0),
+                ));
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 let player = game.player(123).unwrap();
                 game.server.xp_delay = 0;
@@ -480,10 +480,10 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 fixture_resident_column(&mut game.world, (0, 0));
-                game.player = Some(
-                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
-                        .unwrap(),
-                );
+                game.player = Some(sunrise_sim::motion::PlayerMotion::new(
+                    game.motion,
+                    Vec3::new(3.0, 64.0, 5.0),
+                ));
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 let player = game.player(123).unwrap();
                 game.inventory.fill(stone());
